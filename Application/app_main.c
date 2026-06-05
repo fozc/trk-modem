@@ -40,6 +40,20 @@ AUTOSTART_PROCESSES(&heart_beat_process);
 static uint16_t __attribute__((aligned(32))) adc_buffer[4] = {0};
 static uint16_t hADCxConvertedData_Temperature_DegreeCelsius = 0;
 
+#define ADC_VREF_MV 2500 /* VREFBUF at SCALE3 = 2.5V */
+#define ADC_MAX_VAL 4095
+
+/* Voltage divider: 16.2K + 10K, ADC reads across 10K
+
+V_rail = V_adc * (R1 + R2) / R2 = V_adc * 262 / 100 */
+#define DIVIDER_NUM 262
+#define DIVIDER_DEN 100
+
+static inline uint32_t adc_raw_to_mv(uint16_t raw)
+{
+    return ((uint32_t)raw * ADC_VREF_MV * DIVIDER_NUM) / ((uint32_t)ADC_MAX_VAL * DIVIDER_DEN);
+}
+
 void start_adc_conversion(void)
 {
 	extern ADC_HandleTypeDef hadc1;
@@ -48,7 +62,7 @@ void start_adc_conversion(void)
 
 uint16_t get_tdie(void)
 {
-	hADCxConvertedData_Temperature_DegreeCelsius = __LL_ADC_CALC_TEMPERATURE(3300, adc_buffer[3], LL_ADC_RESOLUTION_12B);
+	hADCxConvertedData_Temperature_DegreeCelsius = __LL_ADC_CALC_TEMPERATURE(2500, adc_buffer[4], LL_ADC_RESOLUTION_12B);
 	return hADCxConvertedData_Temperature_DegreeCelsius;
 }
 
@@ -194,7 +208,7 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	LL_LPUART_EnableIT_RXNE_RXFNE(LPUART1);  /* Console RX */
 
-	//start_adc_conversion();
+	start_adc_conversion();
 
 	while(1)
 	{
