@@ -1,0 +1,65 @@
+# Build artifacts and output
+build/
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# Compiler intermediate files
+*.d
+*.map
+*.list
+*.lst
+*.su
+*.i
+*.s
+
+# Test output and logs
+test_results.txt
+test_*.log
+*.log
+
+# Debug files
+*.pdb
+*.ilk
+*.dSYM/
+core
+core.*
+vgcore.*
+
+# Coverage files
+*.gcno
+*.gcda
+*.gcov
+*.lcov
+coverage/
+htmlcov/
+
+# Profiling
+gmon.out
+*.prof
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup

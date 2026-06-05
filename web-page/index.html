@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSB23 Device Configuration</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>⚡</text></svg>">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#f5f5f5;color:#212121;height:100vh;overflow:hidden}
+.c{display:flex;height:100vh}
+.sb{width:220px;background:#1e3a5f;color:#fff;display:flex;flex-direction:column;overflow-y:auto}
+.sb-h{padding:20px;background:#2196F3;font-size:18px;font-weight:700}
+.menu{flex:1;padding:8px 0}
+.mi{padding:12px 16px;margin:4px 8px;cursor:pointer;border-radius:6px;border-left:3px solid transparent;font-weight:500}
+.mi:hover{background:rgba(255,255,255,0.1)}
+.mi.a{background:rgba(33,150,243,0.2);border-left-color:#64B5F6}
+.mc{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.ch{background:#fff;padding:20px 24px;box-shadow:0 2px 8px rgba(0,0,0,0.08);border-bottom:3px solid #2196F3}
+.ch h2{font-size:22px;color:#1976D2}
+.cb{flex:1;overflow-y:auto;padding:16px}
+.sec{background:#fff;border-radius:8px;padding:16px;margin-bottom:12px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
+.sec h3{font-size:14px;font-weight:600;margin-bottom:12px;color:#1976D2;padding-bottom:8px;border-bottom:2px solid #e3f2fd}
+.grid{display:grid;gap:8px}
+.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+.fg{margin-bottom:4px}
+.fg label{display:block;font-size:12px;color:#424242;margin-bottom:2px}
+.fg input[type="text"],.fg input[type="number"]{width:100%;max-width:200px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:12px}
+.fg input:focus{outline:none;border-color:#2196F3;box-shadow:0 0 0 2px rgba(33,150,243,0.1)}
+.fg input:disabled{background:#e9ecef;color:#6c757d;cursor:not-allowed}
+.fg input.inv{border-color:#dc3545;background:#fff5f5}
+.chk{display:inline-flex;align-items:center;cursor:pointer}
+.chk input{width:16px;height:16px;margin-right:6px}
+.err{color:#dc3545;font-size:11px;margin-top:2px;min-height:14px}
+.tw{overflow-x:auto;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#1976D2;color:#fff;padding:8px 6px;text-align:left;font-size:11px;text-transform:uppercase}
+td{padding:6px;border-bottom:1px solid #e0e0e0}
+table input[type="number"],table input[type="text"]{width:100%;padding:4px;border:1px solid #ccc;border-radius:3px;font-size:12px}
+table input[type="checkbox"]{width:14px;height:14px}
+.bg{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.btn{padding:8px 20px;border:none;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;text-transform:uppercase}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.btn-p{background:#2196F3;color:#fff}.btn-p:hover:not(:disabled){background:#1976D2}
+.btn-s{background:#4CAF50;color:#fff}.btn-s:hover:not(:disabled){background:#388E3C}
+.btn-d{background:#f44336;color:#fff}.btn-d:hover:not(:disabled){background:#D32F2F}
+.btn-g{background:#757575;color:#fff}.btn-g:hover:not(:disabled){background:#616161}
+.btn-sm{padding:4px 12px;font-size:11px}
+.toast{position:fixed;top:16px;right:16px;padding:12px 16px;border-radius:4px;color:#fff;font-size:13px;z-index:9999;animation:si .3s}
+@keyframes si{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast.ok{background:#4CAF50}.toast.err{background:#f44336}.toast.info{background:#2196F3}
+.lo{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9998}
+.sp{width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999}
+.dlg-c{background:#fff;border-radius:8px;padding:20px;min-width:300px;max-width:400px}
+.dlg-c h3{font-size:16px;margin-bottom:10px}.dlg-c p{color:#616161;margin-bottom:16px;line-height:1.4}
+.dlg-b{display:flex;gap:8px;justify-content:flex-end}
+.led{display:inline-block;padding:3px 8px;border-radius:3px;margin:2px;font-size:11px;font-weight:600}
+.led.on{background:#4CAF50;color:#fff}.led.off{background:#9E9E9E;color:#fff}
+.da{background:#fff;border-radius:8px;padding:20px;margin-bottom:16px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
+.da h3{font-size:16px;margin-bottom:8px;color:#424242}.da p{color:#757575;margin-bottom:16px;line-height:1.4}
+.line-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.line-hdr h4{font-size:13px;color:#1565C0;font-weight:600}
+.lc{margin-bottom:12px;background:#fff;border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+.lc-h{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #e3f2fd}
+.lc-h h4{font-size:14px;color:#1565C0;font-weight:600;margin:0}
+.tb{display:flex;flex-wrap:wrap;gap:2px;border-bottom:2px solid #2196F3;margin-bottom:10px}
+.tb .t{padding:6px 14px;cursor:pointer;border-radius:4px 4px 0 0;font-size:12px;font-weight:600;background:#e3f2fd;color:#1976D2;border:1px solid #e3f2fd;border-bottom:none;margin-bottom:-2px}
+.tb .t:hover{background:#bbdefb}
+.tb .t.ta{background:#fff;border-color:#2196F3;border-bottom-color:#fff;color:#1565C0;font-weight:700;font-size:13px}
+.tp{display:none}.tp.tc{display:block}
+.sb-logout{padding:12px 16px;margin:8px;border-top:1px solid rgba(255,255,255,0.1)}
+.sb-logout .btn{width:100%;background:#f44336;color:#fff;padding:8px;font-size:11px}
+.sb-logout .btn:hover{background:#D32F2F}
+.log{background:#fff;padding:10px 14px;margin:6px 0;border-radius:6px;border-left:4px solid #2196F3;box-shadow:0 1px 3px rgba(0,0,0,0.08);font-family:'Courier New',monospace;font-size:12px;color:#424242;line-height:1.5;word-break:break-word}
+.log:hover{box-shadow:0 2px 6px rgba(0,0,0,0.12)}
+#lgc{max-width:100%}
+.trm{background:#1e1e1e;color:#d4d4d4;font-family:'Courier New',Consolas,monospace;font-size:13px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 120px)}
+.trm-out{flex:1;overflow-y:auto;padding:12px;white-space:pre-wrap;word-break:break-all;line-height:1.5}
+.trm-out .cmd{color:#569cd6}.trm-out .res{color:#d4d4d4}.trm-out .ts{color:#6a9955;font-size:11px;margin-right:6px;user-select:none}.trm-entry{display:block;margin-bottom:6px;border-left:2px solid #333;padding-left:8px}.trm-entry.cmd{border-left-color:#569cd6}.trm-entry.res{border-left-color:#4ec994}
+.trm-in{display:flex;border-top:1px solid #333;padding:8px;gap:8px;background:#252526}
+.trm-in input{flex:1;background:#1e1e1e;color:#d4d4d4;border:1px solid #444;border-radius:4px;padding:6px 10px;font-family:inherit;font-size:13px;outline:none}
+.trm-in input:focus{border-color:#569cd6}
+.trm-in button{padding:6px 14px;border:none;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer}
+.trm-send{background:#569cd6;color:#fff}.trm-send:hover{background:#4a8abf}
+.trm-clr{background:#555;color:#fff}.trm-clr:hover{background:#666}
+@media(max-width:768px){.sb{width:180px}.g2,.g3,.g4{grid-template-columns:1fr!important}}
+.rf-ps{margin-bottom:12px}
+.rf-mm{color:#c0392b;font-size:12px;font-weight:600;margin-bottom:6px;padding:4px 8px;background:#fdecea;border-radius:4px;border-left:3px solid #c0392b}
+</style>
+</head>
+<body>
+<div class="lo"><div class="sp"></div></div>
+<div id="loginModal" class="dlg" style="display:none">
+  <div class="dlg-c">
+    <h3>Device Login</h3>
+    <div class="fg">
+      <label>Username</label>
+      <input type="text" id="loginUser" autocomplete="username" maxlength="16">
+    </div>
+    <div class="fg">
+      <label>Password</label>
+      <input type="password" id="loginPass" autocomplete="current-password" maxlength="16">
+    </div>
+    <div class="err" id="loginErr"></div>
+    <div class="dlg-b">
+      <button class="btn btn-p" onclick="doLogin()">Login</button>
+    </div>
+  </div>
+</div>
+<div class="c">
+<div class="sb">
+<div class="sb-h">Device Config</div>
+<div class="menu" id="menu"></div>
+<div class="sb-logout">
+  <button class="btn" onclick="doLogout()">Logout</button>
+</div>
+</div>
+<div class="mc">
+<div class="ch"><h2 id="title"></h2></div>
+<div class="cb" id="body"></div>
+</div>
+</div>
+
+<script>
+// ============================================
+// TIMEOUT / TIMING CONFIGURATION
+// ============================================
+const CFG_TOAST_DURATION_MS   = 4000;        // Toast bildiriminin ekranda kalma süresi (ms)
+const CFG_HTTP_REQUEST_TIMEOUT_MS = 30000;   // HTTP isteği için maksimum bekleme süresi (ms) - GSM bağlantısında artırılabilir
+const CFG_SESSION_TIMEOUT_MS  = 15 * 60 * 1000; // Oturum hareketsizlik süresi (ms) - 15 dakika (server TTL ile eslestirildi)
+
+// ============================================
+// META-DATA CONFIGURATION
+// Layout: 'grid' | 'table' | 'monitor' | 'action'
+// Grid modifier: cols (2|3|4)
+// Table modifier: compact (true for card view)
+// Field types: 'n'=number, 't'=text, 'c'=checkbox, 'led'=led array, 'ro'=readonly
+// ============================================
+const M = {
+  pages: [
+    {
+      id: 'iec104',
+      title: 'IEC104 Config',
+      ep: '/config/iec104',
+      rw: true,
+      sections: [
+        {
+          lbl: 'General Settings',
+          layout: 'grid',
+          cols: 3,
+          fields: [
+            {k: 'Port', t: 'n', lbl: 'Port', min: 1, max: 65535, req: 1},
+            {k: 'PeriodicSend', t: 'n', lbl: 'Periodic Send (s)', min: 0, max: 86400, req: 1},
+            {k: 'T0', t: 'n', lbl: 'T0', min: 30, max: 255, req: 1},
+            {k: 'T1', t: 'n', lbl: 'T1', min: 30, max: 255, req: 1},
+            {k: 'T2', t: 'n', lbl: 'T2', min: 30, max: 255, req: 1},
+            {k: 'T3', t: 'n', lbl: 'T3', min: 30, max: 255, req: 1},
+            {k: 'K', t: 'n', lbl: 'K', min: 64, max: 255, req: 1},
+            {k: 'W', t: 'n', lbl: 'W', min: 32, max: 255, req: 1},
+            {k: 'OriginatorAddr', t: 'n', lbl: 'Originator Address', min: 1, max: 65535, req: 1},
+            {k: 'CommonAddr', t: 'n', lbl: 'Common Address', min: 1, max: 255, req: 1},
+            {k: 'SBOTimeout', t: 'n', lbl: 'SBO Timeout (ms)', min: 10000, max: 100000, req: 1},
+            {k: 'SBO', t: 'c', lbl: 'SBO Enable'},
+            {k: 'AkuUyarisi', t: 'n', lbl: 'Battery Warning IOA', min: 1, max: 65535, req: 1},
+            {k: 'ModemReset', t: 'n', lbl: 'Modem Reboot IOA', min: 1, max: 65535, req: 1}
+          ]
+        },
+        {
+          lbl: 'Feeders',
+          layout: 'table',
+          compact: true,
+          tbl: 'Hatlar',
+          rows: 8,
+          fields: [
+            {k: 'inUse', t: 'c', lbl: 'Use'},
+            {k: 'IOA_R_ArizaAkimi', t: 'n', lbl: 'L1 Fault Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_S_ArizaAkimi', t: 'n', lbl: 'L2 Fault Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_T_ArizaAkimi', t: 'n', lbl: 'L3 Fault Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_R_ArizaSuresi', t: 'n', lbl: 'L1 Fault Time', min: 1, max: 65535, req: 1},
+            {k: 'IOA_S_ArizaSuresi', t: 'n', lbl: 'L2 Fault Time', min: 1, max: 65535, req: 1},
+            {k: 'IOA_T_ArizaSuresi', t: 'n', lbl: 'L3 Fault Time', min: 1, max: 65535, req: 1},
+            {k: 'IOA_R_ArizaTuru', t: 'n', lbl: 'L1 Fault Type', min: 1, max: 65535, req: 1},
+            {k: 'IOA_S_ArizaTuru', t: 'n', lbl: 'L2 Fault Type', min: 1, max: 65535, req: 1},
+            {k: 'IOA_T_ArizaTuru', t: 'n', lbl: 'L3 Fault Type', min: 1, max: 65535, req: 1},
+            {k: 'IOA_R_AnlikAkim', t: 'n', lbl: 'L1 Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_S_AnlikAkim', t: 'n', lbl: 'L2 Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_T_AnlikAkim', t: 'n', lbl: 'L3 Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_R_EnerjiVarYok', t: 'n', lbl: 'L1 Energy Status', min: 1, max: 65535, req: 1},
+            {k: 'IOA_S_EnerjiVarYok', t: 'n', lbl: 'L2 Energy Status', min: 1, max: 65535, req: 1},
+            {k: 'IOA_T_EnerjiVarYok', t: 'n', lbl: 'L3 Energy Status', min: 1, max: 65535, req: 1},
+            {k: 'IOA_R_NominalAkimVarYok', t: 'n', lbl: 'L1 Nominal Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_S_NominalAkimVarYok', t: 'n', lbl: 'L2 Nominal Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_T_NominalAkimVarYok', t: 'n', lbl: 'L3 Nominal Current', min: 1, max: 65535, req: 1},
+            {k: 'IOA_R_RfhabVarYok', t: 'n', lbl: 'L1 RF Status', min: 1, max: 65535, req: 1},
+            {k: 'IOA_S_RfhabVarYok', t: 'n', lbl: 'L2 RF Status', min: 1, max: 65535, req: 1},
+            {k: 'IOA_T_RfhabVarYok', t: 'n', lbl: 'L3 RF Status', min: 1, max: 65535, req: 1}
+          ]
+        }
+      ]
+    },
+    {
+      id: 'modbus',
+      title: 'Modbus Config',
+      ep: '/config/modbus',
+      rw: true,
+      sections: [
+        {
+          lbl: 'General Settings',
+          layout: 'grid',
+          cols: 3,
+          fields: [
+            {k: 'CihazID', t: 'n', lbl: 'Device ID', min: 1, max: 247, req: 1},
+            {k: 'BaudRate', t: 'n', lbl: 'Baud Rate', min: 1200, max: 921600, req: 1},
+            {k: 'SonHataKodu', t: 'n', lbl: 'Last Error Code', min: 0, max: 65535, ro: 1}
+          ]
+        },
+        {
+          lbl: 'Feeders',
+          layout: 'table',
+          compact: true,
+          tbl: 'Hat',
+          rows: 8,
+          fields: [
+            {k: 'inUse', t: 'c', lbl: 'Use'},
+            {k: 'ADDR_R_ArizaAkimi', t: 'n', lbl: 'L1 Fault Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_S_ArizaAkimi', t: 'n', lbl: 'L2 Fault Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_T_ArizaAkimi', t: 'n', lbl: 'L3 Fault Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_R_ArizaSuresi', t: 'n', lbl: 'L1 Fault Time', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_S_ArizaSuresi', t: 'n', lbl: 'L2 Fault Time', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_T_ArizaSuresi', t: 'n', lbl: 'L3 Fault Time', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_R_ArizaTuru', t: 'n', lbl: 'L1 Fault Type', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_S_ArizaTuru', t: 'n', lbl: 'L2 Fault Type', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_T_ArizaTuru', t: 'n', lbl: 'L3 Fault Type', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_R_AnlikAkim', t: 'n', lbl: 'L1 Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_S_AnlikAkim', t: 'n', lbl: 'L2 Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_T_AnlikAkim', t: 'n', lbl: 'L3 Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_R_EnerjiVarYok', t: 'n', lbl: 'L1 Energy Status', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_S_EnerjiVarYok', t: 'n', lbl: 'L2 Energy Status', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_T_EnerjiVarYok', t: 'n', lbl: 'L3 Energy Status', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_R_NominalAkimVarYok', t: 'n', lbl: 'L1 Nominal Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_S_NominalAkimVarYok', t: 'n', lbl: 'L2 Nominal Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_T_NominalAkimVarYok', t: 'n', lbl: 'L3 Nominal Current', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_R_RfhabVarYok', t: 'n', lbl: 'L1 RF Status', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_S_RfhabVarYok', t: 'n', lbl: 'L2 RF Status', min: 1, max: 65535, req: 1},
+            {k: 'ADDR_T_RfhabVarYok', t: 'n', lbl: 'L3 RF Status', min: 1, max: 65535, req: 1}
+          ]
+        }
+      ]
+    },
+    {
+      id: 'rf',
+      title: 'RF Config',
+      ep: '/config/rf',
+      rw: true,
+      sections: [
+        {
+          lbl: 'RF Feeders Configuration',
+          layout: 'table',
+          compact: true,
+          tbl: 'root',
+          rows: 8,
+          monFields: [
+            {k: 'HatID',                         lbl: 'Feeder ID'},
+            {k: 'ZoneID',                        lbl: 'Zone ID'},
+            {k: 'DEVICEID',                      lbl: 'Device ID', noCompare: true},
+            {k: 'CalismaModu',                   lbl: 'Working Mode'},
+            {k: 'SistemNominalAkimi',            lbl: 'Nominal Current'},
+            {k: 'SetEdilebilirActirmaEsikAkimi', lbl: 'Trigger Threshold'},
+            {k: 'SetEdilebilirAcmaArizaSayisi',  lbl: 'Fault Count'},
+            {k: 'ArtimliAkimEsigi',             lbl: 'Incremental Current'},
+            {k: 'HatKopukHatBosta',             lbl: 'Feeder Break Threshold'},
+            {k: 'OluHatAkimiDogrulamaSuresi',   lbl: 'Verify Duration'},
+            {k: 'YenilenmeSifirlamaSuresi',      lbl: 'Reset Duration'},
+            {k: 'HatFrekansi',                   lbl: 'Feeder Frequency'}
+          ],
+          fields: [
+            {k: 'inUse', t: 'c', lbl: 'Use'},
+            {k: 'HatID', t: 'n', lbl: 'Feeder ID', min: 0, max: 255, req: 1},
+            {k: 'ZoneID', t: 'n', lbl: 'Zone ID', min: 0, max: 255, req: 1},
+            {k: 'R_DEVICEID', t: 'n', lbl: 'L1 Device ID', min: 0, max: 65535, req: 1},
+            {k: 'S_DEVICEID', t: 'n', lbl: 'L2 Device ID', min: 0, max: 65535, req: 1},
+            {k: 'T_DEVICEID', t: 'n', lbl: 'L3 Device ID', min: 0, max: 65535, req: 1},
+            {k: 'CalismaModu', t: 'n', lbl: 'Working Mode', min: 0, max: 255, req: 1},
+            {k: 'SistemNominalAkimi', t: 'n', lbl: 'Nominal Current', min: 0, max: 1000, req: 1},
+            {k: 'SetEdilebilirActirmaEsikAkimi', t: 'n', lbl: 'Trigger Threshold', min: 0, max: 1000, req: 1},
+            {k: 'SetEdilebilirAcmaArizaSayisi', t: 'n', lbl: 'Fault Count', min: 0, max: 100, req: 1},
+            {k: 'ArtimliAkimEsigi', t: 'n', lbl: 'Incremental Current', min: 0, max: 1000, req: 1},
+            {k: 'HatKopukHatBosta', t: 'n', lbl: 'Feeder Break Threshold', min: 0, max: 1000, req: 1},
+            {k: 'OluHatAkimiDogrulamaSuresi', t: 'n', lbl: 'Verify Duration', min: 0, max: 1000, req: 1},
+            {k: 'YenilenmeSifirlamaSuresi', t: 'n', lbl: 'Reset Duration', min: 0, max: 1000, req: 1},
+            {k: 'HatFrekansi', t: 'n', lbl: 'Feeder Frequency', min: 45, max: 65, req: 1}
+          ]
+        }
+      ]
+    },
+    {
+      id: 'rfmon',
+      title: 'RF Monitor',
+      ep: '/monitor/rf',
+      rw: false,
+      sections: [
+        {
+          lbl: 'RF Feeders Status',
+          layout: 'monitor',
+          rows: 8,
+          fields: [
+            {k: 'DEVICEID', lbl: 'Device ID'},
+            {k: 'CalismaModu', lbl: 'Çalışma Modu'},
+            {k: 'HatFrekansi', lbl: 'Hat Frekansı', u: 'Hz'},
+            {k: 'SistemSicakligi', lbl: 'Sistem Sıcaklığı', u: '°C'},
+            {k: 'SistemDCGerilimi', lbl: 'Sistem DC Gerilimi', u: 'V'},
+            {k: '5Vdc', lbl: '5V DC', u: 'V', dec: 2},
+            {k: '3V3dc', lbl: '3.3V DC', u: 'V', dec: 2},
+            {k: 'ActirmaDCGerilimi', lbl: 'Aktırma DC Gerilimi', u: 'V'},
+            {k: 'FazAkimi', lbl: 'Faz Akımı', u: 'A', dec: 1},
+            {k: 'FazHataAkimi', lbl: 'Faz Hata Akımı', u: 'A', dec: 1},
+            {k: 'AktifArizaSayaci', lbl: 'Aktif Arıza Sayacı'},
+            {k: 'GecmisAcmaSayisi', lbl: 'Geçmiş Açma Sayısı'},
+            {k: 'RSSI', lbl: 'RSSI', u: 'dBm'},
+            {k: 'LQI', lbl: 'LQI'}
+          ]
+        }
+      ]
+    },
+    {
+      id: 'board',
+      title: 'Board Status',
+      ep: '/status/board',
+      rw: false,
+      refresh: true,
+      sections: [
+        {
+          lbl: 'GSM Information',
+          layout: 'monitor',
+          fields: [
+            {k: 'GsmSig', lbl: 'Signal Strength', u: 'dBm'},
+            {k: 'GsmRAT', lbl: 'RAT', u:'G'}
+          ]
+        },
+        {
+          lbl: 'Solar Panel',
+          layout: 'monitor',
+          fields: [
+            {k: 'PanelAkimi', lbl: 'Current', u: 'A'},
+            {k: 'PanelVoltaji', lbl: 'Voltage', u: 'V'}
+          ]
+        },
+        {
+          lbl: 'Battery',
+          layout: 'monitor',
+          fields: [
+            {k: 'BataryaVoltaji', lbl: 'Voltage', u: 'V'},
+            {k: 'BataryaAkimi', lbl: 'Current', u: 'A'},
+            {k: 'BatteryTemp', lbl: 'Temperature', u: '°C'},
+            {k: 'ChargePertance', lbl: 'Charge', u: '%'},
+            {k: 'ChargeState', lbl: 'Charge State'},
+            {k: 'BatterySOC', lbl: 'SOC'},
+            {k: 'BatterySOH', lbl: 'SOH'},
+            {k: 'Capacity', lbl: 'Capacity', u: 'mAh'},
+          ]
+        },
+        {
+          lbl: 'System Status',
+          layout: 'monitor',
+          fields: [
+            {k: 'DIN', t: 'led', lbl: 'DIN', cnt: 4},
+            {k: 'RLY', t: 'led', lbl: 'RLY', cnt: 2},
+            {k: 'V19', lbl: 'V19', u: 'V'},
+            {k: '3V3', lbl: '3.3V', u: 'V'},
+            {k: '3V8', lbl: '3.8V', u: 'V'},
+            {k: '5V', lbl: '5V', u: 'V'},
+            {k: 'OrtamSicakligi', lbl: 'Ambient Temp', u: '°C'},
+            {k: 'HeaterState', lbl: 'Heater State'},
+            {k: 'HeaterPower', lbl: 'Heater Power'}
+          ]
+        },
+        {
+          lbl: 'Temperature',
+          layout: 'monitor',
+          fields: [
+            {k: 'Temp', lbl: 'Temp', u: '°C'},
+            {k: 'TempMax', lbl: 'Temp Max', u: '°C'},
+            {k: 'TempMin', lbl: 'Temp Min', u: '°C'},
+            {k: 'TDIE', lbl: 'Die Temp', u: '°C'},
+            {k: 'TDIEMax', lbl: 'Die Max', u: '°C'},
+            {k: 'TDIEMin', lbl: 'Die Min', u: '°C'}
+          ]
+        }
+      ]
+    },
+    {
+      id: 'iec-faults',
+      title: 'Fault Records',
+      ep: '/faults',
+      rw: false,
+      custom: true
+    },
+    {
+      id: 'syslogs',
+      title: 'System Logs',
+      ep: '/syslogs',
+      rw: false,
+      custom: true
+    },
+    {
+      id: 'device',
+      title: 'Device Management',
+      ep: '/config/device',
+      rw: true,
+      sections: [
+        {
+          lbl: 'Device Information (Read Only)',
+          layout: 'grid',
+          cols: 3,
+          fields: [
+            {k: 'SeriNumarasi', t: 'n', lbl: 'Serial Number', ro: 1},
+            {k: 'UretimTarihi', t: 'n', lbl: 'Manufacturing Date', ro: 1},
+            {k: 'LifeTime', t: 't', lbl: 'Lifetime', ro: 1},
+            {k: 'ModemYazilimVeriyonu', t: 't', lbl: 'Modem Firmware Version', ro: 1},
+            {k: 'RFYazilimVeriyonu', t: 't', lbl: 'RF Firmware Version', ro: 1},
+            {k: 'CihazKoordinati', t: 't', lbl: 'Coordinates', ro: 1},
+            {k: 'DevreyeAlinmaZamani', t: 't', lbl: 'Commissioning Time', ro: 1},
+            {k: 'Time', t: 'n', lbl: 'Modem RTC', ro: 1}
+          ]
+        },
+        {
+          lbl: 'Device Configuration',
+          layout: 'grid',
+          cols: 3,
+          fields: [
+            {k: 'WebArayuzuPortu', t: 'n', lbl: 'Web Interface Port', min: 1, max: 65535, req: 1},
+            {k: 'SimKartPin', t: 'n', lbl: 'SIM Card PIN', min: 0, max: 9999, req: 1},
+            {k: 'SimKartAPN', t: 't', lbl: 'SIM Card APN', max: 16, req: 1},
+            {k: 'SimKartAPNUsername', t: 't', lbl: 'SIM Card APN Username', max: 16, req: 0},
+            {k: 'SimKartAPNSifresi', t: 't', lbl: 'SIM Card APN Password', max: 16, req: 0},
+            {k: 'NtpServer', t: 't', lbl: 'NTP Server', max: 64, req: 0},
+            {k: 'NtpServerPortu', t: 'n', lbl: 'NTP Server Port', min: 1, max: 65535, req: 0},
+            {k: 'TimeZone', t: 'n', lbl: 'Time Zone (UTC offset)', min: -12, max: 14, req: 1},
+            {k: 'PeriyodikModemResetPeriyodu', t: 'n', lbl: 'Modem Reset Period (s)', min: 0, max: 4294967295, req: 1}
+          ]
+        },
+        {
+          lbl: 'Device Actions',
+          layout: 'action',
+          actions: [
+            {id: 'reboot', lbl: 'Reboot Device', ep: '/device/reboot', confirm: 1, msg: 'Are you sure you want to reboot the device?'}
+          ]
+        }
+      ]
+    },
+    {
+      id: 'terminal',
+      title: 'Device Console',
+      custom: true
+    }
+  ]
+};
+
+// ============================================
+// GLOBAL STATE
+// ============================================
+let cur = null, data = null, cache = {}, loading = false, sgo = 0, fltSel = 0, fltCache = {};
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+const $ = id => document.getElementById(id);
+const toast = (m, t='info') => {
+  const e = document.createElement('div');
+  e.className = `toast ${t}`;
+  e.textContent = m;
+  document.body.appendChild(e);
+  setTimeout(() => e.remove(), CFG_TOAST_DURATION_MS);
+};
+
+const showLoad = () => {
+  if (loading) return;
+  loading = true;
+  const o = document.createElement('div');
+  o.className = 'lo'; o.id = 'lo';
+  o.innerHTML = '<div class="sp"></div>';
+  document.body.appendChild(o);
+  document.querySelectorAll('.btn').forEach(b => b.disabled = true);
+};
+
+const hideLoad = () => {
+  loading = false;
+  const o = $('lo');
+  if (o) o.remove();
+  document.querySelectorAll('.btn').forEach(b => b.disabled = false);
+};
+
+const confirm = (m, fn) => {
+  const o = document.createElement('div');
+  o.className = 'dlg';
+  o.innerHTML = `<div class="dlg-c"><h3>Confirm</h3><p>${m}</p><div class="dlg-b"><button class="btn btn-g" onclick="this.closest('.dlg').remove()">Cancel</button><button class="btn btn-d" id="cfm">Confirm</button></div></div>`;
+  document.body.appendChild(o);
+  $('cfm').onclick = () => { o.remove(); fn(); };
+};
+
+const fmt = (v, f) => {
+  if (v === undefined || v === null || v === '-') return '-';
+  let s = f.dec !== undefined ? parseFloat(v).toFixed(f.dec) : v;
+  return f.u ? s + f.u : s;
+};
+
+// ============================================
+// API FUNCTIONS
+// ============================================
+
+// Active session token received from the server at login.
+// Attached to every request so the server can re-authenticate
+// after a GSM socket reconnect without requiring a new login.
+let s_sessionToken = null;
+
+const api = async (url, opt = {}) => {
+  const skipAuthCheck = opt.skipAuthCheck || false;
+  delete opt.skipAuthCheck; // Don't send this to fetch
+
+  // Attach session token as query parameter
+  if (s_sessionToken) {
+    url += (url.includes('?') ? '&' : '?') + 't=' + s_sessionToken;
+  }
+
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), CFG_HTTP_REQUEST_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, {...opt, signal: ctrl.signal});
+    clearTimeout(tid);
+    
+    // Check for 401 authentication error (except when skipAuthCheck is true)
+    if (r.status === 401 && !skipAuthCheck) {
+      s_sessionToken = null;
+      localStorage.removeItem('loggedIn');
+      showLoginModal();
+      toast('Authentication required', 'info');
+      throw new Error('Authentication required');
+    }
+    
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    clearTimeout(tid);
+    // Network error (GSM socket drop) - do NOT clear the token; the connection
+    // may recover and the server session is still valid within the TTL window.
+    if (!skipAuthCheck && e.name !== 'Error' && localStorage.getItem('loggedIn') === '1') {
+      toast('Connection error, please retry', 'err');
+    }
+    throw e;
+  }
+};
+
+const load = async (pg) => {
+  try {
+    showLoad();
+    const d = await api(pg.ep);
+    hideLoad();
+    if (d.success === false) throw new Error(d.error || 'Load failed');
+    return d.data || d;
+  } catch (e) {
+    hideLoad();
+    toast('Load error: ' + e.message, 'err');
+    throw e;
+  }
+};
+
+const save = async (pg, d) => {
+  try {
+    showLoad();
+    const r = await api(pg.ep, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(d)
+    });
+    hideLoad();
+    if (r.success === false) throw new Error(r.error || 'Save failed');
+    toast('Saved successfully', 'ok');
+    return r;
+  } catch (e) {
+    hideLoad();
+    toast('Save error: ' + e.message, 'err');
+    throw e;
+  }
+};
+
+// ============================================
+// RENDER FUNCTIONS
+// ============================================
+
+// Render single field (grid layout)
+const rField = (f, v) => {
+  const id = f.k;
+  
+  // LED type
+  if (f.t === 'led') {
+    const arr = v || Array(f.cnt).fill(0);
+    let h = `<div class="fg"><label>${f.lbl}</label><div>`;
+    for (let i = 0; i < f.cnt; i++) {
+      h += `<span class="led ${arr[i] ? 'on' : 'off'}">${i + 1}</span>`;
+    }
+    h += '</div></div>';
+    return h;
+  }
+  
+  // Checkbox type
+  if (f.t === 'c') {
+    return `<div class="fg"><label class="chk"><input type="checkbox" id="${id}" ${v ? 'checked' : ''}><span>${f.lbl}</span></label></div>`;
+  }
+  
+  // Number/Text type
+  const ro = f.ro ? 'disabled' : '';
+  const attrs = f.t === 'n' ? `min="${f.min!==undefined?f.min:''}" max="${f.max!==undefined?f.max:''}" data-min="${f.min!==undefined?f.min:''}" data-max="${f.max!==undefined?f.max:''}"` : '';
+  const req = f.req ? 'data-req="1"' : '';
+  return `<div class="fg"><label>${f.lbl}</label><input type="${f.t==='n'?'number':'text'}" id="${id}" value="${v!==undefined&&v!==null?v:''}" ${attrs} ${req} ${ro}><div class="err" id="e-${id}"></div></div>`;
+};
+
+// Render grid section
+const rGrid = (sec, d) => {
+  let h = `<div class="grid g${sec.cols||2}">`;
+  sec.fields.forEach(f => h += rField(f, d[f.k]));
+  h += '</div>';
+  return h;
+};
+
+// Render editable table section (config)
+const rTable = (sec, d) => {
+  const tbl = sec.tbl === 'root' ? d : (d[sec.tbl] || {});
+  
+  // Compact mode: Tab bar view
+  if (sec.compact) {
+    const u = sec.tbl;
+    // RF phase sync helpers (only active when sync data is present in response)
+    const hasSync = tbl.RSynced !== undefined;
+    const fmtTs = ts => ts ? new Date(ts * 1000).toLocaleString() : 'No data';
+    const synDot = s => `<span style="color:${s?'#2a9d2a':'#c0392b'}">&#9679;</span>`;
+    // Pre-compute mismatch per feeder (mode or freq differs between phases)
+    const mmFlags = [];
+    if (hasSync) {
+      for (let i = 0; i < sec.rows; i++) {
+        const anySynced = tbl.RSynced[i] || tbl.SSynced[i] || tbl.TSynced[i];
+        mmFlags.push(anySynced && (
+          tbl.RMod[i] !== tbl.SMod[i] || tbl.SMod[i] !== tbl.TMod[i] ||
+          tbl.RFreq[i] !== tbl.SFreq[i] || tbl.SFreq[i] !== tbl.TFreq[i]
+        ));
+      }
+    }
+    let h = '<div class="tb">';
+    for (let i = 0; i < sec.rows; i++) {
+      const mm = hasSync && mmFlags[i];
+      h += `<div class="t${i===0?' ta':''}" data-u="${u}" onclick="switchTab('${u}',${i})">Feeder ${i+1}${mm?' [!]':''}</div>`;
+    }
+    h += '</div>';
+    for (let i = 0; i < sec.rows; i++) {
+      const useField = sec.fields.find(f => f.k === 'inUse');
+      const useVal = useField && tbl[useField.k] ? tbl[useField.k][i] : 0;
+      const useId = `${u}-inUse-${i}`;
+      h += `<div class="tp${i===0?' tc':''}" data-u="${u}"><div class="lc"><div class="lc-h">`;
+      h += `<label class="chk"><input type="checkbox" id="${useId}" data-tbl="${u}" data-k="inUse" data-i="${i}" ${useVal?'checked':''}><span>Use</span></label></div>`;
+      // Per-phase status table (RF Config pages — expanded when phase data is present)
+      const hasMon = sec.monFields && tbl[`R_${sec.monFields[0].k}`] !== undefined;
+      if (hasSync || hasMon) {
+        const mm = hasSync && mmFlags[i];
+        h += '<div class="rf-ps">';
+        if (mm) h += '<div class="rf-mm">&#9888; Phase config mismatch detected</div>';
+        h += '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Phase Status</div>';
+        h += '<div class="tw"><table><thead><tr><th>Parameter</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
+        if (hasMon) {
+          sec.monFields.forEach(f => {
+            const rv = tbl[`R_${f.k}`] !== undefined ? (tbl[`R_${f.k}`][i] ?? '-') : '-';
+            const sv = tbl[`S_${f.k}`] !== undefined ? (tbl[`S_${f.k}`][i] ?? '-') : '-';
+            const tv = tbl[`T_${f.k}`] !== undefined ? (tbl[`T_${f.k}`][i] ?? '-') : '-';
+            const rs = String(rv), ss = String(sv), ts = String(tv);
+            const allSame = f.noCompare || (rs === ss && ss === ts);
+            const rBad = !allSame && (rs !== ss || rs !== ts);
+            const sBad = !allSame && (ss !== rs || ss !== ts);
+            const tBad = !allSame && (ts !== rs || ts !== ss);
+            const bad = 'background:#fdecea;color:#c0392b;font-weight:600';
+            const rdCell = rBad ? `<td style="${bad}">${rv} &#9888;</td>` : `<td>${rv}</td>`;
+            const sdCell = sBad ? `<td style="${bad}">${sv} &#9888;</td>` : `<td>${sv}</td>`;
+            const tdCell = tBad ? `<td style="${bad}">${tv} &#9888;</td>` : `<td>${tv}</td>`;
+            h += `<tr><td>${f.lbl}</td>${rdCell}${sdCell}${tdCell}</tr>`;
+          });
+        }
+        if (hasSync) {
+          h += `<tr><td>Sync</td><td>${synDot(tbl.RSynced[i])} ${tbl.RSynced[i]?'Yes':'No'}</td><td>${synDot(tbl.SSynced[i])} ${tbl.SSynced[i]?'Yes':'No'}</td><td>${synDot(tbl.TSynced[i])} ${tbl.TSynced[i]?'Yes':'No'}</td></tr>`;
+          h += `<tr><td>Last Sync</td><td>${fmtTs(tbl.RLastTx[i])}</td><td>${fmtTs(tbl.SLastTx[i])}</td><td>${fmtTs(tbl.TLastTx[i])}</td></tr>`;
+        }
+        h += '</tbody></table></div></div>';
+      }
+      h += '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">Settings</div>';
+      h += '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">';
+      sec.fields.forEach(f => {
+        if (f.k === 'inUse') return;
+        const v = tbl[f.k] ? tbl[f.k][i] : 0;
+        const id = `${u}-${f.k}-${i}`;
+        const attrs = f.min !== undefined ? `min="${f.min}" max="${f.max}" data-min="${f.min}" data-max="${f.max}"` : '';
+        const req = f.req ? 'data-req="1"' : '';
+        const ro = f.ro ? 'disabled' : '';
+        h += `<div class="fg"><label>${f.lbl}</label><input type="number" id="${id}" data-tbl="${u}" data-k="${f.k}" data-i="${i}" value="${v}" ${attrs} ${req} ${ro}><div class="err" id="e-${id}"></div></div>`;
+      });
+      h += '</div></div></div>';
+    }
+    return h;
+  } else {
+    // Normal mode: Full table
+    let h = '<div class="tw"><table><thead><tr><th>#</th>';
+  sec.fields.forEach(f => h += `<th>${f.lbl}</th>`);
+  h += '</tr></thead><tbody>';
+  
+  for (let i = 0; i < sec.rows; i++) {
+    h += `<tr><td>${i + 1}</td>`;
+    sec.fields.forEach(f => {
+      const v = tbl[f.k] ? tbl[f.k][i] : 0;
+      const id = `${sec.tbl}-${f.k}-${i}`;
+      if (f.t === 'c') {
+        h += `<td><input type="checkbox" id="${id}" data-tbl="${sec.tbl}" data-k="${f.k}" data-i="${i}" ${v ? 'checked' : ''}></td>`;
+      } else {
+        const attrs = f.min !== undefined ? `min="${f.min}" max="${f.max}" data-min="${f.min}" data-max="${f.max}"` : '';
+        const req = f.req ? 'data-req="1"' : '';
+        const ro = f.ro ? 'disabled' : '';
+        h += `<td><input type="number" id="${id}" data-tbl="${sec.tbl}" data-k="${f.k}" data-i="${i}" value="${v}" ${attrs} ${req} ${ro}></td>`;
+      }
+    });
+    h += '</tr>';
+  }
+  h += '</tbody></table></div>';
+  return h;
+  }
+};
+
+// Render monitor section
+// rows varsa: R/S/T faz tablosu (her feeder için)
+// rows yoksa: basit key-value tablosu
+const rMonitor = (sec, d) => {
+  // Basit key-value tablosu (Board Status gibi)
+  if (!sec.rows) {
+    let h = '<div class="tw"><table><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody>';
+    sec.fields.forEach(f => {
+      if (f.t === 'led') {
+        const arr = d[f.k] || Array(f.cnt).fill(0);
+        let leds = arr.map((v, i) => `<span class="led ${v ? 'on' : 'off'}">${i+1}</span>`).join('');
+        h += `<tr><td>${f.lbl}</td><td>${leds}</td></tr>`;
+      } else {
+        h += `<tr><td>${f.lbl}</td><td>${fmt(d[f.k], f)}</td></tr>`;
+      }
+    });
+    h += '</tbody></table></div>';
+    return h;
+  }
+  
+  // R/S/T faz tablosu (RF Monitor gibi)
+  let h = '';
+  for (let i = 0; i < sec.rows; i++) {
+    const ld = d[i] || {};
+    h += `<div class="sec" id="mon-${i}">`;
+    h += `<div class="line-hdr"><h4>Feeder ${i + 1} (Hat ID: ${ld.HatID || '-'}, Zone: ${ld.ZoneID || '-'})</h4><button class="btn btn-p btn-sm" onclick="refLine(${i})">Refresh</button></div>`;
+    h += '<div class="tw"><table><thead><tr><th>Parameter</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
+    
+    sec.fields.forEach(f => {
+      const arr = ld[f.k] || ['-', '-', '-'];
+      h += `<tr><td style="font-weight:500">${f.lbl}</td>`;
+      h += `<td>${fmt(arr[0], f)}</td>`;
+      h += `<td>${fmt(arr[1], f)}</td>`;
+      h += `<td>${fmt(arr[2], f)}</td>`;
+      h += '</tr>';
+    });
+    
+    h += '</tbody></table></div></div>';
+  }
+  
+  return h;
+};
+
+// Render action buttons
+const rAction = (sec) => {
+  let h = '';
+  sec.actions.forEach(a => {
+    h += `<div class="da"><h3>${a.lbl}</h3><p>Perform device action.</p><button class="btn btn-d" onclick="doAction('${a.id}')">${a.lbl}</button></div>`;
+  });
+  return h;
+};
+
+// Universal section renderer
+const rSection = (sec, d) => {
+  if (sec.layout === 'action') return rAction(sec);
+  
+  let h = '<div class="sec">';
+  if (sec.lbl) h += `<h3>${sec.lbl}</h3>`;
+  
+  switch (sec.layout) {
+    case 'grid': h += rGrid(sec, d); break;
+    case 'table': h += rTable(sec, d); break;
+    case 'monitor': h += rMonitor(sec, d); break;
+  }
+  
+  h += '</div>';
+  return h;
+};
+
+// Render full page
+const rPage = (pg, d) => {
+  let h = '';
+  
+  pg.sections.forEach(sec => h += rSection(sec, d));
+  
+  // Add buttons based on page type
+  if (pg.rw) {
+    h += '<div class="bg"><button class="btn btn-p" onclick="doRead()">Read</button><button class="btn btn-s" onclick="doSave()">Save</button></div>';
+  } else if (pg.refresh) {
+    h += '<div class="bg"><button class="btn btn-p" onclick="doRefresh()">Refresh</button></div>';
+  } else if (pg.sections.some(s => s.layout === 'monitor')) {
+    h += '<div class="bg"><button class="btn btn-p" onclick="doRefreshAll()">Refresh All</button></div>';
+  }
+  
+  return h;
+};
+
+// ============================================
+// VALIDATION
+// ============================================
+const vField = (el) => {
+  const v = el.value;
+  if (el.dataset.req === '1' && (v === '' || v === null)) return 'Required';
+  if (el.type === 'number' && v !== '') {
+    const n = parseFloat(v), mn = el.dataset.min, mx = el.dataset.max;
+    if (isNaN(n)) return 'Invalid';
+    if (mn !== '' && n < parseFloat(mn)) return `Min: ${mn}`;
+    if (mx !== '' && n > parseFloat(mx)) return `Max: ${mx}`;
+  }
+  return null;
+};
+
+const vForm = () => {
+  let ok = true, first = null;
+  document.querySelectorAll('.inv').forEach(e => e.classList.remove('inv'));
+  document.querySelectorAll('.err').forEach(e => e.textContent = '');
+  
+  // Validate grid fields
+  cur.sections.filter(s => s.layout === 'grid').forEach(sec => {
+    sec.fields.forEach(f => {
+      if (f.t === 'c' || f.t === 'led' || f.ro) return;
+      const el = $(f.k);
+      if (el) {
+        const err = vField(el);
+        if (err) {
+          ok = false;
+          el.classList.add('inv');
+          const eEl = $('e-' + f.k);
+          if (eEl) eEl.textContent = err;
+          if (!first) first = el;
+        }
+      }
+    });
+  });
+  
+  // Validate table fields
+  cur.sections.filter(s => s.layout === 'table').forEach(sec => {
+    const hasInUse = sec.fields.some(f => f.k === 'inUse');
+    for (let i = 0; i < sec.rows; i++) {
+      let rowActive = true;
+      if (hasInUse) {
+        const inUse = $(`${sec.tbl}-inUse-${i}`);
+        rowActive = inUse ? inUse.checked : true;
+      }
+      if (!rowActive) continue;
+      
+      sec.fields.forEach(f => {
+        if (f.t === 'c' || f.ro) return;
+        const el = $(`${sec.tbl}-${f.k}-${i}`);
+        if (el) {
+          const err = vField(el);
+          if (err) {
+            ok = false;
+            el.classList.add('inv');
+            el.title = err;
+            if (!first) first = el;
+          }
+        }
+      });
+    }
+  });
+  
+  if (first) { first.scrollIntoView({behavior:'smooth', block:'center'}); first.focus(); }
+  return ok;
+};
+
+// ============================================
+// DATA EXTRACTION
+// ============================================
+const extract = () => {
+  const d = {};
+  
+  cur.sections.filter(s => s.layout === 'grid').forEach(sec => {
+    sec.fields.forEach(f => {
+      if (f.ro || f.t === 'led') return;
+      const el = $(f.k);
+      if (el) {
+        d[f.k] = f.t === 'c' ? el.checked : (f.t === 'n' ? parseInt(el.value) || 0 : el.value);
+      }
+    });
+  });
+  
+  cur.sections.filter(s => s.layout === 'table').forEach(sec => {
+    const tbl = {};
+    sec.fields.forEach(f => {
+      if (f.ro) return;
+      tbl[f.k] = [];
+      for (let i = 0; i < sec.rows; i++) {
+        const el = $(`${sec.tbl}-${f.k}-${i}`);
+        if (el) tbl[f.k].push(f.t === 'c' ? el.checked : (parseInt(el.value) || 0));
+      }
+    });
+    if (sec.tbl === 'root') Object.assign(d, tbl);
+    else d[sec.tbl] = tbl;
+  });
+  
+  return d;
+};
+
+// ============================================
+// EVENT HANDLERS
+// ============================================
+
+const doRead = async () => {
+  if (!cur || loading) return;
+  try {
+    const d = await load(cur);
+    data = d; cache[cur.id] = d;
+    $('body').innerHTML = rPage(cur, d);
+    toast('Loaded', 'ok');
+  } catch (e) {}
+};
+
+const doSave = async () => {
+  if (!cur || loading) return;
+  if (!vForm()) { toast('Fix errors first', 'err'); return; }
+  try {
+    const d = extract();
+    await save(cur, d);
+    data = d; cache[cur.id] = d;
+  } catch (e) {}
+};
+
+const doRefresh = async () => {
+  if (!cur || loading) return;
+  try {
+    const d = await load(cur);
+    data = d; cache[cur.id] = d;
+    $('body').innerHTML = rPage(cur, d);
+    toast('Refreshed', 'ok');
+  } catch (e) {}
+};
+
+// Refresh single feeder for monitor
+const refLine = async (i) => {
+  if (loading) return;
+  try {
+    showLoad();
+    const r = await api(`${cur.ep}/${i}`);
+    hideLoad();
+    if (r.success === false) throw new Error(r.error || 'Failed');
+    
+    const ld = r.data?.lines?.[0] || r.lines?.[0] || r.data || r;
+    
+    if (!data) data = [];
+    data[i] = ld;
+    cache[cur.id] = data;
+    
+    // Update feeder section
+    const sec = cur.sections.find(s => s.layout === 'monitor');
+    let h = `<div class="line-hdr"><h4>Feeder ${i + 1} (Hat ID: ${ld.HatID || '-'}, Zone: ${ld.ZoneID || '-'})</h4><button class="btn btn-p btn-sm" onclick="refLine(${i})">Refresh</button></div>`;
+    h += '<div class="tw"><table><thead><tr><th>Parameter</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
+    
+    sec.fields.forEach(f => {
+      const arr = ld[f.k] || ['-', '-', '-'];
+      h += `<tr><td style="font-weight:500">${f.lbl}</td>`;
+      h += `<td>${fmt(arr[0], f)}</td>`;
+      h += `<td>${fmt(arr[1], f)}</td>`;
+      h += `<td>${fmt(arr[2], f)}</td>`;
+      h += '</tr>';
+    });
+    
+    h += '</tbody></table></div>';
+    $(`mon-${i}`).innerHTML = h;
+    
+    toast(`Feeder ${i + 1} refreshed`, 'ok');
+  } catch (e) {
+    hideLoad();
+    toast('Error: ' + e.message, 'err');
+  }
+};
+
+// Refresh all feeders
+const doRefreshAll = async () => {
+  if (!cur || loading) return;
+  const sec = cur.sections.find(s => s.layout === 'monitor');
+  if (!sec) return;
+  
+  for (let i = 0; i < sec.rows; i++) {
+    await refLine(i);
+  }
+};
+
+const doAction = (id) => {
+  if (loading) return;
+  const sec = cur.sections.find(s => s.layout === 'action');
+  const a = sec.actions.find(x => x.id === id);
+  if (a.confirm) {
+    confirm(a.msg || 'Are you sure?', async () => {
+      try {
+        showLoad();
+        const r = await api(a.ep, {method: 'POST', headers: {'Content-Type': 'application/json'}});
+        hideLoad();
+        toast(r.message || 'Done', 'info');
+      } catch (e) { hideLoad(); toast('Error: ' + e.message, 'err'); }
+    });
+  }
+};
+
+const switchTab = (u, x) => {
+  document.querySelectorAll(`.tb .t[data-u="${u}"]`).forEach((t,i) => t.classList.toggle('ta', i===x));
+  document.querySelectorAll(`.tp[data-u="${u}"]`).forEach((p,i) => p.classList.toggle('tc', i===x));
+};
+
+const switchPage = (id) => {
+  const pg = M.pages.find(p => p.id === id);
+  if (!pg) return;
+  cur = pg; data = cache[id] || (pg.sections && pg.sections.some(s => s.layout === 'monitor') ? [] : {});
+  
+  document.querySelectorAll('.mi').forEach(e => e.classList.toggle('a', e.dataset.id === id));
+  $('title').textContent = pg.title;
+  
+  if (pg.custom && pg.id === 'iec-faults') {
+    const cached = fltCache[fltSel];
+    let tabs = '<div class="tb">';
+    for (let i = 0; i < 8; i++) tabs += `<div class="t${i===fltSel?' ta':''}" onclick="fltTabSel(${i})">Feeder ${i+1}</div>`;
+    tabs += '</div>';
+    $('body').innerHTML = tabs + '<div id="fltc">' + (cached ? fltBuild(cached) : '') + '</div><div class="bg"><button class="btn btn-p" onclick="loadFaults()">Read</button></div>';
+  } else if (pg.custom && pg.id === 'syslogs') {
+    sgo = 0;
+    $('body').innerHTML = '<div id="slgc"></div><div class="bg"><button class="btn btn-p" onclick="loadSysLogs()">Next Records</button></div>';
+  } else if (pg.custom && pg.id === 'terminal') {
+    $('body').innerHTML = '<div class="trm"><div class="trm-out" id="trmOut"></div><div class="trm-in"><input type="text" id="trmCmd" placeholder="Enter command..." maxlength="64" autocomplete="off"><button class="trm-send" onclick="trmSend()">Send</button><button class="trm-clr" onclick="trmClr()">Clear</button></div></div>';
+    $('trmCmd').addEventListener('keypress', e => { if (e.key === 'Enter') trmSend(); });
+    $('trmCmd').focus();
+  } else {
+    $('body').innerHTML = rPage(pg, data);
+  }
+};
+
+const loadSysLogs = async () => {
+  if (!cur || loading || cur.id !== 'syslogs') return;
+  try {
+    showLoad();
+    const r = await api(`${cur.ep}?offset=${sgo}&limit=30`);
+    hideLoad();
+    if (r.success === false) throw new Error(r.error || 'Failed');
+    
+    const total = r.t;
+    const logs = r.recs ? r.recs.split('\n').filter(l => l.trim()) : [];
+    
+    let h = '';
+    logs.forEach(log => {
+      h += `<div class="log">${log}</div>`;
+    });
+    $('slgc').innerHTML += h;
+    
+    sgo += logs.length;
+    if (sgo >= total) sgo = 0;
+    
+    toast(`Loaded ${logs.length} system logs`, 'ok');
+  } catch (e) {
+    hideLoad();
+    toast('Error: ' + e.message, 'err');
+  }
+};
+
+// ============================================
+// IEC104 FAULT RECORDS
+// ============================================
+const fltTabSel = (i) => {
+  if (cur.id !== 'iec-faults') return;
+  fltSel = i;
+  document.querySelectorAll('#body .tb .t').forEach((t, idx) => t.classList.toggle('ta', idx === i));
+  const cached = fltCache[i];
+  $('fltc').innerHTML = cached ? fltBuild(cached) : '';
+};
+
+const fltBuild = (r) => {
+  const phases = ['L1', 'L2', 'L3'];
+  const keys   = [['L1T','L1P'], ['L2T','L2P'], ['L3T','L3P']];
+  const tc = r.tc || [0,0,0];
+  const pc = r.pc || [0,0,0];
+  let h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">';
+  for (let ph = 0; ph < 3; ph++) {
+    h += `<div class="sec"><h3>${phases[ph]}</h3>`;
+    h += `<div style="font-size:12px;font-weight:600;color:#e65100;margin:6px 0 4px">Temporary (${tc[ph]})</div>`;
+    const tRecs = r[keys[ph][0]] ? r[keys[ph][0]].split('\n').filter(l => l.trim()) : [];
+    if (tRecs.length) tRecs.forEach(l => { h += `<div class="log" style="border-left-color:#e65100">${l}</div>`; });
+    else h += '<div style="color:#9e9e9e;font-size:12px;padding:4px 0">No records</div>';
+    h += `<div style="font-size:12px;font-weight:600;color:#b71c1c;margin:10px 0 4px">Permanent (${pc[ph]})</div>`;
+    const pRecs = r[keys[ph][1]] ? r[keys[ph][1]].split('\n').filter(l => l.trim()) : [];
+    if (pRecs.length) pRecs.forEach(l => { h += `<div class="log" style="border-left-color:#b71c1c">${l}</div>`; });
+    else h += '<div style="color:#9e9e9e;font-size:12px;padding:4px 0">No records</div>';
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+};
+
+const loadFaults = async () => {
+  if (!cur || loading || cur.id !== 'iec-faults') return;
+  try {
+    showLoad();
+    const r = await api(`${cur.ep}?feeder=${fltSel}`);
+    hideLoad();
+    if (r.success === false) throw new Error(r.error || 'Failed');
+    fltCache[fltSel] = r;
+    $('fltc').innerHTML = fltBuild(r);
+    const total = (r.tc || [0,0,0]).reduce((a,b) => a+b, 0) + (r.pc || [0,0,0]).reduce((a,b) => a+b, 0);
+    toast(`Feeder ${fltSel + 1}: ${total} fault records loaded`, 'ok');
+  } catch (e) {
+    hideLoad();
+    toast('Error: ' + e.message, 'err');
+  }
+};
+
+// ============================================
+// DEVICE CONSOLE (TERMINAL)
+// ============================================
+let trmBusy = false;
+
+const trmTs = () => {
+  const n = new Date();
+  const pad = (v, l=2) => String(v).padStart(l, '0');
+  return `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}.${pad(n.getMilliseconds(), 3)}`;
+};
+
+const trmAppend = (text, cls) => {
+  const out = $('trmOut');
+  if (!out) return;
+  const entry = document.createElement('div');
+  entry.className = 'trm-entry ' + cls;
+  const ts = document.createElement('span');
+  ts.className = 'ts';
+  ts.textContent = trmTs();
+  const label = document.createElement('span');
+  label.className = cls;
+  label.textContent = (cls === 'cmd' ? '>> ' : '<< ') + text;
+  entry.appendChild(ts);
+  entry.appendChild(label);
+  out.appendChild(entry);
+  out.scrollTop = out.scrollHeight;
+};
+
+const TRM_POLL_INTERVAL_MS = 1000;
+const TRM_POLL_TIMEOUT_MS  = 12000;
+
+const trmSend = async () => {
+  if (trmBusy) return;
+  const inp = $('trmCmd');
+  if (!inp) return;
+  const cmd = inp.value;
+  if (!cmd) return;
+
+  inp.value = '';
+  trmAppend('> ' + cmd + '\n', 'cmd');
+  trmBusy = true;
+  inp.disabled = true;
+  inp.placeholder = 'Waiting for response...';
+
+  try {
+    /* Send command; server hands it to upper layers and returns immediately */
+    const postResp = await api('/serial', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tx: cmd})
+    });
+
+    /* Fast path: synchronous command — response already in POST reply */
+    if (postResp.rx && postResp.rx.length > 0) {
+      trmAppend(postResp.rx, 'res');
+    } else if (postResp.pending) {
+      /* Slow path: async command — poll GET /serial until response arrives or timeout */
+      const deadline = Date.now() + TRM_POLL_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        await new Promise(res => setTimeout(res, TRM_POLL_INTERVAL_MS));
+        const r = await api('/serial', {method: 'GET'});
+        if (r.rx && r.rx.length > 0) {
+          trmAppend(r.rx, 'res');
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    trmAppend('Error: ' + e.message + '\n', 'cmd');
+  }
+
+  trmBusy = false;
+  inp.disabled = false;
+  inp.placeholder = '';
+  inp.focus();
+};
+
+const trmClr = () => {
+  const out = $('trmOut');
+  if (out) out.innerHTML = '';
+};
+
+// ============================================
+// LOGIN FUNCTIONS
+// ============================================
+let sessionTimeout = null;
+
+const doLogout = async () => {
+  try {
+    // Notify server
+    await api('/auth/logout', {method: 'POST', skipAuthCheck: true});
+  } catch (e) {
+    // Ignore server errors, logout anyway
+  }
+
+  s_sessionToken = null;
+  sessionStorage.removeItem('sessionToken');
+  localStorage.removeItem('loggedIn');
+  if (sessionTimeout) {
+    clearTimeout(sessionTimeout);
+    sessionTimeout = null;
+  }
+  showLoginModal();
+  toast('Logged out successfully', 'info');
+};
+
+const startSessionTimeout = () => {
+  // Clear any existing timeout
+  if (sessionTimeout) {
+    clearTimeout(sessionTimeout);
+  }
+  
+  // Start new timeout
+  sessionTimeout = setTimeout(() => {
+    toast('Session expired', 'info');
+    doLogout();
+  }, CFG_SESSION_TIMEOUT_MS);
+};
+
+const resetSessionTimeout = () => {
+  // Reset timeout on user activity
+  if (localStorage.getItem('loggedIn') === '1') {
+    startSessionTimeout();
+  }
+};
+
+const showLoginModal = () => {
+  $('loginModal').style.display = 'flex';
+  
+  // Clear password (keep username)
+  if ($('loginPass')) {
+    $('loginPass').value = '';
+  }
+  
+  setTimeout(() => $('loginUser')?.focus(), 100);
+  
+  // Clear session timeout when modal opens
+  if (sessionTimeout) {
+    clearTimeout(sessionTimeout);
+    sessionTimeout = null;
+  }
+};
+
+const hideLoginModal = () => {
+  $('loginModal').style.display = 'none';
+};
+
+const doLogin = async () => {
+  const username = $('loginUser')?.value.substring(0, 16);
+  const password = $('loginPass')?.value.substring(0, 16);
+  const errEl = $('loginErr');
+  
+  errEl.textContent = '';
+  
+  if (!username || !password) {
+    errEl.textContent = 'Please enter credentials';
+    return;
+  }
+  
+  // Clear password immediately after reading (don't keep in memory)
+  if ($('loginPass')) {
+    $('loginPass').value = '';
+  }
+  
+  try {
+    showLoad();
+    const r = await api('/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password}),
+      skipAuthCheck: true
+    });
+    hideLoad();
+    
+    if (r.success === true) {
+      // Save session token for subsequent requests
+      if (r.token) {
+        s_sessionToken = r.token;
+        sessionStorage.setItem('sessionToken', r.token);
+      }
+      localStorage.setItem('loggedIn', '1');
+      hideLoginModal();
+      toast('Login successful', 'ok');
+      
+      // Start session timeout
+      startSessionTimeout();
+    } else {
+      errEl.textContent = r.error || 'Invalid credentials';
+      $('loginPass')?.focus();
+    }
+  } catch (e) {
+    hideLoad();
+    errEl.textContent = 'Login failed';
+    $('loginPass')?.focus();
+  }
+};
+
+// Enter key support for login
+document.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' && $('loginModal').style.display === 'flex') {
+    doLogin();
+  }
+});
+
+// Reset timeout on user activity
+document.addEventListener('click', resetSessionTimeout);
+document.addEventListener('keypress', resetSessionTimeout);
+
+// ============================================
+// INITIALIZATION
+// ============================================
+const init = () => {
+  // Clear login state on page load - server resets auth on reconnect
+  localStorage.removeItem('loggedIn');
+  
+  const menu = $('menu');
+  M.pages.forEach(pg => {
+    const e = document.createElement('div');
+    e.className = 'mi';
+    e.dataset.id = pg.id;
+    e.textContent = pg.title;
+    e.onclick = () => switchPage(pg.id);
+    menu.appendChild(e);
+  });
+  switchPage(M.pages[0].id);
+  document.querySelector('.lo').remove();
+  
+  // Show login modal (always required on page load)
+  showLoginModal();
+};
+
+init();
+</script>
+</body>
+</html>

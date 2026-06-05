@@ -1,0 +1,495 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Smart Breaker — Firmware Update</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:24px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:24px;width:100%;max-width:820px;margin-top:16px}
+h1{font-size:13px;letter-spacing:2px;color:#94a3b8;text-align:center;margin-bottom:20px;text-transform:uppercase}
+.sec{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:14px;margin-bottom:12px}
+.stitle{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+#phase{font-family:monospace;font-size:13px;font-weight:bold;color:#64748b}
+.dz{border:2px dashed #334155;border-radius:6px;padding:24px;text-align:center;cursor:pointer;transition:.2s;background:#0a0f1e}
+.dz:hover,.dz.over{border-color:#3b82f6;background:#1e3a5f}
+.dz.ready{border-color:#16a34a;background:#052e16}
+.dz p{font-size:12px;color:#94a3b8;margin-top:6px}.dz input{display:none}
+#rb{background:#052e16;border:1px solid #16a34a;border-radius:4px;padding:10px;margin-bottom:10px;font-size:12px;display:none}
+#rb b{color:#4ade80}
+.pw{background:#020617;border-radius:4px;height:12px;overflow:hidden;margin-bottom:6px}
+.pb{background:linear-gradient(90deg,#1d4ed8,#3b82f6);height:100%;width:0%;transition:width .4s}
+.pb.done{background:linear-gradient(90deg,#15803d,#22c55e)}.pb.err{background:#991b1b}
+#pt{font-size:11px;color:#64748b;min-height:14px}
+#stats{display:flex;gap:20px;font-size:11px;color:#475569;margin-top:5px;flex-wrap:wrap}
+.btns{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+button{padding:8px 13px;border:none;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;transition:opacity .15s;letter-spacing:.4px;text-transform:uppercase}
+button:disabled{opacity:.3;cursor:not-allowed}
+.b-st{background:#0c2a52;color:#60a5fa}.b-go{background:#14532d;color:#4ade80}
+.b-sp{background:#1c1917;color:#a8a29e}.b-ab{background:#450a0a;color:#f87171}
+.b-rb{background:#2e1065;color:#a78bfa}.b-ap{background:#14532d;color:#4ade80}
+.b-cl{background:#1e293b;color:#475569;font-size:10px;padding:4px 8px}
+.opt{display:flex;align-items:center;gap:5px;font-size:11px;color:#94a3b8;margin-left:auto}
+.opt input{accent-color:#3b82f6}
+#lg{background:#020617;border:1px solid #1e293b;border-radius:4px;padding:8px;height:300px;overflow-y:auto;font-family:'Cascadia Code','Consolas',monospace;font-size:11px;line-height:1.65}
+#lg .tx{color:#60a5fa}#lg .rx{color:#4ade80}
+#lg .err{color:#f87171;font-weight:bold}#lg .done{color:#4ade80;font-weight:bold}
+#lg .warn{color:#fb923c}#lg .info{color:#475569}
+.fld{margin-bottom:11px}.fld label{display:block;font-size:11px;color:#94a3b8;margin-bottom:4px}
+.fld input{width:100%;padding:8px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;font-size:13px}
+.fld input:focus{outline:none;border-color:#3b82f6}
+#lerr{color:#f87171;font-size:12px;min-height:16px;margin-bottom:8px}
+.b-login{width:100%;padding:10px;background:#1d4ed8;color:#eff6ff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.5px}
+.b-login:hover{background:#2563eb}
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+</style></head><body>
+<!-- Login card -->
+<div class="card" id="loginCard" style="max-width:380px;margin-top:60px;display:none">
+  <h1>Firmware Update</h1>
+  <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:20px">Login required</p>
+  <div class="fld"><label>Username</label><input type="text" id="loginUser" autocomplete="username" maxlength="16"></div>
+  <div class="fld"><label>Password</label><input type="password" id="loginPass" autocomplete="current-password" maxlength="16"></div>
+  <div id="lerr"></div>
+  <button class="b-login" onclick="doLogin()">Login</button>
+</div>
+
+<!-- Main card -->
+<div class="card" id="mainCard" style="display:none">
+  <div class="hdr">
+    <h1 style="margin-bottom:0">RFWU — Firmware Update</h1>
+    <span id="phase">&#9679; IDLE</span>
+  </div>
+
+  <!-- File section -->
+  <div class="sec">
+    <div class="stitle">Firmware File</div>
+    <div id="rb"><b>Resume available:</b> <span id="ri"></span><br><small>Load the same .efw file to continue from where it stopped.</small></div>
+    <div class="dz" id="dz">
+      <div style="font-size:32px">&#128193;</div>
+      <p id="dp">Click or drag a .efw file here</p>
+      <input type="file" id="fi" accept=".efw">
+    </div>
+  </div>
+
+  <!-- Actions section -->
+  <div class="sec">
+    <div class="stitle">Actions</div>
+    <div class="btns">
+      <button class="b-st"  id="bSt"  onclick="doStatus()">Check Status</button>
+      <button class="b-go"  id="bGo"  onclick="doStart()"   disabled>Start / Resume</button>
+      <button class="b-sp"  id="bSp"  onclick="doStop()"    disabled>Stop</button>
+      <button class="b-ab"  id="bAb"  onclick="doAbort()">Abort</button>
+      <div class="opt">
+        <input type="checkbox" id="forceRestart">
+        <label for="forceRestart" style="cursor:pointer">Force restart</label>
+      </div>
+      <button class="b-ap"  id="bAp"  onclick="doApply()"   style="margin-left:auto">Apply Firmware</button>
+      <button class="b-rb"  id="bRb"  onclick="doReboot()">Reboot Device</button>
+    </div>
+  </div>
+
+  <!-- Progress section -->
+  <div class="sec">
+    <div class="stitle">Progress</div>
+    <div class="pw"><div class="pb" id="pb"></div></div>
+    <div id="pt"></div>
+    <div id="stats">
+      <span id="elapsed"></span>
+      <span id="eta"></span>
+      <span id="pktstat"></span>
+    </div>
+  </div>
+
+  <!-- Log section -->
+  <div class="sec" style="margin-bottom:0">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="stitle" style="margin-bottom:0">Log</div>
+      <button class="b-cl" onclick="clearLog()">Clear</button>
+    </div>
+    <div id="lg"></div>
+  </div>
+</div>
+
+<script>
+/* ── Constants ─────────────────────────────────────────────── */
+const HTTP_TIMEOUT = 30000;
+const CHUNK_RETRY  = 3;
+const RETRY_DELAY  = 2000;
+
+/* ── State ─────────────────────────────────────────────────── */
+let fdata     = null;   /* Uint8Array */
+let fhash     = 0;      /* Fletcher-16 of first 64 bytes */
+let busy      = false;
+let stopped   = false;
+let aborted   = false;  /* next start will force fresh session */
+let csz       = 4096;
+let startTime = 0;
+let startOff  = 0;
+let chunkCnt  = 0;
+let errCnt    = 0;
+let s_token   = sessionStorage.getItem('st') || null;
+
+/* ── Helpers ───────────────────────────────────────────────── */
+function fmt(b){return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB';}
+
+function ts(){
+  const d=new Date();
+  return String(d.getHours()).padStart(2,'0')+':'+
+         String(d.getMinutes()).padStart(2,'0')+':'+
+         String(d.getSeconds()).padStart(2,'0')+'.'+
+         String(d.getMilliseconds()).padStart(3,'0');
+}
+
+function log(msg,cls){
+  if(!cls){
+    const s=msg.trimStart();
+    if(s.startsWith('TX'))        cls='tx';
+    else if(s.startsWith('RX'))   cls='rx';
+    else if(/error|failed|rejected/i.test(msg)) cls='err';
+    else if(/complete|Done!/i.test(msg))         cls='done';
+    else if(/abort|stopped/i.test(msg))          cls='warn';
+    else cls='info';
+  }
+  const lg=document.getElementById('lg');
+  const el=document.createElement('div');
+  el.className=cls;
+  el.textContent='['+ts()+'] '+msg;
+  lg.appendChild(el);
+  lg.scrollTop=lg.scrollHeight;
+  while(lg.children.length>400) lg.removeChild(lg.firstChild);
+}
+
+function clearLog(){document.getElementById('lg').innerHTML='';}
+
+const PHASE_CLR={
+  IDLE:'#64748b',CHECKING:'#60a5fa',HELLO:'#60a5fa',
+  DATA:'#3b82f6',RESUMED:'#a78bfa',FINISH:'#fb923c',
+  DONE:'#4ade80',ERROR:'#f87171',STOPPED:'#64748b'
+};
+function setPhase(p){
+  const el=document.getElementById('phase');
+  el.textContent='\u25cf '+p;
+  el.style.color=PHASE_CLR[p]||'#64748b';
+  if(busy) document.title='RFWU \u2014 '+p;
+  else document.title='Smart Breaker \u2014 Firmware Update';
+}
+
+function setProgress(sent,total){
+  const pct=total>0?(sent*100/total).toFixed(1):'0.0';
+  document.getElementById('pb').style.width=pct+'%';
+  document.getElementById('pt').textContent=
+    pct+'%  \u2014  '+fmt(sent)+' / '+fmt(total);
+  document.getElementById('pktstat').textContent=
+    chunkCnt+' chunks   '+errCnt+' errors';
+  if(startTime>0){
+    const el=(performance.now()-startTime)/1000;
+    const em=Math.floor(el/60),es=Math.floor(el%60);
+    document.getElementById('elapsed').textContent=
+      'Elapsed: '+em+':'+String(es).padStart(2,'0');
+    const session=sent-startOff;
+    if(el>0.5&&session>0){
+      const spd=session/el,rem=total-sent;
+      if(spd>0){
+        const eta=rem/spd,em2=Math.floor(eta/60),es2=Math.floor(eta%60);
+        document.getElementById('eta').textContent=
+          (spd/1024).toFixed(1)+' KB/s  ETA: '+em2+':'+String(es2).padStart(2,'0');
+      }
+    }
+  }
+}
+
+function setBtns(status,start,stop,abort_,apply){
+  document.getElementById('bSt').disabled=!status;
+  document.getElementById('bGo').disabled=!start;
+  document.getElementById('bSp').disabled=!stop;
+  document.getElementById('bAb').disabled=!abort_;
+  document.getElementById('bAp').disabled=!apply;
+  document.getElementById('bRb').disabled=busy;
+}
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+/* Fletcher-16 (same as MCU) */
+function f16(d){let a=0,b=0;for(let i=0;i<d.length;i++){a=(a+d[i])%255;b=(b+a)%255;}return(b<<8)|a;}
+
+/* ── Auth ──────────────────────────────────────────────────── */
+function turl(u){return s_token?u+(u.includes('?')?'&':'?')+'t='+s_token:u;}
+
+async function apiFetch(url,opt={}){
+  for(let i=0;i<2;i++){
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),HTTP_TIMEOUT);
+    try{
+      const r=await fetch(turl(url),{...opt,signal:ctrl.signal});
+      clearTimeout(tid);
+      if(r.status===401){showLogin();throw new Error('Auth required');}
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r;
+    }catch(e){
+      clearTimeout(tid);
+      if(i===0&&e instanceof TypeError){await sleep(150);continue;}
+      throw e;
+    }
+  }
+}
+
+function showLogin(){
+  s_token=null; sessionStorage.removeItem('st');
+  document.getElementById('loginCard').style.display='';
+  document.getElementById('mainCard').style.display='none';
+}
+function showMain(){
+  document.getElementById('loginCard').style.display='none';
+  document.getElementById('mainCard').style.display='';
+}
+
+async function doLogin(){
+  const user=document.getElementById('loginUser').value.slice(0,16);
+  const pass=document.getElementById('loginPass').value.slice(0,16);
+  const err=document.getElementById('lerr');
+  err.textContent='';
+  if(!user||!pass){err.textContent='Enter credentials';return;}
+  document.getElementById('loginPass').value='';
+  try{
+    let r;
+    for(let i=0;i<2;i++){
+      try{r=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user,password:pass})});break;}
+      catch(e){if(i===0&&e instanceof TypeError){await sleep(150);continue;}throw e;}
+    }
+    if(!r.ok){err.textContent='Login failed';return;}
+    const d=await r.json();
+    if(d.success&&d.token){s_token=d.token;sessionStorage.setItem('st',d.token);showMain();await init();}
+    else err.textContent=d.error||'Invalid credentials';
+  }catch(e){err.textContent='Connection error';}
+}
+
+document.addEventListener('keypress',e=>{
+  if(e.key==='Enter'&&document.getElementById('loginCard').style.display!=='none') doLogin();
+});
+
+/* ── Init ──────────────────────────────────────────────────── */
+async function init(){
+  setBtns(true,false,false,true,false);
+  setPhase('IDLE');
+  try{
+    const r=await apiFetch('/fw_status');
+    const d=await r.json();
+    if(d.active){
+      if(d.fh) fhash=d.fh;
+      document.getElementById('rb').style.display='block';
+      document.getElementById('ri').textContent=fmt(d.received)+' / '+fmt(d.total)+' already uploaded';
+      log('Session found: '+fmt(d.received)+' / '+fmt(d.total),'warn');
+    }else{
+      log('Connected. No active session.','info');
+    }
+  }catch(e){log('Status check failed: '+e.message,'err');}
+}
+
+/* ── File loading ──────────────────────────────────────────── */
+const dz=document.getElementById('dz');
+dz.addEventListener('click',()=>document.getElementById('fi').click());
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
+document.getElementById('fi').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
+
+async function loadFile(f){
+  if(!f.name.endsWith('.efw')){log('Only .efw files accepted','err');return;}
+  fdata=new Uint8Array(await f.arrayBuffer());
+  const newHash=f16(fdata.slice(0,Math.min(64,fdata.length)));
+  document.getElementById('dp').textContent=f.name+'  ('+fmt(f.size)+')';
+  dz.classList.add('ready');
+  log('File: '+f.name+'  ('+fmt(f.size)+')');
+  if(fhash&&fhash!==newHash)
+    log('File ID mismatch with server session \u2014 enable Force restart','warn');
+  else if(fhash&&fhash===newHash)
+    log('File matches server session \u2014 will resume','done');
+  fhash=newHash;
+  setBtns(true,true,false,true,false);
+}
+
+/* ── Check Status ──────────────────────────────────────────── */
+async function doStatus(){
+  if(busy) return;
+  log('Querying status...');
+  setPhase('CHECKING');
+  setBtns(false,false,false,true,false);
+  try{
+    const r=await apiFetch('/fw_status');
+    const d=await r.json();
+    if(d.active){
+      log('Status: ACTIVE','rx');
+      log('  Total:    '+fmt(d.total),'info');
+      log('  Received: '+fmt(d.received)+'  ('+(d.received*100/d.total).toFixed(1)+'%)','info');
+      if(d.fh){
+        log('  File ID:  0x'+d.fh.toString(16).toUpperCase().padStart(4,'0'),'info');
+        if(fdata){
+          const match=d.fh===fhash;
+          log('  File:     '+(match?'MATCH (same file loaded)':'MISMATCH (different file)'),match?'done':'warn');
+        }
+      }
+    }else{
+      log('Status: INACTIVE (no session)','info');
+    }
+  }catch(e){log('Status query failed: '+e.message,'err');}
+  setPhase('IDLE');
+  setBtns(true,!!fdata,false,true,false);
+}
+
+/* ── Transfer ──────────────────────────────────────────────── */
+async function doStart(){if(!fdata||busy) return; chunkCnt=0; errCnt=0; await runTransfer();}
+
+async function runTransfer(){
+  busy=true; stopped=false;
+  const force=document.getElementById('forceRestart').checked||aborted;
+  aborted=false;
+  document.getElementById('pb').classList.remove('done','err');
+  document.getElementById('elapsed').textContent='';
+  document.getElementById('eta').textContent='';
+  setBtns(false,false,true,true,false);
+
+  /* Force restart: send a hash that will never match the stored session */
+  const realHash=f16(fdata.slice(0,Math.min(64,fdata.length)));
+  fhash=realHash;
+  const xored=(realHash^0xFFFF)&0xFFFF;
+  const sendHash=force?(xored||0xFFFE):realHash;
+
+  setPhase('HELLO');
+  log('TX  HELLO  total='+fdata.length.toLocaleString('en')+
+      '  hash=0x'+realHash.toString(16).toUpperCase().padStart(4,'0')+
+      (force?'  [FORCE RESTART]':''));
+
+  let d;
+  try{
+    const r=await apiFetch('/s',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({s:fdata.length,h:sendHash})});
+    d=await r.json();
+  }catch(e){log('Init failed: '+e.message,'err');endTransfer(false,'ERROR');return;}
+
+  if(d.status!=='ok'){log('Init rejected: '+(d.error||'?'),'err');endTransfer(false,'ERROR');return;}
+  if(d.cs>0) csz=d.cs;
+  const resumeOff=typeof d.received==='number'?d.received:0;
+  log('RX  ACK   resume_offset='+resumeOff.toLocaleString('en')+'  chunk_size='+csz);
+
+  if(resumeOff>0){
+    log('Resuming from '+resumeOff.toLocaleString('en')+' / '+
+        fdata.length.toLocaleString('en')+' bytes  ('+
+        (resumeOff*100/fdata.length).toFixed(0)+'%)');
+    setPhase('RESUMED');
+  }else{
+    log('Starting new transfer  ('+fmt(fdata.length)+')...');
+    setPhase('DATA');
+  }
+
+  startTime=performance.now(); startOff=resumeOff;
+  let off=resumeOff,seq=0;
+  setProgress(off,fdata.length);
+
+  while(off<fdata.length){
+    if(stopped){
+      log('Transfer stopped. MCU session preserved \u2014 click Start to resume.','warn');
+      endTransfer(false,'STOPPED'); return;
+    }
+    const end=Math.min(off+csz,fdata.length);
+    const chunk=fdata.slice(off,end);
+    const cs=f16(chunk);
+    const pct=(off*100/fdata.length).toFixed(1);
+    log('TX  DATA   seq='+String(seq).padStart(4,'0')+
+        '  offset='+String(off.toLocaleString('en')).padStart(9,' ')+
+        '  len='+String(chunk.length).padStart(4,' ')+'  ('+pct+'%)');
+    setPhase('DATA');
+
+    let ok=false;
+    for(let t=0;t<CHUNK_RETRY&&!stopped;t++){
+      try{
+        const r=await apiFetch('/c?o='+off+'&cs='+cs,{method:'POST',body:chunk});
+        const res=await r.json();
+        if(res.status==='ok'){
+          log('RX  ACK   received='+(off+chunk.length).toLocaleString('en'));
+          off=end; chunkCnt++; setProgress(off,fdata.length); ok=true; break;
+        }
+        if(res.retry){log('RX  NACK  [retry '+(t+1)+']','warn');errCnt++;await sleep(RETRY_DELAY*(t+1));continue;}
+        throw new Error(res.error||'server error');
+      }catch(e){
+        if(stopped) break;
+        errCnt++;
+        log('RX  NACK  ['+e.message+']  retry '+(t+1),'warn');
+        if(t<CHUNK_RETRY-1) await sleep(RETRY_DELAY*(t+1));
+      }
+    }
+
+    if(!ok){
+      if(!stopped){log('Transfer failed at offset '+off.toLocaleString('en')+'. Session preserved.','err');endTransfer(false,'ERROR');}
+      else endTransfer(false,'STOPPED');
+      return;
+    }
+    seq++;
+  }
+
+  /* FINISH */
+  setPhase('FINISH');
+  log('TX  FINISH  total='+fdata.length.toLocaleString('en'));
+  try{
+    const r=await apiFetch('/f',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({s:fdata.length})});
+    const res=await r.json();
+    if(res.status==='ok'){
+      log('RX  ACK   confirmed='+fdata.length.toLocaleString('en')+'  Transfer complete!','done');
+      document.getElementById('pb').classList.add('done');
+      endTransfer(true,'DONE');
+    }else{
+      log('Finish rejected: '+(res.error||'?'),'err');
+      endTransfer(false,'ERROR');
+    }
+  }catch(e){log('Finish failed: '+e.message,'err');endTransfer(false,'ERROR');}
+}
+
+function endTransfer(ok,phase){
+  busy=false;
+  setPhase(phase||(ok?'DONE':'ERROR'));
+  if(!ok&&phase==='ERROR') document.getElementById('pb').classList.add('err');
+  setBtns(true,!ok&&!!fdata,false,true,ok);
+  if(ok){document.getElementById('rb').style.display='none';setProgress(fdata.length,fdata.length);}
+}
+
+/* ── Stop / Abort / Reboot ─────────────────────────────────── */
+function doStop(){
+  if(!busy) return;
+  stopped=true;
+  log('Stop requested \u2014 pausing after current chunk...','warn');
+}
+
+async function doAbort(){
+  if(!confirm('Abort transfer?\nThe MCU session will be cleared on the next Start.')) return;
+  aborted=true;
+  if(busy){
+    stopped=true;
+    log('Abort \u2014 transfer will stop. Session cleared on next Start.','warn');
+  }else{
+    log('Abort \u2014 MCU session will be cleared on next Start.','warn');
+    setPhase('IDLE');
+  }
+}
+
+async function doReboot(){
+  if(!confirm('Reboot device?')) return;
+  log('TX  REBOOT');
+  try{await apiFetch('/rb',{method:'POST'});}catch(e){}
+  log('Reboot command sent. Reconnect after ~30 s.','done');
+}
+
+async function doApply(){
+  if(!confirm('Apply downloaded firmware?\\nDevice will reboot into bootloader update mode.')) return;
+  log('TX  APPLY FW');
+  try{
+    const r=await apiFetch('/fw_apply',{method:'POST'});
+    const d=await r.json();
+    if(d.status==='ok'){
+      log('Apply command accepted. Device rebooting into update mode...','done');
+    }else{
+      log('Apply rejected: '+(d.error||'unknown error'),'err');
+    }
+  }catch(e){log('Apply failed: '+e.message,'err');}
+}
+
+/* ── Startup ───────────────────────────────────────────────── */
+if(s_token){showMain();init();}else{showLogin();}
+</script></body></html>

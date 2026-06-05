@@ -1,0 +1,38 @@
+# source path
+
+# CONTIKI_DIR   = .
+
+SRC_DIRS        += $(CONTIKI_DIR)
+SRC_DIRS        += $(CONTIKI_DIR)/arch 
+SRC_DIRS        += $(CONTIKI_DIR)/lib 
+SRC_DIRS        += $(CONTIKI_DIR)/sys 
+
+# C includes
+INC_DIRS 	    += $(CONTIKI_DIR)
+INC_DIRS 	    += $(CONTIKI_DIR)/arch
+INC_DIRS 	    += $(CONTIKI_DIR)/lib
+INC_DIRS 	    += $(CONTIKI_DIR)/sys
+
+# ARCH_DIR
+SRCS 	        += $(CONTIKI_DIR)/arch/cpu/x86/timer.c
+
+
+# LIB_DIR
+SRCS 	        += $(CONTIKI_DIR)/lib/list.c
+SRCS 	        += $(CONTIKI_DIR)/lib/ringbuf.c
+
+# SYS_DIR
+SRCS 	        += $(CONTIKI_DIR)/sys/atomic.c
+SRCS 	        += $(CONTIKI_DIR)/sys/autostart.c
+SRCS 	        += $(CONTIKI_DIR)/sys/clock.c
+SRCS 	        += $(CONTIKI_DIR)/sys/ctimer.c
+SRCS 	        += $(CONTIKI_DIR)/sys/etimer.c
+SRCS 	        += $(CONTIKI_DIR)/sys/int-master.c
+SRCS 	        += $(CONTIKI_DIR)/sys/mutex.c
+SRCS 	        += $(CONTIKI_DIR)/sys/process.c
+SRCS 	        += $(CONTIKI_DIR)/sys/rtimer.c
+SRCS 	        += $(CONTIKI_DIR)/sys/stimer.c
+SRCS 	        += $(CONTIKI_DIR)/sys/timer.c
+
+
+

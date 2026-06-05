@@ -1,0 +1,141 @@
+libefw - Embedded Firmware File Format
+======================================
+
+Overview
+--------
+EFW is a binary firmware packaging format that wraps application data with
+a fixed-size header containing metadata, integrity check (CRC-32) and
+authentication tag (MAC).
+
+An EFW file is structured as:
+
+  +--------------------+
+  |   Header (32 B)    |
+  +--------------------+
+  |                    |
+  |   Application Data |
+  |   (variable size)  |
+  |                    |
+  +--------------------+
+
+
+Header Layout (32 bytes)
+------------------------
+
+  Byte Offset   Size    Field             Endian    Description
+  ----------- -------- ----------------- --------- ----------------------------
+  0x00          4       magic             BE        Magic number: 0x2A454657
+                                                    ASCII: "*EFW"
+
+  0x04          1       efw_file_version  -         EFW format version (0x01)
+
+  0x05          1       device_type       -         Target device type
+
+  0x06          1       device_model      -         Target device model
+
+  0x07          1       file_type         -         File descriptor:
+                                                      0x00 = Calibration Table
+                                                      0x20 = Config
+                                                      0x40 = Bootloader
+                                                      0x60 = Application
+
+  0x08          1       major             -         Firmware version (major)
+  0x09          1       minor             -         Firmware version (minor)
+  0x0A          1       patch             -         Firmware version (patch)
+  0x0B          1       extra             -         Firmware version (extra)
+
+  0x0C          4       app_size          LE        Application data size (bytes)
+
+  0x10          4       app_crc           LE        CRC-32 of application data
+
+  0x14          4       tag               LE        MAC of application data
+
+  0x18          8       reserve           -         Reserved (zeros)
+
+
+Bit-level diagram:
+
+   0                   1                   2                   3
+   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                     magic  (0x2A454657) [BE]                  |  0x00
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  | efw_file_ver  |  device_type  | device_model  |   file_type   |  0x04
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |    major      |    minor      |    patch      |    extra      |  0x08
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                      app_size [LE]                            |  0x0C
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                      app_crc  [LE]                            |  0x10
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                      tag      [LE]                            |  0x14
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                                                               |  0x18
+  +                     reserve (8 bytes)                         +
+  |                                                               |  0x1C
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+Field Details
+-------------
+
+magic (4 bytes, big-endian)
+  Fixed value 0x2A454657 (ASCII "*EFW"). Used to identify valid EFW files.
+  Stored in big-endian byte order: 2A 45 46 57.
+
+efw_file_version (1 byte)
+  Format version of the EFW file. Current version is 0x01.
+
+device_type (1 byte)
+  Identifies the target hardware family / device type.
+
+device_model (1 byte)
+  Identifies the specific model within a device type.
+
+file_type (1 byte)
+  Describes the content type. Upper 3 bits encode the category:
+    Bits [7:5] = 0  ->  0x00  Calibration Table
+    Bits [7:5] = 1  ->  0x20  Config
+    Bits [7:5] = 2  ->  0x40  Bootloader
+    Bits [7:5] = 3  ->  0x60  Application
+
+app_version (4 bytes: major, minor, patch, extra)
+  Semantic firmware version. Each component is 0-255.
+
+app_size (4 bytes, little-endian)
+  Size of the application data following the header, in bytes.
+
+app_crc (4 bytes, little-endian)
+  CRC-32 checksum of the application data.
+  Algorithm: CRC-32 bit-by-bit-fast
+    Polynomial : 0x04C11DB7
+    Init       : 0xFFFFFFFF
+    ReflectIn  : Yes
+    ReflectOut : Yes
+    XorOut     : 0xFFFFFFFF
+  Used for data integrity verification (detects accidental corruption).
+
+tag (4 bytes, little-endian)
+  Message Authentication Code (MAC) computed over the application data.
+  Uses a proprietary algorithm with secret constants and position-dependent
+  mixing. The tag depends on both the data content and the CRC value.
+  Used for firmware authenticity verification (prevents tampering).
+
+reserve (8 bytes)
+  Reserved for future use. Must be set to zero.
+
+
+Tools
+-----
+bin2efw.py : Converts a raw binary file to EFW format.
+
+  Usage:
+    python bin2efw.py <input.bin> [options]
+
+  Options:
+    -o, --output        Output file (default: <input>.efw)
+    -t, --file-type     1=bootloader, 2=application, 3=config (default: 2)
+    -v, --version       Firmware version major.minor.patch.extra (default: 1.0.0.0)
+    --device-type       Device type 0-255 (default: 0x00)
+    --device-model      Device model 0-255 (default: 0x00)
+    --no-mac            Skip MAC computation (tag = 0)
