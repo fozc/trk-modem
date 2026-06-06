@@ -106,7 +106,7 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
   */
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADCDAC;
     PeriphClkInit.AdcDacClockSelection = RCC_ADCDACCLKSOURCE_HSE;
-    PeriphClkInit.AdcDacClockDivider = RCC_ADCDACCLK_DIV1;
+    PeriphClkInit.AdcDacClockDivider = RCC_ADCDACCLK_DIV16;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
     {
       Error_Handler();
