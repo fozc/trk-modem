@@ -1,4 +1,4 @@
-/*
+﻿/*
  * gsm_init.c
  *
  * GSM modem initialization state machine.
@@ -16,6 +16,15 @@
 #include "modem_config.h"
 #include <string.h>
 #include <stdbool.h>
+
+/* -----------------------------------------------------------------------
+ *  Timeout definitions (milliseconds)
+ * --------------------------------------------------------------------- */
+
+#define GSM_NETWORK_REGISTRATION_TIMEOUT_MS   (160UL * 1000UL)
+#define GSM_NETWORK_SEARCH_TIMEOUT_MS         (180UL * 1000UL)
+#define GSM_SIGNAL_QUALITY_PERIOD_MS          (30UL * 1000UL)
+#define GSM_NETWORK_CHECK_PERIOD_MS           (60UL * 1000UL)
 
 /* -----------------------------------------------------------------------
  *  Module-scope state
@@ -479,7 +488,7 @@ static void gsm_init_step_check_voice_sms_network(void)
 		case GSM_NETWORK_SEARCHING:
 			gsm_set_delay(1000);
 			gsm_set_init_state(GSM_CHECK_GSM_VOICE_SMS_NEWTWORK_STATE);
-			if (gsm_get_tick() - gsm.gsm_network_timer > 120 * 1000) {
+			if (gsm_get_tick() - gsm.gsm_network_timer > GSM_NETWORK_REGISTRATION_TIMEOUT_MS) {
 				LOG(_GSM_, "5dk boyunca sebekeye baglnamadi!");
 				gsm_set_init_state(GSM_RESET_MODULE);
 			}
@@ -488,7 +497,7 @@ static void gsm_init_step_check_voice_sms_network(void)
 		case GSM_NETWORK_DENIED:
 			gsm_set_delay(1000);
 			gsm_set_init_state(GSM_CHECK_GSM_VOICE_SMS_NEWTWORK_STATE);
-			if (gsm_get_tick() - gsm.gsm_network_timer > 120 * 1000) {
+			if (gsm_get_tick() - gsm.gsm_network_timer > GSM_NETWORK_REGISTRATION_TIMEOUT_MS) {
 				gsm_set_init_state(GSM_RESET_MODULE);
 				if (!gsm.f_creg)
 				{
@@ -585,7 +594,7 @@ static void gsm_init_step_check_gprs_network(void)
 				gsm_init_next_step();
 				gsm_init_next_step();
 			}
-			if (gsm_get_tick() - gsm.gsm_network_timer > 160 * 1000) {
+			if (gsm_get_tick() - gsm.gsm_network_timer > GSM_NETWORK_SEARCH_TIMEOUT_MS) {
 				gsm_set_init_state(GSM_GET_CEER);
 			}
 			break;
@@ -594,7 +603,7 @@ static void gsm_init_step_check_gprs_network(void)
 			gsm_set_delay(500);
 			gsm.init_cgreg_state = 0;
 			gsm_set_init_state(GSM_CHECK_LTE_NEWTWORK_STATE);
-			if (gsm_get_tick() - gsm.gsm_network_timer > 120 * 1000) {
+			if (gsm_get_tick() - gsm.gsm_network_timer > GSM_NETWORK_REGISTRATION_TIMEOUT_MS) {
 				gsm_set_init_state(GSM_GET_CEER);
 			}
 			break;
@@ -631,7 +640,7 @@ static void gsm_init_step_check_lte_network(void)
 			} else {
 				gsm_init_next_step();
 			}
-			if (gsm_get_tick() - gsm.gsm_network_timer > 160 * 1000) {
+			if (gsm_get_tick() - gsm.gsm_network_timer > GSM_NETWORK_SEARCH_TIMEOUT_MS) {
 				gsm_set_init_state(GSM_GET_CEER);
 			}
 			break;
@@ -644,7 +653,7 @@ static void gsm_init_step_check_lte_network(void)
 			} else {
 				gsm_init_next_step();
 			}
-			if (gsm_get_tick() - gsm.gsm_network_timer > 120 * 1000) {
+			if (gsm_get_tick() - gsm.gsm_network_timer > GSM_NETWORK_REGISTRATION_TIMEOUT_MS) {
 				gsm_set_init_state(GSM_GET_CEER);
 			}
 			break;
@@ -902,9 +911,9 @@ static void gsm_init_step_open_listener_socket(void)
 			gsm_set_socket_state(LISTENER_SOCKET, SOCKET_LISTENING);
 			gsm_set_delay(50);
 			LOG_TRACE(_GSM_, "Listener Socket Acildi...", res);
-			gsm.signal_quality_timer = gsm_get_tick() + 30 * 1000;
+			gsm.signal_quality_timer = gsm_get_tick() + GSM_SIGNAL_QUALITY_PERIOD_MS;
 			gsm.listener[GSM_LISTENER_WEB].socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
-			gsm.gsm_network_timer = gsm_get_tick() + 60 * 1000;
+			gsm.gsm_network_timer = gsm_get_tick() + GSM_NETWORK_CHECK_PERIOD_MS;
 			gsm_set_tx_state(GSM_TX_READY);
 			break;
 		case GSM_SOCKET_ERROR_ALREADY_OPEN:
