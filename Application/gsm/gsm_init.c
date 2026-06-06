@@ -48,11 +48,13 @@ static const uint8_t gsm_common_init_vector[] =
 static const uint8_t gsm_LE910R1_init_vector[] =
 {
 	GSM_CHECK_SIMCARD_AND_PIN,
-	GSM_CHECK_GSM_VOICE_SMS_NEWTWORK_STATE,
+	//GSM_CHECK_GSM_VOICE_SMS_NEWTWORK_STATE,
+	GSM_SET_APN,
 	GSM_GET_SIGNAL_QUALITY,
+	GSM_CHECK_GPRS_NEWTWORK_STATE,
+	GSM_CHECK_LTE_NEWTWORK_STATE,
 	GSM_GET_SIMCARD_IMSI,
 	GSM_GET_PHONE_NUMBER,
-	GSM_SET_APN,
 
 	GSM_CONFIG_SOCKET_WEB_SCFG,
 	GSM_CONFIG_SOCKET_WEB_SCFGEXT,
@@ -63,9 +65,6 @@ static const uint8_t gsm_LE910R1_init_vector[] =
 	GSM_CONFIG_SOCKET_IEC104_SCFGEXT2,
 
 	GSM_ACTIVATE_GPRS,
-	GSM_CHECK_GPRS_NEWTWORK_STATE,
-	GSM_CHECK_LTE_NEWTWORK_STATE,
-
 	GSM_CONNECT_TO_GPRS,
 	GSM_CONFIG_PING_SUPPORT,
 	GSM_GET_SIGNAL_QUALITY,
@@ -241,6 +240,8 @@ static void gsm_init_step_soft_init(void)
 	gsm.reboot_counter = 0;
 	gsm.no_sim = 0;
 	gsm.temp_counter = 0;
+	gsm.init_cgreg_state = 0;
+	gsm.init_cereg_state = 0;
 	gsm.tx_flag = GSM_TX_NOT_AVAILABLE;
 	gsm.module_state  = 1;
 	gsm_listener_set_no_carrier(GSM_LISTENER_WEB, 0);
