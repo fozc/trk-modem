@@ -1,4 +1,4 @@
-/*
+﻿/*
  * gsm_dialer_process.c
  *
  * Dialer (outgoing) socket state machine.
@@ -42,7 +42,7 @@ void gsm_dialer_socket_process(void)
 		{
 			gsm.dialer_socket_no_carrier = 0;
 			gsm_set_socket_state(DIALER_SOCKET, SOCKET_CLOSED);
-			//led_set_mode(LED_DIALER, LED_DIALER_IDLE);
+			/* TODO: Dialer LED not implemented yet. */
 			gsm.dialer_socket_state = GSM_HES_CLOSE_SOCKET;
 		}
 	}
@@ -104,7 +104,7 @@ void gsm_dialer_socket_process(void)
 			if (strstr((char *) at_engine_get_response(NULL), "NO CARRIER\r\n") != NULL) /* Baglanti sonlandirildi. */
 			{
 				LOG_TRACE(_GSM_, "DIALER Soket ile baglanti sonlandirildi\r\n");
-				//led_set_mode(LED_DIALER, LED_DIALER_IDLE);
+				/* TODO: Dialer LED not implemented yet. */
 				gsm.dialer_socket_state = GSM_HES_CLOSE_SOCKET;
 				at_engine_clear_buff();
 			}
@@ -112,7 +112,7 @@ void gsm_dialer_socket_process(void)
 
 		case GSM_HES_CONNECT_HEADEND:
 			if(gsm_engine_send_query(ATQUERY_CONN_TO_SERVER)){
-				//led_set_mode(LED_DIALER, LED_DIALER_CONNECTING);
+				/* TODO: Dialer LED not implemented yet. */
 				gsm.dialer_socket_state = GSM_HES_GET_RES_CONNECT_HEADEND;
 			}
 			break;
@@ -222,7 +222,7 @@ void gsm_dialer_socket_process(void)
 				if(res){
 					switch (res) {
 						case GSM_SOCKET_OPEN:
-							//led_set_mode(LED_DIALER, LED_DIALER_CONNECTED);
+							/* TODO: Dialer LED not implemented yet. */
 							gsm_set_socket_state(DIALER_SOCKET, SOCKET_OPENED);
 							gsm.dialer_socket_state = GSM_HES_WAIT_TX_DATA;
 							gsm.dialer_socket_timer = gsm_get_tick() + DS_SOCKET_CHECK_TIMER;
@@ -234,7 +234,7 @@ void gsm_dialer_socket_process(void)
 							gsm.join_timer = gsm_get_tick() + 1000 * 2;
 							break;
 						case GSM_SOCKET_ERR:
-							//led_set_mode(LED_DIALER, LED_DIALER_IDLE);
+							/* TODO: Dialer LED not implemented yet. */
 							gsm.dialer_socket_state = GSM_HES_IDLE;
 							LOG_TRACE(_GSM_, "Server'a baglanti saglanamadi. ERROR: x, Timeout !");
 							gsm_set_socket_state(DIALER_SOCKET, SOCKET_FAIL);
@@ -253,7 +253,7 @@ void gsm_dialer_socket_process(void)
 							gsm.join_timer = gsm_get_tick() + 1000;
 							break;
 						case GSM_SOCKET_ERROR_TIMEOUT:
-							//led_set_mode(LED_DIALER, LED_DIALER_IDLE);
+							/* TODO: Dialer LED not implemented yet. */
 							gsm.dialer_socket_state = GSM_HES_IDLE;
 							gsm_set_socket_state(DIALER_SOCKET, SOCKET_FAIL);
 							LOG_TRACE(_GSM_, "Server'a baglanti saglanamadi. ERROR: 559, Timeout !");
@@ -425,7 +425,7 @@ void gsm_dialer_socket_process(void)
 			}
 
 			if(gsm_get_socket_state(DIALER_SOCKET) == SOCKET_CLOSED){
-				//led_set_mode(LED_DIALER, LED_DIALER_IDLE);
+				/* TODO: Dialer LED not implemented yet. */
 			}
 
 			break;
@@ -486,7 +486,7 @@ void gsm_dialer_socket_process(void)
 					case GSM_ERROR:
 					case GSM_TIMEOUT:
 					case GSM_NO_CARRIER:
-						//led_set_mode(LED_DIALER, LED_DIALER_IDLE);
+						/* TODO: Dialer LED not implemented yet. */
 						gsm_set_socket_state(DIALER_SOCKET, SOCKET_CLOSED);
 						gsm.connect_to_headend = 0;								/* TODO: URC ile soket kapatilirsa ve bu esnada joniden connet emri gelirse burada siliniyor.
 																					Buda diger tarfin hatali calimasine neden oluyor*/

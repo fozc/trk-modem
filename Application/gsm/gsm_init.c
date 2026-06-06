@@ -14,6 +14,7 @@
 #include "gsm_process.h"
 #include "gsm_listener_process.h"
 #include "modem_config.h"
+#include "led_driver.h"
 #include <string.h>
 #include <stdbool.h>
 
@@ -244,6 +245,7 @@ static void gsm_init_simple_step(uint8_t at_query, bool skip_on_error, uint16_t 
 static void gsm_init_step_soft_init(void)
 {
 	GSM_LOG_INF("GSM soft init...\r\n");
+	led_driver_set_gsm_mode(LED_GSM_OFF);
 	gsm_info_init();
 	gsm_set_access_technology(GSM_NO_SIGNAL);
 	gsm.reboot_counter = 0;
@@ -268,6 +270,7 @@ static void gsm_init_step_soft_init(void)
 
 static void gsm_init_step_reset_module(void)
 {
+	led_driver_set_modem_mode(LED_MODEM_ERROR);
 	if (s_pin_reset_state)
 	{
 		LOG(DEBUG, "! s_pin_reset_state: 1, hard reset !");
@@ -314,6 +317,7 @@ static void gsm_init_step_check_module(void)
 	{
 		if (res == GSM_RESPONSE_OK)
 		{
+			led_driver_set_modem_mode(LED_MODEM_INIT);
 			gsm.temp_counter = 0;
 			gsm_init_next_step();
 		}
@@ -363,6 +367,7 @@ static void gsm_init_step_check_simcard(void)
 	uint32_t res = gsm_engine_get_query_res();
 	switch (res) {
 		case GSM_CPIN_READY:
+			led_driver_set_modem_mode(LED_MODEM_SEARCHING);
 			gsm_set_delay(50);
 			s_connection_time = gsm_get_tick();
 			gsm.gsm_network_timer = gsm_get_tick();
@@ -373,10 +378,12 @@ static void gsm_init_step_check_simcard(void)
 			gsm_set_delay(300);
 			break;
 		case GSM_CPIN_SIM_FAILUER:
+			led_driver_set_modem_mode(LED_MODEM_NO_SIM);
 			LOG(_GSM_, "SIM FAILUER !!!");
 			gsm_set_init_state(GSM_RESET_MODULE);
 			break;
 		case GSM_CPIN_NO_SIM:
+			led_driver_set_modem_mode(LED_MODEM_NO_SIM);
 			if (!gsm.no_sim)
 			{
 				gsm.no_sim = 1;
@@ -391,14 +398,25 @@ static void gsm_init_step_check_simcard(void)
 			gsm_set_init_state(GSM_SET_PIN_NO);
 			break;
 		case GSM_CPIN_SIMPUK:
+			led_driver_set_modem_mode(LED_MODEM_NO_SIM);
 			gsm_set_delay(3000);
 			gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
 			break;
 		case GSM_ERROR:
 		case GSM_CPIN_ERROR:
 		case GSM_TIMEOUT:
-			gsm_set_delay(50);
-			gsm_set_init_state(GSM_RESET_MODULE);
+			led_driver_set_modem_mode(LED_MODEM_NO_SIM);
+			if (gsm.no_sim != 0U)
+			{
+				/* SIM absence already confirmed — keep polling. */
+				gsm_set_delay(3000);
+				gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
+			}
+			else
+			{
+				gsm_set_delay(50);
+				gsm_set_init_state(GSM_RESET_MODULE);
+			}
 			break;
 		default:
 			break;
@@ -683,6 +701,7 @@ static void gsm_init_step_connect_gprs(void)
 	switch (res) {
 		case GSM_RESPONSE_OK:
 			gsm_internet_connection_on_cb();
+			led_driver_set_modem_mode(LED_MODEM_READY);
 			gsm_set_delay(50);
 			gsm_init_next_step();
 			gsm.temp_counter = 0;
@@ -909,8 +928,8 @@ static void gsm_init_step_open_listener_socket(void)
 		case GSM_RESPONSE_OK:
 			gsm_init_next_step();
 			gsm_set_socket_state(LISTENER_SOCKET, SOCKET_LISTENING);
+			led_driver_set_web_mode(LED_LISTENER_LISTENING);
 			gsm_set_delay(50);
-			LOG_TRACE(_GSM_, "Listener Socket Acildi...", res);
 			gsm.signal_quality_timer = gsm_get_tick() + GSM_SIGNAL_QUALITY_PERIOD_MS;
 			gsm.listener[GSM_LISTENER_WEB].socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
 			gsm.gsm_network_timer = gsm_get_tick() + GSM_NETWORK_CHECK_PERIOD_MS;
@@ -952,6 +971,7 @@ static void gsm_init_step_open_iec104_listener(void)
 		case GSM_RESPONSE_OK:
 			gsm_init_next_step();
 			gsm_set_socket_state(IEC104_LISTENER_SOCKET, SOCKET_LISTENING);
+			led_driver_set_iec104_mode(LED_LISTENER_LISTENING);
 			gsm_set_delay(50);
 			LOG_TRACE(_GSM_, "IEC104 Listener Socket Acildi...", res);
 			gsm.listener[GSM_LISTENER_IEC104].socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
@@ -992,6 +1012,7 @@ static void gsm_init_step_done(void)
 	}
 	else
 	{
+		led_driver_set_modem_mode(LED_MODEM_READY);
 		gsm_set_main_state(GSM_NORMAL_MODE);
 	}
 }

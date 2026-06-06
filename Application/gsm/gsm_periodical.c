@@ -12,6 +12,7 @@
 #include "at_engine2.h"
 #include "gsm_process.h"
 #include "gsm_listener_process.h"
+#include "gsm_signal_led.h"
 #include "bsp.h"
 
 #include <stdint.h>
@@ -173,6 +174,7 @@ static void gsm_periodical_step_ext_signal_quality(void)
 		return;
 	}
 
+	gsm_signal_led_update();
 	gsm.signal_quality_timer = gsm_get_tick() + (GSM_CSQ_REQ_TIME_S * 1000U);
 	gsm_periodical_finish(0, 50);
 }

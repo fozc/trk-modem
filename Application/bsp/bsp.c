@@ -9,6 +9,10 @@
 #include "contiki.h"
 #include "gpio.h"
 #include "uart.h"
+#include "led_driver.h"
+#include "gsm_signal_led.h"
+
+#include <stdbool.h>
 
 static const char *banner =  "\r\n+=================TROIKA======================+\r\n";
 
@@ -234,6 +238,42 @@ void bsp_system_reset(void)
 const char * bsp_get_banner(void)
 {
 	return banner;
+}
+
+/* -----------------------------------------------------------------------
+ *  GSM signal LED — BSP override of weak hook
+ *
+ *  Translates (tech, level) from gsm_signal_led module into
+ *  led_driver GSM mode commands for RGB2.
+ * --------------------------------------------------------------------- */
+
+void gsm_signal_led_apply(gsm_signal_tech_t  tech,
+                           gsm_signal_level_t level)
+{
+    bool is_weak = (level == GSM_SIGNAL_LEVEL_WEAK);
+
+    switch (tech)
+    {
+        case GSM_SIGNAL_TECH_2G:
+            led_driver_set_gsm_mode(is_weak ? LED_GSM_2G_WEAK
+                                            : LED_GSM_2G);
+            break;
+
+        case GSM_SIGNAL_TECH_3G:
+            led_driver_set_gsm_mode(is_weak ? LED_GSM_3G_WEAK
+                                            : LED_GSM_3G);
+            break;
+
+        case GSM_SIGNAL_TECH_4G:
+            led_driver_set_gsm_mode(is_weak ? LED_GSM_4G_WEAK
+                                            : LED_GSM_4G);
+            break;
+
+        case GSM_SIGNAL_TECH_NONE:
+        default:
+            led_driver_set_gsm_mode(LED_GSM_OFF);
+            break;
+    }
 }
 
 

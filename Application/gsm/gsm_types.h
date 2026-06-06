@@ -78,7 +78,7 @@ typedef enum
 	GSM_2G = 2,
 	GSM_3G = 3,
 	GSM_4G = 4
-}gsm_signal_level_t;
+} gsm_access_technology_t;
 
 typedef enum
 {

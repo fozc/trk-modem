@@ -17,6 +17,7 @@
 #include "gsm_firmware_update.h"
 #include "gsm_shell.h"
 #include "gpio.h"
+#include "led_driver.h"
 
 PROCESS(gsm_power_on, "gsm_power_on");
 PROCESS_THREAD(gsm_power_on, ev, data)
@@ -31,6 +32,7 @@ PROCESS_THREAD(gsm_power_on, ev, data)
 	{
 		sw_rdy_asserted = false;
 
+		led_driver_set_modem_mode(LED_MODEM_POWER_ON);
 		CSLOG("Powering on GSM module...\r\n");
 		gpio_set_pin(GSM_POWER_GPIO, GSM_POWER_PIN, GPIO_HIGH);
 		etimer_set(&timer, 500);

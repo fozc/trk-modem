@@ -14,6 +14,7 @@
 #include "modem_config.h"
 #include "iec104_process.h"
 #include "web_server.h"
+#include "led_driver.h"
 
 #include <string.h>
 
@@ -83,6 +84,22 @@ void gsm_listener_iec104_process(void)
 /* ---------------------------------------------------------------------------
  *  Static helpers
  * ------------------------------------------------------------------------- */
+
+/**
+ * @brief Update the LED for a given listener socket.
+ */
+static void ls_led_update(gsm_listener_id_t id,
+                           led_listener_mode_t mode)
+{
+	if (id == GSM_LISTENER_IEC104)
+	{
+		led_driver_set_iec104_mode(mode);
+	}
+	else
+	{
+		led_driver_set_web_mode(mode);
+	}
+}
 
 /**
  * @brief Send an AT query and switch the listener context to wait-response phase.
@@ -437,15 +454,18 @@ static void handle_check_socket(const gsm_listener_cfg_t *p_cfg,
 					break;
 				case '2': /* Suspended — client connected, no pending data */
 					gsm_set_socket_state(p_cfg->socket_id, SOCKET_CONNECTED);
+					ls_led_update(p_cfg->id, LED_LISTENER_CONNECTED);
 					ls_set_state(ctx, GSM_LS_IDLE);
 					break;
 				case '3': /* Suspended — data pending */
 					gsm_set_socket_state(p_cfg->socket_id, SOCKET_CONNECTED);
+					ls_led_update(p_cfg->id, LED_LISTENER_CONNECTED);
 					ls_set_state(ctx, GSM_LS_READ_SOCKET_DATA);
 					gsm_set_delay(50);
 					break;
 				case '4': /* Listening */
 					gsm_set_socket_state(p_cfg->socket_id, SOCKET_LISTENING);
+					ls_led_update(p_cfg->id, LED_LISTENER_LISTENING);
 					ls_set_state(ctx, GSM_LS_IDLE);
 					break;
 				case '5': /* Incoming connection pending */
@@ -519,6 +539,7 @@ static void handle_close_socket(const gsm_listener_cfg_t *p_cfg,
 	if (res == 0U) { return; }
 
 	if (p_cfg->on_closed != NULL) { p_cfg->on_closed(); }
+	ls_led_update(p_cfg->id, LED_LISTENER_OFF);
 
 	if (gsm_listener_get_no_carrier(p_cfg->id))
 	{
@@ -576,6 +597,7 @@ static void handle_open_socket(const gsm_listener_cfg_t *p_cfg,
 			ctx->had_data_activity = 0U;
 			gsm_listener_set_no_carrier(p_cfg->id, 0U); /* Clear stale flag */
 			gsm_set_socket_state(p_cfg->socket_id, SOCKET_LISTENING);
+			ls_led_update(p_cfg->id, LED_LISTENER_LISTENING);
 			ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
 			ls_set_state(ctx, GSM_LS_IDLE);
 			break;
@@ -597,6 +619,7 @@ static void handle_open_socket(const gsm_listener_cfg_t *p_cfg,
 		case GSM_SOCKET_ERROR_ALREADY_OPEN:
 			LOG_TRACE(_GSM_, "[LS:%u] Soket zaten acik", (unsigned)p_cfg->id);
 			gsm_set_socket_state(p_cfg->socket_id, SOCKET_LISTENING);
+			ls_led_update(p_cfg->id, LED_LISTENER_LISTENING);
 			ls_set_state(ctx, GSM_LS_IDLE);
 			break;
 
@@ -684,6 +707,7 @@ static void handle_accept_connection(const gsm_listener_cfg_t *p_cfg,
 			if (p_cfg->on_connected != NULL) { p_cfg->on_connected(); }
 			ctx->socket_timer     = gsm_get_tick() + 750U;
 			gsm_set_socket_state(p_cfg->socket_id, SOCKET_CONNECTED);
+			ls_led_update(p_cfg->id, LED_LISTENER_CONNECTED);
 			gsm_socket_set_state(p_cfg->socket_id, '2'); /* Mark session start */
 			ctx->data_check_timer = bsp_get_tick() + GSM_LS_DATA_CHECK_TIMER_MS;
 			ctx->had_data_activity = 0U;
