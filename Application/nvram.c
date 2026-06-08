@@ -59,12 +59,11 @@ void nvram_set_defaults(void)
 {
     memset(&nvram, 0, sizeof(nvram));
 
-
     // Modem Config Defaults
 	nvram.modem_config.serial_number = DEVICE_DEFAULT_SERIAL_NUMBER;
 	nvram.modem_config.web_interface_port = 80;
 	nvram.modem_config.sim_card_pin = 1234;
-	strncpy(nvram.modem_config.apn.apn, "mgbs ", sizeof(nvram.modem_config.apn.apn) - 1);
+	strncpy(nvram.modem_config.apn.apn, "mgbs", sizeof(nvram.modem_config.apn.apn) - 1);
 	strncpy(nvram.modem_config.apn.user_name, "", sizeof(nvram.modem_config.apn.user_name) - 1);
 	strncpy(nvram.modem_config.apn.user_pass, "password", sizeof(nvram.modem_config.apn.user_pass) - 1);
 	strncpy(nvram.modem_config.ntp_server, "pool.ntp.org", sizeof(nvram.modem_config.ntp_server) - 1);
