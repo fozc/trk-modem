@@ -32,6 +32,7 @@
 #include "web_shell.h"
 #include "led_driver.h"
 #include "adc.h"
+#include "digital_input.h"
 
 #include "rf_dummy.h"
 
@@ -386,6 +387,8 @@ __attribute__ ((noreturn)) void app_main(void)
 
 
 	gsm_process_contiki_init();
+
+	digital_input_init();
 
 
 	fault_log_init();

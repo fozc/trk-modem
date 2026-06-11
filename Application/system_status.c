@@ -8,6 +8,7 @@
 #include "bsp.h"
 #include "gsm_info.h"
 #include "adc.h"
+#include "digital_input.h"
 
 static system_status_t g_system_status = {0};
 
@@ -51,6 +52,16 @@ void system_status_update(void)
     g_system_status.gsm_rat = gsm_info_get_access_technology();
 
     system_status_update_tdie();
+
+    /* Debounced digital inputs (active-LOW → logical 1). */
+    g_system_status.din[0] = digital_input_get(DIN_CH_1);
+    g_system_status.din[1] = digital_input_get(DIN_CH_2);
+    g_system_status.din[2] = digital_input_get(DIN_CH_3);
+    g_system_status.din[3] = digital_input_get(DIN_CH_4);
+
+    /* Debounced DIP switches (active-LOW: ON = 1). */
+    g_system_status.dip_sw[0] = dip_switch_get(DIP_SW_1);
+    g_system_status.dip_sw[1] = dip_switch_get(DIP_SW_2);
 
     /* Supply voltages (mV) from the ADC module. */
     g_system_status.v3v3 = adc_get_voltage_mv(ADC_CH_3V3);

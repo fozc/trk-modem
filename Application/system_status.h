@@ -14,6 +14,7 @@
 typedef struct
 {
     uint8_t din[4];  // 4 adet dijital giris durumu
+    uint8_t dip_sw[2]; // 2 adet DIP switch durumu
     uint8_t rly[2];  // 2 adet role cikis durumu
     uint16_t vbat;   // Batarya Voltaji (mV)
     uint16_t v19;    // 19V Besleme Voltaji (mV)
