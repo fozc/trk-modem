@@ -30,6 +30,7 @@ typedef struct
     int8_t tdie_temp;       // MCU Sicaklik Degeri (°C)
     int8_t tdie_temp_max;   // MCU Sicaklik Maks Degeri (°C)
     int8_t tdie_temp_min;   // MCU Sicaklik Min Degeri (°C)
+    uint8_t tdie_seeded;    // MCU sicaklik min/max ilk ornek ile seed edildi mi
     uint8_t charge_percent; // Batarya Sarj Orani (%)
     uint16_t capacity;      // Batarya Kapasitesi (mAh)
     int8_t gsm_signal;       // GSM Sinyal Gucü (dBm)

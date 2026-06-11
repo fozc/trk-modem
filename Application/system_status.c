@@ -7,6 +7,7 @@
 #include "system_status.h"
 #include "bsp.h"
 #include "gsm_info.h"
+#include "adc.h"
 
 static system_status_t g_system_status = {0};
 
@@ -19,15 +20,23 @@ const system_status_t* system_status_get(void)
 
 void system_status_init(void)
 {
-	g_system_status.tdie_temp_min = -128;
-	g_system_status.tdie_temp_max = +127;
+	/* Seed sentinels so the first real sample initialises both bounds:
+	 * min starts at the highest value, max at the lowest. */
+	g_system_status.tdie_temp_min = +127;
+	g_system_status.tdie_temp_max = -128;
+	g_system_status.tdie_seeded   = 0U;
 }
 
 void system_status_update_tdie()
 {
-	uint16_t get_tdie(void);
+	g_system_status.tdie_temp = (int8_t)adc_get_mcu_temp_c();
 
-	g_system_status.tdie_temp = get_tdie();
+	if(g_system_status.tdie_seeded == 0U){
+		/* First valid sample seeds both bounds. */
+		g_system_status.tdie_temp_min = g_system_status.tdie_temp;
+		g_system_status.tdie_temp_max = g_system_status.tdie_temp;
+		g_system_status.tdie_seeded   = 1U;
+	}
 	if(g_system_status.tdie_temp_min > g_system_status.tdie_temp){
 		g_system_status.tdie_temp_min = g_system_status.tdie_temp;
 	}
@@ -42,6 +51,11 @@ void system_status_update(void)
     g_system_status.gsm_rat = gsm_info_get_access_technology();
 
     system_status_update_tdie();
+
+    /* Supply voltages (mV) from the ADC module. */
+    g_system_status.v3v3 = adc_get_voltage_mv(ADC_CH_3V3);
+    g_system_status.v3v8 = adc_get_voltage_mv(ADC_CH_3V8);
+    g_system_status.v5v  = adc_get_voltage_mv(ADC_CH_5V);
 
     //TODO: Batarya akımı sensöründen okuyun (ADC)
     g_system_status.battery_current = 0;  // + şarj, - deşarj
