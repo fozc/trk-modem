@@ -2887,8 +2887,15 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			timeout = 13000;
 			try = 1;
 			gsm.at_callback = gsm_cusd_cb;
-		    res     = (const uint8_t *)&"15\r\n";
-		    res_len = 4;
+		    /* Yeni modem/sebekede abone numarasi komut yanitiyla degil
+		     * asenkron URC (+CUSD:) olarak gelir; numara URC isleyicisinde
+		     * ayiklandigi icin komutun sadece varsayilan "OK" yanitini
+		     * beklemesi yeterlidir.
+		     * NOT: Bazi modemler yaniti satir-ici olarak ",15" DCS alani ile
+		     * dondurur. Boyle bir modemde beklenen yaniti asagidaki gibi
+		     * ayarlamak gerekebilir:
+		     *     res     = (const uint8_t *)"15\r\n";
+		     *     res_len = 4; */
 			at_len += xsprintf(buff_ptr, "+CUSD=1,*101#");
 			break;
 		case ATQUERY_SET_APN:
