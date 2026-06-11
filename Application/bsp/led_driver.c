@@ -95,7 +95,7 @@ static const led_pin_map_t s_pin_map[LED_CHANNEL_COUNT] =
     [LED_CHANNEL_GSM_G]   = { LED_RGB2_G_GPIO, LED_RGB2_G_PIN, 1U },
     [LED_CHANNEL_GSM_B]   = { LED_RGB2_B_GPIO, LED_RGB2_B_PIN, 1U },
     [LED_CHANNEL_IEC104]  = { LED2_GPIO,       LED2_PIN,       1U },
-    [LED_CHANNEL_WEB]     = { LED1_GPIO,       LED1_PIN,       1U },
+    [LED_CHANNEL_WEB]     = { LED3_GPIO,       LED3_PIN,       1U },
 };
 
 /* ======================================================================
@@ -493,8 +493,7 @@ static void led_listener_set(led_channel_t channel,
             break;
 
         case LED_LISTENER_CONNECTED:
-            led_driver_set_pattern(channel,
-                                  &LED_PATTERN_BLINK_250_250);
+            led_driver_set_pattern(channel, &LED_PATTERN_BLINK_250_250);
             break;
 
         default:

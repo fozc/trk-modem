@@ -72,10 +72,10 @@ static void led_test_all(void)
 
     led_driver_init(); /* All OFF */
 
-    CSLOG("[GPIO] LED1 (PE7) ON\r\n");
-    gpio_set_pin(LED1_GPIO, LED1_PIN, GPIO_HIGH);
-    HAL_Delay(LED_TEST_STEP_DELAY_MS);
+    CSLOG("[GPIO] LED1 (PE7, active-LOW) ON\r\n");
     gpio_set_pin(LED1_GPIO, LED1_PIN, GPIO_LOW);
+    HAL_Delay(LED_TEST_STEP_DELAY_MS);
+    gpio_set_pin(LED1_GPIO, LED1_PIN, GPIO_HIGH);
     CSLOG("[GPIO] LED1 OFF\r\n");
     HAL_Delay(500);
 
@@ -305,7 +305,7 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 		if(timer_expired(&led_timer))
 		{
 			timer_reset(&led_timer);
-			gpio_toggle_pin(LED3_GPIO, LED3_PIN);
+			gpio_toggle_pin(LED1_GPIO, LED1_PIN);
 		}
 
 		led_driver_tick();

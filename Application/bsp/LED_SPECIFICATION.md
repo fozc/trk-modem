@@ -4,17 +4,17 @@
 
 | Physical LED   | GPIO        | Pin  | Channel            | Function           | Polarity     |
 |----------------|-------------|------|--------------------|--------------------|-------------|
-| LED1           | GPIOE       | PE7  | `LED_CHANNEL_WEB`  | Web listener       | Active-HIGH  |
+| LED1           | GPIOE       | PE7  | (heartbeat)        | CPU alive toggle   | Active-LOW   |
 | LED2           | GPIOB       | PB2  | `LED_CHANNEL_IEC104` | IEC104 listener  | Active-LOW   |
-| LED3           | GPIOB       | PB1  | (heartbeat)        | CPU alive toggle   | Active-LOW   |
-| RGB1 Red       | GPIOE       | PE11 | `LED_CHANNEL_MODEM_R` | Modem status    | Active-HIGH  |
-| RGB1 Green     | GPIOE       | PE12 | `LED_CHANNEL_MODEM_G` | Modem status    | Active-HIGH  |
-| RGB1 Blue      | GPIOE       | PE13 | `LED_CHANNEL_MODEM_B` | Modem status    | Active-HIGH  |
-| RGB2 Red       | GPIOE       | PE8  | `LED_CHANNEL_GSM_R` | GSM network      | Active-HIGH  |
-| RGB2 Green     | GPIOE       | PE9  | `LED_CHANNEL_GSM_G` | GSM network      | Active-HIGH  |
-| RGB2 Blue      | GPIOE       | PE10 | `LED_CHANNEL_GSM_B` | GSM network      | Active-HIGH  |
+| LED3           | GPIOB       | PB1  | `LED_CHANNEL_WEB`  | Web listener       | Active-LOW   |
+| RGB1 Red       | GPIOE       | PE11 | `LED_CHANNEL_MODEM_R` | Modem status    | Active-LOW   |
+| RGB1 Green     | GPIOE       | PE12 | `LED_CHANNEL_MODEM_G` | Modem status    | Active-LOW   |
+| RGB1 Blue      | GPIOE       | PE13 | `LED_CHANNEL_MODEM_B` | Modem status    | Active-LOW   |
+| RGB2 Red       | GPIOE       | PE8  | `LED_CHANNEL_GSM_R` | GSM network      | Active-LOW   |
+| RGB2 Green     | GPIOE       | PE9  | `LED_CHANNEL_GSM_G` | GSM network      | Active-LOW   |
+| RGB2 Blue      | GPIOE       | PE10 | `LED_CHANNEL_GSM_B` | GSM network      | Active-LOW   |
 
-All RGB LEDs are active-HIGH. LED2 and LED3 are active-LOW.
+All LEDs are active-LOW: GPIO=0 turns the LED ON.
 
 ---
 
@@ -103,7 +103,7 @@ Indicates the IEC104 listener socket state.
 
 ---
 
-## 4. Web Listener LED (LED1)
+## 4. Web Listener LED (LED3)
 
 Indicates the web server listener socket state. Same pattern table as IEC104.
 
@@ -121,11 +121,11 @@ to the appropriate LED driver function.
 
 ---
 
-## 5. Heartbeat LED (LED3)
+## 5. Heartbeat LED (LED1)
 
 Simple 500 ms toggle driven from `heart_beat_process` in `app_main.c`.
 Not managed by the LED driver — uses direct `gpio_toggle_pin()`.
-LED3 is active-LOW: GPIO=0 turns LED ON.
+LED1 is active-LOW: GPIO=0 turns LED ON.
 
 | State     | Pattern            |
 |-----------|--------------------|
