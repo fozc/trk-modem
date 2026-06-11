@@ -8,6 +8,7 @@
 #include "app_main.h"
 #include "main.h"
 #include "bsp.h"
+#include "rtc.h"
 #include "gpio.h"
 #include "w25qxx.h"
 #include "contiki.h"
@@ -250,7 +251,8 @@ static void led_test_all(void)
 #endif /* LED_TEST */
 
 PROCESS(heart_beat_process, "heart-beat");
-AUTOSTART_PROCESSES(&heart_beat_process);
+PROCESS(rtc_resync_process, "rtc-resync");
+AUTOSTART_PROCESSES(&heart_beat_process, &rtc_resync_process);
 
 
 PROCESS_THREAD(heart_beat_process, ev, data)
@@ -313,11 +315,44 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 	PROCESS_END();
 }
 
+/* Periodic anti-drift resync: reload the software RTC from the persistent
+ * hardware RTC every 6 hours to compensate for SysTick accumulation error. */
+#define RTC_RESYNC_INTERVAL_SEC  (6UL * 60UL * 60UL)
+
+PROCESS_THREAD(rtc_resync_process, ev, data)
+{
+	(void)ev;
+	(void)data;
+
+	static struct etimer resync_timer;
+
+	PROCESS_BEGIN();
+
+	etimer_set(&resync_timer, (clock_time_t)(CLOCK_SECOND * RTC_RESYNC_INTERVAL_SEC));
+
+	while (1)
+	{
+		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&resync_timer));
+
+		if (rtc_hw_is_valid())
+		{
+			rtc_resync_sw_from_hw();
+		}
+
+		etimer_restart(&resync_timer);
+	}
+
+	PROCESS_END();
+}
+
 __attribute__ ((noreturn)) void app_main(void)
 {
 	stack_monitor_init();
 	bsp_init();
 	led_driver_init();
+
+	/* Seed the software RTC from the persistent hardware RTC (if valid). */
+	rtc_boot_sync();
 
 	w25qxx_init();
 	//w25qxx_test();

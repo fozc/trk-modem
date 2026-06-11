@@ -17,9 +17,6 @@ extern "C" {
 #include "console_logger.h"
 
 
-#define USE_SOFTWARE_RTC
-//#define USE_HARDWARE_RTC
-
 typedef union
 {
     uint32_t raw;
@@ -45,13 +42,11 @@ typedef struct
     uint8_t year;
 }bsp_rtc_t;
 
-#if  defined(USE_SOFTWARE_RTC)
 void bsp_set_rtc_milisec(uint16_t milliseconds);
 void bsp_set_rtc(uint8_t second, uint8_t minute, uint8_t hour, uint8_t day, uint8_t month, uint8_t year);
 bsp_rtc_t bsp_get_datetime(void);
 const char * bsp_get_rtc_str(void);
 void bsp_print_datetime(void);
-#endif
 
 
 #define bsp_io_putchr  bsp_putchr //bsp_putchr // Console/Debug output

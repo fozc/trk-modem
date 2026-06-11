@@ -54,6 +54,7 @@
 #include "iec104_config.h"
 #include "gsm_socket.h"
 #include "bsp.h"
+#include "rtc.h"
 #include "datetime.h"
 
 /* !!! DIKKAT: max 6 hane olabilir !, Fazlasi icin at engine modifiye edilmeli */
@@ -1270,20 +1271,19 @@ int32_t gsm_ntp_cb(void)
 
 					LOG(_GSM_, "NTP: %02d/%02d/%02d %02d:%02d:%02d (tz=%d)",
 						dt.day, dt.month, dt.year, dt.hour, dt.minute, dt.second, tz);
-					bsp_set_rtc(dt.second, dt.minute, dt.hour, dt.day, dt.month, dt.year);
 
-					/* Sync epoch counter so bsp_get_epoch_time() returns
-					 * correct seconds-since-2025 from this point on. */
-					{
-						datetime_t epoch_dt = {0};
-						epoch_dt.date.year   = 2000U + (uint16_t)dt.year;
-						epoch_dt.date.month  = dt.month;
-						epoch_dt.date.day    = dt.day;
-						epoch_dt.time.hour   = dt.hour;
-						epoch_dt.time.minute = dt.minute;
-						epoch_dt.time.second = dt.second;
-						bsp_set_epoch_time(dt_conv_to_epoch(&epoch_dt));
-					}
+					/* Single entry point: updates software RTC, hardware RTC and
+					 * the epoch counter so all time views stay consistent. */
+					rtc_t new_time = {
+						.millisec = 0U,
+						.second   = dt.second,
+						.minute   = dt.minute,
+						.hour     = dt.hour,
+						.day      = dt.day,
+						.month    = dt.month,
+						.year     = dt.year,
+					};
+					rtc_sync(&new_time);
 				}
 
 			}
@@ -2658,22 +2658,18 @@ int32_t gsm_CCLK_cb(void)
 									ptr += 3;
 									if(str_to_int(ptr, 2, &dt.second, 2, 0))
 									{
-										bsp_set_rtc(dt.second, dt.minute, dt.hour, dt.day, dt.month, dt.year);
-
-										/* Sync epoch counter */
-										datetime_t epoch_dt = {0};
-										epoch_dt.date.year   = 2000U + (uint16_t)dt.year;
-										epoch_dt.date.month  = dt.month;
-										epoch_dt.date.day    = dt.day;
-										epoch_dt.time.hour   = dt.hour;
-										epoch_dt.time.minute = dt.minute;
-										epoch_dt.time.second = dt.second;
-										bsp_set_epoch_time(dt_conv_to_epoch(&epoch_dt));
-
-										//if(rtc_set_datatime(&dt))
-										{
-											//rtc_set_update_source(RTC_UPDATE_SOURCE_GSM);
-										}
+										/* Single entry point: updates software RTC,
+										 * hardware RTC and the epoch counter. */
+										rtc_t new_time = {
+											.millisec = 0U,
+											.second   = dt.second,
+											.minute   = dt.minute,
+											.hour     = dt.hour,
+											.day      = dt.day,
+											.month    = dt.month,
+											.year     = dt.year,
+										};
+										rtc_sync(&new_time);
 									}
 								}
 							}

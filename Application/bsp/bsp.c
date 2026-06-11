@@ -36,14 +36,9 @@ void bsp_tick_handler(void)
 
 	clock_tick();
 
-
-#ifdef USE_SOFTWARE_RTC
 	void bsp_rtc_process(void);
 	bsp_rtc_process();
-#endif
 }
-
-#ifdef USE_SOFTWARE_RTC
 
 static bsp_rtc_t rtc = {0, 0, 0, 0, 1, 1, 26};
 
@@ -122,8 +117,6 @@ void bsp_print_datetime(void)
 	xprintf("%02d/%02d/%02d %02d:%02d:%02d:%03d ", rtc.year, rtc.month,
 			rtc.day, rtc.hour, rtc.minute, rtc.second, rtc.millisec);
 }
-
-#endif
 
 uint32_t bsp_get_run_time(void)
 {

@@ -49,12 +49,6 @@ bool time_has_elapsed(uint32_t start_time, uint32_t duration)
     return time_get_elapsed(start_time) >= duration;
 }
 
-unix_time_t time_get_unix(void)
-{
-	//TODO: Replace with RTC time if available
-	return system_ticks;
-}
-
 
 
 

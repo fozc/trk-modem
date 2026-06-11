@@ -12,6 +12,7 @@
 #include "breaker.h"
 #include "time_service.h"
 #include "bsp.h"
+#include "rtc.h"
 #include "iec104_util.h"
 #include "fault_log.h"
 #include "iec104_config.h"
@@ -681,10 +682,18 @@ void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)
 
     last_clock_sync_time = pkt->frame.c_cs_na_1.timestamp;
 
-    /* Decode CP56Time2a to BSP RTC and set the system clock */
-    const bsp_rtc_t rtc = cp56time2a_to_rtc(timestamp);
-    bsp_set_rtc(rtc.second, rtc.minute, rtc.hour, rtc.day, rtc.month, rtc.year);
-    bsp_set_rtc_milisec(rtc.millisec);
+    /* Decode CP56Time2a and apply to software RTC, hardware RTC and epoch. */
+    const bsp_rtc_t decoded = cp56time2a_to_rtc(timestamp);
+    const rtc_t new_time = {
+        .millisec = decoded.millisec,
+        .second   = decoded.second,
+        .minute   = decoded.minute,
+        .hour     = decoded.hour,
+        .day      = decoded.day,
+        .month    = decoded.month,
+        .year     = decoded.year,
+    };
+    rtc_sync(&new_time);
 }
 
 
