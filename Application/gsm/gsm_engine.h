@@ -552,5 +552,7 @@ uint8_t   gsm_get_signal_quality4G(void);
 
 const socket_si_info_t *gsm_get_si_info(uint8_t conn_id);
 
+bool gsm_cusd_parse_phone_number(const char *msg);
+
 
 #endif /* GSM_ENGINE_H_ */

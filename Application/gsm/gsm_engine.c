@@ -1440,49 +1440,75 @@ int32_t gsm_sgact_get_cb(void)
 	return at_res;
 }
 
+/**
+ * @brief Parse a "+CUSD: 2" subscriber-number response and persist the
+ *        phone number if it changed.
+ *
+ * Handles the USSD result whether it arrives inline (AT callback) or as
+ * an unsolicited result code (URC).  Expected formats of the number:
+ *   turkcell -> 05529533502",15
+ *   avea     -> *0552 953 35 02",15
+ *
+ * @param[in] msg  Null-terminated buffer containing the "+CUSD:" line.
+ *
+ * @return true if a "+CUSD: 2" response with a phone number was parsed.
+ */
+bool gsm_cusd_parse_phone_number(const char *msg)
+{
+	if(msg == NULL)
+	{
+		return false;
+	}
+
+	const char *ptr = strstr(msg, "+CUSD: 2"); /* USSD mesaji basarili ise */
+	if(ptr == NULL)
+	{
+		return false;
+	}
+
+	ptr = strstr(msg, "05");
+	if(ptr == NULL)
+	{
+		return false;
+	}
+
+	phone_number_t new_number = {0};
+	phone_number_t prev_number = {0};
+
+	modem_config_get_simcard_phone_number(&prev_number);
+
+	ptr++; /* 0 atlandi */
+	for(int i = 0; i < 10; i++)
+	{
+		if(is_digit(*ptr)){
+			new_number.number[i] = *ptr;
+		}
+		else{
+			break;
+		}
+
+		ptr++;
+		if(*ptr == ' '){ /* whitespace atla, sadece bir tane olabilir */
+			ptr++;
+		}
+	}
+
+	if(memcmp(new_number.number, prev_number.number, 10) != 0) /* Sim kart no degismis mi ? */
+	{
+		LOG(_GSM_, "Yeni Simn: %s Eski: %s", new_number.number, prev_number.number);
+		modem_config_set_simcard_phone_number(&new_number);
+		gsm_log_modem_event_with_arg(ELOG_GSM_EVENT_SIMCARD_CHANGED, &new_number, sizeof(new_number));
+	}
+
+	return true;
+}
+
 int32_t gsm_cusd_cb(void)
 {
 	int32_t at_res = gsm_at_response_ready();
 	if(at_res == GSM_RESPONSE_OK)
 	{
-		char *ptr = strstr((const char *)rx.buff, "+CUSD: 2"); /*USSD mesaji basarili ise */
-		if(ptr != NULL)
-		{
-			/* avea     -> *0552 953 35 02",15
-			 * turkcell ->  05529533502",15
-			 *
-			 */
-			ptr = strstr((const char *)rx.buff, "05");
-			if(ptr != NULL)
-			{
-				phone_number_t new_number, prev_number = {};
-
-				modem_config_get_simcard_phone_number(&prev_number);
-
-				ptr++; /* 0 atlandi */
-				for(int i = 0; i < 10; i++)
-				{
-					if(is_digit(*ptr)){
-						new_number.number[i] = *ptr;
-					}
-					else{
-						break;
-					}
-
-					ptr++;
-					if(*ptr == ' '){ /* whitespace atla, sadece bir tane olabilir */
-						ptr++;
-					}
-				}
-
-				if(memcmp(new_number.number, prev_number.number, 10) != 0) /* Sim kart no degismis mi ? */
-				{
-					LOG(_GSM_, "Yeni Simn: %s Eski: %s", new_number.number, prev_number.number);
-					modem_config_set_simcard_phone_number(&new_number);
-					gsm_log_modem_event_with_arg(ELOG_GSM_EVENT_SIMCARD_CHANGED, &new_number, sizeof(new_number));
-				}
-			}
-		}
+		(void)gsm_cusd_parse_phone_number((const char *)rx.buff);
 	}
 	else
 	{

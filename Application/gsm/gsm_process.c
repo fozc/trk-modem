@@ -237,6 +237,22 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		return;
 	}
 
+	ptr = strstr((char *)msg, "+CUSD:");
+	if(ptr != NULL)
+	{
+		/* USSD yaniti (abone numarasi) bazi sebekelerde komut yanitiyla
+		 * birlikte degil, asenkron URC olarak gelir. Numarayi buradan ayikla. */
+		if(gsm_cusd_parse_phone_number((const char *)msg))
+		{
+			GSM_LOG_INF_C(XCOLOR_YELLOW, "URC: CUSD abone numarasi alindi.\r\n");
+		}
+		else
+		{
+			GSM_LOG_WRN("URC: CUSD yaniti islenemedi.\r\n");
+		}
+		return;
+	}
+
 	GSM_LOG_INF_C(XCOLOR_YELLOW, "URC not handled [%s]\r\n", msg);
 }
 
