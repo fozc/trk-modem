@@ -36,6 +36,7 @@
 #include "digital_input.h"
 
 #include "rf_dummy.h"
+#include "rf_process.h"
 
 /* -----------------------------------------------------------------------
  *  LED hardware test — compile with -DLED_TEST to enable.
@@ -424,6 +425,9 @@ __attribute__ ((noreturn)) void app_main(void)
 	gsm_process_contiki_init();
 
 	digital_input_init();
+
+	/* TODO: source the RF SCP device address from configuration. */
+	rf_process_init(1U);
 
 
 	fault_log_init();

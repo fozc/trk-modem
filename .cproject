@@ -68,6 +68,7 @@
 									<listOptionValue builtIn="false" value="../Application/web-server"/>
 									<listOptionValue builtIn="false" value="../Application/rf"/>
 									<listOptionValue builtIn="false" value="../Application/app_ipc"/>
+									<listOptionValue builtIn="false" value="../Application/libscp"/>
 									<listOptionValue builtIn="false" value="../libefw"/>
 								</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1929398088" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
@@ -167,6 +168,7 @@
 									<listOptionValue builtIn="false" value="../Application/web-server"/>
 									<listOptionValue builtIn="false" value="../Application/rf"/>
 									<listOptionValue builtIn="false" value="../Application/app_ipc"/>
+									<listOptionValue builtIn="false" value="../Application/libscp"/>
 									<listOptionValue builtIn="false" value="../libefw"/>
 								</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1395675095" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>

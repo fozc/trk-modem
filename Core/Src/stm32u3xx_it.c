@@ -22,6 +22,7 @@
 #include "stm32u3xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "rf_process.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -294,7 +295,27 @@ void USART1_IRQHandler(void)
 void USART3_IRQHandler(void)
 {
   /* USER CODE BEGIN USART3_IRQn 0 */
+	uint32_t isrflags = READ_REG(USART3->ISR);
+	uint32_t cr1its   = READ_REG(USART3->CR1);
 
+	/* --- Error flags: clear unconditionally --- */
+	if (LL_USART_IsActiveFlag_PE(USART3))  { LL_USART_ClearFlag_PE(USART3);  }
+	if (LL_USART_IsActiveFlag_FE(USART3))  { LL_USART_ClearFlag_FE(USART3);  }
+	if (LL_USART_IsActiveFlag_NE(USART3))  { LL_USART_ClearFlag_NE(USART3);  }
+	if (LL_USART_IsActiveFlag_RTO(USART3)) { LL_USART_ClearFlag_RTO(USART3); }
+	if (LL_USART_IsActiveFlag_ORE(USART3)) { LL_USART_ClearFlag_ORE(USART3); }
+
+	/* --- RF module RX --- */
+	if (LL_USART_IsActiveFlag_RXNE_RXFNE(USART3)
+		&& (cr1its & USART_CR1_RXNEIE_RXFNEIE))
+	{
+		uint8_t rx_byte = LL_USART_ReceiveData8(USART3);
+
+		if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
+		{
+			rf_rx_interrupt_handler(rx_byte);
+		}
+	}
   /* USER CODE END USART3_IRQn 0 */
   /* USER CODE BEGIN USART3_IRQn 1 */
 
@@ -307,7 +328,28 @@ void USART3_IRQHandler(void)
 void UART4_IRQHandler(void)
 {
   /* USER CODE BEGIN UART4_IRQn 0 */
+	uint32_t isrflags = READ_REG(UART4->ISR);
+	uint32_t cr1its   = READ_REG(UART4->CR1);
 
+	/* --- Error flags: clear unconditionally --- */
+	if (LL_USART_IsActiveFlag_PE(UART4))  { LL_USART_ClearFlag_PE(UART4);  }
+	if (LL_USART_IsActiveFlag_FE(UART4))  { LL_USART_ClearFlag_FE(UART4);  }
+	if (LL_USART_IsActiveFlag_NE(UART4))  { LL_USART_ClearFlag_NE(UART4);  }
+	if (LL_USART_IsActiveFlag_RTO(UART4)) { LL_USART_ClearFlag_RTO(UART4); }
+	if (LL_USART_IsActiveFlag_ORE(UART4)) { LL_USART_ClearFlag_ORE(UART4); }
+
+	/* --- RF module RX --- */
+	if (LL_USART_IsActiveFlag_RXNE_RXFNE(UART4)
+		&& (cr1its & USART_CR1_RXNEIE_RXFNEIE))
+	{
+		uint8_t rx_byte = LL_USART_ReceiveData8(UART4);
+
+		if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
+		{
+
+		}
+	}
+  return;
   /* USER CODE END UART4_IRQn 0 */
   HAL_UART_IRQHandler(&huart4);
   /* USER CODE BEGIN UART4_IRQn 1 */
