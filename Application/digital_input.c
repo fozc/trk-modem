@@ -14,6 +14,8 @@
 #include "debouncer.h"
 #include "contiki.h"
 #include "console_logger.h"
+#include "bsp.h"
+#include "nvram.h"
 
 /* ======================================================================
  *  Configuration
@@ -24,6 +26,23 @@
 
 /** Number of consistent samples required to change state (~150 ms). */
 #define DIN_DEBOUNCE_COUNT  5U
+
+/* ----------------------------------------------------------------------
+ *  USER_RESET_SW press-duration thresholds (decided on release)
+ *  - held <  RESET           : too short    -> ignored
+ *  - RESET <= held <  NVRAM  : MCU reset
+ *  - NVRAM <= held <  OTHER  : NVRAM factory reset + reset
+ *  - held >= OTHER           : reserved     -> log only
+ * -------------------------------------------------------------------- */
+
+/** MCU-reset threshold: 3 s. */
+#define USER_RESET_RESET_TICKS  ((clock_time_t)((uint32_t)CLOCK_SECOND * 3U))
+
+/** NVRAM factory-reset threshold: 15 s. */
+#define USER_RESET_NVRAM_TICKS  ((clock_time_t)((uint32_t)CLOCK_SECOND * 15U))
+
+/** Reserved-action threshold: 10 s. */
+#define USER_RESET_OTHER_TICKS  ((clock_time_t)((uint32_t)CLOCK_SECOND * 10U))
 
 /* ======================================================================
  *  Pin map — indexed by din_channel_t / dip_sw_channel_t
@@ -49,12 +68,21 @@ static const din_pin_map_t s_dip_map[DIP_SW_COUNT] =
     [DIP_SW_2] = { DIP_SW2_GPIO, DIP_SW2_PIN },
 };
 
+static const din_pin_map_t s_btn_map =
+{
+    USER_RESET_SW_GPIO, USER_RESET_SW_PIN
+};
+
 /* ======================================================================
  *  Module state
  * ====================================================================== */
 
 static debouncer_t s_din_db[DIN_CH_COUNT];
 static debouncer_t s_dip_db[DIP_SW_COUNT];
+static debouncer_t s_btn_db;
+
+/** Tick captured on the USER_RESET_SW press edge. */
+static clock_time_t s_btn_press_start;
 
 /* ======================================================================
  *  Internal helpers
@@ -89,6 +117,44 @@ static void sample_pins(debouncer_t *p_db,
     {
         uint8_t raw = gpio_read_pin(p_map[i].port, p_map[i].pin);
         (void)debouncer(&p_db[i], raw);
+    }
+}
+
+/**
+ * @brief Execute the USER_RESET_SW action selected by press duration.
+ *
+ * @param[in] held_ticks  Debounced press duration in Contiki ticks.
+ *
+ * @note The MCU-reset and NVRAM-reset actions do not return (they reset
+ *       the MCU).
+ */
+static void user_reset_dispatch(clock_time_t held_ticks)
+{
+    if (held_ticks >= USER_RESET_OTHER_TICKS)
+    {
+        /* >= 15 s: reserved for a future action. */
+        CSLOG("[USER_RST] >=15s press -> log only\r\n");
+    }
+    else if (held_ticks >= USER_RESET_NVRAM_TICKS)
+    {
+        /* >= 10 s: restore factory defaults, then reboot. */
+        CSLOG("[USER_RST] >=10s press -> NVRAM factory reset\r\n");
+        nvram_set_defaults();
+        (void)nvram_sync(true);
+        bsp_system_reset();
+        /* Never reached. */
+    }
+    else if (held_ticks >= USER_RESET_RESET_TICKS)
+    {
+        /* >= 3 s: plain MCU reset. */
+        CSLOG("[USER_RST] >=3s press -> MCU reset\r\n");
+        bsp_system_reset();
+        /* Never reached. */
+    }
+    else
+    {
+        /* < 3 s: too short, ignore. */
+        CSLOG("[USER_RST] press too short -> ignored\r\n");
     }
 }
 
@@ -143,6 +209,25 @@ PROCESS_THREAD(digital_input_process, ev, data)
                       (on != 0U) ? "ON" : "OFF");
             }
         }
+
+        /* Sample the user reset button and act on its press duration. */
+        {
+            uint8_t raw = gpio_read_pin(s_btn_map.port, s_btn_map.pin);
+            if (debouncer(&s_btn_db, raw) != 0)
+            {
+                /* Active-LOW: stable 0 = pressed. */
+                if (s_btn_db.stable_state == 0U)
+                {
+                    s_btn_press_start = clock_time();
+                }
+                else
+                {
+                    clock_time_t held =
+                        (clock_time_t)(clock_time() - s_btn_press_start);
+                    user_reset_dispatch(held);
+                }
+            }
+        }
     }
 
     PROCESS_END();
@@ -156,6 +241,7 @@ void digital_input_init(void)
 {
     seed_debouncers(s_din_db, s_din_map, (uint8_t)DIN_CH_COUNT);
     seed_debouncers(s_dip_db, s_dip_map, (uint8_t)DIP_SW_COUNT);
+    seed_debouncers(&s_btn_db, &s_btn_map, 1U);
 
     process_start(&digital_input_process, NULL);
 }

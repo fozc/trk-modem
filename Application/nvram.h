@@ -49,7 +49,7 @@
 int nvram_init(void);
 void nvram_dump(void);
 int nvram_sync(bool crc_no_check);
-
+void nvram_set_defaults(void);
 
 void nvram_set_cslog_enabled(bool enabled);
 bool nvram_is_cslog_enabled(void);
