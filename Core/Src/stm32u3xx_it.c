@@ -23,6 +23,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "rf_process.h"
+#include "modbus_rtu_slave.h"
+#include "modbus_process.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -338,7 +340,7 @@ void UART4_IRQHandler(void)
 	if (LL_USART_IsActiveFlag_RTO(UART4)) { LL_USART_ClearFlag_RTO(UART4); }
 	if (LL_USART_IsActiveFlag_ORE(UART4)) { LL_USART_ClearFlag_ORE(UART4); }
 
-	/* --- RF module RX --- */
+	/* --- Modbus RTU RX --- */
 	if (LL_USART_IsActiveFlag_RXNE_RXFNE(UART4)
 		&& (cr1its & USART_CR1_RXNEIE_RXFNEIE))
 	{
@@ -346,9 +348,20 @@ void UART4_IRQHandler(void)
 
 		if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
 		{
-
+			/* Dumb RX: just buffer the byte (and, in software mode, wake the
+			 * Modbus process). All framing and parsing happen in the main loop. */
+			modbus_process_isr_rx_byte(rx_byte);
 		}
 	}
+
+#if (MODBUS_USE_HW_RTO == 1)
+	/* --- Modbus RTU frame-end (RX timeout = T3.5 idle gap) --- */
+	if ((isrflags & USART_ISR_RTOF) && (cr1its & USART_CR1_RTOIE))
+	{
+		/* Hardware frame-end: flag the buffered frame and wake the process. */
+		modbus_process_isr_rx_timeout();
+	}
+#endif
   return;
   /* USER CODE END UART4_IRQn 0 */
   HAL_UART_IRQHandler(&huart4);
@@ -363,7 +376,28 @@ void UART4_IRQHandler(void)
 void UART5_IRQHandler(void)
 {
   /* USER CODE BEGIN UART5_IRQn 0 */
+	uint32_t isrflags = READ_REG(UART5->ISR);
+	uint32_t cr1its   = READ_REG(UART5->CR1);
 
+	/* --- Error flags: clear unconditionally --- */
+	if (LL_USART_IsActiveFlag_PE(UART5))  { LL_USART_ClearFlag_PE(UART5);  }
+	if (LL_USART_IsActiveFlag_FE(UART5))  { LL_USART_ClearFlag_FE(UART5);  }
+	if (LL_USART_IsActiveFlag_NE(UART5))  { LL_USART_ClearFlag_NE(UART5);  }
+	if (LL_USART_IsActiveFlag_RTO(UART5)) { LL_USART_ClearFlag_RTO(UART5); }
+	if (LL_USART_IsActiveFlag_ORE(UART5)) { LL_USART_ClearFlag_ORE(UART5); }
+
+	/* --- RX (unused) --- */
+	if (LL_USART_IsActiveFlag_RXNE_RXFNE(UART5)
+		&& (cr1its & USART_CR1_RXNEIE_RXFNEIE))
+	{
+		uint8_t rx_byte = LL_USART_ReceiveData8(UART5);
+
+		if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
+		{
+			(void)rx_byte;
+		}
+	}
+  return;
   /* USER CODE END UART5_IRQn 0 */
   HAL_UART_IRQHandler(&huart5);
   /* USER CODE BEGIN UART5_IRQn 1 */

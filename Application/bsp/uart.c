@@ -78,6 +78,56 @@ void uart_set_rx_interrupt(uart_port_t port, uart_rx_interrupt_state_t state)
     }
 }
 
+void uart_send_buffer_rs485(uart_port_t port,
+                            gpio_port_t de_gpio,
+                            gpio_pin_t  de_pin,
+                            bool        active_high,
+                            const uint8_t *buffer,
+                            uint16_t len)
+{
+    USART_TypeDef *uart = get_uart_instance(port);
+    if ((uart == NULL) || (buffer == NULL)) {
+        return;
+    }
+
+    const uint8_t assert_level   = active_high ? GPIO_HIGH : GPIO_LOW;
+    const uint8_t deassert_level = active_high ? GPIO_LOW  : GPIO_HIGH;
+
+    /* Assert driver-enable so the transceiver drives the bus. */
+    gpio_set_pin(de_gpio, de_pin, assert_level);
+
+    /* Clear any stale transmission-complete flag before starting. */
+    LL_USART_ClearFlag_TC(uart);
+
+    for (uint16_t i = 0U; i < len; i++) {
+        LL_USART_TransmitData8(uart, buffer[i]);
+        while (!LL_USART_IsActiveFlag_TXE_TXFNF(uart)) {
+            /* Wait until the data register can accept the next byte. */
+        }
+    }
+
+    /* Wait for the last byte to be fully shifted out before releasing the bus. */
+    while (!LL_USART_IsActiveFlag_TC(uart)) {
+        /* Wait for transmission-complete. */
+    }
+
+    /* Release the bus so other nodes (and our own receiver) can drive it. */
+    gpio_set_pin(de_gpio, de_pin, deassert_level);
+}
+
+void uart_set_rx_timeout(uart_port_t port, uint32_t bit_times)
+{
+    USART_TypeDef *uart = get_uart_instance(port);
+    if (uart == NULL) {
+        return;
+    }
+
+    LL_USART_SetRxTimeout(uart, bit_times);
+    LL_USART_EnableRxTimeout(uart);
+    LL_USART_ClearFlag_RTO(uart);
+    LL_USART_EnableIT_RTO(uart);
+}
+
 /* Donanıma Özel Fonksiyonlar */
 
 #ifdef USART1
