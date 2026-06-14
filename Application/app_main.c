@@ -363,7 +363,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	autostart_start(autostart_processes);
 
 	nvram_init();
-	rf_dummy_init();
+	//rf_dummy_init();
 
 	CSLOG("Troika Smart Breaker Modem Started\r\n");
 	CSLOG("Board started...Compile Time [%s %s]\r\n", __TIME__, __DATE__);

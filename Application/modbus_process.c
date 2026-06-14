@@ -6,21 +6,57 @@
  */
 #include "modbus_process.h"
 #include "modbus_rtu_slave.h"
+#include "modbus_config.h"
+#include "breaker.h"
 #include "bsp.h"
 #include "nvram.h"
 #include "uart.h"
 #include "gpio_defs.h"
 #include "contiki.h"
 #include "contiki_process.h"
+#include <string.h>
 
-static float current_1 = 312.5f;      // Ampere
-static float current_2 = 300.75f;      // Ampere
-static float current_3 = 15.3f;      // Ampere
-static uint16_t switch1_state = 1;   // ON
-static uint16_t switch2_state = 0;   // OFF
-static uint16_t switch3_state = 2;   // Unknown
-static uint16_t switch4_state = 1;   // ON
-static uint16_t switch_control = 0;  // OFF
+/*
+ * Per-line register address space. Each power line owns a contiguous block of
+ * MODBUS_LINE_ADDR_STRIDE registers starting at MODBUS_HOLDING_REG_BASE. Any
+ * address that falls inside this space but does not map to a live field reads
+ * back as 0 (inactive lines and reserved gaps); addresses outside the space
+ * raise an illegal-address exception. See MODBUS_REGISTER_MAP.md.
+ */
+#define MODBUS_LINE_ADDR_STRIDE   100U
+#define MODBUS_LINE_ADDR_FIRST    MODBUS_HOLDING_REG_BASE
+#define MODBUS_LINE_ADDR_LAST     ((uint16_t)(MODBUS_HOLDING_REG_BASE + \
+                                   (MAX_POWER_LINE_COUNT * MODBUS_LINE_ADDR_STRIDE) - 1U))
+
+/*
+ * Per-line field resolution model (compile-time selectable):
+ *   1 (default): fixed address map. The firmware derives each field from the
+ *                line base plus a fixed offset (see MODBUS_REGISTER_MAP.md); the
+ *                per-field addresses stored in NVRAM are ignored. This is the
+ *                industry-standard slave behaviour and guarantees a contiguous,
+ *                bulk-readable block.
+ *   0          : configurable map. Field addresses are taken from NVRAM
+ *                configuration, allowing them to be changed at runtime.
+ */
+#ifndef MODBUS_USE_FIXED_ADDR_MAP
+#define MODBUS_USE_FIXED_ADDR_MAP   1
+#endif
+
+/*
+ * Fixed-map register offsets from the line base (used when
+ * MODBUS_USE_FIXED_ADDR_MAP == 1). FLOAT32 fields occupy two registers per phase
+ * (high word first, ABCD); UINT16 fields occupy one. Live block spans offsets
+ * 0..26; offsets 27..MODBUS_LINE_ADDR_STRIDE-1 are reserved (read back as 0).
+ */
+#define MODBUS_OFF_ARIZA_AKIMI      0U    /* FLOAT32 x3 phases -> 0..5   */
+#define MODBUS_OFF_ANLIK_AKIM       6U    /* FLOAT32 x3 phases -> 6..11  */
+#define MODBUS_OFF_ARIZA_SURESI     12U   /* UINT16  x3 phases -> 12..14 */
+#define MODBUS_OFF_ARIZA_KALICIMI   15U   /* UINT16  x3 phases -> 15..17 */
+#define MODBUS_OFF_ENERJI_VARYOK    18U   /* UINT16  x3 phases -> 18..20 */
+#define MODBUS_OFF_NOMINAL_VARYOK   21U   /* UINT16  x3 phases -> 21..23 */
+#define MODBUS_OFF_RF_VARYOK        24U   /* UINT16  x3 phases -> 24..26 */
+#define MODBUS_OFF_LIVE_END         27U   /* first reserved offset       */
+#define MODBUS_FLOAT_REG_PER_PHASE  2U    /* registers per FLOAT32 phase */
 
 /* Modbus slave instance for the UART4 bus. Kept private so the ISR stays trivial. */
 static modbus_slave_t s_modbus;
@@ -44,31 +80,247 @@ static void uart_write(const uint8_t *data, uint16_t len)
 }
 
 /**
- * @brief Convert float to two uint16_t registers (Modbus format)
+ * @brief Extract one 16-bit word of an IEEE-754 float for Modbus transmission.
+ *
+ * 32-bit values are transmitted big-endian, high word first (ABCD): the field's
+ * configured address holds the high word and address+1 holds the low word.
+ *
+ * @param[in] value          Measurement value (e.g. current in amperes).
+ * @param[in] want_high_word  true for the high word, false for the low word.
+ * @return The selected 16-bit word.
  */
-static void float_to_registers(float value, uint16_t *reg_high, uint16_t *reg_low)
+static uint16_t modbus_float_to_word(float value, bool want_high_word)
 {
-    uint32_t temp;
-    memcpy(&temp, &value, sizeof(float));
-    *reg_high = (uint16_t)(temp >> 16);
-    *reg_low = (uint16_t)(temp & 0xFFFF);
+    uint32_t bits = 0U;
+    (void)memcpy(&bits, &value, sizeof(bits));
+
+    if (want_high_word) {
+        return (uint16_t)(bits >> 16);
+    }
+
+    return (uint16_t)(bits & 0xFFFFU);
 }
 
-/* Demo holding-register map (logical references, 40000-based). */
-#define MODBUS_REG_CURRENT1_HI      40000U
-#define MODBUS_REG_CURRENT1_LO      40001U
-#define MODBUS_REG_CURRENT2_HI      40002U
-#define MODBUS_REG_CURRENT2_LO      40003U
-#define MODBUS_REG_CURRENT3_HI      40004U
-#define MODBUS_REG_CURRENT3_LO      40005U
-#define MODBUS_REG_SWITCH1_STATE    40006U
-#define MODBUS_REG_SWITCH2_STATE    40007U
-#define MODBUS_REG_SWITCH3_STATE    40008U
-#define MODBUS_REG_SWITCH4_STATE    40009U
-#define MODBUS_REG_SWITCH_CONTROL   40010U
+/**
+ * @brief Encode a fault duration (milliseconds) into one holding register.
+ *
+ * The duration is an unsigned 16-bit millisecond count. Negative inputs clamp
+ * to 0 and values beyond UINT16_MAX clamp to UINT16_MAX.
+ *
+ * @param[in] value_ms Fault duration in milliseconds.
+ * @return The clamped UINT16 register value.
+ */
+static uint16_t modbus_encode_duration_ms(float value_ms)
+{
+    if (value_ms <= 0.0f) {
+        return 0U;
+    }
 
-#define MODBUS_SWITCH_OFF           0U
-#define MODBUS_SWITCH_ON            1U
+    float rounded = value_ms + 0.5f;
+
+    if (rounded >= (float)UINT16_MAX) {
+        return (uint16_t)UINT16_MAX;
+    }
+
+    return (uint16_t)rounded;
+}
+
+/**
+ * @brief Test whether an address lies within the per-line register space.
+ * @param[in] reg_addr Requested holding-register address.
+ * @return true if the address is inside [first .. last] line space.
+ */
+static bool modbus_addr_in_line_space(uint16_t reg_addr)
+{
+    return (reg_addr >= MODBUS_LINE_ADDR_FIRST) && (reg_addr <= MODBUS_LINE_ADDR_LAST);
+}
+
+#if (MODBUS_USE_FIXED_ADDR_MAP == 1)
+
+/**
+ * @brief Resolve a fixed-map register offset to a live phase measurement.
+ *
+ * Maps an offset within a line block (0..MODBUS_LINE_ADDR_STRIDE-1) to the
+ * matching phase field. FLOAT32 fields span two registers (high word first).
+ *
+ * @param[in]  p_data  Live feeder data for the resolved line.
+ * @param[in]  offset  Register offset from the line base.
+ * @param[out] p_value Destination for the resolved value on a match.
+ * @return true if the offset maps to a live field, false for reserved gaps.
+ */
+static bool modbus_resolve_offset(const feeder_data_t *p_data,
+                                  uint16_t offset,
+                                  uint16_t *p_value)
+{
+    bool matched = true;
+
+    if (offset < MODBUS_OFF_ANLIK_AKIM) 
+    {
+        uint16_t rel = offset - MODBUS_OFF_ARIZA_AKIMI;
+        uint8_t  ph  = (uint8_t)(rel / MODBUS_FLOAT_REG_PER_PHASE);
+        bool     high = ((rel % MODBUS_FLOAT_REG_PER_PHASE) == 0U);
+        *p_value = modbus_float_to_word(p_data->phase[ph].ariza_akimi, high);
+    } 
+    else if (offset < MODBUS_OFF_ARIZA_SURESI) 
+    {
+        uint16_t rel = offset - MODBUS_OFF_ANLIK_AKIM;
+        uint8_t  ph  = (uint8_t)(rel / MODBUS_FLOAT_REG_PER_PHASE);
+        bool     high = ((rel % MODBUS_FLOAT_REG_PER_PHASE) == 0U);
+        *p_value = modbus_float_to_word(p_data->phase[ph].anlik_akim, high);
+    } 
+    else if (offset < MODBUS_OFF_ARIZA_KALICIMI) 
+    {
+        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ARIZA_SURESI);
+        *p_value = modbus_encode_duration_ms(p_data->phase[ph].ariza_suresi);
+    } 
+    else if (offset < MODBUS_OFF_ENERJI_VARYOK) 
+    {
+        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ARIZA_KALICIMI);
+        *p_value = (uint16_t)p_data->phase[ph].ariza_kalicimi;
+    } 
+    else if (offset < MODBUS_OFF_NOMINAL_VARYOK) 
+    {
+        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ENERJI_VARYOK);
+        *p_value = (uint16_t)p_data->phase[ph].enerji_varyok;
+    } 
+    else if (offset < MODBUS_OFF_RF_VARYOK) 
+    {
+        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_NOMINAL_VARYOK);
+        *p_value = (uint16_t)p_data->phase[ph].nominal_akim_varyok;
+    } 
+    else if (offset < MODBUS_OFF_LIVE_END) 
+    {
+        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_RF_VARYOK);
+        *p_value = (uint16_t)p_data->phase[ph].rf_haberlesme_varyok;
+    } 
+    else 
+    {
+        /* Reserved gap (fault-log blocks, not yet mapped). */
+        matched = false;
+    }
+
+    return matched;
+}
+
+/**
+ * @brief Resolve a holding-register address using the fixed address map.
+ *
+ * The line index and offset are derived from the address arithmetically; the
+ * per-field NVRAM addresses are not consulted. Addresses on inactive lines or
+ * reserved gaps do not match (the caller reads them back as 0).
+ *
+ * @param[in]  reg_addr Requested holding-register address.
+ * @param[out] p_value  Destination for the resolved value on a match.
+ * @return true if the address mapped to a live value, false otherwise.
+ */
+static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
+{
+    if (!modbus_addr_in_line_space(reg_addr)) {
+        return false;
+    }
+
+    uint16_t rel    = (uint16_t)(reg_addr - MODBUS_LINE_ADDR_FIRST);
+    uint32_t line   = (uint32_t)(rel / MODBUS_LINE_ADDR_STRIDE);
+    uint16_t offset = (uint16_t)(rel % MODBUS_LINE_ADDR_STRIDE);
+
+    if (!modbus_is_line_in_use(line)) {
+        return false;
+    }
+
+    const feeder_data_t *p_data = breaker_get_feeder_data(line);
+
+    if (p_data == NULL) {
+        return false;
+    }
+
+    return modbus_resolve_offset(p_data, offset, p_value);
+}
+
+#else /* MODBUS_USE_FIXED_ADDR_MAP == 0 : configurable NVRAM address map */
+
+/**
+ * @brief Resolve a holding-register address to a live per-line measurement.
+ *
+ * Walks every in-use power line and phase, comparing the requested address
+ * against the per-field Modbus addresses held in configuration. Float fields
+ * (fault/instant current) occupy two registers: the configured address carries
+ * the high word and address+1 the low word (big-endian, ABCD). Fault duration is
+ * an UINT16 millisecond count; the remaining status fields are passed through.
+ * A configured address of 0 is treated as unmapped and never matches.
+ *
+ * @param[in]  reg_addr Requested holding-register address.
+ * @param[out] p_value  Destination for the resolved value on a match.
+ * @return true if the address mapped to a live value, false otherwise.
+ */
+static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
+{
+    for (uint32_t line = 0U; line < MAX_POWER_LINE_COUNT; line++) {
+        if (!modbus_is_line_in_use(line)) {
+            continue;
+        }
+
+        const modbus_line_config_t *p_cfg = modbus_get_line_config(line);
+        const feeder_data_t        *p_data = breaker_get_feeder_data(line);
+
+        if ((p_cfg == NULL) || (p_data == NULL)) {
+            continue;
+        }
+
+        for (uint8_t ph = 0U; ph < PHASE_MAX; ph++) {
+            const phase_data_t *p_phase = &p_data->phase[ph];
+
+            /* ariza_akimi: FLOAT32 across two registers (high at addr, low at addr+1). */
+            if (p_cfg->ariza_akimi[ph] != 0U) {
+                if (reg_addr == p_cfg->ariza_akimi[ph]) {
+                    *p_value = modbus_float_to_word(p_phase->ariza_akimi, true);
+                    return true;
+                }
+                if (reg_addr == (uint16_t)(p_cfg->ariza_akimi[ph] + 1U)) {
+                    *p_value = modbus_float_to_word(p_phase->ariza_akimi, false);
+                    return true;
+                }
+            }
+
+            /* anlik_akim: FLOAT32 across two registers (high at addr, low at addr+1). */
+            if (p_cfg->anlik_akim[ph] != 0U) {
+                if (reg_addr == p_cfg->anlik_akim[ph]) {
+                    *p_value = modbus_float_to_word(p_phase->anlik_akim, true);
+                    return true;
+                }
+                if (reg_addr == (uint16_t)(p_cfg->anlik_akim[ph] + 1U)) {
+                    *p_value = modbus_float_to_word(p_phase->anlik_akim, false);
+                    return true;
+                }
+            }
+
+            /* ariza_suresi: UINT16 millisecond count (single register). */
+            if ((p_cfg->ariza_suresi[ph] != 0U) && (reg_addr == p_cfg->ariza_suresi[ph])) {
+                *p_value = modbus_encode_duration_ms(p_phase->ariza_suresi);
+                return true;
+            }
+            if ((p_cfg->ariza_kalicimi[ph] != 0U) && (reg_addr == p_cfg->ariza_kalicimi[ph])) {
+                *p_value = (uint16_t)p_phase->ariza_kalicimi;
+                return true;
+            }
+            if ((p_cfg->enerji_varyok[ph] != 0U) && (reg_addr == p_cfg->enerji_varyok[ph])) {
+                *p_value = (uint16_t)p_phase->enerji_varyok;
+                return true;
+            }
+            if ((p_cfg->nominal_akim_varyok[ph] != 0U) && (reg_addr == p_cfg->nominal_akim_varyok[ph])) {
+                *p_value = (uint16_t)p_phase->nominal_akim_varyok;
+                return true;
+            }
+            if ((p_cfg->rf_haberlesme_varyok[ph] != 0U) && (reg_addr == p_cfg->rf_haberlesme_varyok[ph])) {
+                *p_value = (uint16_t)p_phase->rf_haberlesme_varyok;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+#endif /* MODBUS_USE_FIXED_ADDR_MAP */
 
 /*
  * RX-timeout (T3.5) idle gap in bit-times. Modbus RTU fixes T3.5 at 1.75 ms for
@@ -76,8 +328,8 @@ static void float_to_registers(float value, uint16_t *reg_high, uint16_t *reg_lo
  */
 #define MODBUS_RTO_BIT_TIMES        202U
 
-/* Demo-data refresh period (ticks). 1 Contiki tick == 1 ms on this platform. */
-#define MODBUS_DEMO_UPDATE_TICKS    500U
+/* Value written to addr_modem_reset that triggers a system reset. */
+#define MODBUS_MODEM_RESET_TRIGGER  1U
 
 /* Inter-frame gap re-poll period (ticks) for software frame-end detection. */
 #define MODBUS_RX_GAP_TICKS         MODBUS_TIMEOUT_MS
@@ -90,66 +342,36 @@ static void float_to_registers(float value, uint16_t *reg_high, uint16_t *reg_lo
  */
 static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_value)
 {
-    uint16_t reg_high;
-    uint16_t reg_low;
-
-    switch (reg_addr) {
-        case MODBUS_REG_CURRENT1_HI:
-            float_to_registers(current_1, &reg_high, &reg_low);
-            *p_value = reg_high;
-            break;
-
-        case MODBUS_REG_CURRENT1_LO:
-            float_to_registers(current_1, &reg_high, &reg_low);
-            *p_value = reg_low;
-            break;
-
-        case MODBUS_REG_CURRENT2_HI:
-            float_to_registers(current_2, &reg_high, &reg_low);
-            *p_value = reg_high;
-            break;
-
-        case MODBUS_REG_CURRENT2_LO:
-            float_to_registers(current_2, &reg_high, &reg_low);
-            *p_value = reg_low;
-            break;
-
-        case MODBUS_REG_CURRENT3_HI:
-            float_to_registers(current_3, &reg_high, &reg_low);
-            *p_value = reg_high;
-            break;
-
-        case MODBUS_REG_CURRENT3_LO:
-            float_to_registers(current_3, &reg_high, &reg_low);
-            *p_value = reg_low;
-            break;
-
-        case MODBUS_REG_SWITCH1_STATE:
-            *p_value = switch1_state;
-            break;
-
-        case MODBUS_REG_SWITCH2_STATE:
-            *p_value = switch2_state;
-            break;
-
-        case MODBUS_REG_SWITCH3_STATE:
-            *p_value = switch3_state;
-            break;
-
-        case MODBUS_REG_SWITCH4_STATE:
-            *p_value = switch4_state;
-            break;
-
-        case MODBUS_REG_SWITCH_CONTROL:
-            *p_value = switch_control;
-            break;
-
-        default:
-            /* Unmapped register - signal an exception to the master. */
-            return MODBUS_REG_ERR_ADDRESS;
+    /* Global status/command registers. */
+    if (reg_addr == modbus_config_get_addr_aku_uyarisi()) {
+        /* TODO: bind to the real battery-warning source once available. */
+        *p_value = 23U;
+        return MODBUS_REG_OK;
     }
 
-    return MODBUS_REG_OK;
+    if (reg_addr == modbus_config_get_addr_modem_reset()) {
+        /* Write-only command register: reads back as 0. */
+        *p_value = 0U;
+        return MODBUS_REG_OK;
+    }
+
+    /* Per-line measurement registers (addresses come from configuration). */
+    if (modbus_resolve_register(reg_addr, p_value)) {
+        return MODBUS_REG_OK;
+    }
+
+    /*
+     * Address sits in the per-line space but maps to no live field: this covers
+     * inactive lines and reserved gaps (e.g. fault-log blocks). Read back as 0 so
+     * a master can read a whole line block in one window without an exception.
+     */
+    if (modbus_addr_in_line_space(reg_addr)) {
+        *p_value = 0U;
+        return MODBUS_REG_OK;
+    }
+
+    /* Unmapped register - signal an exception to the master. */
+    return MODBUS_REG_ERR_ADDRESS;
 }
 
 /**
@@ -163,54 +385,27 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
 {
     CSLOG("FC06 Request - Addr: %d, Value: 0x%04X (%d)\n", reg_addr, value, value);
 
-    /* Only the switch-control register is writable. */
-    if (reg_addr != MODBUS_REG_SWITCH_CONTROL) {
+    /* Only the modem-reset command register is writable. */
+    if (reg_addr != modbus_config_get_addr_modem_reset()) {
         CSLOG("  -> Register is read-only!\n");
         return MODBUS_REG_ERR_ADDRESS;
     }
 
-    if ((value != MODBUS_SWITCH_OFF) && (value != MODBUS_SWITCH_ON)) {
-        CSLOG("  -> Invalid value! Only 0 (OFF) or 1 (ON) allowed\n");
+    if (value != MODBUS_MODEM_RESET_TRIGGER) {
+        CSLOG("  -> Invalid value! Only 1 triggers a reset\n");
         return MODBUS_REG_ERR_VALUE;
     }
 
-    switch_control = value;
-    CSLOG("  -> Switch Control set to: %s\n", (value != MODBUS_SWITCH_OFF) ? "ON" : "OFF");
+    CSLOG("  -> Modem reset requested via Modbus\n");
+    bsp_system_reset();
 
-    // TODO: Drive the actual relay/switch hardware here.
-
+    /* bsp_system_reset() does not return; kept for a well-formed signature. */
     return MODBUS_REG_OK;
-}
-
-/**
- * @brief Simulate current readings (for demo)
- */
-void update_current_readings(void)
-{
-    static uint32_t last_update = 0;
-    uint32_t now = millis();
-
-    // Update every 1000ms (millis() resolution is 1 ms)
-    if (now - last_update >= 1000U) {
-        // Simulate changing currents (realistic values)
-        current_1 = 10.0f + (now % 100) / 10.0f;   // 10.0 - 20.0 A
-        current_2 = 5.0f + (now % 50) / 10.0f;     // 5.0 - 10.0 A
-        current_3 = 15.0f + (now % 80) / 10.0f;    // 15.0 - 23.0 A
-
-        // Simulate switch states (cycle through states)
-        switch1_state = (now / 2000) % 3;  // 0, 1, 2
-        switch2_state = (now / 3000) % 3;  // 0, 1, 2
-        switch3_state = (now / 4000) % 3;  // 0, 1, 2
-        switch4_state = (now / 5000) % 3;  // 0, 1, 2
-
-        last_update = now;
-    }
 }
 
 PROCESS(modbus_process, "modbus_process");
 PROCESS_THREAD(modbus_process, ev, data)
 {
-	static struct etimer demo_timer;
 	static struct etimer rx_timer;     /* Re-poll timer for the inter-frame gap. */
 
 	PROCESS_BEGIN();
@@ -233,8 +428,7 @@ PROCESS_THREAD(modbus_process, ev, data)
 	// Event-driven: the RX interrupt buffers bytes and wakes this process, which
 	// then frames and parses them. A short rx_timer re-poll catches the
 	// inter-frame idle gap that ends variable / unknown-length frames in software
-	// mode. The demo_timer only paces the simulated demo data.
-	etimer_set(&demo_timer, MODBUS_DEMO_UPDATE_TICKS);
+	// mode.
 	while (1)
 	{
 		PROCESS_WAIT_EVENT();
@@ -250,13 +444,6 @@ PROCESS_THREAD(modbus_process, ev, data)
 				// Frame still arriving: re-poll soon to detect its end.
 				etimer_set(&rx_timer, MODBUS_RX_GAP_TICKS);
 			}
-		}
-
-		if (etimer_expired(&demo_timer))
-		{
-			// Refresh the simulated current readings and switch states.
-			update_current_readings();
-			etimer_reset(&demo_timer);
 		}
 	}
 

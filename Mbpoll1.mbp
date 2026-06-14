@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ModbusPoll>
+   <FileSchema r="0" c="1"/>
+   <Version major="13" minor="2" patch="1" build="2558"/>
+   <dpi>96</dpi>
+   <WP left="0" right="467" top="0" bottom="770" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+   <ScanRate>1000</ScanRate>
+   <SlaveID>23</SlaveID>
+   <Enable>1</Enable>
+   <StopOnError>0</StopOnError>
+   <OneBased>0</OneBased>
+   <RowsDialog>4</RowsDialog>
+   <HideNames>0</HideNames>
+   <HexMode>0</HexMode>
+   <DisplayAddr>0</DisplayAddr>
+   <ColCount>2</ColCount>
+   <RowCount>27</RowCount>
+   <ColumnWidth>
+      <CW>1410</CW>
+      <CW>900</CW>
+   </ColumnWidth>
+   <RowHight>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+   </RowHight>
+   <ScrollPosV>0</ScrollPosV>
+   <ScrollPosH>0</ScrollPosH>
+   <FocusRow>27</FocusRow>
+   <FocusCol>1</FocusCol>
+   <LogText>
+      <Eachread>0</Eachread>
+      <Rate>1</Rate>
+      <LogChangedOnly>0</LogChangedOnly>
+      <LogErrors>0</LogErrors>
+      <LogErrorsOnly>0</LogErrorsOnly>
+      <LogAddress>1</LogAddress>
+      <LogDate>0</LogDate>
+      <TDelimiter>0</TDelimiter>
+      <LogMs>1</LogMs>
+      <Delimiter>0</Delimiter>
+      <AutoStart>0</AutoStart>
+      <Flush>0</Flush>
+      <Append>0</Append>
+      <NewLogFileAtMidnight>0</NewLogFileAtMidnight>
+      <InsertHeader>0</InsertHeader>
+      <NameCellsInTopRow>0</NameCellsInTopRow>
+      <PollDefinition>0</PollDefinition>
+      <LogName>Type log name here</LogName>
+      <FileName></FileName>
+   </LogText>
+   <LogExcel>
+      <Eachread>1</Eachread>
+      <Rate>1</Rate>
+      <StopAfter>1000</StopAfter>
+      <LogChangedOnly>0</LogChangedOnly>
+      <InsertHeader>1</InsertHeader>
+      <NameCellsInTopRow>1</NameCellsInTopRow>
+      <PollDefinition>1</PollDefinition>
+      <LogName>Type log name here</LogName>
+   </LogExcel>
+   <Data>
+      <Function>3</Function>
+      <Address>0</Address>
+      <Quantity>27</Quantity>
+      <EnronMode>0</EnronMode>
+      <Formats>
+         <F f="5" v="0,5"/>
+         <F f="16" v="--"/>
+         <F f="5" v="1,5"/>
+         <F f="16" v="--"/>
+         <F f="5" v="2,5"/>
+         <F f="16" v="--"/>
+         <F f="5" v="0,5"/>
+         <F f="16" v="--"/>
+         <F f="5" v="1,5"/>
+         <F f="16" v="--"/>
+         <F f="5" v="2,5"/>
+         <F f="16" v="--"/>
+         <F f="1" v="1"/>
+         <F f="1" v="2"/>
+         <F f="1" v="3"/>
+         <F f="1" v="1"/>
+         <F f="1" v="1"/>
+         <F f="1" v="1"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="1"/>
+         <F f="1" v="1"/>
+         <F f="1" v="1"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+      </Formats>
+      <Bytes>
+         <B>0</B>
+         <B>63</B>
+         <B>0</B>
+         <B>0</B>
+         <B>192</B>
+         <B>63</B>
+         <B>0</B>
+         <B>0</B>
+         <B>32</B>
+         <B>64</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>63</B>
+         <B>0</B>
+         <B>0</B>
+         <B>192</B>
+         <B>63</B>
+         <B>0</B>
+         <B>0</B>
+         <B>32</B>
+         <B>64</B>
+         <B>0</B>
+         <B>0</B>
+         <B>1</B>
+         <B>0</B>
+         <B>2</B>
+         <B>0</B>
+         <B>3</B>
+         <B>0</B>
+         <B>1</B>
+         <B>0</B>
+         <B>1</B>
+         <B>0</B>
+         <B>1</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>1</B>
+         <B>0</B>
+         <B>1</B>
+         <B>0</B>
+         <B>1</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+      </Bytes>
+      <CellData>
+         <Cell idx="0">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L1 Arıza Akimi</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="2">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L2 Arıza Akimi</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="4">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L3 Arıza Akimi</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="6">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L1 Anlık Akim</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="8">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L2 Anlık Akim</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="10">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L3 Anlık Akim</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="12">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L1 Arıza Süresi</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="13">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L2 Arıza Süresi</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="14">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L3 Arıza Süresi</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="15">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L1 Arıza Türü</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="16">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L2 Arıza Türü</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="17">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L3 Arıza Türü</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="18">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L1 Enerji Durumu</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="19">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L2 Enerji Durumu</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="20">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L3 Enerji Durumu</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="21">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L1 Nominal Akım</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="22">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L2 Nominal Akım</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="23">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L3 Nominal Akım</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="24">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L1 RF Haberleşme</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="25">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L2 RF Haberleşme</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="26">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Hat1 L3 RF Haberleşme</Name>
+            <Font used="false"/>
+         </Cell>
+      </CellData>
+      <Scales/>
+      <ValueNames/>
+      <ChartSeries/>
+      <BinNames/>
+   </Data>
+</ModbusPoll>

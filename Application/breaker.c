@@ -5,9 +5,12 @@
  *      Author: fatih
  */
 #include <stdio.h>
+#include <string.h>
 #include "breaker.h"
 #include "nvram.h"
 #include "bsp.h"
+#include "shell.h"
+#include "utils.h"
  
 #define breaker (nvram_get_breaker_rw())
 
@@ -21,9 +24,92 @@ static inline bool is_ioa_equal(ioa_3byte_t ioa1, ioa_3byte_t ioa2)
             ioa1.ioa_mid == ioa2.ioa_mid);
 }
 
+/* ------------------------------------------------------------------ */
+/*  Shell command: dump a line's L1/L2/L3 phase data                  */
+/* ------------------------------------------------------------------ */
+
+static void breaker_shell_dump_line(uint32_t line_index)
+{
+    const feeder_data_t *p_feeder = breaker_get_feeder_data(line_index);
+    const power_line_t  *p_line   = breaker_get_power_line_by_idx(line_index);
+
+    if ((p_feeder == NULL) || (p_line == NULL)) {
+        CSLOG("[BREAKER] Line %u: no data\r\n", (unsigned)(line_index + 1U));
+        return;
+    }
+
+    CSLOG("[BREAKER] === Line %u (index %u) ===\r\n",
+          (unsigned)(line_index + 1U), (unsigned)line_index);
+    CSLOG("[BREAKER] In use: %s\r\n", p_line->iec104.in_use ? "yes" : "no");
+    CSLOG("[BREAKER] %-22s | %10s | %10s | %10s\r\n",
+          "Field", "L1", "L2", "L3");
+
+    CSLOG("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "ariza_akimi (A)",
+          p_feeder->phase[PHASE_L1].ariza_akimi,
+          p_feeder->phase[PHASE_L2].ariza_akimi,
+          p_feeder->phase[PHASE_L3].ariza_akimi);
+    CSLOG("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "anlik_akim (A)",
+          p_feeder->phase[PHASE_L1].anlik_akim,
+          p_feeder->phase[PHASE_L2].anlik_akim,
+          p_feeder->phase[PHASE_L3].anlik_akim);
+    CSLOG("[BREAKER] %-22s | %10.0f | %10.0f | %10.0f\r\n", "ariza_suresi (ms)",
+          p_feeder->phase[PHASE_L1].ariza_suresi,
+          p_feeder->phase[PHASE_L2].ariza_suresi,
+          p_feeder->phase[PHASE_L3].ariza_suresi);
+    CSLOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "ariza_kalicimi",
+          (unsigned)p_feeder->phase[PHASE_L1].ariza_kalicimi,
+          (unsigned)p_feeder->phase[PHASE_L2].ariza_kalicimi,
+          (unsigned)p_feeder->phase[PHASE_L3].ariza_kalicimi);
+    CSLOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "enerji_varyok",
+          (unsigned)p_feeder->phase[PHASE_L1].enerji_varyok,
+          (unsigned)p_feeder->phase[PHASE_L2].enerji_varyok,
+          (unsigned)p_feeder->phase[PHASE_L3].enerji_varyok);
+    CSLOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "nominal_akim_varyok",
+          (unsigned)p_feeder->phase[PHASE_L1].nominal_akim_varyok,
+          (unsigned)p_feeder->phase[PHASE_L2].nominal_akim_varyok,
+          (unsigned)p_feeder->phase[PHASE_L3].nominal_akim_varyok);
+    CSLOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "rf_haberlesme_varyok",
+          (unsigned)p_feeder->phase[PHASE_L1].rf_haberlesme_varyok,
+          (unsigned)p_feeder->phase[PHASE_L2].rf_haberlesme_varyok,
+          (unsigned)p_feeder->phase[PHASE_L3].rf_haberlesme_varyok);
+}
+
+static int breaker_shell_handler(int argc, char *argv[])
+{
+    if (argc < 2) {
+        CSLOG("Usage: breaker <line 1..%u | all>\r\n", (unsigned)MAX_POWER_LINE_COUNT);
+        return -1;
+    }
+
+    if (strcmp(argv[1], "all") == 0) {
+        for (uint32_t i = 0U; i < MAX_POWER_LINE_COUNT; i++) {
+            breaker_shell_dump_line(i);
+        }
+        return 0;
+    }
+
+    int line_no = xstrtoi(argv[1]);
+
+    if ((line_no < 1) || (line_no > (int)MAX_POWER_LINE_COUNT)) {
+        CSLOG("[BREAKER] Invalid line %d (valid: 1..%u or 'all')\r\n",
+              line_no, (unsigned)MAX_POWER_LINE_COUNT);
+        return -1;
+    }
+
+    breaker_shell_dump_line((uint32_t)(line_no - 1));
+    return 0;
+}
+
 void breaker_init(void)
 {
- 
+    shell_register_command(&(shell_cmd_t){
+        .cmd   = "breaker",
+        .desc  = "Dump a power line's L1/L2/L3 phase data\r\n"
+                 "\tbreaker <line 1..8> - show feeder values for one line\r\n"
+                 "\tbreaker all         - show feeder values for all lines",
+        .level = SHELL_LVL_USER,
+        .func  = breaker_shell_handler
+    });
 }
 
 uint8_t breaker_get_active_powerline_count(void)

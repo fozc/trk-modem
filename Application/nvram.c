@@ -124,20 +124,31 @@ void nvram_set_defaults(void)
             nvram.breaker.line[i].iec104.permanent_fault = iec104_make_ioa_3byte(base_ioa + 200 + (ph * 10));
         }
         
-        // Initialize Modbus line config with default register addresses
+        // Initialize Modbus line config with default register addresses.
+        // Contiguous map (see MODBUS_REGISTER_MAP.md): FLOAT32 fields take two
+        // registers (the configured address is the high word, address+1 the low
+        // word), UINT16 fields take one. Per-line stride is 100.
+        //   ariza_akimi  R/S/T -> base + 0 / 2 / 4   (FLOAT32)
+        //   anlik_akim   R/S/T -> base + 6 / 8 / 10  (FLOAT32)
+        //   ariza_suresi R/S/T -> base + 12 / 13 / 14 (UINT16, ms)
+        //   ariza_kalicimi      -> base + 15 / 16 / 17 (UINT16)
+        //   enerji_varyok       -> base + 18 / 19 / 20 (UINT16)
+        //   nominal_akim_varyok -> base + 21 / 22 / 23 (UINT16)
+        //   rf_haberlesme_varyok-> base + 24 / 25 / 26 (UINT16)
         uint16_t base_addr = 40000 + (i * 100);  // Line 0: 40000, Line 1: 40100, etc.
         for(int ph = 0; ph < PHASE_MAX; ++ph) 
 		{
-            nvram.breaker.line[i].modbus.ariza_akimi[ph] = base_addr + ph;
-            nvram.breaker.line[i].modbus.ariza_suresi[ph] = base_addr + 10 + ph;
-            nvram.breaker.line[i].modbus.ariza_kalicimi[ph] = base_addr + 20 + ph;
-            nvram.breaker.line[i].modbus.anlik_akim[ph] = base_addr + 30 + ph;
-            nvram.breaker.line[i].modbus.enerji_varyok[ph] = base_addr + 40 + ph;
-            nvram.breaker.line[i].modbus.nominal_akim_varyok[ph] = base_addr + 50 + ph;
-            nvram.breaker.line[i].modbus.rf_haberlesme_varyok[ph] = base_addr + 60 + ph;
+            nvram.breaker.line[i].modbus.ariza_akimi[ph] = base_addr + 0 + (ph * 2);
+            nvram.breaker.line[i].modbus.anlik_akim[ph] = base_addr + 6 + (ph * 2);
+            nvram.breaker.line[i].modbus.ariza_suresi[ph] = base_addr + 12 + ph;
+            nvram.breaker.line[i].modbus.ariza_kalicimi[ph] = base_addr + 15 + ph;
+            nvram.breaker.line[i].modbus.enerji_varyok[ph] = base_addr + 18 + ph;
+            nvram.breaker.line[i].modbus.nominal_akim_varyok[ph] = base_addr + 21 + ph;
+            nvram.breaker.line[i].modbus.rf_haberlesme_varyok[ph] = base_addr + 24 + ph;
 
-            nvram.breaker.line[i].modbus.temporary_fault[ph].ariza_akimi = base_addr + 100 + (ph * 10);
-            nvram.breaker.line[i].modbus.temporary_fault[ph].ariza_suresi = base_addr + 200 + (ph * 10);
+            // Fault-log blocks are reserved (offsets 27..99) and not yet mapped.
+            nvram.breaker.line[i].modbus.temporary_fault[ph].ariza_akimi = 0;
+            nvram.breaker.line[i].modbus.temporary_fault[ph].ariza_suresi = 0;
         }
     }
 
