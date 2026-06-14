@@ -70,13 +70,14 @@ static void uart_write(const uint8_t *data, uint16_t len)
                            true,
                            data,
                            len);
-
+#if 0
     // Debug print
     CSLOG_NODT("\r\nTX[%d]: ", len);
     for (uint16_t i = 0; i < len; i++) {
     	CSLOG_NODT("%02X ", data[i]);
     }
     CSLOG_NODT("\r\n");
+#endif
 }
 
 /**

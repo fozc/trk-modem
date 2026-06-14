@@ -34,41 +34,41 @@ static void breaker_shell_dump_line(uint32_t line_index)
     const power_line_t  *p_line   = breaker_get_power_line_by_idx(line_index);
 
     if ((p_feeder == NULL) || (p_line == NULL)) {
-        CSLOG("[BREAKER] Line %u: no data\r\n", (unsigned)(line_index + 1U));
+        CSLOG_WARN("[BREAKER] Line %u: no data\r\n", (unsigned)(line_index + 1U));
         return;
     }
 
-    CSLOG("[BREAKER] === Line %u (index %u) ===\r\n",
+    CCSLOG_NODTCSLOG("[BREAKER] === Line %u (index %u) ===\r\n",
           (unsigned)(line_index + 1U), (unsigned)line_index);
-    CSLOG("[BREAKER] In use: %s\r\n", p_line->iec104.in_use ? "yes" : "no");
-    CSLOG("[BREAKER] %-22s | %10s | %10s | %10s\r\n",
+    CCSLOG_NODT("[BREAKER] In use: %s\r\n", p_line->iec104.in_use ? "yes" : "no");
+    CCSLOG_NODT("[BREAKER] %-22s | %10s | %10s | %10s\r\n",
           "Field", "L1", "L2", "L3");
 
-    CSLOG("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "ariza_akimi (A)",
+    CCSLOG_NODT("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "ariza_akimi (A)",
           p_feeder->phase[PHASE_L1].ariza_akimi,
           p_feeder->phase[PHASE_L2].ariza_akimi,
           p_feeder->phase[PHASE_L3].ariza_akimi);
-    CSLOG("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "anlik_akim (A)",
+    CCSLOG_NODT("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "anlik_akim (A)",
           p_feeder->phase[PHASE_L1].anlik_akim,
           p_feeder->phase[PHASE_L2].anlik_akim,
           p_feeder->phase[PHASE_L3].anlik_akim);
-    CSLOG("[BREAKER] %-22s | %10.0f | %10.0f | %10.0f\r\n", "ariza_suresi (ms)",
+    CCSLOG_NODT("[BREAKER] %-22s | %10.0f | %10.0f | %10.0f\r\n", "ariza_suresi (ms)",
           p_feeder->phase[PHASE_L1].ariza_suresi,
           p_feeder->phase[PHASE_L2].ariza_suresi,
           p_feeder->phase[PHASE_L3].ariza_suresi);
-    CSLOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "ariza_kalicimi",
+    CCSLOG_NODT("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "ariza_kalicimi",
           (unsigned)p_feeder->phase[PHASE_L1].ariza_kalicimi,
           (unsigned)p_feeder->phase[PHASE_L2].ariza_kalicimi,
           (unsigned)p_feeder->phase[PHASE_L3].ariza_kalicimi);
-    CSLOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "enerji_varyok",
+    CCSLOG_NODT("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "enerji_varyok",
           (unsigned)p_feeder->phase[PHASE_L1].enerji_varyok,
           (unsigned)p_feeder->phase[PHASE_L2].enerji_varyok,
           (unsigned)p_feeder->phase[PHASE_L3].enerji_varyok);
-    CSLOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "nominal_akim_varyok",
+    CCSLOG_NODT("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "nominal_akim_varyok",
           (unsigned)p_feeder->phase[PHASE_L1].nominal_akim_varyok,
           (unsigned)p_feeder->phase[PHASE_L2].nominal_akim_varyok,
           (unsigned)p_feeder->phase[PHASE_L3].nominal_akim_varyok);
-    CSLOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "rf_haberlesme_varyok",
+    CCSLOG_NODT("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "rf_haberlesme_varyok",
           (unsigned)p_feeder->phase[PHASE_L1].rf_haberlesme_varyok,
           (unsigned)p_feeder->phase[PHASE_L2].rf_haberlesme_varyok,
           (unsigned)p_feeder->phase[PHASE_L3].rf_haberlesme_varyok);

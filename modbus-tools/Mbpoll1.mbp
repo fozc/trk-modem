@@ -51,7 +51,7 @@
    <ScrollPosV>0</ScrollPosV>
    <ScrollPosH>0</ScrollPosH>
    <FocusRow>27</FocusRow>
-   <FocusCol>1</FocusCol>
+   <FocusCol>2</FocusCol>
    <LogText>
       <Eachread>0</Eachread>
       <Rate>1</Rate>
@@ -113,9 +113,9 @@
          <F f="1" v="1"/>
          <F f="1" v="1"/>
          <F f="1" v="1"/>
-         <F f="1" v="0"/>
-         <F f="1" v="0"/>
-         <F f="1" v="0"/>
+         <F f="1" v="Baglanti Yok"/>
+         <F f="1" v="Baglanti Yok"/>
+         <F f="1" v="Baglanti Yok"/>
       </Formats>
       <Bytes>
          <B>0</B>
@@ -302,7 +302,20 @@
          </Cell>
       </CellData>
       <Scales/>
-      <ValueNames/>
+      <ValueNames>
+         <Names idx="24" enabled="1">
+            <Name value="0" name="Baglanti Yok"/>
+            <Name value="1" name="Baglanti Var"/>
+         </Names>
+         <Names idx="25" enabled="1">
+            <Name value="0" name="Baglanti Yok"/>
+            <Name value="1" name="Baglanti Var"/>
+         </Names>
+         <Names idx="26" enabled="1">
+            <Name value="0" name="Baglanti Yok"/>
+            <Name value="1" name="Baglanti Var"/>
+         </Names>
+      </ValueNames>
       <ChartSeries/>
       <BinNames/>
    </Data>
