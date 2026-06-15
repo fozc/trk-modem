@@ -175,7 +175,7 @@ typedef struct
     modbus_read_reg_callback_t  read_callback;  /**< FC03 read hook.         */
     modbus_write_reg_callback_t write_callback; /**< FC06 write hook.        */
 
-    volatile uint8_t last_exception_code;       /**< Last exception sent (0=none). */
+    uint8_t last_exception_code;                /**< Last exception sent (0=none). */
 } modbus_slave_t;
 
 /**
