@@ -15,6 +15,7 @@
 #include "gpio_defs.h"
 #include "contiki.h"
 #include "contiki_process.h"
+#include "main.h"
 #include <string.h>
 
 /*
@@ -62,15 +63,71 @@
 /* Modbus slave instance for the UART4 bus. Kept private so the ISR stays trivial. */
 static modbus_slave_t s_modbus;
 
+/*
+ * Modbus response transmit method (compile-time selectable):
+ *   1 (default): non-blocking DMA transfer. The response is copied to a
+ *                persistent buffer and shifted out by GPDMA1; the RS-485 bus is
+ *                released from the UART4 transmission-complete callback.
+ *   0          : blocking, byte-by-byte transmit (pre-DMA method). Holds the
+ *                cooperative scheduler until the final byte has been shifted
+ *                out, then releases the bus inline.
+ */
+#ifndef MODBUS_TX_USE_DMA
+#define MODBUS_TX_USE_DMA   1
+#endif
+
+#if (MODBUS_TX_USE_DMA != 0)
+/* UART4 HAL handle (defined in main.c) used for the DMA response transmit. */
+extern UART_HandleTypeDef huart4;
+
+/*
+ * Persistent transmit buffer for DMA. The Modbus core builds each response on
+ * its own stack and returns immediately after calling the write hook, so the
+ * bytes must be copied somewhere that outlives the call for the background DMA
+ * transfer to read from.
+ */
+static uint8_t s_modbus_tx_dma_buf[MODBUS_BUFFER_SIZE];
+
+/* Set while a DMA response is in flight on the RS-485 bus. Cleared from the
+ * UART4 transmission-complete callback once the last byte has been shifted out. */
+static volatile bool s_modbus_tx_busy = false;
+#endif /* MODBUS_TX_USE_DMA */
+
 static void uart_write(const uint8_t *data, uint16_t len)
 {
-    /* Half-duplex RS-485: drive the bus via the MODBUS_OE pin (active high). */
-    uart_send_buffer_rs485(UART_4,
-                           MODBUS_OE_BSP_GPIO,
-                           MODBUS_OE_BSP_PIN,
-                           true,
-                           data,
-                           len);
+#if (MODBUS_TX_USE_DMA != 0)
+    if ((data == NULL) || (len == 0U) || (len > sizeof(s_modbus_tx_dma_buf))) {
+        return;
+    }
+
+    /* Modbus is strictly request/response, so a previous response has always
+     * left the bus before the next request is parsed: s_modbus_tx_busy is a
+     * pure safety guard. If a transfer is somehow still in flight, drop this
+     * response rather than block the cooperative scheduler. */
+    if (s_modbus_tx_busy) {
+        CSLOG_ERR("Modbus TX busy, dropping response\r\n");
+        return;
+    }
+
+    (void)memcpy(s_modbus_tx_dma_buf, data, len);
+    s_modbus_tx_busy = true;
+
+    /* Half-duplex RS-485: drive the bus via the MODBUS_OE pin (active high).
+     * The frame is sent by DMA; the OE pin is released from
+     * modbus_process_tx_complete_callback() once the final byte has been
+     * shifted out. */
+    gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_HIGH);
+
+    /* Clear any stale transmission-complete flag: HAL enables TCIE at the end
+     * of the DMA transfer without clearing TC first, so a leftover flag would
+     * fire the completion interrupt prematurely. */
+    LL_USART_ClearFlag_TC(UART4);
+
+    if (HAL_UART_Transmit_DMA(&huart4, s_modbus_tx_dma_buf, len) != HAL_OK) {
+        /* Failed to start: release the bus and clear the busy flag. */
+        gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
+        s_modbus_tx_busy = false;
+    }
 #if 0
     // Debug print
     CSLOG_NODT("\r\nTX[%d]: ", len);
@@ -79,6 +136,26 @@ static void uart_write(const uint8_t *data, uint16_t len)
     }
     CSLOG_NODT("\r\n");
 #endif
+#else  /* Blocking transmit (pre-DMA method). */
+    if ((data == NULL) || (len == 0U)) {
+        return;
+    }
+
+    /* Half-duplex RS-485: assert MODBUS_OE (active high), shift every byte out
+     * inline and release the bus once the final byte has left the shifter. */
+    uart_send_buffer_rs485(UART_4, MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN,
+                           true, data, len);
+#endif /* MODBUS_TX_USE_DMA */
+}
+
+void modbus_process_tx_complete_callback(void)
+{
+#if (MODBUS_TX_USE_DMA != 0)
+    /* The last byte has been fully shifted out: release the RS-485 bus so other
+     * nodes (and our own receiver) can drive it, then allow the next response. */
+    gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
+    s_modbus_tx_busy = false;
+#endif /* MODBUS_TX_USE_DMA */
 }
 
 /**

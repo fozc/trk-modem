@@ -50,6 +50,7 @@ I2C_HandleTypeDef hi2c3;
 UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart1;
+DMA_HandleTypeDef handle_GPDMA1_Channel2;
 DMA_HandleTypeDef handle_GPDMA1_Channel1;
 
 RTC_HandleTypeDef hrtc;
@@ -90,6 +91,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     {
     	void at_engine_dma_tx_complete_callback(void);
     	at_engine_dma_tx_complete_callback();
+    }
+    else if (huart->Instance == UART4)
+    {
+    	void modbus_process_tx_complete_callback(void);
+    	modbus_process_tx_complete_callback();
     }
 }
 /* USER CODE END 0 */
@@ -345,6 +351,8 @@ static void MX_GPDMA1_Init(void)
     HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
     HAL_NVIC_SetPriority(GPDMA1_Channel1_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(GPDMA1_Channel1_IRQn);
+    HAL_NVIC_SetPriority(GPDMA1_Channel2_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(GPDMA1_Channel2_IRQn);
 
   /* USER CODE BEGIN GPDMA1_Init 1 */
 

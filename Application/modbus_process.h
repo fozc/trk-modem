@@ -30,6 +30,16 @@ void modbus_process_poll(void);
  */
 void modbus_process_isr_rx_byte(uint8_t byte);
 
+/**
+ * @brief Release the RS-485 bus after a DMA response has been transmitted.
+ *
+ * Called from HAL_UART_TxCpltCallback() (UART4 branch) once the final response
+ * byte has been shifted out. De-asserts the MODBUS_OE driver-enable pin and
+ * frees the transmit buffer for the next response.
+ * @note ISR-safe.
+ */
+void modbus_process_tx_complete_callback(void);
+
 #if (MODBUS_USE_HW_RTO == 1)
 /**
  * @brief Signal a hardware frame-end - call from the UART RX-timeout ISR.
