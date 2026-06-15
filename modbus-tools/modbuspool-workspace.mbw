@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ModbusPoll>
+   <FileSchema r="0" c="1"/>
+   <Version major="13" minor="2" patch="1" build="2558"/>
+   <dpi>96</dpi>
+   <Connection>
+      <Connection>0</Connection>
+      <Port>4</Port>
+      <BaudRate>115200</BaudRate>
+      <DataBits>8</DataBits>
+      <Parity>0</Parity>
+      <StopBits>1</StopBits>
+      <EnableCustomBaudRate>0</EnableCustomBaudRate>
+      <CustomBaudRate>9600</CustomBaudRate>
+      <DSR>0</DSR>
+      <CTS>0</CTS>
+      <DTR>1</DTR>
+      <RTSToggle>1</RTSToggle>
+      <CLRRTSDelay>1</CLRRTSDelay>
+      <RemoveEcho>0</RemoveEcho>
+      <!--RTU = 0, ASCII = 1-->
+      <Mode>0</Mode>
+      <ResponeTimeout>1000</ResponeTimeout>
+      <DelayBetweenPolls>20</DelayBetweenPolls>
+      <IPAddress>127.0.0.1</IPAddress>
+      <ServerPort>502</ServerPort>
+      <ConnectionTimeout>3000</ConnectionTimeout>
+      <IPv6>0</IPv6>
+      <KeyFileName></KeyFileName>
+      <CRTFileName></CRTFileName>
+      <PortOpen>1</PortOpen>
+   </Connection>
+   <WP left="330" right="1384" top="112" bottom="1184" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+   <ChartData Action="0" xAxisMax="100" yAxisLeftMin="0" yAxisLeftMax="100" yAxisRightMin="0" yAxisRightMax="100" LegendPosition="0" ShowLegend="0" TimeUnit="0" ChartTitle="" ChartTitleVisible="0" WhiteBackGround="0"/>
+   <Series>
+      <Serie rightAxis="0" offset="0" color_r="0" color_g="255" color_b="0" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="255" color_g="255" color_b="0" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="0" color_g="0" color_b="255" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="255" color_g="0" color_b="0" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="0" color_g="255" color_b="255" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="255" color_g="0" color_b="255" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="192" color_g="192" color_b="192" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="128" color_g="128" color_b="128" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="128" color_g="0" color_b="0" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="128" color_g="128" color_b="0" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="0" color_g="128" color_b="0" name=""/>
+      <Serie rightAxis="0" offset="0" color_r="128" color_g="0" color_b="128" name=""/>
+   </Series>
+   <Documents>
+      <Document>
+         <FilePath>Mbpoll1.mbp</FilePath>
+         <WP left="0" right="277" top="0" bottom="645" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+      </Document>
+      <Document>
+         <FilePath>hat2.mbp</FilePath>
+         <WP left="276" right="548" top="1" bottom="646" ShowCmd="1" MaxPosX="-8" MaxPosY="-31" MinPosX="-1" MinPosY="-1"/>
+      </Document>
+   </Documents>
+</ModbusPoll>

@@ -373,7 +373,7 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
     }
 
     /* Unmapped register - signal an exception to the master. */
-    CSLOG_WARN("MODBUS FC03 hata: tanimsiz adres %u (exception 0x02)\n",
+    CSLOG_WARN("MODBUS FC03 hata: tanimsiz adres %u (exception 0x02)\r\n",
                reg_addr);
     return MODBUS_REG_ERR_ADDRESS;
 }
@@ -387,22 +387,22 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
  */
 static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value)
 {
-    CSLOG("FC06 Request - Addr: %d, Value: 0x%04X (%d)\n", reg_addr, value, value);
+    CSLOG("FC06 Request - Addr: %d, Value: 0x%04X (%d)\r\n", reg_addr, value, value);
 
     /* Only the modem-reset command register is writable. */
     if (reg_addr != modbus_config_get_addr_modem_reset()) {
-        CSLOG_WARN("MODBUS FC06 hata: salt-okunur adres %u (exception 0x02)\n",
+        CSLOG_WARN("MODBUS FC06 hata: salt-okunur adres %u (exception 0x02)\r\n",
                    reg_addr);
         return MODBUS_REG_ERR_ADDRESS;
     }
 
     if (value != MODBUS_MODEM_RESET_TRIGGER) {
-        CSLOG_WARN("MODBUS FC06 hata: gecersiz deger %u (exception 0x03)\n",
+        CSLOG_WARN("MODBUS FC06 hata: gecersiz deger %u (exception 0x03)\r\n",
                    value);
         return MODBUS_REG_ERR_VALUE;
     }
 
-    CSLOG("  -> Modem reset requested via Modbus\n");
+    CSLOG("  -> Modem reset requested via Modbus\r\n");
     bsp_system_reset();
 
     /* bsp_system_reset() does not return; kept for a well-formed signature. */

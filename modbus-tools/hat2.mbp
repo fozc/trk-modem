@@ -3,7 +3,7 @@
    <FileSchema r="0" c="1"/>
    <Version major="13" minor="2" patch="1" build="2558"/>
    <dpi>96</dpi>
-   <WP left="13" right="480" top="2" bottom="772" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+   <WP left="276" right="548" top="1" bottom="646" ShowCmd="1" MaxPosX="-8" MaxPosY="-31" MinPosX="-1" MinPosY="-1"/>
    <ScanRate>1000</ScanRate>
    <SlaveID>23</SlaveID>
    <Enable>1</Enable>
@@ -16,7 +16,7 @@
    <ColCount>2</ColCount>
    <RowCount>27</RowCount>
    <ColumnWidth>
-      <CW>1410</CW>
+      <CW>1300</CW>
       <CW>900</CW>
    </ColumnWidth>
    <RowHight>
@@ -50,7 +50,7 @@
    </RowHight>
    <ScrollPosV>0</ScrollPosV>
    <ScrollPosH>0</ScrollPosH>
-   <FocusRow>6</FocusRow>
+   <FocusRow>24</FocusRow>
    <FocusCol>2</FocusCol>
    <LogText>
       <Eachread>0</Eachread>
@@ -85,68 +85,68 @@
    </LogExcel>
    <Data>
       <Function>3</Function>
-      <Address>0</Address>
+      <Address>100</Address>
       <Quantity>27</Quantity>
       <EnronMode>0</EnronMode>
       <Formats>
-         <F f="5" v="0,5"/>
+         <F f="5" v="10,5"/>
          <F f="16" v="--"/>
-         <F f="5" v="1,5"/>
+         <F f="5" v="11,5"/>
          <F f="16" v="--"/>
-         <F f="5" v="2,5"/>
+         <F f="5" v="12,5"/>
          <F f="16" v="--"/>
-         <F f="5" v="0,5"/>
+         <F f="5" v="10,5"/>
          <F f="16" v="--"/>
-         <F f="5" v="1,5"/>
+         <F f="5" v="11,5"/>
          <F f="16" v="--"/>
-         <F f="5" v="2,5"/>
+         <F f="5" v="12,5"/>
          <F f="16" v="--"/>
-         <F f="1" v="1"/>
-         <F f="1" v="2"/>
-         <F f="1" v="3"/>
-         <F f="1" v="1"/>
-         <F f="1" v="1"/>
-         <F f="1" v="1"/>
-         <F f="1" v="0"/>
-         <F f="1" v="0"/>
-         <F f="1" v="0"/>
-         <F f="1" v="1"/>
-         <F f="1" v="1"/>
-         <F f="1" v="1"/>
-         <F f="1" v="Baglanti Yok"/>
-         <F f="1" v="Baglanti Yok"/>
-         <F f="1" v="Baglanti Yok"/>
+         <F f="0" v="11"/>
+         <F f="0" v="12"/>
+         <F f="0" v="13"/>
+         <F f="0" v="1"/>
+         <F f="0" v="1"/>
+         <F f="0" v="1"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="1"/>
+         <F f="0" v="1"/>
+         <F f="0" v="1"/>
+         <F f="0" v="Baglanti Yok"/>
+         <F f="0" v="Baglanti Yok"/>
+         <F f="0" v="Baglanti Yok"/>
       </Formats>
       <Bytes>
-         <B>0</B>
-         <B>63</B>
-         <B>0</B>
-         <B>0</B>
-         <B>192</B>
-         <B>63</B>
+         <B>40</B>
+         <B>65</B>
          <B>0</B>
          <B>0</B>
-         <B>32</B>
-         <B>64</B>
+         <B>56</B>
+         <B>65</B>
          <B>0</B>
          <B>0</B>
-         <B>0</B>
-         <B>63</B>
-         <B>0</B>
-         <B>0</B>
-         <B>192</B>
-         <B>63</B>
+         <B>72</B>
+         <B>65</B>
          <B>0</B>
          <B>0</B>
-         <B>32</B>
-         <B>64</B>
+         <B>40</B>
+         <B>65</B>
          <B>0</B>
          <B>0</B>
-         <B>1</B>
+         <B>56</B>
+         <B>65</B>
          <B>0</B>
-         <B>2</B>
          <B>0</B>
-         <B>3</B>
+         <B>72</B>
+         <B>65</B>
+         <B>0</B>
+         <B>0</B>
+         <B>11</B>
+         <B>0</B>
+         <B>12</B>
+         <B>0</B>
+         <B>13</B>
          <B>0</B>
          <B>1</B>
          <B>0</B>
@@ -177,127 +177,127 @@
          <Cell idx="0">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Arıza Akimi</Name>
+            <Name>Hat2 L1 Arıza Akimi</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="2">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Arıza Akimi</Name>
+            <Name>Hat2 L2 Arıza Akimi</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="4">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Arıza Akimi</Name>
+            <Name>Hat2 L3 Arıza Akimi</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="6">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Anlık Akim</Name>
+            <Name>Hat2 L1 Anlık Akim</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="8">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Anlık Akim</Name>
+            <Name>Hat2 L2 Anlık Akim</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="10">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Anlık Akim</Name>
+            <Name>Hat2 L3 Anlık Akim</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="12">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Arıza Süresi</Name>
+            <Name>Hat2 L1 Arıza Süresi</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="13">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Arıza Süresi</Name>
+            <Name>Hat2 L2 Arıza Süresi</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="14">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Arıza Süresi</Name>
+            <Name>Hat2 L3 Arıza Süresi</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="15">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Arıza Türü</Name>
+            <Name>Hat2 L1 Arıza Türü</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="16">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Arıza Türü</Name>
+            <Name>Hat2 L2 Arıza Türü</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="17">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Arıza Türü</Name>
+            <Name>Hat2 L3 Arıza Türü</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="18">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Enerji Durumu</Name>
+            <Name>Hat2 L1 Enerji Durumu</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="19">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Enerji Durumu</Name>
+            <Name>Hat2 L2 Enerji Durumu</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="20">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Enerji Durumu</Name>
+            <Name>Hat2 L3 Enerji Durumu</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="21">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Nominal Akım</Name>
+            <Name>Hat2 L1 Nominal Akım</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="22">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Nominal Akım</Name>
+            <Name>Hat2 L2 Nominal Akım</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="23">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Nominal Akım</Name>
+            <Name>Hat2 L3 Nominal Akım</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="24">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 RF Haberleşme</Name>
+            <Name>Hat2 L1 RF Haberleşme</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="25">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 RF Haberleşme</Name>
+            <Name>Hat2 L2 RF Haberleşme</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="26">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 RF Haberleşme</Name>
+            <Name>Hat2 L3 RF Haberleşme</Name>
             <Font used="false"/>
          </Cell>
       </CellData>
