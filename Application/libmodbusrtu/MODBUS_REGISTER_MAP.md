@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.0 |
-| Tarih | 2026-06-13 |
+| Dokuman surumu | 1.1 |
+| Tarih | 2026-06-15 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -270,6 +270,30 @@ Cihaz, gecersiz isteklere Modbus standart exception kodlari ile yanit verir:
 > cihaz tum istek icin `0x02` doner. Bu nedenle okuma pencereleri yukaridaki
 > bitisik blok sinirlari icinde tutulmalidir (orn. Address 0, Quantity 27).
 
+### 8.1 Son Hata Kodu (SonHataKodu)
+
+Cihaz, gonderdigi **son exception kodunu** dahili olarak saklar. Bu deger her
+yeni exception yanitinda guncellenir; basarili istekler degeri **degistirmez**,
+yani alan acilistan bu yana olusan en son hatayi yansitir (otomatik silinmez).
+
+Deger su sekilde gozlenir:
+
+| Arabirim | Alan | Aciklama |
+|---|---|---|
+| Web (HTTP) | `SonHataKodu` (`GET /r?modbusConfigs` JSON) | Son exception kodunu UINT8 olarak doner |
+
+Deger anlamlari, yukaridaki exception kodlari ile aynidir:
+
+| SonHataKodu | Anlam |
+|---|---|
+| 0x00 | Acilistan bu yana hata olusmadi |
+| 0x01 | Son hata: ILLEGAL FUNCTION |
+| 0x02 | Son hata: ILLEGAL DATA ADDRESS |
+| 0x03 | Son hata: ILLEGAL DATA VALUE |
+
+> Not: Bu alan tani/izleme amaclidir; Modbus register haritasinda yer almaz,
+> yalnizca web arabiriminden okunur.
+
 ---
 
 ## 9. Yapilandirilabilir Ayarlar Ozeti
@@ -288,3 +312,4 @@ Cihaz, gecersiz isteklere Modbus standart exception kodlari ile yanit verir:
 | Surum | Tarih | Aciklama |
 |---|---|---|
 | 1.0 | 2026-06-13 | Ilk surum: bitisik float tabanli register haritasi |
+| 1.1 | 2026-06-15 | Son hata kodu (SonHataKodu) takibi ve web arabirimi eklendi (bkz. 8.1) |

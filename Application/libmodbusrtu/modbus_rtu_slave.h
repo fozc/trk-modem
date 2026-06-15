@@ -174,6 +174,8 @@ typedef struct
     modbus_uart_write_t         uart_write;     /**< UART transmit hook.     */
     modbus_read_reg_callback_t  read_callback;  /**< FC03 read hook.         */
     modbus_write_reg_callback_t write_callback; /**< FC06 write hook.        */
+
+    volatile uint8_t last_exception_code;       /**< Last exception sent (0=none). */
 } modbus_slave_t;
 
 /**
@@ -211,6 +213,18 @@ void libmodbusrtu_register_write_callback(modbus_slave_t *p_ctx,
  * @param[in] id    New slave ID (1-247). Out-of-range values are ignored.
  */
 void libmodbusrtu_modbus_set_slave_id(modbus_slave_t *p_ctx, uint8_t id);
+
+/**
+ * @brief Get the most recent Modbus exception code sent by this slave.
+ *
+ * Records the standard exception code (e.g. MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS)
+ * of the last error response. It is never cleared automatically, so it reflects
+ * the last error that occurred since start-up.
+ *
+ * @param[in] p_ctx Slave instance.
+ * @return The last exception code, or 0 if no exception has been raised.
+ */
+uint8_t libmodbusrtu_modbus_get_last_exception(const modbus_slave_t *p_ctx);
 
 /**
  * @brief Store one received byte - call from the UART RX interrupt.

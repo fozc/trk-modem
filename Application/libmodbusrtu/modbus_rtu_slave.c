@@ -115,6 +115,9 @@ static void modbus_send_exception(modbus_slave_t *p_ctx, uint8_t function_code, 
     response[1] = (uint8_t)(function_code | MODBUS_EXCEPTION_FLAG);
     response[2] = exception_code;
 
+    /* Record the error so the application can surface the last fault. */
+    p_ctx->last_exception_code = exception_code;
+
     crc = modbus_crc16(response, 3U);
     response[3] = (uint8_t)(crc & 0xFFU);
     response[4] = (uint8_t)(crc >> 8);
@@ -333,6 +336,11 @@ void libmodbusrtu_modbus_set_slave_id(modbus_slave_t *p_ctx, uint8_t id)
     if ((id >= MODBUS_SLAVE_ID_MIN) && (id <= MODBUS_SLAVE_ID_MAX)) {
         p_ctx->slave_id = id;
     }
+}
+
+uint8_t libmodbusrtu_modbus_get_last_exception(const modbus_slave_t *p_ctx)
+{
+    return p_ctx->last_exception_code;
 }
 
 /**

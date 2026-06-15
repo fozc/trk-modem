@@ -440,10 +440,20 @@ PROCESS_THREAD(modbus_process, ev, data)
 			// Try to frame and process the buffered bytes.
 			modbus_poll_result_t result = libmodbusrtu_modbus_process(&s_modbus);
 
-			if (result == MODBUS_POLL_RECEIVING)
+			if (result == MODBUS_POLL_HANDLED)
+			{
+				// Mirror the last Modbus exception so the web UI can report it.
+				modbus_config_set_last_error_code(
+				    libmodbusrtu_modbus_get_last_exception(&s_modbus));
+			}
+			else if (result == MODBUS_POLL_RECEIVING)
 			{
 				// Frame still arriving: re-poll soon to detect its end.
 				etimer_set(&rx_timer, MODBUS_RX_GAP_TICKS);
+			}
+			else
+			{
+				// Bus idle: nothing to do.
 			}
 		}
 	}
