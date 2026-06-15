@@ -68,16 +68,16 @@ void nvram_set_defaults(void)
 	strncpy(nvram.modem_config.apn.user_pass, "password", sizeof(nvram.modem_config.apn.user_pass) - 1);
 	strncpy(nvram.modem_config.ntp_server, "pool.ntp.org", sizeof(nvram.modem_config.ntp_server) - 1);
 	nvram.modem_config.ntp_server_port = 123;
-	nvram.modem_config.time = 1700000000;  // Example epoch time
+	nvram.modem_config.time = 0;
 	nvram.modem_config.time_zone = +3; // UTC
 	nvram.modem_config.coordinates.mcc[0] = '\0';
 	nvram.modem_config.coordinates.mnc[0] = '\0';
 	nvram.modem_config.coordinates.lac[0] = '\0';
 	nvram.modem_config.coordinates.ci[0] = '\0';
-	nvram.modem_config.production_date = 1672531200; // Example production date (Jan 1, 2023)
-	nvram.modem_config.lifetime = 0; // 1 hour
+	nvram.modem_config.production_date = 0;
+	nvram.modem_config.lifetime = 0;
 	nvram.modem_config.periodic_modem_reset_period = 86400; // 24 hours
-	nvram.modem_config.commissioning_time = 1672617600; // Example commissioning time (Jan 2, 2023)
+	nvram.modem_config.commissioning_time = 0;
 	nvram.modem_config.rf_firmware_version[0] = 0;
 	nvram.modem_config.rf_firmware_version[1] = 0;
 	nvram.modem_config.rf_firmware_version[2] = 0;

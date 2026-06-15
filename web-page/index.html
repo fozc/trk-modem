@@ -138,6 +138,10 @@ const CFG_SESSION_TIMEOUT_MS  = 15 * 60 * 1000; // Oturum hareketsizlik süresi 
 // Table modifier: compact (true for card view)
 // Field types: 'n'=number, 't'=text, 'c'=checkbox, 'led'=led array, 'ro'=readonly
 // ============================================
+
+// Format a Unix epoch (seconds) as a local date-time string.
+const fmtEpoch = v => v ? new Date(v * 1000).toLocaleString() : 'No data';
+
 const M = {
   pages: [
     {
@@ -213,7 +217,8 @@ const M = {
           fields: [
             {k: 'CihazID', t: 'n', lbl: 'Device ID', min: 1, max: 247, req: 1},
             {k: 'BaudRate', t: 'n', lbl: 'Baud Rate', min: 1200, max: 921600, req: 1},
-            {k: 'SonHataKodu', t: 'n', lbl: 'Last Error Code', min: 0, max: 65535, ro: 1}
+            {k: 'SonHataKodu', t: 'n', lbl: 'Last Error Code', min: 0, max: 65535, ro: 1},
+            {k: 'SonHataZamani', t: 't', lbl: 'Last Error Time', ro: 1, fmt: fmtEpoch}
           ]
         },
         {
@@ -416,13 +421,13 @@ const M = {
           cols: 3,
           fields: [
             {k: 'SeriNumarasi', t: 'n', lbl: 'Serial Number', ro: 1},
-            {k: 'UretimTarihi', t: 'n', lbl: 'Manufacturing Date', ro: 1},
+            {k: 'UretimTarihi', t: 't', lbl: 'Manufacturing Date', ro: 1, fmt: fmtEpoch},
             {k: 'LifeTime', t: 't', lbl: 'Lifetime', ro: 1},
             {k: 'ModemYazilimVeriyonu', t: 't', lbl: 'Modem Firmware Version', ro: 1},
             {k: 'RFYazilimVeriyonu', t: 't', lbl: 'RF Firmware Version', ro: 1},
-            {k: 'CihazKoordinati', t: 't', lbl: 'Coordinates', ro: 1},
-            {k: 'DevreyeAlinmaZamani', t: 't', lbl: 'Commissioning Time', ro: 1},
-            {k: 'Time', t: 'n', lbl: 'Modem RTC', ro: 1}
+            {k: 'CihazKoordinati', t: 't', lbl: 'Coordinates', ro: 1, fmt: v => (v && typeof v === 'object') ? `MCC:${v.MCC} MNC:${v.MNC} LAC:${v.LAC} CI:${v.CI}` : (v || '-')},
+            {k: 'DevreyeAlinmaZamani', t: 't', lbl: 'Commissioning Time', ro: 1, fmt: fmtEpoch},
+            {k: 'Time', t: 't', lbl: 'Modem RTC', ro: 1, fmt: fmtEpoch}
           ]
         },
         {
@@ -613,7 +618,8 @@ const rField = (f, v) => {
   const ro = f.ro ? 'disabled' : '';
   const attrs = f.t === 'n' ? `min="${f.min!==undefined?f.min:''}" max="${f.max!==undefined?f.max:''}" data-min="${f.min!==undefined?f.min:''}" data-max="${f.max!==undefined?f.max:''}"` : '';
   const req = f.req ? 'data-req="1"' : '';
-  return `<div class="fg"><label>${f.lbl}</label><input type="${f.t==='n'?'number':'text'}" id="${id}" value="${v!==undefined&&v!==null?v:''}" ${attrs} ${req} ${ro}><div class="err" id="e-${id}"></div></div>`;
+  const dv = f.fmt ? f.fmt(v) : (v!==undefined&&v!==null?v:'');
+  return `<div class="fg"><label>${f.lbl}</label><input type="${f.t==='n'?'number':'text'}" id="${id}" value="${dv}" ${attrs} ${req} ${ro}><div class="err" id="e-${id}"></div></div>`;
 };
 
 // Render grid section
