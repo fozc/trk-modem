@@ -58,6 +58,19 @@ void modbus_config_set_last_error_code(uint8_t code)
 	modbus_config->last_error_code = code;
 }
 
+// last_error_time (Unix epoch seconds, RAM-only - not persisted in NVRAM)
+static uint32_t s_last_error_time = 0U;
+
+uint32_t modbus_config_get_last_error_time(void)
+{
+	return s_last_error_time;
+}
+
+void modbus_config_set_last_error_time(uint32_t unix_time)
+{
+	s_last_error_time = unix_time;
+}
+
 // baud_rate
 uint32_t modbus_config_get_baud_rate(void)
 {

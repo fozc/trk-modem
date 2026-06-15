@@ -9,6 +9,7 @@
 #include "modbus_config.h"
 #include "breaker.h"
 #include "bsp.h"
+#include "rtc.h"
 #include "nvram.h"
 #include "uart.h"
 #include "gpio_defs.h"
@@ -372,6 +373,8 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
     }
 
     /* Unmapped register - signal an exception to the master. */
+    CSLOG_WARN("MODBUS FC03 hata: tanimsiz adres %u (exception 0x02)\n",
+               reg_addr);
     return MODBUS_REG_ERR_ADDRESS;
 }
 
@@ -388,12 +391,14 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
 
     /* Only the modem-reset command register is writable. */
     if (reg_addr != modbus_config_get_addr_modem_reset()) {
-        CSLOG("  -> Register is read-only!\n");
+        CSLOG_WARN("MODBUS FC06 hata: salt-okunur adres %u (exception 0x02)\n",
+                   reg_addr);
         return MODBUS_REG_ERR_ADDRESS;
     }
 
     if (value != MODBUS_MODEM_RESET_TRIGGER) {
-        CSLOG("  -> Invalid value! Only 1 triggers a reset\n");
+        CSLOG_WARN("MODBUS FC06 hata: gecersiz deger %u (exception 0x03)\n",
+                   value);
         return MODBUS_REG_ERR_VALUE;
     }
 
@@ -443,8 +448,23 @@ PROCESS_THREAD(modbus_process, ev, data)
 			if (result == MODBUS_POLL_HANDLED)
 			{
 				// Mirror the last Modbus exception so the web UI can report it.
-				modbus_config_set_last_error_code(
-				    libmodbusrtu_modbus_get_last_exception(&s_modbus));
+				uint8_t exc =
+				    libmodbusrtu_modbus_get_last_exception(&s_modbus);
+
+				if (exc != 0U)
+				{
+					modbus_config_set_last_error_code(exc);
+					modbus_config_set_last_error_time(rtc_get_unix_epoch());
+
+					// FC 0x01 (illegal function) is rejected in the core
+					// before any callback runs, so log it here. 0x02/0x03
+					// are logged with detail in the read/write callbacks.
+					if (exc == MODBUS_EXCEPTION_ILLEGAL_FUNCTION)
+					{
+						CSLOG_WARN("MODBUS hata: desteklenmeyen "
+						           "fonksiyon (exception 0x01)\n");
+					}
+				}
 			}
 			else if (result == MODBUS_POLL_RECEIVING)
 			{

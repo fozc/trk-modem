@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.1 |
+| Dokuman surumu | 1.2 |
 | Tarih | 2026-06-15 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
@@ -281,6 +281,7 @@ Deger su sekilde gozlenir:
 | Arabirim | Alan | Aciklama |
 |---|---|---|
 | Web (HTTP) | `SonHataKodu` (`GET /r?modbusConfigs` JSON) | Son exception kodunu UINT8 olarak doner |
+| Web (HTTP) | `SonHataZamani` (`GET /r?modbusConfigs` JSON) | Son hatanin olustugu an, **Unix epoch saniye** (UINT32, 1970 tabanli) |
 
 Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 
@@ -291,7 +292,12 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 | 0x02 | Son hata: ILLEGAL DATA ADDRESS |
 | 0x03 | Son hata: ILLEGAL DATA VALUE |
 
-> Not: Bu alan tani/izleme amaclidir; Modbus register haritasinda yer almaz,
+> Not: `SonHataZamani` yalnizca RAM'de tutulur (NVRAM'de kalici degildir); cihaz
+> yeniden baslayinca 0'a doner. Zaman damgasi standart Unix epoch'tur (1 Ocak
+> 1970 referansli) ve `uint32_t` oldugu icin 2106 yilina kadar gecerlidir
+> (signed 2038 sorunu yasanmaz). Deger 0 ise henuz hata olusmamis demektir.
+
+> Not: Bu alanlar tani/izleme amaclidir; Modbus register haritasinda yer almaz,
 > yalnizca web arabiriminden okunur.
 
 ---
@@ -313,3 +319,4 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 |---|---|---|
 | 1.0 | 2026-06-13 | Ilk surum: bitisik float tabanli register haritasi |
 | 1.1 | 2026-06-15 | Son hata kodu (SonHataKodu) takibi ve web arabirimi eklendi (bkz. 8.1) |
+| 1.2 | 2026-06-15 | Son hata zamani (SonHataZamani, Unix epoch) eklendi; sistem geneli zaman tabani 1970 Unix epoch'a tasindi |

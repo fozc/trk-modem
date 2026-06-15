@@ -96,12 +96,13 @@ void rtc_boot_sync(void);
 /* ---- Epoch helpers (wall-clock seconds) ---- */
 
 /**
- * @brief  Get seconds since the project epoch (2025-01-01 00:00:00).
+ * @brief  Get seconds since the Unix epoch (1970-01-01 00:00:00 UTC).
  */
 uint32_t rtc_get_epoch(void);
 
 /**
- * @brief  Get seconds since the Unix epoch (1970-01-01 00:00:00).
+ * @brief  Get seconds since the Unix epoch (1970-01-01 00:00:00 UTC).
+ * @note   Alias of rtc_get_epoch(); kept for call-site clarity.
  */
 uint32_t rtc_get_unix_epoch(void);
 

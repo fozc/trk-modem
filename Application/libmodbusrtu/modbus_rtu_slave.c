@@ -283,6 +283,13 @@ static void modbus_process_frame(modbus_slave_t *p_ctx, const uint8_t *frame, ui
 
     uint8_t function_code = frame[MODBUS_OFFSET_FC];
 
+    /*
+     * Clear the per-frame exception record before dispatching. After this call
+     * a non-zero last_exception_code means this frame raised that exception,
+     * which lets the caller detect and log each occurrence.
+     */
+    p_ctx->last_exception_code = 0U;
+
     switch (function_code) {
         case MODBUS_FC_READ_HOLDING_REGISTERS:
             /* Reads cannot be issued to the broadcast address. */

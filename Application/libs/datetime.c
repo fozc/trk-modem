@@ -204,10 +204,7 @@ void dt_conv_from_epoch(time32_t t, datetime_t *dt)
     dt->time.hour = t % 24;
     t /= 24;
 
-    // Convert from 2025-based days to Unix-based days
-    t += DAYS_FROM_UNIX_EPOCH_TO_2025;
-
-    //Convert Unix time to date
+    //Convert Unix time (1970-based seconds) to date
     a = (uint32_t) ((4 * t + 102032) / 146097 + 15);
     b = (uint32_t) (t + 2442113 + a - (a / 4));
     c = (20 * b - 2442) / 7305;
@@ -262,7 +259,7 @@ time32_t dt_conv_to_epoch(const datetime_t *date)
    //Convert months to days
    t += (30 * m) + (3 * (m + 1) / 5) + d;
    //Unix time starts on January 1st, 1970
-   t -= DAYS_FROM_0001_TO_2025;
+   t -= DAYS_FROM_0001_TO_UNIX_EPOCH;
    //Convert days to seconds
    t *= 86400;
    //Add hours, minutes and seconds
@@ -274,7 +271,8 @@ time32_t dt_conv_to_epoch(const datetime_t *date)
 
 uint32_t dt_conv_to_unix(const datetime_t *date)
 {
-   return dt_conv_to_epoch(date) + SECONDS_FROM_1970_TO_2025;
+   /* dt_conv_to_epoch already returns 1970-based Unix seconds. */
+   return dt_conv_to_epoch(date);
 }
 #else
 void dt_conv_from_unix64(time64_t t, datetime_t *date)

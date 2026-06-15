@@ -1059,6 +1059,7 @@ void handle_get_modbus_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "{");
     pos += xsnprintf(buf + pos, buf_size - pos, "\"CihazID\":%u,", config->device_addr);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SonHataKodu\":%u,", config->last_error_code);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"SonHataZamani\":%u,", modbus_config_get_last_error_time());
     pos += xsnprintf(buf + pos, buf_size - pos, "\"BaudRate\":%u,", config->baud_rate);
     
     /* Hat bilgisi */

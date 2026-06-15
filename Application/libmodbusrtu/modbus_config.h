@@ -29,6 +29,10 @@ void modbus_config_set_device_addr(uint8_t addr);
 uint8_t modbus_config_get_last_error_code(void);
 void modbus_config_set_last_error_code(uint8_t code);
 
+// last_error_time (Unix epoch seconds, RAM-only - not persisted in NVRAM)
+uint32_t modbus_config_get_last_error_time(void);
+void modbus_config_set_last_error_time(uint32_t unix_time);
+
 // baud_rate
 uint32_t modbus_config_get_baud_rate(void);
 void modbus_config_set_baud_rate(uint32_t baud);

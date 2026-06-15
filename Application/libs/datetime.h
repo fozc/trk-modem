@@ -64,16 +64,16 @@ typedef struct __attribute__((__packed__))
 	timee_t time;
 }datetime_t;
 
-/* epoch = project-local epoch: January 1st, 2025 00:00:00 */
+/* epoch = standard Unix epoch: January 1st, 1970 00:00:00 UTC */
 #ifdef ENABLE_64BIT_TIME
 typedef int64_t time64_t;
 time64_t dt_conv_to_unix64(const datetime_t *date);
 void     dt_conv_from_unix64(time64_t t, datetime_t *date);
 #else
 typedef uint32_t time32_t;
-time32_t dt_conv_to_epoch(const datetime_t *date);  /* datetime -> seconds since 2025 epoch */
-void     dt_conv_from_epoch(time32_t t, datetime_t *dt); /* seconds since 2025 epoch -> datetime */
-uint32_t dt_conv_to_unix(const datetime_t *date);   /* datetime -> seconds since 1970 Unix epoch */
+time32_t dt_conv_to_epoch(const datetime_t *date);  /* datetime -> seconds since 1970 Unix epoch */
+void     dt_conv_from_epoch(time32_t t, datetime_t *dt); /* seconds since 1970 Unix epoch -> datetime */
+uint32_t dt_conv_to_unix(const datetime_t *date);   /* datetime -> seconds since 1970 Unix epoch (alias) */
 #endif
 
 void       dt_conv_to_str(datetime_t dt, char *buff);

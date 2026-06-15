@@ -59,7 +59,7 @@ void rtc_print_now(void)
 /*  Internal helpers                                                  */
 /* ------------------------------------------------------------------ */
 
-/* Update the epoch counter (seconds since 2025) from a calendar time. */
+/* Update the epoch counter (Unix seconds since 1970) from a calendar time. */
 static void rtc_update_epoch(const rtc_t *dt)
 {
 	datetime_t edt = {0};
@@ -198,7 +198,8 @@ uint32_t rtc_get_epoch(void)
 
 uint32_t rtc_get_unix_epoch(void)
 {
-	return bsp_get_epoch_time() + SECONDS_FROM_1970_TO_2025;
+	/* The epoch counter is already 1970-based, so this is identical. */
+	return bsp_get_epoch_time();
 }
 
 
