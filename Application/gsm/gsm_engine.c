@@ -416,7 +416,9 @@ uint8_t gsm_get_main_state(void)
 
 void gsm_listener_set_no_carrier(gsm_listener_id_t id, uint8_t v)
 {
-	if (id < GSM_LISTENER_COUNT) { gsm.listener[id].no_carrier = v; }
+	if (id < GSM_LISTENER_COUNT) {
+		gsm.listener[id].no_carrier = v;
+	}
 }
 
 uint8_t gsm_listener_get_no_carrier(gsm_listener_id_t id)
@@ -426,7 +428,9 @@ uint8_t gsm_listener_get_no_carrier(gsm_listener_id_t id)
 
 void gsm_listener_set_rx_available(gsm_listener_id_t id, uint8_t v)
 {
-	if (id < GSM_LISTENER_COUNT) { gsm.listener[id].rx_available = v; }
+	if (id < GSM_LISTENER_COUNT) {
+		gsm.listener[id].rx_available = v;
+	}
 }
 
 uint8_t gsm_listener_get_rx_available(gsm_listener_id_t id)
@@ -436,7 +440,9 @@ uint8_t gsm_listener_get_rx_available(gsm_listener_id_t id)
 
 void gsm_listener_set_new_conn_req(gsm_listener_id_t id, uint8_t v)
 {
-	if (id < GSM_LISTENER_COUNT) { gsm.listener[id].new_connection_req = v; }
+	if (id < GSM_LISTENER_COUNT) {
+		gsm.listener[id].new_connection_req = v;
+	}
 }
 
 uint8_t gsm_listener_get_new_conn_req(gsm_listener_id_t id)

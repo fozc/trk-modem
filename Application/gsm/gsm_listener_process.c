@@ -56,7 +56,7 @@ static const gsm_listener_cfg_t s_cfg_iec104 = {
 		[LS_AT_CHECK_INFO]   = ATQUERY_GET_IEC104_LISTENER_SOCKET_INFO,
 		[LS_AT_DATA_MODE]    = ATQUERY_SET_IEC104_LISTENER_SOCKET_DATA_MODE,
 		[LS_AT_SEND_DATA]    = ATQUERY_SEND_DATA_TO_IEC104_LISTENER_SOCKET,
-		[LS_AT_CHECK_SOCKET] = ATQUERY_GET_ALL_SOCKET_STATUS,
+		[LS_AT_CHECK_SOCKET] = ATQUERY_GET_IEC104_LISTENER_SOCKET_STATUS,
 		[LS_AT_CLOSE_SOCKET] = ATQUERY_CLOSE_IEC104_LISTENER_SOCKET,
 		[LS_AT_OPEN_SOCKET]  = ATQUERY_OPEN_IEC104_LISTENER_SOCKET,
 		[LS_AT_READ_DATA]    = ATQUERY_GET_IEC104_LISTENER_SOCKET_DATA,
@@ -156,15 +156,17 @@ static void handle_idle(const gsm_listener_cfg_t *p_cfg,
 		if (gsm_get_socket_state(p_cfg->socket_id) == SOCKET_CONNECTED)
 		{
 			ctx->tcp_ack_timer = 0;
+			ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
+
 			/* Recent activity (<3 s) → skip CHECK_SOCKET_INFO, go directly to DATA_MODE */
-			if (gsm_get_tick() - ctx->socket_timer > 3000U)
-			{
-				ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
-			}
-			else
-			{
-				ls_set_state(ctx, GSM_LS_DATA_MODE);
-			}
+//			if (gsm_get_tick() - ctx->socket_timer > 3000U)
+//			{
+//				ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
+//			}
+//			else
+//			{
+//				ls_set_state(ctx, GSM_LS_DATA_MODE);
+//			}
 		}
 		else
 		{
@@ -307,7 +309,9 @@ static void handle_data_mode(const gsm_listener_cfg_t *p_cfg,
 	}
 
 	uint32_t res = gsm_engine_get_query_res();
-	if (res == 0U) { return; }
+	if (res == 0U) {
+		return;
+	}
 
 	switch (res)
 	{
@@ -370,7 +374,9 @@ static void handle_send_data(const gsm_listener_cfg_t *p_cfg,
 	}
 
 	uint32_t res = gsm_engine_get_query_res();
-	if (res == 0U) { return; }
+	if (res == 0U) {
+		return;
+	}
 
 	switch (res)
 	{
@@ -390,7 +396,7 @@ static void handle_send_data(const gsm_listener_cfg_t *p_cfg,
 			break;
 
 		case GSM_SOCKET_DISCONNECTED_TIMEOUT:
-			LOG_TRACE(_GSM_, "[LS:%u] Send failed — disconnected/timeout",
+			CSLOG_WARN("[LS:%u] Send failed — disconnected/timeout",
 			          (unsigned)p_cfg->id);
 			ls_set_state(ctx, GSM_LS_CHECK_SOCKET);
 			gsm_set_delay(50);
@@ -406,7 +412,7 @@ static void handle_send_data(const gsm_listener_cfg_t *p_cfg,
 		case GSM_TIMEOUT:
 			/* Modem may be stuck in data mode — AT commands would be
 			 * interpreted as data bytes. Only safe recovery is full reset. */
-			LOG_TRACE(_GSM_, "[LS:%u] SEND_DATA timeout — resetting",
+			CSLOG_WARN("[LS:%u] SEND_DATA timeout — resetting",
 			          (unsigned)p_cfg->id);
 			gsm_reset_process_old();
 			gsm_set_tx_error();
@@ -429,7 +435,9 @@ static void handle_check_socket(const gsm_listener_cfg_t *p_cfg,
 	}
 
 	uint32_t res = gsm_engine_get_query_res();
-	if (res == 0U) { return; }
+	if (res == 0U) {
+		return;
+	}
 
 	switch (res)
 	{
@@ -536,7 +544,9 @@ static void handle_close_socket(const gsm_listener_cfg_t *p_cfg,
 	}
 
 	uint32_t res = gsm_engine_get_query_res();
-	if (res == 0U) { return; }
+	if (res == 0U) {
+		return;
+	}
 
 	if (p_cfg->on_closed != NULL) { p_cfg->on_closed(); }
 	ls_led_update(p_cfg->id, LED_LISTENER_OFF);
@@ -588,7 +598,9 @@ static void handle_open_socket(const gsm_listener_cfg_t *p_cfg,
 	}
 
 	uint32_t res = gsm_engine_get_query_res();
-	if (res == 0U) { return; }
+	if (res == 0U) {
+		return;
+	}
 
 	switch (res)
 	{
@@ -651,7 +663,9 @@ static void handle_read_socket_data(const gsm_listener_cfg_t *p_cfg,
 	}
 
 	uint32_t res = gsm_engine_get_query_res();
-	if (res == 0U) { return; }
+	if (res == 0U) {
+		return;
+	}
 
 	switch (res)
 	{
@@ -695,7 +709,9 @@ static void handle_accept_connection(const gsm_listener_cfg_t *p_cfg,
 	}
 
 	uint32_t res = gsm_engine_get_query_res();
-	if (res == 0U) { return; }
+	if (res == 0U) {
+		return;
+	}
 
 	switch (res)
 	{
@@ -748,7 +764,9 @@ static void handle_check_net(const gsm_listener_cfg_t *p_cfg,
 	}
 
 	/* Wait for gsm_periodical_event_process to complete the GPRS check */
-	if (gsm.net_check_requested != 0U) { return; }
+	if (gsm.net_check_requested != 0U) {
+		return;
+	}
 
 	(void)p_cfg;
 
@@ -761,7 +779,9 @@ static void handle_check_net(const gsm_listener_cfg_t *p_cfg,
  * ------------------------------------------------------------------------- */
 void gsm_listener_socket_process(const gsm_listener_cfg_t *p_cfg)
 {
-	if (p_cfg == NULL) { return; }
+	if (p_cfg == NULL) {
+		return;
+	}
 
 	gsm_listener_ctx_t *ctx = &gsm.listener[p_cfg->id];
 

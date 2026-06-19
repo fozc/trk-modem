@@ -57,7 +57,7 @@ typedef struct {
 #define GSM_LS_SOCKET_TIMER_MS       (15U * 1000U)
 #define GSM_LS_GPRS_CHECK_TIMER_MS   (45U * 1000U)
 #define GSM_LS_DATA_CHECK_TIMER_MS   (10U * 1000U)
-#define GSM_LS_ACK_THRESHOLD_BYTES   (2U * 1024U)
+#define GSM_LS_ACK_THRESHOLD_BYTES   (1500U)      /* If >1.5kB pending, force ACK check */
 
 /* Stagger offset applied to IEC104 initial timer to avoid simultaneous triggering */
 #define GSM_LS_STAGGER_OFFSET_MS     (GSM_LS_SOCKET_TIMER_MS / 2U)

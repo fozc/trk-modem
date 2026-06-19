@@ -711,7 +711,7 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
     static const uint8_t end_of_init[] = {0x68, 0x0E, 0x00, 0x00, 0x00, 0x00, 0x46, 0x01, 0x04, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}; // M_EI_NA_1
 
     if (uframe == NULL) {
-        CSLOG("Invalid U-Frame packet\r\n");
+    	CSLOG_WARN("Invalid U-Frame packet\r\n");
         return;
     }
 
@@ -738,7 +738,7 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
         break;
 
     default:
-    	CSLOG("Unkown U frame function code : 0x%02d \r\n", uframe->function_code);
+    	CSLOG_ERR("Unkown U frame function code : 0x%02d \r\n", uframe->function_code);
     	return;
         break;
     }
@@ -796,7 +796,7 @@ void on_ack_received(uint16_t nr)
             //iec104_send_stopdt_con();
             wait_for_ack = false;
             t1_timer = 0;
-            CSLOG("Sequence number error: expected %d, got %d --  k-counter[%d] ack-sn[%d] w-counter[%d] send-sn[%d] receive-sn[%d]\r\n",
+            CSLOG_WARN("Sequence number error: expected %d, got %d --  k-counter[%d] ack-sn[%d] w-counter[%d] send-sn[%d] receive-sn[%d]\r\n",
                 ack_sn + 1, nr, k_counter, ack_sn, w_counter, send_sn, receive_sn);
         }
 
@@ -886,7 +886,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
 
 
     if(!is_supported) {
-        CSLOG("Unsupported ASDU type: %d\r\n", package.frame.asdu_header.type_id);
+    	CSLOG_WARN("Unsupported ASDU type: %d\r\n", package.frame.asdu_header.type_id);
 
         package.frame.asdu_header.cot.cause = UkTypeId; // (unknown ASDU type identification)
         package.frame.asdu_header.cot.pn_bit = 1; // Set P/N bit to indicate that the package is not processed
@@ -896,7 +896,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     }
 
     if(package.frame.asdu_header.common_asdu_address != config.common_address) {
-        CSLOG("Common ASDU Address mismatch: expected %d, got %d\r\n", config.common_address, package.frame.asdu_header.common_asdu_address);
+    	CSLOG_WARN("Common ASDU Address mismatch: expected %d, got %d\r\n", config.common_address, package.frame.asdu_header.common_asdu_address);
         package.frame.asdu_header.cot.cause = UkComAdrASDU; // (unknown ASDU type identification)
         package.frame.asdu_header.cot.pn_bit = 1; // Set P/N bit to indicate that the package is not processed
         iec104_send(package.data, package.frame.apci.apdu_length + 2);
