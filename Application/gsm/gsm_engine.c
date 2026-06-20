@@ -1911,7 +1911,7 @@ int32_t gsm_httprcv_cb(void)
 					at_res = GSM_HTTP_CONN_FAIL;
 				}
 			}
-			LOG_TRACE(DEBUG,"Http baglanti kapali/koptu!");
+			LOG_TRACE(0,"Http baglanti kapali/koptu!");
 			break;
 		}
 		case GSM_TIMEOUT:
@@ -2374,7 +2374,7 @@ int32_t gsm_COPS_search_cb(void)
 			int32_t index1 = str_index_of((char *)rx.buff, "REC UNREAD");
 			if(index1 > -1)
 			{
-				LOG(DEBUG, "OK");
+				LOG(0, "OK");
 			}
 		}
 

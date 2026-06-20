@@ -109,7 +109,8 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 #ifndef DEBUG
-	SCB->VTOR = FLASH_BASE | 0x10000;
+	//SCB->VTOR = FLASH_BASE | 0x10000; /* 64KB bootloader */
+	SCB->VTOR = FLASH_BASE | 0x14000;   /* 80KB bootloader */
 #endif
 
 	for(volatile int i = 0; i < 500000; i++){
