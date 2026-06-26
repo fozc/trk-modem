@@ -35,6 +35,7 @@ extern "C" {
 /* ------------------------------------------------------------------ */
 /*  Status codes                                                      */
 /* ------------------------------------------------------------------ */
+#define APP_IPC_OK_ALREADY_APPROVED 1
 #define APP_IPC_OK                  0
 #define APP_IPC_ERR_ERASE          -1
 #define APP_IPC_ERR_WRITE          -2

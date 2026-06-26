@@ -8,10 +8,10 @@
 #ifndef LIBIEC104_IEC104_EVENT_LOG_H_
 #define LIBIEC104_IEC104_EVENT_LOG_H_
 
+#include <spi_flash_organization.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "fault_log.h"
-#include "w25qxx_memory_organization.h"
 
 /* ---------------------------------------------------------------------------
  * Capacity calculations

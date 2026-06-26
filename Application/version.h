@@ -5,7 +5,7 @@
 #define DEVICE_TYPE             (100)
 #define DEVICE_MODEL            (1)
 #define APP_TYPE                (1)
-#define VERSION_MAJOR           (1)
+#define VERSION_MAJOR           (3)
 #define VERSION_MINOR           (0)
 #define VERSION_PATCH           (0)
 #define VERSION_EXTRA           (0)

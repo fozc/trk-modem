@@ -4,10 +4,10 @@
  *  Created on: Apr 28, 2026
  *      Author: fatih.ozcan
  */
+#include <spi_flash_organization.h>
 #include "xmodem_process.h"
 #include "xmodem.h"
 #include "bsp.h"
-#include "w25qxx_memory_organization.h"
 #include "w25qxx.h"
 #include "boot.h"
 #include "shell.h"

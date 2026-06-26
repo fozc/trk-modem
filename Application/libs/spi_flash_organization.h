@@ -5,8 +5,8 @@
  *      Author: fatih.ozcan
  */
 
-#ifndef LIBS_W25QXX_MEMORY_ORGANIZATION_H_
-#define LIBS_W25QXX_MEMORY_ORGANIZATION_H_
+#ifndef LIBS_SPI_FLASH_ORGANIZATION_H_
+#define LIBS_SPI_FLASH_ORGANIZATION_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -116,4 +116,4 @@ _Static_assert((SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_A) % 0x10000UL) 
 _Static_assert((SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_B) % 0x10000UL) == 0U,
                "Firmware B must be 64KB block-aligned");
 
-#endif /* LIBS_W25QXX_MEMORY_ORGANIZATION_H_ */
+#endif /* LIBS_SPI_FLASH_ORGANIZATION_H_ */

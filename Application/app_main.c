@@ -253,7 +253,8 @@ static void led_test_all(void)
 
 PROCESS(heart_beat_process, "heart-beat");
 PROCESS(rtc_resync_process, "rtc-resync");
-AUTOSTART_PROCESSES(&heart_beat_process, &rtc_resync_process);
+PROCESS(fw_approve_process, "fw_approve_process");
+AUTOSTART_PROCESSES(&heart_beat_process, &rtc_resync_process, &fw_approve_process);
 
 
 PROCESS_THREAD(heart_beat_process, ev, data)
@@ -315,6 +316,42 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 
 	PROCESS_END();
 }
+
+
+PROCESS_THREAD(fw_approve_process, ev, data)
+{
+	(void)ev;
+	(void)data;
+
+	static struct etimer approve_timer;
+
+	PROCESS_BEGIN();
+
+	etimer_set(&approve_timer, (clock_time_t)(CLOCK_SECOND * 5));
+	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&approve_timer));
+
+	if(app_ipc_is_firmware_approved())
+	{
+		CSLOG_WARN("Firmware already approved.\r\n");
+	}
+	else
+	{
+		int res = app_ipc_approve_firmware(false);
+
+		if(res == APP_IPC_OK)
+		{
+			CSLOG_WARN("Firmware approved successfully!\r\n");
+		}
+
+		if(res < APP_IPC_OK)
+		{
+			CSLOG_ERR("Failed to approve firmware! Error code: %d\r\n", res);
+		}
+	}
+	PROCESS_END();
+}
+
+
 
 /* Periodic anti-drift resync: reload the software RTC from the persistent
  * hardware RTC every 6 hours to compensate for SysTick accumulation error. */

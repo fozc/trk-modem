@@ -8,10 +8,10 @@
 #ifndef NVRAM_H_
 #define NVRAM_H_
 
+#include <spi_flash_organization.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "types.h"
-#include "w25qxx_memory_organization.h"
 
 
 #define DEVICE_DEFAULT_SERIAL_NUMBER 99999999

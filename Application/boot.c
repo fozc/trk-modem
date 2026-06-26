@@ -14,9 +14,9 @@
  *  Created on: Apr 29, 2026
  *      Author: fatih.ozcan
  */
+#include <spi_flash_organization.h>
 #include "boot.h"
 #include "w25qxx.h"
-#include "w25qxx_memory_organization.h"
 #include "crc32.h"
 #include "console_logger.h"
 #include <string.h>

@@ -13,9 +13,9 @@
 #ifndef BOOT_H_
 #define BOOT_H_
 
+#include <spi_flash_organization.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "w25qxx_memory_organization.h"
 
 #define BOOTLOADER_SUPERBLOCK_MAGIC  0xB007000B
 

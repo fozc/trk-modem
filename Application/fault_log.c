@@ -4,9 +4,9 @@
  *  Created on: Feb 21, 2026
  *      Author: fatih
  */
+#include <spi_flash_organization.h>
 #include "fault_log.h"
 #include "w25qxx.h"
-#include "w25qxx_memory_organization.h"
 #include "bsp.h"
 #include "crc32.h"
 #include "datetime.h"

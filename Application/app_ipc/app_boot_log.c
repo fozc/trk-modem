@@ -12,7 +12,7 @@
 #include "app_boot_log.h"
 
 #include "w25qxx.h"
-#include "w25qxx_memory_organization.h"
+#include "spi_flash_organization.h"
 #include "console_logger.h"
 #include "utils.h"
 #include "shell.h"

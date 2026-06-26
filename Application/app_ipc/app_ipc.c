@@ -16,9 +16,7 @@
 #include "console_logger.h"
 #include "shell.h"
 /* CMSIS core for NVIC_SystemReset */
-
 #include "stm32u3xx.h"
-
 
 /* ------------------------------------------------------------------ */
 /*  Internal helpers                                                  */
@@ -135,7 +133,7 @@ int app_ipc_approve_firmware(bool do_reset)
 {
     if (app_ipc_is_firmware_approved())
     {
-        return APP_IPC_OK; /* Already approved -- skip write. */
+        return APP_IPC_OK_ALREADY_APPROVED; /* Already approved -- skip write. */
     }
 
     return app_ipc_send_and_reset(1U, BOOT_IPC_REQ_NONE, do_reset);
@@ -143,14 +141,18 @@ int app_ipc_approve_firmware(bool do_reset)
 
 int app_ipc_request_update(bool do_reset)
 {
-    uint8_t approved = app_ipc_is_firmware_approved() ? 1U : 0U;
-    return app_ipc_send_and_reset(approved, BOOT_IPC_REQ_UPDATE_FW, do_reset);
+    /* Do NOT send self_test_passed here.  Approval + mode-change in
+     * a single IPC message causes the bootloader to flip backup_section
+     * before processing UPDATE_FW, which makes it install from the
+     * wrong (old) firmware section. */
+    return app_ipc_send_and_reset(0U, BOOT_IPC_REQ_UPDATE_FW, do_reset);
 }
 
 int app_ipc_request_stay_in_bootloader(bool do_reset)
 {
-    uint8_t approved = app_ipc_is_firmware_approved() ? 1U : 0U;
-    return app_ipc_send_and_reset(approved, BOOT_IPC_REQ_STAY_IN_BL, do_reset);
+    /* Same rationale as app_ipc_request_update — never piggyback
+     * approval onto a mode-change request. */
+    return app_ipc_send_and_reset(0U, BOOT_IPC_REQ_STAY_IN_BL, do_reset);
 }
 
 /* ------------------------------------------------------------------ */

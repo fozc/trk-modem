@@ -6,7 +6,7 @@
 #include "bsp.h"
 #include <string.h>
 
-#define GSM_SOCKET_CHECK_TIMEOUT_MS  30000U
+#define GSM_SOCKET_CHECK_TIMEOUT_MS  180000U
 #define GSM_SOCKET_INVALID_STATE     0xFFU
 
 /* ------------------------------------------------------------------ */
