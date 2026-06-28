@@ -91,13 +91,23 @@ void webserver_on_connection_closed(void)
      * Only notify the module that actually handled this connection.
      * Avoids spurious HTTP-layer log output when the connection was
      * an RFWU firmware-update session, and vice versa.
-     * CONN_MODE_UNKNOWN means fewer than 4 bytes were received so no
-     * handler processed any data — reset both to be safe.
+     *
+     * CONN_MODE_UNKNOWN means no handler ever received data for this
+     * connection (nothing connected, or fewer than 4 magic-detection
+     * bytes arrived). s_conn_mode and the handler state stay in sync —
+     * data only reaches a handler once the mode is decided, and the
+     * first close both resets the handler and clears the mode — so a
+     * later close that sees prev_mode == UNKNOWN faces an already-reset
+     * handler. The listener state machine invokes on_closed() from
+     * several states during one disconnect cycle (handle_idle /
+     * handle_check_socket / handle_close_socket); every call after the
+     * first sees prev_mode == UNKNOWN. Skipping those collapses the
+     * repeated "[GSM HTTP SERVER] Reset" / "[HTTP] Server reset" log
+     * lines down to one, without changing the actual reset.
      */
-    if (prev_mode != CONN_MODE_HTTP) {
+    if (prev_mode == CONN_MODE_RFWU) {
         rfwu_on_disconnect();
-    }
-    if (prev_mode != CONN_MODE_RFWU) {
+    } else if (prev_mode == CONN_MODE_HTTP) {
         gsm_http_server_reset();
         http_server_reset();
     }

@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "bsp.h"
+#include "reboot.h"
 /* ============================================================================
  * GLOBAL STATE AND BUFFERS
  * ============================================================================ */
@@ -268,13 +269,16 @@ static void route_and_handle_request(http_request_t *request)
             xcprintf(XCOLOR_YELLOW, "[HTTP] GET /device/reboot - Rebooting device\r\n");
             const char *response_body = "{\"message\":\"Rebooting\",\"success\":true}";
             http_send_json(response_body, strlen(response_body));
-            //TODO: Reboot the device after sending response
+
+            reboot_system_delayed(3000);  /* Delay 3 seconds to allow response to be sent */
             return;
         }
 
-
-
         
+
+
+
+
         /* POST /fw_start or /s - Start firmware update (short URL for minimal overhead) */
         if (strcmp(request->path, "/fw_start") == 0 || strcmp(request->path, "/s") == 0) {
             handle_fw_start(request->body);

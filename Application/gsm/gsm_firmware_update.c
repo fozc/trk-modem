@@ -11,6 +11,7 @@
 #include "bsp.h"
 #include "w25qxx.h"
 #include "gsm_log.h"
+#include "reboot.h"
 
 static uint32_t flash_address = FIRMWARE_A_ADDRESS;
 static uint8_t fw_update_buffer[4096] = {0}; 
@@ -86,8 +87,7 @@ static int fw_update_finish_handler(uint32_t total_size)
 
 static void fw_reboot_handler(void)
 {
-	GSM_LOG_WRN("Firmware update: reboot requested\r\n");
-	//NVIC_SystemReset();
+	reboot_system_delayed(3000);
 }
 
 void gsm_firmware_update_init(void)

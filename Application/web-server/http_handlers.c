@@ -2458,13 +2458,10 @@ void handle_fw_reboot(void) {
         http_send_json("{\"status\":\"error\",\"error\":\"not supported\"}", 41);
         return;
     }
-    
-    xcprintf(XCOLOR_YELLOW, "[FW] System will reboot in 1 second...\r\n");
-    
+
     /* Send response before reboot */
     http_send_json("{\"status\":\"ok\"}", 15);
-    
-    xcprintf(XCOLOR_GREEN, "[FW] Rebooting NOW!\r\n");
+
     fw_callbacks.fw_reboot();
 }
 

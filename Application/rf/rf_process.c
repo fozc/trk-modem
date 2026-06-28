@@ -6,6 +6,7 @@
  */
 #include "rf_process.h"
 #include "contiki.h"
+#include "timer.h"
 #include "bsp.h"
 #include "utils.h"
 #include "uart.h"
@@ -32,7 +33,13 @@
 /* ======================================================================
  *  Module state
  * ====================================================================== */
+typedef enum
+{
+	RF_STATE_IDLE = 0,
+	RF_STATE_WAIT_RESPONSE
+} rf_state_t;
 
+static rf_state_t s_rf_state = RF_STATE_IDLE;
 static uint8_t  s_rf_rx_buff[RF_RX_BUFF_SIZE];
 static rbuff_t  s_rf_rb_ctx;
 static scp_t    s_rf_scp_ctx;
@@ -126,18 +133,13 @@ static void rf_process_rx(void)
     }
 }
 
-/* ======================================================================
- *  Contiki process
- * ====================================================================== */
-
 PROCESS(rf_process, "rf-process");
-
 PROCESS_THREAD(rf_process, ev, data)
 {
     static struct etimer timer;
+    static struct timer response_timer;
     static struct timer  ping_timer;
 
-    (void)ev;
     (void)data;
 
     PROCESS_BEGIN();
@@ -152,13 +154,24 @@ PROCESS_THREAD(rf_process, ev, data)
 
         rf_process_rx();
 
-        if (timer_expired(&ping_timer))
+        if(s_rf_state == RF_STATE_WAIT_RESPONSE  && timer_expired(&response_timer))
 		{
-			CSLOG("[RF] Sending periodic PING\r\n");
+			CSLOG_WARN("[RF] No response received \r\n");
 
-			scp_send_ping(&s_rf_scp_ctx, 0xFFU, 0U);  /* Broadcast PING with seq=0 */
-			timer_set(&ping_timer, CLOCK_SECOND * 10U);
+			s_rf_state = RF_STATE_IDLE;
 		}
+        else if(s_rf_state == RF_STATE_IDLE)
+        {
+            if (timer_expired(&ping_timer))
+    		{
+    			CSLOG("[RF] Sending periodic PING\r\n");
+
+    			scp_send_ping(&s_rf_scp_ctx, 0xFFU, 0U);  /* Broadcast PING with seq=0 */
+    			timer_set(&ping_timer, CLOCK_SECOND * 10U);
+    			timer_set(&response_timer, CLOCK_SECOND * 2U);  /* Wait for ACK for 2 seconds */
+    			s_rf_state = RF_STATE_WAIT_RESPONSE;
+    		}
+        }
     }
 
     PROCESS_END();
