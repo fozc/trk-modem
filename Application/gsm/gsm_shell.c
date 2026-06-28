@@ -376,7 +376,7 @@ static void cmd_status(const char *arg)
 
     SHELL_LOG("\r\n");
     SHELL_LOG("  ── NETWORK ───────────────────────────────\r\n");
-    SHELL_LOG("  RAT        : %s\r\n", rat_str(rat));
+    SHELL_LOG("  RAT        : %s\r\n", get_access_tech_str(rat));
     SHELL_LOG("  CSQ        : %u\r\n", (unsigned)csq);
     SHELL_LOG("  CESQ 2G    : %u\r\n", (unsigned)gsm_info_get_signal_quality_2G());
     SHELL_LOG("  CESQ 3G    : %u\r\n", (unsigned)gsm_info_get_signal_quality_3G());

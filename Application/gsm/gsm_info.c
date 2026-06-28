@@ -181,6 +181,24 @@ network_generation_t get_network_generation(void)
     }
 }
 
+const char* get_access_tech_str(gsm_access_technology_t tech)
+{
+    switch (tech)
+    {
+        case GSM_ACCESS_TECH_GSM:               return "2G";
+        case GSM_ACCESS_TECH_GSM_COMPACT:       return "2G-CMPT";
+        case GSM_ACCESS_TECH_UTRAN:             return "3G";
+        case GSM_ACCESS_TECH_GSM_EGPRS:         return "2G-EDGE";
+        case GSM_ACCESS_TECH_UTRAN_HSDPA:       return "3G-HSDPA";
+        case GSM_ACCESS_TECH_UTRAN_HSUPA:       return "3G-HSUPA";
+        case GSM_ACCESS_TECH_UTRAN_HSDPA_HSUPA: return "3G-HSPA";
+        case GSM_ACCESS_TECH_E_UTRAN:           return "4G";
+        case GSM_ACCESS_TECH_UTRAN_HSPA_PLUS:   return "3G-HSPA+";
+        case GSM_ACCESS_TECH_E_UTRAN_CA:        return "4G+";
+        default:                                return "UNK";
+    }
+}
+
 /* ---------- Module model & firmware ---------- */
 
 void gsm_info_set_module_model(gsm_module_model_t model)

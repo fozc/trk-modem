@@ -49,7 +49,7 @@ void system_status_update_tdie()
 void system_status_update(void)
 {
 	g_system_status.gsm_signal = gsm_info_get_signal_quality();
-    g_system_status.gsm_rat = gsm_info_get_access_technology();
+    g_system_status.gsm_rat = get_network_generation();
 
     system_status_update_tdie();
 

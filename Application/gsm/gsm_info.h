@@ -131,6 +131,7 @@ uint8_t gsm_info_get_signal_quality_4G(void);
 void    gsm_info_set_access_technology(uint8_t rat);
 uint8_t gsm_info_get_access_technology(void);
 uint8_t get_network_generation(void);
+const char* get_access_tech_str(gsm_access_technology_t tech);
 /* ---------- Module model & firmware ---------- */
 
 void                gsm_info_set_module_model(gsm_module_model_t model);
