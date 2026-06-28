@@ -1289,43 +1289,39 @@ int32_t gsm_csq_cb(void)
 
 int32_t gsm_cesq_cb(void)
 {
-	/*<CR><LF>+CESQ: 99,99,255,255,26,55<CR><LF><CR><LF>OK<CR><LF>*/
+	/* <CR><LF>+CESQ: rxlev,ber,rscp,ecno,rsrq,rsrp<CR><LF><CR><LF>OK<CR><LF> */
 	int32_t at_res = gsm_at_response_ready();
-	if(at_res == GSM_RESPONSE_OK)
+	if (at_res != GSM_RESPONSE_OK)
 	{
-		char *ptr = strstr((char *)rx.buff, "+CESQ: ");
-		if(ptr != NULL)
-		{
-			char buff[4] = {};
-			uint8_t level = 99;
-			str_substr(ptr, buff, " ", "," ,3);
-
-			if(strlen(buff) == 2 && ISNUM(buff[0]) && ISNUM(buff[1]))
-				level = (buff[0] -'0') * 10 + (buff[1] - '0');
-			else if(strlen(buff) == 1 && ISNUM(buff[0]))
-				level = (buff[0] -'0');
-
-			gsm_info_set_signal_quality_2G(level);
-
-			int32_t index1 = str_index_of_th(ptr, ",", 5);
-
-			if(index1 > 0)
-			{
-				ptr += index1;
-				level = 99;
-				str_substr(ptr, buff, ",", "\r" ,3);
-
-				if(strlen(buff) == 2 && ISNUM(buff[0]) && ISNUM(buff[1]))
-					level = (buff[0] -'0') * 10 + (buff[1] - '0');
-				else if(strlen(buff) == 1 && ISNUM(buff[0]))
-					level = (buff[0] -'0');
-
-				gsm_info_set_signal_quality_4G(level);
-			}
-
-			LOG_TRACE(_GSM_, "CESQ2G: %d, CESQ4G: %d", gsm_info_get_signal_quality_2G(), gsm_info_get_signal_quality_4G());
-		}
+		return at_res;
 	}
+
+	char *cesq = strstr((char *)rx.buff, "+CESQ: ");
+	if (cesq == NULL)
+	{
+		return at_res;
+	}
+
+	uint8_t rxlev, ber, rscp, ecno, rsrq, rsrp;
+	int matched = xscanf(cesq, strlen(cesq), "+CESQ: %u8,%u8,%u8,%u8,%u8,%u8",
+	                     &rxlev, &ber, &rscp, &ecno, &rsrq, &rsrp);
+	if (matched != 6)
+	{
+		/* Eksik/bozuk yanit: saklanan degerleri bozma, bu cevabi atla. */
+		return at_res;
+	}
+
+	gsm_info_set_signal_quality_2G(rxlev);
+	gsm_info_set_2G_ber(ber);
+	gsm_info_set_signal_quality_3G(rscp);
+	gsm_info_set_3G_ecno(ecno);
+	gsm_info_set_4G_rsrq(rsrq);
+	gsm_info_set_signal_quality_4G(rsrp);
+
+	LOG_TRACE(_GSM_, "CESQ 2G rxlev:%u ber:%u", (unsigned)rxlev, (unsigned)ber);
+	LOG_TRACE(_GSM_, "CESQ 3G rscp:%u ecno:%u", (unsigned)rscp, (unsigned)ecno);
+	LOG_TRACE(_GSM_, "CESQ 4G rsrq:%u rsrp:%u", (unsigned)rsrq, (unsigned)rsrp);
+
 	return at_res;
 }
 
@@ -2387,7 +2383,7 @@ int32_t gsm_COPS_state_cb(void)
 			{
 				uint32_t tech = rx.buff[index + 1] - 48;
 				const char *access_tech_str = "";
-				led_gsm_mode_t signal_led_mode;
+				led_gsm_mode_t signal_led_mode = LED_GSM_OFF;
 
 				switch (tech)
 				{

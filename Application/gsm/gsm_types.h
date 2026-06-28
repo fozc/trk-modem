@@ -91,9 +91,9 @@ typedef enum
 typedef enum
 {
     NETWORK_GEN_UNKNOWN = 0,
-    NETWORK_GEN_2G,
-    NETWORK_GEN_3G,
-    NETWORK_GEN_4G
+    NETWORK_GEN_2G = 2,
+    NETWORK_GEN_3G = 3,
+    NETWORK_GEN_4G = 4
 } network_generation_t;
 
 //

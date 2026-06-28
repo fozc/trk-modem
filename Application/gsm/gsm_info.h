@@ -126,11 +126,20 @@ uint8_t gsm_info_get_signal_quality_3G(void);
 void    gsm_info_set_signal_quality_4G(uint8_t level);   /**< +CESQ rsrp  (0-97, 255=unknown) */
 uint8_t gsm_info_get_signal_quality_4G(void);
 
+void    gsm_info_set_2G_ber(uint8_t value);   /**< +CESQ ber  (2G, 0-7 RXQUAL, 99=unknown) */
+uint8_t gsm_info_get_2G_ber(void);
+
+void    gsm_info_set_3G_ecno(uint8_t value);  /**< +CESQ ecno (3G, 0-49, 255=unknown) */
+uint8_t gsm_info_get_3G_ecno(void);
+
+void    gsm_info_set_4G_rsrq(uint8_t value);  /**< +CESQ rsrq (4G, 0-34, 255=unknown) */
+uint8_t gsm_info_get_4G_rsrq(void);
+
 /* ---------- Access technology (RAT) ---------- */
 
 void    gsm_info_set_access_technology(uint8_t rat);
 uint8_t gsm_info_get_access_technology(void);
-uint8_t get_network_generation(void);
+network_generation_t get_network_generation(void);
 const char* get_access_tech_str(gsm_access_technology_t tech);
 /* ---------- Module model & firmware ---------- */
 
@@ -177,6 +186,49 @@ uint32_t gsm_info_get_ip(void);
 void     gsm_info_add_rx_bytes(uint32_t count);
 void     gsm_info_add_tx_bytes(uint32_t count);
 void     gsm_info_get_rxtx_counters(uint32_t *p_tx, uint32_t *p_rx);
+
+/* ---------- +CESQ telemetry report ---------- */
+
+/** Bir CESQ alaninin fiziksel birimi. */
+typedef enum
+{
+    GSM_CESQ_UNIT_NONE = 0,  /**< ber — boyutsuz RXQUAL indeksi */
+    GSM_CESQ_UNIT_DBM,       /**< rxlev / rscp / rsrp */
+    GSM_CESQ_UNIT_DB,        /**< ecno / rsrq */
+} gsm_cesq_unit_t;
+
+/** Tek bir +CESQ alani: ham deger + fiziksel karsiligi + kalitatif etiket. */
+typedef struct
+{
+    uint8_t          raw;        /**< Ham +CESQ degeri                          */
+    int16_t          physical;   /**< x10 birim (or. -800 = -80.0 dBm, -75=-7.5 dB) */
+    bool             available;  /**< Sentinel (99/255) degilse true            */
+    gsm_cesq_unit_t  unit;       /**< Fiziksel birim                            */
+    const char      *label;      /**< "Excellent".."Very Weak" veya "N/A"       */
+} gsm_cesq_field_t;
+
+/** Tum +CESQ alanlarinin yorumlanmis hali. Ornek ciktiya karsilik gelir. */
+typedef struct
+{
+    const char      *active_technology;  /**< "4G / LTE" | "3G / WCDMA" | "2G / GSM" | "None" */
+    gsm_cesq_field_t rxlev;   /**< 2G GSM   - sinyal gucu   */
+    gsm_cesq_field_t ber;     /**< 2G GSM   - kalite        */
+    gsm_cesq_field_t rscp;    /**< 3G WCDMA - sinyal gucu   */
+    gsm_cesq_field_t ecno;    /**< 3G WCDMA - kalite        */
+    gsm_cesq_field_t rsrq;    /**< 4G LTE   - kalite        */
+    gsm_cesq_field_t rsrp;    /**< 4G LTE   - sinyal gucu   */
+} gsm_cesq_report_t;
+
+/**
+ * @brief Tum +CESQ alanlarini okuyup fiziksel degere (dBm/dB) ve kalitatif
+ *        etikete ("Very Weak".."Excellent") cevirir.
+ *
+ * Aktif teknoloji onceligi: 4G (rsrp) > 3G (rscp) > 2G (rxlev).
+ * Fiziksel deger x10 (deci) birimindedir (0.5 adimli rsrq/ecno icin float gerekmez).
+ *
+ * @param p_report  Doldurulacak cikti yapisi. NULL ise no-op.
+ */
+void gsm_info_get_cesq_report(gsm_cesq_report_t *p_report);
 
 #ifdef __cplusplus
 }

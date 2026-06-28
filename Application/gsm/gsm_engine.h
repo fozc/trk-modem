@@ -546,5 +546,15 @@ const socket_si_info_t *gsm_get_si_info(uint8_t conn_id);
 
 bool gsm_cusd_parse_phone_number(const char *msg);
 
+/**
+ * @brief +CESQ yanıtını ayrıştırır ve tüm sinyal kalitesi alanlarını
+ *        (rxlev/ber/rscp/ecno/rsrq/rsrp) gsm_info'ya yazar.
+ *
+ * gsm_cesq_cb (kayitli AT callback) bu fonksiyona delege eder; tek bir
+ * parse yolu saglar ve gerekirse baska yerden de cagrilabilir.
+ * @return AT yanit kodu (GSM_RESPONSE_OK vb.).
+ */
+int32_t gsm_cesq_cb2(void);
+
 
 #endif /* GSM_ENGINE_H_ */
