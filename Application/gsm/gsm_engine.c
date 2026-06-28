@@ -56,6 +56,7 @@
 #include "bsp.h"
 #include "rtc.h"
 #include "datetime.h"
+#include "led_driver.h"
 
 /* !!! DIKKAT: max 6 hane olabilir !, Fazlasi icin at engine modifiye edilmeli */
 const uint8_t GSM_OK_F_STR       [] = "\r\nOK\r\n"; //TODO: vifw dosyasi sifreli, aksi halde bu kisim dosya indirmede sikintiya yol acar !!!
@@ -136,7 +137,7 @@ typedef struct
 	ip_addr_t ip;
 	gsm_cell_info_t cell_info;
 	uint8_t  	  imei[17];
-	uint8_t  	  access_technology;
+
 	uint8_t 		  signal_quality;
 	uint8_t 		  signal_quality2G;
 	uint8_t 		  signal_quality4G;
@@ -177,49 +178,6 @@ uint32_t gsm_get_ip_addr(void)
 	return gsm_info_get_ip();
 }
 
-void gsm_set_access_technology(uint8_t val)
-{
-	gsm_info.access_technology = val;
-	gsm_info_set_access_technology(val);
-}
-
-uint8_t gsm_get_access_technology(void)
-{
-	return gsm_info_get_access_technology();
-}
-
-void gsm_set_signal_quality(uint8_t val)
-{
-	gsm_info.signal_quality = val;
-	gsm_info_set_signal_quality(val);
-}
-
-uint8_t gsm_get_signal_quality(void)
-{
-	return gsm_info_get_signal_quality();
-}
-
-void gsm_set_signal_quality2G(uint8_t val)
-{
-	gsm_info.signal_quality2G = val;
-	gsm_info_set_signal_quality_2G(val);
-}
-
-uint8_t gsm_get_signal_quality2G(void)
-{
-	return gsm_info_get_signal_quality_2G();
-}
-
-void gsm_set_signal_quality4G(uint8_t val)
-{
-	gsm_info.signal_quality4G = val;
-	gsm_info_set_signal_quality_4G(val);
-}
-
-uint8_t gsm_get_signal_quality4G(void)
-{
-	return gsm_info_get_signal_quality_4G();
-}
 
 const socket_si_info_t *gsm_get_si_info(uint8_t conn_id)
 {
@@ -1323,7 +1281,7 @@ int32_t gsm_csq_cb(void)
 			else if(strlen(buff) == 1 && ISNUM(buff[0]))
 				level = (buff[0] -'0');
 
-			gsm_set_signal_quality(level);
+			gsm_info_set_signal_quality(level);
 		}
 	}
 	return at_res;
@@ -1347,24 +1305,25 @@ int32_t gsm_cesq_cb(void)
 			else if(strlen(buff) == 1 && ISNUM(buff[0]))
 				level = (buff[0] -'0');
 
-			gsm_set_signal_quality2G(level);
+			gsm_info_set_signal_quality_2G(level);
 
-			int32_t index1 = str_index_of_th(ptr, ",", 4);
+			int32_t index1 = str_index_of_th(ptr, ",", 5);
 
 			if(index1 > 0)
 			{
 				ptr += index1;
-				str_substr(ptr, buff, ",", "," ,3);
+				level = 99;
+				str_substr(ptr, buff, ",", "\r" ,3);
 
 				if(strlen(buff) == 2 && ISNUM(buff[0]) && ISNUM(buff[1]))
 					level = (buff[0] -'0') * 10 + (buff[1] - '0');
 				else if(strlen(buff) == 1 && ISNUM(buff[0]))
 					level = (buff[0] -'0');
 
-				gsm_set_signal_quality4G(level);
+				gsm_info_set_signal_quality_4G(level);
 			}
 
-			LOG_TRACE(_GSM_, "CESQ2G: %d, CESQ4G: %d", gsm_get_signal_quality2G(), gsm_get_signal_quality4G());
+			LOG_TRACE(_GSM_, "CESQ2G: %d, CESQ4G: %d", gsm_info_get_signal_quality_2G(), gsm_info_get_signal_quality_4G());
 		}
 	}
 	return at_res;
@@ -2426,30 +2385,78 @@ int32_t gsm_COPS_state_cb(void)
 			index = str_index_of_th((char *)rx.buff, ",", 3); /* AcT parametresi 0->2G, 2->3G */
 			if(index > -1)
 			{
-				uint32_t state = rx.buff[index + 1] - 48;
-
+				uint32_t tech = rx.buff[index + 1] - 48;
 				const char *access_tech_str = "";
+				led_gsm_mode_t signal_led_mode;
 
-				if(state == 0){
+				switch (tech)
+				{
+				case GSM_ACCESS_TECH_GSM:
 					access_tech_str = "2G";
-					state = GSM_2G;
-				}
-				else if(state == 2){
+					break;
+				case GSM_ACCESS_TECH_GSM_COMPACT:
+					access_tech_str = "2G-CMPT";
+					break;
+				case GSM_ACCESS_TECH_UTRAN:
 					access_tech_str = "3G";
-					state = GSM_3G;
-				}
-				else if(state == 7){
+					break;
+				case GSM_ACCESS_TECH_GSM_EGPRS:
+					access_tech_str = "2G-EDGE";
+					break;
+				case GSM_ACCESS_TECH_UTRAN_HSDPA:
+					access_tech_str = "3G-HSDPA";
+					break;
+				case GSM_ACCESS_TECH_UTRAN_HSUPA:
+					access_tech_str = "3G-HSUPA";
+					break;
+				case GSM_ACCESS_TECH_UTRAN_HSDPA_HSUPA:
+					access_tech_str = "3G-HSPA";
+					break;
+				case GSM_ACCESS_TECH_E_UTRAN:
 					access_tech_str = "4G";
-					state = GSM_4G;
-				}
-				else{
+					break;
+				case GSM_ACCESS_TECH_UTRAN_HSPA_PLUS:
+					access_tech_str = "3G-HSPA+";
+					break;
+				case GSM_ACCESS_TECH_E_UTRAN_CA:
+					access_tech_str = "4G+";
+					break;
+				default:
 					access_tech_str = "Unknow";
+					break;
 				}
 
-				LOG_TRACE(_GSM_, "Access Technology: %s", access_tech_str);
+				switch (tech)
+				    {
+				        case GSM_ACCESS_TECH_GSM:
+				        case GSM_ACCESS_TECH_GSM_COMPACT:
+				        case GSM_ACCESS_TECH_GSM_EGPRS:
+				        	tech = NETWORK_GEN_2G;
+				        	signal_led_mode = gsm_info_get_signal_quality_2G() < 10 ? LED_GSM_2G_WEAK : LED_GSM_2G;
+				        	break;
+				        case GSM_ACCESS_TECH_UTRAN:
+				        case GSM_ACCESS_TECH_UTRAN_HSDPA:
+				        case GSM_ACCESS_TECH_UTRAN_HSUPA:
+				        case GSM_ACCESS_TECH_UTRAN_HSDPA_HSUPA:
+				        case GSM_ACCESS_TECH_UTRAN_HSPA_PLUS:
+				        	tech = NETWORK_GEN_3G;
+				        	signal_led_mode = gsm_info_get_signal_quality_3G() < 10 ? LED_GSM_3G_WEAK : LED_GSM_3G;
+				        	break;
 
-				gsm_set_access_technology(state);
-				//led_set_mode(LED_GSM, gsm_get_access_technology());
+				        case GSM_ACCESS_TECH_E_UTRAN:
+				        case GSM_ACCESS_TECH_E_UTRAN_CA:
+				        	tech = NETWORK_GEN_4G;
+				        	signal_led_mode = gsm_info_get_signal_quality_4G() < 10 ? LED_GSM_4G_WEAK : LED_GSM_4G;
+				        	break;
+
+				        default:
+				        	tech = NETWORK_GEN_UNKNOWN;
+				        	break;
+				    }
+
+				CSLOG("Access Technology: %s\r\n", access_tech_str);
+				gsm_info_set_access_technology(tech);
+				led_driver_set_gsm_mode(signal_led_mode);
 			}
 		}
 

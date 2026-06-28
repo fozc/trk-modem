@@ -586,7 +586,6 @@ void gsm_power_saving_mode(void)
 	case GSM_PIN_RESET:
 		res = gsm_pin_reset_module();
 		if(res == GSM_OK){
-			gsm_set_signal_quality(99);
 			gsm_set_delay(1000);
 			gsm.power_saving_mode_state  = GSM_SYSHLAT;
 			gsm_load_LE910R1_init_vector();

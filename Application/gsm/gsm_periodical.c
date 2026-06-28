@@ -14,6 +14,7 @@
 #include "gsm_listener_process.h"
 #include "gsm_signal_led.h"
 #include "bsp.h"
+#include "gsm_info.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -136,7 +137,7 @@ static void gsm_periodical_step_signal_quality(void)
 
 	if (res == GSM_RESPONSE_OK)
 	{
-		uint8_t signal_quality = gsm_get_signal_quality();
+		uint8_t signal_quality = gsm_info_get_signal_quality();
 
 		if ((!s_low_signal_flag) && (signal_quality < 8U))
 		{

@@ -16,6 +16,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "gsm_types.h"
 
 /* ---------- Module model identifier ---------- */
 
@@ -61,7 +62,7 @@ typedef struct
     uint16_t ci;    /**< Cell ID              */
 } gsm_info_cell_t;
 
-/* ---------- Lifecycle ---------- */
+
 
 /**
  * @brief Zero-initialise all stored information.
@@ -127,9 +128,9 @@ uint8_t gsm_info_get_signal_quality_4G(void);
 
 /* ---------- Access technology (RAT) ---------- */
 
-void    gsm_info_set_access_technology(uint8_t rat);     /**< 0=none, 2=2G, 3=3G, 4=4G */
+void    gsm_info_set_access_technology(uint8_t rat);
 uint8_t gsm_info_get_access_technology(void);
-
+uint8_t get_network_generation(void);
 /* ---------- Module model & firmware ---------- */
 
 void                gsm_info_set_module_model(gsm_module_model_t model);

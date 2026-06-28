@@ -482,10 +482,7 @@ typedef struct
 void gsm_set_gprs_state				(uint8_t state);
 uint8_t   gsm_get_gprs_state				(void);
 uint32_t  gsm_get_ip_addr				(void);
-void gsm_set_access_technology		(uint8_t val);
-uint8_t   gsm_get_access_technology		(void);
-void gsm_set_signal_quality			(uint8_t val);
-uint8_t   gsm_get_signal_quality			(void);
+
 void gsm_get_cell_info				(gsm_cell_info_t *cell_info);
 uint8_t   gsm_get_module_model			(void);
 void gsm_reset_web_session_info		(void);
@@ -544,11 +541,6 @@ void gsm_set_delay					(uint32_t d_time);
 
 
 uint32_t gsm_tx_is_ready(void);
-
-void gsm_set_signal_quality2G(uint8_t val);
-void gsm_set_signal_quality4G(uint8_t val);
-uint8_t   gsm_get_signal_quality2G(void);
-uint8_t   gsm_get_signal_quality4G(void);
 
 const socket_si_info_t *gsm_get_si_info(uint8_t conn_id);
 

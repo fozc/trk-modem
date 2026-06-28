@@ -43,6 +43,8 @@ void gsm_info_init(void)
     s_info.signal_quality_2G = 99U;
     s_info.signal_quality_3G = 99U;
     s_info.signal_quality_4G = 99U;
+    s_info.access_technology  = GSM_ACCESS_TECH_UNDEFINED;
+
     s_info.sim_state         = GSM_SIM_STATE_UNKNOWN;
     s_info.creg              = GSM_NET_REG_NOT_REGISTERED;
     s_info.cgreg             = GSM_NET_REG_NOT_REGISTERED;
@@ -152,6 +154,31 @@ void gsm_info_set_access_technology(uint8_t rat)
 uint8_t gsm_info_get_access_technology(void)
 {
     return s_info.access_technology;
+}
+
+network_generation_t get_network_generation(void)
+{
+    switch (gsm_info_get_access_technology())
+    {
+        case GSM_ACCESS_TECH_GSM:
+        case GSM_ACCESS_TECH_GSM_COMPACT:
+        case GSM_ACCESS_TECH_GSM_EGPRS:
+            return NETWORK_GEN_2G;
+
+        case GSM_ACCESS_TECH_UTRAN:
+        case GSM_ACCESS_TECH_UTRAN_HSDPA:
+        case GSM_ACCESS_TECH_UTRAN_HSUPA:
+        case GSM_ACCESS_TECH_UTRAN_HSDPA_HSUPA:
+        case GSM_ACCESS_TECH_UTRAN_HSPA_PLUS:
+            return NETWORK_GEN_3G;
+
+        case GSM_ACCESS_TECH_E_UTRAN:
+        case GSM_ACCESS_TECH_E_UTRAN_CA:
+            return NETWORK_GEN_4G;
+
+        default:
+            return NETWORK_GEN_UNKNOWN;
+    }
 }
 
 /* ---------- Module model & firmware ---------- */

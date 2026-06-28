@@ -247,7 +247,9 @@ static void gsm_init_step_soft_init(void)
 	GSM_LOG_INF("GSM soft init...\r\n");
 	led_driver_set_gsm_mode(LED_GSM_OFF);
 	gsm_info_init();
-	gsm_set_access_technology(GSM_NO_SIGNAL);
+
+
+
 	gsm.reboot_counter = 0;
 	gsm.no_sim = 0;
 	gsm.temp_counter = 0;
@@ -259,7 +261,7 @@ static void gsm_init_step_soft_init(void)
 	gsm.dialer_socket_no_carrier = 0;
 	gsm.listener[GSM_LISTENER_WEB].state = 0;
 	gsm.dialer_socket_state = 0;
-	gsm_set_signal_quality(99);
+
 	gsm_reset_init_vector();
 	if (gsm_get_main_state() == GSM_COMMON_INIT_MODE)
 	{
@@ -297,7 +299,7 @@ static void gsm_init_step_pin_reset(void)
 		gsm.temp_counter = 0;
 		gsm.tx_flag = GSM_TX_NOT_AVAILABLE;
 		gsm.module_state = 1;
-		gsm_set_signal_quality(99);
+		gsm_info_init();
 		gsm_set_delay(3000);
 		gsm_load_common_init_vector();
 		gsm_set_main_state(GSM_COMMON_INIT_MODE);

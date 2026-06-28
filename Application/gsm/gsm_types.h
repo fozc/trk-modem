@@ -72,13 +72,38 @@ typedef union
 
 #define NUM_OF_RELAY 2
 
+
 typedef enum
 {
-	GSM_NO_SIGNAL = 0,
-	GSM_2G = 2,
-	GSM_3G = 3,
-	GSM_4G = 4
+    GSM_ACCESS_TECH_GSM               = 0, /* GSM (2G) */
+    GSM_ACCESS_TECH_GSM_COMPACT       = 1, /* GSM Compact (2G) */
+    GSM_ACCESS_TECH_UTRAN             = 2, /* UTRAN (3G) */
+    GSM_ACCESS_TECH_GSM_EGPRS         = 3, /* GSM w/EGPRS (2.5G/EDGE) */
+    GSM_ACCESS_TECH_UTRAN_HSDPA       = 4, /* UTRAN w/HSDPA (3.5G) */
+    GSM_ACCESS_TECH_UTRAN_HSUPA       = 5, /* UTRAN w/HSUPA (3.5G) */
+    GSM_ACCESS_TECH_UTRAN_HSDPA_HSUPA = 6, /* UTRAN w/HSDPA and HSUPA (3.5G) */
+    GSM_ACCESS_TECH_E_UTRAN           = 7, /* E-UTRAN (4G LTE) */
+    GSM_ACCESS_TECH_UTRAN_HSPA_PLUS   = 8, /* UTRAN w/HSPA+ (3G+) */
+    GSM_ACCESS_TECH_E_UTRAN_CA        = 9, /* E-UTRAN CA (4G+ LTE Advanced) */
+	GSM_ACCESS_TECH_UNDEFINED = 255
 } gsm_access_technology_t;
+
+typedef enum
+{
+    NETWORK_GEN_UNKNOWN = 0,
+    NETWORK_GEN_2G,
+    NETWORK_GEN_3G,
+    NETWORK_GEN_4G
+} network_generation_t;
+
+//
+//typedef enum
+//{
+//	GSM_NO_SIGNAL = 0,
+//	GSM_2G = 2,
+//	GSM_3G = 3,
+//	GSM_4G = 4
+//} gsm_access_technology_t;
 
 typedef enum
 {
