@@ -72,14 +72,14 @@ void system_status_update(void)
     g_system_status.battery_current = 0;  // + şarj, - deşarj
     
     //TODO: Batarya sıcaklık sensöründen okuyun
-    g_system_status.battery_temp = 25;  // Varsayılan değer
+    g_system_status.battery_temp = 0;  // Varsayılan değer
     
     //TODO: BMS (Battery Management System) varsa oradan okuyun
     g_system_status.battery_soc = g_system_status.charge_percent;  // Mevcut charge_percent
     g_system_status.battery_soh = 100;  // Varsayılan %100 sağlıklı
     
     //TODO: Ortam sıcaklık sensöründen okuyun (varsa)
-    g_system_status.ambient_temp = g_system_status.temp;  // Şimdilik mevcut temp
+    g_system_status.ambient_temp = 0;
     
     //TODO: Isıtıcı kontrol GPIO'sundan okuyun
     g_system_status.heater_state = 0;  // GPIO_ReadPin(HEATER_CTRL_GPIO_Port, HEATER_CTRL_Pin);

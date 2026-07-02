@@ -487,6 +487,7 @@ __attribute__ ((noreturn)) void app_main(void)
 		{
 			while(process_run()); //consume all events
 		}
+		xmodem_process();
 	}
 }
 

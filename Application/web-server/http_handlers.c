@@ -32,6 +32,7 @@
 #include "cp56time2a.h"
 #include "datetime.h"
 #include "bsp.h"
+#include "rtc.h"
 
 /* ============================================================================
  * CONSTANTS
@@ -496,7 +497,7 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SimKartAPNSifresi\":\"%s\",", config->apn.user_pass);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"NtpServer\":\"%s\",", config->ntp_server);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"NtpServerPortu\":%u,", config->ntp_server_port);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Time\":%u,", config->time);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"Time\":%u,", rtc_get_epoch());
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TimeZone\":%d,", config->time_zone);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"PeriyodikModemResetPeriyodu\":%u,", config->periodic_modem_reset_period);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"DevreyeAlinmaZamani\":%u", config->commissioning_time);

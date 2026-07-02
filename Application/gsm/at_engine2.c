@@ -404,6 +404,48 @@ static void log_response(const char *p_result_str)
 }
 
 /**
+ * @brief Locate a complete "#SRECV: N,LEN" header anywhere in the response buffer.
+ *
+ * Used at the moment an "OK" terminator candidate is seen to verify that the
+ * candidate lies at or beyond the end of the declared binary payload.  This
+ * makes end-of-response detection immune to an "OK\r\n" byte pattern that forms
+ * at the SRECV window boundary (firmware data ending in "OK" followed by the
+ * modem's own "\r\n" framing), independent of the binary_bytes_remaining guard.
+ *
+ * @param[out] p_data_start  Buffer offset of the first payload byte.
+ * @param[out] p_len         Declared payload byte count.
+ * @return true if a complete "#SRECV: N,LEN\r\n" header was found.
+ */
+static bool at_srecv_find_header(uint16_t *p_data_start, uint16_t *p_len)
+{
+	const char *p_buf = (const char *)at_engine.response_buffer;
+
+	const char *tok = strstr(p_buf, "#SRECV:");
+	if (tok == NULL) { return false; }
+
+	const char *eol = strstr(tok, "\r\n");
+	if (eol == NULL) { return false; }
+
+	const char *comma = strchr(tok + 7, ',');
+	if ((comma == NULL) || (comma >= eol)) { return false; }
+	comma++;
+
+	uint16_t len       = 0U;
+	bool     has_digit = false;
+	for (const char *p = comma; p < eol; p++)
+	{
+		if ((*p < '0') || (*p > '9')) { return false; }
+		len = (uint16_t)((uint16_t)(len * 10U) + (uint16_t)((uint8_t)*p - (uint8_t)'0'));
+		has_digit = true;
+	}
+	if (!has_digit) { return false; }
+
+	*p_data_start = (uint16_t)((eol + 2) - p_buf); /* first byte after header's \r\n */
+	*p_len        = len;
+	return (len > 0U);
+}
+
+/**
  * @brief Check if the response buffer ends with the expected response or an error.
  */
 static void check_response_complete(void)
@@ -416,6 +458,23 @@ static void check_response_complete(void)
 		const uint8_t *p_tail = &at_engine.response_buffer[buf_len - at_engine.expected_response_len];
 		if(memcmp(p_tail, at_engine.expected_response, at_engine.expected_response_len) == 0)
 		{
+			/* Safety net against a false terminator: if a "#SRECV: N,LEN" header
+			 * is present, the real "OK" can only appear at/after the end of the
+			 * LEN declared payload bytes.  A match that falls inside the payload
+			 * is an "OK\r\n" formed by firmware data ending in "OK" plus the
+			 * modem's framing -- ignore it and keep reading. */
+			uint16_t srecv_data_start = 0U;
+			uint16_t srecv_len        = 0U;
+			if(at_srecv_find_header(&srecv_data_start, &srecv_len))
+			{
+				uint32_t ok_pos      = (uint32_t)buf_len - (uint32_t)at_engine.expected_response_len;
+				uint32_t payload_end = (uint32_t)srecv_data_start + (uint32_t)srecv_len;
+				if(ok_pos < payload_end)
+				{
+					return; /* Embedded OK inside SRECV payload -- not the terminator */
+				}
+			}
+
 			at_engine.state = AT_ENGINE_DONE;
 			at_engine.result = AT_ENGINE_RESULT_OK;
 			log_response("OK");
