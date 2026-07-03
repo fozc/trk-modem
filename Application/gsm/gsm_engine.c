@@ -1318,9 +1318,7 @@ int32_t gsm_cesq_cb(void)
 	gsm_info_set_4G_rsrq(rsrq);
 	gsm_info_set_signal_quality_4G(rsrp);
 
-	LOG_TRACE(_GSM_, "CESQ 2G rxlev:%u ber:%u", (unsigned)rxlev, (unsigned)ber);
-	LOG_TRACE(_GSM_, "CESQ 3G rscp:%u ecno:%u", (unsigned)rscp, (unsigned)ecno);
-	LOG_TRACE(_GSM_, "CESQ 4G rsrq:%u rsrp:%u", (unsigned)rsrq, (unsigned)rsrp);
+	CSLOG("2G rxlev:%u ber:%u 4G rsrq:%u rsrp:%u\r\n", (unsigned)rxlev, (unsigned)ber, (unsigned)rsrq, (unsigned)rsrp);
 
 	return at_res;
 }
@@ -2164,8 +2162,11 @@ static int32_t gsm_si_all_cb(void)
 			gsm.si_info[idx].is_valid    = true;
 			parsed_count++;
 
-			LOG(_GSM_, "SI[%u] sent:%u rcv:%u buf:%u ack:%u",
-			    conn_id, sent, received, buff_in, ack_waiting);
+			if(conn_id == 1 || conn_id == 2)
+			{
+				CSLOG("SI[%u] sent:%u rcv:%u buf:%u ack:%u\r\n",
+						conn_id, sent, received, buff_in, ack_waiting);
+			}
 
 			bool is_all_zero = ((sent == 0U) && (received == 0U) &&
 			                    (buff_in == 0U) && (ack_waiting == 0U));
