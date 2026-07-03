@@ -47,6 +47,7 @@ typedef struct
 	uint8_t  retry_count;
 	at_engine_state_t state;
 	uint16_t binary_bytes_remaining; /* >0: consuming binary #SRECV payload, skip terminator checks */
+	uint16_t srecv_payload_end;      /* buffer offset one past the last #SRECV payload byte (0 = none) */
 	uint32_t timeout;
 	uint32_t send_time;
 	at_engine_result_t result;
@@ -249,6 +250,7 @@ static void at_engine_send_process(void)
 	at_engine.retry_count--;
 	at_engine.response_buffer_len = 0U; /* Clear buffer for fresh response */
 	at_engine.binary_bytes_remaining = 0U; /* Exit any residual binary SRECV mode */
+	at_engine.srecv_payload_end = 0U;      /* No SRECV payload boundary yet */
 	at_engine.state = AT_ENGINE_WAIT_RESPONSE;
 }
 
@@ -404,48 +406,6 @@ static void log_response(const char *p_result_str)
 }
 
 /**
- * @brief Locate a complete "#SRECV: N,LEN" header anywhere in the response buffer.
- *
- * Used at the moment an "OK" terminator candidate is seen to verify that the
- * candidate lies at or beyond the end of the declared binary payload.  This
- * makes end-of-response detection immune to an "OK\r\n" byte pattern that forms
- * at the SRECV window boundary (firmware data ending in "OK" followed by the
- * modem's own "\r\n" framing), independent of the binary_bytes_remaining guard.
- *
- * @param[out] p_data_start  Buffer offset of the first payload byte.
- * @param[out] p_len         Declared payload byte count.
- * @return true if a complete "#SRECV: N,LEN\r\n" header was found.
- */
-static bool at_srecv_find_header(uint16_t *p_data_start, uint16_t *p_len)
-{
-	const char *p_buf = (const char *)at_engine.response_buffer;
-
-	const char *tok = strstr(p_buf, "#SRECV:");
-	if (tok == NULL) { return false; }
-
-	const char *eol = strstr(tok, "\r\n");
-	if (eol == NULL) { return false; }
-
-	const char *comma = strchr(tok + 7, ',');
-	if ((comma == NULL) || (comma >= eol)) { return false; }
-	comma++;
-
-	uint16_t len       = 0U;
-	bool     has_digit = false;
-	for (const char *p = comma; p < eol; p++)
-	{
-		if ((*p < '0') || (*p > '9')) { return false; }
-		len = (uint16_t)((uint16_t)(len * 10U) + (uint16_t)((uint8_t)*p - (uint8_t)'0'));
-		has_digit = true;
-	}
-	if (!has_digit) { return false; }
-
-	*p_data_start = (uint16_t)((eol + 2) - p_buf); /* first byte after header's \r\n */
-	*p_len        = len;
-	return (len > 0U);
-}
-
-/**
  * @brief Check if the response buffer ends with the expected response or an error.
  */
 static void check_response_complete(void)
@@ -458,21 +418,16 @@ static void check_response_complete(void)
 		const uint8_t *p_tail = &at_engine.response_buffer[buf_len - at_engine.expected_response_len];
 		if(memcmp(p_tail, at_engine.expected_response, at_engine.expected_response_len) == 0)
 		{
-			/* Safety net against a false terminator: if a "#SRECV: N,LEN" header
-			 * is present, the real "OK" can only appear at/after the end of the
-			 * LEN declared payload bytes.  A match that falls inside the payload
-			 * is an "OK\r\n" formed by firmware data ending in "OK" plus the
-			 * modem's framing -- ignore it and keep reading. */
-			uint16_t srecv_data_start = 0U;
-			uint16_t srecv_len        = 0U;
-			if(at_srecv_find_header(&srecv_data_start, &srecv_len))
+			/* Ignore a terminator that starts inside the declared #SRECV payload.
+			 * srecv_payload_end is the offset one past the last payload byte
+			 * (set when "#SRECV: N,LEN" was parsed).  An "OK\r\n" whose start lies
+			 * before it is a byte pattern within the binary payload (e.g. data
+			 * ending in "OK" followed by the modem's own "\r\n" framing), not the
+			 * real end of response. */
+			uint16_t ok_pos = buf_len - at_engine.expected_response_len;
+			if((at_engine.srecv_payload_end > 0U) && (ok_pos < at_engine.srecv_payload_end))
 			{
-				uint32_t ok_pos      = (uint32_t)buf_len - (uint32_t)at_engine.expected_response_len;
-				uint32_t payload_end = (uint32_t)srecv_data_start + (uint32_t)srecv_len;
-				if(ok_pos < payload_end)
-				{
-					return; /* Embedded OK inside SRECV payload -- not the terminator */
-				}
+				return; /* Terminator pattern inside SRECV payload -- keep reading */
 			}
 
 			at_engine.state = AT_ENGINE_DONE;
@@ -488,6 +443,11 @@ static void check_response_complete(void)
 		const uint8_t *p_tail = &at_engine.response_buffer[buf_len - (sizeof(AT_ERROR_STR) - 1U)];
 		if(memcmp(p_tail, AT_ERROR_STR, sizeof(AT_ERROR_STR) - 1U) == 0)
 		{
+			uint16_t err_pos = buf_len - (uint16_t)(sizeof(AT_ERROR_STR) - 1U);
+			if((at_engine.srecv_payload_end > 0U) && (err_pos < at_engine.srecv_payload_end))
+			{
+				return; /* Pattern inside SRECV payload -- keep reading */
+			}
 			at_engine.state = AT_ENGINE_DONE;
 			at_engine.result = AT_ENGINE_RESULT_ERROR;
 			log_response("ERROR");
@@ -528,7 +488,78 @@ static void check_response_complete(void)
 		}
 	}
 }
- 
+
+/* ===========================================================================
+ * AT#SRECV binary reception -- why the extra bookkeeping below exists
+ * ===========================================================================
+ *
+ * HOW THE DATA ARRIVES
+ * --------------------
+ * We read TCP socket data from the modem with "AT#SRECV=<sock>,<n>".  The modem
+ * answers with a text header, then <LEN> RAW bytes of socket payload, then its
+ * own text framing:
+ *
+ *     \r\n#SRECV: 1,1024\r\n <1024 raw payload bytes> \r\n\r\nOK\r\n
+ *     |<---- header ----->| |<---- binary payload --->||<- framing ->|
+ *
+ * The payload is arbitrary BINARY (here: encrypted firmware chunks delivered
+ * inside an HTTP POST body).  It may contain any byte value: 0x00, \r, \n, and
+ * even the ASCII letters "OK".
+ *
+ * THE PROBLEM (a real field bug)
+ * ------------------------------
+ * Normally we detect end-of-response by tail-matching the buffer against the
+ * expected terminator "OK\r\n".  But because the payload is binary, this can
+ * fire too early.  The nastiest case: the payload's LAST TWO bytes happen to be
+ * "OK", sitting exactly at the SRECV window boundary.  The modem then appends
+ * its framing, so the byte stream around the boundary looks like:
+ *
+ *     ... 4F 4B | 0D 0A 0D 0A 4F 4B 0D 0A
+ *          O  K | \r \n \r \n  O  K \r \n
+ *          ^^^^^^^^^^^
+ *       payload "OK" + framing "\r\n"  ==  "OK\r\n"   <-- FALSE terminator!
+ *
+ * A naive tail-match stops right there, 6 bytes short of the true end.  The
+ * caller then receives a truncated chunk, the HTTP body never completes, and
+ * the transfer stalls forever at that exact offset.  (Observed at firmware
+ * offset 98304, where chunk[596..597] == "OK".)  Note the payload contains only
+ * the 2-byte "OK"; the "\r\n" comes from the modem, so scanning the file for a
+ * 4-byte "OK\r\n" finds nothing -- the pattern only exists on the wire.
+ *
+ * WHAT WE MUST DO
+ * ---------------
+ * The response is length-prefixed: once we read "#SRECV: 1,LEN" we KNOW exactly
+ * how many payload bytes follow.  So we must NOT interpret those LEN bytes as
+ * text at all, and we must only accept a terminator that starts AFTER them.
+ *
+ * WHAT WE DO (two cooperating mechanisms)
+ * ---------------------------------------
+ *   1) binary_bytes_remaining : armed to LEN when the header line completes.
+ *      While > 0, each incoming byte is stored and counted down with NO URC /
+ *      OK / ERROR checking.  This isolates the payload from all text parsing.
+ *   2) srecv_payload_end : buffer offset one past the last payload byte
+ *      (= buffer length at arm time + LEN).  In check_response_complete() an
+ *      "OK\r\n"/ERROR match is IGNORED if its start position is < this offset,
+ *      i.e. the match lies inside the declared payload.  Only a terminator
+ *      at/after srecv_payload_end is the real end of response.
+ *
+ * WORKED EXAMPLE (LEN = 1024, header is 18 bytes)
+ * -----------------------------------------------
+ *   - Header "\r\n#SRECV: 1,1024\r\n" ends at buffer offset 18.
+ *   - Arm: binary_bytes_remaining = 1024, srecv_payload_end = 18 + 1024 = 1042.
+ *   - Payload occupies offsets [18 .. 1042); its last 2 bytes ("OK") are at
+ *     offsets 1040,1041.
+ *   - Modem framing "\r\n\r\nOK\r\n" follows at offsets 1042..1049.
+ *   - First "OK\r\n" tail match happens at buffer length 1044 (payload "OK" +
+ *     framing "\r\n").  ok_pos = 1044 - 4 = 1040 < 1042  -> REJECTED, keep reading.
+ *   - Real terminator matches at buffer length 1050. ok_pos = 1046 >= 1042
+ *     -> ACCEPTED.  Full 1024-byte payload is delivered intact.
+ *
+ * Non-SRECV responses leave srecv_payload_end == 0, so the guard is inert and
+ * ordinary commands terminate exactly as before.
+ * ===========================================================================
+ */
+
 /**
  * @brief Parse the data byte count from a buffered #SRECV response header.
  *
@@ -655,7 +686,9 @@ static void consume_rx_data(bool check_response)
 		 * delivered in the same TCP segment), and because a URC can arrive
 		 * without a leading \r\n so the buffer may already contain more than
 		 * one complete URC after a single '\n' boundary. */
-		while(check_urc_in_response()) { /* repeat until no more URCs found */ }
+		while(check_urc_in_response()) {
+			/* repeat until no more URCs found */
+		}
 
 		/* After each '\n': check if this ended a #SRECV header line.
 		 * If so, arm the binary byte counter to protect the payload from
@@ -666,7 +699,10 @@ static void consume_rx_data(bool check_response)
 			if(at_srecv_parse_pending_length(&srecv_len))
 			{
 				at_engine.binary_bytes_remaining = srecv_len;
-				continue; /* Binary payload follows — do not check for OK yet */
+				/* Record one-past-the-last payload byte so terminator detection
+				 * ignores any OK/ERROR byte pattern inside the binary payload. */
+				at_engine.srecv_payload_end = (uint16_t)(at_engine.response_buffer_len + srecv_len);
+				continue; /* Binary payload follows -- do not check for OK yet */
 			}
 		}
 
@@ -678,7 +714,9 @@ static void consume_rx_data(bool check_response)
 				/* Response complete. Before stopping, drain any URCs that arrived
 				 * in the same TCP segment as the final OK/ERROR (e.g. SRING
 				 * piggy-backed onto the AT#SSEND "OK" response). */
-				while(check_urc_in_response()) { /* drain */ }
+				while(check_urc_in_response()) {
+					/* repeat until no more URCs found */
+				}
 				break;
 			}
 		}
