@@ -62,6 +62,12 @@ PROCESS(shell_task, "shell_task");
 static process_event_t cmd_spcl_rcvd_event; /* A special character received (like up arrow, etc)*/
 static process_event_t cmd_rcvd_event;      /* A line received from UART*/
 
+uint8_t shell_get_session_level(void)
+{
+	return session_level;
+}
+
+
 void shell_set_putchar(shell_putchar_fn_t fn)
 {
 	shell_putchar_fn = fn;
@@ -141,7 +147,7 @@ int shell_register_command(const shell_cmd_t *cmd)
 
 	if(shell_find_command(cmd) >= 0) /* Is cmd already in the list? */
 	{
-		SHELL_LOG("Shell Command already registered!\r\n");
+		SHELL_LOG("Shell Command [%s] already registered!\r\n", cmd->cmd);
 		return -2;
 	}
 

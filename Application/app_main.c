@@ -473,21 +473,20 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	CSLOG("Board Initialization Completed.\r\n");
 
-	LL_LPUART_EnableIT_RXNE_RXFNE(LPUART1);  /* Console RX */
-
 	adc_init();
+	xmodem_app_init();
 
 #ifdef LED_TEST
 	led_test_all();
 #endif
 
+	LL_LPUART_EnableIT_RXNE_RXFNE(LPUART1);  /* Console RX */
 	while(1)
 	{
 		if(process_nevents())
 		{
 			while(process_run()); //consume all events
 		}
-		xmodem_process();
 	}
 }
 

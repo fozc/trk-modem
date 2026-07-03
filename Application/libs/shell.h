@@ -56,5 +56,6 @@ int shell_register_command(const shell_cmd_t *cmd);
 int shell_unregister_command(const shell_cmd_t *cmd);
 void shell_on_rx_received(int chr);
 void shell_process(void);
+uint8_t shell_get_session_level(void);
 
 #endif /* LIBS_SHELL_H_ */

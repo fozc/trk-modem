@@ -15,25 +15,24 @@
 /*  Flash boundaries                                                  */
 /* ------------------------------------------------------------------ */
 #define SPI_FLASH_START_ADDR    0x000000UL
-#define SPI_FLASH_TOTAL_SIZE    0x200000UL   /* 2 MB */
+#define SPI_FLASH_TOTAL_SIZE    0x400000UL   /* 4 MB */
 #define SPI_FLASH_END_ADDR      (SPI_FLASH_START_ADDR + SPI_FLASH_TOTAL_SIZE - 1UL)
 
 /* ------------------------------------------------------------------ */
 /*  Layout struct — never instantiated, used only for offsetof/sizeof */
 /*                                                                    */
-/*  Region                                           Size    Address  */
+/*  Region                        Size     Computed Address           */
 /* ------------------------------------------------------------------ */
 typedef struct
 {
     uint8_t SPIFLASH_SECTION_BOOTLOADER_SB                   [0x001000];  /*    4 KB  0x000000 */
     uint8_t SPIFLASH_SECTION_BOOTLOADER_SB_BACKUP            [0x001000];  /*    4 KB  0x001000 */
     uint8_t SPIFLASH_SECTION_BOOT_LOG                        [0x002000];  /*    8 KB  0x002000 */
-    uint8_t SPIFLASH_SECTION_IPC                             [0x001000];  /*    4 KB  0x002000 */
+    uint8_t SPIFLASH_SECTION_IPC                             [0x001000];  /*    4 KB  0x004000 */
     _Alignas(0x10000)
-    uint8_t SPIFLASH_SECTION_FIRMWARE_A                      [0x080000];  /*  512 KB  0x010000 */
+    uint8_t SPIFLASH_SECTION_FIRMWARE_A                      [0x100000];  /*    1 MB  0x010000 */
     _Alignas(0x10000)
-    uint8_t SPIFLASH_SECTION_FIRMWARE_B                      [0x080000];  /*  512 KB  0x090000 */
-    /* -- Data sections after Firmware B -- START ADDRESS 0x110000 --  */
+    uint8_t SPIFLASH_SECTION_FIRMWARE_B                      [0x100000];  /*    1 MB  0x110000 */
     uint8_t SPIFLASH_SECTION_NVRAM                           [0x002000];  /*    8 KB  0x110000 */
     uint8_t SPIFLASH_SECTION_NVRAM_BACKUP                    [0x002000];  /*    8 KB  0x112000 */
     uint8_t SPIFLASH_SECTION_ELOG_SUPERBLOCK                 [0x001000];  /*    4 KB  0x114000 */

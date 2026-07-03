@@ -35,7 +35,7 @@ typedef struct
     uint32_t page_size;         // Page boyutu (şu an 256 bytes)
 } w25qxx_chip_config_t;
 
-#define W25QXX_SIZE        (2048 * 1024) /* Bytes */
+#define W25QXX_SIZE        (4096 * 1024) /* Bytes */
 #define W25QXX_BLOCK_SIZE  (64 * 1024)
 #define W25QXX_SECTOR_SIZE (4 * 1024)
 #define W25QXX_PAGE_SIZE   256
