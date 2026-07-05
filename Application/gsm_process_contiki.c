@@ -33,6 +33,13 @@ PROCESS_THREAD(gsm_power_on, ev, data)
 		sw_rdy_asserted = false;
 
 		led_driver_set_modem_mode(LED_MODEM_POWER_ON);
+
+		gpio_set_pin(GSM_POWER_GPIO, GSM_POWER_PIN, GPIO_LOW);
+		gpio_set_pin(GSM_ONOFF_BSP_GPIO, GSM_ONOFF_BSP_PIN, GPIO_LOW);
+
+		etimer_set(&timer, 200);
+		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+
 		CSLOG("Powering on GSM module...\r\n");
 		gpio_set_pin(GSM_POWER_GPIO, GSM_POWER_PIN, GPIO_HIGH);
 		etimer_set(&timer, 500);

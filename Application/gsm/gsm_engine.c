@@ -2428,7 +2428,6 @@ int32_t gsm_COPS_state_cb(void)
 				        case GSM_ACCESS_TECH_GSM:
 				        case GSM_ACCESS_TECH_GSM_COMPACT:
 				        case GSM_ACCESS_TECH_GSM_EGPRS:
-				        	tech = NETWORK_GEN_2G;
 				        	signal_led_mode = gsm_info_get_signal_quality_2G() < 10 ? LED_GSM_2G_WEAK : LED_GSM_2G;
 				        	break;
 				        case GSM_ACCESS_TECH_UTRAN:
@@ -2436,18 +2435,15 @@ int32_t gsm_COPS_state_cb(void)
 				        case GSM_ACCESS_TECH_UTRAN_HSUPA:
 				        case GSM_ACCESS_TECH_UTRAN_HSDPA_HSUPA:
 				        case GSM_ACCESS_TECH_UTRAN_HSPA_PLUS:
-				        	tech = NETWORK_GEN_3G;
 				        	signal_led_mode = gsm_info_get_signal_quality_3G() < 10 ? LED_GSM_3G_WEAK : LED_GSM_3G;
 				        	break;
 
 				        case GSM_ACCESS_TECH_E_UTRAN:
 				        case GSM_ACCESS_TECH_E_UTRAN_CA:
-				        	tech = NETWORK_GEN_4G;
 				        	signal_led_mode = gsm_info_get_signal_quality_4G() < 10 ? LED_GSM_4G_WEAK : LED_GSM_4G;
 				        	break;
 
 				        default:
-				        	tech = NETWORK_GEN_UNKNOWN;
 				        	break;
 				    }
 

@@ -155,18 +155,22 @@ static void handle_idle(const gsm_listener_cfg_t *p_cfg,
 	{
 		if (gsm_get_socket_state(p_cfg->socket_id) == SOCKET_CONNECTED)
 		{
-			ctx->tcp_ack_timer = 0;
-			ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
 
+			ctx->tcp_ack_timer = 0;
+			//SSENDEXT issue
+#if 0
+			ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
+#else
 			/* Recent activity (<3 s) → skip CHECK_SOCKET_INFO, go directly to DATA_MODE */
-//			if (gsm_get_tick() - ctx->socket_timer > 3000U)
-//			{
-//				ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
-//			}
-//			else
-//			{
-//				ls_set_state(ctx, GSM_LS_DATA_MODE);
-//			}
+			if (gsm_get_tick() - ctx->socket_timer > 3000U)
+			{
+				ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
+			}
+			else
+			{
+				ls_set_state(ctx, GSM_LS_DATA_MODE);
+			}
+#endif
 		}
 		else
 		{
@@ -220,7 +224,8 @@ static void handle_check_socket_info(const gsm_listener_cfg_t *p_cfg,
 			 * ancak SI tamamen sifir donuyorsa, soket kapanmis demektir —
 			 * veri gondermeden soketi kapat ve yeniden ac.
 			 */
-#if 1
+			//SSENDEXT issue
+#if 0
 			if ((ctx->si_all_zero != 0U) && (ctx->had_data_activity != 0U))
 			{
 				LOG(WARNING, "[LS:%u] #SI all-zero: soket kapali", (unsigned)p_cfg->id);
