@@ -348,7 +348,7 @@ PROCESS(iec104_process, "iec104_process");
 PROCESS_THREAD(iec104_process, ev, data)
 {
 	static struct etimer timer;
-
+	static struct timer  iec104_tick_timer;
 	PROCESS_BEGIN();
 
 	  iec104_init(&(iec104_io_t){
@@ -365,11 +365,17 @@ PROCESS_THREAD(iec104_process, ev, data)
 
 	timer_set(&periodic_send_timer, iec104_config.periodical_send_interval*1000);
 	etimer_set(&timer, 100);
-
+	timer_set(&iec104_tick_timer, 1000);
 	while (1)
 	{
  		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
  		etimer_restart(&timer);
+
+ 		if(timer_expired(&iec104_tick_timer))
+ 		{
+ 			tick_timer();
+ 			timer_reset(&iec104_tick_timer);
+ 		}
 
  		libiec104_poll();
  		if(timer_expired(&periodic_send_timer))

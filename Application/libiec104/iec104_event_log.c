@@ -141,6 +141,14 @@ bool iec104_event_log_init(const iec104_evtlog_cfg_t *cfg)
 
     if (sb_validate(&g_sb))
     {
+    	// Superblock'taki write_index'in flash kapasitesini asmadigini dogrula.
+    	// Eger indeks gecersizse, sistemi korumak icin sifirla.
+    	if (g_sb.write_index >= IEC104_EVTLOG_CAPACITY)
+    	{
+    		CSLOG("iec104_event_log: invalid write_index detected (%u), resetting to 0\r\n", g_sb.write_index);
+    		g_sb.write_index = 0;
+    		sb_write_to_flash(g_cfg.superblock_addr); // Duzeltilen degeri flash'a geri yaz
+    	}
         g_initialized = true;
         CSLOG("iec104_event_log: init OK (primary SB) count=%u total=%lu\r\n",
               iec104_event_log_get_count(), (unsigned long)g_sb.total_events);
@@ -155,6 +163,13 @@ bool iec104_event_log_init(const iec104_evtlog_cfg_t *cfg)
 
     if (sb_validate(&g_sb))
     {
+    	if (g_sb.write_index >= IEC104_EVTLOG_CAPACITY)
+    	{
+    		CSLOG("iec104_event_log: invalid write_index detected (%u), resetting to 0\r\n", g_sb.write_index);
+    		g_sb.write_index = 0;
+    		sb_write_to_flash(g_cfg.superblock_addr); // Duzeltilen degeri flash'a geri yaz
+    	}
+
         CSLOG("iec104_event_log: recovered from backup SB\r\n");
         sb_write_to_flash(g_cfg.superblock_addr); /* restore primary */
         g_initialized = true;

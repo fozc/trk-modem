@@ -115,21 +115,28 @@ void iec104_send(const uint8_t *data, size_t length)
 {
 	const iec104_package_t * pkt = (const iec104_package_t *)data;
 
-	if(iec104_is_i_format(pkt)){
-		wait_for_ack = true;
-
-		if(k_counter >= config.k_max){
-			CSLOG("Window full, cannot send more I-frames\r\n");
-            //TODO: buffer'a alabiliriz. Ama gerek yok gibi
+	if(iec104_is_i_format(pkt))
+	{
+		if(k_counter >= config.k_max)
+		{
+			CSLOG_ERR("Window full, cannot send more I-frames\r\n");
+            //TODO: que'ya almamiz gerekiyor!
 			//return;
 		}
+
+		// T1 zamanlayıcısı yalnızca ilk onaysız pakette sıfırlanıp başlatılmalıdır
+		if(k_counter == 0)
+		{
+			t1_timer = 0;
+			wait_for_ack = true;
+		}
+
 		k_counter++;
-        send_sn++;
-        if (send_sn > 32767) {
-            send_sn = 0;
-        }
+		send_sn = (send_sn + 1) & 0x7FFF; // 15-bit maskeleme
+
+		// I-Frame gondererek karsi tarafi onaylamis olduk
         w_counter = 0;
-        t1_timer = 0;
+        t2_timer = 0;
 	}
 
     if(iec_io.send) {
@@ -199,7 +206,7 @@ void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config
 	}
 
     if(iec104_config == NULL){
-    	CSLOG("Error: iec104_config is NULL, using default config\r\n");
+    	CSLOG_WARN("Error: iec104_config is NULL, using default config\r\n");
         config = (iec104_config_t){
             .periodical_send_interval = 60, // seconds
             .t0_max = 30,  //  [1-255 sec, def:30s] Baglanti kurma zaman asimi, RTU'da onemsiz(?) [1-255 saniye]
@@ -220,7 +227,10 @@ void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config
 
     // k > w secilmeli
     k_counter = 0;
+    t1_timer = 0;
+
     w_counter = 0;
+    t2_timer = 0;
 
     iec104_reset();
 
@@ -723,8 +733,8 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
         CSLOG("  StartDT Act received, sending StartDT Con\r\n");
         iec_io.send(startdt_act_con, sizeof(startdt_act_con));
         //iec_io.send(end_of_init, sizeof(end_of_init));
-        receive_sn = 0;
-        send_sn = 0;
+
+        iec104_reset();
         iec104_send_end_of_initialization();
         break;
     case IEC104_STOPDT_ACT:
@@ -742,7 +752,6 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
     	return;
         break;
     }
-
 }
 
 /*
@@ -751,13 +760,13 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
 */
 void iec104_send_stopdt_con(void)
 {
-    const uint8_t stopdt_act[] = {0x68, 0x04, (IEC104_STOPDT_ACT << 2) | 0x03, 0x00, 0x00, 0x00};
+    const uint8_t stopdt_act[] = {0x68, 0x04, (IEC104_STOPDT_CON << 2) | 0x03, 0x00, 0x00, 0x00};
     iec_io.send(stopdt_act , sizeof(stopdt_act)); 
 }
 
 void iec104_send_stopdt_act(void)
 {
-    const uint8_t stopdt_con[] = {0x68, 0x04, (IEC104_STOPDT_CON << 2) | 0x03, 0x00, 0x00, 0x00};
+    const uint8_t stopdt_con[] = {0x68, 0x04, (IEC104_STOPDT_ACT << 2) | 0x03, 0x00, 0x00, 0x00};
     iec_io.send(stopdt_con , sizeof(stopdt_con)); 
 }
 
@@ -779,37 +788,39 @@ void iec104_send_s_frame(uint16_t receive_seq)
 
 void on_ack_received(uint16_t nr) 
 {
-     CSLOG("-> ILK On-ACK Received k-counter[%d] ack-sn[%d] w-counter[%d] send-sn[%d] receive-sn[%d]\r\n", k_counter, ack_sn, w_counter, send_sn, receive_sn);
-    // nr, SCADA'nin beklediği frame numarasidir, RSN
-    if (nr > ack_sn) 
+    nr &= 0x7FFF;
+    // 15-bit modülo aritmetiğine göre kaç paketin onaylandığını hesapla
+    uint16_t num_acked = (nr - ack_sn) & 0x7FFF;
+
+    CSLOG("-> On-ACK Received k-counter[%d] ack-sn[%d] w-counter[%d] send-sn[%d]\r\n", k_counter, ack_sn, w_counter, send_sn);
+
+    if (num_acked > 0)
     {
-        uint16_t acked = nr - ack_sn; // kac paket onaylandi
-        if (acked <= k_counter) 
+        if (num_acked <= k_counter)
         {
-            k_counter -= acked;
-        } 
+            k_counter -= num_acked;
+            ack_sn = nr;
 
-        else 
-        {
-            k_counter = 0;  
-            //TODO: Sequence numarasi hatali
-            //iec104_send_stopdt_con();
-            wait_for_ack = false;
-            t1_timer = 0;
-            CSLOG_WARN("Sequence number error: expected %d, got %d --  k-counter[%d] ack-sn[%d] w-counter[%d] send-sn[%d] receive-sn[%d]\r\n",
-                ack_sn + 1, nr, k_counter, ack_sn, w_counter, send_sn, receive_sn);
+            // T1 Timer Yönetimi
+            if (k_counter == 0)
+            {
+                wait_for_ack = false;
+                t1_timer = 0; // Bekleyen paket kalmadi, T1 durduruldu
+                CSLOG("All frames acknowledged\r\n");
+            }
+            else
+            {
+                t1_timer = 0; // Kismi onay geldi, kalan en eski paket için T1 yeniden baslatildi
+            }
         }
-
-        ack_sn = nr;
+        else
+        {
+            CSLOG_ERR("Sequence number error: ack_sn=%d, nr=%d, num_acked=%d, k_counter=%d\r\n",
+                       ack_sn, nr, num_acked, k_counter);
+            // Gerekirse burada baglantiyi sonlandirma mantigi calsitirabiliriz
+            //iec104_send_stopdt_con();
+        }
     }
-
-    if(ack_sn == send_sn){
-        wait_for_ack = false;
-        t1_timer = 0;
-        CSLOG("All frames acknowledged\r\n");
-    }
-
-    CSLOG("-> SON On-ACK Received k-counter[%d] ack-sn[%d] w-counter[%d] send-sn[%d] receive-sn[%d]\r\n", k_counter, ack_sn, w_counter, send_sn, receive_sn);
 }
 
 void iec104_process_s_frame(const s_format_control_t *sframe)
@@ -830,19 +841,67 @@ void iec104_send_i_frame()
 
 }
 
+void iec104_send_negative_ack(const iec104_package_t *original_pkt, uint8_t cause)
+{
+	if (original_pkt == NULL) {
+		return;
+	}
+
+    // apdu_length + 2 bize Start_Byte ve Length_Byte dahil TAM paketin boyutunu verir.
+    uint16_t frame_length = original_pkt->frame.apci.apdu_length + 2;
+    iec104_package_t pkt;
+
+   memcpy(&pkt, original_pkt, frame_length);
+
+    pkt.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+    pkt.frame.asdu_header.cot.cause = cause;
+    pkt.frame.asdu_header.cot.pn_bit = 1; // Negatif onay
+
+    iec104_send(pkt.data, frame_length);
+}
+
+static uint8_t get_type_id_length(uint8_t TypeId)
+{
+	uint8_t ret = 0;
+	const td_asdu_length *item;
+
+	item = asdu_length;
+	while (item->value)
+	{
+		if (item->value == TypeId)
+		{
+			ret = item->length;
+			break;
+		}
+		item++;
+	}
+
+	return ret;
+}
 
 void iec104_process_i_frame(const i_format_control_t *iframe)
 {
+    if (iframe == NULL) {
+        CSLOG_WARN("Invalid I-Frame pointer\r\n");
+        return;
+    }
+
     CSLOG("Processing I-Frame: Send Sequence Number: %d, Receive Sequence Number: %d\r\n",
            iframe->send_seq, iframe->receive_seq);
 
-    receive_sn = (receive_sn + 1) & 0x7FFF;
-
-    if(k_counter >= config.k_max){
-        CSLOG("Sending ACK: %d\r\n", receive_sn);
-    	iec104_send_s_frame(receive_sn);
-    	k_counter = 0;
+    /*
+     * SCADA'nın gonderdigi Paket Sira Numarasi N(S) ile bizim beklediğimiz receive_sn
+     * birebir eslesmelidir. Eslesmiyorsa paket kaybi veya sira kaymasi (desync) vardir.
+     */
+    if (iframe->send_seq != receive_sn) {
+        CSLOG_ERR("Sequence desync detected! Expected N(S)=%d, Got %d\r\n", receive_sn, iframe->send_seq);
+        // Standart geregi bu durumda oturum kapatilmali veya STOPDT gonderilmelidir.
+        iec104_send_stopdt_con();
+        return;
     }
+
+    // Gelen veri dogrulandigi icin bir sonraki paket beklenti numaramizi 15-bit modunda artiriyoruz
+    receive_sn = (receive_sn + 1) & 0x7FFF;
 
     CSLOG("Received IEC-104 package:\r\n");
     CSLOG("  Start Char: 0x%02X\r\n", package.frame.apci.start_char);
@@ -866,7 +925,15 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     CSLOG("  Originator Address: %d\r\n", package.frame.asdu_header.originator_address);
     CSLOG("  Common ASDU Address: %d\r\n", package.frame.asdu_header.common_asdu_address);
 
+    on_ack_received(iframe->receive_seq);
 
+    if(++w_counter >= config.w_max){
+        iec104_send_s_frame(receive_sn);
+        w_counter = 0;
+        t2_timer = 0; // Hatalı t1_timer ataması t2_timer olarak düzeltildi.
+    }
+
+    // ASDU Tip Destegi
     bool is_supported = false;
     for (size_t i = 0; i < sizeof(supported_asdu_types) / sizeof(supported_asdu_types[0]); i++)
     {
@@ -876,30 +943,65 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         }
     }
 
-    on_ack_received(iframe->receive_seq);
+    if(!is_supported)
+    {
+        CSLOG_WARN("Unsupported ASDU type: %d\r\n", package.frame.asdu_header.type_id);
 
-    if(++w_counter >= config.w_max){
-        iec104_send_s_frame(receive_sn);
-        w_counter = 0;
-        t1_timer = 0;
-    }
+        uint16_t frame_length = package.frame.apci.apdu_length + 2;
+        package.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
 
+        // ASDU
+        package.frame.asdu_header.cot.cause = UkTypeId;
+        package.frame.asdu_header.cot.pn_bit = 1; // Negatif onay
 
-    if(!is_supported) {
-    	CSLOG_WARN("Unsupported ASDU type: %d\r\n", package.frame.asdu_header.type_id);
-
-        package.frame.asdu_header.cot.cause = UkTypeId; // (unknown ASDU type identification)
-        package.frame.asdu_header.cot.pn_bit = 1; // Set P/N bit to indicate that the package is not processed
-        iec104_send(package.data, package.frame.apci.apdu_length + 2);
-
+        iec104_send(package.data, frame_length);
         return;
     }
 
-    if(package.frame.asdu_header.common_asdu_address != config.common_address) {
-    	CSLOG_WARN("Common ASDU Address mismatch: expected %d, got %d\r\n", config.common_address, package.frame.asdu_header.common_asdu_address);
-        package.frame.asdu_header.cot.cause = UkComAdrASDU; // (unknown ASDU type identification)
-        package.frame.asdu_header.cot.pn_bit = 1; // Set P/N bit to indicate that the package is not processed
-        iec104_send(package.data, package.frame.apci.apdu_length + 2);
+    if(package.frame.asdu_header.common_asdu_address != config.common_address)
+    {
+        CSLOG_WARN("Common ASDU Address mismatch: expected %d, got %d\r\n", config.common_address, package.frame.asdu_header.common_asdu_address);
+
+        uint16_t frame_length = package.frame.apci.apdu_length + 2;
+
+        // APCI
+        package.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+
+        package.frame.asdu_header.cot.cause = UkComAdrASDU; // Unknown Common Address of ASDU
+        package.frame.asdu_header.cot.pn_bit = 1;           // Negative Confirmation (P/N = 1)
+
+        iec104_send(package.data, frame_length);
+        return;
+    }
+
+
+   /*
+    * [PAKET BUTUNLUGU]:
+    * Gelen paketin APDU uzunlugu, bildirilen ASDU Type ID'sinin gerektirdigi
+    * minimum veri boyutuyla karsilastiriliyor.
+    *
+    * Eger gelen paket, beyan edilen tip icin gereken veriden daha kisa ise
+    * bu durum paket parcalanmasi veya bozunumu (malformed packet) olarak
+    * kabul edilir. Bu kontrol olmadan, kodun union icerisindeki
+    * struct alanlarina erismesi bellek tasmasina (buffer over-read) veya
+    * sistemsel hataya (Hard Fault) yol acabilir.
+    *
+    * Hata durumunda NEGATIVE ACK (UkTypeId) gonderilerek SCADA'ya
+    * paketin reddedildigi bildirilmektedir.
+    */
+
+    // 1. Beklenen minimum veri uzunlugunu al
+    uint8_t min_data_len = get_type_id_length(package.frame.asdu_header.type_id);
+
+    // 2. Gelen paket uzunlugunu kontrol et
+    // (APCI 4 byte + ASDU Header 6 byte = 10 byte overhead)
+    if (package.frame.apci.apdu_length < (10 + min_data_len)) {
+        CSLOG_ERR("Malformed packet: Type %d needs %d bytes, but got %d\r\n",
+                   package.frame.asdu_header.type_id,
+                   min_data_len,
+                   package.frame.apci.apdu_length - 10);
+
+        iec104_send_negative_ack(&package, UkTypeId);
         return;
     }
 
@@ -911,17 +1013,17 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         break;
 #ifdef C_SC_NA_1_ENABLED
         case C_SC_NA_1:
-            CSLOG("Received C_SC_NA_1  Command\r\n");
+            CSLOG("Received C_SC_NA_1 Command\r\n");
             iec104_c_sc_na_1_45_command_handler(&package);
             break;
 #endif
-        case C_CS_NA_1: // clock synchronization command
+        case C_CS_NA_1: // Clock Synchronization Command
             CSLOG("Received C_CS_NA_1 Clock Synchronization Command\r\n");
             iec104_c_cs_na_1_command_handler(&package);
             break;
 
-            default:
-                CSLOG("Received ASDU Type: %d (%s - %s)\r\n", package.frame.asdu_header.type_id,
+        default:
+            CSLOG("Received ASDU Type: %d (%s - %s)\r\n", package.frame.asdu_header.type_id,
                    val_to_str(package.frame.asdu_header.type_id, asdu_types_str),
                    val_to_str(package.frame.asdu_header.type_id, asdu_types_desc_str));
             break;
@@ -1103,25 +1205,24 @@ void libiec104_poll(void)
 		iec104_process_package();
 	}
 
-	
-
-	if((k_counter >= config.k_max) || ((k_counter > 0) && (t2_timer >= config.t2_max))){
+	if((w_counter >= config.w_max) || ((w_counter > 0) && (t2_timer >= config.t2_max))){
         CSLOG("Sending ACK: %d\r\n", receive_sn);
 		iec104_send_s_frame(receive_sn);
 		t2_timer = 0;
-		k_counter = 0;
+		w_counter = 0;
 	}
     if(t1_timer > config.t1_max){
-        CSLOG("T1 timer expired, resend is necessary\r\n");
+        CSLOG_WARN("T1 timer expired, resend is necessary\r\n");
         t1_timer = 0;
         //TODO: Implement retransmission logic
         //TODO: Save a log entry for retransmission
-        send_sn = ack_sn;
-        iec104_send_periodic_update();
+        //TODO: Soketi kapat!
+        iec104_send_stopdt_act();
+        //iec104_send_periodic_update();
     }
 
     if(t3_timer > config.t3_max){
-        CSLOG("T3 timer expired, sending TESTFR\r\n");
+    	CSLOG_WARN("T3 timer expired, sending TESTFR\r\n");
         t3_timer = 0;
         iec104_send_test_frame();
     }
@@ -1130,30 +1231,7 @@ void libiec104_poll(void)
         iec104_send_periodic_update();
         periodical_send_interval = 0;
     }
- 
-
 }
-
-static uint8_t get_type_id_length(uint8_t TypeId)
-{
-	uint8_t ret = 0;
-	const td_asdu_length *item;
-
-	item = asdu_length;
-	while (item->value)
-	{
-		if (item->value == TypeId)
-		{
-			ret = item->length;
-			break;
-		}
-		item++;
-	}
-
-	return ret;
-}
-
-
 
 void iec104_send_M_SP_TB_1_spontan(ioa_3byte_t ioa, uint8_t value, uint8_t quality)
 {
@@ -2105,8 +2183,19 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
 
         if (buff != NULL && len != NULL) 
         {
-            pkt.frame.apci.i_frame.send_seq++;
-            send_sn = (send_sn + 1) % 32768;
+            //pkt.frame.apci.i_frame.send_seq++;
+            send_sn = (send_sn + 1) & 0x7FFF; // maks 32768;
+            /*
+            * [MİMARİ UYARI - DİKKAT!]:
+            * Burada paketler iec104_send() fonksiyonundan geçirilmeden doğrudan dış bir arabelleğe (buff)
+            * yazılıyor. Sıra numarası (send_sn) doğru şekilde artırılsa da, IEC 104 state makinesindeki
+            * k_counter (onay bekleyen I-Frame sayısı) ARTIRILMAMAKTADIR ve t1_timer BAŞLATILMAMAKTADIR.
+            *
+            * Eğer bu buffer'daki veriler daha sonra TCP/GSM soketine doğrudan basılırsa, RTU bu paketlerin
+            * ulaşıp ulaşmadığını (T1 ACK Timeout ve K Max penceresi) takip edemez. Bu buffer'ı ağ üzerinden
+            * gönderen dış mekanizma, gönderdiği I-Frame sayısı kadar k_counter'ı artırmalı ve
+            * wait_for_ack = true yaparak T1 zamanlayıcısını tetiklemelidir.
+            */
         }
 
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
@@ -2210,8 +2299,20 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
 
         if (buff != NULL && len != NULL) 
         {
-            pkt.frame.apci.i_frame.send_seq++;
-            send_sn = (send_sn + 1) % 32768;
+            //pkt.frame.apci.i_frame.send_seq++;
+            send_sn = (send_sn + 1) & 0x7FFF; // maks 32768;
+
+            /*
+            * [MİMARİ UYARI - DİKKAT!]:
+            * Burada paketler iec104_send() fonksiyonundan geçirilmeden doğrudan dış bir arabelleğe (buff)
+            * yazılıyor. Sıra numarası (send_sn) doğru şekilde artırılsa da, IEC 104 state makinesindeki
+            * k_counter (onay bekleyen I-Frame sayısı) ARTIRILMAMAKTADIR ve t1_timer BAŞLATILMAMAKTADIR.
+            *
+            * Eğer bu buffer'daki veriler daha sonra TCP/GSM soketine doğrudan basılırsa, RTU bu paketlerin
+            * ulaşıp ulaşmadığını (T1 ACK Timeout ve K Max penceresi) takip edemez. Bu buffer'ı ağ üzerinden
+            * gönderen dış mekanizma, gönderdiği I-Frame sayısı kadar k_counter'ı artırmalı ve
+            * wait_for_ack = true yaparak T1 zamanlayıcısını tetiklemelidir.
+            */
         }
 
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
