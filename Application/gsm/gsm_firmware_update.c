@@ -35,28 +35,40 @@ static int fw_update_write_handler(uint32_t offset, const uint8_t *data, uint32_
 {
 	GSM_LOG_INF_C(XCOLOR_CYAN, "Firmware update write, offset: %d, size: %d bytes\r\n", offset, size);
 
-	if(flash_address >= (FIRMWARE_A_ADDRESS + FIRMWARE_FLASH_AREA_SIZE))
+	(void)offset;   /* offset kullanılmıyor; yazım konumu flash_address ile ilerler */
+
+	if((data == NULL) || (size == 0U))
 	{
-		GSM_LOG_ERR("Firmware update write error: Exceeded maximum firmware size!\r\n");
-		return -1;
+		return 0;
 	}
 
-	/* Bug fix: use fw_update_buffer_index as destination offset, not (flash_address - BASE) % 4096.
-	 * The old formula always returned 0 for chunk sizes < 4096, causing each chunk to overwrite
-	 * the start of the buffer instead of appending. */
-	memcpy(&fw_update_buffer[fw_update_buffer_index], data, size);
-	fw_update_buffer_index += size;
-
-	if(fw_update_buffer_index >= 4096)
+	while(size > 0U)
 	{
-		int res = w25qxx_write_buff(flash_address, fw_update_buffer, 4096);
-		if(res != W25QXX_RES_OK)
+		uint32_t space   = 4096U - fw_update_buffer_index;
+		uint32_t to_copy = (size < space) ? size : space;   /* to_copy ∈ [1, 4096] */
+
+		if(flash_address >= (FIRMWARE_A_ADDRESS + FIRMWARE_FLASH_AREA_SIZE))
 		{
-			GSM_LOG_ERR("Firmware update write error: Failed to write to flash! Error code: %d\r\n", res);
+			GSM_LOG_ERR("Firmware update write error: Exceeded maximum firmware size!\r\n");
 			return -1;
 		}
-		flash_address += 4096;
-		fw_update_buffer_index = 0;
+
+		memcpy(&fw_update_buffer[fw_update_buffer_index], data, to_copy);
+		fw_update_buffer_index += to_copy;
+		data += to_copy;
+		size -= to_copy;
+
+		if(fw_update_buffer_index >= 4096U)
+		{
+			int res = w25qxx_write_buff(flash_address, fw_update_buffer, 4096);
+			if(res != W25QXX_RES_OK)
+			{
+				GSM_LOG_ERR("Firmware update write error: Failed to write to flash! Error code: %d\r\n", res);
+				return -1;
+			}
+			flash_address += 4096U;
+			fw_update_buffer_index = 0U;
+		}
 	}
 
 	return 0;
