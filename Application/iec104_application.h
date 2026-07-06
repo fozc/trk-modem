@@ -19,5 +19,6 @@ typedef enum {
 
 
 void iec104_application_event_handler(iec104_app_event_t evt);
+void iec104_application_init(void);
 
 #endif /* IEC104_APPLICATION_H_ */

@@ -118,7 +118,7 @@ bool iec104_get_sbo_state(void)
 	return config.is_sbo_active;
 }
  
-bool iec104_send(const uint8_t *data, size_t length)
+static bool iec104_send(const uint8_t *data, size_t length)
 {
 	const iec104_package_t * pkt = (const iec104_package_t *)data;
 

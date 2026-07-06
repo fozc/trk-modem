@@ -398,6 +398,8 @@ void iec104_process_init(void)
 {
 	iec104_config = *nvram_get_iec104_config();
 	generate_dummy_test_data();
+	iec104_application_init();
+
 	process_start(&iec104_process, NULL);
 }
 
