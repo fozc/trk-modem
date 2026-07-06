@@ -68,6 +68,26 @@ static const gsm_listener_cfg_t s_cfg_iec104 = {
 	.reset_session   = gsm_reset_iec104_session_info,
 };
 
+void gsm_listener_socket_event_handler(gsm_listener_id_t id, gsm_user_event_t event)
+{
+	if(id >= GSM_LISTENER_COUNT) {
+		CSLOG_WARN("LS Event handler: Invalid listener ID: %d\r\n", id);
+		return;
+	}
+
+	CSLOG("[LS:%d] Event handler: Received event %d\r\n", id, event);
+
+	switch(event)
+	{
+	case GSM_USER_EVENT_CLOSE_SOCKET:
+		gsm_listener_request_close_socket(id);
+		break;
+	default:
+		CSLOG_WARN("LS Event handler: Unhandled event %d for listener ID %d\r\n", event, id);
+		break;
+	}
+}
+
 /* ---------------------------------------------------------------------------
  *  Convenience wrappers — one call per listener, config stays module-private
  * ------------------------------------------------------------------------- */
@@ -127,9 +147,16 @@ static inline void ls_set_state(gsm_listener_ctx_t *ctx, uint8_t new_state)
 static void handle_idle(const gsm_listener_cfg_t *p_cfg,
                         gsm_listener_ctx_t *ctx)
 {
-	if (gsm_listener_get_no_carrier(p_cfg->id))
+	if(gsm_listener_is_close_socket_requested(p_cfg->id))
+	{
+		gsm_listener_request_close_socket_clear(p_cfg->id);
+		ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
+		ls_set_state(ctx, GSM_LS_CLOSE_SOCKET);
+	}
+	else if (gsm_listener_get_no_carrier(p_cfg->id))
 	{
 		gsm_listener_set_no_carrier(p_cfg->id, 0);
+		gsm_listener_request_close_socket_clear(p_cfg->id);
 		ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
 		gsm_socket_record_disconnect(p_cfg->socket_id, SOCK_DISC_NO_CARRIER);
 		if (p_cfg->on_closed != NULL) {
@@ -139,6 +166,7 @@ static void handle_idle(const gsm_listener_cfg_t *p_cfg,
 	}
 	else if (gsm_listener_get_new_conn_req(p_cfg->id))
 	{
+		gsm_listener_request_close_socket_clear(p_cfg->id);
 		gsm_listener_set_new_conn_req(p_cfg->id, 0);
 		ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
 		ls_set_state(ctx, GSM_LS_ACCEPT_CONNECTION);
@@ -307,6 +335,13 @@ static void handle_check_socket_info(const gsm_listener_cfg_t *p_cfg,
 static void handle_data_mode(const gsm_listener_cfg_t *p_cfg,
                                  gsm_listener_ctx_t *ctx)
 {
+	if (gsm_listener_is_close_socket_requested(p_cfg->id))
+	{
+	        CSLOG_WARN("GSM: Close socket requested by protocol layer during DATA_MODE.\r\n");
+	        ls_set_state(ctx, GSM_LS_IDLE);
+	        return;
+	}
+
 	if (ctx->phase == GSM_INIT_PHASE_SEND)
 	{
 		ls_send(ctx, p_cfg->at_cmd[LS_AT_DATA_MODE]);
@@ -553,7 +588,9 @@ static void handle_close_socket(const gsm_listener_cfg_t *p_cfg,
 		return;
 	}
 
-	if (p_cfg->on_closed != NULL) { p_cfg->on_closed(); }
+	if (p_cfg->on_closed != NULL) {
+		p_cfg->on_closed();
+	}
 	ls_led_update(p_cfg->id, LED_LISTENER_OFF);
 
 	if (gsm_listener_get_no_carrier(p_cfg->id))
@@ -565,7 +602,9 @@ static void handle_close_socket(const gsm_listener_cfg_t *p_cfg,
 	{
 		case GSM_RESPONSE_OK:
 		case GSM_ERROR:
-			if (p_cfg->reset_session != NULL) { p_cfg->reset_session(); }
+			if (p_cfg->reset_session != NULL) {
+				p_cfg->reset_session();
+			}
 			ctx->temp_counter = 0;
 			ls_set_state(ctx, GSM_LS_CHECK_NET);
 			gsm_set_delay(50);

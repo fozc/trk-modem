@@ -365,7 +365,7 @@ typedef enum
 
 typedef enum {
 	GSM_LISTENER_WEB = 0,
-	GSM_LISTENER_IEC104,
+	GSM_LISTENER_IEC104 = 1,
 	GSM_LISTENER_COUNT
 } gsm_listener_id_t;
 
@@ -376,6 +376,7 @@ typedef struct {
 	volatile uint8_t   no_carrier;
 	volatile uint8_t   rx_available;
 	volatile uint8_t   new_connection_req;
+	uint8_t            close_socket_req;
 	uint8_t            send_to_client;
 	uint8_t            had_data_activity;
 	uint8_t            si_all_zero;
@@ -513,6 +514,9 @@ void      gsm_listener_set_rx_available     (gsm_listener_id_t id, uint8_t v);
 uint8_t   gsm_listener_get_rx_available     (gsm_listener_id_t id);
 void      gsm_listener_set_new_conn_req     (gsm_listener_id_t id, uint8_t v);
 uint8_t   gsm_listener_get_new_conn_req     (gsm_listener_id_t id);
+void      gsm_listener_request_close_socket(gsm_listener_id_t id);
+void      gsm_listener_request_close_socket_clear(gsm_listener_id_t id);
+uint8_t   gsm_listener_is_close_socket_requested(gsm_listener_id_t id);
 uint8_t   gsm_listener_get_state             (gsm_listener_id_t id);
 
 void gsm_close_hes_connection		(void);

@@ -96,6 +96,15 @@ typedef enum
     NETWORK_GEN_4G = 4
 } network_generation_t;
 
+
+typedef enum
+{
+	GSM_USER_EVENT_NONE = 0,
+	GSM_USER_EVENT_CLOSE_SOCKET = 1,
+	GSM_USER_EVENT_OPEN_SOCKET = 2
+}gsm_user_event_t;
+
+
 //
 //typedef enum
 //{

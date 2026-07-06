@@ -408,6 +408,25 @@ uint8_t gsm_listener_get_new_conn_req(gsm_listener_id_t id)
 	return (id < GSM_LISTENER_COUNT) ? gsm.listener[id].new_connection_req : 0U;
 }
 
+void gsm_listener_request_close_socket(gsm_listener_id_t id)
+{
+	if (id < GSM_LISTENER_COUNT) {
+		gsm.listener[id].close_socket_req = 1;
+	}
+}
+
+void gsm_listener_request_close_socket_clear(gsm_listener_id_t id)
+{
+	if (id < GSM_LISTENER_COUNT) {
+		gsm.listener[id].close_socket_req = 0;
+	}
+}
+
+uint8_t gsm_listener_is_close_socket_requested(gsm_listener_id_t id)
+{
+	return (id < GSM_LISTENER_COUNT) ? gsm.listener[id].close_socket_req : 0U;
+}
+
 uint8_t gsm_listener_get_state(gsm_listener_id_t id)
 {
 	return (id < GSM_LISTENER_COUNT) ? gsm.listener[id].state : 0U;

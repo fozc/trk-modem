@@ -262,6 +262,9 @@ static void gsm_init_step_soft_init(void)
 	gsm.listener[GSM_LISTENER_WEB].state = 0;
 	gsm.dialer_socket_state = 0;
 
+	gsm.listener[GSM_LISTENER_IEC104].close_socket_req = 0;
+	gsm.listener[GSM_LISTENER_WEB].close_socket_req = 0;
+
 	gsm_reset_init_vector();
 	if (gsm_get_main_state() == GSM_COMMON_INIT_MODE)
 	{

@@ -58,6 +58,9 @@ static bool wait_for_ack = false;
 static cp56time2a_t last_clock_sync_time = {0};
 static iec104_config_t config = {0};
 
+static bool wait_for_testfr_con = false; /* TESTFR_CON paketi bekleniyor mu? */
+static bool link_active = false; /* SCADA ile STARTDT suresci tamamlandi mi? */
+
 void iec104_send_periodic_update(void);
 void iec104_send_phase_currents(cause_of_transmission_t cause);
 void iec104_send_fault_currents(cause_of_transmission_t cause);
@@ -77,6 +80,10 @@ void iec104_send_rf_communication_states_for(uint8_t feeder_id, uint8_t phase, c
 
 void iec104_tick(void)
 {
+	if (!link_active){
+		return;
+	}
+
 	if(w_counter > 0){
 		t2_timer++;
 	}
@@ -111,7 +118,7 @@ bool iec104_get_sbo_state(void)
 	return config.is_sbo_active;
 }
  
-void iec104_send(const uint8_t *data, size_t length)
+bool iec104_send(const uint8_t *data, size_t length)
 {
 	const iec104_package_t * pkt = (const iec104_package_t *)data;
 
@@ -121,7 +128,7 @@ void iec104_send(const uint8_t *data, size_t length)
 		{
 			CSLOG_ERR("Window full, cannot send more I-frames\r\n");
             //TODO: que'ya almamiz gerekiyor!
-			//return;
+			return false;
 		}
 
 		// T1 zamanlayıcısı yalnızca ilk onaysız pakette sıfırlanıp başlatılmalıdır
@@ -140,9 +147,10 @@ void iec104_send(const uint8_t *data, size_t length)
 	}
 
     if(iec_io.send) {
-    	//TODO: Bu fonksiyon kuyruklayip GSM module uzerinden gonderim yapmali
         iec_io.send(data, length);
     }
+
+    return true;
 }
 
 static int send_package(const uint8_t *data, uint16_t length)
@@ -711,6 +719,8 @@ void iec104_send_test_frame()
 {
     static const uint8_t test_frame[] = {0x68, 0x04, (IEC104_TESTFR_ACT << 2) | 0x03, 0x00, 0x00, 0x00};
     iec_io.send(test_frame, sizeof(test_frame));
+
+    wait_for_testfr_con = true;
 }
 
 void iec104_process_u_frame(const u_format_control_t *uframe)
@@ -736,6 +746,7 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
 
         iec104_reset();
         iec104_send_end_of_initialization();
+        link_active = true; // !!! iec104_reset bunu sifirliyor, bu nedenle link_active true olarak ayarlanmali
         break;
     case IEC104_STOPDT_ACT:
         CSLOG("  StopDT Act received, sending StopDT Con\r\n");
@@ -745,6 +756,11 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
     case IEC104_TESTFR_ACT:
         CSLOG("  TestFR Act received, sending TestFR Con\r\n");
         iec_io.send(testfr_act_con, sizeof(testfr_act_con));
+        break;
+    case IEC104_TESTFR_CON:
+        CSLOG("  TestFR Con received, link is alive.\r\n");
+        wait_for_testfr_con = false;
+        t3_timer = 0;
         break;
 
     default:
@@ -796,12 +812,21 @@ void on_ack_received(uint16_t nr)
 
     if (num_acked > 0)
     {
+        /* Gecikmeli veya mukerrer eski ACK kontrolu (15-bit Underflow Filtresi)
+         * Eger num_acked degeri muazzam buyuk bir sayi ciktiysa (Orn: 32718),
+         * bu master'ın geriden gelen eski bir N(R) numarasını tekrar ettigini gosterir. */
+        if (num_acked > (0x7FFF - config.k_max))
+        {
+            CSLOG("-> Delayed/Duplicate old ACK ignored (nr: %d, ack_sn: %d)\r\n", nr, ack_sn);
+            return;
+        }
+
         if (num_acked <= k_counter)
         {
             k_counter -= num_acked;
             ack_sn = nr;
 
-            // T1 Timer Yönetimi
+            // T1 Zamanlayıcısı Yönetimi
             if (k_counter == 0)
             {
                 wait_for_ack = false;
@@ -815,10 +840,14 @@ void on_ack_received(uint16_t nr)
         }
         else
         {
+            /* Eger num_acked hem 0'dan buyuk, hem k_counter'dan buyuk, hem de eski paket uzayında degilse;
+             * Master bizim henuz gondermedigimiz bir paketi onaylamaya calisiyordur. Bu gercek bir protokoldür. */
             CSLOG_ERR("Sequence number error: ack_sn=%d, nr=%d, num_acked=%d, k_counter=%d\r\n",
                        ack_sn, nr, num_acked, k_counter);
-            // Gerekirse burada baglantiyi sonlandirma mantigi calsitirabiliriz
-            //iec104_send_stopdt_con();
+
+            // Gerçek sira hatasinda soketi guvenli moda cekmek mantiklidir
+            iec104_reset();
+            iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
         }
     }
 }
@@ -895,8 +924,9 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
      */
     if (iframe->send_seq != receive_sn) {
         CSLOG_ERR("Sequence desync detected! Expected N(S)=%d, Got %d\r\n", receive_sn, iframe->send_seq);
-        // Standart geregi bu durumda oturum kapatilmali veya STOPDT gonderilmelidir.
-        iec104_send_stopdt_con();
+
+        iec104_reset();
+        iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
         return;
     }
 
@@ -1032,7 +1062,10 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
 
 void iec104_reset(void)
 {
+	link_active = false;
     wait_for_ack = false;
+    wait_for_testfr_con = false;
+
     receive_sn = 0;
     send_sn = 0;
 
@@ -1171,15 +1204,43 @@ void iec104_process_package(void)
 
         memcpy(&package, &iec104_rx_buffer[idx], frame_length);
 
-        if(iec104_is_u_format(&package)){
-            iec104_process_u_frame(&package.frame.apci.u_frame);
-        }else if(iec104_is_s_format(&package)){
-            iec104_process_s_frame(&package.frame.apci.s_frame);
-        }else if(iec104_is_i_format(&package)){
-            iec104_process_i_frame(&package.frame.apci.i_frame);
-        }else{
-            CSLOG("Unknown or damaged package!\r\n");
-        }
+        // Format tipine göre dallanma ve STARTDT (link_active) Dogrulamasi
+                if(iec104_is_u_format(&package))
+                {
+                    /* U-Frame paketleri (Örn: STARTDT_ACT) hat aktifleşmeden önce gelebilen yegane kontrol paketleridir */
+                    wait_for_testfr_con = false;
+                    iec104_process_u_frame(&package.frame.apci.u_frame);
+                }
+                else if(iec104_is_s_format(&package))
+                {
+                    /* Hat aktif değilse S-Frame onay paketlerini görmezden gel ve drop et */
+                    if (link_active)
+                    {
+                        wait_for_testfr_con = false;
+                        iec104_process_s_frame(&package.frame.apci.s_frame);
+                    }
+                    else
+                    {
+                        CSLOG_WARN("Protokol Ihlali: Hat aktiflesmeden (STARTDT oncesi) S-Frame reddedildi!\r\n");
+                    }
+                }
+                else if(iec104_is_i_format(&package))
+                {
+                    /* Standart Gereği Katı Koruma: STARTDT süreci bitmeden gelen I-Frame veri paketleri işlenemez */
+                    if (link_active)
+                    {
+                        wait_for_testfr_con = false;
+                        iec104_process_i_frame(&package.frame.apci.i_frame);
+                    }
+                    else
+                    {
+                        CSLOG_WARN("Protokol Ihlali: Hat aktiflesmeden (STARTDT oncesi) I-Frame reddedildi!\r\n");
+                    }
+                }
+                else
+                {
+                    CSLOG("Unknown or damaged package!\r\n");
+                }
 
         idx += frame_length;
     }
@@ -1198,36 +1259,62 @@ void iec104_process_package(void)
 
     package_ready = (iec104_rx_buffer_len >= 6);
 }
+
 void libiec104_poll(void)
 {
-	if(package_ready){
+	if(package_ready)
+	{
         t3_timer = 0;
 		iec104_process_package();
 	}
 
-	if((w_counter >= config.w_max) || ((w_counter > 0) && (t2_timer >= config.t2_max))){
+	if (!link_active) {
+		return;
+	}
+
+	if((w_counter >= config.w_max) || ((w_counter > 0) && (t2_timer >= config.t2_max)))
+	{
         CSLOG("Sending ACK: %d\r\n", receive_sn);
 		iec104_send_s_frame(receive_sn);
 		t2_timer = 0;
 		w_counter = 0;
 	}
-    if(t1_timer > config.t1_max){
+
+    if(t1_timer > config.t1_max)
+    {
         CSLOG_WARN("T1 timer expired, resend is necessary\r\n");
-        t1_timer = 0;
-        //TODO: Implement retransmission logic
-        //TODO: Save a log entry for retransmission
-        //TODO: Soketi kapat!
-        iec104_send_stopdt_act();
-        //iec104_send_periodic_update();
+
+        iec104_reset();
+        iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
     }
 
-    if(t3_timer > config.t3_max){
-    	CSLOG_WARN("T3 timer expired, sending TESTFR\r\n");
-        t3_timer = 0;
-        iec104_send_test_frame();
-    }
-    
-    if(periodical_send_interval >= config.periodical_send_interval){
+    if (!wait_for_testfr_con)
+        {
+            /* Hat bosta (idle) ise TESTFR gonder */
+            if (t3_timer > config.t3_max)
+            {
+                CSLOG_WARN("T3 timer expired, sending TESTFR\r\n");
+                t3_timer = 0;
+                iec104_send_test_frame();
+            }
+        }
+        else
+        {
+            /* TESTFR_ACT gonderdik, simdi SCADA'dan TESTFR_CON bekliyoruz.
+             * Eger t1_max suresinde gelmezse hatti olu kabul et. */
+            if (t3_timer > config.t1_max)
+            {
+                CSLOG_ERR("TESTFR_CON timeout! Connection is dead. Closing socket.\r\n");
+                t3_timer = 0;
+
+                iec104_reset();
+                iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
+            }
+        }
+
+
+    if(periodical_send_interval >= config.periodical_send_interval)
+    {
         iec104_send_periodic_update();
         periodical_send_interval = 0;
     }
@@ -2183,8 +2270,6 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
 
         if (buff != NULL && len != NULL) 
         {
-            //pkt.frame.apci.i_frame.send_seq++;
-            send_sn = (send_sn + 1) & 0x7FFF; // maks 32768;
             /*
             * [MİMARİ UYARI - DİKKAT!]:
             * Burada paketler iec104_send() fonksiyonundan geçirilmeden doğrudan dış bir arabelleğe (buff)
@@ -2196,6 +2281,18 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             * gönderen dış mekanizma, gönderdiği I-Frame sayısı kadar k_counter'ı artırmalı ve
             * wait_for_ack = true yaparak T1 zamanlayıcısını tetiklemelidir.
             */
+
+            if (k_counter == 0)
+            {
+            	t1_timer = 0;
+                wait_for_ack = true;
+            }
+
+            k_counter++;
+            send_sn = (send_sn + 1) & 0x7FFF; // maks 32768;
+
+            w_counter = 0;
+            t2_timer = 0;
         }
 
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
@@ -2206,7 +2303,7 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         {
             if (buff_written + total_len + 2 > max_len)
             {
-                CSLOG("Not enough buffer space to write the packet\r\n");
+                CSLOG_ERR("Not enough buffer space to write the packet\r\n");
                 return;
             }
             memcpy(&buff[buff_written], &pkt, total_len + 2);
@@ -2299,9 +2396,6 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
 
         if (buff != NULL && len != NULL) 
         {
-            //pkt.frame.apci.i_frame.send_seq++;
-            send_sn = (send_sn + 1) & 0x7FFF; // maks 32768;
-
             /*
             * [MİMARİ UYARI - DİKKAT!]:
             * Burada paketler iec104_send() fonksiyonundan geçirilmeden doğrudan dış bir arabelleğe (buff)
@@ -2313,6 +2407,18 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             * gönderen dış mekanizma, gönderdiği I-Frame sayısı kadar k_counter'ı artırmalı ve
             * wait_for_ack = true yaparak T1 zamanlayıcısını tetiklemelidir.
             */
+
+            if (k_counter == 0)
+            {
+            	t1_timer = 0;
+                wait_for_ack = true;
+            }
+
+            k_counter++;
+            send_sn = (send_sn + 1) & 0x7FFF; // maks 32768;
+
+            w_counter = 0;
+            t2_timer = 0;
         }
 
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
@@ -2323,7 +2429,7 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         {
             if (buff_written + total_len + 2 > max_len) 
             {
-                CSLOG("Not enough buffer space to write the packet\r\n");
+            	CSLOG_ERR("Not enough buffer space to write the packet\r\n");
                 return;
             }
             memcpy(&buff[buff_written], &pkt, total_len + 2);
@@ -2337,7 +2443,9 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         sent += batch;
     }
 
-    if (len != NULL) { *len = buff_written; }
+    if (len != NULL) {
+    	*len = buff_written;
+    }
 }
 
 /* ---------------------------------------------------------------
@@ -2425,7 +2533,10 @@ void iec104_send_feeder_permanent_faults(cause_of_transmission_t cause)
     for(int feeder_id = 0; feeder_id < MAX_POWER_LINE_COUNT; feeder_id++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(feeder_id);
-        if(line == NULL || !line->iec104.in_use){ continue; }
+
+        if(line == NULL || !line->iec104.in_use){
+        	continue;
+        }
         iec104_send_feeder_permenent_faults_ariza_akimi(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
         iec104_send_feeder_permenent_faults_ariza_suresi(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
         iec104_send_feeder_permenent_faults_nominal_akimvaryok(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);

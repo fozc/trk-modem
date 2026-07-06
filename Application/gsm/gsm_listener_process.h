@@ -14,6 +14,10 @@ extern "C" {
 
 #include "gsm_engine.h"
 
+
+#define GSM_LISTENER_EVENT_CLOSE_SOCKET 1
+
+
 /* ---------------------------------------------------------------------------
  *  Callback type — all listener event callbacks share this signature
  * ------------------------------------------------------------------------- */
@@ -65,6 +69,7 @@ typedef struct {
 /* ---------------------------------------------------------------------------
  *  Public API
  * ------------------------------------------------------------------------- */
+void gsm_listener_socket_event_handler(gsm_listener_id_t id, gsm_user_event_t event);
 void gsm_listener_socket_process(const gsm_listener_cfg_t *p_cfg);
 
 /* Convenience wrappers — call these from gsm_normal_mode() */

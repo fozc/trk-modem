@@ -13,6 +13,8 @@
 #include "gsm_engine.h"
 #include "breaker.h"
 #include "fault_log.h"
+#include "gsm_listener_process.h"
+
 
 static uint8_t tx_buff[1024];
 static uint16_t tx_len = 0;
@@ -26,6 +28,10 @@ void iec104_application_event_handler(iec104_app_event_t evt)
 	else if(evt == IEC104_APP_EVT_SEND_PERM_FAULTS)
 	{
 		process_start(&iec104_send_permanent_faults, NULL);
+	}
+	else if(evt == IEC104_APP_EVT_REQUEST_SOCKET_CLOSE)
+	{
+		gsm_listener_socket_event_handler(GSM_LISTENER_IEC104, GSM_USER_EVENT_CLOSE_SOCKET);
 	}
 	else if(evt == IEC104_APP_EVT_SOCKET_CLOSED)
 	{
@@ -87,7 +93,9 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
             while(tx_len > 0)
             {
                 uint16_t len_to_send = tx_len - tx_sent_index;
-                if(len_to_send > 1024) { len_to_send = 1024; }
+                if(len_to_send > 1024) {
+                	len_to_send = 1024;
+                }
 
                 if (gsm_get_tx_state() == GSM_TX_READY &&
                     gsm_send_to_socket(&tx_buff[tx_sent_index], len_to_send,
@@ -158,7 +166,9 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
             while(tx_len > 0)
             {
                 uint16_t len_to_send = tx_len - tx_sent_index;
-                if(len_to_send > 1024) { len_to_send = 1024; }
+                if(len_to_send > 1024) {
+                	len_to_send = 1024;
+                }
 
                 if (gsm_get_tx_state() == GSM_TX_READY &&
                     gsm_send_to_socket(&tx_buff[tx_sent_index], len_to_send,
