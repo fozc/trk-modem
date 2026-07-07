@@ -681,11 +681,19 @@ static void skip_comma(const char **str) {
     }
 }
 
-/* Expect and consume array end bracket */
-static bool expect_array_end(const char **str) {
+/* Consume any remaining array elements up to and including the closing ']'.
+ * Called after a capacity-limited parse loop so that an input array longer
+ * than the destination buffer does not leave the cursor mid-array and desync
+ * all subsequent parsing. Also cleanly consumes ']' when nothing remains. */
+static bool skip_array_remainder(const char **str) {
     const char *s = skip_whitespace(*str);
-    if (*s != ']') return false;
-    *str = skip_whitespace(s + 1);
+    while (*s != ']') {
+        if (!*s) return false;               /* Unterminated array */
+        if (!skip_value(str)) return false;  /* Discard one surplus element */
+        skip_comma(str);
+        s = skip_whitespace(*str);
+    }
+    *str = skip_whitespace(s + 1);           /* Consume ']' */
     return true;
 }
 
@@ -702,10 +710,8 @@ static bool parse_uint32_array(const char **str, uint32_t *arr, int max_count) {
         s = skip_whitespace(*str);
     }
     
-    /* Consume the closing bracket */
-    if (!expect_array_end(str)) return false;
-    
-    return true;
+    /* Drain any elements beyond max_count and consume the closing bracket */
+    return skip_array_remainder(str);
 }
 
 /* Parse array of int32 values */
@@ -721,10 +727,8 @@ static bool parse_int32_array(const char **str, int32_t *arr, int max_count) {
         s = skip_whitespace(*str);
     }
     
-    /* Consume the closing bracket */
-    if (!expect_array_end(str)) return false;
-    
-    return true;
+    /* Drain any elements beyond max_count and consume the closing bracket */
+    return skip_array_remainder(str);
 }
 
 /* Parse array of float values */
@@ -740,10 +744,25 @@ static bool parse_float_array(const char **str, float *arr, int max_count) {
         s = skip_whitespace(*str);
     }
     
-    /* Consume the closing bracket */
-    if (!expect_array_end(str)) return false;
-    
-    return true;
+    /* Drain any elements beyond max_count and consume the closing bracket */
+    return skip_array_remainder(str);
+}
+
+/* Parse array of bool values */
+static bool parse_bool_array(const char **str, bool *arr, int max_count) {
+    if (!expect_array_start(str)) return false;
+
+    int count = 0;
+    const char *s = skip_whitespace(*str);
+    while (*s != ']' && count < max_count) {
+        if (!parse_bool(str, &arr[count])) return false;
+        count++;
+        skip_comma(str);
+        s = skip_whitespace(*str);
+    }
+
+    /* Drain any elements beyond max_count and consume the closing bracket */
+    return skip_array_remainder(str);
 }
 
 /* ============================================
@@ -836,183 +855,49 @@ static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
     }
     while (!is_object_end(str)) {
         if (match_key(str, "inUse")) {
-            xprintf("[JSON]   Parsing inUse array...\r\n");
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_bool(str, &hat->in_use[i])) return false;
-                i++;
-                skip_comma(str);
-            }
-            xprintf("[JSON]   Parsed %d inUse values\r\n", i);
+            if (!parse_bool_array(str, hat->in_use, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_ArizaAkimi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_r_ariza_akimi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_r_ariza_akimi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_ArizaAkimi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_s_ariza_akimi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_s_ariza_akimi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_ArizaAkimi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_t_ariza_akimi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_t_ariza_akimi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_ArizaSuresi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_r_ariza_suresi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_r_ariza_suresi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_ArizaSuresi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_s_ariza_suresi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_s_ariza_suresi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_ArizaSuresi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_t_ariza_suresi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_t_ariza_suresi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_ArizaTuru")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_r_ariza_turu[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_r_ariza_turu, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_ArizaTuru")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_s_ariza_turu[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_s_ariza_turu, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_ArizaTuru")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_t_ariza_turu[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_t_ariza_turu, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_AnlikAkim")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_r_anlik_akim[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_r_anlik_akim, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_AnlikAkim")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_s_anlik_akim[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_s_anlik_akim, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_AnlikAkim")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_t_anlik_akim[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_t_anlik_akim, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_EnerjiVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_r_enerji_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_r_enerji_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_EnerjiVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_s_enerji_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_s_enerji_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_EnerjiVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_t_enerji_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_t_enerji_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_NominalAkimVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_r_nominal_akim_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_r_nominal_akim_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_NominalAkimVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_s_nominal_akim_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_s_nominal_akim_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_NominalAkimVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_t_nominal_akim_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_t_nominal_akim_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_RfhabVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_r_rfhab_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_r_rfhab_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_RfhabVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_s_rfhab_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_s_rfhab_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_RfhabVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->ioa_t_rfhab_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->ioa_t_rfhab_varyok, MAX_ARRAYS)) return false;
         } else {
             xprintf("[JSON]   WARNING: Unknown key in Hatlar object, skipping...\r\n");
             if (!skip_unknown_key_value(str)) return false;
@@ -1150,181 +1035,49 @@ static bool parse_modbus_line_config(const char **str, jmodbus_line_config_t *ha
     
     while (!is_object_end(str)) {
         if (match_key(str, "inUse")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_bool(str, &hat->in_use[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_bool_array(str, hat->in_use, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_ArizaAkimi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_r_ariza_akimi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_r_ariza_akimi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_ArizaAkimi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_s_ariza_akimi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_s_ariza_akimi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_T_ArizaAkimi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_t_ariza_akimi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_t_ariza_akimi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_ArizaSuresi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_r_ariza_suresi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_r_ariza_suresi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_ArizaSuresi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_s_ariza_suresi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_s_ariza_suresi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_T_ArizaSuresi")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_t_ariza_suresi[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_t_ariza_suresi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_ArizaTuru")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_r_ariza_turu[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_r_ariza_turu, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_ArizaTuru")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_s_ariza_turu[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_s_ariza_turu, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_T_ArizaTuru")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_t_ariza_turu[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_t_ariza_turu, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_AnlikAkim")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_r_anlik_akim[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_r_anlik_akim, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_AnlikAkim")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_s_anlik_akim[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_s_anlik_akim, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_T_AnlikAkim")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_t_anlik_akim[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_t_anlik_akim, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_EnerjiVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_r_enerji_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_r_enerji_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_EnerjiVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_s_enerji_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_s_enerji_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_T_EnerjiVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_t_enerji_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_t_enerji_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_NominalAkimVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_r_nominal_akim_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_r_nominal_akim_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_NominalAkimVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_s_nominal_akim_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_s_nominal_akim_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_T_NominalAkimVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_t_nominal_akim_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_t_nominal_akim_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_RfhabVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_r_rfhab_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_r_rfhab_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_RfhabVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_s_rfhab_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_s_rfhab_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_T_RfhabVarYok")) {
-            if (!expect_array_start(str)) return false;
-            int i = 0;
-            while (!is_array_end(str) && i < MAX_ARRAYS) {
-                if (!parse_uint32(str, &hat->addr_t_rfhab_varyok[i])) return false;
-                i++;
-                skip_comma(str);
-            }
+            if (!parse_uint32_array(str, hat->addr_t_rfhab_varyok, MAX_ARRAYS)) return false;
         } else {
             /* Bilinmeyen key - atla */
             if (!skip_unknown_key_value(str)) return false;
@@ -1388,7 +1141,7 @@ static bool parse_rf_config_internal(const char **str, rf_config_t *configs[8]) 
                 skip_comma(str);
                 s = skip_whitespace(*str);
             }
-            if (!expect_array_end(str)) return false;
+            if (!skip_array_remainder(str)) return false;
             xprintf("[JSON] inUse parsed: %d elements\r\n", idx);
             
         } else if (match_key(str, "HatID")) {

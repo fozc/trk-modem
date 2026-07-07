@@ -12,6 +12,9 @@
 /* Maximum allowed Content-Length (slightly less than RX buffer for headers) */
 #define MAX_CONTENT_LENGTH 4608  /* 4.5 KB - supports 4KB FW chunks in 5KB buffer */
 
+/* Maximum allowed request path length (bytes, excluding terminator) */
+#define HTTP_MAX_PATH_LEN  256
+
 /* ============================================================================
  * VALIDATION FUNCTIONS
  * ============================================================================ */
@@ -36,18 +39,13 @@ static bool validate_path(const char *path) {
         return false;
     }
     
-    /* Null byte injection check */
-    size_t len = strlen(path);
-    for (size_t i = 0; i < len; i++) {
-        if (path[i] == '\0') {
-            CSLOG_ERR("[HTTP] ERROR: Null byte injection detected\r\n");
-            return false;
-        }
-    }
-    
-    /* Length check */
-    if (len > 256) {
-        CSLOG_ERR("[HTTP] ERROR: Path too long: %zu bytes (max: 256)\r\n", len);
+    /* Length check (bounded). strnlen caps the scan at HTTP_MAX_PATH_LEN + 1,
+     * so even if the request-line parser's NUL-termination invariant were
+     * broken there is no over-read; a path with no terminator within the
+     * limit is treated as too long. */
+    size_t len = strnlen(path, (size_t)HTTP_MAX_PATH_LEN + 1U);
+    if (len > HTTP_MAX_PATH_LEN) {
+        CSLOG_ERR("[HTTP] ERROR: Path too long (max: %d)\r\n", HTTP_MAX_PATH_LEN);
         return false;
     }
     

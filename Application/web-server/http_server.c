@@ -170,6 +170,10 @@ static void route_and_handle_request(http_request_t *request)
 
         if (strcmp(request->path, "/device/reboot") == 0) {
             xcprintf(XCOLOR_YELLOW, "[HTTP] GET /device/reboot - Rebooting device\r\n");
+            const char *response_body = "{\"message\":\"Rebooting\",\"success\":true}";
+            http_send_json(response_body, strlen(response_body));
+
+            reboot_system_delayed(3000);  /* Delay 3 seconds to allow response to be sent */
             return;
         }
 

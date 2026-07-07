@@ -21,6 +21,15 @@ static int fw_update_init(uint32_t total_size)
 {
 	GSM_LOG_INF_C(XCOLOR_CYAN, "Firmware update init, total size: %d bytes\r\n", total_size);
 
+	/* Reject images that cannot fit in a firmware section before accepting the
+	 * transfer (the per-write guard would otherwise fail only mid-download). */
+	if(total_size > FIRMWARE_FLASH_AREA_SIZE)
+	{
+		GSM_LOG_ERR("Firmware update init error: size %lu exceeds max %lu bytes\r\n",
+		            (unsigned long)total_size, (unsigned long)FIRMWARE_FLASH_AREA_SIZE);
+		return -1;
+	}
+
 	flash_address = boot_get_download_address();
 	fw_update_buffer_index = 0;
 
@@ -124,7 +133,12 @@ void gsm_firmware_update_init(void)
  */
 static int fw_update_rfwu_init(uint32_t total_size, uint32_t resume_offset)
 {
-	(void)total_size;
+	if(total_size > FIRMWARE_FLASH_AREA_SIZE)
+	{
+		GSM_LOG_ERR("RFWU init error: size %lu exceeds max %lu bytes\r\n",
+		            (unsigned long)total_size, (unsigned long)FIRMWARE_FLASH_AREA_SIZE);
+		return -1;
+	}
 	flash_address         = boot_get_download_address() + resume_offset;
 	fw_update_buffer_index = 0U;
 	return 0;
