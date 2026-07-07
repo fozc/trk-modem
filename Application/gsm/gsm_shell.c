@@ -78,14 +78,17 @@ PROCESS_THREAD(gsm_shell_send, ev, data)
     	uint16_t cmd_len = (uint16_t)strlen(s_state.at_cmd);
 		uint32_t move_len = 2U; /* +2 for "AT" prefix */
 
+		if(s_state.at_cmd[0] != '#' && s_state.at_cmd[0] != '+'){
+			move_len = 3U; /* "AT+" prefix */
+		}
+
+		/* Determine move_len before the bounds check so a 3-byte "AT+" prefix
+		 * is accounted for; otherwise a max-length command overflows at_cmd
+		 * by one byte (+2 prefix + '\r' + '\0'). */
 		if(cmd_len + move_len + 2U > GSM_SHELL_AT_CMD_MAX_LEN)
 		{
 			SHELL_LOG("[ERROR] AT command too long to send\r\n");
 			PROCESS_EXIT();
-		}
-
-		if(s_state.at_cmd[0] != '#' && s_state.at_cmd[0] != '+'){
-			move_len = 3U;
 		}
 
 		memmove(s_state.at_cmd + move_len, s_state.at_cmd, cmd_len + 1U);

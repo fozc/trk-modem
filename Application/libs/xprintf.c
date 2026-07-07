@@ -27,6 +27,7 @@
 #include <stdarg.h>
 void (*xfunc_output)(int);	/* Pointer to the default output device */
 static char *strptr;		/* Pointer to the output memory (used by xsprintf) */
+static char *strptr_end;	/* One past the last writable data byte (0 = unbounded) */
 
 
 #if XF_USE_FP
@@ -175,7 +176,13 @@ void xfputc (			/* Put a character to the specified device */
 	if (func) {
 		func(chr);		/* Write a character to the output device */
 	} else if (strptr) {
-		 *strptr++ = chr;	/* Write a character to the memory */
+		/* Memory mode: honor the destination bound when one is set.
+		 * strptr_end == 0 means unbounded (xsprintf, size unknown).
+		 * This is the single choke point that keeps the %s/%d/padding
+		 * sub-loops from writing past the caller's buffer. */
+		if (strptr_end == 0 || strptr < strptr_end) {
+			*strptr++ = chr;	/* Write a character to the memory */
+		}
 	}
 }
 
@@ -477,11 +484,17 @@ unsigned int xsnprintf (			/* Put a formatted string to the memory */
 	va_list arp;
 
 	strptr = buff;		/* Enable destination for memory */
+	/* Reserve one byte for the NUL terminator so the format sub-loops can
+	 * never overrun buff[len-1]. len == 0 -> no writes at all. */
+	strptr_end = (len > 0U) ? (buff + len - 1U) : buff;
 	va_start(arp, fmt);
 	unsigned int count = xvfprintf(0, len, fmt, arp);
 	va_end(arp);
-	*strptr = 0;		/* Terminate output string */
+	if (len > 0U) {
+		*strptr = 0;	/* Terminate output string */
+	}
 	strptr = 0;			/* Disable destination for memory */
+	strptr_end = 0;
 	return count;
 }
 
@@ -495,6 +508,7 @@ unsigned int xsprintf (			/* Put a formatted string to the memory */
 
 
 	strptr = buff;		/* Enable destination for memory */
+	strptr_end = 0;		/* Unbounded: buffer size is unknown to xsprintf */
 	va_start(arp, fmt);
 	unsigned int count = xvfprintf(0, 0, fmt, arp);
 	va_end(arp);

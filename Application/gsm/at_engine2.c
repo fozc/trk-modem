@@ -28,6 +28,12 @@ typedef enum
 #define AT_ENGINE_RESPONSE_BUFFER_SIZE 1280U
 #define AT_ENGINE_URC_BUFFER_SIZE 128U
 
+/* Upper bound on how long a single DMA TX may take before the transfer is
+ * considered lost (e.g. a missed TC interrupt).  At 9600 bps the largest TX
+ * (~2 KB) completes in well under this; the margin avoids false aborts while
+ * preventing an indefinite hang in AT_ENGINE_SEND_CMD. */
+#define AT_ENGINE_TX_TIMEOUT_MS   3000U
+
 /* Standard AT error responses to detect */
 static const char AT_ERROR_STR[]     = "\r\nERROR\r\n";
 static const char AT_NO_SIM_CARD_STR[] = "\r\n+CME ERROR: 10\r\n";//
@@ -228,7 +234,22 @@ static void at_engine_send_process(void)
 	}
 
 	if(s_tx_done_flag){
-		return;     /* Previous transmission still in progress, wait for completion before sending next */
+		/* Previous transmission still in progress. Guard against a lost DMA TC
+		 * interrupt leaving us stuck here indefinitely (only the 5-min GSM
+		 * watchdog would otherwise recover): abort the stale transfer after a
+		 * bounded timeout, then fall through to (re)send. send_time is valid
+		 * here because it is only set once a DMA TX has actually started. */
+		if((bsp_get_tick() - at_engine.send_time) >= AT_ENGINE_TX_TIMEOUT_MS)
+		{
+			extern UART_HandleTypeDef huart1;
+			(void)HAL_UART_AbortTransmit(&huart1);
+			s_tx_done_flag = 0U;
+			GSM_LOG_ERR("AT [DMA TX TIMEOUT]\r\n");
+		}
+		else
+		{
+			return; /* still transmitting, wait for completion */
+		}
 	}
 
 	if(at_engine.is_data_mode)
@@ -643,16 +664,18 @@ static void consume_rx_data(bool check_response)
 {
 	uint8_t byte;
 
+	/* Reserve the final buffer byte for the NUL terminator so that string
+	 * operations (strstr/strncmp) never read past the buffer into adjacent
+	 * BSS, even when the response fills the buffer completely. */
 	while(rbuff_read_safe(&rx_ringbuf, &byte) &&
-	      at_engine.response_buffer_len < AT_ENGINE_RESPONSE_BUFFER_SIZE)
+	      at_engine.response_buffer_len < (AT_ENGINE_RESPONSE_BUFFER_SIZE - 1U))
 	{
 		at_engine.response_buffer[at_engine.response_buffer_len++] = byte;
 
-		/* Maintain null-termination for string operations */
-		if(at_engine.response_buffer_len < AT_ENGINE_RESPONSE_BUFFER_SIZE)
-		{
-			at_engine.response_buffer[at_engine.response_buffer_len] = '\0';
-		}
+		/* Maintain null-termination for string operations.
+		 * The loop bound guarantees response_buffer_len <=
+		 * AT_ENGINE_RESPONSE_BUFFER_SIZE - 1, so this index is always valid. */
+		at_engine.response_buffer[at_engine.response_buffer_len] = '\0';
 
 		/* Binary SRECV mode: consume the declared payload bytes without checking
 		 * for AT terminators. This prevents firmware binary data containing

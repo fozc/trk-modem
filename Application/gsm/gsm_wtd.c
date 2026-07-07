@@ -92,7 +92,7 @@ static void gsm_wtd_log_diagnostic(elog_code_t code)
 	info[15] = (uint8_t)(busy_sec & 0xFFU);
 
 	/* Console log for real-time debug */
-	LOG(WARNING, "[GSM WTD] DIAG at=%s busy=%u qs=%u qid=%u "
+	CSLOG_ERR("[GSM WTD] DIAG at=%s busy=%u qs=%u qid=%u "
 	             "main=%u init=%u dly=%u per=%u/%u "
 	             "ls[W]=%u/%u ls[I]=%u/%u dur=%us",
 	    at_str,
@@ -176,7 +176,7 @@ void gsm_wtd_check(void)
 	{
 		gsm_wtd_log_diagnostic(ELOG_GSM_WTD_HARD_RESET);
 
-		LOG(WARNING, "[GSM WTD] Hard reset — %u soft recoveries exhausted",
+		CSLOG_ERR("[GSM WTD] Hard reset — %u soft recoveries exhausted",
 		    (unsigned)GSM_WTD_RESET_THRESHOLD);
 		s_wtd_soft_recovery_count = 0;
 		gsm_wtd_feed();

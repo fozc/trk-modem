@@ -189,8 +189,15 @@ static void handle_idle(const gsm_listener_cfg_t *p_cfg,
 #if 0
 			ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
 #else
-			/* Recent activity (<3 s) → skip CHECK_SOCKET_INFO, go directly to DATA_MODE */
-			if (gsm_get_tick() - ctx->socket_timer > 3000U)
+			/* socket_timer holds (last-activity-tick + GSM_LS_SOCKET_TIMER_MS).
+			 * Recover the elapsed time since the last socket activity and skip
+			 * the AT#SI round-trip when the socket was active within the last
+			 * 3 s. The previous form compared against the raw future deadline,
+			 * so the difference always underflowed and this fast path was dead
+			 * code — every TX paid for an extra AT#SI. */
+			uint32_t since_activity =
+			    gsm_get_tick() - (ctx->socket_timer - GSM_LS_SOCKET_TIMER_MS);
+			if (since_activity > 3000U)
 			{
 				ls_set_state(ctx, GSM_LS_CHECK_SOCKET_INFO);
 			}

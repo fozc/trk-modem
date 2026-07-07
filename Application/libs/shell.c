@@ -48,7 +48,7 @@ static uint8_t session_level = SHELL_LVL_USER;
 static shell_cmd_t cmd_list[SHELL_MAX_CMD_LIST_COUNT] = {0};
 static uint8_t cmd_list_counter = 0;
 
-static uint8_t rx_buff[SHELL_TEXT_MAXLEN];
+static uint8_t rx_buff[SHELL_TEXT_MAXLEN + 1]; /* +1: NUL terminator için yer ayır (K15) */
 
 static uint32_t rx_idx = 0;
 static uint32_t rx_state = 1;
@@ -630,6 +630,12 @@ static int shell_exec(int argc, char *argv[])
 
 	extern struct process *process_list;
 	struct process *q;
+
+	if(argc < 2)
+	{
+		SHELL_LOG("exec: Name can not be empty!\r\n");
+		return -1;
+	}
 
 	for(q = process_list; q != NULL; q = q->next)
 	{

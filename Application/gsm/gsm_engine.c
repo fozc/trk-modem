@@ -132,30 +132,28 @@ typedef struct
 
 typedef struct
 {
-	uint8_t        connection_state;
-	uint32_t       connection_time;
-	ip_addr_t ip;
+	uint32_t     connection_time;
+	ip_addr_t    ip;
 	gsm_cell_info_t cell_info;
-	uint8_t  	  imei[17];
+	uint8_t  	 imei[17];
 
-	uint8_t 		  signal_quality;
-	uint8_t 		  signal_quality2G;
-	uint8_t 		  signal_quality4G;
-	uint8_t        gprs_state;
-	uint8_t        module_model;
-	uint8_t		  socket_info[SOCKET_MAX];
-	uint8_t       socket_state_raw[SOCKET_MAX];
-	uint8_t		  module_version[16];
+	uint8_t 	 signal_quality;
+	uint8_t 	 signal_quality2G;
+	uint8_t 	 signal_quality4G;
+	uint8_t      gprs_state;
+	uint8_t      module_model;
+	uint8_t		 socket_info[SOCKET_MAX];
+	uint8_t      socket_state_raw[SOCKET_MAX];
+	uint8_t		 module_version[16];
 	ip_session_t iec104_session;
 	ip_session_t web_session;
 	ip_session_t trace_session;
-	uint32_t       tx_counter;
-	uint32_t		  rx_counter;
+	uint32_t     tx_counter;
+	uint32_t	 rx_counter;
 
-	uint32_t iec104_ls_rx_counter_last;
-	uint32_t ls_rx_counter_last;
+	uint32_t     iec104_ls_rx_counter_last;
+	uint32_t     web_ls_rx_counter_last;
 
-	uint32_t gsm_connection_time;
 
 }gsm_info_t;
 
@@ -177,7 +175,6 @@ uint32_t gsm_get_ip_addr(void)
 {
 	return gsm_info_get_ip();
 }
-
 
 const socket_si_info_t *gsm_get_si_info(uint8_t conn_id)
 {
@@ -206,10 +203,10 @@ void gsm_reset_web_session_info(void)
 		gsm_info.web_session.ip.b,
 		gsm_info.web_session.ip.c,
 		gsm_info.web_session.ip.d,
-		gsm_info.ls_rx_counter_last);
+		gsm_info.web_ls_rx_counter_last);
 
 	gsm_info.web_session.ip.ip = 0;
-	gsm_info.ls_rx_counter_last = 0;
+	gsm_info.web_ls_rx_counter_last = 0;
 }
 
 void gsm_reset_iec104_session_info(void)
@@ -220,7 +217,7 @@ void gsm_reset_iec104_session_info(void)
 		gsm_info.iec104_session.ip.b,
 		gsm_info.iec104_session.ip.c,
 		gsm_info.iec104_session.ip.d,
-		gsm_info.ls_rx_counter_last);
+		gsm_info.iec104_ls_rx_counter_last);
 
 	gsm_info.iec104_session.ip.ip = 0;
 	gsm_info.iec104_ls_rx_counter_last = 0;
@@ -695,7 +692,7 @@ int32_t gsm_srcev_listener_cb(void)
 
 			gsm_info.rx_counter += length;
 			gsm_info_add_rx_bytes(length);
-			gsm_info.ls_rx_counter_last += length;
+			gsm_info.web_ls_rx_counter_last += length;
 			gsm_socket_touch_activity(LISTENER_SOCKET);
 		}
 		else
@@ -758,6 +755,7 @@ int32_t gsm_srcev_iec104_listener_cb(void)
 			//hes_receive_new_listener_package((uint8_t *)"ERR", 5);
 		}
 	}
+
 	return at_res;
 }
 
@@ -1040,7 +1038,13 @@ int32_t gsm_srcev_trace_cb(void)
 		}
 		hash_ptr = strstr((hash_ptr + 3), "\r\n");          //#SRECV 'i atla
 
-		char *ok_ptr = strstr((char *)&rx.buff[rx.len - 4], "OK\r\n");
+		/* Guard against underflow: rx.len is uint16_t, (rx.len - 4) wraps
+		 * to a huge value if rx.len < 4, causing out-of-bounds access. */
+		char *ok_ptr = NULL;
+		if(rx.len >= 4U)
+		{
+			ok_ptr = strstr((char *)&rx.buff[rx.len - 4U], "OK\r\n");
+		}
 
 		if(hash_ptr != NULL && ok_ptr != NULL)
 		{
@@ -1855,7 +1859,13 @@ int32_t gsm_httprcv_cb(void)
 			}
 
 			char *hash_ptr = strstr((char *)rx.buff, "<<<");
-			char *ok_ptr = strstr((char *)&rx.buff[rx.len - 6], "\r\nOK\r\n");
+			/* Guard against underflow: rx.len is uint16_t, (rx.len - 6) wraps
+			 * to a huge value if rx.len < 6, causing out-of-bounds access. */
+			char *ok_ptr = NULL;
+			if(rx.len >= 6U)
+			{
+				ok_ptr = strstr((char *)&rx.buff[rx.len - 6U], "\r\nOK\r\n");
+			}
 
 			if(hash_ptr != NULL && ok_ptr != NULL)
 			{

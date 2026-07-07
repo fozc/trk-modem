@@ -38,11 +38,11 @@
 /** MCU-reset threshold: 3 s. */
 #define USER_RESET_RESET_TICKS  ((clock_time_t)((uint32_t)CLOCK_SECOND * 3U))
 
-/** NVRAM factory-reset threshold: 15 s. */
-#define USER_RESET_NVRAM_TICKS  ((clock_time_t)((uint32_t)CLOCK_SECOND * 15U))
+/** NVRAM factory-reset threshold: 10 s. */
+#define USER_RESET_NVRAM_TICKS  ((clock_time_t)((uint32_t)CLOCK_SECOND * 10U))
 
-/** Reserved-action threshold: 10 s. */
-#define USER_RESET_OTHER_TICKS  ((clock_time_t)((uint32_t)CLOCK_SECOND * 10U))
+/** Reserved-action threshold: 15 s. */
+#define USER_RESET_OTHER_TICKS  ((clock_time_t)((uint32_t)CLOCK_SECOND * 15U))
 
 /* ======================================================================
  *  Pin map — indexed by din_channel_t / dip_sw_channel_t
