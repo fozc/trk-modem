@@ -2,6 +2,7 @@
  * @file scp.h
  * @brief SCP v1.0 — full-duplex protocol handler with single context.
  * @version 1.0.0
+ * @author Fatih Ozcan
  *
  * Provides packet encoding (TX) and byte-by-byte decoding (RX) through
  * a unified scp_t context.  Decoded packets are held in the context until

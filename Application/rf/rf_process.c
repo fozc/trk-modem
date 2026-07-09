@@ -99,6 +99,18 @@ static void rf_handle_packet(const scp_packet_t *p_pkt)
             (void)scp_send(&s_rf_scp_ctx, &ack);
             break;
         }
+        case SCP_TYPE_ACK:
+		{
+			CSLOG("[RF] ACK from 0x%02X (cmd=%u seq=%u)\r\n",
+				  (unsigned)p_pkt->src, (unsigned)p_pkt->cmd,
+				  (unsigned)p_pkt->seq);
+
+			if(s_rf_state == RF_STATE_WAIT_RESPONSE)
+			{
+				s_rf_state = RF_STATE_IDLE;
+			}
+			break;
+		}
 
         default:
         {
@@ -166,7 +178,7 @@ PROCESS_THREAD(rf_process, ev, data)
     		{
     			CSLOG("[RF] Sending periodic PING\r\n");
 
-    			scp_send_ping(&s_rf_scp_ctx, 0xFFU, 0U);  /* Broadcast PING with seq=0 */
+    			scp_send_ping(&s_rf_scp_ctx, SCP_BROADCAST_ADDR, 0U);  /* Broadcast PING with seq=0 */
     			timer_set(&ping_timer, CLOCK_SECOND * 10U);
     			timer_set(&response_timer, CLOCK_SECOND * 2U);  /* Wait for ACK for 2 seconds */
     			s_rf_state = RF_STATE_WAIT_RESPONSE;

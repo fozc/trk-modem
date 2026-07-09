@@ -2,6 +2,7 @@
  * @file scp.c
  * @brief SCP v1.0 unified implementation — CRC, packet encode/decode, parser.
  * @version 1.0.0
+ * @author Fatih Ozcan
  */
 
 #include "scp.h"

@@ -45,7 +45,7 @@
  *  Cycles through every LED pin and every driver mode so each
  *  state can be visually verified on the board.
  * --------------------------------------------------------------------- */
-//#define LED_TEST
+#define LED_TEST
 #ifdef LED_TEST
 
 #define LED_TEST_STEP_DELAY_MS   3000U
@@ -98,44 +98,44 @@ static void led_test_all(void)
     HAL_Delay(500);
 
     CSLOG("[GPIO] RGB1 RED (PE11) ON\r\n");
-    gpio_set_pin(LED_RGB1_R_GPIO, LED_RGB1_R_PIN, GPIO_HIGH);
-    HAL_Delay(LED_TEST_STEP_DELAY_MS);
     gpio_set_pin(LED_RGB1_R_GPIO, LED_RGB1_R_PIN, GPIO_LOW);
+    HAL_Delay(LED_TEST_STEP_DELAY_MS);
+    gpio_set_pin(LED_RGB1_R_GPIO, LED_RGB1_R_PIN, GPIO_HIGH);
     CSLOG("[GPIO] RGB1 RED OFF\r\n");
     HAL_Delay(500);
 
     CSLOG("[GPIO] RGB1 GREEN (PE12) ON\r\n");
-    gpio_set_pin(LED_RGB1_G_GPIO, LED_RGB1_G_PIN, GPIO_HIGH);
-    HAL_Delay(LED_TEST_STEP_DELAY_MS);
     gpio_set_pin(LED_RGB1_G_GPIO, LED_RGB1_G_PIN, GPIO_LOW);
+    HAL_Delay(LED_TEST_STEP_DELAY_MS);
+    gpio_set_pin(LED_RGB1_G_GPIO, LED_RGB1_G_PIN, GPIO_HIGH);
     CSLOG("[GPIO] RGB1 GREEN OFF\r\n");
     HAL_Delay(500);
 
     CSLOG("[GPIO] RGB1 BLUE (PE13) ON\r\n");
-    gpio_set_pin(LED_RGB1_B_GPIO, LED_RGB1_B_PIN, GPIO_HIGH);
-    HAL_Delay(LED_TEST_STEP_DELAY_MS);
     gpio_set_pin(LED_RGB1_B_GPIO, LED_RGB1_B_PIN, GPIO_LOW);
+    HAL_Delay(LED_TEST_STEP_DELAY_MS);
+    gpio_set_pin(LED_RGB1_B_GPIO, LED_RGB1_B_PIN, GPIO_HIGH);
     CSLOG("[GPIO] RGB1 BLUE OFF\r\n");
     HAL_Delay(500);
 
     CSLOG("[GPIO] RGB2 RED (PE8) ON\r\n");
-    gpio_set_pin(LED_RGB2_R_GPIO, LED_RGB2_R_PIN, GPIO_HIGH);
-    HAL_Delay(LED_TEST_STEP_DELAY_MS);
     gpio_set_pin(LED_RGB2_R_GPIO, LED_RGB2_R_PIN, GPIO_LOW);
+    HAL_Delay(LED_TEST_STEP_DELAY_MS);
+    gpio_set_pin(LED_RGB2_R_GPIO, LED_RGB2_R_PIN, GPIO_HIGH);
     CSLOG("[GPIO] RGB2 RED OFF\r\n");
     HAL_Delay(500);
 
     CSLOG("[GPIO] RGB2 GREEN (PE9) ON\r\n");
-    gpio_set_pin(LED_RGB2_G_GPIO, LED_RGB2_G_PIN, GPIO_HIGH);
-    HAL_Delay(LED_TEST_STEP_DELAY_MS);
     gpio_set_pin(LED_RGB2_G_GPIO, LED_RGB2_G_PIN, GPIO_LOW);
+    HAL_Delay(LED_TEST_STEP_DELAY_MS);
+    gpio_set_pin(LED_RGB2_G_GPIO, LED_RGB2_G_PIN, GPIO_HIGH);
     CSLOG("[GPIO] RGB2 GREEN OFF\r\n");
     HAL_Delay(500);
 
     CSLOG("[GPIO] RGB2 BLUE (PE10) ON\r\n");
-    gpio_set_pin(LED_RGB2_B_GPIO, LED_RGB2_B_PIN, GPIO_HIGH);
-    HAL_Delay(LED_TEST_STEP_DELAY_MS);
     gpio_set_pin(LED_RGB2_B_GPIO, LED_RGB2_B_PIN, GPIO_LOW);
+    HAL_Delay(LED_TEST_STEP_DELAY_MS);
+    gpio_set_pin(LED_RGB2_B_GPIO, LED_RGB2_B_PIN, GPIO_HIGH);
     CSLOG("[GPIO] RGB2 BLUE OFF\r\n");
     HAL_Delay(500);
 
@@ -474,13 +474,15 @@ __attribute__ ((noreturn)) void app_main(void)
 	CSLOG("Board Initialization Completed.\r\n");
 
 	adc_init();
-	xmodem_app_init();
 
 #ifdef LED_TEST
 	led_test_all();
 #endif
 
 	LL_LPUART_EnableIT_RXNE_RXFNE(LPUART1);  /* Console RX */
+
+	gpio_set_pin(MODBUS_EN_FLT_BSP_GPIO, MODBUS_EN_FLT_BSP_PIN, 1); // Modbus RS485 power enable
+
 	while(1)
 	{
 		if(process_nevents())

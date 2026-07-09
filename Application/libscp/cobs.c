@@ -2,6 +2,7 @@
  * @file cobs.c
  * @brief COBS encode / decode implementation.
  * @version 1.0.0
+ * @author Fatih Ozcan
  */
 
 #include "cobs.h"

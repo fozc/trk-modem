@@ -11,7 +11,7 @@ extern I2C_HandleTypeDef hi2c3;
 
 #define MEMORY_SIZE 128
 
-static uint8_t i2c_memory_map[MEMORY_SIZE];
+static volatile uint8_t i2c_memory_map[MEMORY_SIZE];
 
 static volatile uint8_t rx_data; //stack'de olamaz, HAL alim callbackten sonra calisiyor
 static volatile uint8_t current_reg_addr;

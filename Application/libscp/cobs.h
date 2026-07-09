@@ -2,6 +2,7 @@
  * @file cobs.h
  * @brief COBS (Consistent Overhead Byte Stuffing) encode / decode.
  * @version 1.0.0
+ * @author Fatih Ozcan
  *
  * Generic, protocol-independent implementation.
  */

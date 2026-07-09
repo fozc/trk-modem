@@ -2,6 +2,7 @@
  * @file scp_endian.h
  * @brief Little-endian wire-format serialisation helpers for SCP.
  * @version 1.0.0
+ * @author Fatih Ozcan
  *
  * SCP defines a fixed **little-endian** wire byte order for all multi-byte
  * fields (CRC-16, and any future >1-byte fields).  These helpers always
