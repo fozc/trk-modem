@@ -34,9 +34,13 @@
 #include "led_driver.h"
 #include "adc.h"
 #include "digital_input.h"
+#include "relay.h"
 
 #include "rf_dummy.h"
 #include "rf_process.h"
+
+
+#include "relay.h"
 
 /* -----------------------------------------------------------------------
  *  LED hardware test — compile with -DLED_TEST to enable.
@@ -45,7 +49,7 @@
  *  Cycles through every LED pin and every driver mode so each
  *  state can be visually verified on the board.
  * --------------------------------------------------------------------- */
-#define LED_TEST
+//#define LED_TEST
 #ifdef LED_TEST
 
 #define LED_TEST_STEP_DELAY_MS   3000U
@@ -268,6 +272,8 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 	static struct timer stack_timer;
 	static struct timer rf_dummy_timer;
 
+	static struct timer three_second_timer;
+
 	PROCESS_BEGIN();
 
 	etimer_set(&timer, CLOCK_SECOND / 100); // 10 Hz
@@ -290,6 +296,7 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 			timer_reset(&life_time_timer);
 			//nvram_lifetime_increment(1);
 			modem_config_set_lifetime(modem_config_get_lifetime() + 1);
+
 		}
 
 		if(timer_expired(&stack_timer))
@@ -402,6 +409,9 @@ __attribute__ ((noreturn)) void app_main(void)
 	nvram_init();
 	//rf_dummy_init();
 
+	relay_init();
+
+
 	CSLOG("Troika Smart Breaker Modem Started\r\n");
 	CSLOG("Board started...Compile Time [%s %s]\r\n", __TIME__, __DATE__);
 	CSLOG("Product Type: [%s]\r\n", PRODUCT_TYPE);
@@ -462,6 +472,8 @@ __attribute__ ((noreturn)) void app_main(void)
 	gsm_process_contiki_init();
 
 	digital_input_init();
+
+	relay_init();
 
 	/* TODO: source the RF SCP device address from configuration. */
 	rf_process_init(1U);
