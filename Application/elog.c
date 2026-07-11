@@ -34,10 +34,6 @@ static int elog_read(uint32_t addr, void *buf, uint32_t len)
 
 static int elog_write(uint32_t addr, const void *buf, uint32_t len)
 {
-    /* Eski denetim 'addr + size <= addr + len' => 'size <= len' indirgenip her
-     * zaman false oluyordu (ölü ifade). Şimdi uint32 adres taşması ve geçersiz
-     * parametre denetimi var; gerçek bölge sınırı, çağıran elog_write_log_entry
-     * tarafından write_offset üzerinden doğrulanır. */
     if((buf == NULL) || (len == 0U) || ((addr + len) < addr)) {
         return -1;
     }
@@ -68,7 +64,7 @@ static void elog_write_metadata(elog_memory_area_t area)
 
     uint32_t addr = area == ELOG_MAIN_AREA ? log_io_cfg.super_block_addr : log_io_cfg.super_block_backup_paddr;
     if(elog_write(addr, &log_metadata, sizeof(log_metadata)) != 0) {
-        CSLOG("[ELOG] metadata write failed (area=%d)\r\n", (int)area);
+        CSLOG_ERR("[ELOG] metadata write failed (area=%d)\r\n", (int)area);
     }
 }
 
@@ -78,7 +74,7 @@ static void elog_write_log_entry(const elog_entry_t *entry, bool backup)
 		return;
 	}
 	if(log_metadata.max_entries == 0U){
-		CSLOG("[ELOG] max_entries == 0, entry dropped\r\n");
+		CSLOG_ERR("[ELOG] max_entries == 0, entry dropped\r\n");
 		return;
 	}
 
@@ -88,7 +84,7 @@ static void elog_write_log_entry(const elog_entry_t *entry, bool backup)
 	/* Bölge taşma kontrolü: bozuk max_entries/offset'in komşu flash'a yazmasını
 	 * engelle (eski kodda elog_write'ın ölü denetimi bunu yakalamıyordu). */
 	if((write_offset + sizeof(elog_entry_t)) > log_io_cfg.size){
-		CSLOG("[ELOG] write offset out of region (%lu > %lu)\r\n",
+		CSLOG_ERR("[ELOG] write offset out of region (%lu > %lu)\r\n",
 		      (unsigned long)(write_offset + sizeof(elog_entry_t)),
 		      (unsigned long)log_io_cfg.size);
 		return;
@@ -97,7 +93,7 @@ static void elog_write_log_entry(const elog_entry_t *entry, bool backup)
 	/* Önce ana bölgeye yaz; başarısızsa total_entries'i artırmadan dön
 	 * (metadata güncellenmez → bir sonraki deneme aynı slot'u yeniden kullanır). */
 	if(elog_write((log_io_cfg.log_block_addr + write_offset), entry, sizeof(elog_entry_t)) != 0){
-		CSLOG("[ELOG] entry write failed (main)\r\n");
+		CSLOG_ERR("[ELOG] entry write failed (main)\r\n");
 		return;
 	}
 	log_metadata.total_entries++;
@@ -105,7 +101,7 @@ static void elog_write_log_entry(const elog_entry_t *entry, bool backup)
 
 	if(backup){
 		if(elog_write((log_io_cfg.log_block_backup_addr + write_offset), entry, sizeof(elog_entry_t)) != 0){
-			CSLOG("[ELOG] entry write failed (backup)\r\n");
+			CSLOG_ERR("[ELOG] entry write failed (backup)\r\n");
 		}
 		else{
 			elog_write_metadata(ELOG_BACKUP_AREA);

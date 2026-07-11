@@ -574,7 +574,7 @@ void handle_get_board_status_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"DIN\":[%u,%u,%u,%u],", 
                     status->din[0], status->din[1], status->din[2], status->din[3]);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RLY\":[%u,%u],", status->rly[0], status->rly[1]);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"VBAT\":%u,", status->vbat);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"VBAT\":%u,", status->battery_voltage);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"V19\":%u,", status->v19);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"3V3\":%u,", status->v3v3);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"3V8\":%u,", status->v3v8);
@@ -589,8 +589,8 @@ void handle_get_board_status_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIE\":%d,", status->tdie_temp);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIEMax\":%d,", status->tdie_temp_max);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIEMin\":%d,", status->tdie_temp_min);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ChargePertance\":%u,", status->charge_percent);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Capacity\":%u,", status->capacity);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"ChargePertance\":%u,", status->battery_charge_percent);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"Capacity\":%u,", status->battery_capacity);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"GsmSig\":%d,", status->gsm_signal);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"GsmRAT\":%u,", status->gsm_rat);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"BataryaAkimi\":%d,", status->battery_current);

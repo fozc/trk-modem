@@ -7,6 +7,7 @@
 #include "modbus_process.h"
 #include "modbus_rtu_slave.h"
 #include "modbus_config.h"
+#include "modbus_system_stats.h"
 #include "breaker.h"
 #include "bsp.h"
 #include "rtc.h"
@@ -434,18 +435,23 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
         return MODBUS_REG_OK;
     }
 
-    /* Per-line measurement registers (addresses come from configuration). */
-    if (modbus_resolve_register(reg_addr, p_value)) {
+    /* System statistics block (base MODBUS_SYS_STATS_ADDR_BASE == 49000):
+     * uptime, RTC, reset reason, supply voltages... Read-only, contiguous and
+     * bulk-readable in a single FC03 window. */
+    if (modbus_system_stats_read(reg_addr, p_value)) {
         return MODBUS_REG_OK;
     }
 
     /*
-     * Address sits in the per-line space but maps to no live field: this covers
-     * inactive lines and reserved gaps (e.g. fault-log blocks). Read back as 0 so
-     * a master can read a whole line block in one window without an exception.
+     * Per-line measurement space. An address in this space always answers OK: a
+     * live field resolves to its value; an inactive line or a reserved gap (e.g.
+     * fault-log blocks) reads back as 0. That lets a master bulk-read a whole
+     * line block in one FC03 window without hitting exception 0x02.
      */
     if (modbus_addr_in_line_space(reg_addr)) {
-        *p_value = 0U;
+        if (!modbus_resolve_register(reg_addr, p_value)) {
+            *p_value = 0U;
+        }
         return MODBUS_REG_OK;
     }
 

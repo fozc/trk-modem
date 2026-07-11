@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ModbusPoll>
+   <FileSchema r="0" c="1"/>
+   <Version major="13" minor="2" patch="1" build="2558"/>
+   <dpi>96</dpi>
+   <WP left="703" right="1126" top="5" bottom="685" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+   <ScanRate>1000</ScanRate>
+   <SlaveID>23</SlaveID>
+   <Enable>1</Enable>
+   <StopOnError>0</StopOnError>
+   <OneBased>0</OneBased>
+   <RowsDialog>4</RowsDialog>
+   <HideNames>0</HideNames>
+   <HexMode>0</HexMode>
+   <DisplayAddr>0</DisplayAddr>
+   <ColCount>2</ColCount>
+   <RowCount>15</RowCount>
+   <ColumnWidth>
+      <CW>1600</CW>
+      <CW>1000</CW>
+   </ColumnWidth>
+   <RowHight>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+   </RowHight>
+   <ScrollPosV>0</ScrollPosV>
+   <ScrollPosH>0</ScrollPosH>
+   <FocusRow>1</FocusRow>
+   <FocusCol>2</FocusCol>
+   <LogText>
+      <Eachread>0</Eachread>
+      <Rate>1</Rate>
+      <LogChangedOnly>0</LogChangedOnly>
+      <LogErrors>0</LogErrors>
+      <LogErrorsOnly>0</LogErrorsOnly>
+      <LogAddress>1</LogAddress>
+      <LogDate>0</LogDate>
+      <TDelimiter>0</TDelimiter>
+      <LogMs>1</LogMs>
+      <Delimiter>0</Delimiter>
+      <AutoStart>0</AutoStart>
+      <Flush>0</Flush>
+      <Append>0</Append>
+      <NewLogFileAtMidnight>0</NewLogFileAtMidnight>
+      <InsertHeader>0</InsertHeader>
+      <NameCellsInTopRow>0</NameCellsInTopRow>
+      <PollDefinition>0</PollDefinition>
+      <LogName>Type log name here</LogName>
+      <FileName></FileName>
+   </LogText>
+   <LogExcel>
+      <Eachread>1</Eachread>
+      <Rate>1</Rate>
+      <StopAfter>1000</StopAfter>
+      <LogChangedOnly>0</LogChangedOnly>
+      <InsertHeader>1</InsertHeader>
+      <NameCellsInTopRow>1</NameCellsInTopRow>
+      <PollDefinition>1</PollDefinition>
+      <LogName>Type log name here</LogName>
+   </LogExcel>
+   <Data>
+      <Function>3</Function>
+      <Address>9000</Address>
+      <Quantity>15</Quantity>
+      <EnronMode>0</EnronMode>
+      <Formats>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="2" v="0"/>
+         <F f="0" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="17" v="0"/>
+         <F f="16" v="--"/>
+      </Formats>
+      <Bytes>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+      </Bytes>
+      <CellData>
+         <Cell idx="0">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Uptime (sn, &amp;0xFFFF)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="1">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Uptime (dk, &amp;0xFFFF)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="2">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Uptime (saat, &amp;0xFFFF)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="3">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Uptime (gün, &amp;0xFFFF)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="4">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Zaman (sn, &amp;0xFFFF)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="5">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Zaman (dk, &amp;0xFFFF)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="6">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Zaman (saat, &amp;0xFFFF)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="7">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Zaman (gün, &amp;0xFFFF)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="8">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Sıfırlama Sebebi (raw, hex)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="9">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>MCU Die Sıcaklık (°C)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="10">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>5V Hat Gerilimi (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="11">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>3V3 Hat Gerilimi (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="12">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>3V8 Hat Gerilimi (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="13">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Uptime Tam (sn, UINT32 ABCD)</Name>
+            <Font used="false"/>
+         </Cell>
+      </CellData>
+      <Scales/>
+      <ValueNames/>
+      <ChartSeries/>
+      <BinNames/>
+   </Data>
+</ModbusPoll>

@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "reset_source.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -116,6 +116,8 @@ int main(void)
 	for(volatile int i = 0; i < 500000; i++){
 		__NOP();
 	}
+
+	reset_source_init();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/

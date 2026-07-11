@@ -14,7 +14,6 @@
 #include "http_response.h"
 #include "http_handlers.h"
 #include "fw_update_html.h"
-#include "test_logs.h"
 #include <string.h>
 #include <stdlib.h>
 #include "bsp.h"
