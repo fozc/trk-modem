@@ -271,6 +271,7 @@ static void modbus_process_frame(modbus_slave_t *p_ctx, const uint8_t *frame, ui
     uint16_t calculated_crc = modbus_crc16(frame, (uint16_t)(len - MODBUS_CRC_LEN));
 
     if (received_crc != calculated_crc) {
+    	p_ctx->last_exception_code = MODBUS_EXCEPTION_CRC_ERROR;
         return;
     }
 

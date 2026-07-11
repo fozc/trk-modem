@@ -533,6 +533,9 @@ PROCESS_THREAD(modbus_process, ev, data)
 					modbus_config_set_last_error_code(exc);
 					modbus_config_set_last_error_time(rtc_get_unix_epoch());
 
+					CSLOG_WARN("MODBUS exception: 0x%02X at %lu\r\n",
+					         exc, modbus_config_get_last_error_time());
+
 					// FC 0x01 (illegal function) is rejected in the core
 					// before any callback runs, so log it here. 0x02/0x03
 					// are logged with detail in the read/write callbacks.

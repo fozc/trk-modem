@@ -48,8 +48,6 @@ extern TIM_HandleTypeDef htim3;
  *    24 kHz  -> ARR = 3999   (96e6 / 4000)
  *    25 kHz  -> ARR = 3839   (96e6 / 3840)
  *
- *  TODO: secilen PWM frekansini role surucu MOSFET/gate gereksinimlerine
- *        gore donanim testinde dogrula.
  * ====================================================================== */
 
 /** Timer prescaler applied at init (PSC register value). */

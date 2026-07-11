@@ -351,21 +351,37 @@ uint32_t xmodem_is_package_ready(void)
 
 uint32_t xmodem_check_package(void)
 {
-	uint32_t res = 0;
-	if((xm.pckg.package_num + xm.pckg.package_num2 == 0xFF) && (xm.package_no ==  xm.pckg.package_num)) //  ~xm.pckg.package_num2
-	{
-		uint16_t crc = CRC_CALC_XMODEM(xm.pckg.buff, XMODEM_RX_DATA_SIZE);
+	/* Dönüş: 0 = geçersiz (NAK), 1 = beklenen blok (kabul), 2 = yinelenen (sessiz ACK) */
+	uint16_t crc = CRC_CALC_XMODEM(xm.pckg.buff, XMODEM_RX_DATA_SIZE);
 
+	/* Sekans tamamlayıcı kontrolü: package_num + package_num2 == 0xFF */
+	if((xm.pckg.package_num + xm.pckg.package_num2) != 0xFF)
+	{
+		CSLOG("Gecersiz paket (header). %d\r\n", xm.package_no);
+		return 0U;
+	}
+
+	if(xm.package_no == xm.pckg.package_num)
+	{
+		/* Beklenen blok */
 		if(crc == xm.pckg.crc)
 		{
-			res = 1;
+			return 1U;
 		}
+		CSLOG("Gecersiz paket (CRC). %d\r\n", xm.package_no);
+		return 0U;
 	}
-	else
+
+	if(xm.pckg.package_num == (uint8_t)(xm.package_no - 1U))
 	{
-		CSLOG("Gecersiz paket. %d\r\n", xm.package_no);
+		/* Yinelenen blok: önceki ACK'miz kaybolmuş, gönderici aynı bloğu yeniden
+		 * gönderdi. Veriyi tekrar yazmamak için sessizce ACK edilir; eğer bu
+		 * yinelemenin CRC'si bozuksa yine de NAK (yeniden gönderim iste). */
+		return (crc == xm.pckg.crc) ? 2U : 0U;
 	}
-	return res;
+
+	CSLOG("Gecersiz paket (beklenmeyen blok). %d\r\n", xm.package_no);
+	return 0U;
 }
 
 void xmodem_poll(void)
@@ -411,7 +427,9 @@ void xmodem_poll(void)
 	case XMODEM_DOWNLOADING:
 		if(xmodem_is_package_ready())
 		{
-			if(xmodem_check_package())
+			uint32_t check = xmodem_check_package();
+
+			if(check == 1U)
 			{
 				/* Copy data out of ISR buffer before resetting.
 				 * Send ACK early so the sender can transmit the next block
@@ -449,8 +467,15 @@ void xmodem_poll(void)
 				}
 #endif
 			}
+			else if(check == 2U)
+			{
+				/* Yinelenen blok (kayıp ACK): veriyi tekrar yazmadan sessizce ACK */
+				xmodem_reset_package();
+				xmodem_send_ack();
+			}
 			else
 			{
+				/* Geçersiz paket: NAK ile yeniden gönderim iste */
 				xmodem_reset_package();
 				xmodem_send_nack();
 			}

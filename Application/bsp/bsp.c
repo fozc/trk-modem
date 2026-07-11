@@ -49,10 +49,10 @@ void bsp_rtc_process(void)
 			{ 0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
 	};
 
-	if (rtc.millisec++ >= 1000)
+	if (++rtc.millisec >= 1000)
 	{
 		rtc.millisec = 0;
-		if (rtc.second++ == 60)
+		if (++rtc.second >= 60)
 		{
 			rtc.second = 0;
 			rtc.minute++;
@@ -98,24 +98,40 @@ void bsp_set_rtc(uint8_t second, uint8_t minute, uint8_t hour, uint8_t day, uint
     rtc.year = year;
 }
 
+/* rtc yapısı TIM17 ISR'i (bsp_rtc_process) içinde güncellenir; ana bağlamdan
+ * çok-alanlı kopyalamada torn-read oluşabilir (örn. saniye 0'a dönmüş ama dakika
+ * henüz artmamış). Kopyayı kısa bir kritik bölge altında atomik alıyoruz.
+ * Contiki critical_enter bu derlemede no-op olduğundan doğrudan CMSIS kullanıyoruz. */
+static bsp_rtc_t rtc_snapshot(void)
+{
+	bsp_rtc_t snap;
+	uint32_t primask = __get_PRIMASK();
+	__disable_irq();
+	snap = rtc;
+	__set_PRIMASK(primask);
+	return snap;
+}
+
 bsp_rtc_t bsp_get_datetime(void)
 {
-	return rtc;
+	return rtc_snapshot();
 }
 
 const char * bsp_get_rtc_str(void)
 {
 	static char buff[24] = {0};
+	bsp_rtc_t snap = rtc_snapshot();
 
-	xsprintf(buff, "%02d/%02d/%02d %02d:%02d:%02d:%03d", rtc.year, rtc.month,
-			rtc.day, rtc.hour, rtc.minute, rtc.second, rtc.millisec);
+	xsprintf(buff, "%02d/%02d/%02d %02d:%02d:%02d:%03d", snap.year, snap.month,
+			snap.day, snap.hour, snap.minute, snap.second, snap.millisec);
 
 	return buff;
 }
 void bsp_print_datetime(void)
 {
-	xprintf("%02d/%02d/%02d %02d:%02d:%02d:%03d ", rtc.year, rtc.month,
-			rtc.day, rtc.hour, rtc.minute, rtc.second, rtc.millisec);
+	bsp_rtc_t snap = rtc_snapshot();
+	xprintf("%02d/%02d/%02d %02d:%02d:%02d:%03d ", snap.year, snap.month,
+			snap.day, snap.hour, snap.minute, snap.second, snap.millisec);
 }
 
 uint32_t bsp_get_run_time(void)
@@ -130,13 +146,14 @@ uint32_t bsp_get_epoch_time(void)
 
 pdate_t bsp_get_pdate(void)
 {
+	bsp_rtc_t snap = rtc_snapshot();
 	return (pdate_t){
-		.year = rtc.year,
-		.month = rtc.month,
-		.day = rtc.day,
-		.hour = rtc.hour,
-		.min = rtc.minute,
-		.sec = rtc.second
+		.year = snap.year,
+		.month = snap.month,
+		.day = snap.day,
+		.hour = snap.hour,
+		.min = snap.minute,
+		.sec = snap.second
 	};
 }
 

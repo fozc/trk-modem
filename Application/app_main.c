@@ -41,6 +41,7 @@
 
 
 #include "relay.h"
+#include "power_board.h"
 
 /* -----------------------------------------------------------------------
  *  LED hardware test — compile with -DLED_TEST to enable.
@@ -486,6 +487,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	CSLOG("Board Initialization Completed.\r\n");
 
 	adc_init();
+	power_board_init();
 
 #ifdef LED_TEST
 	led_test_all();
