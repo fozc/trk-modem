@@ -43,7 +43,7 @@
 #include "relay.h"
 #include "power_board.h"
 #include "system_status.h"
-
+#include "reset_source.h"
 
 PROCESS(heart_beat_process, "heart-beat");
 PROCESS(rtc_resync_process, "rtc-resync");
@@ -199,6 +199,8 @@ __attribute__ ((noreturn)) void app_main(void)
 	nvram_init();
 	//rf_dummy_init();
 	shell_init("Troika >\r\n", NULL, bsp_putchr);
+
+	reset_source_print();
 
 	CSLOG("Troika Smart Breaker Modem Started\r\n");
 	CSLOG("Board started...Compile Time [%s %s]\r\n", __TIME__, __DATE__);

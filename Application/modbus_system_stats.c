@@ -27,18 +27,19 @@
  *
  * Every member is 2-byte aligned, so the struct carries NO padding: the range
  * is dense and contiguous, which lets a master bulk-read the whole block in a
- * single FC03 window without an exception (0x02). Block bounds (first/last) are
- * derived from sizeof() below, so they track the struct automatically.
+ * single FC03 window without an exception (0x02). Block bounds (see below) are
+ * base-relative and sizeof()-driven, so they track the struct without naming any
+ * field — reordering or renaming members can never desynchronise them.
  */
 typedef struct {
-	uint16_t uptime_sec;     /* uptime, seconds              */
-	uint16_t uptime_min;     /* uptime, minutes              */
-	uint16_t uptime_hour;    /* uptime, hours                */
-	uint16_t uptime_day;     /* uptime, days                 */
 	uint16_t rtc_sec;        /* rtc time, seconds            */
 	uint16_t rtc_min;        /* rtc time, minutes            */
 	uint16_t rtc_hour;       /* rtc time, hours              */
 	uint16_t rtc_day;        /* rtc time, days               */
+	uint16_t rtc_month;      /* rtc time, month              */
+	uint16_t rtc_year;       /* rtc time, year               */
+	uint16_t rtc_unix[2];    /* rtc time, unix timestamp     */
+	uint16_t uptime_sec;     /* uptime, seconds              */
 	uint16_t reset_reason;   /* reset source, raw CSR bits   */
 	uint16_t mcu_temp;       /* die temperature, celsius     */
 	uint16_t v5v;            /* 5V rail, millivolts          */
@@ -54,12 +55,20 @@ typedef struct {
 	((uint16_t)(MODBUS_SYS_STATS_ADDR_BASE + \
 	            offsetof(modbus_sys_stats_map_t, member) / sizeof(uint16_t)))
 
-/* First / last address of the block; derived from the layout, so they track
- * the struct automatically. */
-#define SYS_STATS_ADDR_FIRST   SYS_REG(uptime_sec)
+/* Register count the layout occupies. Tracks the struct automatically: add or
+ * remove a field and this follows, with no edit here. */
+#define SYS_STATS_REG_COUNT   (sizeof(modbus_sys_stats_map_t) / sizeof(uint16_t))
+
+/* Block bounds — deliberately free of member names so reordering or renaming
+ * fields can never desynchronise them:
+ *   FIRST is always the base: the first struct member lives at offset 0 (C
+ *        standard — no padding before the first member), so its address is
+ *        always MODBUS_SYS_STATS_ADDR_BASE.
+ *   LAST  is the base plus the sizeof()-driven register count, so it tracks the
+ *        struct size without naming any field. */
+#define SYS_STATS_ADDR_FIRST   ((uint16_t)MODBUS_SYS_STATS_ADDR_BASE)
 #define SYS_STATS_ADDR_LAST    \
-	((uint16_t)(MODBUS_SYS_STATS_ADDR_BASE + \
-	            (sizeof(modbus_sys_stats_map_t) / sizeof(uint16_t)) - 1U))
+	((uint16_t)(MODBUS_SYS_STATS_ADDR_BASE + SYS_STATS_REG_COUNT - 1U))
 
 /* High / low 16-bit words of a 32-bit value (ABCD word order). */
 static uint16_t sys_stats_high_word(uint32_t value)
@@ -81,29 +90,34 @@ bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value)
 
 	switch (reg_addr)
 	{
-		case SYS_REG(uptime_sec):
-			*value = (uint16_t)(bsp_get_tick() & 0xFFFFU);
-			return true;
-		case SYS_REG(uptime_min):
-			*value = (uint16_t)((bsp_get_tick() / 60U) & 0xFFFFU);
-			return true;
-		case SYS_REG(uptime_hour):
-			*value = (uint16_t)((bsp_get_tick() / 3600U) & 0xFFFFU);
-			return true;
-		case SYS_REG(uptime_day):
-			*value = (uint16_t)((bsp_get_tick() / 86400U) & 0xFFFFU);
-			return true;
 		case SYS_REG(rtc_sec):
-			*value = (uint16_t)(rtc_get_unix_epoch() & 0xFFFFU);
+			*value = (uint16_t)(rtc_get_second() & 0xFFFFU);
 			return true;
 		case SYS_REG(rtc_min):
-			*value = (uint16_t)((rtc_get_unix_epoch() / 60U) & 0xFFFFU);
+			*value = (uint16_t)(rtc_get_minute() & 0xFFFFU);
 			return true;
 		case SYS_REG(rtc_hour):
-			*value = (uint16_t)((rtc_get_unix_epoch() / 3600U) & 0xFFFFU);
+			*value = (uint16_t)(rtc_get_hour() & 0xFFFFU);
 			return true;
 		case SYS_REG(rtc_day):
-			*value = (uint16_t)((rtc_get_unix_epoch() / 86400U) & 0xFFFFU);
+			*value = (uint16_t)(rtc_get_day() & 0xFFFFU);
+			return true;
+		case SYS_REG(rtc_month):
+			*value = (uint16_t)(rtc_get_month() & 0xFFFFU);
+			return true;
+		case SYS_REG(rtc_year):
+			*value = (uint16_t)(2000 + rtc_get_year() & 0xFFFFU);
+			return true;
+		case SYS_REG(uptime_sec):
+			*value = (uint16_t)(bsp_get_tick() / 60000 & 0xFFFFU); // dakika cinsinden
+			return true;
+		case SYS_REG(rtc_unix):
+			/* UINT32 high word (ABCD). */
+			*value = sys_stats_high_word(rtc_get_unix_epoch());
+			return true;
+		case SYS_REG(rtc_unix) + 1U:
+			/* UINT32 low word. */
+			*value = sys_stats_low_word(rtc_get_unix_epoch());
 			return true;
 		case SYS_REG(reset_reason):
 			*value = reset_source_get_raw();

@@ -41,6 +41,13 @@ typedef struct
 /* ---- Software RTC accessors (millisecond resolution, used for logging) ---- */
 void rtc_set(uint8_t second, uint8_t minute, uint8_t hour, uint8_t day, uint8_t month, uint8_t year);
 rtc_t rtc_now(void);
+uint8_t rtc_get_second(void);
+uint8_t rtc_get_minute(void);
+uint8_t rtc_get_hour(void);
+uint8_t rtc_get_day(void);
+uint8_t rtc_get_month(void);
+uint8_t rtc_get_year(void);
+
 const char * rtc_get_now_str(void);
 void rtc_print_now(void);
 

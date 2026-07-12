@@ -45,6 +45,36 @@ rtc_t rtc_now(void)
 	return *(const rtc_t *)&bsp_dt; /* bsp_rtc_t and rtc_t must have identical layout */
 }
 
+uint8_t rtc_get_second(void)
+{
+	 return rtc_now().second;
+}
+
+uint8_t rtc_get_minute(void)
+{
+	 return rtc_now().minute;
+}
+
+uint8_t rtc_get_hour(void)
+{
+	 return rtc_now().hour;
+}
+
+uint8_t rtc_get_day(void)
+{
+	 return rtc_now().day;
+}
+
+uint8_t rtc_get_month(void)
+{
+	 return rtc_now().month;
+}
+
+uint8_t rtc_get_year(void)
+{
+	 return rtc_now().year;
+}
+
 const char * rtc_get_now_str(void)
 {
 	return bsp_get_rtc_str();
