@@ -10,7 +10,7 @@
 #include "adc.h"
 #include "reset_source.h"
 #include <stddef.h>
-
+#include "digital_input.h"
 /*
  * System statistics register block (holding space, base
  * MODBUS_SYS_STATS_ADDR_BASE == 49000).
@@ -46,6 +46,7 @@ typedef struct {
 	uint16_t v3v3;           /* 3V3 rail, millivolts         */
 	uint16_t v3v8;           /* 3V8 rail, millivolts         */
 	uint16_t uptime_raw[2];  /* uptime, full UINT32 (ABCD)   */
+	uint16_t dinput_states;  /* digital input states, bitmask */
 } modbus_sys_stats_map_t;
 
 /* Logical Modbus address of a layout member. For a 2-register member this
@@ -106,7 +107,7 @@ bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value)
 			*value = (uint16_t)(rtc_get_month() & 0xFFFFU);
 			return true;
 		case SYS_REG(rtc_year):
-			*value = (uint16_t)(2000 + rtc_get_year() & 0xFFFFU);
+			*value = (uint16_t)((2000 + rtc_get_year()) & 0xFFFFU);
 			return true;
 		case SYS_REG(uptime_sec):
 			*value = (uint16_t)(bsp_get_tick() / 60000 & 0xFFFFU); // dakika cinsinden
@@ -141,6 +142,9 @@ bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value)
 		case SYS_REG(uptime_raw) + 1U:
 			/* UINT32 low word. */
 			*value = sys_stats_low_word(bsp_get_tick());
+			return true;
+		case SYS_REG(dinput_states):
+				*value = digital_input_get_all() & 0x00FFU;
 			return true;
 		default:
 			/* Dense layout: only reachable if a member loses its case. Return 0

@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.2 |
-| Tarih | 2026-06-15 |
+| Dokuman surumu | 1.3 |
+| Tarih | 2026-07-14 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -217,9 +217,108 @@ Bu register'lar hat bloklarindan bagimsizdir.
 
 ---
 
-## 7. Okuma Ornekleri
+## 7. Sistem ve Guc Telemetri Bloklari (Salt Okunur)
 
-### 7.1 Bir Hattin Tum Verisini Okuma (FC03)
+Hat bazli olcum blogundan (bolum 5) ve kontrol register'larindan (bolum 6)
+bagimsiz, genel amacli **salt-okunur** iki blok. Her ikisi de bitisik ve tek
+FC03 penceresinde toplu okunabilir. Yazma (FC06) desteklenmez.
+
+### 7.1 Sistem Istatistik Blogu (49000 / base-0 9000)
+
+Cihazin dahili durumu: RTC, calisma suresi, reset nedeni, besleme gerilimleri
+ve dijital inputlar. 17 register (49000..49016).
+
+| Mantiksal | Base-0 | Alan | Tip | Birim/Anlam |
+|---:|---:|---|---|---|
+| 49000 | 9000 | rtc_sec | UINT16 | RTC saniye |
+| 49001 | 9001 | rtc_min | UINT16 | RTC dakika |
+| 49002 | 9002 | rtc_hour | UINT16 | RTC saat |
+| 49003 | 9003 | rtc_day | UINT16 | RTC gun |
+| 49004 | 9004 | rtc_month | UINT16 | RTC ay |
+| 49005 | 9005 | rtc_year | UINT16 | RTC yil (tam, orn. 2026) |
+| 49006 | 9006 | rtc_unix | UINT32 (ABCD) | Unix epoch, high word |
+| 49007 | 9007 | rtc_unix | UINT32 (ABCD) | Unix epoch, low word |
+| 49008 | 9008 | uptime | UINT16 | Calisma suresi (dakika) |
+| 49009 | 9009 | reset_reason | UINT16 | Reset kaynak CSR bitleri |
+| 49010 | 9010 | mcu_temp | UINT16 | MCU die sicakligi (°C) |
+| 49011 | 9011 | v5v | UINT16 | 5V ray (mV) |
+| 49012 | 9012 | v3v3 | UINT16 | 3V3 ray (mV) |
+| 49013 | 9013 | v3v8 | UINT16 | 3V8 ray (mV) |
+| 49014 | 9014 | uptime_raw | UINT32 (ABCD) | Calisma suresi (ms), high word |
+| 49015 | 9015 | uptime_raw | UINT32 (ABCD) | Calisma suresi (ms), low word |
+| 49016 | 9016 | dinput_states | UINT16 | Dijital input bitmask (bit 0..7) |
+
+- `rtc_unix` (49006-49007) standart Unix epoch'tur (bolum 4.2).
+- `uptime` (49008) **dakika** cinsindendir; tam deger icin `uptime_raw`
+  (49014-49015, **ms**, UINT32 ABCD) kullanilir.
+- `reset_reason` MCU reset kaynak CSR bitleridir (ham); bit anlamlari MCU'ya
+  ozgudur.
+
+### 7.2 Guc Karti (PowerBoard) Telemetri Blogu (49200 / base-0 9200)
+
+PowerBoard'dan I2C yardimci (slave) uzerinden ~1 sn'de bir gelen telemetri:
+batarya/PV/DC gerilimleri, sarj/bus akimlari, sicakliklar, SoC/SoH ve BQ
+fault/alarm bitleri. 32 register (49200..49231).
+
+| Mantiksal | Base-0 | Alan | Tip | Birim/Anlam |
+|---:|---:|---|---|---|
+| 49200 | 9200 | valid | UINT16 | 1 = checksum gecerli, 0 = hatali |
+| 49201 | 9201 | prot_ver | UINT16 | Protokol surumu |
+| 49202 | 9202 | seq | UINT16 | Ornek sayaci (wrap) |
+| 49203 | 9203 | rec_flag | UINT16 | REC_FLAG bitfield |
+| 49204 | 9204 | blk_xsum | UINT16 | Alinan checksum byte |
+| 49205 | 9205 | sys_state | UINT16 | SYS_STATE |
+| 49206 | 9206 | sys_fault | UINT16 | SYS_FAULT (BQ FAULT0 aynasi) |
+| 49207 | 9207 | sys_flags | UINT16 | SYS_FLAGS (canli alarmlar) |
+| 49208 | 9208 | soh_x10 | UINT16 | Batarya sagligi %, x10 (1000 = 100.0%) |
+| 49209 | 9209 | soc_x10 | UINT16 | Sarj durumu %, x10 (1000 = 100.0%) |
+| 49210 | 9210 | vbat_mv | UINT16 | Batarya gerilimi (mV) |
+| 49211 | 9211 | vpv_mv | UINT16 | PV gerilimi (mV) |
+| 49212 | 9212 | vdc_mv | UINT16 | DC gerilimi (mV) |
+| 49213 | 9213 | ichg_ma | UINT16 | Sarj akimi (mA) |
+| 49214 | 9214 | ibat_ma | INT16 | Batarya akimi (mA, +sarj / -desarj) |
+| 49215 | 9215 | ibus_ma | UINT16 | Bus akimi (mA) |
+| 49216 | 9216 | board_temp_c | INT16 | Kart NTC sicakligi (°C) |
+| 49217 | 9217 | batt_temp_x10 | INT16 | Batarya NTC x10 (°C, 255 = 25.5°C) |
+| 49218 | 9218 | batt_ts | UINT16 | JEITA bolge (0..4) |
+| 49219 | 9219 | chg_stat | UINT16 | Sarj fazi (0..7) |
+| 49220 | 9220 | chg_phase | UINT16 | Sarj fazi (ayna) |
+| 49221 | 9221 | batt_cap_ah | UINT16 | Aktif kapasite (Ah) |
+| 49222 | 9222 | bq_fault0 | UINT16 | BQ REG20 raw |
+| 49223 | 9223 | bq_fault1 | UINT16 | BQ REG21 raw |
+| 49224 | 9224 | alarm_live | UINT16 | Canli alarm bitleri |
+| 49225 | 9225 | alarm_latch | UINT16 | Latch'li alarm bitleri |
+| 49226 | 9226 | pwr_io | UINT16 | GPIO aynasi |
+| 49227 | 9227 | bq_vsys_mv | UINT16 | BQ VSYS (mV) |
+| 49228 | 9228 | bq_vbus_mv | UINT16 | BQ VBUS (mV) |
+| 49229 | 9229 | bq_vac1_mv | UINT16 | BQ VAC1 = DC giris (mV) |
+| 49230 | 9230 | bq_vac2_mv | UINT16 | BQ VAC2 = PV giris (mV) |
+| 49231 | 9231 | bq_tdie_c | INT16 | BQ die sicakligi (°C) |
+
+- **Isaretli (INT16) alanlar:** `ibat_ma`, `board_temp_c`, `batt_temp_x10`,
+  `bq_tdie_c` - iki-tumleyen (two's complement) olarak yayinlanir; master taraf
+  signed 16-bit olarak okumalidir.
+- `valid` (49200) = 0 ise checksum eslesmedi; alanlar yine de decode edilir ama
+  guvenilir kabul edilmez.
+- `*_x10` alanlari 10 ile olceklidir (100.0% -> 1000).
+- Sicaklik/sentinel degerleri icin bkz. PowerBoard sozlesmesi
+  (`doc/I2C_SLAVE_ENTEGRASYON_16K.md`).
+
+### 7.3 Toplu Okuma (FC03)
+
+| Blok | Address (base-0) | Quantity |
+|---|---:|---:|
+| Sistem istatistik | 9000 | 17 |
+| Guc karti telemetri | 9200 | 32 |
+
+> UINT32 (ABCD) alanlari icin master tarafinda "32-bit Unsigned" ve big-endian
+> (ABCD) word order secilmelidir (bolum 4.1).
+
+---
+
+## 8. Okuma Ornekleri
+
+### 8.1 Bir Hattin Tum Verisini Okuma (FC03)
 
 Line 1'in tum canli verisini tek pencerede okumak icin:
 
@@ -232,7 +331,7 @@ Line 1'in tum canli verisini tek pencerede okumak icin:
 
 Line 2 icin Address = 100, Quantity = 27; Line 3 icin Address = 200; ...
 
-### 7.2 Sadece Anlik Akimlari Okuma
+### 8.2 Sadece Anlik Akimlari Okuma
 
 Line 1 anlik akim (R/S/T) icin:
 
@@ -244,7 +343,7 @@ Line 1 anlik akim (R/S/T) icin:
 
 Donen 6 register, 3 adet FLOAT32 (R, S, T) olarak yorumlanir.
 
-### 7.3 ModbusPoll Ayar Ozeti
+### 8.3 ModbusPoll Ayar Ozeti
 
 - Connection: Serial, 115200 8N1
 - Slave ID: 23
@@ -256,7 +355,7 @@ Donen 6 register, 3 adet FLOAT32 (R, S, T) olarak yorumlanir.
 
 ---
 
-## 8. Exception (Hata) Yanitlari
+## 9. Exception (Hata) Yanitlari
 
 Cihaz, gecersiz isteklere Modbus standart exception kodlari ile yanit verir:
 
@@ -270,7 +369,7 @@ Cihaz, gecersiz isteklere Modbus standart exception kodlari ile yanit verir:
 > cihaz tum istek icin `0x02` doner. Bu nedenle okuma pencereleri yukaridaki
 > bitisik blok sinirlari icinde tutulmalidir (orn. Address 0, Quantity 27).
 
-### 8.1 Son Hata Kodu (SonHataKodu)
+### 9.1 Son Hata Kodu (SonHataKodu)
 
 Cihaz, gonderdigi **son exception kodunu** dahili olarak saklar. Bu deger her
 yeni exception yanitinda guncellenir; basarili istekler degeri **degistirmez**,
@@ -302,7 +401,7 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 
 ---
 
-## 9. Yapilandirilabilir Ayarlar Ozeti
+## 10. Yapilandirilabilir Ayarlar Ozeti
 
 | Ayar | Varsayilan | Aralik | Notu |
 |---|---|---|---|
@@ -313,10 +412,11 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 
 ---
 
-## 10. Revizyon Gecmisi
+## 11. Revizyon Gecmisi
 
 | Surum | Tarih | Aciklama |
 |---|---|---|
 | 1.0 | 2026-06-13 | Ilk surum: bitisik float tabanli register haritasi |
-| 1.1 | 2026-06-15 | Son hata kodu (SonHataKodu) takibi ve web arabirimi eklendi (bkz. 8.1) |
+| 1.1 | 2026-06-15 | Son hata kodu (SonHataKodu) takibi ve web arabirimi eklendi (bkz. 9.1) |
 | 1.2 | 2026-06-15 | Son hata zamani (SonHataZamani, Unix epoch) eklendi; sistem geneli zaman tabani 1970 Unix epoch'a tasindi |
+| 1.3 | 2026-07-14 | Sistem istatistik (49000) ve guc karti telemetri (49200) salt-okunur bloklari eklendi (bkz. 7) |

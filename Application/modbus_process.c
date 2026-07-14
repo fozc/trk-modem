@@ -8,6 +8,7 @@
 #include "modbus_rtu_slave.h"
 #include "modbus_config.h"
 #include "modbus_system_stats.h"
+#include "modbus_power_stats.h"
 #include "breaker.h"
 #include "bsp.h"
 #include "rtc.h"
@@ -439,6 +440,14 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
      * uptime, RTC, reset reason, supply voltages... Read-only, contiguous and
      * bulk-readable in a single FC03 window. */
     if (modbus_system_stats_read(reg_addr, p_value)) {
+        return MODBUS_REG_OK;
+    }
+
+    /* PowerBoard telemetry block (base MODBUS_PWR_STATS_ADDR_BASE == 49200):
+     * battery/PV/DC voltages, charge & bus currents, temperatures, SoC/SoH, BQ
+     * faults and alarms. Read-only, contiguous and bulk-readable in a single
+     * FC03 window. */
+    if (modbus_power_stats_read(reg_addr, p_value)) {
         return MODBUS_REG_OK;
     }
 
