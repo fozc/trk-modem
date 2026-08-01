@@ -92,7 +92,7 @@ void bms_process_package()
 			float soc = BMS_GetSOC(&s_bms_data);
 			float soh = BMS_GetSOH(&s_bms_data);
 
-			CSLOG("BMS Data: Total Voltage: %.2f V, Current: %.2f A, SOC: %.2f %%, SOH: %.2f %% \r\n", total_voltage, current, soc, soh);
+			//CSLOG("BMS Data: Total Voltage: %.2f V, Current: %.2f A, SOC: %.2f %%, SOH: %.2f %% \r\n", total_voltage, current, soc, soh);
 		}
 		else
 		{
@@ -111,7 +111,7 @@ void bms_process_package()
 			// persistent snapshot are touched).
 			float soh = BMS_GetSOH(&s_bms_data);
 
-			CSLOG("BMS SOH: %.2f %% \r\n", soh);
+			//CSLOG("BMS SOH: %.2f %% \r\n", soh);
 		}
 		else
 		{
