@@ -409,7 +409,8 @@ void UART5_IRQHandler(void)
 
 		if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
 		{
-			(void)rx_byte;
+			void bms_rx_interrupt_handler(uint8_t data);
+			bms_rx_interrupt_handler(rx_byte);
 		}
 	}
   return;

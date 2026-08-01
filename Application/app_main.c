@@ -44,6 +44,7 @@
 #include "power_board.h"
 #include "system_status.h"
 #include "reset_source.h"
+#include "bms_reader.h"
 
 PROCESS(heart_beat_process, "heart-beat");
 PROCESS(rtc_resync_process, "rtc-resync");
@@ -276,6 +277,8 @@ __attribute__ ((noreturn)) void app_main(void)
 #endif
 
 	system_status_init();
+	bms_reader_init();
+	LL_USART_EnableIT_RXNE_RXFNE(UART5);  /* BMS RX */
 
 
 	CSLOG("Board Initialization Completed.\r\n");
