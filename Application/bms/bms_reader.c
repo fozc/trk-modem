@@ -14,6 +14,19 @@
 uint8_t bms_rx_buffer[272];
 uint16_t bms_rx_index = 0;
 
+/* Persistent decoded snapshot. Full-map and SOH responses update disjoint
+ * fields of this single record, so each parse preserves the other's data. It is
+ * the source the Modbus BMS-stats block reads back (see bms_reader_get_data). */
+static bms_data_t s_bms_data;
+
+void bms_reader_get_data(bms_data_t *p_out)
+{
+	if (p_out == NULL) {
+		return;
+	}
+	*p_out = s_bms_data;
+}
+
 void bms_rx_interrupt_handler(uint8_t data)
 {
 	if (bms_rx_index < sizeof(bms_rx_buffer)){
@@ -69,21 +82,15 @@ void bms_process_package()
 {
 	if (bms_rx_index >= BMS_FULL_MAP_FRAME_LEN)
 	{
-		bms_data_t bms_data;
-		BMS_Init(&bms_data);
-
-		bms_status_t status = BMS_ParseFullMapResponse(&bms_data, bms_rx_buffer, bms_rx_index);
+		bms_status_t status = BMS_ParseFullMapResponse(&s_bms_data, bms_rx_buffer, bms_rx_index);
 		if (status == BMS_OK)
 		{
-			// Successfully parsed the BMS data
-			// You can now use the bms_data structure to access the parsed values
-			// For example:
-			float total_voltage = BMS_GetTotalVoltage(&bms_data);
-			float current = BMS_GetCurrent(&bms_data);
-			float soc = BMS_GetSOC(&bms_data);
-			float soh = BMS_GetSOH(&bms_data);
-
-			// Do something with the parsed data (e.g., log it, send it over another interface, etc.)
+			// Successfully parsed the BMS data; s_bms_data now holds the latest
+			// full-map snapshot (readable via bms_reader_get_data / Modbus).
+			float total_voltage = BMS_GetTotalVoltage(&s_bms_data);
+			float current = BMS_GetCurrent(&s_bms_data);
+			float soc = BMS_GetSOC(&s_bms_data);
+			float soh = BMS_GetSOH(&s_bms_data);
 
 			CSLOG("BMS Data: Total Voltage: %.2f V, Current: %.2f A, SOC: %.2f %%, SOH: %.2f %% \r\n", total_voltage, current, soc, soh);
 		}
@@ -97,16 +104,13 @@ void bms_process_package()
 	}
 	else if (bms_rx_index >= BMS_SOH_FRAME_LEN)
 	{
-		bms_data_t bms_data;
-		BMS_Init(&bms_data);
-
-		bms_status_t status = BMS_ParseSOHResponse(&bms_data, bms_rx_buffer, bms_rx_index);
+		bms_status_t status = BMS_ParseSOHResponse(&s_bms_data, bms_rx_buffer, bms_rx_index);
 		if (status == BMS_OK)
 		{
-			// Successfully parsed the SOH data
-			float soh = BMS_GetSOH(&bms_data);
+			// Successfully parsed the SOH data (only the SOH fields of the
+			// persistent snapshot are touched).
+			float soh = BMS_GetSOH(&s_bms_data);
 
-			// Do something with the parsed SOH data (e.g., log it, send it over another interface, etc.)
 			CSLOG("BMS SOH: %.2f %% \r\n", soh);
 		}
 		else
@@ -157,6 +161,7 @@ PROCESS_THREAD(bms_process, ev, data)
 
 void bms_reader_init(void)
 {
+	BMS_Init(&s_bms_data);
 	process_start(&bms_process, NULL);
 }
 

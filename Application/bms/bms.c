@@ -54,21 +54,12 @@ bms_status_t BMS_Init(bms_data_t *p_bms)
         return BMS_ERROR_NULL_PTR;
     }
 
-    for (uint8_t i = 0U; i < BMS_MAX_CELL_COUNT; i++) {
-        p_bms->cell_voltage_mv[i] = 0U;
-    }
+    /* Zero every field, then apply the only non-zero default (temperatures are
+     * decoded as (raw - 40), so an unpopulated sensor should read -40 degC). */
+    *p_bms = (bms_data_t){ 0 };
     for (uint8_t i = 0U; i < BMS_MAX_TEMP_SENSORS; i++) {
         p_bms->temperatures_celsius[i] = -40;
     }
-
-    p_bms->total_voltage_v = 0.0f;
-    p_bms->current_a = 0.0f;
-    p_bms->soc_percent = 0.0f;
-    p_bms->soh_percent = 0.0f;
-    p_bms->remaining_cap_ah = 0.0f;
-    p_bms->active_cell_count = 0U;
-    p_bms->is_data_valid = false;
-    p_bms->is_soh_valid = false;
 
     return BMS_OK;
 }
@@ -121,46 +112,105 @@ bms_status_t BMS_ParseFullMapResponse(bms_data_t *p_bms, const uint8_t *p_frame,
         p_bms->temperatures_celsius[i] = (int16_t)raw_temp - 40;
     }
 
-    /* --- 3. Electrical Data --- */
-    /* 0x0038: Total Battery Voltage (Resolution 0.1V) */
-    uint16_t raw_total_v = BMS_BytesToUint16(&p_regs[0x38U * 2U]);
-    p_bms->total_voltage_v = (float)raw_total_v * 0.1f;
+    /* ---------------------------------------------------------------------
+     * Scalar registers, decoded in ascending protocol-address order.
+     * ------------------------------------------------------------------- */
 
-    /* 0x0039: Current Data (Offset 30000, Resolution 0.1A) */
-    uint16_t raw_current = BMS_BytesToUint16(&p_regs[0x39U * 2U]);
-    p_bms->current_a = ((float)raw_current - 30000.0f) * 0.1f;
+    /* 0x38: total pack voltage (0.1 V/bit). */
+    p_bms->total_voltage_v = (float)BMS_BytesToUint16(&p_regs[0x38U * 2U]) * 0.1f;
 
-    /* 0x003A: SOC (Resolution 0.001 -> %) */
-    uint16_t raw_soc = BMS_BytesToUint16(&p_regs[0x3AU * 2U]);
-    p_bms->soc_percent = ((float)raw_soc / 1000.0f) * 100.0f;
+    /* 0x39: current (0.1 A/bit, 30000 offset; +charge / -discharge). */
+    p_bms->current_a = ((float)BMS_BytesToUint16(&p_regs[0x39U * 2U]) - 30000.0f) * 0.1f;
 
-    /* 0x003C & 0x003D: Quantities */
+    /* 0x3A: state of charge (0.001 -> %). */
+    p_bms->soc_percent = ((float)BMS_BytesToUint16(&p_regs[0x3AU * 2U]) / 1000.0f) * 100.0f;
+
+    /* 0x3B: LIFE heartbeat counter. */
+    p_bms->life_heartbeat = BMS_BytesToUint16(&p_regs[0x3BU * 2U]);
+
+    /* 0x3C / 0x3D: cell and temperature-sensor quantities. */
     p_bms->active_cell_count = (uint8_t)BMS_BytesToUint16(&p_regs[0x3CU * 2U]);
+    p_bms->temp_sensor_count = (uint8_t)BMS_BytesToUint16(&p_regs[0x3DU * 2U]);
 
-    /* --- 4. Cell Extremes (0x003E ~ 0x0042) --- */
-    p_bms->max_cell_mv  = BMS_BytesToUint16(&p_regs[0x3EU * 2U]);
-    p_bms->min_cell_mv  = BMS_BytesToUint16(&p_regs[0x40U * 2U]);
-    p_bms->cell_diff_mv = BMS_BytesToUint16(&p_regs[0x42U * 2U]);
+    /* 0x3E..0x42: cell-voltage extremes and their cell serial numbers. */
+    p_bms->max_cell_mv    = BMS_BytesToUint16(&p_regs[0x3EU * 2U]);
+    p_bms->max_cell_index = BMS_BytesToUint16(&p_regs[0x3FU * 2U]);
+    p_bms->min_cell_mv    = BMS_BytesToUint16(&p_regs[0x40U * 2U]);
+    p_bms->min_cell_index = BMS_BytesToUint16(&p_regs[0x41U * 2U]);
+    p_bms->cell_diff_mv   = BMS_BytesToUint16(&p_regs[0x42U * 2U]);
 
-    /* --- 5. Temperature Extremes (0x0043 ~ 0x0047) --- */
-    p_bms->max_temp_celsius = (int16_t)BMS_BytesToUint16(&p_regs[0x43U * 2U]) - 40;
-    p_bms->min_temp_celsius = (int16_t)BMS_BytesToUint16(&p_regs[0x45U * 2U]) - 40;
+    /* 0x43..0x47: temperature extremes (raw - 40) and their sensor serials. */
+    p_bms->max_temp_celsius  = (int16_t)BMS_BytesToUint16(&p_regs[0x43U * 2U]) - 40;
+    p_bms->max_temp_index    = BMS_BytesToUint16(&p_regs[0x44U * 2U]);
+    p_bms->min_temp_celsius  = (int16_t)BMS_BytesToUint16(&p_regs[0x45U * 2U]) - 40;
+    p_bms->min_temp_index    = BMS_BytesToUint16(&p_regs[0x46U * 2U]);
+    p_bms->temp_diff_celsius = (int16_t)BMS_BytesToUint16(&p_regs[0x47U * 2U]);
 
-    /* --- 6. Work Status & MOS States (0x0048, 0x0052) --- */
-    p_bms->work_state = (bms_work_state_t)BMS_BytesToUint16(&p_regs[0x48U * 2U]);
-    p_bms->mos_status_flags = BMS_BytesToUint16(&p_regs[0x52U * 2U]);
+    /* 0x48..0x4A: charge/discharge, charger and load status. */
+    p_bms->work_state     = (bms_work_state_t)BMS_BytesToUint16(&p_regs[0x48U * 2U]);
+    p_bms->charger_status = BMS_BytesToUint16(&p_regs[0x49U * 2U]);
+    p_bms->load_status    = BMS_BytesToUint16(&p_regs[0x4AU * 2U]);
 
-    /* --- 7. Auxiliary Temperatures (0x005A, 0x005B) --- */
+    /* 0x4B..0x4D: remaining capacity (0.1 Ah), cycle count, balance state. */
+    p_bms->remaining_cap_ah = (float)BMS_BytesToUint16(&p_regs[0x4BU * 2U]) * 0.1f;
+    p_bms->cycle_count      = BMS_BytesToUint16(&p_regs[0x4CU * 2U]);
+    p_bms->balance_state    = BMS_BytesToUint16(&p_regs[0x4DU * 2U]);
+
+    /* 0x4F..0x51: per-cell balance position bitmask (each bit = one cell). */
+    for (uint8_t i = 0U; i < 3U; i++) {
+        p_bms->balance_position[i] = BMS_BytesToUint16(&p_regs[(0x4FU + i) * 2U]);
+    }
+
+    /* 0x52..0x56: individual MOS on/off registers packed into one bitmask
+     * (bit0 charge, bit1 discharge, bit2 precharge, bit3 heating, bit4 fan). */
+    uint16_t mos_flags = 0U;
+    if (BMS_BytesToUint16(&p_regs[0x52U * 2U]) != 0U) { mos_flags |= (uint16_t)(UINT16_C(1) << 0U); }
+    if (BMS_BytesToUint16(&p_regs[0x53U * 2U]) != 0U) { mos_flags |= (uint16_t)(UINT16_C(1) << 1U); }
+    if (BMS_BytesToUint16(&p_regs[0x54U * 2U]) != 0U) { mos_flags |= (uint16_t)(UINT16_C(1) << 2U); }
+    if (BMS_BytesToUint16(&p_regs[0x55U * 2U]) != 0U) { mos_flags |= (uint16_t)(UINT16_C(1) << 3U); }
+    if (BMS_BytesToUint16(&p_regs[0x56U * 2U]) != 0U) { mos_flags |= (uint16_t)(UINT16_C(1) << 4U); }
+    p_bms->mos_status_flags = mos_flags;
+
+    /* 0x57..0x59: average cell voltage (mV), power (W), energy (Wh). */
+    p_bms->average_voltage_mv = BMS_BytesToUint16(&p_regs[0x57U * 2U]);
+    p_bms->power_w            = BMS_BytesToUint16(&p_regs[0x58U * 2U]);
+    p_bms->energy_wh          = BMS_BytesToUint16(&p_regs[0x59U * 2U]);
+
+    /* 0x5A..0x5D: MOS/ambient/heating temperatures (raw - 40) and heating current. */
     p_bms->mos_temperature_celsius     = (int16_t)BMS_BytesToUint16(&p_regs[0x5AU * 2U]) - 40;
     p_bms->ambient_temperature_celsius = (int16_t)BMS_BytesToUint16(&p_regs[0x5BU * 2U]) - 40;
+    p_bms->heating_temperature_celsius = (int16_t)BMS_BytesToUint16(&p_regs[0x5CU * 2U]) - 40;
+    p_bms->heating_current_a           = BMS_BytesToUint16(&p_regs[0x5DU * 2U]);
 
-    /* --- 8. Wake-Up Source (0x006B) --- */
+    /* 0x5F / 0x60: current-limit state and limit value (0.1 A/bit, 30000 offset). */
+    p_bms->current_limit_state = BMS_BytesToUint16(&p_regs[0x5FU * 2U]);
+    p_bms->current_limit_a     = ((float)BMS_BytesToUint16(&p_regs[0x60U * 2U]) - 30000.0f) * 0.1f;
+
+    /* 0x61..0x63: real-time clock (Year|Month, Day|Hour, Minute|Second). */
+    uint16_t rtc_ym = BMS_BytesToUint16(&p_regs[0x61U * 2U]);
+    uint16_t rtc_dh = BMS_BytesToUint16(&p_regs[0x62U * 2U]);
+    uint16_t rtc_ms = BMS_BytesToUint16(&p_regs[0x63U * 2U]);
+    p_bms->rtc.year   = (uint8_t)(rtc_ym >> 8U);
+    p_bms->rtc.month  = (uint8_t)(rtc_ym & 0xFFU);
+    p_bms->rtc.day    = (uint8_t)(rtc_dh >> 8U);
+    p_bms->rtc.hour   = (uint8_t)(rtc_dh & 0xFFU);
+    p_bms->rtc.minute = (uint8_t)(rtc_ms >> 8U);
+    p_bms->rtc.second = (uint8_t)(rtc_ms & 0xFFU);
+
+    /* 0x64 / 0x65: remaining charge time (min) and DI/DO status word. */
+    p_bms->remaining_charge_min = BMS_BytesToUint16(&p_regs[0x64U * 2U]);
+    p_bms->dido_status          = BMS_BytesToUint16(&p_regs[0x65U * 2U]);
+
+    /* 0x6B: wake-up source bitmask. */
     p_bms->wake_source_flags = BMS_BytesToUint16(&p_regs[0x6BU * 2U]);
 
-    /* --- 9. Fault Codes (0x006D ~ 0x0073) --- */
+    /* 0x6D..0x73: new fault-code words. */
     for (uint8_t i = 0U; i < 7U; i++) {
         p_bms->fault_codes[i] = BMS_BytesToUint16(&p_regs[(0x6DU + i) * 2U]);
     }
+
+    /* 0x7E: communication interface type (1 = RS485, 2 = UART). */
+    p_bms->comm_interface_type = BMS_BytesToUint16(&p_regs[0x7EU * 2U]);
 
     p_bms->is_data_valid = true;
     return BMS_OK;

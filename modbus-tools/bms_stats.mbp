@@ -1,0 +1,730 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ModbusPoll>
+   <FileSchema r="0" c="1"/>
+   <Version major="13" minor="2" patch="1" build="2558"/>
+   <dpi>96</dpi>
+   <WP left="900" right="1245" top="-1" bottom="753" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+   <ScanRate>1000</ScanRate>
+   <SlaveID>23</SlaveID>
+   <Enable>1</Enable>
+   <StopOnError>0</StopOnError>
+   <OneBased>0</OneBased>
+   <RowsDialog>4</RowsDialog>
+   <HideNames>0</HideNames>
+   <HexMode>0</HexMode>
+   <DisplayAddr>0</DisplayAddr>
+   <ColCount>2</ColCount>
+   <RowCount>79</RowCount>
+   <ColumnWidth>
+      <CW>1620</CW>
+      <CW>1230</CW>
+   </ColumnWidth>
+   <RowHight>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+   </RowHight>
+   <ScrollPosV>0</ScrollPosV>
+   <ScrollPosH>0</ScrollPosH>
+   <FocusRow>0</FocusRow>
+   <FocusCol>1</FocusCol>
+   <LogText>
+      <Eachread>0</Eachread>
+      <Rate>1</Rate>
+      <LogChangedOnly>0</LogChangedOnly>
+      <LogErrors>0</LogErrors>
+      <LogErrorsOnly>0</LogErrorsOnly>
+      <LogAddress>1</LogAddress>
+      <LogDate>0</LogDate>
+      <TDelimiter>0</TDelimiter>
+      <LogMs>1</LogMs>
+      <Delimiter>0</Delimiter>
+      <AutoStart>0</AutoStart>
+      <Flush>0</Flush>
+      <Append>0</Append>
+      <NewLogFileAtMidnight>0</NewLogFileAtMidnight>
+      <InsertHeader>0</InsertHeader>
+      <NameCellsInTopRow>0</NameCellsInTopRow>
+      <PollDefinition>0</PollDefinition>
+      <LogName>Type log name here</LogName>
+      <FileName></FileName>
+   </LogText>
+   <LogExcel>
+      <Eachread>1</Eachread>
+      <Rate>1</Rate>
+      <StopAfter>1000</StopAfter>
+      <LogChangedOnly>0</LogChangedOnly>
+      <InsertHeader>1</InsertHeader>
+      <NameCellsInTopRow>1</NameCellsInTopRow>
+      <PollDefinition>1</PollDefinition>
+      <LogName>Type log name here</LogName>
+   </LogExcel>
+   <Data>
+      <Function>3</Function>
+      <Address>9300</Address>
+      <Quantity>79</Quantity>
+      <EnronMode>0</EnronMode>
+      <Formats>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="0" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="0" v="0"/>
+         <F f="1" v="0"/>
+         <F f="0" v="0"/>
+         <F f="1" v="0"/>
+         <F f="0" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="2" v="0x0000"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="0" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="0" v="0"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+         <F f="2" v="0x0000"/>
+      </Formats>
+      <Bytes>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B><B>0</B>
+         <B>0</B><B>0</B><B>0</B><B>0</B>
+      </Bytes>
+      <CellData>
+         <Cell idx="0">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Valid</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="1">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>SoH Valid</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="2">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Total Voltage x10 (0.1V)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="3">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Current x10 (0.1A) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="4">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>SoC x10 (%)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="5">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>SoH x10 (%)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="6">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>LIFE Heartbeat</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="7">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Active Cell Count</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="8">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp Sensor Count</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="9">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Max Cell (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="10">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Max Cell Index</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="11">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Min Cell (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="12">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Min Cell Index</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="13">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell Diff (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="14">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Max Temp (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="15">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Max Temp Index</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="16">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Min Temp (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="17">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Min Temp Index</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="18">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp Diff (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="19">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Work State (0 idle/1 chg/2 dsg)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="20">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Charger Status</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="21">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Load Status</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="22">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Remaining Cap x10 (0.1Ah)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="23">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cycle Count</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="24">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Balance State</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="25">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>MOS Status Flags</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="26">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Average Voltage (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="27">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Power (W)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="28">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Energy (Wh)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="29">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>MOS Temp (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="30">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Ambient Temp (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="31">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Heating Temp (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="32">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Heating Current (A)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="33">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Current Limit State</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="34">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Current Limit x10 (0.1A) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="35">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Year</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="36">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Month</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="37">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Day</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="38">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Hour</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="39">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Minute</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="40">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>RTC Second</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="41">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Remaining Charge (min)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="42">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>DI/DO Status</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="43">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Wake Source Flags</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="44">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Comm Interface (1:485 2:UART)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="45">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 1 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="46">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 2 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="47">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 3 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="48">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 4 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="49">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 5 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="50">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 6 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="51">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 7 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="52">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 8 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="53">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 9 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="54">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 10 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="55">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 11 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="56">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 12 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="57">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 13 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="58">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 14 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="59">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 15 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="60">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Cell 16 (mV)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="61">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp 1 (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="62">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp 2 (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="63">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp 3 (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="64">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp 4 (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="65">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp 5 (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="66">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp 6 (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="67">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp 7 (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="68">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Temp 8 (C) signed</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="69">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Balance Pos 1</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="70">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Balance Pos 2</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="71">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Balance Pos 3</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="72">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Fault Code 1</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="73">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Fault Code 2</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="74">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Fault Code 3</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="75">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Fault Code 4</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="76">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Fault Code 5</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="77">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Fault Code 6</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="78">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Fault Code 7</Name>
+            <Font used="false"/>
+         </Cell>
+      </CellData>
+      <Scales/>
+      <ValueNames/>
+      <ChartSeries/>
+      <BinNames/>
+   </Data>
+</ModbusPoll>
