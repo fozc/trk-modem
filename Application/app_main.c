@@ -38,6 +38,7 @@
 
 #include "rf_dummy.h"
 #include "rf_process.h"
+#include "rf_uart_bridge.h"
 
 
 #include "relay.h"
@@ -263,6 +264,7 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	/* TODO: source the RF SCP device address from configuration. */
 	rf_process_init(1U);
+	rf_uart_bridge_init();
 	fault_log_init();
 	web_shell_init(NULL);
 
