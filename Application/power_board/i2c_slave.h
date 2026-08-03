@@ -8,10 +8,24 @@
 #ifndef POWER_BOARD_I2C_SLAVE_H_
 #define POWER_BOARD_I2C_SLAVE_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
-/** Size of the slave register file (register-pointer address space). */
-#define I2C_SLAVE_REG_COUNT   ((uint8_t)128U)
+/** Size of the slave register file (register-pointer address space).
+ *  Covers the full PowerBoard (PROT_VER 0x06) map up to the power-block
+ *  integrity byte at 0xB4 (0x00..0x5F telemetry, 0x60-0x71 restore,
+ *  0x72-0x78 statblk, 0x80-0x9A lastgasp, 0xA0-0xB4 power). 0xC0 leaves
+ *  headroom. */
+#define I2C_SLAVE_REG_COUNT   ((uint8_t)192U)
+
+/** PUSH blocks the master writes into the register file (PROT_VER 0x06). */
+typedef enum
+{
+    I2C_SLAVE_BLK_NONE = 0,    /**< No block (sentinel).               */
+    I2C_SLAVE_BLK_TELEMETRY,  /**< 0x00..0x5F, 96 B (master write).   */
+    I2C_SLAVE_BLK_POWER,      /**< 0xA0..0xB4, 21 B (master write).   */
+    I2C_SLAVE_BLK_LASTGASP    /**< 0x80..0x9A, 27 B (master write).   */
+} i2c_slave_block_t;
 
 /**
  * @brief I2C slave diagnostic counters (updated in the ISR context).
@@ -47,6 +61,20 @@ void i2c_slave_init(void);
  *         needed for one byte.
  */
 uint8_t i2c_slave_read_reg(uint8_t reg_addr);
+
+/**
+ * @brief Atomically test-and-clear a PUSH block "written" flag.
+ *
+ * The slave ISR sets a per-block dirty flag at STOP when the master
+ * completes a write that matches a known PUSH block (telemetry / power /
+ * lastgasp). This call reads and clears it so the application can process
+ * the freshly written block from thread context (not the ISR).
+ *
+ * @param[in] b  Block to test.
+ * @return true if the block was written since the last call; the flag is
+ *         cleared on return so each write is processed exactly once.
+ */
+bool i2c_slave_take_block(i2c_slave_block_t b);
 
 /**
  * @brief Copy a contiguous, tear-free snapshot of the register file.
