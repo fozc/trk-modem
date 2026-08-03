@@ -10,13 +10,24 @@
 
 extern I2C_HandleTypeDef hi2c3;
 
-#define MEMORY_SIZE 128
+#define MEMORY_SIZE 192
 
 static volatile uint8_t i2c_memory_map[MEMORY_SIZE];
 
 static volatile uint8_t rx_data; //stack'de olamaz, HAL alim callbackten sonra calisiyor
 static volatile uint8_t current_reg_addr;
 static volatile uint8_t is_first_byte = 0;
+
+/* PUSH-block write tracking. The ISR captures the register pointer as the
+ * write start and counts data bytes; at STOP it classifies the (start,len)
+ * pair into a known PUSH block and sets the matching dirty flag so the
+ * application can process the block from thread context. Reads (PULL)
+ * leave s_write_len at 0 and never set a dirty flag. */
+static volatile uint8_t s_write_start;
+static volatile uint8_t s_write_len;
+static volatile uint8_t s_dirty_telemetry;
+static volatile uint8_t s_dirty_power;
+static volatile uint8_t s_dirty_lastgasp;
 
 static volatile i2c_slave_stats_t s_stats;
 
@@ -30,6 +41,7 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
         /* Her yeni adres eslesmesinde durum makinesini resetle.
            Gurultu nedeniyle yarim kalan eski paketlerin bayragi bozmasini engeller. */
         is_first_byte = 1;
+        s_write_len   = 0;
 
         if (TransferDirection == I2C_DIRECTION_TRANSMIT) // Master veri YAZIYOR
         {
@@ -70,7 +82,8 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         {
             // Alinan ilk veri Master'in hedefledigi register adresidir.
             current_reg_addr = rx_data;
-            is_first_byte = 0;
+            s_write_start    = rx_data;
+            is_first_byte    = 0;
 
             // Sonraki byte'i (asil veriyi) dinlemeye devam et
             HAL_I2C_Slave_Seq_Receive_IT(hi2c, (uint8_t*)&rx_data, 1, I2C_NEXT_FRAME);
@@ -82,6 +95,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
                 i2c_memory_map[current_reg_addr] = rx_data;
                 current_reg_addr++;
             }
+            s_write_len++;   /* her veri bayti sayilir (siniflandirma icin) */
 
             HAL_I2C_Slave_Seq_Receive_IT(hi2c, (uint8_t*)&rx_data, 1, I2C_NEXT_FRAME);
         }
@@ -118,6 +132,31 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
     if (hi2c->Instance == I2C3)
     {
         s_stats.listen_cplt++;
+
+        /* Tamamlanan yaziyi bir PUSH blok olarak siniflandir ve uygulamaya
+         * isaretle. Yalnizca tam (start,len) eslesmesi bayrak kaldirir;
+         * kismi/bilinmeyen yazilar ve okumalar (len==0) yok sayilir. */
+        if (s_write_len > 0U)
+        {
+            if ((s_write_start == 0x00U) && (s_write_len == 96U))
+            {
+                s_dirty_telemetry = 1U;
+            }
+            else if ((s_write_start == 0xA0U) && (s_write_len == 21U))
+            {
+                s_dirty_power = 1U;
+            }
+            else if ((s_write_start == 0x80U) && (s_write_len == 27U))
+            {
+                s_dirty_lastgasp = 1U;
+            }
+            else
+            {
+                /* Bilinmeyen/kismi yazma: yok say. */
+            }
+            s_write_len = 0U;
+        }
+
         // Donanimi bir sonraki pakete hazirlamak icin dinleme modunu yeniden baslat
         HAL_I2C_EnableListen_IT(hi2c);
     }
@@ -177,6 +216,29 @@ uint8_t i2c_slave_read_reg(uint8_t reg_addr)
 
     /* Single-byte load is atomic on Cortex-M; volatile prevents caching. */
     return i2c_memory_map[reg_addr];
+}
+
+bool i2c_slave_take_block(i2c_slave_block_t b)
+{
+    volatile uint8_t *p_flag;
+
+    switch (b)
+    {
+        case I2C_SLAVE_BLK_TELEMETRY: p_flag = &s_dirty_telemetry; break;
+        case I2C_SLAVE_BLK_POWER:     p_flag = &s_dirty_power;     break;
+        case I2C_SLAVE_BLK_LASTGASP:  p_flag = &s_dirty_lastgasp;  break;
+        default:                      return false;
+    }
+
+    /* Tek bayrak uzerinde test-ve-temizle kisa kritik bolum altinda; ISR
+     * okuma ile temizleme arasinda bayragi yeniden set edemesin. */
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    bool was_dirty = (*p_flag != 0U);
+    *p_flag = 0U;
+    __set_PRIMASK(primask);
+
+    return was_dirty;
 }
 
 void i2c_slave_snapshot(uint8_t *p_dst, uint8_t start, uint8_t len)
