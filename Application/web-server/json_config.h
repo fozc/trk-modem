@@ -13,9 +13,9 @@
 #include "types.h"  /* for modem_config_t */
 
 #define MAX_STRING_LEN 64
-#define MAX_ARRAYS 8
+#define MAX_ARRAYS MAX_POWER_LINE_COUNT
 
-#define MAX_LINE_COUNT 8
+#define MAX_LINE_COUNT MAX_POWER_LINE_COUNT
 
 /* Board Status Structure */
  

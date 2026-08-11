@@ -12,8 +12,8 @@
 #include "types.h"
 
 int rf_config_sync(void);
-const rf_config_t* rf_config_get(power_line_id_t line_id);
-rf_config_t* rf_config_get_mutable(power_line_id_t line_id);
-bool rf_config_set(power_line_id_t line_id, const rf_config_t* config);
+const rf_config_t* rf_config_get(feeder_id_t line_id);
+rf_config_t* rf_config_get_mutable(feeder_id_t line_id);
+bool rf_config_set(feeder_id_t line_id, const rf_config_t* config);
 
 #endif /* RF_RF_CONFIG_H_ */

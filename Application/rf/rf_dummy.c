@@ -172,7 +172,7 @@ static uint32_t dummy_now(void)
  */
 static void seed_config(uint32_t line_id)
 {
-    rf_config_t *cfg = rf_config_get_mutable((power_line_id_t)line_id);
+    rf_config_t *cfg = rf_config_get_mutable((feeder_id_t)line_id);
     if (cfg == NULL) { return; }
 
     cfg->in_use                             = 1U;
@@ -303,7 +303,7 @@ void rf_dummy_init(void)
          * IDs are zero (fresh/erased NVRAM state).
          * rf_config_sync() is NOT called here, so nothing is persisted to
          * flash until the user explicitly saves from the web UI. */
-        cfg = rf_config_get((power_line_id_t)i);
+        cfg = rf_config_get((feeder_id_t)i);
         if ((cfg != NULL) &&
             (cfg->hat_id == 0U) &&
             (cfg->r_device_id == 0U) &&
@@ -333,7 +333,7 @@ void rf_dummy_tick(void)
 
     for (i = 0U; i < (uint32_t)MAX_POWER_LINE_COUNT; i++)
     {
-        const rf_config_t *p_cfg = rf_config_get((power_line_id_t)i);
+        const rf_config_t *p_cfg = rf_config_get((feeder_id_t)i);
         if (p_cfg == NULL) { continue; }
 
         (void)memset(&mon, 0, sizeof(mon));

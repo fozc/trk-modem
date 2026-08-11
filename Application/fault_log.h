@@ -41,7 +41,7 @@ typedef struct
 	uint16_t fault_duration_ms;
 	struct
 	{
-		uint8_t feeder : 3;              // 0: Feeder 1, 7: Feeder 8
+		uint8_t feeder : 3;              // 0: Feeder 1, 6: Feeder 7
 		uint8_t phase : 2;               // 0: L1, 1: L2, 2: L3
 		uint8_t nominal_current_status : 1; // 0: Normal, 1: Below nominal
 		uint8_t power_status : 1;           // 0: Off, 1: On

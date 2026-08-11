@@ -1117,7 +1117,7 @@ static bool parse_modbus_config_internal(const char **str, jmodbus_configs_t *mo
 }
 
 /* RF Config parse - 14 array format - Direct to rf_config_t via pointers */
-static bool parse_rf_config_internal(const char **str, rf_config_t *configs[8]) {
+static bool parse_rf_config_internal(const char **str, rf_config_t *configs[MAX_POWER_LINE_COUNT]) {
     // Temporary buffers for parsing (reused for each field)
     uint32_t temp_uint[MAX_ARRAYS];
     float temp_float[MAX_ARRAYS];
@@ -1615,9 +1615,9 @@ int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf) {
     xprintf("[JSON] Parsing RF config...\r\n");
     
     // Get pointers to all rf_config_t structures from storage
-    rf_config_t *configs[8];
-    for (int i = 0; i < 8; i++) {
-        configs[i] = rf_config_get_mutable((power_line_id_t)i);
+    rf_config_t *configs[MAX_POWER_LINE_COUNT];
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        configs[i] = rf_config_get_mutable((feeder_id_t)i);
         if (!configs[i]) {
             xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to get mutable config pointer for line %d\r\n", i);
             return 0;

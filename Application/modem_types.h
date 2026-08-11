@@ -10,7 +10,7 @@
 
 #include "gsm_types.h"
 
-#define MAX_POWER_LINE_COUNT 8
+#define MAX_POWER_LINE_COUNT 7
 #define MAX_FEEDER_COUNT MAX_POWER_LINE_COUNT
 
 typedef enum
@@ -22,22 +22,11 @@ typedef enum
 	FEEDER_5,
 	FEEDER_6,
 	FEEDER_7,
-	FEEDER_8,
 	FEEDER_MAX
 }feeder_id_t;
 
-typedef enum
-{
-	POWER_LINE_1 = 0,
-	POWER_LINE_2,
-	POWER_LINE_3,
-	POWER_LINE_4,
-	POWER_LINE_5,
-	POWER_LINE_6,
-	POWER_LINE_7,
-	POWER_LINE_8,
-	POWER_LINE_MAX
-} power_line_id_t;
+_Static_assert(FEEDER_MAX == MAX_FEEDER_COUNT,
+               "feeder_id_t enum count out of sync with MAX_FEEDER_COUNT");
 
 typedef enum
 {
