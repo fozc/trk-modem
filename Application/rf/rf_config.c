@@ -15,7 +15,7 @@ int rf_config_sync(void)
 	return nvram_sync(false);
 }
 
-bool rf_config_set(power_line_id_t line_id, const rf_config_t* config)
+bool rf_config_set(feeder_id_t line_id, const rf_config_t* config)
 {
 	if(line_id >= MAX_POWER_LINE_COUNT || config == NULL) {
 		return false;
@@ -25,7 +25,7 @@ bool rf_config_set(power_line_id_t line_id, const rf_config_t* config)
 	return true;
 }
 
-const rf_config_t* rf_config_get(power_line_id_t line_id)
+const rf_config_t* rf_config_get(feeder_id_t line_id)
 {
 	if(line_id >= MAX_POWER_LINE_COUNT) {
 		return NULL;
@@ -33,7 +33,7 @@ const rf_config_t* rf_config_get(power_line_id_t line_id)
 	return &breaker_config->line[line_id].rf_config;
 }
 
-rf_config_t* rf_config_get_mutable(power_line_id_t line_id)
+rf_config_t* rf_config_get_mutable(feeder_id_t line_id)
 {
 	if(line_id >= MAX_POWER_LINE_COUNT) {
 		return NULL;

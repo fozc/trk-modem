@@ -1332,112 +1332,112 @@ void handle_get_rf_config_json(void)
     
     /* inUse array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"inUse\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", i > 0 ? "," : "", config->in_use ? "true" : "false");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* HatID array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"HatID\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->hat_id);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* ZoneID array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"ZoneID\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->zone_id);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* R_DEVICEID array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_DEVICEID\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->r_device_id);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* S_DEVICEID array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_DEVICEID\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->s_device_id);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* T_DEVICEID array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_DEVICEID\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->t_device_id);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* CalismaModu array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"CalismaModu\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->mode);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* SistemNominalAkimi array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SistemNominalAkimi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", config->sistem_nominal_akimi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* SetEdilebilirActirmaEsikAkimi array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SetEdilebilirActirmaEsikAkimi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", config->set_edilebilir_actirma_esik_akimi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* SetEdilebilirAcmaArizaSayisi array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SetEdilebilirAcmaArizaSayisi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->set_edilebilir_acma_ariza_sayisi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* ArtimliAkimEsigi array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"ArtimliAkimEsigi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", config->artimli_akim_esigi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* HatKopukHatBosta array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"HatKopukHatBosta\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->hat_kopuk_hat_bosta);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* OluHatAkimiDogrulamaSuresi array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"OluHatAkimiDogrulamaSuresi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->olu_hat_akimi_dogrulama_suresi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     /* YenilenmeSifirlamaSuresi array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"YenilenmeSifirlamaSuresi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->yenilenme_sifirlama_suresi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
@@ -1445,15 +1445,15 @@ void handle_get_rf_config_json(void)
     
     /* HatFrekansi array */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"HatFrekansi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *config = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *config = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->hat_frekansi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     /* Per-phase sync status: RSynced, SSynced, TSynced (last_tx != 0 means at least one packet received) */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RSynced\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         bool synced = (mon != NULL) && (mon->last_tx[PHASE_L1] != 0U);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", i > 0 ? "," : "", synced ? "true" : "false");
@@ -1461,7 +1461,7 @@ void handle_get_rf_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SSynced\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         bool synced = (mon != NULL) && (mon->last_tx[PHASE_L2] != 0U);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", i > 0 ? "," : "", synced ? "true" : "false");
@@ -1469,7 +1469,7 @@ void handle_get_rf_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TSynced\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         bool synced = (mon != NULL) && (mon->last_tx[PHASE_L3] != 0U);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", i > 0 ? "," : "", synced ? "true" : "false");
@@ -1478,7 +1478,7 @@ void handle_get_rf_config_json(void)
 
     /* Per-phase last TX timestamps (Unix seconds, 0 = never received) */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RLastTx\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint32_t ts = (mon != NULL) ? mon->last_tx[PHASE_L1] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", ts);
@@ -1486,7 +1486,7 @@ void handle_get_rf_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SLastTx\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint32_t ts = (mon != NULL) ? mon->last_tx[PHASE_L2] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", ts);
@@ -1494,7 +1494,7 @@ void handle_get_rf_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TLastTx\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint32_t ts = (mon != NULL) ? mon->last_tx[PHASE_L3] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", ts);
@@ -1503,7 +1503,7 @@ void handle_get_rf_config_json(void)
 
     /* Per-phase reported operating mode from monitor */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RMod\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint8_t v = (mon != NULL) ? mon->calisma_modu[PHASE_L1] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
@@ -1511,7 +1511,7 @@ void handle_get_rf_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SMod\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint8_t v = (mon != NULL) ? mon->calisma_modu[PHASE_L2] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
@@ -1519,7 +1519,7 @@ void handle_get_rf_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TMod\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint8_t v = (mon != NULL) ? mon->calisma_modu[PHASE_L3] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
@@ -1528,7 +1528,7 @@ void handle_get_rf_config_json(void)
 
     /* Per-phase reported frequency from monitor */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RFreq\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint8_t v = (mon != NULL) ? mon->hat_frekansi[PHASE_L1] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
@@ -1536,7 +1536,7 @@ void handle_get_rf_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SFreq\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint8_t v = (mon != NULL) ? mon->hat_frekansi[PHASE_L2] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
@@ -1544,7 +1544,7 @@ void handle_get_rf_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TFreq\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         uint8_t v = (mon != NULL) ? mon->hat_frekansi[PHASE_L3] : 0U;
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
@@ -1560,21 +1560,21 @@ void handle_get_rf_config_json(void)
 
     /* R_HatID / S_HatID / T_HatID */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_HatID\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_id[PHASE_L1] : 0U);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_HatID\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_id[PHASE_L2] : 0U);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_HatID\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_id[PHASE_L3] : 0U);
     }
@@ -1582,21 +1582,21 @@ void handle_get_rf_config_json(void)
 
     /* R_ZoneID / S_ZoneID / T_ZoneID */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_ZoneID\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->zone_id[PHASE_L1] : 0U);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_ZoneID\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->zone_id[PHASE_L2] : 0U);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_ZoneID\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->zone_id[PHASE_L3] : 0U);
     }
@@ -1604,21 +1604,21 @@ void handle_get_rf_config_json(void)
 
     /* R_CalismaModu / S_CalismaModu / T_CalismaModu */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_CalismaModu\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->calisma_modu[PHASE_L1] : 0U);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_CalismaModu\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->calisma_modu[PHASE_L2] : 0U);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_CalismaModu\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->calisma_modu[PHASE_L3] : 0U);
     }
@@ -1626,21 +1626,21 @@ void handle_get_rf_config_json(void)
 
     /* R_HatFrekansi / S_HatFrekansi / T_HatFrekansi */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_HatFrekansi\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_frekansi[PHASE_L1] : 0U);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_HatFrekansi\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_frekansi[PHASE_L2] : 0U);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_HatFrekansi\":[");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         const rf_monitor_t *mon = rf_get_monitor(i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_frekansi[PHASE_L3] : 0U);
     }
@@ -1650,154 +1650,154 @@ void handle_get_rf_config_json(void)
 
     /* R_SistemNominalAkimi / S_ / T_ */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_SistemNominalAkimi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->sistem_nominal_akimi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_SistemNominalAkimi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->sistem_nominal_akimi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_SistemNominalAkimi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->sistem_nominal_akimi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     /* R_SetEdilebilirActirmaEsikAkimi / S_ / T_ */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_SetEdilebilirActirmaEsikAkimi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->set_edilebilir_actirma_esik_akimi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_SetEdilebilirActirmaEsikAkimi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->set_edilebilir_actirma_esik_akimi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_SetEdilebilirActirmaEsikAkimi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->set_edilebilir_actirma_esik_akimi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     /* R_SetEdilebilirAcmaArizaSayisi / S_ / T_ */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_SetEdilebilirAcmaArizaSayisi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->set_edilebilir_acma_ariza_sayisi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_SetEdilebilirAcmaArizaSayisi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->set_edilebilir_acma_ariza_sayisi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_SetEdilebilirAcmaArizaSayisi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->set_edilebilir_acma_ariza_sayisi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     /* R_ArtimliAkimEsigi / S_ / T_ */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_ArtimliAkimEsigi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->artimli_akim_esigi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_ArtimliAkimEsigi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->artimli_akim_esigi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_ArtimliAkimEsigi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->artimli_akim_esigi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     /* R_HatKopukHatBosta / S_ / T_ */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_HatKopukHatBosta\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->hat_kopuk_hat_bosta);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_HatKopukHatBosta\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->hat_kopuk_hat_bosta);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_HatKopukHatBosta\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->hat_kopuk_hat_bosta);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     /* R_OluHatAkimiDogrulamaSuresi / S_ / T_ */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_OluHatAkimiDogrulamaSuresi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->olu_hat_akimi_dogrulama_suresi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_OluHatAkimiDogrulamaSuresi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->olu_hat_akimi_dogrulama_suresi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_OluHatAkimiDogrulamaSuresi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->olu_hat_akimi_dogrulama_suresi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     /* R_YenilenmeSifirlamaSuresi / S_ / T_ */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"R_YenilenmeSifirlamaSuresi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->yenilenme_sifirlama_suresi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"S_YenilenmeSifirlamaSuresi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->yenilenme_sifirlama_suresi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
 
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T_YenilenmeSifirlamaSuresi\":[");
-    for (int i = 0; i < 8; i++) {
-        const rf_config_t *cfg = rf_config_get((power_line_id_t)i);
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
         pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->yenilenme_sifirlama_suresi);
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "]");
@@ -1840,7 +1840,7 @@ void handle_post_rf_config_json(const char *json_body)
     }
     
     xprintf("[HTTP] JSON parsed successfully\r\n");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         if (config.in_use[i]) {
             xprintf("[HTTP] Line %d: HatID=%u, ZoneID=%u, R_DEVICEID=%u\r\n",
                    i+1, config.hat_id[i], config.zone_id[i], config.r_device_id[i]);
