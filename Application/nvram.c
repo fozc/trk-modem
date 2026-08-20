@@ -312,26 +312,32 @@ void nvram_dump()
 
 		/* Phase details */
 			const char* phase_name = "R-S-T";
-			rf_config_t* rf_cfg = &nvram.breaker.line[i].rf_config;
+			rf_feeder_t* rf_cfg = &nvram.breaker.line[i].rf;
+			char eui_hex[RF_EUI64_HEX_LEN];
 
 			CSLOG_NODT("      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\r\n");
 			CSLOG_NODT("      RF Config %s\r\n", phase_name);
 			CSLOG_NODT("      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -\r\n");
 			CSLOG_NODT("      Config:\r\n");
-			CSLOG_NODT("        - Device ID (R)          : %u\r\n", rf_cfg->r_device_id);
-			CSLOG_NODT("        - Device ID (S)          : %u\r\n", rf_cfg->s_device_id);
-			CSLOG_NODT("        - Device ID (T)          : %u\r\n", rf_cfg->t_device_id);
-			CSLOG_NODT("        - Line ID                : %u\r\n", rf_cfg->hat_id);
-			CSLOG_NODT("        - Zone ID                : %u\r\n", rf_cfg->zone_id);
-			CSLOG_NODT("        - Mode                   : %u\r\n", rf_cfg->mode);
-			CSLOG_NODT("        - Line Frequency (Hz)    : %u\r\n", rf_cfg->hat_frekansi);
-			CSLOG_NODT("        - Nominal Current (A)    : %u\r\n", rf_cfg->sistem_nominal_akimi);
-			CSLOG_NODT("        - Opening Current Thr.   : %u\r\n", rf_cfg->set_edilebilir_actirma_esik_akimi);
-			CSLOG_NODT("        - Incremental Curr Thr.  : %u\r\n", rf_cfg->artimli_akim_esigi);
-			CSLOG_NODT("        - Dead Line Current      : %u\r\n", rf_cfg->hat_kopuk_hat_bosta);
-			CSLOG_NODT("        - Dead Line Valid Period : %u\r\n", rf_cfg->olu_hat_akimi_dogrulama_suresi);
-			CSLOG_NODT("        - Refresh Reset Time (s) : %u\r\n", rf_cfg->yenilenme_sifirlama_suresi);
-			CSLOG_NODT("        - Opening Errors Count   : %u\r\n", rf_cfg->set_edilebilir_acma_ariza_sayisi);
+			rf_eui64_to_hex(rf_cfg->r_eui64, eui_hex);
+			CSLOG_NODT("        - Device EUI-64 (L1)      : %s\r\n", eui_hex);
+			rf_eui64_to_hex(rf_cfg->s_eui64, eui_hex);
+			CSLOG_NODT("        - Device EUI-64 (L2)      : %s\r\n", eui_hex);
+			rf_eui64_to_hex(rf_cfg->t_eui64, eui_hex);
+			CSLOG_NODT("        - Device EUI-64 (L3)      : %s\r\n", eui_hex);
+			CSLOG_NODT("        - Line ID                : %u\r\n", rf_cfg->config.fider_id);
+			CSLOG_NODT("        - Zone ID                : %u\r\n", rf_cfg->config.zone_id);
+			CSLOG_NODT("        - Mode                   : %u\r\n", rf_cfg->config.operating_mode);
+			CSLOG_NODT("        - Trip Mode              : %u\r\n", rf_cfg->config.trip_mode);
+			CSLOG_NODT("        - Line Frequency (Hz)    : %u\r\n", rf_cfg->config.line_frequency);
+			CSLOG_NODT("        - Nominal Current (A)    : %.1f\r\n", rf_cfg->config.nominal_current);
+			CSLOG_NODT("        - Opening Current Thr.   : %.1f\r\n", rf_cfg->config.ia_threshold);
+			CSLOG_NODT("        - Safety Current Thr.(A) : %.3f\r\n", rf_cfg->config.is_safety);
+			CSLOG_NODT("        - Incremental Curr (A/s) : %.1f\r\n", rf_cfg->config.di_dt_threshold);
+			CSLOG_NODT("        - Dead Line Current (A)  : %.2f\r\n", rf_cfg->config.line_break_threshold);
+			CSLOG_NODT("        - Dead Line Valid (ms)   : %u\r\n", rf_cfg->config.dead_line_verify_ms);
+			CSLOG_NODT("        - Refresh Reset Time (s) : %u\r\n", rf_cfg->config.t_reclaim_sec);
+			CSLOG_NODT("        - Opening Errors Count   : %u\r\n", rf_cfg->config.set_count);
 			CSLOG_NODT("\r\n");
 	}
 
@@ -718,26 +724,6 @@ void nvram_set_modbus_config(const modbus_configs_t *cfg)
 		nvram.modbus_config = *cfg;
 		nvram_sync(false);
 	}
-}
-
-// RF Config Getters/Setters
-const rf_config_t* nvram_get_rf_config(uint32_t line_index)
-{
-	if(line_index >= MAX_POWER_LINE_COUNT) {
-		return NULL;
-	}
-
-	return &nvram.breaker.line[line_index].rf_config;
-}
-
-bool nvram_set_rf_config(uint32_t line_index, const rf_config_t* config)
-{
-	if(line_index >= MAX_POWER_LINE_COUNT || config == NULL) {
-		return false;
-	}
-
-	nvram.breaker.line[line_index].rf_config = *config;
-	return true;
 }
 
 /* ── RFWU session ───────────────────────────────────────────────── */

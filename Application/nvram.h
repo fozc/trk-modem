@@ -116,10 +116,8 @@ void nvram_set_modbus_config(const modbus_configs_t *cfg);
 const modbus_line_config_t* nvram_modbus_get_line_config(uint32_t line_index);
 bool nvram_modbus_set_line_config(uint32_t line_index, const modbus_line_config_t* config);
 
-
-//RF Ayirici Config
-const rf_config_t* nvram_get_rf_config(uint32_t line_index);
-bool nvram_set_rf_config(uint32_t line_index, const rf_config_t* config);
+/* RF ayirici konfigurasyonu: erisim rf_config.h uzerinden (rf_store_*),
+ * kalici kopya nvram.breaker.line[i].rf (rf_feeder_t). */
 
 /* RFWU firmware-update session */
 const rfwu_nvram_t *nvram_get_rfwu(void);

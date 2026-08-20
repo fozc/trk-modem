@@ -17,30 +17,6 @@
 extern "C" {
 #endif
 
-/*
- * ESKI fider modeli (uint32 cihaz kimligi). Yeden sozlesme (EUI-64 + 96B
- * blok) rf_feeder_t uzerindedir; web/NVRAM katmani gecene kadar (plan
- * Faz 1-2) bu yapi gecici olarak kalir ve sonra kaldirilir.
- */
-typedef struct
-{
-    uint32_t r_device_id;
-    uint32_t s_device_id;
-    uint32_t t_device_id;
-    float sistem_nominal_akimi;
-    float set_edilebilir_actirma_esik_akimi;
-    float artimli_akim_esigi;
-    uint16_t hat_kopuk_hat_bosta;
-    uint16_t olu_hat_akimi_dogrulama_suresi;
-    uint8_t in_use;
-    uint8_t mode;
-    uint8_t set_edilebilir_acma_ariza_sayisi;
-    uint8_t yenilenme_sifirlama_suresi;
-    uint8_t hat_frekansi;
-    uint8_t hat_id;
-    uint8_t zone_id;
-}__attribute__((packed)) rf_config_t;
-
 typedef struct
 {
     uint8_t hat_id[PHASE_MAX];

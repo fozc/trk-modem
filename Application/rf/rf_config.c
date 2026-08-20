@@ -5,7 +5,7 @@
  *      Author: fatih
  *
  * RF ayirici konfigurasyonu: 96 baytlik blok codec (default / CRC / RMW,
- * spec R2 Ek-A + R2-ek/ek2/ek3/ek4) + eski NVRAM sarmalayici API.
+ * spec R2 Ek-A + R2-ek/ek2/ek3/ek4) + RAM SSOT store + staging.
  */
 
 #include "rf_config.h"
@@ -13,42 +13,7 @@
 #include "nvram.h"
 #include <string.h>
 
-/* ---------------------------------------------------------------------------
- * ESKI API - NVRAM ince sarmalayici (plan Faz 1-2'de kaldirilacak).
- * --------------------------------------------------------------------------- */
-
 #define breaker_config (nvram_get_breaker_rw())
-
-int rf_config_sync(void)
-{
-	return nvram_sync(false);
-}
-
-bool rf_config_set(feeder_id_t line_id, const rf_config_t* config)
-{
-	if(line_id >= MAX_POWER_LINE_COUNT || config == NULL) {
-		return false;
-	}
-
-	breaker_config->line[line_id].rf_config = *config;
-	return true;
-}
-
-const rf_config_t* rf_config_get(feeder_id_t line_id)
-{
-	if(line_id >= MAX_POWER_LINE_COUNT) {
-		return NULL;
-	}
-	return &breaker_config->line[line_id].rf_config;
-}
-
-rf_config_t* rf_config_get_mutable(feeder_id_t line_id)
-{
-	if(line_id >= MAX_POWER_LINE_COUNT) {
-		return NULL;
-	}
-	return &breaker_config->line[line_id].rf_config;
-}
 
 /* ---------------------------------------------------------------------------
  * 96 baytlik blok codec (spec R2 Ek-A).

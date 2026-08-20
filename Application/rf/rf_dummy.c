@@ -16,12 +16,14 @@
  *   gecmis_acma_sayisi: increments every 200 steps.
  *   last_tx         : bsp_get_tick() / 1000 + 1 (always non-zero).
  *
- * Config-derived fields (hat_id, zone_id, mode, hat_frekansi, device_id):
+ * Config-derived fields (hat_id, zone_id, mode, hat_frekansi):
  *   taken from rf_config when non-zero, else synthetic non-zero defaults.
+ *   Phase EUI-64 identity is seeded in config only; monitor device_id
+ *   display values stay synthetic uint32 (rf_monitor_t, scope disi).
  *
  * On init, rf_config is seeded with synthetic defaults for any feeder
  * that has never been configured (hat_id == 0 and all device_ids == 0).
- * rf_config_sync() is NOT called, so these values are not persisted
+ * rf_store_sync() is NOT called, so these values are not persisted
  * to flash until the user explicitly saves from the web UI.
  *
  * Pseudo-random noise: 16-bit Galois LFSR (no stdlib dependency).
@@ -39,7 +41,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include "rf_discovery.h"
 
 /* ============================================================================
  * COMPILE-TIME CONFIGURATION
@@ -76,8 +77,8 @@ typedef struct
  * MODULE STATE
  * ============================================================================ */
 
-static rf_dummy_feeder_t s_feeder[MAX_POWER_LINE_COUNT];
-static bool              s_initialized = false;
+static rf_dummy_feeder_t feeder_state[MAX_POWER_LINE_COUNT];
+static bool              initialized = false;
 
 /* ============================================================================
  * PRIVATE HELPERS
@@ -108,14 +109,14 @@ static uint16_t lfsr_next(uint16_t lfsr)
  *
  * Advances the feeder's LFSR and maps it to a symmetric range.
  *
- * @param[in,out] p_feeder  Feeder state (LFSR updated in place).
+ * @param[in,out] feeder  Feeder state (LFSR updated in place).
  * @param         half      Half-range (inclusive).  Must be > 0.
  * @return                  Noise value in [-half, +half].
  */
-static int16_t noise_sym(rf_dummy_feeder_t *p_feeder, uint16_t half)
+static int16_t noise_sym(rf_dummy_feeder_t *feeder, uint16_t half)
 {
-    p_feeder->lfsr = lfsr_next(p_feeder->lfsr);
-    return (int16_t)((int32_t)(p_feeder->lfsr % ((uint16_t)(2U * half + 1U))) - (int32_t)half);
+    feeder->lfsr = lfsr_next(feeder->lfsr);
+    return (int16_t)((int32_t)(feeder->lfsr % ((uint16_t)(2U * half + 1U))) - (int32_t)half);
 }
 
 /**
@@ -166,62 +167,71 @@ static uint32_t dummy_now(void)
 /**
  * @brief Seed rf_config with synthetic non-zero values for an unconfigured feeder.
  *
- * Called only when hat_id == 0 AND all device IDs are 0.
- * Does NOT call rf_config_sync() so nothing is persisted to flash.
+ * Called only when hat_id == 0 AND all phase EUI-64s are zero.
+ * Does NOT call rf_store_sync() so nothing is persisted to flash.
  *
  * @param line_id  Feeder index [0, MAX_POWER_LINE_COUNT).
  */
 static void seed_config(uint32_t line_id)
 {
-    rf_config_t *cfg = rf_config_get_mutable((feeder_id_t)line_id);
+    rf_feeder_t *cfg = rf_store_get_mutable((feeder_id_t)line_id);
     if (cfg == NULL) { return; }
 
-    cfg->in_use                             = 1U;
-    cfg->hat_id                             = (uint8_t)(line_id + 1U);
-    cfg->zone_id                            = 1U;
-    cfg->r_device_id                        = 0x1001U + (uint32_t)line_id * 3U;
-    cfg->s_device_id                        = 0x1002U + (uint32_t)line_id * 3U;
-    cfg->t_device_id                        = 0x1003U + (uint32_t)line_id * 3U;
-    cfg->mode                               = 1U;
-    cfg->hat_frekansi                       = 50U;
-    cfg->sistem_nominal_akimi               = 100.0f;
-    cfg->set_edilebilir_actirma_esik_akimi  = 150.0f;
-    cfg->artimli_akim_esigi                 = 20.0f;
-    cfg->hat_kopuk_hat_bosta                = 5U;
-    cfg->olu_hat_akimi_dogrulama_suresi     = 30U;
-    cfg->set_edilebilir_acma_ariza_sayisi   = 3U;
-    cfg->yenilenme_sifirlama_suresi         = 60U;
+    /* Sentetik EUI-64'ler (MSB-first; gercek cihaz kimlikleri degil). */
+    const uint8_t base_eui[RF_EUI64_LEN] = {0xA4U, 0x05U, 0x67U, 0x82U,
+                                            0x1CU, 0x3BU, 0x00U, 0x00U};
+
+    cfg->in_use                             = true;
+    cfg->config.fider_id                       = (uint8_t)(line_id + 1U);
+    cfg->config.zone_id                        = 1U;
+    memcpy(cfg->r_eui64, base_eui, RF_EUI64_LEN);
+    memcpy(cfg->s_eui64, base_eui, RF_EUI64_LEN);
+    memcpy(cfg->t_eui64, base_eui, RF_EUI64_LEN);
+    cfg->r_eui64[7] = (uint8_t)(0x10U + (line_id * 3U) + 0U);
+    cfg->s_eui64[7] = (uint8_t)(0x10U + (line_id * 3U) + 1U);
+    cfg->t_eui64[7] = (uint8_t)(0x10U + (line_id * 3U) + 2U);
+    cfg->config.operating_mode                 = 1U;
+    cfg->config.line_frequency                 = 50U;
+    cfg->config.nominal_current                = 100.0f;
+    cfg->config.ia_threshold                   = 150.0f;
+    cfg->config.di_dt_threshold                = 1000.0f;   /* spec araligi [250,2500] */
+    cfg->config.line_break_threshold           = 2.0f;      /* spec araligi [0.30,5.00] */
+    cfg->config.dead_line_verify_ms            = 200U;      /* spec araligi [80,200] */
+    cfg->config.set_count                      = 3U;
+    cfg->config.t_reclaim_sec                  = 30U;       /* spec araligi [10,300] */
 }
 
 /**
  * @brief Build one rf_monitor_t sample for a single feeder.
  */
 static void build_monitor(uint32_t line_id,
-                          const rf_config_t   *p_cfg,
-                          rf_monitor_t        *p_mon)
+                          const rf_feeder_t   *cfg,
+                          rf_monitor_t        *mon)
 {
-    rf_dummy_feeder_t *p_f = &s_feeder[line_id];
+    rf_dummy_feeder_t *fstate = &feeder_state[line_id];
     const uint32_t     now = dummy_now();
     uint32_t           ph;
 
     /* ---- effective config values: use non-zero synthetic defaults ---- */
-    const uint8_t  eff_hat_id  = (p_cfg->hat_id  != 0U) ? p_cfg->hat_id  : (uint8_t)(line_id + 1U);
-    const uint8_t  eff_zone_id = (p_cfg->zone_id != 0U) ? p_cfg->zone_id : 1U;
-    const uint8_t  eff_mode    = (p_cfg->mode != 0U)    ? p_cfg->mode     : 1U;
-    const uint8_t  eff_freq    = (p_cfg->hat_frekansi >= 45U) ? p_cfg->hat_frekansi : 50U;
+    const uint8_t  eff_hat_id  = (cfg->config.fider_id  != 0U) ? cfg->config.fider_id  : (uint8_t)(line_id + 1U);
+    const uint8_t  eff_zone_id = (cfg->config.zone_id != 0U) ? cfg->config.zone_id : 1U;
+    const uint8_t  eff_mode    = (cfg->config.operating_mode != 0U) ? cfg->config.operating_mode     : 1U;
+    const uint8_t  eff_freq    = (cfg->config.line_frequency >= 45U) ? cfg->config.line_frequency : 50U;
+    /* Monitor device_id alani (uint32) sentetik kalir; EUI-64 kimligi
+     * config'te tasınır ve monitor tablosunda gosterilmez (scope disi). */
     const uint32_t base_dev    = 0x1001U + (uint32_t)line_id * 3U;
-    const uint32_t eff_r_dev   = (p_cfg->r_device_id != 0U) ? p_cfg->r_device_id : base_dev;
-    const uint32_t eff_s_dev   = (p_cfg->s_device_id != 0U) ? p_cfg->s_device_id : base_dev + 1U;
-    const uint32_t eff_t_dev   = (p_cfg->t_device_id != 0U) ? p_cfg->t_device_id : base_dev + 2U;
+    const uint32_t eff_r_dev   = base_dev;
+    const uint32_t eff_s_dev   = base_dev + 1U;
+    const uint32_t eff_t_dev   = base_dev + 2U;
 
     /* ---- nominal current (0.1-A units) ---- */
     const uint16_t nominal_x10 =
-        (p_cfg->sistem_nominal_akimi > 0.0f)
-        ? sat_u16((int32_t)(p_cfg->sistem_nominal_akimi * 10.0f))
+        (cfg->config.nominal_current > 0.0f)
+        ? sat_u16((int32_t)(cfg->config.nominal_current * 10.0f))
         : RF_DUMMY_FALLBACK_NOMINAL_x10;
 
     /* ---- phase current: sawtooth 10 % -> 110 % of nominal ----------- */
-    const uint32_t ramp_pct   = 10U + (p_f->step % RF_DUMMY_RAMP_STEPS);
+    const uint32_t ramp_pct   = 10U + (fstate->step % RF_DUMMY_RAMP_STEPS);
     const uint16_t faz_akimi  = sat_u16((int32_t)((uint32_t)nominal_x10 * ramp_pct / 100U));
 
     /* ---- fault current: non-zero when >80 % of nominal -------------- */
@@ -231,50 +241,50 @@ static void build_monitor(uint32_t line_id,
                               : 0U;
 
     /* ---- temperature: linear ramp 25..65 °C, wraps ------------------ */
-    const int32_t temp_raw = 25 + (int32_t)((p_f->step % RF_DUMMY_TEMP_STEPS) * 40U / RF_DUMMY_TEMP_STEPS);
+    const int32_t temp_raw = 25 + (int32_t)((fstate->step % RF_DUMMY_TEMP_STEPS) * 40U / RF_DUMMY_TEMP_STEPS);
 
     /* ---- event counters ---------------------------------------------- */
-    if ((p_f->step > 0U) && ((p_f->step % RF_DUMMY_FAULT_INTERVAL) == 0U))
+    if ((fstate->step > 0U) && ((fstate->step % RF_DUMMY_FAULT_INTERVAL) == 0U))
     {
-        if (p_f->ariza_sayaci < 10U) { p_f->ariza_sayaci++; }
+        if (fstate->ariza_sayaci < 10U) { fstate->ariza_sayaci++; }
     }
-    if ((p_f->step > 0U) && ((p_f->step % RF_DUMMY_TRIP_INTERVAL) == 0U))
+    if ((fstate->step > 0U) && ((fstate->step % RF_DUMMY_TRIP_INTERVAL) == 0U))
     {
-        p_f->acma_sayisi++;     /* wraps naturally at uint16 max */
+        fstate->acma_sayisi++;     /* wraps naturally at uint16 max */
     }
 
     /* ---- populate per-phase fields ----------------------------------- */
     for (ph = 0U; ph < (uint32_t)PHASE_MAX; ph++)
     {
-        const int16_t v_noise   = noise_sym(p_f, 10U);
-        const int16_t v33_noise = noise_sym(p_f,  5U);
-        const int16_t rssi_n    = noise_sym(p_f,  8U);
-        const int16_t lqi_n     = noise_sym(p_f, 10U);
-        const int16_t dc_noise  = noise_sym(p_f,  1U);
+        const int16_t v_noise   = noise_sym(fstate, 10U);
+        const int16_t v33_noise = noise_sym(fstate,  5U);
+        const int16_t rssi_n    = noise_sym(fstate,  8U);
+        const int16_t lqi_n     = noise_sym(fstate, 10U);
+        const int16_t dc_noise  = noise_sym(fstate,  1U);
 
-        p_mon->hat_id[ph]         = eff_hat_id;
-        p_mon->zone_id[ph]        = eff_zone_id;
-        p_mon->calisma_modu[ph]   = eff_mode;
-        p_mon->hat_frekansi[ph]   = eff_freq;
-        p_mon->last_tx[ph]        = now;
+        mon->hat_id[ph]         = eff_hat_id;
+        mon->zone_id[ph]        = eff_zone_id;
+        mon->calisma_modu[ph]   = eff_mode;
+        mon->hat_frekansi[ph]   = eff_freq;
+        mon->last_tx[ph]        = now;
 
         /* Device IDs: L1=R, L2=S, L3=T */
-        if (ph == (uint32_t)PHASE_L1)      { p_mon->device_id[ph] = eff_r_dev; }
-        else if (ph == (uint32_t)PHASE_L2) { p_mon->device_id[ph] = eff_s_dev; }
-        else                               { p_mon->device_id[ph] = eff_t_dev; }
+        if (ph == (uint32_t)PHASE_L1)      { mon->device_id[ph] = eff_r_dev; }
+        else if (ph == (uint32_t)PHASE_L2) { mon->device_id[ph] = eff_s_dev; }
+        else                               { mon->device_id[ph] = eff_t_dev; }
 
-        p_mon->sistem_sicakligi[ph]            = sat_i8(temp_raw);
-        p_mon->sistem_dc_gerilimi[ph]          = sat_u8(24 + (int32_t)dc_noise);
-        p_mon->v5vdc[ph]                       = sat_u16(500 + (int32_t)v_noise);
-        p_mon->v3v3dc[ph]                      = sat_u16(330 + (int32_t)v33_noise);
-        p_mon->actirma_dc_gerilimi[ph]         = 12U;
-        p_mon->faz_akimi[ph]                   = faz_akimi;
-        p_mon->faz_hata_akimi[ph]              = faz_hata;
-        p_mon->aktif_sifirlama_zamanlayici_durumu[ph] = 0U;
-        p_mon->aktif_ariza_sayaci[ph]          = p_f->ariza_sayaci;
-        p_mon->gecmis_acma_sayisi[ph]          = p_f->acma_sayisi;
-        p_mon->rssi[ph]                        = sat_u8(185 + (int32_t)rssi_n);
-        p_mon->lqi[ph]                         = sat_u8(220 + (int32_t)lqi_n);
+        mon->sistem_sicakligi[ph]            = sat_i8(temp_raw);
+        mon->sistem_dc_gerilimi[ph]          = sat_u8(24 + (int32_t)dc_noise);
+        mon->v5vdc[ph]                       = sat_u16(500 + (int32_t)v_noise);
+        mon->v3v3dc[ph]                      = sat_u16(330 + (int32_t)v33_noise);
+        mon->actirma_dc_gerilimi[ph]         = 12U;
+        mon->faz_akimi[ph]                   = faz_akimi;
+        mon->faz_hata_akimi[ph]              = faz_hata;
+        mon->aktif_sifirlama_zamanlayici_durumu[ph] = 0U;
+        mon->aktif_ariza_sayaci[ph]          = fstate->ariza_sayaci;
+        mon->gecmis_acma_sayisi[ph]          = fstate->acma_sayisi;
+        mon->rssi[ph]                        = sat_u8(185 + (int32_t)rssi_n);
+        mon->lqi[ph]                         = sat_u8(220 + (int32_t)lqi_n);
     }
 }
 
@@ -288,43 +298,38 @@ void rf_dummy_init(void)
 
     for (i = 0U; i < (uint32_t)MAX_POWER_LINE_COUNT; i++)
     {
-        const rf_config_t *cfg;
+        const rf_feeder_t *cfg;
 
         /* Seed each feeder's LFSR with a distinct non-zero value. */
-        s_feeder[i].lfsr         = (uint16_t)(0xACE1U ^ (i * 0x3571U));
-        s_feeder[i].step         = 0U;
-        s_feeder[i].ariza_sayaci = 0U;
-        s_feeder[i].acma_sayisi  = 0U;
+        feeder_state[i].lfsr         = (uint16_t)(0xACE1U ^ (i * 0x3571U));
+        feeder_state[i].step         = 0U;
+        feeder_state[i].ariza_sayaci = 0U;
+        feeder_state[i].acma_sayisi  = 0U;
 
         /* Ensure seed is never 0 (LFSR invariant). */
-        if (s_feeder[i].lfsr == 0U) { s_feeder[i].lfsr = 0xDEADU; }
+        if (feeder_state[i].lfsr == 0U) { feeder_state[i].lfsr = 0xDEADU; }
 
         /* Seed rf_config with synthetic defaults for truly unconfigured feeders.
-         * A feeder is considered unconfigured when hat_id == 0 and all device
-         * IDs are zero (fresh/erased NVRAM state).
-         * rf_config_sync() is NOT called here, so nothing is persisted to
-         * flash until the user explicitly saves from the web UI. */
-        cfg = rf_config_get((feeder_id_t)i);
+         * A feeder is considered unconfigured when hat_id == 0 and all phase
+         * EUI-64s are zero (fresh/erased NVRAM state).
+         * rf_store_sync() is NOT called here, so nothing is persisted
+         * to flash until the user explicitly saves from the web UI. */
+        cfg = rf_store_get((feeder_id_t)i);
         if ((cfg != NULL) &&
-            (cfg->hat_id == 0U) &&
-            (cfg->r_device_id == 0U) &&
-            (cfg->s_device_id == 0U) &&
-            (cfg->t_device_id == 0U))
+            (cfg->config.fider_id == 0U) &&
+            rf_eui64_is_zero(cfg->r_eui64) &&
+            rf_eui64_is_zero(cfg->s_eui64) &&
+            rf_eui64_is_zero(cfg->t_eui64))
         {
             seed_config(i);
         }
     }
 
-    s_initialized = true;
+    initialized = true;
 
     /* Pre-populate rf_monitor immediately so the first HTTP GET already
      * shows non-zero values without waiting for the first Contiki tick. */
     rf_dummy_tick();
-
-    rf_discovery_reset();  /* clear discovery queue on init */
-    rf_discovery_add((const uint8_t *)"\x00\x11\x22\x33\x44\x55\x66\x77");
-    rf_discovery_add((const uint8_t *)"\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF");
-    rf_discovery_add((const uint8_t *)"\x01\x23\x45\x67\x89\xAB\xCD\xEF");
 }
 
 void rf_dummy_tick(void)
@@ -332,20 +337,20 @@ void rf_dummy_tick(void)
     uint32_t     i;
     rf_monitor_t mon;
 
-    if (!s_initialized) { return; }
+    if (!initialized) { return; }
 
     /* No internal rate gate: the caller (Contiki timer in app_main.c)
      * is responsible for controlling call frequency. */
 
     for (i = 0U; i < (uint32_t)MAX_POWER_LINE_COUNT; i++)
     {
-        const rf_config_t *p_cfg = rf_config_get((feeder_id_t)i);
-        if (p_cfg == NULL) { continue; }
+        const rf_feeder_t *cfg = rf_store_get((feeder_id_t)i);
+        if (cfg == NULL) { continue; }
 
         (void)memset(&mon, 0, sizeof(mon));
-        build_monitor(i, p_cfg, &mon);
+        build_monitor(i, cfg, &mon);
         (void)rf_set_monitor(i, &mon);
 
-        s_feeder[i].step++;
+        feeder_state[i].step++;
     }
 }

@@ -536,39 +536,53 @@ static bool validate_common_address(uint8_t common_address) {
     return true;
 }
 
-/* Validate RF config working mode */
+/* Validate RF working mode - Operating_Mode (spec R2 section 4.3: {0,1}) */
 static bool validate_working_mode(uint8_t mode) {
-    /* Typical modes: 0=Off, 1=Normal, 2=Test, 3-255 reserved */
-    if (mode > 3) {
-        xprintf("[VALIDATION] WARNING: Working mode %u is non-standard (expected 0-3)\r\n", mode);
+    if (mode > 1) {
+        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: Working mode %u invalid (0=threshold, 1=di/dt)\r\n", mode);
+        return false;
     }
     return true;
 }
 
-/* Validate RF current thresholds */
-static bool validate_current_threshold(float threshold) {
-    /* Typical range: 0.1A - 1000A */
-    if (threshold < 0.0f) {
-        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: Current threshold cannot be negative: %.2f\r\n", threshold);
+/* Validate RF line frequency - HatFrekansi (spec R2 section 4.2: {50,60}) */
+static bool validate_rf_frequency(uint32_t freq_hz) {
+    if ((freq_hz != 50U) && (freq_hz != 60U)) {
+        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: Line frequency %u Hz invalid (50 or 60 only)\r\n", freq_hz);
         return false;
-    }
-    if (threshold > 1000.0f) {
-        xprintf("[VALIDATION] WARNING: Current threshold %.2f A is very high\r\n", threshold);
     }
     return true;
 }
 
-/* Validate RF frequency (typical: 433MHz, 868MHz, 915MHz) */
-static bool validate_rf_frequency(uint32_t freq_mhz) {
-    /* Common ISM bands: 433, 868, 915 MHz */
-    if (freq_mhz == 0) {
-        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: RF frequency cannot be 0\r\n");
+/* Clamp-free RF numeric range check (spec R2 section 3): limit disi deger
+ * reddedilir - cihaza asla gonderilmemelidir (spec section 5.3-2). */
+static bool validate_rf_float(float value, float min, float max, const char *name) {
+    if ((value < min) || (value > max)) {
+        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: %s %.3f out of range [%.3f, %.3f]\r\n",
+               name, value, min, max);
         return false;
     }
-    if (freq_mhz < 300 || freq_mhz > 1000) {
-        xprintf("[VALIDATION] WARNING: RF frequency %u MHz is unusual (typical: 433, 868, 915)\r\n", freq_mhz);
+    return true;
+}
+
+static bool validate_rf_uint(uint32_t value, uint32_t min, uint32_t max, const char *name) {
+    if ((value < min) || (value > max)) {
+        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: %s %u out of range [%u, %u]\r\n",
+               name, value, min, max);
+        return false;
     }
     return true;
+}
+
+/* Validate discrete RF uint set (e.g. Trip_Mode {0,1}, CLP {0,1}) */
+static bool validate_rf_uint_set(uint32_t value, const uint32_t *allowed, int count, const char *name) {
+    for (int i = 0; i < count; i++) {
+        if (value == allowed[i]) {
+            return true;
+        }
+    }
+    xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: %s %u not one of allowed values\r\n", name, value);
+    return false;
 }
 
 /* Validate timeout values (general) */
@@ -756,6 +770,23 @@ static bool parse_bool_array(const char **str, bool *arr, int max_count) {
     const char *s = skip_whitespace(*str);
     while (*s != ']' && count < max_count) {
         if (!parse_bool(str, &arr[count])) return false;
+        count++;
+        skip_comma(str);
+        s = skip_whitespace(*str);
+    }
+
+    /* Drain any elements beyond max_count and consume the closing bracket */
+    return skip_array_remainder(str);
+}
+
+/* Parse array of quoted strings (fixed-width rows, e.g. EUI-64 hex) */
+static bool parse_str_array(const char **str, char arr[][RF_EUI64_HEX_LEN], int max_count) {
+    if (!expect_array_start(str)) return false;
+
+    int count = 0;
+    const char *s = skip_whitespace(*str);
+    while (*s != ']' && count < max_count) {
+        if (!parse_string(str, arr[count], RF_EUI64_HEX_LEN)) return false;
         count++;
         skip_comma(str);
         s = skip_whitespace(*str);
@@ -1116,17 +1147,76 @@ static bool parse_modbus_config_internal(const char **str, jmodbus_configs_t *mo
     return true;
 }
 
-/* RF Config parse - 14 array format - Direct to rf_config_t via pointers */
-static bool parse_rf_config_internal(const char **str, rf_config_t *configs[MAX_POWER_LINE_COUNT]) {
+/* RF Config parse - array format - Direct to rf_feeder_t via pointers.
+ *
+ * Dogrulama: spec R2 section 3/4 araliklari in-use hatlar icin ZORUNLU
+ * tutulur (sinir disi deger REDDEDILIR - cihaza asla gonderilmez, spec
+ * section 5.3-2). in-use olmayan hatlar aralik kontrolunden muaf tutulur.
+ * Capraz alan (Nominal <-> Ia, spec section 4.6) ve EUI-64 benzersizligi
+ * (spec section 1.2) tum array'ler parse edildikten sonra kontrol edilir.
+ *
+ * Yazimlar staging'e gider (rf_store_get_mutable; cagiran commit/abort
+ * yonetir) - yarida kalan parse kalici store'u kirletmez.
+ */
+static bool rf_eui_duplicates_exist(rf_feeder_t *const *configs)
+{
+    const uint8_t *slots[MAX_ARRAYS * 3];
+    int count = 0;
+
+    for (int i = 0; i < MAX_ARRAYS; i++) {
+        if (configs[i] == NULL) { continue; }
+        slots[count++] = configs[i]->r_eui64;
+        slots[count++] = configs[i]->s_eui64;
+        slots[count++] = configs[i]->t_eui64;
+    }
+
+    for (int a = 0; a < count; a++) {
+        if (rf_eui64_is_zero(slots[a])) { continue; }
+        for (int b = a + 1; b < count; b++) {
+            if (memcmp(slots[a], slots[b], RF_EUI64_LEN) == 0) { return true; }
+        }
+    }
+    return false;
+}
+
+/*
+ * Fider benzersizligi (spec R2 section 1.2 / 5.3-1): ayni (Fider_ID, Phase)
+ * cifti iki cihaza atanamaz - cakisan adres iki cihazi ayni RF slotuna koyar.
+ * Her fider uc fazi da kapsadigindan denetim "in_use fiderlerde HatID tekrari"
+ * seklindedir. HatID=0 (provizyonsuz, spec 1.3) muaf tutulur: provizyonsuz
+ * cihazlar turetilmis RF adresine girmez (section 6.3).
+ */
+static bool rf_hatid_duplicates_exist(rf_feeder_t *const *configs)
+{
+    for (int i = 0; i < MAX_ARRAYS; i++) {
+        if ((configs[i] == NULL) || (!configs[i]->in_use)) { continue; }
+        if (configs[i]->config.fider_id == 0U) { continue; }
+
+        for (int j = i + 1; j < MAX_ARRAYS; j++) {
+            if ((configs[j] == NULL) || (!configs[j]->in_use)) { continue; }
+
+            if (configs[j]->config.fider_id == configs[i]->config.fider_id) {
+                xcprintf(XCOLOR_RED,
+                         "[VALIDATION] ERROR: Lines %d and %d share Feeder ID %u\r\n",
+                         i + 1, j + 1, (unsigned)configs[i]->config.fider_id);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_POWER_LINE_COUNT]) {
     // Temporary buffers for parsing (reused for each field)
     uint32_t temp_uint[MAX_ARRAYS];
     float temp_float[MAX_ARRAYS];
-    
+    char temp_hex[MAX_ARRAYS][RF_EUI64_HEX_LEN];
+
     if (!expect_object_start(str)) {
         xcprintf(XCOLOR_RED, "[JSON] ERROR: Expected '{' at start of RF config\r\n");
         return false;
     }
-    
+
     while (!is_object_end(str)) {
         if (match_key(str, "inUse")) {
             xprintf("[JSON] Parsing inUse array...\r\n");
@@ -1136,208 +1226,475 @@ static bool parse_rf_config_internal(const char **str, rf_config_t *configs[MAX_
             while (*s != ']' && idx < MAX_ARRAYS) {
                 bool val;
                 if (!parse_bool(str, &val)) return false;
-                if (configs[idx]) configs[idx]->in_use = val ? 1 : 0;
+                if (configs[idx]) configs[idx]->in_use = val;
                 idx++;
                 skip_comma(str);
                 s = skip_whitespace(*str);
             }
             if (!skip_array_remainder(str)) return false;
             xprintf("[JSON] inUse parsed: %d elements\r\n", idx);
-            
+
         } else if (match_key(str, "HatID")) {
             xprintf("[JSON] Parsing HatID array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-            	xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse HatID array\r\n");
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse HatID array\r\n");
                 return false;
             }
+            /* Fider_ID 0-7 (0 = provizyonsuz, spec R2 section 3.2) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
-                if (configs[i]) configs[i]->hat_id = (uint8_t)temp_uint[i];
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 0U, 7U, "HatID (Fider_ID)")) {
+                        return false;
+                    }
+                    configs[i]->config.fider_id = (uint8_t)temp_uint[i];
+                }
             }
-            
+
         } else if (match_key(str, "ZoneID")) {
             xprintf("[JSON] Parsing ZoneID array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse ZoneID array\r\n");
                 return false;
             }
-            // Validate and set
+            /* Zone_ID 0-7 (spec R2 section 3.2) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && temp_uint[i] > 63) {
-                        xcprintf(XCOLOR_RED, "[JSON] ERROR: Line %d ZoneID %u exceeds max (63)\r\n", i + 1, temp_uint[i]);
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 0U, 7U, "ZoneID")) {
                         return false;
                     }
-                    configs[i]->zone_id = (uint8_t)temp_uint[i];
+                    configs[i]->config.zone_id = (uint8_t)temp_uint[i];
                 }
             }
-            
+
         } else if (match_key(str, "R_DEVICEID")) {
-            xprintf("[JSON] Parsing R_DEVICEID array...\r\n");
-            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+            xprintf("[JSON] Parsing R_DEVICEID array (EUI-64 hex)...\r\n");
+            if (!parse_str_array(str, temp_hex, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse R_DEVICEID array\r\n");
                 return false;
             }
             for (int i = 0; i < MAX_ARRAYS; i++) {
-                if (configs[i]) configs[i]->r_device_id = temp_uint[i];
+                if (configs[i] && !rf_eui64_from_hex(configs[i]->r_eui64, temp_hex[i])) {
+                    xcprintf(XCOLOR_RED, "[JSON] ERROR: Line %d R_DEVICEID '%s' is not 16-hex or empty\r\n",
+                             i + 1, temp_hex[i]);
+                    return false;
+                }
             }
-            
+
         } else if (match_key(str, "S_DEVICEID")) {
-            xprintf("[JSON] Parsing S_DEVICEID array...\r\n");
-            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+            xprintf("[JSON] Parsing S_DEVICEID array (EUI-64 hex)...\r\n");
+            if (!parse_str_array(str, temp_hex, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse S_DEVICEID array\r\n");
                 return false;
             }
             for (int i = 0; i < MAX_ARRAYS; i++) {
-                if (configs[i]) configs[i]->s_device_id = temp_uint[i];
+                if (configs[i] && !rf_eui64_from_hex(configs[i]->s_eui64, temp_hex[i])) {
+                    xcprintf(XCOLOR_RED, "[JSON] ERROR: Line %d S_DEVICEID '%s' is not 16-hex or empty\r\n",
+                             i + 1, temp_hex[i]);
+                    return false;
+                }
             }
-            
+
         } else if (match_key(str, "T_DEVICEID")) {
-            xprintf("[JSON] Parsing T_DEVICEID array...\r\n");
-            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+            xprintf("[JSON] Parsing T_DEVICEID array (EUI-64 hex)...\r\n");
+            if (!parse_str_array(str, temp_hex, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse T_DEVICEID array\r\n");
                 return false;
             }
             for (int i = 0; i < MAX_ARRAYS; i++) {
-                if (configs[i]) configs[i]->t_device_id = temp_uint[i];
+                if (configs[i] && !rf_eui64_from_hex(configs[i]->t_eui64, temp_hex[i])) {
+                    xcprintf(XCOLOR_RED, "[JSON] ERROR: Line %d T_DEVICEID '%s' is not 16-hex or empty\r\n",
+                             i + 1, temp_hex[i]);
+                    return false;
+                }
             }
-            
+
         } else if (match_key(str, "CalismaModu")) {
             xprintf("[JSON] Parsing CalismaModu array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse CalismaModu array\r\n");
                 return false;
             }
-            // Validate and set
+            /* Operating_Mode {0,1} (spec R2 section 4.3) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
                     if (configs[i]->in_use && !validate_working_mode((uint8_t)temp_uint[i])) {
-                        xprintf("[JSON] WARNING: Line %d has invalid working mode\r\n", i + 1);
+                        return false;
                     }
-                    configs[i]->mode = (uint8_t)temp_uint[i];
+                    configs[i]->config.operating_mode = (uint8_t)temp_uint[i];
                 }
             }
-            
+
         } else if (match_key(str, "SistemNominalAkimi")) {
             xprintf("[JSON] Parsing SistemNominalAkimi array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse SistemNominalAkimi array\r\n");
                 return false;
             }
-            // Validate and set
+            /* Nominal_Current [2.00, 240/1.2] (spec R2 section 4.6) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_current_threshold(temp_float[i])) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 2.0f, 200.0f, "Nominal_Current")) {
                         return false;
                     }
-                    configs[i]->sistem_nominal_akimi = temp_float[i];
+                    configs[i]->config.nominal_current = temp_float[i];
                 }
             }
-            
+
         } else if (match_key(str, "SetEdilebilirActirmaEsikAkimi")) {
             xprintf("[JSON] Parsing SetEdilebilirActirmaEsikAkimi array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse SetEdilebilirActirmaEsikAkimi array\r\n");
                 return false;
             }
-            // Validate and set
+            /* Ia_Threshold [2.00x1.2, 240.0] (spec R2 section 4.6) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_current_threshold(temp_float[i])) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 2.4f, 240.0f, "Ia_Threshold")) {
                         return false;
                     }
-                    configs[i]->set_edilebilir_actirma_esik_akimi = temp_float[i];
+                    configs[i]->config.ia_threshold = temp_float[i];
                 }
             }
-            
+
         } else if (match_key(str, "SetEdilebilirAcmaArizaSayisi")) {
             xprintf("[JSON] Parsing SetEdilebilirAcmaArizaSayisi array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse SetEdilebilirAcmaArizaSayisi array\r\n");
                 return false;
             }
+            /* Set_Count [1,4] (spec R2 section 3.4) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
-                if (configs[i]) configs[i]->set_edilebilir_acma_ariza_sayisi = (uint8_t)temp_uint[i];
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 1U, 4U, "Set_Count")) {
+                        return false;
+                    }
+                    configs[i]->config.set_count = (uint8_t)temp_uint[i];
+                }
             }
-            
+
         } else if (match_key(str, "ArtimliAkimEsigi")) {
             xprintf("[JSON] Parsing ArtimliAkimEsigi array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse ArtimliAkimEsigi array\r\n");
                 return false;
             }
-            // Validate and set
+            /* di_dt_Threshold [250, 2500] A/s (spec R2 section 3.1 / 7.1) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_current_threshold(temp_float[i])) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 250.0f, 2500.0f, "di_dt_Threshold")) {
                         return false;
                     }
-                    configs[i]->artimli_akim_esigi = temp_float[i];
+                    configs[i]->config.di_dt_threshold = temp_float[i];
                 }
             }
-            
+
         } else if (match_key(str, "HatKopukHatBosta")) {
             xprintf("[JSON] Parsing HatKopukHatBosta array...\r\n");
-            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+            if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse HatKopukHatBosta array\r\n");
                 return false;
             }
+            /* Line_Break_Threshold [0.30, 5.00] A (spec R2 section 3.1) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
-                if (configs[i]) configs[i]->hat_kopuk_hat_bosta = (uint16_t)temp_uint[i];
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 0.30f, 5.00f, "Line_Break_Threshold")) {
+                        return false;
+                    }
+                    configs[i]->config.line_break_threshold = temp_float[i];
+                }
             }
-            
+
         } else if (match_key(str, "OluHatAkimiDogrulamaSuresi")) {
             xprintf("[JSON] Parsing OluHatAkimiDogrulamaSuresi array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse OluHatAkimiDogrulamaSuresi array\r\n");
                 return false;
             }
-            // Validate and set
+            /* Dead_Line_Verify_ms [80, 200] (spec R2 section 3.3) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_timeout(temp_uint[i], 1, 3600, "Dead line verification")) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 80U, 200U, "Dead_Line_Verify_ms")) {
                         return false;
                     }
-                    configs[i]->olu_hat_akimi_dogrulama_suresi = (uint16_t)temp_uint[i];
+                    configs[i]->config.dead_line_verify_ms = (uint16_t)temp_uint[i];
                 }
             }
-            
+
         } else if (match_key(str, "YenilenmeSifirlamaSuresi")) {
             xprintf("[JSON] Parsing YenilenmeSifirlamaSuresi array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse YenilenmeSifirlamaSuresi array\r\n");
                 return false;
             }
-            // Validate and set
+            /* T_Reclaim_Sec [10, 300] saniye (spec R2 section 3.3) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_timeout(temp_uint[i], 1, 3600, "Reset renewal")) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 10U, 300U, "T_Reclaim_Sec")) {
                         return false;
                     }
-                    configs[i]->yenilenme_sifirlama_suresi = (uint8_t)temp_uint[i];
+                    configs[i]->config.t_reclaim_sec = (uint16_t)temp_uint[i];
                 }
             }
-            
+
         } else if (match_key(str, "HatFrekansi")) {
             xprintf("[JSON] Parsing HatFrekansi array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse HatFrekansi array\r\n");
                 return false;
             }
-            // Validate and set
+            /* Line_Frequency {50, 60} - ayrik kume (spec R2 section 4.2) */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_rf_frequency((uint8_t)temp_uint[i])) {
+                    if (configs[i]->in_use && !validate_rf_frequency(temp_uint[i])) {
                         return false;
                     }
-                    configs[i]->hat_frekansi = (uint8_t)temp_uint[i];
+                    configs[i]->config.line_frequency = (uint8_t)temp_uint[i];
                 }
             }
-            
+
+        } else if (match_key(str, "IsSafety")) {
+            xprintf("[JSON] Parsing IsSafety array...\r\n");
+            if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse IsSafety array\r\n");
+                return false;
+            }
+            /* Is_Safety [0.100, 0.300] A (spec R2 section 3.1) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 0.100f, 0.300f, "Is_Safety")) {
+                        return false;
+                    }
+                    configs[i]->config.is_safety = temp_float[i];
+                }
+            }
+
+        } else if (match_key(str, "ThresholdMs")) {
+            xprintf("[JSON] Parsing ThresholdMs array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse ThresholdMs array\r\n");
+                return false;
+            }
+            /* Threshold_ms [20, 140] (spec R2 section 3.3) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 20U, 140U, "Threshold_ms")) {
+                        return false;
+                    }
+                    configs[i]->config.threshold_ms = (uint16_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "TMemDeadSec")) {
+            xprintf("[JSON] Parsing TMemDeadSec array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse TMemDeadSec array\r\n");
+                return false;
+            }
+            /* T_Mem_Dead_Sec [30, 600] (spec R2 section 3.3) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 30U, 600U, "T_Mem_Dead_Sec")) {
+                        return false;
+                    }
+                    configs[i]->config.t_mem_dead_sec = (uint16_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "InrushTimerMs")) {
+            xprintf("[JSON] Parsing InrushTimerMs array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse InrushTimerMs array\r\n");
+                return false;
+            }
+            /* Inrush_Timer_ms [20, 80] (spec R2 section 3.3) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 20U, 80U, "Inrush_Timer_ms")) {
+                        return false;
+                    }
+                    configs[i]->config.inrush_timer_ms = (uint16_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "InrushMultiplier")) {
+            xprintf("[JSON] Parsing InrushMultiplier array...\r\n");
+            if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse InrushMultiplier array\r\n");
+                return false;
+            }
+            /* Inrush_Multiplier [1.00, 15.00] (spec R2 section 3.3) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 1.0f, 15.0f, "Inrush_Multiplier")) {
+                        return false;
+                    }
+                    configs[i]->config.inrush_multiplier = temp_float[i];
+                }
+            }
+
+        } else if (match_key(str, "SyncTripDelayMs")) {
+            xprintf("[JSON] Parsing SyncTripDelayMs array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse SyncTripDelayMs array\r\n");
+                return false;
+            }
+            /* Sync_Trip_Delay_ms [0, 100] (spec R2 section 3.3) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 0U, 100U, "Sync_Trip_Delay_ms")) {
+                        return false;
+                    }
+                    configs[i]->config.sync_trip_delay_ms = (uint16_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "TripPulseDurationMs")) {
+            xprintf("[JSON] Parsing TripPulseDurationMs array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse TripPulseDurationMs array\r\n");
+                return false;
+            }
+            /* Trip_Pulse_Duration_ms [20, 120] (spec R2 section 3.3) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 20U, 120U, "Trip_Pulse_Duration_ms")) {
+                        return false;
+                    }
+                    configs[i]->config.trip_pulse_duration_ms = (uint16_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "TripMode")) {
+            xprintf("[JSON] Parsing TripMode array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse TripMode array\r\n");
+                return false;
+            }
+            /* Trip_Mode {0,1} (spec R2 section 4.4) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    const uint32_t allowed[2] = {0U, 1U};
+                    if (configs[i]->in_use && !validate_rf_uint_set(temp_uint[i], allowed, 2, "Trip_Mode")) {
+                        return false;
+                    }
+                    configs[i]->config.trip_mode = (uint8_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "Inrush100HzRatio")) {
+            xprintf("[JSON] Parsing Inrush100HzRatio array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse Inrush100HzRatio array\r\n");
+                return false;
+            }
+            /* Inrush_100Hz_Ratio [10, 40] % (spec R2 section 3.4) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 10U, 40U, "Inrush_100Hz_Ratio")) {
+                        return false;
+                    }
+                    configs[i]->config.inrush_100hz_ratio = (uint8_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "ClpEnabled")) {
+            xprintf("[JSON] Parsing ClpEnabled array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse ClpEnabled array\r\n");
+                return false;
+            }
+            /* CLP_Enabled {0,1} (spec R2 section 4.5) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    const uint32_t allowed[2] = {0U, 1U};
+                    if (configs[i]->in_use && !validate_rf_uint_set(temp_uint[i], allowed, 2, "CLP_Enabled")) {
+                        return false;
+                    }
+                    configs[i]->config.clp_enabled = (uint8_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "ClpMultiplier")) {
+            xprintf("[JSON] Parsing ClpMultiplier array...\r\n");
+            if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse ClpMultiplier array\r\n");
+                return false;
+            }
+            /* CLP_Multiplier [1.00, 3.00] (spec R2 section 3.5) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 1.0f, 3.0f, "CLP_Multiplier")) {
+                        return false;
+                    }
+                    configs[i]->config.clp_multiplier = temp_float[i];
+                }
+            }
+
+        } else if (match_key(str, "ClpDurationMs")) {
+            xprintf("[JSON] Parsing ClpDurationMs array...\r\n");
+            if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse ClpDurationMs array\r\n");
+                return false;
+            }
+            /* CLP_Duration_MS [100, 12000] (spec R2 section 3.5) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 100U, 12000U, "CLP_Duration_MS")) {
+                        return false;
+                    }
+                    configs[i]->config.clp_duration_ms = (uint16_t)temp_uint[i];
+                }
+            }
+
+        } else if (match_key(str, "VtripTarget")) {
+            xprintf("[JSON] Parsing VtripTarget array...\r\n");
+            if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
+                xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse VtripTarget array\r\n");
+                return false;
+            }
+            /* Vtrip_Target [24.00, 45.00] V (spec R2 section 3.6) */
+            for (int i = 0; i < MAX_ARRAYS; i++) {
+                if (configs[i]) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 24.0f, 45.0f, "Vtrip_Target")) {
+                        return false;
+                    }
+                    configs[i]->config.vtrip_target = temp_float[i];
+                }
+            }
+
         } else {
             xprintf("[JSON] WARNING: Unknown key in RF config, skipping...\r\n");
             if (!skip_unknown_key_value(str)) return false;
         }
         skip_comma(str);
+    }
+
+    /* Capraz dogrulama (spec R2 section 4.6): Ia >= 1.2 x Nominal.
+     * Tum array'ler islendikten sonra yapilir - alan sirasi onemsiz. */
+    for (int i = 0; i < MAX_ARRAYS; i++) {
+        if ((configs[i] != NULL) && configs[i]->in_use) {
+            const float nom = configs[i]->config.nominal_current;
+            const float ia = configs[i]->config.ia_threshold;
+            if (ia < (nom * 1.2f) - 0.001f) {
+                xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: Line %d: Ia_Threshold %.2f < 1.2 x Nominal (%.2f)\r\n",
+                         i + 1, ia, nom);
+                return false;
+            }
+        }
+    }
+
+    /* EUI-64 benzersizligi (spec R2 section 1.2): ayni cihaz iki (fider,
+     * faz) slotuna baglanamaz. */
+    if (rf_eui_duplicates_exist(configs)) {
+        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: Duplicate EUI-64 in RF config\r\n");
+        return false;
+    }
+
+    /* Fider benzersizligi (spec R2 section 1.2 / 5.3-1): ayni Fider_ID'yi
+     * iki in_use fider alamaz - RF adres cakismasi olusur. */
+    if (rf_hatid_duplicates_exist(configs)) {
+        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: Duplicate Feeder ID in RF config\r\n");
+        return false;
     }
 
     xprintf("[JSON] RF config parsed and validated successfully\r\n");
@@ -1606,61 +1963,84 @@ int parse_modbus_config(const char *json_str, jmodbus_configs_t *modbus) {
     return 1;
 }
 
+/* rf_feeder_t (tek-blok RAM modeli) -> jayirici_rf_config_t (SoA-JSON modeli)
+ * tek satir. Uc ayri yerde tekrarlanan alan-alan kopyanin tek noktasi.
+ * Maskeli topoloji (zone/fider) ve butun writable alanlar blk'den gelir. */
+static void rf_config_to_jayirici(const rf_feeder_t *src, jayirici_rf_config_t *dst, int i)
+{
+    const rf_feeder_config_t *b = &src->config;
+
+    dst->in_use[i] = src->in_use;
+    dst->hat_id[i] = b->fider_id;
+    dst->zone_id[i] = b->zone_id;
+    rf_eui64_to_hex(src->r_eui64, dst->r_eui64[i]);
+    rf_eui64_to_hex(src->s_eui64, dst->s_eui64[i]);
+    rf_eui64_to_hex(src->t_eui64, dst->t_eui64[i]);
+    dst->mode[i] = b->operating_mode;
+    dst->sistem_nominal_akimi[i] = b->nominal_current;
+    dst->set_edilebilir_actirma_esik_akimi[i] = b->ia_threshold;
+    dst->set_edilebilir_acma_ariza_sayisi[i] = b->set_count;
+    dst->artimli_akim_esigi[i] = b->di_dt_threshold;
+    dst->hat_kopuk_hat_bosta[i] = b->line_break_threshold;
+    dst->olu_hat_akimi_dogrulama_suresi[i] = b->dead_line_verify_ms;
+    dst->yenilenme_sifirlama_suresi[i] = b->t_reclaim_sec;
+    dst->hat_frekansi[i] = b->line_frequency;
+    dst->is_safety[i] = b->is_safety;
+    dst->threshold_ms[i] = b->threshold_ms;
+    dst->t_mem_dead_sec[i] = b->t_mem_dead_sec;
+    dst->inrush_timer_ms[i] = b->inrush_timer_ms;
+    dst->inrush_multiplier[i] = b->inrush_multiplier;
+    dst->sync_trip_delay_ms[i] = b->sync_trip_delay_ms;
+    dst->trip_pulse_duration_ms[i] = b->trip_pulse_duration_ms;
+    dst->trip_mode[i] = b->trip_mode;
+    dst->inrush_100hz_ratio[i] = b->inrush_100hz_ratio;
+    dst->clp_enabled[i] = b->clp_enabled;
+    dst->clp_multiplier[i] = b->clp_multiplier;
+    dst->clp_duration_ms[i] = b->clp_duration_ms;
+    dst->vtrip_target[i] = b->vtrip_target;
+}
+
 int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf) {
     if (!json_str || !rf) {
         xcprintf(XCOLOR_RED, "[JSON] ERROR: parse_rf_config - null parameters\r\n");
         return 0;
     }
-    
+
     xprintf("[JSON] Parsing RF config...\r\n");
-    
-    // Get pointers to all rf_config_t structures from storage
-    rf_config_t *configs[MAX_POWER_LINE_COUNT];
+
+    // Get pointers to all rf_feeder_t structures from storage
+    rf_feeder_t *configs[MAX_POWER_LINE_COUNT];
     for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        configs[i] = rf_config_get_mutable((feeder_id_t)i);
+        configs[i] = rf_store_get_mutable((feeder_id_t)i);
         if (!configs[i]) {
             xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to get mutable config pointer for line %d\r\n", i);
             return 0;
         }
     }
-    
+
     const char *str = skip_whitespace(json_str);
-    
+
     bool result = parse_rf_config_internal(&str, configs);
     if (!result) {
         xcprintf(XCOLOR_RED, "[JSON] ERROR: RF config parse failed\r\n");
         return 0;
     }
-    
+
     // Copy data to jayirici_rf_config_t for backward compatibility
     memset(rf, 0, sizeof(jayirici_rf_config_t));
     for (int i = 0; i < MAX_ARRAYS; i++) {
         if (configs[i]) {
-            rf->in_use[i] = configs[i]->in_use;
-            rf->hat_id[i] = configs[i]->hat_id;
-            rf->zone_id[i] = configs[i]->zone_id;
-            rf->r_device_id[i] = configs[i]->r_device_id;
-            rf->s_device_id[i] = configs[i]->s_device_id;
-            rf->t_device_id[i] = configs[i]->t_device_id;
-            rf->mode[i] = configs[i]->mode;
-            rf->sistem_nominal_akimi[i] = configs[i]->sistem_nominal_akimi;
-            rf->set_edilebilir_actirma_esik_akimi[i] = configs[i]->set_edilebilir_actirma_esik_akimi;
-            rf->set_edilebilir_acma_ariza_sayisi[i] = configs[i]->set_edilebilir_acma_ariza_sayisi;
-            rf->artimli_akim_esigi[i] = configs[i]->artimli_akim_esigi;
-            rf->hat_kopuk_hat_bosta[i] = configs[i]->hat_kopuk_hat_bosta;
-            rf->olu_hat_akimi_dogrulama_suresi[i] = configs[i]->olu_hat_akimi_dogrulama_suresi;
-            rf->yenilenme_sifirlama_suresi[i] = configs[i]->yenilenme_sifirlama_suresi;
-            rf->hat_frekansi[i] = configs[i]->hat_frekansi;
+            rf_config_to_jayirici(configs[i], rf, i);
         }
     }
-    
+
     xprintf("[JSON] RF config parsed successfully\r\n");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         if (rf->in_use[i]) {
             xprintf("[JSON]   Line %d: inUse=%d, HatID=%u, ZoneID=%u\r\n",
                     i + 1, rf->in_use[i], rf->hat_id[i], rf->zone_id[i]);
-            xprintf("[JSON]     DEVICEID: [%u, %u, %u]\r\n",
-                    rf->r_device_id[i], rf->s_device_id[i], rf->t_device_id[i]);
+            xprintf("[JSON]     EUI-64: [%s, %s, %s]\r\n",
+                    rf->r_eui64[i], rf->s_eui64[i], rf->t_eui64[i]);
             xprintf("[JSON]     CalismaModu: %u\r\n", rf->mode[i]);
             xprintf("[JSON]     SistemNominalAkimi: %.1f\r\n", rf->sistem_nominal_akimi[i]);
         }
@@ -1668,7 +2048,6 @@ int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf) {
     return 1;
 }
 
-static jayirici_rf_config_t g_rf_config;
 
 
 /* Device Config Getter/Setter - Now uses data_model */
@@ -1860,77 +2239,4 @@ void set_modbus_config(const jmodbus_configs_t *config)
 					: "[MODBUS] ERROR: Modbus config synchronization failed\r\n");
 }
 
-/* RF Config Getter/Setter */
-jayirici_rf_config_t* get_rf_config(void)
-{
-	for (int i = 0; i < MAX_LINE_COUNT; i++)
-	{
-		const rf_config_t *rf;
-
-		rf = rf_config_get(i);
-        
-        if (!rf){
-			continue;
-		}
-
-		g_rf_config.in_use[i] = rf->in_use;
-        g_rf_config.hat_id[i] = rf->hat_id;
-        g_rf_config.zone_id[i] = rf->zone_id;
-        g_rf_config.r_device_id[i] = rf->r_device_id;
-        g_rf_config.s_device_id[i] = rf->s_device_id;
-        g_rf_config.t_device_id[i] = rf->t_device_id;
-        g_rf_config.mode[i] = rf->mode;
-        g_rf_config.sistem_nominal_akimi[i] = rf->sistem_nominal_akimi;
-        g_rf_config.set_edilebilir_actirma_esik_akimi[i] = rf->set_edilebilir_actirma_esik_akimi;
-        g_rf_config.set_edilebilir_acma_ariza_sayisi[i] = rf->set_edilebilir_acma_ariza_sayisi;
-        g_rf_config.artimli_akim_esigi[i] = rf->artimli_akim_esigi;
-        g_rf_config.hat_kopuk_hat_bosta[i] = rf->hat_kopuk_hat_bosta;
-        g_rf_config.olu_hat_akimi_dogrulama_suresi[i] = rf->olu_hat_akimi_dogrulama_suresi;
-        g_rf_config.yenilenme_sifirlama_suresi[i] = rf->yenilenme_sifirlama_suresi;
-        g_rf_config.hat_frekansi[i] = rf->hat_frekansi;
-    }
-
-    return &g_rf_config;
-}
-
-void set_rf_config(const jayirici_rf_config_t *config) {
-    if (!config) {
-        return;
-    }
-
-    // Write line config fields directly from parameter (no global struct needed)
-    for (int i = 0; i < MAX_LINE_COUNT; i++)
-	{
-        rf_config_t rf = {0};
-
-        if (!config->in_use[i]) {
-            rf_config_set(i, &rf);
-            continue;
-        }
-
-        rf.in_use = true;
-        rf.hat_id = config->hat_id[i];
-        rf.zone_id = config->zone_id[i];
-        rf.r_device_id = config->r_device_id[i];
-        rf.s_device_id = config->s_device_id[i];
-        rf.t_device_id = config->t_device_id[i];
-        rf.mode = config->mode[i];
-        rf.sistem_nominal_akimi = config->sistem_nominal_akimi[i];
-        rf.set_edilebilir_actirma_esik_akimi = config->set_edilebilir_actirma_esik_akimi[i];
-        rf.set_edilebilir_acma_ariza_sayisi = config->set_edilebilir_acma_ariza_sayisi[i];
-        rf.artimli_akim_esigi = config->artimli_akim_esigi[i];
-        rf.hat_kopuk_hat_bosta = config->hat_kopuk_hat_bosta[i];
-        rf.olu_hat_akimi_dogrulama_suresi = config->olu_hat_akimi_dogrulama_suresi[i];
-        rf.yenilenme_sifirlama_suresi = config->yenilenme_sifirlama_suresi[i];
-        rf.hat_frekansi = config->hat_frekansi[i];
-
-        rf_config_set(i, &rf);
-    }
-
-    int res = rf_config_sync();
-
-    xcprintf(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
-            res == 0 ? "[RF Config] RF config synchronized successfully\r\n"
-                    : "[RF Config] ERROR: RF config synchronization failed\r\n");
-}
 

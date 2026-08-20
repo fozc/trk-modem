@@ -135,7 +135,6 @@ typedef struct
 	iec104_line_config_t iec104; // IEC104 ile ilgili konfigurasyon bilgileri
 	modbus_line_config_t modbus; // Modbus RTU ile ilgili konfigurasyon bilgileri
 	rf_feeder_t rf;              // RF ayirici konfigurasyonu (tek-blok modeli) - NVRAM last-known aynasi
-	rf_config_t rf_config;       // ESKI RF modeli - web katmani gecene kadar gecici (plan Faz 2)
 	sbo_state_t sbo_state;
 	uint8_t breaker_state;
 }__attribute__((packed)) power_line_t;
@@ -200,8 +199,9 @@ typedef struct
 /** NVRAM layout gecerlilik magic'i - "TRKN". */
 #define NVRAM_MAGIC           0x54524B4EU
 /** NVRAM layout surumu. Yapi boyutu/ofseti degistiginde bump edilir
- *  (nvram_init eski surumu bilincli default-reset ile karsilar). */
-#define NVRAM_SCHEMA_VERSION  1U
+ *  (nvram_init eski surumu bilincli default-reset ile karsilar).
+ *  v2: eski rf_config alani kaldirildi (tek-blok modeli tek alan). */
+#define NVRAM_SCHEMA_VERSION  2U
 
 typedef struct
 {

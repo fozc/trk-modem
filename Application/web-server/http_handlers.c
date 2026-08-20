@@ -26,6 +26,7 @@
 #include "iec104_util.h"
 #include "rf.h"
 #include "rf_config.h"
+#include "rf_json.h"
 #include "gsm_engine.h"
 #include "elog.h"
 #include "fault_log.h"
@@ -1322,495 +1323,22 @@ void handle_post_modbus_config_json(const char *json_body)
  */
 void handle_get_rf_config_json(void)
 {
-    xprintf("[HTTP] GET /r?ayiriciRFConfig - Reading RF config\r\n");
-    
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
-    
-    pos += xsnprintf(buf + pos, buf_size - pos, "{");
-    
-    /* inUse array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"inUse\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", i > 0 ? "," : "", config->in_use ? "true" : "false");
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* HatID array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"HatID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->hat_id);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* ZoneID array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ZoneID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->zone_id);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* R_DEVICEID array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_DEVICEID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->r_device_id);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* S_DEVICEID array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_DEVICEID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->s_device_id);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* T_DEVICEID array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_DEVICEID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->t_device_id);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* CalismaModu array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"CalismaModu\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->mode);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* SistemNominalAkimi array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SistemNominalAkimi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", config->sistem_nominal_akimi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* SetEdilebilirActirmaEsikAkimi array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SetEdilebilirActirmaEsikAkimi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", config->set_edilebilir_actirma_esik_akimi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* SetEdilebilirAcmaArizaSayisi array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SetEdilebilirAcmaArizaSayisi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->set_edilebilir_acma_ariza_sayisi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* ArtimliAkimEsigi array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ArtimliAkimEsigi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", config->artimli_akim_esigi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* HatKopukHatBosta array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"HatKopukHatBosta\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->hat_kopuk_hat_bosta);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* OluHatAkimiDogrulamaSuresi array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"OluHatAkimiDogrulamaSuresi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->olu_hat_akimi_dogrulama_suresi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    /* YenilenmeSifirlamaSuresi array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"YenilenmeSifirlamaSuresi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->yenilenme_sifirlama_suresi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-    
-    
-    /* HatFrekansi array */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"HatFrekansi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *config = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", config->hat_frekansi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    int   buf_size = handler_state.tx_buffer_size;
+    int   pos;
 
-    /* Per-phase sync status: RSynced, SSynced, TSynced (last_tx != 0 means at least one packet received) */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"RSynced\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        bool synced = (mon != NULL) && (mon->last_tx[PHASE_L1] != 0U);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", i > 0 ? "," : "", synced ? "true" : "false");
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    xprintf("[HTTP] GET /r?ayiriciRFConfig - Reading RF config\r\n");
 
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SSynced\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        bool synced = (mon != NULL) && (mon->last_tx[PHASE_L2] != 0U);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", i > 0 ? "," : "", synced ? "true" : "false");
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TSynced\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        bool synced = (mon != NULL) && (mon->last_tx[PHASE_L3] != 0U);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", i > 0 ? "," : "", synced ? "true" : "false");
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* Per-phase last TX timestamps (Unix seconds, 0 = never received) */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"RLastTx\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint32_t ts = (mon != NULL) ? mon->last_tx[PHASE_L1] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", ts);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SLastTx\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint32_t ts = (mon != NULL) ? mon->last_tx[PHASE_L2] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", ts);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TLastTx\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint32_t ts = (mon != NULL) ? mon->last_tx[PHASE_L3] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", ts);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* Per-phase reported operating mode from monitor */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"RMod\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint8_t v = (mon != NULL) ? mon->calisma_modu[PHASE_L1] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SMod\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint8_t v = (mon != NULL) ? mon->calisma_modu[PHASE_L2] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TMod\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint8_t v = (mon != NULL) ? mon->calisma_modu[PHASE_L3] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* Per-phase reported frequency from monitor */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"RFreq\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint8_t v = (mon != NULL) ? mon->hat_frekansi[PHASE_L1] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SFreq\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint8_t v = (mon != NULL) ? mon->hat_frekansi[PHASE_L2] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TFreq\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        uint8_t v = (mon != NULL) ? mon->hat_frekansi[PHASE_L3] : 0U;
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", v);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* ---------------------------------------------------------------
-     * Per-phase status arrays for the /config/rf monitor table.
-     * Fields from rf_monitor_t use actual reported values per phase.
-     * Config-only fields replicate the per-feeder setting across all
-     * three phase columns (same value for R/S/T).
-     * --------------------------------------------------------------- */
-
-    /* R_HatID / S_HatID / T_HatID */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_HatID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_id[PHASE_L1] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_HatID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_id[PHASE_L2] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_HatID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_id[PHASE_L3] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_ZoneID / S_ZoneID / T_ZoneID */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_ZoneID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->zone_id[PHASE_L1] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_ZoneID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->zone_id[PHASE_L2] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_ZoneID\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->zone_id[PHASE_L3] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_CalismaModu / S_CalismaModu / T_CalismaModu */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_CalismaModu\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->calisma_modu[PHASE_L1] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_CalismaModu\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->calisma_modu[PHASE_L2] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_CalismaModu\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->calisma_modu[PHASE_L3] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_HatFrekansi / S_HatFrekansi / T_HatFrekansi */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_HatFrekansi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_frekansi[PHASE_L1] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_HatFrekansi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_frekansi[PHASE_L2] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_HatFrekansi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_monitor_t *mon = rf_get_monitor(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", (mon != NULL) ? mon->hat_frekansi[PHASE_L3] : 0U);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* Config-only fields: same value across all phases (per-feeder settings) */
-
-    /* R_SistemNominalAkimi / S_ / T_ */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_SistemNominalAkimi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->sistem_nominal_akimi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_SistemNominalAkimi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->sistem_nominal_akimi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_SistemNominalAkimi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->sistem_nominal_akimi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_SetEdilebilirActirmaEsikAkimi / S_ / T_ */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_SetEdilebilirActirmaEsikAkimi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->set_edilebilir_actirma_esik_akimi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_SetEdilebilirActirmaEsikAkimi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->set_edilebilir_actirma_esik_akimi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_SetEdilebilirActirmaEsikAkimi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->set_edilebilir_actirma_esik_akimi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_SetEdilebilirAcmaArizaSayisi / S_ / T_ */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_SetEdilebilirAcmaArizaSayisi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->set_edilebilir_acma_ariza_sayisi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_SetEdilebilirAcmaArizaSayisi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->set_edilebilir_acma_ariza_sayisi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_SetEdilebilirAcmaArizaSayisi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->set_edilebilir_acma_ariza_sayisi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_ArtimliAkimEsigi / S_ / T_ */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_ArtimliAkimEsigi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->artimli_akim_esigi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_ArtimliAkimEsigi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->artimli_akim_esigi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_ArtimliAkimEsigi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%.1f", i > 0 ? "," : "", cfg->artimli_akim_esigi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_HatKopukHatBosta / S_ / T_ */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_HatKopukHatBosta\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->hat_kopuk_hat_bosta);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_HatKopukHatBosta\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->hat_kopuk_hat_bosta);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_HatKopukHatBosta\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->hat_kopuk_hat_bosta);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_OluHatAkimiDogrulamaSuresi / S_ / T_ */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_OluHatAkimiDogrulamaSuresi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->olu_hat_akimi_dogrulama_suresi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_OluHatAkimiDogrulamaSuresi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->olu_hat_akimi_dogrulama_suresi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_OluHatAkimiDogrulamaSuresi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->olu_hat_akimi_dogrulama_suresi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    /* R_YenilenmeSifirlamaSuresi / S_ / T_ */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"R_YenilenmeSifirlamaSuresi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->yenilenme_sifirlama_suresi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"S_YenilenmeSifirlamaSuresi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->yenilenme_sifirlama_suresi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T_YenilenmeSifirlamaSuresi\":[");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        const rf_config_t *cfg = rf_config_get((feeder_id_t)i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%u", i > 0 ? "," : "", cfg->yenilenme_sifirlama_suresi);
-    }
-    pos += xsnprintf(buf + pos, buf_size - pos, "]");
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
-
+    /* Govde uretimi tablo-tabanli rf_json modulundedir (kod hafizasi). */
+    pos = rf_json_config_build(buf, buf_size);
     xprintf("[HTTP] RF config JSON size: %d bytes\r\n", pos);
-    
-    /* Buffer overflow check */
-    if (pos >= buf_size - 1) {
-    	xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+
+    if (pos >= (buf_size - 1))
+    {
+        xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n",
+                 pos, buf_size);
     }
-    
+
     http_send_json(buf, pos);
 }
 
@@ -1832,23 +1360,33 @@ void handle_post_rf_config_json(const char *json_body)
     
     jayirici_rf_config_t config;
 
-    // Parse JSON - this now writes directly to storage via rf_config_get_mutable()
+    /* Staging: parse yarida kalirsa yarim yazma kalici store'a gecmez. */
+    if (!rf_store_stage_begin()) {
+    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: RF staging busy\r\n");
+        http_send_error(500, "RF config staging busy");
+        return;
+    }
+
+    // Parse JSON - writes go to the staging copy via rf_store_get_mutable()
     if (!parse_rf_config(json_body, &config)) {
+    	rf_store_stage_abort();
     	xcprintf(XCOLOR_RED, "[HTTP] ERROR: JSON parse failed\r\n");
         http_send_error(400, "JSON parse error");
         return;
     }
-    
+    rf_store_stage_commit();
+
     xprintf("[HTTP] JSON parsed successfully\r\n");
     for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         if (config.in_use[i]) {
-            xprintf("[HTTP] Line %d: HatID=%u, ZoneID=%u, R_DEVICEID=%u\r\n",
-                   i+1, config.hat_id[i], config.zone_id[i], config.r_device_id[i]);
+            xprintf("[HTTP] Line %d: HatID=%u, ZoneID=%u, EUI-64=[%s, %s, %s]\r\n",
+                   i+1, config.hat_id[i], config.zone_id[i],
+                   config.r_eui64[i], config.s_eui64[i], config.t_eui64[i]);
         }
     }
     
     // Sync to persistent storage (data is already in breaker_config)
-    if (rf_config_sync() != 0) {
+    if (rf_store_sync() != 0) {
         xcprintf(XCOLOR_RED, "[HTTP] ERROR: Failed to sync RF config to storage\r\n");
         http_send_error(500, "Failed to save configuration");
         return;
@@ -1865,13 +1403,13 @@ void handle_post_rf_config_json(const char *json_body)
 /**
  * @brief Send RF monitor JSON for a specific line range
  * 
- * @param line_filter Line index (0-7) or -1 for all lines
+ * @param line_filter Line index (0..MAX_POWER_LINE_COUNT-1) or -1 for all lines
  */
 static void send_rf_monitor_json(int line_filter)
 {
-    if (line_filter >= 0 && (line_filter < 0 || line_filter >= 8)) {
+    if (line_filter >= MAX_POWER_LINE_COUNT) {
         xprintf("[HTTP] ERROR: Invalid line index: %d\r\n", line_filter);
-        http_send_error(400, "Invalid line index (0-7)");
+        http_send_error(400, "Invalid line index (out of range)");
         return;
     }
 
@@ -1880,7 +1418,7 @@ static void send_rf_monitor_json(int line_filter)
     int pos = 0;
     pos += xsnprintf(buf + pos, buf_size - pos, "{\"lines\":[");
     int start_line = (line_filter >= 0) ? line_filter : 0;
-    int end_line = (line_filter >= 0) ? line_filter + 1 : 8;
+    int end_line = (line_filter >= 0) ? line_filter + 1 : MAX_POWER_LINE_COUNT;
     for (int i = start_line; i < end_line; i++) {
         const rf_monitor_t *monitor = rf_get_monitor(i);
         if (!monitor) {
@@ -1939,7 +1477,7 @@ static void send_rf_monitor_json(int line_filter)
 /**
  * @brief Send RF monitor JSON for a specific line
  * 
- * @param line_id Line index (0-7)
+ * @param line_id Line index (0..MAX_POWER_LINE_COUNT-1)
  */
 void handle_get_rf_monitor_line_json(int line_id)
 {
@@ -1951,9 +1489,9 @@ void handle_get_rf_monitor_line_json(int line_id)
  * @brief Handle GET /r?ayiriciRFMonitor - Read RF monitor data (read-only)
  * 
  * Supports optional ?line=X parameter to fetch single line:
- * - /r?ayiriciRFMonitor -> all 8 lines
+ * - /r?ayiriciRFMonitor -> all lines (0..MAX_POWER_LINE_COUNT-1)
  * - /r?ayiriciRFMonitor&line=0 -> only line 1 (index 0)
- * - /r?ayiriciRFMonitor&line=7 -> only line 8 (index 7)
+ * - /r?ayiriciRFMonitor&line=N -> only line N+1 (index N)
  */
 void handle_get_rf_monitor_json(void)
 {
@@ -1965,9 +1503,9 @@ void handle_get_rf_monitor_json(void)
         if (http_get_query_param(handler_state.current_query_string, "line", line_value, sizeof(line_value))) {
             line_filter = xstrtoi(line_value);
             xprintf("[HTTP] Line filter: %d\n", line_filter);
-            if (line_filter < 0 || line_filter >= 8) {
+            if (line_filter < 0 || line_filter >= MAX_POWER_LINE_COUNT) {
                 xprintf("[HTTP] ERROR: Invalid line index: %d\r\n", line_filter);
-                http_send_error(400, "Invalid line index (0-7)");
+                http_send_error(400, "Invalid line index (out of range)");
                 return;
             }
         }

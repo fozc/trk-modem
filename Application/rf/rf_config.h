@@ -4,9 +4,8 @@
  *  Created on: Feb 1, 2026
  *      Author: fatih
  *
- * RF ayirici konfigurasyonu: 96 baytlik blok codec (default / CRC / RMW).
- * RAM store + staging API (plan Faz 1) ve EUI-64 yardimcilari da bu
- * modulun icinde yasayacaktir.
+ * RF ayirici konfigurasyonu: 96 baytlik blok codec (default / CRC / RMW)
+ * + RAM SSOT store + staging API + EUI-64 yardimcilari.
  */
 
 #ifndef RF_RF_CONFIG_H_
@@ -16,16 +15,6 @@
 #include <stdbool.h>
 #include "rf_types.h"
 #include "types.h"
-
-/*
- * ESKI API - NVRAM ince sarmalayici (uint32 cihaz kimligi modeli).
- * Yeni tek-blok modeli (rf_feeder_t) altinda calisana kadar (plan
- * Faz 1-2) gecici olarak kalir.
- */
-int rf_config_sync(void);
-const rf_config_t* rf_config_get(feeder_id_t line_id);
-rf_config_t* rf_config_get_mutable(feeder_id_t line_id);
-bool rf_config_set(feeder_id_t line_id, const rf_config_t* config);
 
 /* --- 96 baytlik blok codec (spec R2 Ek-A) ------------------------------ */
 
