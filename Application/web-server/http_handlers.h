@@ -273,8 +273,8 @@ void handle_get_rf_monitor_json(void);
 
 /**
  * @brief Send RF monitor JSON for a specific line
- * 
- * @param line_id Line index (0-7)
+ *
+ * @param line_id Line index (0..MAX_POWER_LINE_COUNT-1)
  */
 void handle_get_rf_monitor_line_json(int line_id);
 

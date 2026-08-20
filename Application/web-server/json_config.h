@@ -109,23 +109,37 @@ typedef struct
 } jmodbus_configs_t;
 
 /* RF Config Structure */
-typedef struct 
+typedef struct
 {
     bool in_use[MAX_LINE_COUNT];
     uint8_t hat_id[MAX_LINE_COUNT];
     uint8_t zone_id[MAX_LINE_COUNT];
-    uint32_t r_device_id[MAX_LINE_COUNT];
-    uint32_t s_device_id[MAX_LINE_COUNT];
-    uint32_t t_device_id[MAX_LINE_COUNT];
+    char r_eui64[MAX_LINE_COUNT][RF_EUI64_HEX_LEN];   /* 16-hex, "" = atanmamis */
+    char s_eui64[MAX_LINE_COUNT][RF_EUI64_HEX_LEN];
+    char t_eui64[MAX_LINE_COUNT][RF_EUI64_HEX_LEN];
     uint8_t mode[MAX_LINE_COUNT];
     float sistem_nominal_akimi[MAX_LINE_COUNT];
     float set_edilebilir_actirma_esik_akimi[MAX_LINE_COUNT];
     uint8_t set_edilebilir_acma_ariza_sayisi[MAX_LINE_COUNT];
     float artimli_akim_esigi[MAX_LINE_COUNT];
-    uint16_t hat_kopuk_hat_bosta[MAX_LINE_COUNT];
+    float hat_kopuk_hat_bosta[MAX_LINE_COUNT];
     uint16_t olu_hat_akimi_dogrulama_suresi[MAX_LINE_COUNT];
-    uint8_t yenilenme_sifirlama_suresi[MAX_LINE_COUNT];
+    uint16_t yenilenme_sifirlama_suresi[MAX_LINE_COUNT];
     uint8_t hat_frekansi[MAX_LINE_COUNT];
+    /* Spec R2 section 3 - ekranda olmayan (Faz 4) ama tasinan alanlar */
+    float is_safety[MAX_LINE_COUNT];
+    uint16_t threshold_ms[MAX_LINE_COUNT];
+    uint16_t t_mem_dead_sec[MAX_LINE_COUNT];
+    uint16_t inrush_timer_ms[MAX_LINE_COUNT];
+    float inrush_multiplier[MAX_LINE_COUNT];
+    uint16_t sync_trip_delay_ms[MAX_LINE_COUNT];
+    uint16_t trip_pulse_duration_ms[MAX_LINE_COUNT];
+    uint8_t trip_mode[MAX_LINE_COUNT];
+    uint8_t inrush_100hz_ratio[MAX_LINE_COUNT];
+    uint8_t clp_enabled[MAX_LINE_COUNT];
+    float clp_multiplier[MAX_LINE_COUNT];
+    uint16_t clp_duration_ms[MAX_LINE_COUNT];
+    float vtrip_target[MAX_LINE_COUNT];
 } jayirici_rf_config_t;
 
 /* RF Monitor Structure (read-only status) */
@@ -197,8 +211,5 @@ void set_device_config(const modem_config_t *config);
 /* IEC104 and Modbus config setters - No getters needed, use config managers directly */
 void set_iec_config(const jiec_config_t *config);
 void set_modbus_config(const jmodbus_configs_t *config);
-
-jayirici_rf_config_t* get_rf_config(void);
-void set_rf_config(const jayirici_rf_config_t *config);
 
 #endif /* JSON_CONFIG_H_ */
