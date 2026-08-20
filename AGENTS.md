@@ -30,13 +30,14 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   `if ... else if` ends with an `else`; no VLA, no recursion, no
   back-jumping `goto`, no commented-out code.
 - **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns, LF line
-  endings, no tabs, `p_/b_` prefixes, Yoda conditions
-  (`NULL == p_obj`), `for (;;)` for infinite loops, signed/unsigned never
+  endings, no tabs, Yoda conditions
+  (`NULL == obj`), `for (;;)` for infinite loops, signed/unsigned never
   mixed, unsigned constants suffixed (`6U`), `/*** end of file ***/`
   trailer, new files use the §9.15 header template.
 - **Repo deviation (decided 2026-08-20):** do NOT use the `g_` / `s_`
-  prefixes on global and static variables — use plain descriptive
-  snake_case names instead. `p_` / `b_` prefixes still apply.
+  variable prefixes or the `p_` pointer prefix — use plain descriptive
+  snake_case names for globals, statics, pointers, and parameters.
+  (Yoda conditions still apply.)
 - **ASCII only** in code and comments — no Turkish characters.
 - Functions <= 100 lines, <= 5 parameters; private functions `static`;
   include order: own header, project, HAL, standard.

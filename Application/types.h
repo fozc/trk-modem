@@ -134,8 +134,9 @@ typedef struct
 {
 	iec104_line_config_t iec104; // IEC104 ile ilgili konfigurasyon bilgileri
 	modbus_line_config_t modbus; // Modbus RTU ile ilgili konfigurasyon bilgileri
-	rf_config_t rf_config;       // RF ayirici konfigurasyon bilgileri
-	sbo_state_t sbo_state; 
+	rf_feeder_t rf;              // RF ayirici konfigurasyonu (tek-blok modeli) - NVRAM last-known aynasi
+	rf_config_t rf_config;       // ESKI RF modeli - web katmani gecene kadar gecici (plan Faz 2)
+	sbo_state_t sbo_state;
 	uint8_t breaker_state;
 }__attribute__((packed)) power_line_t;
 
@@ -196,19 +197,33 @@ typedef struct
     uint32_t shared_key;      /**< PSK for auth token derivation             */
 } rfwu_nvram_t;
 
+/** NVRAM layout gecerlilik magic'i - "TRKN". */
+#define NVRAM_MAGIC           0x54524B4EU
+/** NVRAM layout surumu. Yapi boyutu/ofseti degistiginde bump edilir
+ *  (nvram_init eski surumu bilincli default-reset ile karsilar). */
+#define NVRAM_SCHEMA_VERSION  1U
+
 typedef struct
 {
+    uint32_t magic;            /**< NVRAM_MAGIC - CRC'den ONCE kontrol edilir */
+    uint32_t schema_version;   /**< NVRAM_SCHEMA_VERSION */
 	modem_config_t modem_config;
 	iec104_config_t iec104_config;
 	modbus_configs_t modbus_config;
-	breaker_t breaker; 
+	breaker_t breaker;
 
 	uint8_t cslog_enabled;
 	uint8_t gsm_log_level;   /**< gsm_log_level_t persisted value */
 
     rfwu_nvram_t rfwu;
 
-    uint32_t crc; 
+    uint32_t crc;
 }nvram_t;
+
+/* Layout kaymasini derleme hatasina cevir (rf_feeder_t bekcisi
+ * rf_types.h icindedir). Bu yapi degistiginde NVRAM_SCHEMA_VERSION
+ * bump edilir. */
+_Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
+_Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
 
 #endif /* TYPES_H_ */

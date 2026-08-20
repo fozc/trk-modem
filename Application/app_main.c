@@ -16,6 +16,7 @@
 #include "version.h"
 #include "shell.h"
 #include "nvram.h"
+#include "rf_config.h"
 #include "elog.h"
 #include "xmodem_process.h"
 #include "modbus_process.h"
@@ -198,6 +199,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	autostart_start(autostart_processes);
 
 	nvram_init();
+	rf_store_init();   /* RF fider store'unu NVRAM last-known aynasindan yukle */
 	//rf_dummy_init();
 	shell_init("Troika >\r\n", NULL, bsp_putchr);
 
