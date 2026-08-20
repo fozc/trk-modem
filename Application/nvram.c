@@ -15,6 +15,7 @@
 #include "gsm/utils.h"
 #include "console_logger.h"
 #include "gsm_log.h"
+#include "rf_config.h"
 
 static nvram_t   nvram = {0};
 
@@ -58,6 +59,11 @@ void nvram_test_fill(void)
 void nvram_set_defaults(void)
 {
     memset(&nvram, 0, sizeof(nvram));
+
+    /* Layout gecerlilik isaretleri - bunlar olmadan yazilan default bir
+     * sonraki acilista yine default-reset'e dusardi. */
+    nvram.magic = NVRAM_MAGIC;
+    nvram.schema_version = NVRAM_SCHEMA_VERSION;
 
     // Modem Config Defaults
 	nvram.modem_config.serial_number = DEVICE_DEFAULT_SERIAL_NUMBER;
@@ -157,6 +163,12 @@ void nvram_set_defaults(void)
     nvram.modbus_config.last_error_code = 0;
     nvram.modbus_config.addr_aku_uyarisi = 50000;
     nvram.modbus_config.addr_modem_reset = 50001;
+
+    /* RF ayirici default'lari - spec R2 section 3 (codec default blogu tek
+     * kaynak). in_use=false, fider=0 (provizyonsuz), EUI'ler atanmamis. */
+    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+        rf_config_defaults(&nvram.breaker.line[i].rf);
+    }
 
     nvram.gsm_log_level = 2U; /* GSM_LOG_VERBOSE */
 }
@@ -345,6 +357,15 @@ static bool is_nvram_empty_or_uninitialized(void)
 	return 1; // Empty
 }
 
+/* Magic + schema_version kontrolu. Layout degisikligi (eski surum /
+ * silinmis/bos flash) CRC tesadufune dusmeden bilincli default-reset
+ * olarak ele alinir. */
+static bool nvram_schema_valid(void)
+{
+    return (nvram.magic == NVRAM_MAGIC) &&
+           (nvram.schema_version == NVRAM_SCHEMA_VERSION);
+}
+
 int nvram_init(void)
 {
 #ifdef IEC104_TEST
@@ -354,22 +375,33 @@ int nvram_init(void)
 	int res = 0;
 
     w25qxx_read_buff(NVRAM_ADDRESS, &nvram, sizeof(nvram));
+    bool schema_ok = nvram_schema_valid();
     crc32_t crc = nvram_calculate_crc();
 
-    if(crc != nvram.crc)
+    if(!schema_ok || (crc != nvram.crc))
     {
-        xcprintf(XCOLOR_RED, "NVRAM CRC mismatch: stored=0x%08X, calculated=0x%08X\r\n", nvram.crc, crc);
+        if(!schema_ok)
+        {
+            xcprintf(XCOLOR_RED, "NVRAM schema mismatch: magic=0x%08X version=%u (expected 0x%08X/%u)\r\n",
+                     nvram.magic, nvram.schema_version, NVRAM_MAGIC, NVRAM_SCHEMA_VERSION);
+        }
+        else
+        {
+            xcprintf(XCOLOR_RED, "NVRAM CRC mismatch: stored=0x%08X, calculated=0x%08X\r\n", nvram.crc, crc);
+        }
 
     	bool is_main_nvram_empty_or_uninitialized = is_nvram_empty_or_uninitialized();
 		if(is_main_nvram_empty_or_uninitialized){
 			CSLOG("NVRAM uninitialized.\n");
 		}
     	w25qxx_read_buff(NVRAM_BACKUP_ADDRESS, &nvram, sizeof(nvram));
+    	schema_ok = nvram_schema_valid();
     	crc = nvram_calculate_crc();
 
-    	if(crc != nvram.crc)
+    	if(!schema_ok || (crc != nvram.crc))
     	{
-    		xcprintf(XCOLOR_RED, "NVRAM backup CRC mismatch: stored=0x%08X, calculated=0x%08X\r\n", nvram.crc, crc);
+    		xcprintf(XCOLOR_RED, "NVRAM backup invalid: schema=%s crc=stored 0x%08X / calc 0x%08X\r\n",
+    		         (schema_ok ? "ok" : "mismatch"), nvram.crc, crc);
 
     		bool is_backup_nvram_empty_or_uninitialized = is_nvram_empty_or_uninitialized();
         	if(is_backup_nvram_empty_or_uninitialized){
