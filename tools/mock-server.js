@@ -84,23 +84,20 @@ const rf = { success: true, data: {
   ArtimliAkimEsigi: arr8(() => 1000), HatKopukHatBosta: arr8(() => 2),
   OluHatAkimiDogrulamaSuresi: arr8(() => 200), YenilenmeSifirlamaSuresi: arr8(() => 60),
   HatFrekansi: arr8(() => 50),
-  /* per-phase status reported by the device (matches handle_get_rf_config_json) */
-  RSynced: arr8(i => i < 4), SSynced: arr8(i => i < 3), TSynced: arr8(i => i < 2),
-  RLastTx: arr8(i => i < 4 ? now() - i * 60 : 0),
-  SLastTx: arr8(i => i < 3 ? now() - i * 120 : 0),
-  TLastTx: arr8(i => i < 2 ? now() - i * 180 : 0),
-  R_CalismaModu: arr8(() => 1), S_CalismaModu: arr8(() => 1), T_CalismaModu: arr8(() => 2),
-  R_HatFrekansi: arr8(() => 50), S_HatFrekansi: arr8(() => 50.1), T_HatFrekansi: arr8(() => 49.9),
+  /* 12 spec R2 params carried by the contract, not rendered on screen */
+  IsSafety: arr8(() => 0.3), ThresholdMs: arr8(() => 60),
+  TMemDeadSec: arr8(() => 180), InrushTimerMs: arr8(() => 60),
+  InrushMultiplier: arr8(() => 5), SyncTripDelayMs: arr8(() => 100),
+  TripPulseDurationMs: arr8(() => 40), TripMode: arr8(() => 0),
+  Inrush100HzRatio: arr8(() => 39), ClpEnabled: arr8(() => 0),
+  ClpMultiplier: arr8(() => 2), ClpDurationMs: arr8(() => 5000),
+  VtripTarget: arr8(() => 32),
   /* 0x14 DISCOVERY_REPORT queue: discovered but unassigned devices */
   Unassigned: [
     { EUI64: 'A40567821C3BEE01', FiderID: 0 },
     { EUI64: 'A40567821C3BEE02', FiderID: 0 }
   ]
 }};
-/* per-phase reported config values (mirror of saved RF config per phase, like the device).
- * Values kept inside the CURRENT UI validation ranges (spec R2):
- * Nominal>=2, Ia>=1.2*Nom, Incremental 250-2500, Break 0.3-5, Verify 80-200, Reset 10-300. */
-[['HatID',i=>i+1],['ZoneID',()=>1],['SistemNominalAkimi',()=>100],['SetEdilebilirActirmaEsikAkimi',()=>150],['SetEdilebilirAcmaArizaSayisi',()=>3],['ArtimliAkimEsigi',()=>1000],['HatKopukHatBosta',()=>2],['OluHatAkimiDogrulamaSuresi',()=>200],['YenilenmeSifirlamaSuresi',()=>60]].forEach(([k,v])=>['R','S','T'].forEach(p=>rf.data[p+'_'+k]=arr8(v)));
 
 const device = { success: true, data: {
   SeriNumarasi: 'TSB23-0001', UretimTarihi: now() - 31536000, LifeTime: '10000h',
