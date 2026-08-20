@@ -39,6 +39,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include "rf_discovery.h"
 
 /* ============================================================================
  * COMPILE-TIME CONFIGURATION
@@ -319,6 +320,11 @@ void rf_dummy_init(void)
     /* Pre-populate rf_monitor immediately so the first HTTP GET already
      * shows non-zero values without waiting for the first Contiki tick. */
     rf_dummy_tick();
+
+    rf_discovery_reset();  /* clear discovery queue on init */
+    rf_discovery_add((const uint8_t *)"\x00\x11\x22\x33\x44\x55\x66\x77");
+    rf_discovery_add((const uint8_t *)"\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF");
+    rf_discovery_add((const uint8_t *)"\x01\x23\x45\x67\x89\xAB\xCD\xEF");
 }
 
 void rf_dummy_tick(void)
