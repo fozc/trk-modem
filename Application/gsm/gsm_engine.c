@@ -1480,6 +1480,7 @@ bool gsm_cusd_parse_phone_number(const char *msg)
 		LOG(_GSM_, "Yeni Simn: %s Eski: %s", new_number.number, prev_number.number);
 		modem_config_set_simcard_phone_number(&new_number);
 		gsm_log_modem_event_with_arg(ELOG_GSM_EVENT_SIMCARD_CHANGED, &new_number, sizeof(new_number));
+		modem_config_sync();
 	}
 
 	return true;
