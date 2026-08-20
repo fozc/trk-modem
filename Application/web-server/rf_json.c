@@ -123,17 +123,17 @@ static unsigned int rfj_emit(char *buf, unsigned int sz, unsigned int pos,
         {
             case RFJ_F1:
                 pos += xsnprintf(&buf[pos], (sz - pos),
-                                 "%s%.1f", (i > 0) ? "," : "", fv);
+                                 "%s%.1f", (i > 0) ? "," : "", (double)fv);
                 break;
 
             case RFJ_F2:
                 pos += xsnprintf(&buf[pos], (sz - pos),
-                                 "%s%.2f", (i > 0) ? "," : "", fv);
+                                 "%s%.2f", (i > 0) ? "," : "", (double)fv);
                 break;
 
             case RFJ_F3:
                 pos += xsnprintf(&buf[pos], (sz - pos),
-                                 "%s%.3f", (i > 0) ? "," : "", fv);
+                                 "%s%.3f", (i > 0) ? "," : "", (double)fv);
                 break;
 
             default:

@@ -273,7 +273,7 @@ static void test_store_and_staging(void)
     TEST_CHECK(rf_store_stage_begin() == true, "stage_begin OK");
     TEST_CHECK(rf_store_stage_begin() == false, "ic ice staging reddedilir");
     rw = rf_store_get_mutable(FEEDER_1);
-    rw->config.fider_id = 7U;   /* parse yarida kaldi simülasyonu */
+    rw->config.fider_id = 7U;   /* parse yarida kaldi simulasyonu */
     rf_store_stage_abort();
     ro = rf_store_get(FEEDER_1);
     TEST_CHECK(ro->config.fider_id == 2U, "abort sonrasi committed deger korunur");
