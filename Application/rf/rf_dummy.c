@@ -49,7 +49,7 @@
 /** Number of steps in one current ramp cycle (10 % -> 110 % of nominal). */
 #define RF_DUMMY_RAMP_STEPS      100U
 
-/** Temperature ramp: steps to go from 25 °C to 65 °C. */
+/** Temperature ramp: steps to go from 25 C to 65 C. */
 #define RF_DUMMY_TEMP_STEPS      200U
 
 /** Fault counter increment interval in simulation steps. */
@@ -58,7 +58,7 @@
 /** Trip counter increment interval in simulation steps. */
 #define RF_DUMMY_TRIP_INTERVAL   200U
 
-/** Nominal current fallback when config reports 0 (unit: 0.1 A → 100 = 10 A). */
+/** Nominal current fallback when config reports 0 (unit: 0.1 A - 100 = 10 A). */
 #define RF_DUMMY_FALLBACK_NOMINAL_x10  100U
 
 /* ============================================================================
@@ -218,7 +218,7 @@ static void build_monitor(uint32_t line_id,
     const uint8_t  eff_mode    = (cfg->config.operating_mode != 0U) ? cfg->config.operating_mode     : 1U;
     const uint8_t  eff_freq    = (cfg->config.line_frequency >= 45U) ? cfg->config.line_frequency : 50U;
     /* Monitor device_id alani (uint32) sentetik kalir; EUI-64 kimligi
-     * config'te tasınır ve monitor tablosunda gosterilmez (scope disi). */
+     * config'te tasinir ve monitor tablosunda gosterilmez (scope disi). */
     const uint32_t base_dev    = 0x1001U + (uint32_t)line_id * 3U;
     const uint32_t eff_r_dev   = base_dev;
     const uint32_t eff_s_dev   = base_dev + 1U;
@@ -240,7 +240,7 @@ static void build_monitor(uint32_t line_id,
                               ? (uint16_t)(faz_akimi - threshold_x10)
                               : 0U;
 
-    /* ---- temperature: linear ramp 25..65 °C, wraps ------------------ */
+    /* ---- temperature: linear ramp 25..65 C, wraps ------------------ */
     const int32_t temp_raw = 25 + (int32_t)((fstate->step % RF_DUMMY_TEMP_STEPS) * 40U / RF_DUMMY_TEMP_STEPS);
 
     /* ---- event counters ---------------------------------------------- */

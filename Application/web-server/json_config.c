@@ -413,11 +413,10 @@ static bool validate_ip_address(const char *ip) {
         return false;
     }
     
-    int octets[4];
     int count = 0;
     int num = 0;
     int digit_count = 0;
-    
+
     for (size_t i = 0; i <= len; i++) {
         if (ip[i] == '.' || ip[i] == '\0') {
             if (digit_count == 0 || digit_count > 3) {
@@ -428,7 +427,7 @@ static bool validate_ip_address(const char *ip) {
                 xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: Invalid IP octet: %d (max: 255)\r\n", num);
                 return false;
             }
-            octets[count++] = num;
+            count++;
             num = 0;
             digit_count = 0;
             if (count > 4) {
@@ -500,14 +499,14 @@ static bool validate_iec_timeouts(const jiec_config_t *config) {
     return true;
 }
 
-/* Validate IEC104 window parameters (K and W) */
+/* Validate IEC104 window parameters (K and W, uint8_t: 1-255) */
 static bool validate_iec_windows(const jiec_config_t *config) {
-    if (config->k_max < 1 || config->k_max > 32767) {
-        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: K must be 1-32767, got %u\r\n", config->k_max);
+    if (config->k_max < 1) {
+        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: K must be 1-255, got %u\r\n", config->k_max);
         return false;
     }
-    if (config->w_max < 1 || config->w_max > 32767) {
-    	xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: W must be 1-32767, got %u\r\n", config->w_max);
+    if (config->w_max < 1) {
+    	xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: W must be 1-255, got %u\r\n", config->w_max);
         return false;
     }
     if (config->w_max >= config->k_max) {
@@ -633,10 +632,10 @@ static bool validate_modbus_device_id(uint8_t device_addr) {
     return true;
 }
 
-/* Validate SIM card PIN (4-8 digits) */
+/* Validate SIM card PIN (uint16_t alani: en az 4 basamak) */
 static bool validate_sim_pin(uint16_t pin) {
-    if (pin < 1000 || pin > 99999999) {
-        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: SIM PIN %u invalid (expected 4-8 digits)\r\n", pin);
+    if (pin < 1000) {
+        xcprintf(XCOLOR_RED, "[VALIDATION] ERROR: SIM PIN %u invalid (expected 4+ digits)\r\n", pin);
         return false;
     }
     return true;
@@ -804,15 +803,23 @@ static bool parse_device_config_internal(const char **str, modem_config_t *dev) 
     if (!expect_object_start(str)) return false;
     
     while (!is_object_end(str)) {
-        /* RW Fields - Parse these */
+        /* RW Fields - Parse these. Degerler once yerel degiskene parse
+         * edilir: modem_config_t packed oldugundan uye adresleri
+         * hizasiz olabilir (-Waddress-of-packed-member). */
+        uint16_t v16;
+        uint32_t v32;
+        int32_t i32;
+
         if (match_key(str, "WebArayuzuPortu")) {
-            if (!parse_uint16(str, &dev->web_interface_port)) return false;
+            if (!parse_uint16(str, &v16)) return false;
             /* Port validation */
-            if (!validate_port(dev->web_interface_port)) {
+            if (!validate_port(v16)) {
                 return false;
             }
+            dev->web_interface_port = v16;
         } else if (match_key(str, "SimKartPin")) {
-            if (!parse_uint16(str, &dev->sim_card_pin)) return false;
+            if (!parse_uint16(str, &v16)) return false;
+            dev->sim_card_pin = v16;
         } else if (match_key(str, "SimKartAPN")) {
             if (!parse_string(str, dev->apn.apn, MAX_APN_LEN)) return false;
         } else if (match_key(str, "SimKartAPNSifresi")) {
@@ -822,19 +829,24 @@ static bool parse_device_config_internal(const char **str, modem_config_t *dev) 
         } else if (match_key(str, "NtpServer")) {
             if (!parse_string(str, dev->ntp_server, MAX_NTP_SERVER_LEN)) return false;
         } else if (match_key(str, "NtpServerPortu")) {
-            if (!parse_uint16(str, &dev->ntp_server_port)) return false;
+            if (!parse_uint16(str, &v16)) return false;
             /* Port validation */
-            if (!validate_port(dev->ntp_server_port)) {
+            if (!validate_port(v16)) {
                 return false;
             }
+            dev->ntp_server_port = v16;
         } else if (match_key(str, "Time")) {
-            if (!parse_uint32(str, &dev->time)) return false;
+            if (!parse_uint32(str, &v32)) return false;
+            dev->time = v32;
         } else if (match_key(str, "TimeZone")) {
-            if (!parse_int32(str, &dev->time_zone)) return false;
+            if (!parse_int32(str, &i32)) return false;
+            dev->time_zone = i32;
         } else if (match_key(str, "PeriyodikModemResetPeriyodu")) {
-            if (!parse_uint32(str, &dev->periodic_modem_reset_period)) return false;
+            if (!parse_uint32(str, &v32)) return false;
+            dev->periodic_modem_reset_period = v32;
         } else if (match_key(str, "DevreyeAlinmaZamani")) {
-            if (!parse_uint32(str, &dev->commissioning_time)) return false;
+            if (!parse_uint32(str, &v32)) return false;
+            dev->commissioning_time = v32;
         }
         /* RO Fields - Skip these (serial_number, production_date, lifetime, 
          * modem_firmware_version, rf_firmware_version, coordinates) */

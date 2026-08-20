@@ -84,7 +84,7 @@ uint16_t rf_config_writable_crc(const rf_feeder_config_t *blk);
 
 /**
  * @brief Store'u NVRAM last-known aynasindan yukle (app_main, nvram_init
- *        sonrasi cagrılır). Lazily ilk get'te de cagrilir (test kolayligi).
+ *        sonrasi cagrilir). Lazily ilk get'te de cagrilir (test kolayligi).
  */
 void rf_store_init(void);
 
