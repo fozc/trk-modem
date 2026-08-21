@@ -119,8 +119,8 @@ void Error_Handler(void);
 #define LED_RGB1_BLUE_GPIO_Port GPIOE
 #define MODBUS_EN_FLT_Pin LL_GPIO_PIN_14
 #define MODBUS_EN_FLT_GPIO_Port GPIOE
-#define OVP_PV_Pin LL_GPIO_PIN_15
-#define OVP_PV_GPIO_Port GPIOE
+#define PWR_PANIC_Pin LL_GPIO_PIN_15
+#define PWR_PANIC_GPIO_Port GPIOE
 #define RF_RESET_Pin LL_GPIO_PIN_10
 #define RF_RESET_GPIO_Port GPIOB
 #define O_GPIO2_Pin LL_GPIO_PIN_12

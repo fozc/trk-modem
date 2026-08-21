@@ -43,8 +43,8 @@ static uint8_t  s_pin_reset_state = 0;
 static const uint8_t gsm_common_init_vector[] =
 {
 	//GSM_CHECHK_MODULE,
-	GSM_ENABLE_TELIT_LOG_1,
-	GSM_ENABLE_TELIT_LOG_2,
+	//GSM_ENABLE_TELIT_LOG_1,
+	//GSM_ENABLE_TELIT_LOG_2,
 	GSM_DISABLE_FLOW_CNTRL,
 	GSM_SET_BAUDRATE,
 	GSM_DISABLE_ECHO,
