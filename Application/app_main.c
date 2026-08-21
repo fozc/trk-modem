@@ -17,6 +17,7 @@
 #include "shell.h"
 #include "nvram.h"
 #include "rf_config.h"
+#include "rf_scp_cmd.h"
 #include "elog.h"
 #include "xmodem_process.h"
 #include "modbus_process.h"
@@ -263,8 +264,8 @@ __attribute__ ((noreturn)) void app_main(void)
 	digital_input_init();
 	relay_init();
 
-	/* TODO: source the RF SCP device address from configuration. */
-	rf_process_init(1U);
+	/* RTU SCP adresi sabittir (R0 2.3b): 0x02. Hub 0x01, broadcast 0x00. */
+	rf_process_init(RF_SCP_ADDR_RTU);
 	fault_log_init();
 	web_shell_init(NULL);
 
