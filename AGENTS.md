@@ -38,6 +38,14 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   variable prefixes or the `p_` pointer prefix — use plain descriptive
   snake_case names for globals, statics, pointers, and parameters.
   (Yoda conditions still apply.)
+- **Naming discipline:** before introducing a function or variable,
+  THINK FIRST and pick the widely accepted, conventional name from
+  general programming practice that reads naturally in context
+  (e.g. `buffer_len`, `frame_len`, `is_valid`, `has_pending`,
+  `parse_frame`, `send_request`, `handle_response`). Prefer the most
+  common, meaningful term; avoid invented synonyms, cute names, or
+  unnecessary abbreviations. Names are written for the next reader,
+  not the author.
 - **ASCII only** in code and comments — no Turkish characters.
 - Functions <= 100 lines, <= 5 parameters; private functions `static`;
   include order: own header, project, HAL, standard.
