@@ -92,10 +92,10 @@
 #define CHARGER_EN_PIN           PIN_6
 #define CHARGER_FET_GPIO         GPIO_C
 #define CHARGER_FET_PIN          PIN_7
-#define CHARGER_STAT_BSP_GPIO    GPIO_D
-#define CHARGER_STAT_BSP_PIN     PIN_14
-#define CHARGER_INT_BSP_GPIO     GPIO_D
-#define CHARGER_INT_BSP_PIN      PIN_15
+#define CHARGER_STAT_GPIO    GPIO_D
+#define CHARGER_STAT_PIN     PIN_14
+#define CHARGER_INT_GPIO     GPIO_D
+#define CHARGER_INT_PIN      PIN_15
 
 /* --- SPI Flash CS --- */
 #define FLASH_CS_BSP_GPIO        GPIO_D

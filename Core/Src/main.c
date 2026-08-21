@@ -703,7 +703,7 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   USART_InitStruct.PrescalerValue = LL_USART_PRESCALER_DIV1;
-  USART_InitStruct.BaudRate = 115200;
+  USART_InitStruct.BaudRate = 230400;
   USART_InitStruct.DataWidth = LL_USART_DATAWIDTH_8B;
   USART_InitStruct.StopBits = LL_USART_STOPBITS_1;
   USART_InitStruct.Parity = LL_USART_PARITY_NONE;
@@ -968,6 +968,7 @@ static void MX_TIM3_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
+  LL_EXTI_InitTypeDef EXTI_InitStruct = {0};
   LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
@@ -1008,7 +1009,7 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = EWDT_FEED_Pin|OVP_PV_Pin|GSM_SW_RDY_Pin;
+  GPIO_InitStruct.Pin = EWDT_FEED_Pin|GSM_SW_RDY_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(GPIOE, &GPIO_InitStruct);
@@ -1110,6 +1111,22 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(GPIOH, &GPIO_InitStruct);
+
+  /**/
+  LL_EXTI_SetEXTISource(LL_EXTI_CONFIG_PORTE, LL_EXTI_CONFIG_LINE15);
+
+  /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_15;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  /**/
+  LL_GPIO_SetPinPull(PWR_PANIC_GPIO_Port, PWR_PANIC_Pin, LL_GPIO_PULL_NO);
+
+  /**/
+  LL_GPIO_SetPinMode(PWR_PANIC_GPIO_Port, PWR_PANIC_Pin, LL_GPIO_MODE_INPUT);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

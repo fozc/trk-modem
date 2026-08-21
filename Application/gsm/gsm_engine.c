@@ -1477,7 +1477,7 @@ bool gsm_cusd_parse_phone_number(const char *msg)
 
 	if(memcmp(new_number.number, prev_number.number, 10) != 0) /* Sim kart no degismis mi ? */
 	{
-		LOG(_GSM_, "Yeni Simn: %s Eski: %s", new_number.number, prev_number.number);
+		LOG(_GSM_, "Yeni Sim: %s Eski: %s", new_number.number, prev_number.number);
 		modem_config_set_simcard_phone_number(&new_number);
 		gsm_log_modem_event_with_arg(ELOG_GSM_EVENT_SIMCARD_CHANGED, &new_number, sizeof(new_number));
 		modem_config_sync();
