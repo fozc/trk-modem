@@ -73,3 +73,8 @@ dkms.conf
 # doc/ local-only files: keep on disk, out of git (PowerBoard doc stays tracked)
 doc/*
 !doc/PowerBoard_I2C_Protocol.md
+
+# simulator derleme ciktilari
+tools/rf-hub-sim/rf_hub_sim.exe
+tools/rf-hub-sim/hub_selftest.exe
+tools/rf-hub-sim/build/
