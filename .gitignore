@@ -70,9 +70,10 @@ dkms.conf
 # Burayi haric tut, en sonda olmali!
 !Middlewares/ST/touchgfx/**
 
-# doc/ local-only files: keep on disk, out of git (PowerBoard doc stays tracked)
+# doc/ local-only files: keep on disk, out of git (PowerBoard doc + writing guide stay tracked)
 doc/*
 !doc/PowerBoard_I2C_Protocol.md
+!doc/belge_yazim_rehberi.md
 
 # simulator derleme ciktilari
 tools/rf-hub-sim/rf_hub_sim.exe
