@@ -878,6 +878,18 @@ void hub_on_packet(hub_t *hub, const scp_packet_t *pkt)
         case SCP_TYPE_GET:  handle_get(hub, pkt); break;
         case SCP_TYPE_SET:  handle_set(hub, pkt); break;
         case SCP_TYPE_PING: handle_ping(hub, pkt);break;
+
+        case SCP_TYPE_ACK:
+            /* Hub'in gonderdigi PING'in yaniti (RTU -> hub ACK) */
+            hub_log(hub, "  ACK (PING yaniti) cmd=%u seq=%u", pkt->cmd,
+                    pkt->seq);
+            break;
+
+        case SCP_TYPE_ERROR:
+            hub_log(hub, "  ERROR (bizim istegimize hata) cmd=%u seq=%u",
+                    pkt->cmd, pkt->seq);
+            break;
+
         default:
             hub_log(hub, "  beklenmedik TYPE (yanit yok)");
             break;
