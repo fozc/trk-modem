@@ -46,6 +46,7 @@ devreye alma zincirini (TIME_SYNC -> envanter) tetikler.
 | Tus | Islev |
 |---|---|
 | `b` | BOOT_NOTIFY gonder |
+| `p` | PING gonder (RTU bostan ACK donmeli) |
 | `d` | DISCOVERY_REPORT gonder (atanmamis yeni EUI) |
 | `t` | TRIP_NOTIFY gonder (envanterdeki 1. cihaz icin) |
 | `v` | LIVE_DATA gonder |

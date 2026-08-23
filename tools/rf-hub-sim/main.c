@@ -110,6 +110,7 @@ static void print_help(void)
     printf(
         "Klavye komutlari:\n"
         "  b  BOOT_NOTIFY gonder (RTU TIME_SYNC tetiklemeli)\n"
+        "  p  PING gonder (RTU bostan ACK donmeli)\n"
         "  d  DISCOVERY_REPORT gonder (atanmamis EUI)\n"
         "  t  TRIP_NOTIFY gonder (envanterdeki 1. cihaz)\n"
         "  v  LIVE_DATA gonder\n"
@@ -248,6 +249,7 @@ int main(int argc, char *argv[])
             switch (c)
             {
                 case 'b': hub_send_boot_notify(&hub);   break;
+                case 'p': hub_send_ping(&hub);          break;
                 case 'd': hub_send_discovery(&hub);     break;
                 case 't': hub_send_trip(&hub);          break;
                 case 'v': hub_send_live(&hub);          break;

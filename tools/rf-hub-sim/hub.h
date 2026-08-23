@@ -132,6 +132,9 @@ void hub_send_live(hub_t *hub);
 void hub_send_anomaly(hub_t *hub);
 void hub_send_log_bell(hub_t *hub);
 
+/** @brief RTU'ya PING gonder (canlilik yoklamasi; RTU bostan ACK donmeli). */
+void hub_send_ping(hub_t *hub);
+
 /** @brief Halkaya count olay ekle (trigger koduyla) ve zil gonder. */
 void hub_add_events(hub_t *hub, uint8_t count, uint8_t trigger);
 
