@@ -967,6 +967,23 @@ void hub_send_boot_notify(hub_t *hub)
     send_proactive(hub, CMD_BOOT, body, 1U, "BOOT_NOTIFY");
 }
 
+void hub_send_ping(hub_t *hub)
+{
+    scp_packet_t pkt;
+
+    pkt.dst      = RTU_ADDR;
+    pkt.src      = HUB_ADDR;
+    pkt.type     = SCP_TYPE_PING;   /* R1 2.4: bostan ACK donmesi beklenir */
+    pkt.cmd      = 0U;
+    pkt.seq      = hub->proactive_seq;
+    hub->proactive_seq++;
+    pkt.data_len = 0U;
+
+    send_pkt(hub, &pkt);
+    hub_log(hub, "PROACTIVE PING (seq=%u) -> RTU bostan ACK donmeli",
+            pkt.seq);
+}
+
 void hub_send_discovery(hub_t *hub)
 {
     uint8_t body[9];

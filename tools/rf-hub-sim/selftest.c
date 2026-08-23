@@ -372,6 +372,14 @@ int main(void)
     TEST_CHECK(send_req(&hub, SCP_TYPE_GET, 0x01U, seq++, NULL, 0U) == 0U,
                "drop enjeksiyonu: yanit YOK");
 
+    /* --- 13) hub -> RTU PING gonderimi --- */
+    cap_clear();
+    hub_send_ping(&hub);
+    TEST_CHECK(cap_count == 1U, "hub_send_ping tek paket gonderir");
+    TEST_CHECK((cap[0].dst == 0x02U) && (cap[0].src == 0x01U) &&
+               (cap[0].type == SCP_TYPE_PING) && (cap[0].data_len == 0U),
+               "PING paketi dst=RTU src=HUB type=PING govdesiz");
+
     printf("\r\n=== rf-hub-sim testleri: %u pass / %u fail ===\r\n",
            test_pass, test_fail);
     return (test_fail == 0U) ? 0 : 1;
