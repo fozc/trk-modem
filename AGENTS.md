@@ -76,6 +76,14 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
 - **ASCII-only rule applies to code and code comments.** This section
   governs natural-language text the agent produces (documentation, README,
   explanations, commit messages).
+- **Document creation guide:** for any technical document the agent
+  writes or reformats (guides, specs, protocol docs), follow
+  `doc/belge_yazim_rehberi.md` — plain everyday Turkish, English terms
+  kept with parenthetical Turkish on first use, "-malıdır" rule form,
+  fixed heading labels (Amaç/Kullanım yeri/...), one rule in one place
+  with cross-references, and the recommended document skeleton
+  (protocol docs: title page, glossary, roles, common rules, command
+  pages, flows, timing table, examples, changelog).
 - When writing Turkish text, prefer the **most common, widely-used word
   or expression** for a concept — avoid rare, dated, or overly literary
   synonyms. For example prefer "kullanici girisi" over obscure variants.
