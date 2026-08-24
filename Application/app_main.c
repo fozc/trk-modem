@@ -17,7 +17,8 @@
 #include "shell.h"
 #include "nvram.h"
 #include "rf_config.h"
-#include "rf_scp_cmd.h"
+#include "rf_scp.h"
+#include "rf_comm.h"
 #include "elog.h"
 #include "xmodem_process.h"
 #include "modbus_process.h"
@@ -39,7 +40,6 @@
 #include "relay.h"
 
 #include "rf_dummy.h"
-#include "rf_process.h"
 
 
 #include "relay.h"
@@ -265,7 +265,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	relay_init();
 
 	/* RTU SCP adresi sabittir (R0 2.3b): 0x02. Hub 0x01, broadcast 0x00. */
-	rf_process_init(RF_SCP_ADDR_RTU);
+	rf_comm_init(RF_SCP_ADDR_RTU);
 	fault_log_init();
 	web_shell_init(NULL);
 
@@ -280,7 +280,7 @@ __attribute__ ((noreturn)) void app_main(void)
 #endif
 
 	system_status_init();
-	bms_reader_init();
+	//bms_reader_init();
 	LL_USART_EnableIT_RXNE_RXFNE(UART5);  /* BMS RX */
 
 

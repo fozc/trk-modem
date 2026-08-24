@@ -1,12 +1,14 @@
 /*
  * test_rf_scp.c
  *
- *  Created on: Aug 20, 2026
+ *  Created on: Aug 21, 2026
  *      Author: fatih
  *
- * Host tests for the SCP application layer: rf_scp_cmd body codec and the
- * rf_scp_engine single-outstanding master (SEQ, timeout, retry, link-down,
- * busy rejection, response matching). Time and packets are injected.
+ * Host tests for rf_scp - the pure SCP wire codec:
+ * request builder, PING reply builder and GET_STATUS response decoder.
+ *
+ * (The request/response state machine now lives in rf_comm.c, which is
+ * exercised on target; it depends on Contiki/HAL and is not built here.)
  *
  * Usage: make -f Makefile.scp run  (Application/rf/test)
  */
@@ -16,8 +18,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "scp.h"
-#include "rf_scp_cmd.h"
-#include "rf_scp_engine.h"
+#include "rf_scp.h"
 
 static unsigned int test_pass = 0U;
 static unsigned int test_fail = 0U;
@@ -37,47 +38,6 @@ static unsigned int test_fail = 0U;
         }                                                               \
     } while (0)
 
-/* ----------------------------------------------------------------------
- * Capture harness for the injected engine callbacks
- * ---------------------------------------------------------------------- */
-
-static scp_packet_t  cap_sent[16];
-static unsigned int  cap_sent_count;
-
-static rf_job_kind_t cap_done_kind;
-static rf_result_t   cap_done_result;
-static unsigned int  cap_done_count;
-static bool          cap_done_had_rsp;
-
-static void cap_reset(void)
-{
-    cap_sent_count   = 0U;
-    cap_done_count   = 0U;
-    cap_done_had_rsp = false;
-}
-
-static void cap_send(const scp_packet_t *req)
-{
-    if (cap_sent_count < (sizeof(cap_sent) / sizeof(cap_sent[0])))
-    {
-        cap_sent[cap_sent_count] = *req;
-        cap_sent_count++;
-    }
-}
-
-static void cap_done(rf_job_kind_t kind, rf_result_t result,
-                     const scp_packet_t *rsp)
-{
-    cap_done_kind    = kind;
-    cap_done_result  = result;
-    cap_done_had_rsp = (NULL != rsp);
-    cap_done_count++;
-}
-
-/* ----------------------------------------------------------------------
- * rf_scp_cmd: GET_STATUS body codec
- * ---------------------------------------------------------------------- */
-
 static void build_status_ack(scp_packet_t *pkt, uint8_t seq)
 {
     (void)memset(pkt, 0, sizeof(*pkt));
@@ -88,25 +48,87 @@ static void build_status_ack(scp_packet_t *pkt, uint8_t seq)
     pkt->seq      = seq;
     pkt->data_len = RF_SCP_STATUS_BODY_LEN;
 
-    /* uptime_sec = 0x11223344 (LE) */
-    pkt->data[0] = 0x44U;
+    pkt->data[0] = 0x44U;   /* uptime = 0x11223344 (LE) */
     pkt->data[1] = 0x33U;
     pkt->data[2] = 0x22U;
     pkt->data[3] = 0x11U;
-
-    /* fw_version "v1.2.3" then NUL padding; [19] stays NUL */
     (void)memcpy(&pkt->data[4], "v1.2.3", 7U);
-
-    pkt->data[20] = 0x01U;   /* sched_active */
-
-    /* sched_cycle_count = 0x00000101 (LE) */
-    pkt->data[21] = 0x01U;
+    pkt->data[20] = 0x01U;  /* sched_active */
+    pkt->data[21] = 0x01U;  /* sched_cycle_count = 0x00000101 (LE) */
     pkt->data[22] = 0x01U;
-    pkt->data[23] = 0x00U;
-    pkt->data[24] = 0x00U;
 }
 
-static void test_decode_status_ok(void)
+static void test_build_request(void)
+{
+    scp_packet_t req;
+
+    TEST_CHECK(rf_scp_build_request(RF_OP_GET_STATUS, 0U, 7U, NULL, 0U, &req),
+               "build_request GET_STATUS step0 ok");
+    TEST_CHECK((RF_SCP_ADDR_HUB == req.dst) && (RF_SCP_ADDR_RTU == req.src)
+               && (SCP_TYPE_GET == req.type)
+               && (RF_SCP_CMD_GET_STATUS == req.cmd)
+               && (7U == req.seq) && (0U == req.data_len),
+               "build_request header correct");
+    TEST_CHECK(!rf_scp_build_request(RF_OP_GET_STATUS, 1U, 0U, NULL, 0U, &req),
+               "build_request no step1 for GET_STATUS");
+    TEST_CHECK(!rf_scp_build_request(RF_OP_NONE, 0U, 0U, NULL, 0U, &req),
+               "build_request rejects unknown operation");
+    TEST_CHECK(!rf_scp_build_request(RF_OP_GET_STATUS, 0U, 0U, NULL, 3U,
+                                     &req),
+               "build_request GET_STATUS rejects body");
+}
+
+static void test_build_time_sync(void)
+{
+    scp_packet_t req;
+    const uint8_t cp56[RF_SCP_TIME_SYNC_BODY_LEN] =
+        {0x34U, 0x12U, 0x1EU, 0x0CU, 0x15U, 0x08U, 0x1AU};
+
+    TEST_CHECK(rf_scp_build_request(RF_OP_TIME_SYNC, 0U, 9U,
+                                    cp56, RF_SCP_TIME_SYNC_BODY_LEN, &req),
+               "build_request TIME_SYNC step0 ok");
+    TEST_CHECK((SCP_TYPE_SET == req.type)
+               && (RF_SCP_CMD_TIME_SYNC == req.cmd)
+               && (9U == req.seq)
+               && (RF_SCP_TIME_SYNC_BODY_LEN == req.data_len),
+               "build_request TIME_SYNC header correct");
+    TEST_CHECK(0 == memcmp(req.data, cp56, RF_SCP_TIME_SYNC_BODY_LEN),
+               "build_request TIME_SYNC body copied verbatim");
+
+    TEST_CHECK(!rf_scp_build_request(RF_OP_TIME_SYNC, 0U, 0U, NULL, 7U, &req),
+               "build_request TIME_SYNC rejects NULL body");
+    TEST_CHECK(!rf_scp_build_request(RF_OP_TIME_SYNC, 0U, 0U, cp56, 6U,
+                                     &req),
+               "build_request TIME_SYNC rejects wrong length");
+    TEST_CHECK(!rf_scp_build_request(RF_OP_TIME_SYNC, 1U, 0U, cp56, 7U,
+                                     &req),
+               "build_request no step1 for TIME_SYNC");
+}
+
+static void test_build_ping_reply(void)
+{
+    scp_packet_t ping;
+    scp_packet_t ack;
+
+    (void)memset(&ping, 0, sizeof(ping));
+    ping.dst  = RF_SCP_ADDR_RTU;
+    ping.src  = RF_SCP_ADDR_HUB;
+    ping.type = SCP_TYPE_PING;
+    ping.cmd  = 0x04U;
+    ping.seq  = 0x2AU;
+
+    TEST_CHECK(rf_scp_build_ping_reply(&ping, &ack), "ping reply built");
+    TEST_CHECK((SCP_TYPE_ACK == ack.type) && (RF_SCP_ADDR_HUB == ack.dst)
+               && (RF_SCP_ADDR_RTU == ack.src) && (ping.cmd == ack.cmd)
+               && (ping.seq == ack.seq) && (0U == ack.data_len),
+               "ping reply echoes cmd/seq as empty ACK");
+
+    ping.dst = RF_SCP_ADDR_BROADCAST;
+    TEST_CHECK(!rf_scp_build_ping_reply(&ping, &ack),
+               "broadcast PING gets no reply");
+}
+
+static void test_decode_status(void)
 {
     scp_packet_t    pkt;
     rf_hub_status_t st;
@@ -115,210 +137,28 @@ static void test_decode_status_ok(void)
 
     TEST_CHECK(RF_CMD_OK == rf_scp_decode_status(&pkt, &st),
                "decode_status returns OK");
-    TEST_CHECK(0x11223344U == st.uptime_sec,
-               "decode_status uptime LE");
+    TEST_CHECK(0x11223344U == st.uptime_sec, "decode_status uptime LE");
     TEST_CHECK(0 == strcmp(st.fw_version, "v1.2.3"),
                "decode_status fw_version NUL-terminated");
-    TEST_CHECK(1U == st.sched_active,
-               "decode_status sched_active");
+    TEST_CHECK(1U == st.sched_active, "decode_status sched_active");
     TEST_CHECK(0x00000101U == st.sched_cycle_count,
                "decode_status sched_cycle_count LE");
-}
 
-static void test_decode_status_rejects(void)
-{
-    scp_packet_t    pkt;
-    rf_hub_status_t st;
-
-    build_status_ack(&pkt, 0x00U);
-    pkt.data_len = 24U;   /* wrong length */
-
+    pkt.data_len = 24U;
     TEST_CHECK(RF_CMD_ERR_LEN == rf_scp_decode_status(&pkt, &st),
                "decode_status rejects wrong length");
     TEST_CHECK(RF_CMD_ERR_NULL == rf_scp_decode_status(NULL, &st),
-               "decode_status rejects NULL packet");
-    TEST_CHECK(RF_CMD_ERR_NULL == rf_scp_decode_status(&pkt, NULL),
-               "decode_status rejects NULL out");
-}
-
-/* ----------------------------------------------------------------------
- * rf_scp_engine
- * ---------------------------------------------------------------------- */
-
-static void engine_setup(rf_engine_t *eng)
-{
-    cap_reset();
-    rf_engine_init(eng, cap_send, cap_done, 500U, 3U, 3U);
-}
-
-static void test_engine_start_and_seq(void)
-{
-    rf_engine_t eng;
-    engine_setup(&eng);
-
-    TEST_CHECK(rf_engine_start(&eng, RF_JOB_GET_STATUS, 1000U),
-               "start accepts first job");
-    TEST_CHECK(rf_engine_is_busy(&eng),
-               "engine busy after start");
-    TEST_CHECK(1U == cap_sent_count,
-               "one request emitted on start");
-    TEST_CHECK((RF_SCP_ADDR_HUB == cap_sent[0].dst)
-               && (RF_SCP_ADDR_RTU == cap_sent[0].src)
-               && (SCP_TYPE_GET == cap_sent[0].type)
-               && (RF_SCP_CMD_GET_STATUS == cap_sent[0].cmd)
-               && (0U == cap_sent[0].data_len),
-               "request header matches GET_STATUS");
-
-    uint8_t first_seq = cap_sent[0].seq;
-
-    /* Second job rejected while busy. */
-    TEST_CHECK(!rf_engine_start(&eng, RF_JOB_GET_STATUS, 1000U),
-               "busy rejects second job");
-    TEST_CHECK(1U == cap_sent_count,
-               "no extra request while busy");
-
-    /* Complete first, then a second job must use seq+1. */
-    scp_packet_t ack;
-    build_status_ack(&ack, first_seq);
-    rf_engine_on_response(&eng, &ack);
-
-    TEST_CHECK(!rf_engine_is_busy(&eng),
-               "engine idle after ACK");
-    TEST_CHECK(rf_engine_start(&eng, RF_JOB_GET_STATUS, 2000U),
-               "start accepts job after completion");
-    TEST_CHECK(cap_sent[1].seq == (uint8_t)(first_seq + 1U),
-               "SEQ increments per new request");
-}
-
-static void test_engine_ack_result(void)
-{
-    rf_engine_t eng;
-    engine_setup(&eng);
-
-    (void)rf_engine_start(&eng, RF_JOB_GET_STATUS, 1000U);
-
-    scp_packet_t ack;
-    build_status_ack(&ack, cap_sent[0].seq);
-    rf_engine_on_response(&eng, &ack);
-
-    TEST_CHECK((1U == cap_done_count)
-               && (RF_RESULT_OK == cap_done_result)
-               && (RF_JOB_GET_STATUS == cap_done_kind)
-               && cap_done_had_rsp,
-               "ACK yields OK result with response");
-    TEST_CHECK(RF_LINK_UP == rf_engine_link_state(&eng),
-               "link UP after ACK");
-}
-
-static void test_engine_mismatch_ignored(void)
-{
-    rf_engine_t eng;
-    engine_setup(&eng);
-
-    (void)rf_engine_start(&eng, RF_JOB_GET_STATUS, 1000U);
-
-    scp_packet_t ack;
-    build_status_ack(&ack, (uint8_t)(cap_sent[0].seq + 5U));  /* wrong SEQ */
-    rf_engine_on_response(&eng, &ack);
-
-    TEST_CHECK((0U == cap_done_count) && rf_engine_is_busy(&eng),
-               "mismatched SEQ is ignored, job stays busy");
-}
-
-static void test_engine_error_result(void)
-{
-    rf_engine_t eng;
-    engine_setup(&eng);
-
-    (void)rf_engine_start(&eng, RF_JOB_GET_STATUS, 1000U);
-
-    scp_packet_t err;
-    (void)memset(&err, 0, sizeof(err));
-    err.type     = SCP_TYPE_ERROR;
-    err.cmd      = RF_SCP_CMD_GET_STATUS;
-    err.seq      = cap_sent[0].seq;
-    err.data_len = 1U;
-    err.data[0]  = RF_SCP_ERR_NOT_AVAILABLE;
-    rf_engine_on_response(&eng, &err);
-
-    TEST_CHECK((1U == cap_done_count) && (RF_RESULT_ERR == cap_done_result),
-               "ERROR yields ERR result");
-    TEST_CHECK(RF_LINK_UP == rf_engine_link_state(&eng),
-               "ERROR keeps link UP (peer alive)");
-}
-
-static void test_engine_timeout_retry(void)
-{
-    rf_engine_t eng;
-    engine_setup(&eng);   /* timeout 500, max_retry 3 */
-
-    (void)rf_engine_start(&eng, RF_JOB_GET_STATUS, 1000U);
-    uint8_t seq = cap_sent[0].seq;
-
-    /* Before deadline: no retry. */
-    rf_engine_tick(&eng, 1400U);
-    TEST_CHECK(1U == cap_sent_count, "no retry before timeout");
-
-    /* Deadlines at +500 each; 3 retries then drop. */
-    rf_engine_tick(&eng, 1500U);   /* retry 1 */
-    rf_engine_tick(&eng, 2000U);   /* retry 2 */
-    rf_engine_tick(&eng, 2500U);   /* retry 3 */
-
-    TEST_CHECK(4U == cap_sent_count,
-               "3 retransmissions after the first send");
-    TEST_CHECK(cap_sent[3].seq == seq,
-               "retransmit reuses the same SEQ");
-    TEST_CHECK(0U == cap_done_count,
-               "job not finished while retries remain");
-
-    rf_engine_tick(&eng, 3000U);   /* no retries left -> timeout */
-    TEST_CHECK((1U == cap_done_count)
-               && (RF_RESULT_TIMEOUT == cap_done_result)
-               && !cap_done_had_rsp,
-               "timeout after retries exhausted, no response");
-    TEST_CHECK(!rf_engine_is_busy(&eng),
-               "engine idle after timeout");
-}
-
-static void run_timeout_cycle(rf_engine_t *eng, uint32_t base_ms)
-{
-    (void)rf_engine_start(eng, RF_JOB_GET_STATUS, base_ms);
-    rf_engine_tick(eng, base_ms + 500U);    /* retry 1 */
-    rf_engine_tick(eng, base_ms + 1000U);   /* retry 2 */
-    rf_engine_tick(eng, base_ms + 1500U);   /* retry 3 */
-    rf_engine_tick(eng, base_ms + 2000U);   /* drop */
-}
-
-static void test_engine_link_down_after_n(void)
-{
-    rf_engine_t eng;
-    engine_setup(&eng);   /* link_fail_n = 3 */
-
-    run_timeout_cycle(&eng, 1000U);
-    TEST_CHECK(RF_LINK_DOWN != rf_engine_link_state(&eng),
-               "link not DOWN after 1 failure");
-
-    run_timeout_cycle(&eng, 10000U);
-    TEST_CHECK(RF_LINK_DOWN != rf_engine_link_state(&eng),
-               "link not DOWN after 2 failures");
-
-    run_timeout_cycle(&eng, 20000U);
-    TEST_CHECK(RF_LINK_DOWN == rf_engine_link_state(&eng),
-               "link DOWN after 3 consecutive failures");
+               "decode_status rejects NULL");
 }
 
 int main(void)
 {
-    printf("=== rf_scp host tests ===\r\n");
+    printf("=== rf_scp codec host tests ===\r\n");
 
-    test_decode_status_ok();
-    test_decode_status_rejects();
-    test_engine_start_and_seq();
-    test_engine_ack_result();
-    test_engine_mismatch_ignored();
-    test_engine_error_result();
-    test_engine_timeout_retry();
-    test_engine_link_down_after_n();
+    test_build_request();
+    test_build_time_sync();
+    test_build_ping_reply();
+    test_decode_status();
 
     printf("\r\n=== %u passed, %u failed ===\r\n", test_pass, test_fail);
     return (0U == test_fail) ? 0 : 1;

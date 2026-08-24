@@ -5,8 +5,8 @@
 #   make -f Makefile.scp run    - build and run tests
 #   make -f Makefile.scp clean  - remove build artifacts
 #
-# Pure host build (gcc): rf_scp_cmd + rf_scp_engine + injected time/packets.
-# No HAL / Contiki dependency.
+# Pure host build (gcc): rf_scp wire codec only. The request/response state
+# machine lives in rf_process.c (Contiki/HAL) and is exercised on target.
 
 CC := gcc
 CFLAGS := -std=c11 -Wall -Wextra -Werror -Wshadow -Wconversion -O2 -g
@@ -16,17 +16,15 @@ BUILD_DIR := build_scp
 SRC_DIR := ..
 LIBSCP_DIR := ../../libscp
 
-# Include paths (rf_scp_cmd.h / rf_scp_engine.h -> scp.h)
+# Include paths (rf_scp.h -> scp.h)
 INCLUDES := -I$(SRC_DIR) -I$(LIBSCP_DIR)
 
 # Sources
-CMD_SRC := $(SRC_DIR)/rf_scp_cmd.c
-ENGINE_SRC := $(SRC_DIR)/rf_scp_engine.c
+SCP_SRC := $(SRC_DIR)/rf_scp.c
 TEST_SRC := test_rf_scp.c
 
 # Objects
-CMD_OBJ := $(BUILD_DIR)/rf_scp_cmd.o
-ENGINE_OBJ := $(BUILD_DIR)/rf_scp_engine.o
+SCP_OBJ := $(BUILD_DIR)/rf_scp.o
 TEST_OBJ := $(BUILD_DIR)/test_rf_scp.o
 
 TARGET := $(BUILD_DIR)/test_rf_scp
@@ -35,16 +33,13 @@ TARGET := $(BUILD_DIR)/test_rf_scp
 
 all: $(TARGET)
 
-$(TARGET): $(CMD_OBJ) $(ENGINE_OBJ) $(TEST_OBJ)
+$(TARGET): $(SCP_OBJ) $(TEST_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(CMD_OBJ): $(CMD_SRC) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-$(ENGINE_OBJ): $(ENGINE_SRC) | $(BUILD_DIR)
+$(SCP_OBJ): $(SCP_SRC) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(TEST_OBJ): $(TEST_SRC) | $(BUILD_DIR)

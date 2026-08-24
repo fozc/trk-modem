@@ -22,7 +22,6 @@
 #include "stm32u3xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "rf_process.h"
 #include "modbus_rtu_slave.h"
 #include "modbus_process.h"
 /* USER CODE END Includes */
@@ -94,7 +93,7 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-void HardFault_Handler(void)
+void HardFault_Handler2(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
 
@@ -329,9 +328,10 @@ void USART3_IRQHandler(void)
 	{
 		uint8_t rx_byte = LL_USART_ReceiveData8(USART3);
 
-		if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
+			if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
 		{
-			rf_rx_interrupt_handler(rx_byte);
+			void rf_comm_rx_interrupt_handler(uint8_t data);
+			rf_comm_rx_interrupt_handler(rx_byte);
 		}
 	}
   /* USER CODE END USART3_IRQn 0 */
