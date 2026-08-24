@@ -116,23 +116,18 @@ static void print_hex(uint8_t indent, const uint8_t *data, size_t len)
 }
 
 /* ======================================================================
- * TX logging: hub'dan RTU'ya giden cerceve
+ * TX: hub'dan RTU'ya giden cerceve
+ *
+ * Akis: hub.c -> hub_send_packet (baslik + indeks) -> scp_send
+ *       -> tx_to_serial (hex dump, basliksiz — ayni olayin devami)
  * ====================================================================== */
 static void tx_to_serial(const uint8_t *frame, size_t frame_len)
 {
     (void)serial_write(frame, frame_len);
-    log_index++;
-    printf("#%04u [TX] %s -> %s  %s  %s  seq=%u  (%zu bayt)\n",
-           log_index,
-           "HUB", addr_name(0x02),
-           " ", " ",
-           0, frame_len);
-    /* Not: detay hub.c icindeki hub_log tarafindan basilir;
-     * burada yalniz ham cerceve yazilir. */
+    /* Hex dump yalnizca — baslik hub_send_packet'te basildi */
     print_hex(6, frame, frame_len);
 }
 
-/* TX icin paket seviyesinde ozet (hub.c'nin send callback'inden) */
 static void hub_send_packet(const scp_packet_t *pkt, void *user)
 {
     (void)user;
@@ -144,7 +139,7 @@ static void hub_send_packet(const scp_packet_t *pkt, void *user)
            cmd_name(pkt->cmd),
            pkt->seq,
            (unsigned)pkt->data_len);
-    (void)scp_send(&scp_ctx, pkt);
+    (void)scp_send(&scp_ctx, pkt);   /* -> tx_to_serial: hex dump */
 }
 
 /* ======================================================================
