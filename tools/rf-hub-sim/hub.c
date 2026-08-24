@@ -95,14 +95,13 @@ static void wrf32(uint8_t *b, float f)
     wr32(b, v);
 }
 
-/* Paylasilan log indeks sayaci (main.c tarafindan da kullanilir) */
-unsigned int hub_log_index = 0;
-
+/* hub_log: cercevenin altinda girintili islem detayi.
+ * Indeks YALNIZCA main.c'de RX/TX cerceveleri icin artar;
+ * buradaki satirlar o cercevenin alt-event'idir, kendi indeksi yoktur. */
 static void hub_log(const hub_t *hub, const char *fmt, ...)
 {
     va_list ap;
-    hub_log_index++;
-    printf("      #%04u | %10u ms | ", hub_log_index, hub->now_ms);
+    printf("      | %10u ms | ", hub->now_ms);
     va_start(ap, fmt);
     (void)vprintf(fmt, ap);
     va_end(ap);
