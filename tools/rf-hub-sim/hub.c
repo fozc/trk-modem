@@ -95,10 +95,14 @@ static void wrf32(uint8_t *b, float f)
     wr32(b, v);
 }
 
+/* Paylasilan log indeks sayaci (main.c tarafindan da kullanilir) */
+unsigned int hub_log_index = 0;
+
 static void hub_log(const hub_t *hub, const char *fmt, ...)
 {
     va_list ap;
-    printf("[HUB %10u] ", hub->now_ms);
+    hub_log_index++;
+    printf("      #%04u | %10u ms | ", hub_log_index, hub->now_ms);
     va_start(ap, fmt);
     (void)vprintf(fmt, ap);
     va_end(ap);
@@ -210,7 +214,7 @@ static void send_error(hub_t *hub, const scp_packet_t *req, uint8_t code,
     err.data_len = 1U;
     err.data[0] = code;
     send_pkt(hub, &err);
-    hub_log(hub, "  -> ERROR cmd=0x%02X code=0x%02X (%s)", req->cmd, code, why);
+    hub_log(hub, "  HATA YANITI: code=0x%02X (%s)", code, why);
 }
 
 static void send_proactive(hub_t *hub, uint8_t cmd, const uint8_t *body,
@@ -230,7 +234,7 @@ static void send_proactive(hub_t *hub, uint8_t cmd, const uint8_t *body,
         (void)memcpy(pkt.data, body, len);
     }
     send_pkt(hub, &pkt);
-    hub_log(hub, "PROACTIVE %s (cmd=0x%02X seq=%u len=%u)", name, cmd,
+    hub_log(hub, "PROACTIVE GONDERILDI: %s (seq=%u govde=%u bayt)", name,
             pkt.seq, len);
 }
 
@@ -391,7 +395,7 @@ static void req_get_status(hub_t *hub, const scp_packet_t *req)
     body[20] = 1U;                                /* sched_active */
     wr32(&body[21], hub->sched_cycles);
 
-    hub_log(hub, "  GET_STATUS -> uptime=%us fw=%s cycles=%u",
+    hub_log(hub, "  YANIT HAZIR: uptime=%us fw=%s cycles=%u",
             (unsigned)((hub->now_ms - hub->start_ms) / 1000U),
             HUB_FW_LABEL, hub->sched_cycles);
     send_ack(hub, req, body, 25U);
@@ -442,8 +446,8 @@ static void req_cfg_read(hub_t *hub, const scp_packet_t *req)
         return;
     }
 
-    hub_log(hub, "  CFG_READ [%s] -> 96 B block (cfg_crc=0x%04X)", eui_hex,
-            hub_cfg_crc(d->block));
+    hub_log(hub, "  YANIT: %s cihazinin 96 B config blogu (cfg_crc=0x%04X)",
+            eui_hex, hub_cfg_crc(d->block));
     send_ack(hub, req, d->block, HUB_BLOCK_LEN);
 }
 
@@ -482,13 +486,13 @@ static void req_log_head(hub_t *hub, const scp_packet_t *req)
     if (hub->r1_mode != 0U)
     {
         wr16(&body[8], hub->tail);
-        hub_log(hub, "  LOG_HEAD (R1) -> head=%u wrap=%u total=%u tail=%u",
+        hub_log(hub, "  YANIT (R1/10B): head=%u wrap=%u total=%u tail=%u",
                 hub->head, hub->wrap, hub->total_events, hub->tail);
         send_ack(hub, req, body, 10U);
     }
     else
     {
-        hub_log(hub, "  LOG_HEAD (R0) -> head=%u wrap=%u total=%u (tail yok)",
+        hub_log(hub, "  YANIT (R0/8B): head=%u wrap=%u total=%u | tail YOK (0x46'a bak)",
                 hub->head, hub->wrap, hub->total_events);
         send_ack(hub, req, body, 8U);
     }
@@ -556,7 +560,8 @@ static void req_inventory(hub_t *hub, const scp_packet_t *req)
             return;
         }
         hub->inventory_loaded = 1U;
-        hub_log(hub, "  INVENTORY_END -> envanter yuklendi (inventory_loaded=1)");
+        hub_log(hub, "  ENVANTER TAMAM: inventory_loaded=1 | "
+                 "0x2A artik cagrilabilir");
         send_ack(hub, req, NULL, 0U);
         return;
     }
@@ -671,8 +676,8 @@ static void req_cfg_write(hub_t *hub, const scp_packet_t *req)
     }
     hub->group_crc = hub_cfg_crc(d->staged_block);
 
-    hub_log(hub, "  CFG_WRITE [%s] -> STAGED (grup uyeleri=0x%02X "
-                 "cfg_crc=0x%04X; uygulama 0x24 ile)",
+    hub_log(hub, "  KABUL: %s cihazi icin STAGED (uyeler=0x%02X "
+                 "cfg_crc=0x%04X | COMMIT bekleniyor)",
             eui_hex, hub->group_members, hub->group_crc);
     send_ack(hub, req, NULL, 0U);
 }
@@ -694,8 +699,8 @@ static void req_cfg_commit(hub_t *hub, const scp_packet_t *req)
     hub->group_id = req->data[0];
     hub->group_state = HUB_G_DELIVERED;
     hub->apply_at_ms = hub->now_ms + HUB_APPLY_DELAY_MS;
-    hub_log(hub, "  CFG_COMMIT gid=%u -> DELIVERED; %u ms sonra APPLIED "
-                 "bildirilecek (0x21)", hub->group_id, HUB_APPLY_DELAY_MS);
+    hub_log(hub, "  UYGULANIYOR: gid=%u -> DELIVERED | %u ms sonra 0x21 ile "
+                 "sonuc bildirilecek", hub->group_id, HUB_APPLY_DELAY_MS);
     send_ack(hub, req, NULL, 0U);
 }
 
@@ -773,8 +778,9 @@ static void req_log_consume(hub_t *hub, const scp_packet_t *req)
 
     wr16(&body[0], hub->tail);
     wr16(&body[2], hub->pending);
-    hub_log(hub, "  LOG_CONSUME x=%u -> tail=%u left=%u (taahhut islendi)",
-            x, hub->tail, hub->pending);
+    hub_log(hub, "  ISLENDI: tail=%u | kalan (left)=%u | zil susar mi: %s",
+            hub->tail, hub->pending,
+            hub->pending == 0 ? "EVET" : "HAYIR");
     send_ack(hub, req, body, 4U);
 }
 
@@ -827,11 +833,11 @@ static void handle_ping(hub_t *hub, const scp_packet_t *req)
 
     if (req->dst == SCP_BROADCAST_ADDR)
     {
-        hub_log(hub, "  PING (broadcast) -> yanit YOK (R1 2.4)");
+        hub_log(hub, "  YANIT YOK: broadcast PING cevaplanmaz (R1 2.4)");
         return;
     }
 
-    hub_log(hub, "  PING -> ACK");
+    hub_log(hub, "  YANIT: bostan ACK donuluyor");
     ack.dst = req->src;
     ack.src = HUB_ADDR;
     ack.type = SCP_TYPE_ACK;
@@ -863,7 +869,7 @@ void hub_on_packet(hub_t *hub, const scp_packet_t *pkt)
         return;
     }
 
-    hub_log(hub, "RX cmd=0x%02X type=0x%02X seq=%u len=%u",
+    hub_log(hub, "ISTEK ALINDI: cmd=0x%02X type=0x%02X seq=%u govde=%u bayt",
             pkt->cmd, pkt->type, pkt->seq, pkt->data_len);
 
     /* bu SET'in yaniti tekrar icin yakalanir */
@@ -941,7 +947,7 @@ void hub_tick(hub_t *hub, uint32_t now_ms)
             }
             hub->group_state = HUB_G_APPLIED;
             hub->sched_cycles++;
-            hub_log(hub, "APPLIED: gid=%u cfg_crc=0x%04X (0x21 gidiyor)",
+            hub_log(hub, "SONUC: APPLIED | gid=%u cfg_crc=0x%04X | 0x21 gonderiliyor",
                     hub->group_id, hub->group_crc);
         }
         else
@@ -953,7 +959,7 @@ void hub_tick(hub_t *hub, uint32_t now_ms)
             }
             hub->group_state = HUB_G_FAILED;
             hub->group_reason = reason;
-            hub_log(hub, "FAILED: gid=%u reason=%u (0x21 gidiyor)",
+            hub_log(hub, "SONUC: FAILED | gid=%u sebep=%u | 0x21 gonderiliyor",
                     hub->group_id, reason);
         }
 

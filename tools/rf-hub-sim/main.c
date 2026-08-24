@@ -7,8 +7,7 @@
  * RF HUB simulatoru - canli UART modu.
  *
  * RTU'nun USART3 hattiyla (230400 8N1) konusur; tum gelen/giden
- * cerceveleri hex + yorumlu loglar, klavyeden proaktif bildirim ve
- * hata enjeksiyonu komutlari sunar.
+ * cerceveleri indeks + hex + cozumlenmis icerikle loglar.
  *
  * Kullanim:
  *   rf_hub_sim COM7                  (230400, R0 modu, acilista BOOT)
@@ -32,54 +31,219 @@
 static scp_t scp_ctx;
 static hub_t hub;
 
-/* Ham bayt akisi: cerceve tamamlanana kadar birikir, hex olarak basilir */
+/* Ham bayt akisi: cerceve tamamlanana kadar birikir */
 static uint8_t  rx_raw[SCP_FRAME_MAX_SIZE * 2];
 static size_t   rx_raw_len;
 static uint32_t rx_last_ms;
-static uint32_t rx_frame_count;
 
-static void print_hex_line(const char *tag, const uint8_t *data, size_t len)
+/* Log indeks sayaci: her cerceve (RX ve TX) numaralanir */
+static unsigned int log_index = 0;
+
+/* Komut kodlarina insan-okur isim (hub.c ile ayni) */
+static const char *cmd_name(uint8_t cmd)
+{
+    switch (cmd)
+    {
+        case 0x01: return "GET_STATUS";
+        case 0x02: return "GET_FRAM_STATS";
+        case 0x03: return "SET_CONFIG(stub)";
+        case 0x04: return "INVENTORY_SET";
+        case 0x05: return "INVENTORY_END";
+        case 0x06: return "INVENTORY_UPDATE";
+        case 0x07: return "TIME_SYNC";
+        case 0x10: return "TRIP_NOTIFY";
+        case 0x11: return "LIVE_DATA";
+        case 0x12: return "ANOMALY_REPORT";
+        case 0x13: return "BOOT_NOTIFY";
+        case 0x14: return "DISCOVERY_REPORT";
+        case 0x20: return "CFG_READ_ALL";
+        case 0x21: return "CFG_STATUS_NOTIFY";
+        case 0x22: return "CFG_WRITE";
+        case 0x24: return "CFG_COMMIT";
+        case 0x26: return "CFG_ABORT";
+        case 0x28: return "CFG_STATUS_GET";
+        case 0x2A: return "EPOCH_REFRESH";
+        case 0x40: return "LOG_READ_HEAD";
+        case 0x42: return "LOG_READ_RECORD";
+        case 0x44: return "LOG_READ_RANGE";
+        case 0x46: return "LOG_CONSUME_TO";
+        case 0x47: return "LOG_AVAILABLE";
+        default:   return "?";
+    }
+}
+
+static const char *type_name(uint8_t type)
+{
+    switch (type)
+    {
+        case SCP_TYPE_GET:   return "GET";
+        case SCP_TYPE_SET:   return "SET";
+        case SCP_TYPE_ACK:   return "ACK";
+        case SCP_TYPE_ERROR: return "ERROR";
+        case SCP_TYPE_PING:  return "PING";
+        default:             return "?";
+    }
+}
+
+static const char *addr_name(uint8_t addr)
+{
+    switch (addr)
+    {
+        case 0x00: return "BCAST";
+        case 0x01: return "HUB";
+        case 0x02: return "RTU";
+        default:   return "?";
+    }
+}
+
+/* HEX satiri: 16 bayt/satir, iki bosluk aralikli */
+static void print_hex(uint8_t indent, const uint8_t *data, size_t len)
 {
     size_t i;
-    printf("%s", tag);
     for (i = 0U; i < len; i++)
     {
-        printf("%02X ", data[i]);
-        if ((i % 24U) == 23U)
+        if ((i % 16U) == 0U)
         {
-            printf("\n    ");
+            if (i > 0U)
+            {
+                printf("\n");
+            }
+            printf("%*s", (int)indent, "");
+        }
+        printf("%02X ", data[i]);
+    }
+    printf("\n");
+}
+
+/* ======================================================================
+ * TX logging: hub'dan RTU'ya giden cerceve
+ * ====================================================================== */
+static void tx_to_serial(const uint8_t *frame, size_t frame_len)
+{
+    (void)serial_write(frame, frame_len);
+    log_index++;
+    printf("#%04u [TX] %s -> %s  %s  %s  seq=%u  (%zu bayt)\n",
+           log_index,
+           "HUB", addr_name(0x02),
+           " ", " ",
+           0, frame_len);
+    /* Not: detay hub.c icindeki hub_log tarafindan basilir;
+     * burada yalniz ham cerceve yazilir. */
+    print_hex(6, frame, frame_len);
+}
+
+/* TX icin paket seviyesinde ozet (hub.c'nin send callback'inden) */
+static void hub_send_packet(const scp_packet_t *pkt, void *user)
+{
+    (void)user;
+    log_index++;
+    printf("#%04u [TX] HUB -> %s  %s  %s  seq=%u  len=%u\n",
+           log_index,
+           addr_name(pkt->dst),
+           type_name(pkt->type),
+           cmd_name(pkt->cmd),
+           pkt->seq,
+           (unsigned)pkt->data_len);
+    (void)scp_send(&scp_ctx, pkt);
+}
+
+/* ======================================================================
+ * RX logging: RTU'dan hub'a gelen cerceve
+ * ====================================================================== */
+static void log_rx_frame(const scp_packet_t *pkt, const uint8_t *raw,
+                         size_t raw_len)
+{
+    const char *direction;
+
+    log_index++;
+
+    /* Yon belirle: kim kime gonderdi? */
+    if (pkt->src == 0x02)
+    {
+        direction = "RTU -> HUB";
+    }
+    else
+    {
+        direction = "HUB -> RTU";
+    }
+
+    printf("#%04u [RX] %s  %s  %s  seq=%u  len=%u  (%zu bayt telde)\n",
+           log_index,
+           direction,
+           type_name(pkt->type),
+           cmd_name(pkt->cmd),
+           pkt->seq,
+           (unsigned)pkt->data_len,
+           raw_len);
+    print_hex(6, raw, raw_len);
+
+    /* Govde ozeti: ilk 16 bayti decode et */
+    if (pkt->data_len > 0U)
+    {
+        printf("      govde: ");
+        switch (pkt->cmd)
+        {
+            case 0x01:  /* GET_STATUS istegi — govde yok */
+                printf("(govdesiz)\n");
+                break;
+            case 0x07:  /* TIME_SYNC */
+                if (pkt->data_len >= 7U)
+                {
+                    printf("CP56: %02X%02X %02X %02X %02X %02X %02X "
+                           "(ms|min|sa|gn|ay|yl)\n",
+                           pkt->data[0], pkt->data[1], pkt->data[2],
+                           pkt->data[3], pkt->data[4], pkt->data[5],
+                           pkt->data[6]);
+                }
+                break;
+            case 0x04:  /* INVENTORY_SET */
+                if (pkt->data_len >= 12U)
+                {
+                    printf("zone=%u fider=%u phase=%u "
+                           "EUI=%02X%02X%02X%02X%02X%02X%02X%02X ch=%u\n",
+                           pkt->data[0], pkt->data[1], pkt->data[2],
+                           pkt->data[3], pkt->data[4], pkt->data[5],
+                           pkt->data[6], pkt->data[7], pkt->data[8],
+                           pkt->data[9], pkt->data[10], pkt->data[11]);
+                }
+                break;
+            case 0x46:  /* LOG_CONSUME_TO */
+                if (pkt->data_len >= 2U)
+                {
+                    printf("index=%u (son_okunan+1)\n",
+                           (unsigned)(pkt->data[0] |
+                                      ((uint16_t)pkt->data[1] << 8)));
+                }
+                break;
+            default:
+                printf("%u bayt\n", (unsigned)pkt->data_len);
+                break;
         }
     }
     printf("\n");
 }
 
-static void tx_to_serial(const uint8_t *frame, size_t frame_len)
-{
-    (void)serial_write(frame, frame_len);
-    print_hex_line("[TX ->] ", frame, frame_len);
-}
-
-/* hub -> paket -> tel */
-static void hub_send_packet(const scp_packet_t *pkt, void *user)
-{
-    (void)user;
-    (void)scp_send(&scp_ctx, pkt);
-}
-
+/* ======================================================================
+ * Ham bayt / bozuk cerceve notu
+ * ====================================================================== */
 static void flush_raw_note(uint32_t now)
 {
     if ((rx_raw_len > 0U) &&
         ((int32_t)(now - rx_last_ms) >= (int32_t)RAW_IDLE_NOTE_MS))
     {
-        /* bayt geldi ama tam/ gecerli cerceve yok: CRC/format bozukluguna isaret */
-        printf("[RAW %10u] %zu bayt ALINDI ama gecerli cerceve cozulemedi "
-               "(bozuk CRC/format - cihaz SESSILCCE atardi)\n    ",
-               now, rx_raw_len);
-        print_hex_line("", rx_raw, rx_raw_len);
+        log_index++;
+        printf("#%04u [??] %zu bayt geldi ama gecerli cerceve cozulemedi\n"
+               "      (bozuk CRC/format — gercek cihaz sessizce atardi)\n",
+               log_index, rx_raw_len);
+        print_hex(6, rx_raw, rx_raw_len);
+        printf("\n");
         rx_raw_len = 0U;
     }
 }
 
+/* ======================================================================
+ * RX byte akisi -> cerceve
+ * ====================================================================== */
 static void feed_rx_byte(uint8_t b, uint32_t now)
 {
     if (rx_raw_len < sizeof(rx_raw))
@@ -96,8 +260,7 @@ static void feed_rx_byte(uint8_t b, uint32_t now)
         const scp_packet_t *pkt = scp_get_packet(&scp_ctx);
         if (pkt != NULL)
         {
-            print_hex_line("[RX <-] ", rx_raw, rx_raw_len);
-            rx_frame_count++;
+            log_rx_frame(pkt, rx_raw, rx_raw_len);
             hub_on_packet(&hub, pkt);
         }
         scp_packet_done(&scp_ctx);
@@ -105,6 +268,9 @@ static void feed_rx_byte(uint8_t b, uint32_t now)
     }
 }
 
+/* ======================================================================
+ * Yardim / durum
+ * ====================================================================== */
 static void print_help(void)
 {
     printf(
@@ -128,7 +294,7 @@ static void print_help(void)
 static void print_state(void)
 {
     size_t i;
-    printf("---- DURUM ----\n");
+    printf("---- DURUM (log #%u) ----\n", log_index);
     printf("envanter_loaded=%u  grup: id=%u state=%u members=0x%02X "
            "crc=0x%04X\n",
            hub.inventory_loaded, hub.group_id, hub.group_state,
@@ -157,10 +323,12 @@ static void print_state(void)
            "(0x40 modu: %s)\n",
            hub.head, hub.wrap, hub.tail, hub.pending, hub.total_events,
            (hub.r1_mode != 0U) ? "R1 (10B)" : "R0 (8B)");
-    printf("cerceve sayaci: RX=%u\n", rx_frame_count);
-    printf("---------------\n");
+    printf("-------------------------\n");
 }
 
+/* ======================================================================
+ * Main
+ * ====================================================================== */
 int main(int argc, char *argv[])
 {
     const char *port = NULL;
@@ -217,11 +385,11 @@ int main(int argc, char *argv[])
     printf("Port=%s baud=%u 0x40 modu=%s\n", port, baud,
            (r1_mode != 0U) ? "R1 (10B tail)" : "R0 (8B)");
     print_help();
-    printf("========================\n");
+    printf("========================\n\n");
 
     if (send_boot != 0U)
     {
-        Sleep(300);                       /* karsi taraf acilisi icin pay */
+        Sleep(300);
         hub_tick(&hub, GetTickCount());
         hub_send_boot_notify(&hub);
     }
@@ -261,7 +429,7 @@ int main(int argc, char *argv[])
                 case 'x': hub.drop_next = 1U;
                           printf("[SIM] sonraki istek yutulacak\n");    break;
                 case 'f': hub.commit_fail = 1U;
-                          hub.commit_fail_reason = 3U;  /* RANGE */
+                          hub.commit_fail_reason = 3U;
                           printf("[SIM] sonraki COMMIT FAILED olacak\n");
                           break;
                 case '1': hub.r1_mode = (uint8_t)(hub.r1_mode ^ 1U);
@@ -269,7 +437,7 @@ int main(int argc, char *argv[])
                                  (hub.r1_mode != 0U) ? "R1" : "R0"); break;
                 case 's': print_state();                break;
                 case 'h': print_help();                 break;
-                case 'q': printf("Cikis\n");
+                case 'q': printf("Cikis (toplam log: %u)\n", log_index);
                           serial_close();
                           return 0;
                 default: break;
