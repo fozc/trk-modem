@@ -87,7 +87,7 @@ static uint8_t       time_sync_tries = 0;
 
 PROCESS_NAME(rf_comm_process);
 
-#define RF_SIMULATOR
+//#define RF_SIMULATOR
 
 #ifdef RF_SIMULATOR
 #include "main.h"
