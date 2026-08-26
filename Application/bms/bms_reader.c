@@ -27,7 +27,7 @@ void bms_reader_get_data(bms_data_t *p_out)
 	*p_out = s_bms_data;
 }
 
-#if 0
+#if 1
 void bms_rx_interrupt_handler(uint8_t data)
 {
 	if (bms_rx_index < sizeof(bms_rx_buffer)){
