@@ -8,9 +8,9 @@
  *
  * Akis:
  *   rf_inventory_start()
- *     -> cursor'i (0,0)'a koy, send_next()
+ *     -> index'i (0,0)'a koy, send_next()
  *     -> gecerli cihaz bul -> scp_send_command(0x04, 12B)
- *     -> ACK -> cursor ilerlet -> send_next()  (dongu)
+ *     -> ACK -> index ilerlet -> send_next()  (dongu)
  *     -> cihaz kalmadi -> scp_send_command(0x05, END)
  *     -> ACK -> loaded = true
  *
@@ -40,54 +40,54 @@
 #define INV_RETRIES        2U
 
 /* ======================================================================
- * Module state (iterator cursor)
+ * Module state (iterator index)
  * ====================================================================== */
 
-static uint8_t  cursor_feeder;      /* 0..MAX_POWER_LINE_COUNT-1 */
-static uint8_t  cursor_phase;       /* 0=R, 1=S, 2=T             */
+static uint8_t  feeder_index;      /* 0..MAX_POWER_LINE_COUNT-1 */
+static uint8_t  phase_index;       /* 0=R, 1=S, 2=T             */
 static bool     inv_active;
 static bool     inv_loaded;
 static uint8_t  inv_ok_count;
 static uint8_t  inv_skip_count;
 
 /* ======================================================================
- * Cursor helpers
+ * Index helpers
  * ====================================================================== */
 
-/** Cursor'i bir faz ilerlet; faz biterse sonraki fidera gec. */
-static void cursor_advance(void)
+/** Index i bir faz ilerlet; faz biterse sonraki fidera gec. */
+static void index_advance(void)
 {
-    cursor_phase++;
-    if (cursor_phase >= 3U)
+    phase_index++;
+    if (phase_index >= 3U)
     {
-        cursor_phase = 0U;
-        cursor_feeder++;
+        phase_index = 0U;
+        feeder_index++;
     }
 }
 
 /**
- * @brief Cursor'in isaret ettigi slot'tan 12 bayt govde kur.
+ * @brief Index in isaret ettigi slot'tan 12 bayt govde kur.
  *
  * @return true gecerli cihaz var (in_use + EUI dolu);
- *         false bu slot bossa (cursor ilerletilmez, cagiran atmalar).
+ *         false bu slot bossa (index ilerletilmez, cagiran atmalar).
  */
-static bool build_body_at_cursor(uint8_t body[RF_SCP_INV_SET_BODY_LEN])
+static bool build_body_at_index(uint8_t body[RF_SCP_INV_SET_BODY_LEN])
 {
     const rf_feeder_t *feeder;
     const uint8_t     *eui;
 
-    if (cursor_feeder >= MAX_POWER_LINE_COUNT)
+    if (feeder_index >= MAX_POWER_LINE_COUNT)
     {
         return false;
     }
 
-    feeder = rf_store_get((feeder_id_t)cursor_feeder);
+    feeder = rf_store_get((feeder_id_t)feeder_index);
     if ((feeder == NULL) || (!feeder->in_use))
     {
         return false;
     }
 
-    switch (cursor_phase)
+    switch (phase_index)
     {
         case 0U:  eui = feeder->r_eui64; break;
         case 1U:  eui = feeder->s_eui64; break;
@@ -102,7 +102,7 @@ static bool build_body_at_cursor(uint8_t body[RF_SCP_INV_SET_BODY_LEN])
 
     body[0]  = feeder->config.zone_id;
     body[1]  = feeder->config.fider_id;
-    body[2]  = (uint8_t)(cursor_phase + 1U);   /* 1=L1, 2=L2, 3=L3 */
+    body[2]  = (uint8_t)(phase_index + 1U);   /* 1=L1, 2=L2, 3=L3 */
     (void)memcpy(&body[3], eui, 8U);
     body[11] = 0U;   /* TODO: channel kaynagi BOLATeX'e sorulacak */
 
@@ -126,12 +126,12 @@ static void on_set_done(scp_cmd_result_t result, const scp_packet_t *rsp)
     {
         inv_skip_count++;
         CSLOG_WARN("[INV] fider=%u faz=%u atlandi (hata)\r\n",
-                   (unsigned)(cursor_feeder + 1U),
-                   (unsigned)(cursor_phase + 1U));
+                   (unsigned)(feeder_index + 1U),
+                   (unsigned)(phase_index + 1U));
     }
 
     /* Bu cihazi tuket, sonrakine gec */
-    cursor_advance();
+    index_advance();
 }
 
 /** 0x05 INVENTORY_END bittiginde cagrilir. */
@@ -159,7 +159,7 @@ static void on_end_done(scp_cmd_result_t result, const scp_packet_t *rsp)
  * ====================================================================== */
 
 /**
- * @brief Cursor'dan itibaren sonraki gecerli cihazi bul ve 0x04 gonder.
+ * @brief Index dan itibaren sonraki gecerli cihazi bul ve 0x04 gonder.
  *        Cihaz kalmamissa 0x05 END gonder.
  *
  * Bu fonksiyon yalnizca komut mekanizmasi BOSKEN cagirilmalidir
@@ -170,11 +170,11 @@ static void send_next(void)
     uint8_t body[RF_SCP_INV_SET_BODY_LEN];
 
     /* Bos slotlari atla, ilk gecerli cihazi bul */
-    while (!build_body_at_cursor(body))
+    while (!build_body_at_index(body))
     {
-        cursor_advance();
+        index_advance();
 
-        if (cursor_feeder >= MAX_POWER_LINE_COUNT)
+        if (feeder_index >= MAX_POWER_LINE_COUNT)
         {
             /* Tum slotlar tarandi -> END gonder */
             if (scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_INVENTORY_END,
@@ -201,13 +201,13 @@ static void send_next(void)
                          on_set_done))
     {
         CSLOG("[INV] fider=%u faz=%u gonderiliyor (EUI=%02X..%02X)\r\n",
-              (unsigned)(cursor_feeder + 1U),
-              (unsigned)(cursor_phase + 1U),
+              (unsigned)(feeder_index + 1U),
+              (unsigned)(phase_index + 1U),
               body[3], body[10]);
     }
     else
     {
-        /* Komut mekanizmasi mesgul - cursor bu cihazda kalir,
+        /* Komut mekanizmasi mesgul - index bu cihazda kalir,
          * rf_inventory_continue() tekrar deneyecek. */
         CSLOG("[INV] komut mesgul, bekleniyor\r\n");
     }
@@ -226,8 +226,8 @@ void rf_inventory_start(void)
 
     inv_active    = true;
     inv_loaded    = false;
-    cursor_feeder = 0U;
-    cursor_phase  = 0U;
+    feeder_index = 0U;
+    phase_index  = 0U;
     inv_ok_count  = 0U;
     inv_skip_count = 0U;
 
