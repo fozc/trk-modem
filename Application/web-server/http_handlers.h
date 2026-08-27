@@ -249,11 +249,18 @@ void handle_get_modbus_config_json(void);
 void handle_post_modbus_config_json(const char *json_body);
 
 /**
- * @brief Handle GET /r?ayiriciRFConfig
- * 
+ * @brief Handle GET /config/rf
+ *
  * Returns RF configuration as JSON
  */
 void handle_get_rf_config_json(void);
+
+/**
+ * @brief Handle GET /discovery/rf
+ *
+ * Returns only the unassigned EUI-64 discovery list (lightweight).
+ */
+void handle_get_rf_discovery_json(void);
 
 /**
  * @brief Handle POST /w?ayiriciRFConfig
