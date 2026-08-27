@@ -127,6 +127,11 @@ static void route_and_handle_request(http_request_t *request)
             return;
         }
 
+        if (strcmp(request->path, "/discovery/rf") == 0) {
+            handle_get_rf_discovery_json();
+            return;
+        }
+
         if (strcmp(request->path, "/monitor/rf/") == 0) {
             handle_get_rf_monitor_json();
             return;

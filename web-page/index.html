@@ -166,12 +166,14 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
     s+='</div>';
   }
   s+='</div></div></div>';
-  s+='<div class="card">'+sectionHead('Discovered Devices','rf','Unassigned devices found on the RF network (pending setup queue)')+'<div class="card-body">';
-  if(!un.length){s+='<div class="empty">No pending devices. Newly discovered devices appear here and can be assigned to a feeder phase.</div>'}
+  s+='<div class="card"><div class="card-head"><div><h3>Discovered Devices</h3><div class="sub">Unassigned devices found on the RF network</div></div><div class="card-actions"><button class="btn btn-read btn-small" onclick="readRfDiscovery()">Refresh</button></div></div><div class="card-body" id="rf-discovery-panel">';
+  if(!un.length){s+='<div class="empty">No pending devices. Press Refresh after the hub discovers new devices.</div>'}
   else{s+='<div class="table-wrap"><table class="phase-table"><thead><tr><th>EUI-64</th><th>Assign to</th></tr></thead><tbody>'+un.map(u=>'<tr><td>'+esc(u.EUI64)+'</td><td><select id="rf-assign-f-'+esc(u.EUI64)+'">'+Array.from({length:FEEDER_TABS},(_,k)=>'<option value="'+k+'">Feeder '+(k+1)+'</option>').join('')+'</select> '+dev.map((dv,k)=>'<button class="btn btn-read btn-small" onclick="rfAssignEui(\''+esc(u.EUI64)+'\',\''+dv[0][0]+'\')">'+dv[1]+'</button>').join(' ')+'</td></tr>').join('')+'</tbody></table></div>'}
   return s+'</div></div>';
 }
 function rfAssignEui(eui,phase){const fsel=$('rf-assign-f-'+eui);const i=fsel?parseInt(fsel.value,10):0;const key={R:'R_DEVICEID',S:'S_DEVICEID',T:'T_DEVICEID'}[phase];const el=$('rf-'+key+'-'+i);if(!el){toast('Target field not found','err');return}el.value=eui.toUpperCase();el.dispatchEvent(new Event('input'));selectRfTab(i);toast('EUI-64 assigned to Feeder '+(i+1)+' phase '+phase,'ok')}
+async function readRfDiscovery(){if(loading)return;try{showLoad();const r=await api('/discovery/rf');hideLoad();if(r.success===false)throw new Error(r.error||'Read failed');const un=(r.data?.Unassigned||[]).filter(u=>u&&u.EUI64);const el=$('rf-discovery-panel');if(el){el.innerHTML=un.length?buildDiscoveryTable(un):'<div class="empty">No pending devices.</div>';toast('Discovery refreshed ('+un.length+' devices)','ok')}}catch(e){hideLoad();toast('Refresh error: '+e.message,'err')}}
+function buildDiscoveryTable(un){const dev=[['R_DEVICEID','L1'],['S_DEVICEID','L2'],['T_DEVICEID','L3']];return '<div class="table-wrap"><table class="phase-table"><thead><tr><th>EUI-64</th><th>Assign to</th></tr></thead><tbody>'+un.map(u=>'<tr><td>'+esc(u.EUI64)+'</td><td><select id="rf-assign-f-'+esc(u.EUI64)+'">'+Array.from({length:FEEDER_TABS},(_,k)=>'<option value="'+k+'">Feeder '+(k+1)+'</option>').join('')+'</select> '+dev.map(dv=>'<button class="btn btn-read btn-small" onclick="rfAssignEui(\''+esc(u.EUI64)+'\',\''+dv[0][0]+'\')">'+dv[1]+'</button>').join(' ')+'</td></tr>').join('')+'</tbody></table></div>'}
 function rfUpdateProv(i){const el=$('rf-HatID-'+i),b=$('rf-prov-'+i);if(el&&b)b.style.display=(parseInt(el.value,10)||0)===0?'block':'none'}
 function rfBindLive(){for(let i=0;i<FEEDER_COUNT;i++){const el=$('rf-HatID-'+i);if(el){el.addEventListener('input',()=>rfUpdateProv(i));rfUpdateProv(i)}}}
 

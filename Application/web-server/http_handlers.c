@@ -26,6 +26,7 @@
 #include "iec104_util.h"
 #include "rf.h"
 #include "rf_config.h"
+#include "rf_discovery.h"
 #include "rf_json.h"
 #include "gsm_engine.h"
 #include "elog.h"
@@ -1316,6 +1317,75 @@ void handle_post_modbus_config_json(const char *json_body)
 
     const char *response_body = "{\"message\":\"IEC104 configuration saved\",\"success\":true}";
     http_send_json(response_body, strlen(response_body));
+}
+
+/**
+ * @brief Handle GET /discovery/rf - sadece kesif listesi (Unassigned).
+ *
+ * Tam config degil; yalnizca atanmamis EUI-64 listesi doner.
+ * Hafif yanit: Refresh butonu icin tasarlandi (GSM trafiği tasarrufu).
+ */
+void handle_get_rf_discovery_json(void)
+{
+    uint8_t  count;
+    uint8_t  k;
+    int      pos = 0;
+    int      emitted = 0;
+    char     hex[RF_EUI64_HEX_LEN];
+    uint8_t  eui[RF_EUI64_LEN];
+
+    xprintf("[HTTP] GET /discovery/rf\r\n");
+
+    count = rf_discovery_get_count();
+
+    pos += xsnprintf(&handler_state.tx_buffer[pos],
+                     (unsigned int)(handler_state.tx_buffer_size - pos),
+                     "{\"success\":true,\"data\":{\"Unassigned\":[");
+
+    for (k = 0U; k < count; k++)
+    {
+        bool assigned = false;
+        int  i;
+
+        if (!rf_discovery_get_device(k, eui))
+        {
+            break;
+        }
+
+        for (i = 0; i < MAX_POWER_LINE_COUNT; i++)
+        {
+            const rf_feeder_t *feeder = rf_store_get((feeder_id_t)i);
+
+            if (feeder != NULL)
+            {
+                if ((memcmp(eui, feeder->r_eui64, RF_EUI64_LEN) == 0) ||
+                    (memcmp(eui, feeder->s_eui64, RF_EUI64_LEN) == 0) ||
+                    (memcmp(eui, feeder->t_eui64, RF_EUI64_LEN) == 0))
+                {
+                    assigned = true;
+                    break;
+                }
+            }
+        }
+
+        if (assigned)
+        {
+            continue;
+        }
+
+        rf_eui64_to_hex(eui, hex);
+        pos += xsnprintf(&handler_state.tx_buffer[pos],
+                         (unsigned int)(handler_state.tx_buffer_size - pos),
+                         "%s{\"EUI64\":\"%s\",\"FiderID\":0}",
+                         (emitted > 0) ? "," : "", hex);
+        emitted++;
+    }
+
+    pos += xsnprintf(&handler_state.tx_buffer[pos],
+                     (unsigned int)(handler_state.tx_buffer_size - pos),
+                     "]}}");
+
+    http_send_json(handler_state.tx_buffer, (size_t)pos);
 }
 
 /**
