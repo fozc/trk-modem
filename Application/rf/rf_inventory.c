@@ -36,8 +36,8 @@
  * ====================================================================== */
 
 /** INVENTORY_SET/END: yazma sinifi, uzun timeout (R1 zamanlama tablosu). */
-#define INV_TIMEOUT_MS     1000U
-#define INV_RETRIES        2U
+#define TIMEOUT_MS     1000U
+#define RETRIES        2U
 
 /* ======================================================================
  * Module state (iterator index)
@@ -45,10 +45,10 @@
 
 static uint8_t  feeder_index;      /* 0..MAX_POWER_LINE_COUNT-1 */
 static uint8_t  phase_index;       /* 0=R, 1=S, 2=T             */
-static bool     inv_active;
-static bool     inv_loaded;
-static uint8_t  inv_ok_count;
-static uint8_t  inv_skip_count;
+static bool     active;
+static bool     loaded;
+static uint8_t  sent_count;
+static uint8_t  skipped_count;
 
 /* ======================================================================
  * Index helpers
@@ -120,12 +120,12 @@ static void on_set_done(scp_cmd_result_t result, const scp_packet_t *rsp)
 
     if (SCP_CMD_OK == result)
     {
-        inv_ok_count++;
+        sent_count++;
     }
     else
     {
-        inv_skip_count++;
-        CSLOG_WARN("[INV] fider=%u faz=%u atlandi (hata)\r\n",
+        skipped_count++;
+        CSLOG_WARN("[RF-INV] fider=%u faz=%u atlandi (hata)\r\n",
                    (unsigned)(feeder_index + 1U),
                    (unsigned)(phase_index + 1U));
     }
@@ -141,17 +141,17 @@ static void on_end_done(scp_cmd_result_t result, const scp_packet_t *rsp)
 
     if (SCP_CMD_OK == result)
     {
-        inv_loaded = true;
-        CSLOG("[INV] envanter yuklendi: %u cihaz gonderildi, %u atlandi\r\n",
-              (unsigned)inv_ok_count, (unsigned)inv_skip_count);
+        loaded = true;
+        CSLOG("[RF-INV] envanter yuklendi: %u cihaz gonderildi, %u atlandi\r\n",
+              (unsigned)sent_count, (unsigned)skipped_count);
     }
     else
     {
-        CSLOG_WARN("[INV] INVENTORY_END basarisiz - hub envanteri yuklu "
+        CSLOG_WARN("[RF-INV] INVENTORY_END basarisiz - hub envanteri yuklu "
                    "sayilmaz\r\n");
     }
 
-    inv_active = false;
+    active = false;
 }
 
 /* ======================================================================
@@ -179,16 +179,16 @@ static void send_next(void)
             /* Tum slotlar tarandi -> END gonder */
             if (scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_INVENTORY_END,
                                  NULL, 0,
-                                 INV_TIMEOUT_MS, INV_RETRIES,
+                                 TIMEOUT_MS, RETRIES,
                                  on_end_done))
             {
-                CSLOG("[INV] %u cihaz tarandi, END gonderiliyor\r\n",
-                      (unsigned)(inv_ok_count + inv_skip_count));
+                CSLOG("[RF-INV] %u cihaz tarandi, END gonderiliyor\r\n",
+                      (unsigned)(sent_count + skipped_count));
             }
             else
             {
-                CSLOG_WARN("[INV] END gonderilemedi (mesgul)\r\n");
-                inv_active = false;
+                CSLOG_WARN("[RF-INV] END gonderilemedi (mesgul)\r\n");
+                active = false;
             }
             return;
         }
@@ -197,10 +197,10 @@ static void send_next(void)
     /* Gecerli cihaz bulundu -> 0x04 gonder */
     if (scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_INVENTORY_SET,
                          body, RF_SCP_INV_SET_BODY_LEN,
-                         INV_TIMEOUT_MS, INV_RETRIES,
+                         TIMEOUT_MS, RETRIES,
                          on_set_done))
     {
-        CSLOG("[INV] fider=%u faz=%u gonderiliyor (EUI=%02X..%02X)\r\n",
+        CSLOG("[RF-INV] fider=%u faz=%u gonderiliyor (EUI=%02X..%02X)\r\n",
               (unsigned)(feeder_index + 1U),
               (unsigned)(phase_index + 1U),
               body[3], body[10]);
@@ -209,7 +209,7 @@ static void send_next(void)
     {
         /* Komut mekanizmasi mesgul - index bu cihazda kalir,
          * rf_inventory_continue() tekrar deneyecek. */
-        CSLOG("[INV] komut mesgul, bekleniyor\r\n");
+        CSLOG("[RF-INV] komut mesgul, bekleniyor\r\n");
     }
 }
 
@@ -219,35 +219,35 @@ static void send_next(void)
 
 void rf_inventory_start(void)
 {
-    if (inv_active)
+    if (active)
     {
         return;   /* zaten calisiyor */
     }
 
-    inv_active    = true;
-    inv_loaded    = false;
+    active    = true;
+    loaded    = false;
     feeder_index = 0U;
     phase_index  = 0U;
-    inv_ok_count  = 0U;
-    inv_skip_count = 0U;
+    sent_count  = 0U;
+    skipped_count = 0U;
 
-    CSLOG("[INV] envanter push basliyor\r\n");
+    CSLOG("[RF-INV] envanter push basliyor\r\n");
     send_next();
 }
 
 bool rf_inventory_is_loaded(void)
 {
-    return inv_loaded;
+    return loaded;
 }
 
 bool rf_inventory_is_active(void)
 {
-    return inv_active;
+    return active;
 }
 
 void rf_inventory_continue(void)
 {
-    if (inv_active && scp_is_free())
+    if (active && scp_is_free())
     {
         send_next();
     }
