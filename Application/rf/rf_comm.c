@@ -322,6 +322,8 @@ static const char *scp_cmd_to_string(uint8_t cmd)
     {
         case RF_SCP_CMD_GET_STATUS:        return "GET_STATUS";
         case RF_SCP_CMD_TIME_SYNC:         return "TIME_SYNC";
+        case RF_SCP_CMD_INVENTORY_SET:     return "INVENTORY_SET";
+        case RF_SCP_CMD_INVENTORY_END:     return "INVENTORY_END";
         case RF_SCP_CMD_TRIP_NOTIFY:       return "TRIP_NOTIFY";
         case RF_SCP_CMD_LIVE_DATA:         return "LIVE_DATA";
         case RF_SCP_CMD_ANOMALY_REPORT:    return "ANOMALY_REPORT";
@@ -445,6 +447,18 @@ static void handle_proactive(const scp_packet_t *pkt)
     {
         case RF_SCP_CMD_BOOT_NOTIFY:
             handle_boot_notify(pkt);
+            break;
+
+        case RF_SCP_CMD_DISCOVERY_REPORT:
+            if ((pkt->data_len >= 8U) &&
+                (rf_discovery_add(pkt->data)))
+            {
+                CSLOG("[RF] kesif: yeni cihaz "
+                      "EUI=%02X%02X%02X%02X%02X%02X%02X%02X\r\n",
+                      pkt->data[0], pkt->data[1], pkt->data[2],
+                      pkt->data[3], pkt->data[4], pkt->data[5],
+                      pkt->data[6], pkt->data[7]);
+            }
             break;
 
         default:    /* MISRA 16.4 - S3-S5'te yeni case'ler gelecek */
