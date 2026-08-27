@@ -24,6 +24,7 @@
 #include <string.h>
 #include "stm32u3xx_hal.h"
 #include "rf_scp.h"
+#include "rf_inventory.h"
 #include "rtc.h"
 #include "cp56time2a.h"
 
@@ -94,7 +95,7 @@ PROCESS_NAME(rf_comm_process);
 
 void bms_rx_interrupt_handler(uint8_t data)
 {
-    /* rf_comm_init cagrilana dek ring buffer NULL'dur — veriyi at.
+    /* rf_comm_init cagrilana dek ring buffer NULL'dur - veriyi at.
      * Bu, UART5 kesmesi init'ten once tetiklenirse hardfault onler. */
     if (rx_ring.buff != NULL)
     {
@@ -373,6 +374,9 @@ static void on_time_sync_done(scp_cmd_result_t result,
     if (SCP_CMD_OK == result)
     {
         CSLOG("[RF] hub saati senkronize (TIME_SYNC ACK)\r\n");
+
+        /* Devreye alma zincirinin 3. adimi: saat tamam -> envanter push */
+        rf_inventory_start();
     }
     else
     {
@@ -546,6 +550,9 @@ static void rf_comm_periodic_jobs(void)
             time_sync_pending = false;
         }
     }
+
+    /* Envanter siralayici: aktif ama komut mekanizmasi mesgulse bekle */
+    rf_inventory_continue();
 
     /* Periyodik GET_STATUS (canlilik) */
     if (!timer_started)

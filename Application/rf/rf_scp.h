@@ -35,9 +35,14 @@ extern "C" {
 /* Requests we send (GET/SET) - reply is ACK/ERROR */
 #define RF_SCP_CMD_GET_STATUS        0x01U  /* GET -> ACK + 25 B (R0 3.3.1) */
 #define RF_SCP_CMD_TIME_SYNC         0x07U  /* SET <- CP56Time2a 7 B (R0 8.1) */
+#define RF_SCP_CMD_INVENTORY_SET     0x04U  /* SET <- 12 B (R0 3.2) */
+#define RF_SCP_CMD_INVENTORY_END     0x05U  /* SET <- 0 B (R0 3.2) */
 
 /** CP56Time2a body length for 0x07 TIME_SYNC (R0 section 8.1). */
 #define RF_SCP_TIME_SYNC_BODY_LEN    7U
+
+/** Body length for 0x04 INVENTORY_SET (R0 section 3.2). */
+#define RF_SCP_INV_SET_BODY_LEN     12U
 
 /* Proactive SETs the hub sends unsolicited (R0 table C) */
 #define RF_SCP_CMD_TRIP_NOTIFY       0x10U
