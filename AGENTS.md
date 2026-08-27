@@ -54,6 +54,13 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
 
 ## Repo-specific constraints
 
+- **Critical decisions require user approval:** never make or commit a
+  decision that directly affects the user without asking first. This
+  includes: git commits, git operations (push/merge/rebase/reset),
+  architecture choices, API design changes, protocol behavior decisions,
+  data model changes, linker/memory layout changes, and any destructive
+  file operation. Present the options, state a recommendation, and wait
+  for explicit approval.
 - **Layering:** Application -> Service/Driver -> HAL/HW. No direct register
   access outside `Core/` or BSP.
 - **CubeMX:** edit only between `/* USER CODE BEGIN/END */` markers;
