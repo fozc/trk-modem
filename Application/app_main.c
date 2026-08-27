@@ -19,6 +19,7 @@
 #include "rf_config.h"
 #include "rf_scp.h"
 #include "rf_comm.h"
+#include "rf_shell.h"
 #include "elog.h"
 #include "xmodem_process.h"
 #include "modbus_process.h"
@@ -266,6 +267,7 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	/* RTU SCP adresi sabittir (R0 2.3b): 0x02. Hub 0x01, broadcast 0x00. */
 	rf_comm_init(RF_SCP_ADDR_RTU);
+	rf_shell_init();
 	fault_log_init();
 	web_shell_init(NULL);
 
