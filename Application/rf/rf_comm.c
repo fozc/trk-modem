@@ -25,6 +25,7 @@
 #include "stm32u3xx_hal.h"
 #include "rf_scp.h"
 #include "rf_inventory.h"
+#include "rf_discovery.h"
 #include "rtc.h"
 #include "cp56time2a.h"
 
