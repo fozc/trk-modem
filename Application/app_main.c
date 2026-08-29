@@ -189,24 +189,6 @@ PROCESS_THREAD(rtc_resync_process, ev, data)
  * in the TAMP backup registers (hardfault handler stash). */
 static void elog_log_boot_events(void)
 {
-	uint8_t info[16] = {0};
-	uint32_t flags = (uint32_t)reset_source_get_flags();
-	uint32_t raw = reset_source_get_raw();
-	uint32_t abnormal = reset_source_is_abnormal() ? 1U : 0U;
-
-	info[0] = (uint8_t)(flags >> 24);
-	info[1] = (uint8_t)(flags >> 16);
-	info[2] = (uint8_t)(flags >> 8);
-	info[3] = (uint8_t)(flags);
-	info[4] = (uint8_t)(raw >> 24);
-	info[5] = (uint8_t)(raw >> 16);
-	info[6] = (uint8_t)(raw >> 8);
-	info[7] = (uint8_t)(raw);
-	info[8] = (uint8_t)abnormal;
-	elog_add(ELOG_SYSTEM_RESET_CAUSE,
-	         abnormal ? ELOG_LEVEL_WARN : ELOG_LEVEL_INFO,
-	         info, sizeof(info));
-
 	if (rtc_bkpr_read(HF_BKPR_DR_MAGIC) == HF_BKPR_MAGIC)
 	{
 		uint32_t pc = rtc_bkpr_read(HF_BKPR_DR_PC);
@@ -214,29 +196,16 @@ static void elog_log_boot_events(void)
 		uint32_t cfsr = rtc_bkpr_read(HF_BKPR_DR_CFSR);
 		uint32_t hfsr = rtc_bkpr_read(HF_BKPR_DR_HFSR);
 
-		memset(info, 0, sizeof(info));
-		info[0] = (uint8_t)(pc >> 24);
-		info[1] = (uint8_t)(pc >> 16);
-		info[2] = (uint8_t)(pc >> 8);
-		info[3] = (uint8_t)(pc);
-		info[4] = (uint8_t)(lr >> 24);
-		info[5] = (uint8_t)(lr >> 16);
-		info[6] = (uint8_t)(lr >> 8);
-		info[7] = (uint8_t)(lr);
-		info[8] = (uint8_t)(cfsr >> 24);
-		info[9] = (uint8_t)(cfsr >> 16);
-		info[10] = (uint8_t)(cfsr >> 8);
-		info[11] = (uint8_t)(cfsr);
-		info[12] = (uint8_t)(hfsr >> 24);
-		info[13] = (uint8_t)(hfsr >> 16);
-		info[14] = (uint8_t)(hfsr >> 8);
-		info[15] = (uint8_t)(hfsr);
-		elog_add(ELOG_SYSTEM_HARDFAULT, ELOG_LEVEL_FATAL, info, sizeof(info));
+		elog_log_hardfault(pc, lr, cfsr, hfsr);
 		rtc_bkpr_write(HF_BKPR_DR_MAGIC, 0U);
 
 		CSLOG_ERR("[ELOG] Previous run ended in HARDFAULT (pc=0x%08lX cfsr=0x%08lX)\r\n",
 		          (unsigned long)pc, (unsigned long)cfsr);
 	}
+
+	elog_log_reset_cause((uint32_t)reset_source_get_flags(),
+	                     reset_source_get_raw(),
+	                     reset_source_is_abnormal());
 }
 
 __attribute__ ((noreturn)) void app_main(void)

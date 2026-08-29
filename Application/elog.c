@@ -482,3 +482,185 @@ void elog_log_config_change(elog_code_t code,
             (unsigned int)info[0], (unsigned int)info[1],
             (unsigned int)info[2], (unsigned int)info[3]);
 }
+
+/* ====================================================================== */
+/* Semantic logging API                                                   */
+/*                                                                        */
+/* Payload layouts, level policy and rate limiting for every event code  */
+/* are defined HERE and nowhere else. Modules report plain event         */
+/* parameters through the elog_log_* functions.                          */
+/* ====================================================================== */
+
+static void elog_pack_u32_be(uint8_t *dst, uint32_t value)
+{
+    dst[0] = (uint8_t)(value >> 24);
+    dst[1] = (uint8_t)(value >> 16);
+    dst[2] = (uint8_t)(value >> 8);
+    dst[3] = (uint8_t)(value);
+}
+
+void elog_log_reset_cause(uint32_t flags, uint32_t raw_csr, bool abnormal)
+{
+    /* info: flags(4) raw_csr(4) abnormal(1) */
+    uint8_t info[16] = {0};
+
+    elog_pack_u32_be(&info[0], flags);
+    elog_pack_u32_be(&info[4], raw_csr);
+    info[8] = abnormal ? 1U : 0U;
+    elog_add(ELOG_SYSTEM_RESET_CAUSE,
+             abnormal ? ELOG_LEVEL_WARN : ELOG_LEVEL_INFO,
+             info, sizeof(info));
+}
+
+void elog_log_hardfault(uint32_t pc, uint32_t lr, uint32_t cfsr, uint32_t hfsr)
+{
+    /* info: pc(4) lr(4) cfsr(4) hfsr(4) */
+    uint8_t info[16] = {0};
+
+    elog_pack_u32_be(&info[0], pc);
+    elog_pack_u32_be(&info[4], lr);
+    elog_pack_u32_be(&info[8], cfsr);
+    elog_pack_u32_be(&info[12], hfsr);
+    elog_add(ELOG_SYSTEM_HARDFAULT, ELOG_LEVEL_FATAL, info, sizeof(info));
+}
+
+void elog_log_nvram_recovery(uint8_t action, uint32_t stored_crc, uint32_t calc_crc)
+{
+    /* info: action(1) stored_crc(4) calc_crc(4) */
+    uint8_t info[16] = {0};
+
+    info[0] = action;
+    elog_pack_u32_be(&info[1], stored_crc);
+    elog_pack_u32_be(&info[5], calc_crc);
+    elog_add(ELOG_SYSTEM_NVRAM_RECOVERED, ELOG_LEVEL_ERROR, info, sizeof(info));
+}
+
+void elog_log_fw_update(uint8_t source, uint8_t result, uint32_t size)
+{
+    /* info: source(1) result(1) size(4) */
+    uint8_t info[16] = {0};
+
+    info[0] = source;
+    info[1] = result;
+    elog_pack_u32_be(&info[2], size);
+    elog_add(ELOG_SYSTEM_FW_UPDATE,
+             (result == ELOG_FW_RESULT_FAIL) ? ELOG_LEVEL_ERROR
+             : (result == ELOG_FW_RESULT_AUTH_FAIL) ? ELOG_LEVEL_WARN
+             : ELOG_LEVEL_INFO,
+             info, sizeof(info));
+}
+
+void elog_log_power_alarm(const elog_power_alarm_t *alarm)
+{
+    /* info: latch(1) live(1) sys_fault(1) bq0(1) bq1(1) rising(1) */
+    uint8_t info[16] = {0};
+
+    if (NULL == alarm)
+    {
+        return;
+    }
+
+    info[0] = alarm->latch;
+    info[1] = alarm->live;
+    info[2] = alarm->sys_fault;
+    info[3] = alarm->bq_fault0;
+    info[4] = alarm->bq_fault1;
+    info[5] = alarm->rising ? 1U : 0U;
+    elog_add(ELOG_PWR_ALARM,
+             alarm->rising ? ELOG_LEVEL_ERROR : ELOG_LEVEL_INFO,
+             info, sizeof(info));
+}
+
+void elog_log_battery_state_change(uint8_t source, uint8_t old_state,
+                                   uint8_t new_state, uint8_t soc, uint8_t soh)
+{
+    /* info: src(1) event=0(1) old(1) new(1) soc(1) soh(1).
+     * Power board: state 0 = battery present, anything else is a fault. */
+    uint8_t info[16] = {0};
+
+    info[0] = source;
+    info[1] = 0U;
+    info[2] = old_state;
+    info[3] = new_state;
+    info[4] = soc;
+    info[5] = soh;
+    elog_add(ELOG_BAT_STATE,
+             ((source == ELOG_BAT_SRC_POWER_BOARD) && (new_state != 0U))
+                 ? ELOG_LEVEL_WARN
+                 : ELOG_LEVEL_INFO,
+             info, sizeof(info));
+}
+
+void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
+                                    uint8_t soc, uint8_t soh)
+{
+    /* info: src=BMS(1) event=1(1) threshold(1) set(1) soc(1) soh(1) */
+    uint8_t info[16] = {0};
+
+    info[0] = ELOG_BAT_SRC_BMS;
+    info[1] = 1U;
+    info[2] = threshold;
+    info[3] = set ? 1U : 0U;
+    info[4] = soc;
+    info[5] = soh;
+    elog_add(ELOG_BAT_STATE,
+             (threshold <= 10U) ? ELOG_LEVEL_ERROR : ELOG_LEVEL_WARN,
+             info, sizeof(info));
+}
+
+void elog_log_iec104_connected(uint32_t peer_ip)
+{
+    /* info: up=1(1) reason=1 client connected(1) peer_ip(4) */
+    uint8_t info[16] = {0};
+
+    info[0] = 1U;
+    info[1] = 1U;
+    elog_pack_u32_be(&info[2], peer_ip);
+    elog_add(ELOG_IEC104_CONN, ELOG_LEVEL_INFO, info, sizeof(info));
+}
+
+/* One connection-loss record per window; a flapping SCADA link must not
+ * flood the ring. */
+#define ELOG_IEC104_DOWN_MIN_INTERVAL_MS 60000UL
+
+void elog_log_iec104_disconnected(void)
+{
+    /* info: up=0(1) reason=0 closed by remote(1) */
+    static uint32_t last_log_tick = 0U;
+
+    uint32_t now = bsp_get_tick();
+
+    if ((last_log_tick != 0U)
+        && ((now - last_log_tick) < ELOG_IEC104_DOWN_MIN_INTERVAL_MS))
+    {
+        return;
+    }
+    last_log_tick = now;
+
+    uint8_t info[16] = {0};
+    info[0] = 0U;
+    info[1] = 0U;
+    elog_add(ELOG_IEC104_CONN, ELOG_LEVEL_WARN, info, sizeof(info));
+}
+
+void elog_log_web_login_fail(uint32_t client_ip)
+{
+    /* info: client_ip(4) burst_count(2). First failure logs at once, then
+     * one record per 60 s window carrying the failures in the burst. */
+    static uint32_t burst = 0U;
+    static uint32_t last_log_tick = 0U;
+
+    uint32_t now = bsp_get_tick();
+
+    burst++;
+    if ((last_log_tick == 0U) || ((now - last_log_tick) > 60000UL))
+    {
+        uint8_t info[16] = {0};
+        elog_pack_u32_be(&info[0], client_ip);
+        info[4] = (uint8_t)(burst >> 8);
+        info[5] = (uint8_t)(burst);
+        elog_add(ELOG_WEB_LOGIN_FAIL, ELOG_LEVEL_WARN, info, sizeof(info));
+        last_log_tick = now;
+        burst = 0U;
+    }
+}

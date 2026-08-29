@@ -652,8 +652,9 @@ bool power_board_periodic_log_is_active(void)
  *  Contiki process - drain PUSH blocks + periodic logging
  * ====================================================================== */
 
-/* Log telemetry transitions to elog: latched alarms (set/clear) and
- * battery presence state. Called on every drained telemetry block. */
+/* Report telemetry transitions to elog: latched alarms (set/clear) and
+ * battery presence state. Called on every drained telemetry block; the
+ * payload packing and level policy live in elog.c. */
 static void pb_log_transitions(const power_board_telemetry_t *t)
 {
     static bool     have_prev  = false;
@@ -669,32 +670,22 @@ static void pb_log_transitions(const power_board_telemetry_t *t)
     {
         if (t->alarm_latch != prev_latch)
         {
-            /* info: latch(1) live(1) sys_fault(1) bq0(1) bq1(1) rising(1) */
-            uint8_t info[16] = {0};
-            info[0] = t->alarm_latch;
-            info[1] = t->alarm_live;
-            info[2] = t->sys_fault;
-            info[3] = t->bq_fault0;
-            info[4] = t->bq_fault1;
-            info[5] = ((t->alarm_latch & (uint8_t)~prev_latch) != 0U) ? 1U : 0U;
-            elog_add(ELOG_PWR_ALARM,
-                     (info[5] != 0U) ? ELOG_LEVEL_ERROR : ELOG_LEVEL_INFO,
-                     info, sizeof(info));
+            elog_power_alarm_t alarm;
+            alarm.latch     = t->alarm_latch;
+            alarm.live      = t->alarm_live;
+            alarm.sys_fault = t->sys_fault;
+            alarm.bq_fault0 = t->bq_fault0;
+            alarm.bq_fault1 = t->bq_fault1;
+            alarm.rising    = ((t->alarm_latch & (uint8_t)~prev_latch) != 0U);
+            elog_log_power_alarm(&alarm);
         }
 
         if (t->batt_state != prev_batt)
         {
-            /* info: src(1) event(1) a(1) b(1) soc(1) soh(1); src=1 power board */
-            uint8_t info[16] = {0};
-            info[0] = 1U;
-            info[1] = 0U;  /* batt_state change */
-            info[2] = prev_batt;
-            info[3] = t->batt_state;
-            info[4] = (uint8_t)(t->soc_x10 / 10U);
-            info[5] = (uint8_t)(t->soh_x10 / 10U);
-            elog_add(ELOG_BAT_STATE,
-                     (t->batt_state != 0U) ? ELOG_LEVEL_WARN : ELOG_LEVEL_INFO,
-                     info, sizeof(info));
+            elog_log_battery_state_change(ELOG_BAT_SRC_POWER_BOARD,
+                                          prev_batt, t->batt_state,
+                                          (uint8_t)(t->soc_x10 / 10U),
+                                          (uint8_t)(t->soh_x10 / 10U));
         }
     }
 

@@ -256,19 +256,6 @@ static void xmodem_stop_mode(void)
 	CSLOG("XMODEM mode deactivated.\r\n");
 }
 
-/* info layout for ELOG_SYSTEM_FW_UPDATE: source(1) result(1) size(4).
- * source: 1 = xmodem, 2 = web raw-TCP. result: 0 start, 1 ok, 2 fail. */
-static void xmodem_log_fw_update(uint8_t result)
-{
-	uint8_t info[16] = {0};
-
-	info[0] = 1U;  /* source: xmodem */
-	info[1] = result;
-	elog_add(ELOG_SYSTEM_FW_UPDATE,
-	         (result == 2U) ? ELOG_LEVEL_ERROR : ELOG_LEVEL_INFO,
-	         info, sizeof(info));
-}
-
 static void xmodem_start_mode(void)
 {
 	CSLOG("XMODEM mode activated. Waiting for file transfer...\r\n");
@@ -276,7 +263,7 @@ static void xmodem_start_mode(void)
 	CSLOG("Target area: %s (0x%06X)\r\n", get_download_area_name(dl_addr), (unsigned)dl_addr);
 	CSLOG("Start timeout: 1 min, inactivity timeout: 10 min.\r\n");
 
-	xmodem_log_fw_update(0U);
+	elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_START, 0U);
 
 	/* Save and disable cslog */
 	s_cslog_was_enabled = console_logger_is_enabled();
@@ -320,7 +307,7 @@ PROCESS_THREAD(xmodem_watchdog_process, ev, data)
 			if (s_download_success)
 			{
 				CSLOG("Firmware download successful. Requesting update & reset...\r\n");
-				xmodem_log_fw_update(1U);
+				elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_OK, 0U);
 				/* Small delay for log to flush */
 				etimer_set(&timer, CLOCK_SECOND * 2);
 				PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
@@ -329,7 +316,7 @@ PROCESS_THREAD(xmodem_watchdog_process, ev, data)
 			else
 			{
 				CSLOG_ERR("Firmware download failed.\r\n");
-				xmodem_log_fw_update(2U);
+				elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_FAIL, 0U);
 				xmodem_stop_mode();
 			}
 			continue;
