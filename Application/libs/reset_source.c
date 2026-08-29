@@ -169,6 +169,11 @@ void reset_source_print(void)
     }
 }
 
+bool reset_source_is_abnormal(void)
+{
+    return ((s_flags & RESET_SOURCE_ABNORMAL_MASK) != 0u);
+}
+
 /* ===========================================================================
  *  Shell integration
  * =========================================================================*/

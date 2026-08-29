@@ -11,6 +11,7 @@
 #include <bsp.h>
 #include "hardfault_handler.h"
 #include "main.h"
+#include "rtc.h"
 
 
 #define SYSHND_CTRL (*(volatile uint32_t *)(0xE000ED24u))  // System Handler Control and State Register
@@ -253,6 +254,15 @@ static void print_auxiliary_bus_fault(ABFSR_t abus_fault)
 
 void HardFault_Handler_C(StackFrame_t *StackFrame, uint32_t lr_value)
 {
+	/* Stash the fault trace in TAMP backup registers FIRST: these survive
+	 * the watchdog reset that follows, and app_main persists them to elog
+	 * at the next boot. Plain register writes, safe in fault context. */
+	rtc_bkpr_write(HF_BKPR_DR_PC, StackFrame->PC);
+	rtc_bkpr_write(HF_BKPR_DR_LR, StackFrame->LR);
+	rtc_bkpr_write(HF_BKPR_DR_CFSR, cfsr);
+	rtc_bkpr_write(HF_BKPR_DR_HFSR, hfsr.HFSR);
+	rtc_bkpr_write(HF_BKPR_DR_MAGIC, HF_BKPR_MAGIC);
+
 	print_stackframe(StackFrame, lr_value);
 	CSLOG( " SCB->BFAR  = 0x%08x\r\n", bfar);
 	CSLOG( " SCB->MMFAR = 0x%08x\r\n", mmfar);

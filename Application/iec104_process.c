@@ -13,6 +13,7 @@
 #include "gsm_engine.h"
 #include "breaker.h"
 #include "iec104_application.h"
+#include "elog.h"
 
 static iec104_config_t iec104_config = {0};
 static struct timer periodic_send_timer;
@@ -51,9 +52,41 @@ static void tx_reset(void)
 	tx.pending = 0;
 }
 
+/* info layout for ELOG_IEC104_CONN: up(1) reason(1) ip(4) */
+#define IEC104_CONN_REASON_REMOTE_CLOSE 0U
+#define IEC104_CONN_REASON_LISTEN        1U
+
+/* Rate limit for connection-loss logging: a flapping SCADA link must not
+ * flood the log. One record per code within this window. */
+#define IEC104_CONN_LOG_MIN_INTERVAL_MS 60000UL
+
+static void iec104_log_conn_event(uint8_t up, uint8_t reason)
+{
+	static uint32_t last_down_log_tick = 0U;
+
+	if (up == 0U)
+	{
+		uint32_t now = bsp_get_tick();
+		if ((last_down_log_tick != 0U)
+		    && ((now - last_down_log_tick) < IEC104_CONN_LOG_MIN_INTERVAL_MS))
+		{
+			return;
+		}
+		last_down_log_tick = now;
+	}
+
+	uint8_t info[16] = {0};
+	info[0] = up;
+	info[1] = reason;
+	elog_add(ELOG_IEC104_CONN,
+	         up ? ELOG_LEVEL_INFO : ELOG_LEVEL_WARN,
+	         info, sizeof(info));
+}
+
 void iec104_process_socket_closed_cb(void)
 {
 	CCSLOG(XCOLOR_RED, "IEC104 Socket Closed by Remote\r\n");
+	iec104_log_conn_event(0U, IEC104_CONN_REASON_REMOTE_CLOSE);
 	iec104_application_event_handler(IEC104_APP_EVT_SOCKET_CLOSED);
 	tx_reset();
 }

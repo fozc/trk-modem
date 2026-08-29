@@ -21,6 +21,7 @@
 #include "rf_comm.h"
 #include "rf_shell.h"
 #include "elog.h"
+#include "hardfault_handler.h"
 #include "xmodem_process.h"
 #include "modbus_process.h"
 #include "breaker.h"
@@ -184,6 +185,60 @@ PROCESS_THREAD(rtc_resync_process, ev, data)
 	PROCESS_END();
 }
 
+/* Persist the boot reset cause and any fault trace the previous run left
+ * in the TAMP backup registers (hardfault handler stash). */
+static void elog_log_boot_events(void)
+{
+	uint8_t info[16] = {0};
+	uint32_t flags = (uint32_t)reset_source_get_flags();
+	uint32_t raw = reset_source_get_raw();
+	uint32_t abnormal = reset_source_is_abnormal() ? 1U : 0U;
+
+	info[0] = (uint8_t)(flags >> 24);
+	info[1] = (uint8_t)(flags >> 16);
+	info[2] = (uint8_t)(flags >> 8);
+	info[3] = (uint8_t)(flags);
+	info[4] = (uint8_t)(raw >> 24);
+	info[5] = (uint8_t)(raw >> 16);
+	info[6] = (uint8_t)(raw >> 8);
+	info[7] = (uint8_t)(raw);
+	info[8] = (uint8_t)abnormal;
+	elog_add(ELOG_SYSTEM_RESET_CAUSE,
+	         abnormal ? ELOG_LEVEL_WARN : ELOG_LEVEL_INFO,
+	         info, sizeof(info));
+
+	if (rtc_bkpr_read(HF_BKPR_DR_MAGIC) == HF_BKPR_MAGIC)
+	{
+		uint32_t pc = rtc_bkpr_read(HF_BKPR_DR_PC);
+		uint32_t lr = rtc_bkpr_read(HF_BKPR_DR_LR);
+		uint32_t cfsr = rtc_bkpr_read(HF_BKPR_DR_CFSR);
+		uint32_t hfsr = rtc_bkpr_read(HF_BKPR_DR_HFSR);
+
+		memset(info, 0, sizeof(info));
+		info[0] = (uint8_t)(pc >> 24);
+		info[1] = (uint8_t)(pc >> 16);
+		info[2] = (uint8_t)(pc >> 8);
+		info[3] = (uint8_t)(pc);
+		info[4] = (uint8_t)(lr >> 24);
+		info[5] = (uint8_t)(lr >> 16);
+		info[6] = (uint8_t)(lr >> 8);
+		info[7] = (uint8_t)(lr);
+		info[8] = (uint8_t)(cfsr >> 24);
+		info[9] = (uint8_t)(cfsr >> 16);
+		info[10] = (uint8_t)(cfsr >> 8);
+		info[11] = (uint8_t)(cfsr);
+		info[12] = (uint8_t)(hfsr >> 24);
+		info[13] = (uint8_t)(hfsr >> 16);
+		info[14] = (uint8_t)(hfsr >> 8);
+		info[15] = (uint8_t)(hfsr);
+		elog_add(ELOG_SYSTEM_HARDFAULT, ELOG_LEVEL_FATAL, info, sizeof(info));
+		rtc_bkpr_write(HF_BKPR_DR_MAGIC, 0U);
+
+		CSLOG_ERR("[ELOG] Previous run ended in HARDFAULT (pc=0x%08lX cfsr=0x%08lX)\r\n",
+		          (unsigned long)pc, (unsigned long)cfsr);
+	}
+}
+
 __attribute__ ((noreturn)) void app_main(void)
 {
 	stack_monitor_init();
@@ -195,6 +250,11 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	w25qxx_init();
 	//w25qxx_test();
+
+	/* elog must be up before any module that logs to it (nvram recovery,
+	 * power board, ...). */
+	elog_init();
+	elog_log_boot_events();
 
 	process_init();
 	process_start(&etimer_process, NULL);
@@ -229,8 +289,6 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	CSLOG("sizeof(nvram_t)        = %08d bytes\r\n", sizeof(nvram_t));
 	CSLOG("sizeof(breaker_t)      = 0x%08X bytes\r\n", sizeof(breaker_t));
-
-	elog_init();
 
 	elog_shell_init();
 	xmodem_app_init();

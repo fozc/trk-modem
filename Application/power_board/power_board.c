@@ -22,6 +22,7 @@
 #include "shell.h"
 #include "utils.h"
 #include "console_logger.h"
+#include "elog.h"
 
 /* ======================================================================
  *  Telemetry register offsets (doc section 3b)
@@ -651,6 +652,57 @@ bool power_board_periodic_log_is_active(void)
  *  Contiki process - drain PUSH blocks + periodic logging
  * ====================================================================== */
 
+/* Log telemetry transitions to elog: latched alarms (set/clear) and
+ * battery presence state. Called on every drained telemetry block. */
+static void pb_log_transitions(const power_board_telemetry_t *t)
+{
+    static bool     have_prev  = false;
+    static uint8_t  prev_latch = 0U;
+    static uint8_t  prev_batt  = 0U;
+
+    if (!t->valid)
+    {
+        return;
+    }
+
+    if (have_prev)
+    {
+        if (t->alarm_latch != prev_latch)
+        {
+            /* info: latch(1) live(1) sys_fault(1) bq0(1) bq1(1) rising(1) */
+            uint8_t info[16] = {0};
+            info[0] = t->alarm_latch;
+            info[1] = t->alarm_live;
+            info[2] = t->sys_fault;
+            info[3] = t->bq_fault0;
+            info[4] = t->bq_fault1;
+            info[5] = ((t->alarm_latch & (uint8_t)~prev_latch) != 0U) ? 1U : 0U;
+            elog_add(ELOG_PWR_ALARM,
+                     (info[5] != 0U) ? ELOG_LEVEL_ERROR : ELOG_LEVEL_INFO,
+                     info, sizeof(info));
+        }
+
+        if (t->batt_state != prev_batt)
+        {
+            /* info: src(1) event(1) a(1) b(1) soc(1) soh(1); src=1 power board */
+            uint8_t info[16] = {0};
+            info[0] = 1U;
+            info[1] = 0U;  /* batt_state change */
+            info[2] = prev_batt;
+            info[3] = t->batt_state;
+            info[4] = (uint8_t)(t->soc_x10 / 10U);
+            info[5] = (uint8_t)(t->soh_x10 / 10U);
+            elog_add(ELOG_BAT_STATE,
+                     (t->batt_state != 0U) ? ELOG_LEVEL_WARN : ELOG_LEVEL_INFO,
+                     info, sizeof(info));
+        }
+    }
+
+    prev_latch = t->alarm_latch;
+    prev_batt  = t->batt_state;
+    have_prev  = true;
+}
+
 PROCESS_THREAD(power_board_process, ev, data)
 {
     (void)data;
@@ -671,9 +723,13 @@ PROCESS_THREAD(power_board_process, ev, data)
         if (i2c_slave_take_block(I2C_SLAVE_BLK_TELEMETRY))
         {
             power_board_telemetry_t t;
-            if (power_board_get_telemetry(&t) && (t.rec_flag != 0U))
+            if (power_board_get_telemetry(&t))
             {
-                pb_handle_rec(&t);
+                pb_log_transitions(&t);
+                if (t.rec_flag != 0U)
+                {
+                    pb_handle_rec(&t);
+                }
             }
         }
         if (i2c_slave_take_block(I2C_SLAVE_BLK_LASTGASP))

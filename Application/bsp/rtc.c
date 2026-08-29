@@ -120,6 +120,42 @@ bool rtc_hw_is_valid(void)
 	return (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR0) == (uint32_t)RTC_HW_VALID_MAGIC);
 }
 
+/* ------------------------------------------------------------------ */
+/*  TAMP backup registers (survive system reset; cleared on power-on)  */
+/*  DR0 is reserved for RTC_HW_VALID_MAGIC. Fault-context safe: plain  */
+/*  register access, no HAL locking.                                   */
+/* ------------------------------------------------------------------ */
+
+static volatile uint32_t *rtc_bkpr_reg(uint32_t dr)
+{
+	switch (dr)
+	{
+		case 1U:  return &TAMP_NS->BKP1R;
+		case 2U:  return &TAMP_NS->BKP2R;
+		case 3U:  return &TAMP_NS->BKP3R;
+		case 4U:  return &TAMP_NS->BKP4R;
+		case 5U:  return &TAMP_NS->BKP5R;
+		default:  return NULL;
+	}
+}
+
+void rtc_bkpr_write(uint32_t dr, uint32_t value)
+{
+	volatile uint32_t *reg = rtc_bkpr_reg(dr);
+
+	if (reg != NULL)
+	{
+		*reg = value;
+	}
+}
+
+uint32_t rtc_bkpr_read(uint32_t dr)
+{
+	volatile uint32_t *reg = rtc_bkpr_reg(dr);
+
+	return (reg != NULL) ? *reg : 0U;
+}
+
 void rtc_hw_read(rtc_t *out)
 {
 	RTC_TimeTypeDef t = {0};
