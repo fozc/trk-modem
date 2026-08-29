@@ -52,9 +52,9 @@ static void tx_reset(void)
 	tx.pending = 0;
 }
 
-/* info layout for ELOG_IEC104_CONN: up(1) reason(1) ip(4) */
-#define IEC104_CONN_REASON_REMOTE_CLOSE 0U
-#define IEC104_CONN_REASON_LISTEN        1U
+/* info layout for ELOG_IEC104_CONN: up(1) reason(1) ip(4)
+ * Reasons: 0 = socket closed by remote (this file), 1 = client connected
+ * with peer IP (gsm_engine.c #SS parser). */
 
 /* Rate limit for connection-loss logging: a flapping SCADA link must not
  * flood the log. One record per code within this window. */
@@ -86,7 +86,7 @@ static void iec104_log_conn_event(uint8_t up, uint8_t reason)
 void iec104_process_socket_closed_cb(void)
 {
 	CCSLOG(XCOLOR_RED, "IEC104 Socket Closed by Remote\r\n");
-	iec104_log_conn_event(0U, IEC104_CONN_REASON_REMOTE_CLOSE);
+	iec104_log_conn_event(0U, 0U /* remote close */);
 	iec104_application_event_handler(IEC104_APP_EVT_SOCKET_CLOSED);
 	tx_reset();
 }
