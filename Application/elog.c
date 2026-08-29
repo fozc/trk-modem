@@ -21,6 +21,7 @@
 #include "xprintf.h"
 #include "rtc.h"
 #include "datetime.h"
+#include "utils.h"
 #include "w25qxx.h"
 #include "spi_flash_organization.h"
 
@@ -534,22 +535,17 @@ static void elog_shell_info(int argc, char **argv)
     SHELL_LOG("========================================\r\n");
     SHELL_LOG("\r\nCommands:\r\n");
     SHELL_LOG("  elog             - Show this information\r\n");
-    SHELL_LOG("  elog dump        - Dump entries (decoded info text)\r\n");
-    SHELL_LOG("  elog dump raw    - Dump entries (raw info hex bytes)\r\n");
+    SHELL_LOG("  elog dump [N]    - Dump entries (all or newest N, decoded)\r\n");
+    SHELL_LOG("  elog dump raw [N]- Dump entries (raw info hex bytes)\r\n");
     SHELL_LOG("  elog clear       - Clear all log entries\r\n");
     SHELL_LOG("========================================\r\n\r\n");
 }
 
 static bool elog_dump_raw = false;
 
-static void elog_dump_visitor(const void *payload, uint32_t payload_size,
-                              uint32_t seq, void *user_ctx)
+/* Print one entry in the active dump mode (decoded text or raw hex). */
+static void elog_print_entry(uint32_t seq, const elog_entry_t *entry)
 {
-    const elog_entry_t *entry = (const elog_entry_t *)payload;
-
-    (void)payload_size;
-    (void)user_ctx;
-
     datetime_t dt;
     dt_conv_from_epoch(entry->timestamp, &dt);
 
@@ -579,6 +575,15 @@ static void elog_dump_visitor(const void *payload, uint32_t payload_size,
             info_out);
 }
 
+static void elog_dump_visitor(const void *payload, uint32_t payload_size,
+                              uint32_t seq, void *user_ctx)
+{
+    (void)payload_size;
+    (void)user_ctx;
+
+    elog_print_entry(seq, (const elog_entry_t *)payload);
+}
+
 static void elog_shell_dump(int argc, char **argv)
 {
     if (!log_is_initialized(&elog_ctx)) {
@@ -586,8 +591,29 @@ static void elog_shell_dump(int argc, char **argv)
         return;
     }
 
-    /* Default: decoded info text; "elog dump raw" shows hex bytes. */
-    elog_dump_raw = (argc >= 3) && (strcmp(argv[2], "raw") == 0);
+    /* Args in any order: "raw" selects the hex view, a number selects how
+     * many of the newest entries to show (0/absent = all). */
+    uint32_t count = 0U;
+
+    elog_dump_raw = false;
+    for (int i = 2; i < argc; i++)
+    {
+        if (strcmp(argv[i], "raw") == 0)
+        {
+            elog_dump_raw = true;
+        }
+        else
+        {
+            int parsed = xstrtoi(argv[i]);
+            if (parsed > 0)
+            {
+                count = (uint32_t)parsed;
+            }
+        }
+    }
+
+    uint32_t total = elog_stored_count();
+    bool dump_all = (count == 0U) || (count >= total);
 
     SHELL_LOG("\r\n");
     SHELL_LOG("========================================\r\n");
@@ -598,8 +624,44 @@ static void elog_shell_dump(int argc, char **argv)
               "Seq", "Level", "Timestamp", "Code", "Info");
     SHELL_LOG("------ ----- ------------------- ------------------ ----------------------------------------\r\n");
 
-    if (log_read_all(&elog_ctx, elog_dump_visitor, NULL) != LOG_OK) {
-        SHELL_LOG("Dump failed: flash read error\r\n");
+    if (dump_all)
+    {
+        if (log_read_all(&elog_ctx, elog_dump_visitor, NULL) != LOG_OK) {
+            SHELL_LOG("Dump failed: flash read error\r\n");
+        }
+    }
+    else
+    {
+        /* Chronological dump of the newest count entries. elog_read_recent
+         * (skip_newest, n) returns that sub-window newest -> oldest; walk
+         * the window from its oldest chunk down and print each chunk
+         * reversed to get oldest -> newest overall. */
+        elog_entry_t chunk[8];
+        uint32_t chunk_cap = (uint32_t)(sizeof(chunk) / sizeof(chunk[0]));
+        uint32_t nchunks = (count + chunk_cap - 1U) / chunk_cap;
+
+        for (uint32_t c = nchunks; (c > 0U) ; c--)
+        {
+            uint32_t idx = c - 1U;              /* 0 = newest chunk */
+            uint32_t skip = idx * chunk_cap;
+            uint32_t want = count - skip;
+            uint32_t got = 0U;
+
+            if (want > chunk_cap)
+            {
+                want = chunk_cap;
+            }
+
+            if ((elog_read_recent(skip, want, chunk, &got) != 0) || (got == 0U))
+            {
+                break;
+            }
+
+            for (uint32_t i = got; i > 0U; i--)
+            {
+                elog_print_entry(chunk[i - 1U].entry_id, &chunk[i - 1U]);
+            }
+        }
     }
 
     SHELL_LOG("\r\n========================================\r\n\r\n");
