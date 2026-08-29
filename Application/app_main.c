@@ -230,17 +230,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	CSLOG("sizeof(nvram_t)        = %08d bytes\r\n", sizeof(nvram_t));
 	CSLOG("sizeof(breaker_t)      = 0x%08X bytes\r\n", sizeof(breaker_t));
 
-	elog_init(&(elog_io_cfg_t){
-		.storage_if = (elog_storage_if_t){
-			.read = w25qxx_read_buff,
-			.write = w25qxx_write_buff
-		},
-		.super_block_addr = ELOG_SUPERBLOCK_ADDRESS,
-		.log_block_addr = ELOG_LOGAREA_ADDRESS,
-		.super_block_backup_paddr = ELOG_SUPERBLOCK_BACKUP_ADDRESS,
-		.log_block_backup_addr = ELOG_LOGAREA_BACKUP_ADDRESS,
-		.size = ELOG_LOG_AREA_SIZE
-	});
+	elog_init();
 
 	elog_shell_init();
 	xmodem_app_init();

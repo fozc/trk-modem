@@ -56,6 +56,7 @@ int w25qxx_erase_sector(uint32_t addr);
 uint8_t w25qxx_read_byte(uint32_t addr);
 void w25qxx_read_buff(uint32_t addr, void *buff, uint32_t len);
 int w25qxx_write_byte(uint32_t addr, uint8_t data);
+int w25qxx_page_write(uint32_t addr, const void *buff, uint32_t len);
 int w25qxx_write_sector(uint32_t addr, const void *buff, uint32_t lenght);
 int w25qxx_write_buff(uint32_t addr, const void *buff, uint32_t buff_len);
 int w25qxx_verify(uint32_t addr, const void *data, uint32_t len);

@@ -666,39 +666,57 @@ void handle_get_syslogs_json(void)
     
     /* Start JSON: {"recs":"..." */
     pos += xsnprintf(buf + pos, buf_size - pos, "{\"recs\":\"");
-    
-    /* Iterate through requested range and format as newline-separated string */
-    for (uint32_t display_idx = offset + 1; display_idx <= end_idx; display_idx++) {
-        /* Calculate reverse mapping (newest = index 1) */
-        uint32_t actual_idx = (total_entries - display_idx) % max_entries;
-        
-        /* Read entry */
-        elog_entry_t entry;
-        if (elog_read_entry(actual_idx, &entry) == 0) {
+
+    /* Read the requested window (entries after skipping the `offset` newest)
+     * in chunks and format newest-first, one entry per line. */
+    uint32_t emitted = 0;
+    uint32_t skip = offset;
+    uint8_t first_line = 1;
+
+    while (emitted < count)
+    {
+        elog_entry_t chunk[8];
+        uint32_t chunk_len = 0;
+        uint32_t want = count - emitted;
+        if (want > (uint32_t)(sizeof(chunk) / sizeof(chunk[0]))) {
+            want = (uint32_t)(sizeof(chunk) / sizeof(chunk[0]));
+        }
+
+        if (elog_read_recent(skip, want, chunk, &chunk_len) != 0 || chunk_len == 0) {
+            break;
+        }
+
+        /* elog_read_recent returns newest first; display index 1 is the
+         * newest log overall, so the number continues across chunks. */
+        for (uint32_t i = 0; i < chunk_len; i++)
+        {
+            const elog_entry_t *entry = &chunk[i];
+            uint32_t display_idx = offset + emitted + 1;
+
+            if (!first_line) {
+                pos += xsnprintf(buf + pos, buf_size - pos, "\\n");
+            }
+            first_line = 0;
+
             /* Format: "#INDEX TS:timestamp LVL:level CODE:code INFO text\n" */
             /* For system logs, show info as text instead of hex */
 
             datetime_t dt;
-            dt_conv_from_epoch(entry.timestamp, &dt);
+            dt_conv_from_epoch(entry->timestamp, &dt);
 
-            pos += xsnprintf(buf + pos, buf_size - pos, 
+            pos += xsnprintf(buf + pos, buf_size - pos,
                             "#%lu TS:%04u-%02u-%02u %02u:%02u:%02u LVL:%u CODE:%s INFO:",
-                            display_idx, 
+                            display_idx,
                             dt.date.year, dt.date.month, dt.date.day, dt.time.hour, dt.time.minute, dt.time.second,
-                            entry.level, elog_code_to_string(entry.code));
-            
-            char info_text[17] = {0};
-            if(entry.code == ELOG_GSM_EVENT_SIMCARD_CHANGED){
-            	xsnprintf(info_text, sizeof(info_text), "%s", entry.info);
-			}
+                            entry->level, elog_code_to_string((elog_code_t)entry->code));
 
             /* Append info[16] as text (null-terminated) */
-            memcpy(info_text, entry.info, 16);
-            info_text[16] = '\0';
-            
+            char info_text[17] = {0};
+            memcpy(info_text, entry->info, 16);
+
             /* Escape special characters for JSON */
-            for (int i = 0; i < 16 && info_text[i] != '\0'; i++) {
-                char c = info_text[i];
+            for (int j = 0; j < 16 && info_text[j] != '\0'; j++) {
+                char c = info_text[j];
                 if (c == '"' || c == '\\') {
                     pos += xsnprintf(buf + pos, buf_size - pos, "\\");
                 }
@@ -706,12 +724,11 @@ void handle_get_syslogs_json(void)
                     pos += xsnprintf(buf + pos, buf_size - pos, "%c", c);
                 }
             }
-            
-            /* Add newline separator (literal \n in JSON string) */
-            if (display_idx < end_idx) {
-                pos += xsnprintf(buf + pos, buf_size - pos, "\\n");
-            }
+
+            emitted++;
         }
+
+        skip += chunk_len;
     }
     
     /* Close "recs" field and add total count */
