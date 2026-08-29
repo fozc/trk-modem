@@ -36,6 +36,22 @@ typedef enum
 	ELOG_CONFIG_IEC104_CHANGED = 31,
 	ELOG_CONFIG_MODBUS_CHANGED = 32,
 	ELOG_CONFIG_RF_CHANGED     = 33,
+
+	// System codes (40..49)
+	ELOG_SYSTEM_RESET_CAUSE    = 40,  /* info: flags(4) raw_csr(4) abnormal(1) */
+	ELOG_SYSTEM_NVRAM_RECOVERED = 41, /* info: action(1) stored_crc(4) calc_crc(4) */
+	ELOG_SYSTEM_FW_UPDATE      = 42,  /* info: source(1) result(1) size(4) */
+	ELOG_SYSTEM_HARDFAULT      = 43,  /* info: pc(4) lr(4) cfsr(4) hfsr(4) */
+
+	// Power / battery codes (50..59)
+	ELOG_PWR_ALARM             = 50,  /* info: latch(1) live(1) sys_fault(1) bq0(1) bq1(1) rising(1) */
+	ELOG_BAT_STATE             = 51,  /* info: src(1) event(1) a(1) b(1) soc(1) soh(1) */
+
+	// Communication codes (60..69)
+	ELOG_IEC104_CONN           = 60,  /* info: up(1) reason(1) ip(4) */
+
+	// Audit codes (70..79)
+	ELOG_WEB_LOGIN_FAIL        = 70,  /* info: ip(4) burst_count(2) */
 	//
 } elog_code_t;
 
@@ -65,6 +81,15 @@ static inline const char* elog_code_to_string(elog_code_t code)
 		case ELOG_CONFIG_IEC104_CHANGED: return "CONFIG_IEC104";
 		case ELOG_CONFIG_MODBUS_CHANGED: return "CONFIG_MODBUS";
 		case ELOG_CONFIG_RF_CHANGED:     return "CONFIG_RF";
+
+		case ELOG_SYSTEM_RESET_CAUSE:     return "RESET_CAUSE";
+		case ELOG_SYSTEM_NVRAM_RECOVERED: return "NVRAM_RECOVERED";
+		case ELOG_SYSTEM_FW_UPDATE:       return "FW_UPDATE";
+		case ELOG_SYSTEM_HARDFAULT:       return "HARDFAULT";
+		case ELOG_PWR_ALARM:              return "PWR_ALARM";
+		case ELOG_BAT_STATE:              return "BAT_STATE";
+		case ELOG_IEC104_CONN:            return "IEC104_CONN";
+		case ELOG_WEB_LOGIN_FAIL:         return "WEB_LOGIN_FAIL";
 
 		default: return "UNKNOWN_CODE";
 	}

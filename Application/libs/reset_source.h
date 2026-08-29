@@ -67,6 +67,11 @@ reset_source_flag_t reset_source_get_flags(void);
 uint32_t reset_source_get_raw(void);
 
 /*
+ * @brief Test whether the captured reset was abnormal (IWDG/WWDG/BOR/low-power).
+ */
+bool reset_source_is_abnormal(void);
+
+/*
  * @brief Test whether a specific reset cause was reported.
  *
  * @param[in] flag Single reset_source_flag_t value to test.

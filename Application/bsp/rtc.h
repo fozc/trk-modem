@@ -113,6 +113,19 @@ uint32_t rtc_get_epoch(void);
  */
 uint32_t rtc_get_unix_epoch(void);
 
+/* ---- TAMP backup registers ---- */
+
+/**
+ * @brief  Write a TAMP backup register (DR1..DR5; DR0 is the RTC magic).
+ * @note   Plain register access, safe to call from fault context.
+ */
+void rtc_bkpr_write(uint32_t dr, uint32_t value);
+
+/**
+ * @brief  Read a TAMP backup register (DR1..DR5; returns 0 for others).
+ */
+uint32_t rtc_bkpr_read(uint32_t dr);
+
 #ifdef __cplusplus
 }
 #endif

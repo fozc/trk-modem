@@ -14,6 +14,7 @@
 #include "gsm_process.h"
 #include "gsm_listener_process.h"
 #include "modem_config.h"
+#include "elog.h"
 #include "led_driver.h"
 #include <string.h>
 #include <stdbool.h>
@@ -979,6 +980,13 @@ static void gsm_init_step_open_iec104_listener(void)
 			led_driver_set_iec104_mode(LED_LISTENER_LISTENING);
 			gsm_set_delay(50);
 			LOG_TRACE(_GSM_, "IEC104 Listener Socket Acildi...", res);
+			{
+				/* info layout for ELOG_IEC104_CONN: up(1) reason(1) ip(4) */
+				uint8_t elog_info[16] = {0};
+				elog_info[0] = 1U;  /* up */
+				elog_info[1] = 1U;  /* reason: listener opened */
+				elog_add(ELOG_IEC104_CONN, ELOG_LEVEL_INFO, elog_info, sizeof(elog_info));
+			}
 			gsm.listener[GSM_LISTENER_IEC104].socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
 			gsm_set_tx_state(GSM_TX_READY);
 			break;

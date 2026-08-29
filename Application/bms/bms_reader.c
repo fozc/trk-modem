@@ -10,6 +10,7 @@
 #include "contiki.h"
 #include "main.h"
 #include "gpio.h"
+#include "elog.h"
 
 uint8_t bms_rx_buffer[272];
 uint16_t bms_rx_index = 0;
@@ -79,6 +80,71 @@ static void send_soh_request(void)
 }
 
 
+/* Log work-state transitions and SOC threshold crossings to elog.
+ * info layout: src(1) event(1) a(1) b(1) soc(1) soh(1); src=2 BMS. */
+static void bms_log_transitions(const bms_data_t *d)
+{
+	static bool have_prev = false;
+	static uint8_t prev_work = 0U;
+	static bool low20 = false;
+	static bool low10 = false;
+
+	uint8_t info[16] = {0};
+	uint8_t soc_u8 = (d->soc_percent < 0.0f) ? 0U
+	               : ((d->soc_percent > 100.0f) ? 100U : (uint8_t)d->soc_percent);
+	uint8_t soh_u8 = (d->soh_percent < 0.0f) ? 0U
+	              : ((d->soh_percent > 100.0f) ? 100U : (uint8_t)d->soh_percent);
+
+	if (have_prev && (d->work_state != prev_work))
+	{
+		info[0] = 2U;  /* source: BMS */
+		info[1] = 0U;  /* work_state change */
+		info[2] = prev_work;
+		info[3] = (uint8_t)d->work_state;
+		info[4] = soc_u8;
+		info[5] = soh_u8;
+		elog_add(ELOG_BAT_STATE, ELOG_LEVEL_INFO, info, sizeof(info));
+	}
+
+	/* SOC thresholds with hysteresis: set at <=20/<=10, clear at >=25/>=15. */
+	if ((!low20 && (d->soc_percent <= 20.0f)) || (low20 && (d->soc_percent >= 25.0f)))
+	{
+		bool set = (d->soc_percent <= 20.0f);
+		if (set != low20)
+		{
+			low20 = set;
+			memset(info, 0, sizeof(info));
+			info[0] = 2U;
+			info[1] = 1U;  /* SOC threshold */
+			info[2] = 20U; /* threshold */
+			info[3] = set ? 1U : 0U;
+			info[4] = soc_u8;
+			info[5] = soh_u8;
+			elog_add(ELOG_BAT_STATE, ELOG_LEVEL_WARN, info, sizeof(info));
+		}
+	}
+
+	if ((!low10 && (d->soc_percent <= 10.0f)) || (low10 && (d->soc_percent >= 15.0f)))
+	{
+		bool set = (d->soc_percent <= 10.0f);
+		if (set != low10)
+		{
+			low10 = set;
+			memset(info, 0, sizeof(info));
+			info[0] = 2U;
+			info[1] = 1U;  /* SOC threshold */
+			info[2] = 10U; /* threshold */
+			info[3] = set ? 1U : 0U;
+			info[4] = soc_u8;
+			info[5] = soh_u8;
+			elog_add(ELOG_BAT_STATE, ELOG_LEVEL_ERROR, info, sizeof(info));
+		}
+	}
+
+	prev_work = (uint8_t)d->work_state;
+	have_prev = true;
+}
+
 void bms_process_package()
 {
 	if (bms_rx_index >= BMS_FULL_MAP_FRAME_LEN)
@@ -93,7 +159,12 @@ void bms_process_package()
 			float soc = BMS_GetSOC(&s_bms_data);
 			float soh = BMS_GetSOH(&s_bms_data);
 
-			//CSLOG("BMS Data: Total Voltage: %.2f V, Current: %.2f A, SOC: %.2f %%, SOH: %.2f %% \r\n", total_voltage, current, soc, soh);
+			(void)total_voltage;
+			(void)current;
+			(void)soc;
+			(void)soh;
+
+			bms_log_transitions(&s_bms_data);
 		}
 		else
 		{
@@ -111,6 +182,7 @@ void bms_process_package()
 			// Successfully parsed the SOH data (only the SOH fields of the
 			// persistent snapshot are touched).
 			float soh = BMS_GetSOH(&s_bms_data);
+			(void)soh;
 
 			//CSLOG("BMS SOH: %.2f %% \r\n", soh);
 		}
