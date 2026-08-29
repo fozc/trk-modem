@@ -1,224 +1,237 @@
-﻿/*
+/*
  * elog.c
  *
  *  Created on: 14 Eyl 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Storage engine: spi_flash_log append-only ring (Application/libs/).
+ * The 24-byte elog_entry_t is the log payload; the library wraps it with a
+ * 16-bit wrapping sequence number and a 16-bit CRC on flash (28-byte entries;
+ * entries may straddle flash pages, the library splits the programs). A sector
+ * is erased only when the write head wraps to it, so a log_add costs one
+ * 28-byte page program instead of the four sector erase+rewrites of the old
+ * engine.
  */
+
 #include "elog.h"
-#include <stdio.h>
 #include <string.h>
-#include "time_service.h"
-#include "crc32.h"
 #include "bsp.h"
 #include "shell.h"
 #include "xprintf.h"
 #include "rtc.h"
 #include "datetime.h"
+#include "w25qxx.h"
+#include "spi_flash_organization.h"
 
-typedef enum
+/* The HAL header (stm32u3xx_hal_flash.h) defines FLASH_PAGE_SIZE for the
+ * internal flash; the log library needs the SPI chip page size instead. The
+ * library header must come after every HAL include so its definition wins
+ * inside this module, and nothing here may use the HAL value afterwards. */
+#undef FLASH_PAGE_SIZE
+#include "spi_flash_log.h"
+
+/* ---- compile-time geometry checks ------------------------------------ */
+_Static_assert(sizeof(elog_entry_t) == 24U, "elog payload must stay 24 bytes");
+/* Wrap-around seq comparison stays valid only while the whole ring capacity
+ * remains under LOG_SEQ_HALFSPACE; guard it at compile time (28 B entries,
+ * ELOG_LOG_SECTOR_COUNT sectors). */
+_Static_assert((ELOG_LOG_SECTOR_COUNT * (LOG_SECTOR_SIZE / (LOG_ENTRY_OVERHEAD + 24U)))
+               < LOG_SEQ_HALFSPACE,
+               "elog ring capacity must stay below LOG_SEQ_HALFSPACE");
+
+static log_ctx_t elog_ctx;
+
+/* ---- w25qxx adapter layer (signatures differ from log_flash_ops_t) --- */
+
+static int elog_flash_read(uint32_t addr, void *buf, size_t len)
 {
-	ELOG_MAIN_AREA = 0,
-	ELOG_BACKUP_AREA
-}elog_memory_area_t;
-
-static elog_io_cfg_t log_io_cfg = {0};
-static elog_metadata_t log_metadata = {0};
-static bool is_initialized = false;
-
-static int elog_read(uint32_t addr, void *buf, uint32_t len)
-{
-    log_io_cfg.storage_if.read(addr, buf, len);
-
+    w25qxx_read_buff(addr, buf, (uint32_t)len);
     return 0;
 }
 
-static int elog_write(uint32_t addr, const void *buf, uint32_t len)
+static int elog_flash_program(uint32_t addr, const void *buf, size_t len)
 {
-    if((buf == NULL) || (len == 0U) || ((addr + len) < addr)) {
-        return -1;
-    }
-    return log_io_cfg.storage_if.write(addr, buf, len);
+    return w25qxx_page_write(addr, buf, (uint32_t)len);
 }
 
-static crc32_t elog_calculate_metadata_crc(void)
+static int elog_flash_erase_sector(uint32_t sector_addr)
 {
-    crc32_t crc = crc32_init();
-    crc = crc32_update(crc, &log_metadata, (sizeof(log_metadata) - sizeof(log_metadata.crc)));
-    return crc32_finalize(crc);
+    return w25qxx_erase_sector(sector_addr);
 }
 
-static bool is_elog_empty_or_uninitialized(void)
+static void elog_config_build(log_config_t *cfg)
 {
-	const uint8_t* elog_ptr = (const uint8_t*)&log_metadata;
-	for(int i = 0; i < sizeof(elog_metadata_t); i++){
-		if(elog_ptr[i] != 0xFF){
-			return 0;
-		}
-	}
-	return 1; // Empty
+    cfg->base_addr = ELOG_LOGAREA_ADDRESS;
+    cfg->sector_count = ELOG_LOG_SECTOR_COUNT;
+    cfg->payload_size = (uint32_t)sizeof(elog_entry_t);
+    cfg->ops.read = elog_flash_read;
+    cfg->ops.program = elog_flash_program;
+    cfg->ops.erase_sector = elog_flash_erase_sector;
 }
 
-static void elog_write_metadata(elog_memory_area_t area)
+static uint32_t elog_timestamp_now(void)
 {
-    log_metadata.crc = elog_calculate_metadata_crc();
-
-    uint32_t addr = area == ELOG_MAIN_AREA ? log_io_cfg.super_block_addr : log_io_cfg.super_block_backup_paddr;
-    if(elog_write(addr, &log_metadata, sizeof(log_metadata)) != 0) {
-        CSLOG_ERR("[ELOG] metadata write failed (area=%d)\r\n", (int)area);
-    }
+    rtc_t dt = rtc_now();
+    datetime_t dt2 = {
+        .date.day = dt.day,
+        .date.month = dt.month,
+        .date.year = 2000U + (uint16_t)dt.year,
+        .time.hour = dt.hour,
+        .time.minute = dt.minute,
+        .time.second = dt.second
+    };
+    return dt_conv_to_epoch(&dt2);
 }
 
-static void elog_write_log_entry(const elog_entry_t *entry, bool backup)
+static void elog_write_entry(const elog_entry_t *entry)
 {
-	if(entry == NULL){
-		return;
-	}
-	if(log_metadata.max_entries == 0U){
-		CSLOG_ERR("[ELOG] max_entries == 0, entry dropped\r\n");
-		return;
-	}
-
-	uint32_t log_index = log_metadata.total_entries % log_metadata.max_entries;
-	uint32_t write_offset = (log_index * sizeof(elog_entry_t));
-
-	/* Bölge taşma kontrolü: bozuk max_entries/offset'in komşu flash'a yazmasını
-	 * engelle (eski kodda elog_write'ın ölü denetimi bunu yakalamıyordu). */
-	if((write_offset + sizeof(elog_entry_t)) > log_io_cfg.size){
-		CSLOG_ERR("[ELOG] write offset out of region (%lu > %lu)\r\n",
-		      (unsigned long)(write_offset + sizeof(elog_entry_t)),
-		      (unsigned long)log_io_cfg.size);
-		return;
-	}
-
-	/* Önce ana bölgeye yaz; başarısızsa total_entries'i artırmadan dön
-	 * (metadata güncellenmez → bir sonraki deneme aynı slot'u yeniden kullanır). */
-	if(elog_write((log_io_cfg.log_block_addr + write_offset), entry, sizeof(elog_entry_t)) != 0){
-		CSLOG_ERR("[ELOG] entry write failed (main)\r\n");
-		return;
-	}
-	log_metadata.total_entries++;
-	elog_write_metadata(ELOG_MAIN_AREA);
-
-	if(backup){
-		if(elog_write((log_io_cfg.log_block_backup_addr + write_offset), entry, sizeof(elog_entry_t)) != 0){
-			CSLOG_ERR("[ELOG] entry write failed (backup)\r\n");
-		}
-		else{
-			elog_write_metadata(ELOG_BACKUP_AREA);
-		}
-	}
-}
-
-void elog_init(const elog_io_cfg_t *io_cfg)
-{
-    if(io_cfg)
+    if (!log_is_initialized(&elog_ctx))
     {
-        log_io_cfg = *io_cfg;
-        
-        if(elog_read(io_cfg->super_block_addr, &log_metadata, sizeof(log_metadata))){
-        	CSLOG("Error reading error log metadata from storage.\r\n");
-        }
-    	crc32_t calculated_crc = elog_calculate_metadata_crc();
-        if(calculated_crc != log_metadata.crc)
-        {
-        	bool is_main_elog_empty_or_uninitialized = is_elog_empty_or_uninitialized();
-            CSLOG("Error log metadata CRC mismatch. Recovering from backup...\r\n");
-
-            if(elog_read(io_cfg->super_block_backup_paddr, &log_metadata, sizeof(log_metadata))){
-            	CSLOG("Error reading error log backup metadata from storage.\r\n");
-            }
-
-            calculated_crc = elog_calculate_metadata_crc();
-
-            if(calculated_crc != log_metadata.crc)
-            {
-            	bool is_backup_elog_empty_or_uninitialized = is_elog_empty_or_uninitialized();
-            	CSLOG("Error log backup metadata CRC mismatch. Reinitializing log storage...\r\n");
-            	if(is_main_elog_empty_or_uninitialized && is_backup_elog_empty_or_uninitialized){
-					CSLOG("Error log storage uninitialized.\r\n");
-				}
-				else{
-					CSLOG("Both main and backup error log metadata are corrupted.\r\n");
-				}
-
-    			memset(&log_metadata, 0, sizeof(log_metadata));
-
-    			log_metadata.total_entries = 0;
-    			log_metadata.max_entries = log_io_cfg.size / sizeof(elog_entry_t);
-    			log_metadata.size = log_io_cfg.size;
-    			log_metadata.log_addr = log_io_cfg.log_block_addr;
-    			log_metadata.log_backup_addr = log_io_cfg.log_block_backup_addr;
-
-    			elog_write_metadata(ELOG_MAIN_AREA);
-    			elog_write_metadata(ELOG_BACKUP_AREA);
-
-    			CSLOG("Error log metadata reinitialized.\r\n");
-            }
-            else
-            {
-				CSLOG("Error log metadata recovered from backup.\r\n");
-				elog_write_metadata(ELOG_MAIN_AREA); // Restore main from backup
-            }
-        }
-
-        is_initialized = true;
-
-        CSLOG("Error log system initialized.\r\n");
-        CSLOG("Max entries: %u, Current entries: %u\r\n", log_metadata.max_entries, log_metadata.total_entries);
-    } else {
-        CSLOG("Error log system initialization failed - NULL config.\r\n");
+        return;
     }
+
+    log_status_t st = log_write(&elog_ctx, entry);
+    if (st != LOG_OK)
+    {
+        CSLOG_ERR("[ELOG] write failed (%d)\r\n", (int)st);
+    }
+}
+
+void elog_init(void)
+{
+    log_config_t cfg;
+
+    elog_config_build(&cfg);
+
+    log_status_t st = log_init(&elog_ctx, &cfg);
+    if (st != LOG_OK)
+    {
+        CSLOG_ERR("[ELOG] init failed (%d)\r\n", (int)st);
+        return;
+    }
+
+    CSLOG("Error log system initialized.\r\n");
+    CSLOG("Capacity: %u entries, total written: %u\r\n",
+          elog_get_max_entries(), elog_get_entry_count());
 }
 
 void elog_add(elog_code_t _code, elog_level_t level, const void *data, size_t data_len)
 {
-    // Check if storage is properly initialized
-    if (!is_initialized || log_metadata.max_entries == 0) {
-        return; // Cannot add entries to zero-size storage
-    }
+    elog_entry_t entry = {0};
 
-    elog_entry_t entry = {};
-
-    rtc_t dt = rtc_now();
-    datetime_t     dt2 = {
-		.date.day = dt.day,
-		.date.month = dt.month,
-		.date.year = 2000U + (uint16_t)dt.year,
-		.time.hour = dt.hour,
-		.time.minute = dt.minute,
-		.time.second = dt.second
-	};
-
-    entry.timestamp = dt_conv_to_epoch(&dt2);
-
-    entry.entry_id = log_metadata.total_entries;
+    entry.timestamp = elog_timestamp_now();
+    entry.entry_id = (uint16_t)(log_get_next_seq(&elog_ctx) & 0xFFFFU);
     entry.level = (uint8_t)level;
     entry.code = (uint8_t)_code;
-    memcpy(entry.info, data, data_len < sizeof(entry.info) ? data_len : sizeof(entry.info));
+    if ((data != NULL) && (data_len > 0U))
+    {
+        size_t len = (data_len < sizeof(entry.info)) ? data_len : sizeof(entry.info);
+        memcpy(entry.info, data, len);
+    }
 
-    elog_write_log_entry(&entry, true);
+    elog_write_entry(&entry);
 }
 
 void elog_add_entry(const elog_entry_t *entry)
 {
-	if (!is_initialized || entry == NULL || log_metadata.max_entries == 0) {
-		return; // Invalid entry pointer or uninitialized storage
-	}
-
-	elog_write_log_entry(entry, true);
-}
-
-
-int elog_read_entry(uint32_t index, elog_entry_t *entry)
-{
-    if (!is_initialized || entry == NULL || index >= log_metadata.max_entries) {
-        return 1; // Invalid entry pointer or ID
+    if (NULL == entry)
+    {
+        return;
     }
 
-    uint32_t read_addr = log_io_cfg.log_block_addr + (index * sizeof(elog_entry_t));
+    /* entry_id is auto-assigned from the ring sequence number. */
+    elog_entry_t copy = *entry;
+    copy.entry_id = (uint16_t)(log_get_next_seq(&elog_ctx) & 0xFFFFU);
+    elog_write_entry(&copy);
+}
 
-    elog_read(read_addr, entry, sizeof(elog_entry_t));
+/* ---- reading ---------------------------------------------------------- */
 
+typedef struct
+{
+    elog_entry_t *out;
+    uint32_t capacity;
+    uint32_t copied;
+} elog_collect_ctx_t;
+
+/* log_read_last delivers entries newest -> oldest. */
+static void elog_collect_visitor(const void *payload, uint32_t payload_size,
+                                 uint32_t seq, void *user_ctx)
+{
+    elog_collect_ctx_t *cc = (elog_collect_ctx_t *)user_ctx;
+
+    (void)payload_size;
+    (void)seq;
+
+    if (cc->copied < cc->capacity)
+    {
+        cc->out[cc->copied] = *(const elog_entry_t *)payload;
+        cc->copied++;
+    }
+}
+
+/* Sink for entries the caller wants to page over without copying. */
+static void elog_discard_visitor(const void *payload, uint32_t payload_size,
+                                 uint32_t seq, void *user_ctx)
+{
+    (void)payload;
+    (void)payload_size;
+    (void)seq;
+    (void)user_ctx;
+}
+
+static void elog_count_visitor(const void *payload, uint32_t payload_size,
+                               uint32_t seq, void *user_ctx)
+{
+    uint32_t *count = (uint32_t *)user_ctx;
+
+    (void)payload;
+    (void)payload_size;
+    (void)seq;
+
+    (*count)++;
+}
+
+int elog_read_recent(uint32_t skip_newest, uint32_t count,
+                     elog_entry_t *entries, uint32_t *out_count)
+{
+    if (!log_is_initialized(&elog_ctx) || NULL == entries || NULL == out_count)
+    {
+        return 1;
+    }
+
+    log_page_ctx_t page = {0};
+
+    /* Step 1: skip the newest skip_newest entries (single pass, no copy). */
+    if (skip_newest > 0U)
+    {
+        if (log_read_last(&elog_ctx, skip_newest, elog_discard_visitor, NULL, &page) != LOG_OK)
+        {
+            return 1;
+        }
+        if (page.page_count < skip_newest)
+        {
+            /* Fewer entries than requested to skip: window is empty. */
+            *out_count = 0U;
+            return 0;
+        }
+    }
+
+    /* Step 2: collect the next count entries, newest -> oldest. */
+    elog_collect_ctx_t cc = {0};
+    cc.out = entries;
+    cc.capacity = count;
+
+    if (count > 0U)
+    {
+        if (log_read_last(&elog_ctx, count, elog_collect_visitor, &cc, &page) != LOG_OK)
+        {
+            return 1;
+        }
+    }
+
+    *out_count = cc.copied;
     return 0;
 }
 
@@ -236,103 +249,47 @@ void elog_print(elog_level_t level, const char *message)
     CSLOG("[%s] %s\r\n", level_str, message);
 }
 
-
-void elog_test()
-{
-	elog_entry_t entry = {0};
-
-	uint32_t start_time = millis();
-	for(int i = 0; i < log_metadata.max_entries; i++)
-	{
-		char test_data[sizeof(entry.info)];
-		xsprintf(test_data, "%04d - Test Log", i + 1);
-
-		uint32_t t1 = millis();
-		elog_add(ELOG_CODE_OK, ELOG_LEVEL_INFO, test_data, strlen(test_data)+1);
-		uint32_t t2 = millis();
-		CSLOG("Log entry %d added in %u ms\r\n", i + 1, t2 - t1);
-	}
-	uint32_t end_time = millis();
-
-	CSLOG("Added %d log entries in %u ms (avg %u ms/entry)\r\n", log_metadata.max_entries, end_time - start_time, (end_time - start_time) / log_metadata.max_entries);
-
-	for(int i = 0; i < log_metadata.max_entries; i++)
-	{
-		char test_data[sizeof(entry.info)];
-		xsprintf(test_data, "%04d - Test Log", i + 1);
-
-		memset(&entry, 0, sizeof(entry));
-		elog_read_entry(i, &entry);
-
-		//test_data[sizeof(entry.info) - 1] = '\0'; // Ensure null-termination
-		//entry.info[sizeof(entry.info) - 1] = '\0'; // Ensure null-termination
-
-		CSLOG("Read log entry [%d] ID=[%d] TimeStamp[%d] Info=[%s]\r\n", i + 1, entry.entry_id, entry.timestamp, entry.info);
-		if(entry.entry_id != i){
-			CSLOG("Log entry ID mismatch at index %d: expected %d, got %d\r\n", i, i, entry.entry_id);
-		}
-
-		if(memcmp(test_data, entry.info, strlen(test_data))){
-			CSLOG("Log entry mismatch at index %d: expected '%s', got '%s'\r\n", i, test_data, entry.info);
-		}
-	}
-
-	for(int i = 0; i < log_metadata.max_entries; i++)
-	{
-		char test_data[sizeof(entry.info)];
-		xsprintf(test_data, "%04d - Test Log", log_metadata.max_entries + i + 1);
-		elog_add(ELOG_CODE_OK, ELOG_LEVEL_INFO, test_data, strlen(test_data)+1);
-	}
-
-
-	for(int i = 0; i < log_metadata.max_entries; i++)
-	{
-		char test_data[sizeof(entry.info)];
-		xsprintf(test_data, "%04d - Test Log", log_metadata.max_entries + i + 1);
-
-		memset(&entry, 0, sizeof(entry));
-		elog_read_entry(i, &entry);
-
-		CSLOG("Read log entry [%d] ID=[%d] TimeStamp[%d] Info=[%s]\r\n", log_metadata.max_entries + i + 1, entry.entry_id, entry.timestamp, entry.info);
-		if(entry.entry_id != log_metadata.max_entries + i){
-			CSLOG("Log entry ID mismatch at index %d: expected %d, got %d\r\n", i, i, entry.entry_id);
-		}
-
-		if(memcmp(test_data, entry.info, strlen(test_data))){
-			CSLOG("Log entry mismatch at index %d: expected '%s', got '%s'\r\n", i, test_data, entry.info);
-		}
-	}
-
-}
-
-/* ========== Public API Functions ========== */
-
 void elog_clear(void)
 {
-    if (!is_initialized) {
+    if (!log_is_initialized(&elog_ctx))
+    {
         CSLOG("Error: elog not initialized\r\n");
         return;
     }
-    
-    log_metadata.total_entries = 0;
-    
-    elog_write_metadata(ELOG_MAIN_AREA);
-    elog_write_metadata(ELOG_BACKUP_AREA);
-    
+
+    log_config_t cfg;
+
+    elog_config_build(&cfg);
+
+    for (uint32_t s = 0U; s < elog_ctx.sector_count; s++)
+    {
+        (void)elog_flash_erase_sector(elog_ctx.base_addr + (s * LOG_SECTOR_SIZE));
+    }
+
+    (void)log_init(&elog_ctx, &cfg);
     CSLOG("Error log cleared. All entries removed.\r\n");
 }
 
 uint16_t elog_get_entry_count(void)
 {
-    return is_initialized ? log_metadata.total_entries : 0;
+    if (!log_is_initialized(&elog_ctx))
+    {
+        return 0U;
+    }
+    return (uint16_t)log_get_next_seq(&elog_ctx);
 }
 
 uint16_t elog_get_max_entries(void)
 {
-    return is_initialized ? log_metadata.max_entries : 0;
+    if (!log_is_initialized(&elog_ctx))
+    {
+        return 0U;
+    }
+    /* One sector is always kept erased for the circular invariant. */
+    return (uint16_t)(elog_ctx.entries_per_sector * (elog_ctx.sector_count - 1U));
 }
 
-/* ========== Shell Command Handlers ========== */
+/* ---- shell commands ---------------------------------------------------- */
 
 static const char* elog_level_to_string(elog_level_t level)
 {
@@ -346,42 +303,41 @@ static const char* elog_level_to_string(elog_level_t level)
     }
 }
 
+static uint32_t elog_stored_count(void)
+{
+    uint32_t count = 0U;
+
+    if (log_read_all(&elog_ctx, elog_count_visitor, &count) != LOG_OK)
+    {
+        return 0U;
+    }
+    return count;
+}
+
 static void elog_shell_info(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
-    
-    if (!is_initialized) {
+
+    if (!log_is_initialized(&elog_ctx)) {
         SHELL_LOG("Error Log: NOT INITIALIZED\r\n");
         return;
     }
-    
+
     SHELL_LOG("\r\n");
     SHELL_LOG("========================================\r\n");
     SHELL_LOG("       ERROR LOG SYSTEM STATUS\r\n");
     SHELL_LOG("========================================\r\n");
-    SHELL_LOG("Status           : %s\r\n", is_initialized ? "INITIALIZED" : "NOT INITIALIZED");
-    SHELL_LOG("Total Entries    : %u / %u\r\n", log_metadata.total_entries, log_metadata.max_entries);
-    SHELL_LOG("Storage Size     : %u bytes\r\n", log_metadata.size);
-    SHELL_LOG("Entry Size       : %u bytes\r\n", (uint32_t)sizeof(elog_entry_t));
-    SHELL_LOG("Usage            : %.1f%%\r\n", 
-            (float)(log_metadata.total_entries % log_metadata.max_entries) * 100.0f / log_metadata.max_entries);
-    
-    uint16_t displayed_entries = log_metadata.total_entries;
-    if (displayed_entries > log_metadata.max_entries) {
-        displayed_entries = log_metadata.max_entries;
-    }
-    SHELL_LOG("Displayed Entries: %u (oldest entries overwritten)\r\n", displayed_entries);
-    
+    SHELL_LOG("Status           : INITIALIZED (append-only ring)\r\n");
+    SHELL_LOG("Next Seq         : %u (16-bit, wraps at 65535)\r\n", elog_get_entry_count());
+    SHELL_LOG("Stored Entries   : %u / %u\r\n", elog_stored_count(), elog_get_max_entries());
+
     SHELL_LOG("\r\nMemory Addresses:\r\n");
-    SHELL_LOG("  Superblock     : 0x%08X\r\n", log_io_cfg.super_block_addr);
-    SHELL_LOG("  Superblock BKP : 0x%08X\r\n", log_io_cfg.super_block_backup_paddr);
-    SHELL_LOG("  Log Area       : 0x%08X\r\n", log_io_cfg.log_block_addr);
-    SHELL_LOG("  Log Area BKP   : 0x%08X\r\n", log_io_cfg.log_block_backup_addr);
-    
-    SHELL_LOG("\r\nMetadata CRC     : 0x%08X\r\n", log_metadata.crc);
-    SHELL_LOG("Calculated CRC   : 0x%08X\r\n", elog_calculate_metadata_crc());
-    
+    SHELL_LOG("  Log Area       : 0x%08X (%u sectors)\r\n",
+              elog_ctx.base_addr, elog_ctx.sector_count);
+    SHELL_LOG("  Entry Size     : %u bytes (payload %u)\r\n",
+              elog_ctx.entry_size, elog_ctx.payload_size);
+
     SHELL_LOG("========================================\r\n");
     SHELL_LOG("\r\nCommands:\r\n");
     SHELL_LOG("  elog          - Show this information\r\n");
@@ -390,88 +346,72 @@ static void elog_shell_info(int argc, char **argv)
     SHELL_LOG("========================================\r\n\r\n");
 }
 
+static void elog_dump_visitor(const void *payload, uint32_t payload_size,
+                              uint32_t seq, void *user_ctx)
+{
+    const elog_entry_t *entry = (const elog_entry_t *)payload;
+
+    (void)payload_size;
+    (void)user_ctx;
+
+    datetime_t dt;
+    dt_conv_from_epoch(entry->timestamp, &dt);
+
+    char hex_str[64];
+    int pos = 0;
+    for (uint8_t j = 0; j < sizeof(entry->info) && pos < (int)sizeof(hex_str) - 3; j++) {
+        pos += xsnprintf(hex_str + pos, sizeof(hex_str) - pos, "%02X ", entry->info[j]);
+    }
+    if (pos > 0) hex_str[pos - 1] = '\0'; /* Remove trailing space */
+
+    SHELL_LOG("%-6u %-5s %04u-%02u-%02u %02u:%02u:%02u %-24s %s\r\n",
+            seq,
+            elog_level_to_string((elog_level_t)entry->level),
+            dt.date.year, dt.date.month, dt.date.day,
+            dt.time.hour, dt.time.minute, dt.time.second,
+            elog_code_to_string((elog_code_t)entry->code),
+            hex_str);
+}
+
 static void elog_shell_dump(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
-    
-    if (!is_initialized) {
+
+    if (!log_is_initialized(&elog_ctx)) {
         SHELL_LOG("Error: elog not initialized\r\n");
         return;
     }
-    
-    uint16_t total_to_display = log_metadata.total_entries;
-    uint16_t start_index = 0;
-    
-    /* If we've wrapped around, only show the last max_entries */
-    if (total_to_display > log_metadata.max_entries) {
-        start_index = total_to_display % log_metadata.max_entries;
-        total_to_display = log_metadata.max_entries;
-    }
-    
+
     SHELL_LOG("\r\n");
     SHELL_LOG("========================================\r\n");
     SHELL_LOG("        ERROR LOG DUMP\r\n");
-    SHELL_LOG("========================================\r\n");
-    SHELL_LOG("Showing %u entries (ID %u-%u)\r\n\r\n", 
-            total_to_display,
-            log_metadata.total_entries - total_to_display,
-            log_metadata.total_entries - 1);
-    
-    SHELL_LOG("%-4s %-5s %-5s %-19s %-24s %-48s\r\n",
-              "ID", "Idx", "Level", "Timestamp", "Code", "Info (Hex)");
-    SHELL_LOG("---- ----- ----- ------------------- ------------------------ ------------------------------------------------\r\n");
-    
-    for (uint16_t i = 0; i < total_to_display; i++) {
-        uint16_t actual_index = (start_index + i) % log_metadata.max_entries;
-        elog_entry_t entry;
-        
-        if (elog_read_entry(actual_index, &entry) == 0) {
-            /* Convert epoch timestamp to human-readable */
-            datetime_t dt;
-            dt_conv_from_epoch(entry.timestamp, &dt);
-
-            /* Print info as hex bytes */
-            char hex_str[64];
-            int pos = 0;
-            for (uint8_t j = 0; j < sizeof(entry.info) && pos < (int)sizeof(hex_str) - 3; j++) {
-                pos += snprintf(hex_str + pos, sizeof(hex_str) - pos, "%02X ", entry.info[j]);
-            }
-            if (pos > 0) hex_str[pos - 1] = '\0'; /* Remove trailing space */
-            
-            SHELL_LOG("%-4u %-5u %-5s %04u-%02u-%02u %02u:%02u:%02u %-24s %s\r\n",
-                    entry.entry_id,
-                    actual_index,
-                    elog_level_to_string(entry.level),
-                    dt.date.year, dt.date.month, dt.date.day,
-                    dt.time.hour, dt.time.minute, dt.time.second,
-                    elog_code_to_string((elog_code_t)entry.code),
-                    hex_str);
-        }
-    }
-    
-    SHELL_LOG("\r\n========================================\r\n");
-    SHELL_LOG("Total: %u entries\r\n", total_to_display);
     SHELL_LOG("========================================\r\n\r\n");
+
+    SHELL_LOG("%-6s %-5s %-19s %-24s %s\r\n",
+              "Seq", "Level", "Timestamp", "Code", "Info (Hex)");
+    SHELL_LOG("------ ----- ------------------- ------------------------ ------------------------------------------------\r\n");
+
+    if (log_read_all(&elog_ctx, elog_dump_visitor, NULL) != LOG_OK) {
+        SHELL_LOG("Dump failed: flash read error\r\n");
+    }
+
+    SHELL_LOG("\r\n========================================\r\n\r\n");
 }
 
 static void elog_shell_clear(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
-    
-    if (!is_initialized) {
+
+    if (!log_is_initialized(&elog_ctx)) {
         SHELL_LOG("Error: elog not initialized\r\n");
         return;
     }
-    
-    SHELL_LOG("Are you sure you want to clear ALL log entries? (y/n): ");
-    /* Note: In a real implementation, you'd wait for user confirmation here.
-     * For now, we'll just clear directly. Add confirmation logic if needed. */
-    
-    uint16_t count = log_metadata.total_entries;
+
+    uint16_t count = elog_get_entry_count();
     elog_clear();
-    SHELL_LOG("\r\nCleared %u log entries.\r\n", count);
+    SHELL_LOG("\r\nCleared log (seq was at %u).\r\n", count);
 }
 
 static int elog_shell_command(int argc, char **argv)
@@ -481,7 +421,7 @@ static int elog_shell_command(int argc, char **argv)
         elog_shell_info(argc, argv);
         return 1;
     }
-    
+
     /* Parse subcommand */
     if (strcmp(argv[1], "dump") == 0) {
         elog_shell_dump(argc, argv);
