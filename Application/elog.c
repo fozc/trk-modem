@@ -291,6 +291,199 @@ uint16_t elog_get_max_entries(void)
 
 /* ---- shell commands ---------------------------------------------------- */
 
+/* ---- info payload decoding for display ------------------------------- */
+
+static uint32_t elog_rd_be32(const uint8_t *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16)
+         | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
+/* Copy printable bytes until NUL/16; "-" when nothing printable. */
+static void elog_printable_or_dash(const uint8_t *info, char *dst, size_t dst_size)
+{
+    size_t pos = 0U;
+    bool   any = false;
+
+    for (size_t i = 0; (i < 16U) && (info[i] != 0U) && (pos + 1U < dst_size); i++)
+    {
+        if ((info[i] >= 32U) && (info[i] < 127U))
+        {
+            dst[pos++] = (char)info[i];
+            any = true;
+        }
+    }
+    dst[pos] = '\0';
+
+    if (!any)
+    {
+        xsnprintf(dst, dst_size, "-");
+    }
+}
+
+static const char *pb_batt_state_str(uint8_t state)
+{
+    switch (state)
+    {
+        case 0U: return "PRESENT";
+        case 2U: return "ABSENT";
+        case 3U: return "PROBING";
+        default: return "?";
+    }
+}
+
+static const char *bms_work_state_str(uint8_t state)
+{
+    switch (state)
+    {
+        case 0U: return "STATIONARY";
+        case 1U: return "CHARGING";
+        case 2U: return "DISCHARGING";
+        default: return "?";
+    }
+}
+
+const char *elog_info_to_text(const elog_entry_t *entry)
+{
+    static char text[112];
+
+    if (NULL == entry)
+    {
+        return "-";
+    }
+
+    const uint8_t *info = entry->info;
+
+    switch ((elog_code_t)entry->code)
+    {
+        case ELOG_SYSTEM_RESET_CAUSE:
+        {
+            uint32_t flags = elog_rd_be32(&info[0]);
+            char causes[48];
+            int  pos = 0;
+
+            causes[0] = '\0';
+            for (uint32_t bit = 1U; (bit != 0U) && (pos < (int)sizeof(causes) - 6); bit <<= 1)
+            {
+                if ((flags & bit) != 0U)
+                {
+                    const char *name = "?";
+                    switch (bit)
+                    {
+                        case 0x01U: name = "POR";  break;
+                        case 0x02U: name = "BOR";  break;
+                        case 0x04U: name = "PIN";  break;
+                        case 0x08U: name = "SFT";  break;
+                        case 0x10U: name = "IWDG"; break;
+                        case 0x20U: name = "WWDG"; break;
+                        case 0x40U: name = "LPWR"; break;
+                        case 0x80U: name = "OBL";  break;
+                        default:    name = "?";    break;
+                    }
+                    pos += xsnprintf(&causes[pos], (size_t)(sizeof(causes) - pos),
+                                     "%s%s", (pos > 0) ? "|" : "", name);
+                }
+            }
+            if (pos == 0)
+            {
+                xsnprintf(causes, sizeof(causes), "UNKNOWN");
+            }
+            xsnprintf(text, sizeof(text), "%s raw=0x%08lX %s",
+                      causes, (unsigned long)elog_rd_be32(&info[4]),
+                      (info[8] != 0U) ? "ABNORMAL" : "normal");
+            break;
+        }
+
+        case ELOG_SYSTEM_NVRAM_RECOVERED:
+            xsnprintf(text, sizeof(text), "%s stored=0x%08lX calc=0x%08lX",
+                      (info[0] == ELOG_NVRAM_RESTORED_FROM_BACKUP) ? "backup" : "defaults",
+                      (unsigned long)elog_rd_be32(&info[1]),
+                      (unsigned long)elog_rd_be32(&info[5]));
+            break;
+
+        case ELOG_SYSTEM_FW_UPDATE:
+        {
+            const char *src = (info[0] == ELOG_FW_SRC_XMODEM) ? "xmodem" : "rfwu";
+            const char *res = "?";
+            switch (info[1])
+            {
+                case ELOG_FW_RESULT_START:     res = "start";     break;
+                case ELOG_FW_RESULT_OK:        res = "ok";        break;
+                case ELOG_FW_RESULT_FAIL:      res = "fail";      break;
+                case ELOG_FW_RESULT_AUTH_FAIL: res = "auth-fail"; break;
+                default: break;
+            }
+            xsnprintf(text, sizeof(text), "%s %s %luB",
+                      src, res, (unsigned long)elog_rd_be32(&info[2]));
+            break;
+        }
+
+        case ELOG_SYSTEM_HARDFAULT:
+            xsnprintf(text, sizeof(text), "pc=0x%08lX lr=0x%08lX cfsr=0x%08lX hfsr=0x%08lX",
+                      (unsigned long)elog_rd_be32(&info[0]),
+                      (unsigned long)elog_rd_be32(&info[4]),
+                      (unsigned long)elog_rd_be32(&info[8]),
+                      (unsigned long)elog_rd_be32(&info[12]));
+            break;
+
+        case ELOG_PWR_ALARM:
+            xsnprintf(text, sizeof(text), "%s latch=0x%02X live=0x%02X sys=0x%02X bq=0x%02X/0x%02X",
+                      (info[5] != 0U) ? "set" : "clear",
+                      info[0], info[1], info[2], info[3], info[4]);
+            break;
+
+        case ELOG_BAT_STATE:
+            if (info[1] == 0U)  /* state change */
+            {
+                if (info[0] == ELOG_BAT_SRC_POWER_BOARD)
+                {
+                    xsnprintf(text, sizeof(text), "pb batt %s->%s soc=%u%% soh=%u%%",
+                              pb_batt_state_str(info[2]), pb_batt_state_str(info[3]),
+                              info[4], info[5]);
+                }
+                else
+                {
+                    xsnprintf(text, sizeof(text), "bms work %s->%s soc=%u%% soh=%u%%",
+                              bms_work_state_str(info[2]), bms_work_state_str(info[3]),
+                              info[4], info[5]);
+                }
+            }
+            else  /* SOC threshold */
+            {
+                xsnprintf(text, sizeof(text), "soc<=%u%% %s soc=%u%% soh=%u%%",
+                          info[2], (info[3] != 0U) ? "SET" : "cleared",
+                          info[4], info[5]);
+            }
+            break;
+
+        case ELOG_IEC104_CONN:
+            if (info[0] != 0U)
+            {
+                xsnprintf(text, sizeof(text), "connected %u.%u.%u.%u",
+                          info[2], info[3], info[4], info[5]);
+            }
+            else
+            {
+                xsnprintf(text, sizeof(text), "closed by remote");
+            }
+            break;
+
+        case ELOG_WEB_LOGIN_FAIL:
+            xsnprintf(text, sizeof(text), "fail x%u from %u.%u.%u.%u",
+                      (unsigned)((info[4] << 8) | info[5]),
+                      info[0], info[1], info[2], info[3]);
+            break;
+
+        default:
+            /* Config changes carry ip(4) source(1) area[11]; GSM events
+             * carry a phone number or diagnostics - printable covers both. */
+            elog_printable_or_dash(info, text, sizeof(text));
+            break;
+    }
+
+    return text;
+}
+
 static const char* elog_level_to_string(elog_level_t level)
 {
     switch(level) {
@@ -340,11 +533,14 @@ static void elog_shell_info(int argc, char **argv)
 
     SHELL_LOG("========================================\r\n");
     SHELL_LOG("\r\nCommands:\r\n");
-    SHELL_LOG("  elog          - Show this information\r\n");
-    SHELL_LOG("  elog dump     - Dump all log entries\r\n");
-    SHELL_LOG("  elog clear    - Clear all log entries\r\n");
+    SHELL_LOG("  elog             - Show this information\r\n");
+    SHELL_LOG("  elog dump        - Dump entries (decoded info text)\r\n");
+    SHELL_LOG("  elog dump raw    - Dump entries (raw info hex bytes)\r\n");
+    SHELL_LOG("  elog clear       - Clear all log entries\r\n");
     SHELL_LOG("========================================\r\n\r\n");
 }
+
+static bool elog_dump_raw = false;
 
 static void elog_dump_visitor(const void *payload, uint32_t payload_size,
                               uint32_t seq, void *user_ctx)
@@ -357,40 +553,50 @@ static void elog_dump_visitor(const void *payload, uint32_t payload_size,
     datetime_t dt;
     dt_conv_from_epoch(entry->timestamp, &dt);
 
-    char hex_str[64];
-    int pos = 0;
-    for (uint8_t j = 0; j < sizeof(entry->info) && pos < (int)sizeof(hex_str) - 3; j++) {
-        pos += xsnprintf(hex_str + pos, sizeof(hex_str) - pos, "%02X ", entry->info[j]);
-    }
-    if (pos > 0) hex_str[pos - 1] = '\0'; /* Remove trailing space */
+    char info_str[64];
+    const char *info_out;
 
-    SHELL_LOG("%-6u %-5s %04u-%02u-%02u %02u:%02u:%02u %-24s %s\r\n",
+    if (elog_dump_raw)
+    {
+        int pos = 0;
+        for (uint8_t j = 0; j < sizeof(entry->info) && pos < (int)sizeof(info_str) - 3; j++) {
+            pos += xsnprintf(info_str + pos, sizeof(info_str) - pos, "%02X ", entry->info[j]);
+        }
+        if (pos > 0) info_str[pos - 1] = '\0'; /* Remove trailing space */
+        info_out = info_str;
+    }
+    else
+    {
+        info_out = elog_info_to_text(entry);
+    }
+
+    SHELL_LOG("%-6u %-5s %04u-%02u-%02u %02u:%02u:%02u %-18s %s\r\n",
             seq,
             elog_level_to_string((elog_level_t)entry->level),
             dt.date.year, dt.date.month, dt.date.day,
             dt.time.hour, dt.time.minute, dt.time.second,
             elog_code_to_string((elog_code_t)entry->code),
-            hex_str);
+            info_out);
 }
 
 static void elog_shell_dump(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
-
     if (!log_is_initialized(&elog_ctx)) {
         SHELL_LOG("Error: elog not initialized\r\n");
         return;
     }
+
+    /* Default: decoded info text; "elog dump raw" shows hex bytes. */
+    elog_dump_raw = (argc >= 3) && (strcmp(argv[2], "raw") == 0);
 
     SHELL_LOG("\r\n");
     SHELL_LOG("========================================\r\n");
     SHELL_LOG("        ERROR LOG DUMP\r\n");
     SHELL_LOG("========================================\r\n\r\n");
 
-    SHELL_LOG("%-6s %-5s %-19s %-24s %s\r\n",
-              "Seq", "Level", "Timestamp", "Code", "Info (Hex)");
-    SHELL_LOG("------ ----- ------------------- ------------------------ ------------------------------------------------\r\n");
+    SHELL_LOG("%-6s %-5s %-19s %-18s %s\r\n",
+              "Seq", "Level", "Timestamp", "Code", "Info");
+    SHELL_LOG("------ ----- ------------------- ------------------ ----------------------------------------\r\n");
 
     if (log_read_all(&elog_ctx, elog_dump_visitor, NULL) != LOG_OK) {
         SHELL_LOG("Dump failed: flash read error\r\n");
@@ -434,7 +640,7 @@ static int elog_shell_command(int argc, char **argv)
     }
     else {
         SHELL_LOG("Unknown elog command: %s\r\n", argv[1]);
-        SHELL_LOG("Usage: elog [dump|clear|info]\r\n");
+        SHELL_LOG("Usage: elog [dump [raw]|clear|info]\r\n");
     }
 
     return 1;

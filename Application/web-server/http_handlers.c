@@ -700,7 +700,7 @@ void handle_get_syslogs_json(void)
             first_line = 0;
 
             /* Format: "#INDEX TS:timestamp LVL:level CODE:code INFO text\n" */
-            /* For system logs, show info as text instead of hex */
+            /* Info is decoded by elog (per-event text), JSON-escaped here */
 
             datetime_t dt;
             dt_conv_from_epoch(entry->timestamp, &dt);
@@ -711,19 +711,11 @@ void handle_get_syslogs_json(void)
                             dt.date.year, dt.date.month, dt.date.day, dt.time.hour, dt.time.minute, dt.time.second,
                             entry->level, elog_code_to_string((elog_code_t)entry->code));
 
-            /* Append info[16] as text (null-terminated) */
-            char info_text[17] = {0};
-            memcpy(info_text, entry->info, 16);
-
-            /* Escape special characters for JSON */
-            for (int j = 0; j < 16 && info_text[j] != '\0'; j++) {
-                char c = info_text[j];
-                if (c == '"' || c == '\\') {
+            for (const char *q = elog_info_to_text(entry); *q != '\0'; q++) {
+                if ((*q == '"') || (*q == '\\')) {
                     pos += xsnprintf(buf + pos, buf_size - pos, "\\");
                 }
-                if (c >= 32 && c < 127) {  /* Printable ASCII */
-                    pos += xsnprintf(buf + pos, buf_size - pos, "%c", c);
-                }
+                pos += xsnprintf(buf + pos, buf_size - pos, "%c", *q);
             }
 
             emitted++;

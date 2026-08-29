@@ -52,6 +52,12 @@ void elog_print(elog_level_t level, const char *message);
 void elog_clear(void);
 uint16_t elog_get_entry_count(void);
 uint16_t elog_get_max_entries(void);
+
+/* Decode the info payload of an entry into human-readable text (e.g.
+ * "connected 95.5.188.130", "PIN|SFT raw=0x14005500 normal").
+ * Returns a pointer to a static buffer: NOT reentrant and valid only
+ * until the next call - print it immediately (%s). */
+const char *elog_info_to_text(const elog_entry_t *entry);
 void elog_shell_init(void);
 
 /**
