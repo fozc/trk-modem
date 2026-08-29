@@ -296,32 +296,7 @@ void handle_post_login(const char *json_body)
         xprintf("[HTTP] User login successful\r\n");
     } else {
         xcprintf(XCOLOR_RED, "[HTTP] Login failed - Invalid credentials\r\n");
-
-        /* Persist failed logins in bursts: first failure is logged at once,
-         * then one record per 60 s window carrying the burst count. */
-        {
-            static uint32_t burst = 0U;
-            static uint32_t last_log_tick = 0U;
-            uint32_t now = bsp_get_tick();
-
-            burst++;
-            if ((last_log_tick == 0U)
-                || ((now - last_log_tick) > 60000UL))
-            {
-                /* info layout: ip(4) burst_count(2) */
-                uint32_t ip = gsm_get_web_client_ip();
-                uint8_t info[16] = {0};
-                info[0] = (uint8_t)(ip >> 24);
-                info[1] = (uint8_t)(ip >> 16);
-                info[2] = (uint8_t)(ip >> 8);
-                info[3] = (uint8_t)(ip);
-                info[4] = (uint8_t)(burst >> 8);
-                info[5] = (uint8_t)(burst);
-                elog_add(ELOG_WEB_LOGIN_FAIL, ELOG_LEVEL_WARN, info, sizeof(info));
-                last_log_tick = now;
-                burst = 0U;
-            }
-        }
+        elog_log_web_login_fail(gsm_get_web_client_ip());
     }
     
     /* Send response */

@@ -239,17 +239,7 @@ static void handle_cmd_hello(void)
 
     if (auth_token != expected_token) {
         CCSLOG(XCOLOR_RED, "[RFWU] Auth failed\r\n");
-        {
-            /* info: source(1) result(1) size(4); result 3 = auth fail */
-            uint8_t info[16] = {0};
-            info[0] = 2U;  /* source: web raw-TCP */
-            info[1] = 3U;
-            info[2] = (uint8_t)(total_size >> 24);
-            info[3] = (uint8_t)(total_size >> 16);
-            info[4] = (uint8_t)(total_size >> 8);
-            info[5] = (uint8_t)(total_size);
-            elog_add(ELOG_SYSTEM_FW_UPDATE, ELOG_LEVEL_WARN, info, sizeof(info));
-        }
+        elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_AUTH_FAIL, total_size);
         send_nack(RFWU_ERR_AUTH, 0U);
         return;
     }
@@ -376,15 +366,7 @@ static void handle_cmd_finish(void)
 
     /* Flush any partial sector remaining in the flash buffer */
     if (s.p_ops->fw_finish(total_size) != 0) {
-        /* info: source(1) result(1) size(4); result 2 = fail */
-        uint8_t info[16] = {0};
-        info[0] = 2U;  /* source: web raw-TCP */
-        info[1] = 2U;
-        info[2] = (uint8_t)(total_size >> 24);
-        info[3] = (uint8_t)(total_size >> 16);
-        info[4] = (uint8_t)(total_size >> 8);
-        info[5] = (uint8_t)(total_size);
-        elog_add(ELOG_SYSTEM_FW_UPDATE, ELOG_LEVEL_ERROR, info, sizeof(info));
+        elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_FAIL, total_size);
         send_nack(RFWU_ERR_FLASH, s.write_head);
         return;
     }
@@ -393,17 +375,7 @@ static void handle_cmd_finish(void)
     session_persist(total_size);
     s.session_active = false;
 
-    {
-        /* info: source(1) result(1) size(4); result 1 = ok */
-        uint8_t info[16] = {0};
-        info[0] = 2U;  /* source: web raw-TCP */
-        info[1] = 1U;
-        info[2] = (uint8_t)(total_size >> 24);
-        info[3] = (uint8_t)(total_size >> 16);
-        info[4] = (uint8_t)(total_size >> 8);
-        info[5] = (uint8_t)(total_size);
-        elog_add(ELOG_SYSTEM_FW_UPDATE, ELOG_LEVEL_INFO, info, sizeof(info));
-    }
+    elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_OK, total_size);
 
     CCSLOG(XCOLOR_GREEN, "[RFWU] Transfer complete: %lu bytes\r\n", total_size);
     send_ack(s.write_head);

@@ -80,8 +80,8 @@ static void send_soh_request(void)
 }
 
 
-/* Log work-state transitions and SOC threshold crossings to elog.
- * info layout: src(1) event(1) a(1) b(1) soc(1) soh(1); src=2 BMS. */
+/* Report work-state transitions and SOC threshold crossings to elog;
+ * payload packing and level policy live in elog.c. */
 static void bms_log_transitions(const bms_data_t *d)
 {
 	static bool have_prev = false;
@@ -89,7 +89,6 @@ static void bms_log_transitions(const bms_data_t *d)
 	static bool low20 = false;
 	static bool low10 = false;
 
-	uint8_t info[16] = {0};
 	uint8_t soc_u8 = (d->soc_percent < 0.0f) ? 0U
 	               : ((d->soc_percent > 100.0f) ? 100U : (uint8_t)d->soc_percent);
 	uint8_t soh_u8 = (d->soh_percent < 0.0f) ? 0U
@@ -97,13 +96,8 @@ static void bms_log_transitions(const bms_data_t *d)
 
 	if (have_prev && (d->work_state != prev_work))
 	{
-		info[0] = 2U;  /* source: BMS */
-		info[1] = 0U;  /* work_state change */
-		info[2] = prev_work;
-		info[3] = (uint8_t)d->work_state;
-		info[4] = soc_u8;
-		info[5] = soh_u8;
-		elog_add(ELOG_BAT_STATE, ELOG_LEVEL_INFO, info, sizeof(info));
+		elog_log_battery_state_change(ELOG_BAT_SRC_BMS, prev_work,
+		                              (uint8_t)d->work_state, soc_u8, soh_u8);
 	}
 
 	/* SOC thresholds with hysteresis: set at <=20/<=10, clear at >=25/>=15. */
@@ -113,14 +107,7 @@ static void bms_log_transitions(const bms_data_t *d)
 		if (set != low20)
 		{
 			low20 = set;
-			memset(info, 0, sizeof(info));
-			info[0] = 2U;
-			info[1] = 1U;  /* SOC threshold */
-			info[2] = 20U; /* threshold */
-			info[3] = set ? 1U : 0U;
-			info[4] = soc_u8;
-			info[5] = soh_u8;
-			elog_add(ELOG_BAT_STATE, ELOG_LEVEL_WARN, info, sizeof(info));
+			elog_log_battery_soc_threshold(20U, set, soc_u8, soh_u8);
 		}
 	}
 
@@ -130,14 +117,7 @@ static void bms_log_transitions(const bms_data_t *d)
 		if (set != low10)
 		{
 			low10 = set;
-			memset(info, 0, sizeof(info));
-			info[0] = 2U;
-			info[1] = 1U;  /* SOC threshold */
-			info[2] = 10U; /* threshold */
-			info[3] = set ? 1U : 0U;
-			info[4] = soc_u8;
-			info[5] = soh_u8;
-			elog_add(ELOG_BAT_STATE, ELOG_LEVEL_ERROR, info, sizeof(info));
+			elog_log_battery_soc_threshold(10U, set, soc_u8, soh_u8);
 		}
 	}
 

@@ -373,24 +373,6 @@ static bool nvram_schema_valid(void)
            (nvram.schema_version == NVRAM_SCHEMA_VERSION);
 }
 
-/* info layout for ELOG_SYSTEM_NVRAM_RECOVERED: action(1) stored_crc(4) calc_crc(4).
- * action: 1 = restored from backup, 2 = defaults rewritten. */
-static void nvram_log_recovery(uint8_t action, uint32_t stored_crc, uint32_t calc_crc)
-{
-	uint8_t info[16] = {0};
-
-	info[0] = action;
-	info[1] = (uint8_t)(stored_crc >> 24);
-	info[2] = (uint8_t)(stored_crc >> 16);
-	info[3] = (uint8_t)(stored_crc >> 8);
-	info[4] = (uint8_t)(stored_crc);
-	info[5] = (uint8_t)(calc_crc >> 24);
-	info[6] = (uint8_t)(calc_crc >> 16);
-	info[7] = (uint8_t)(calc_crc >> 8);
-	info[8] = (uint8_t)(calc_crc);
-	elog_add(ELOG_SYSTEM_NVRAM_RECOVERED, ELOG_LEVEL_ERROR, info, sizeof(info));
-}
-
 int nvram_init(void)
 {
 #ifdef IEC104_TEST
@@ -438,7 +420,7 @@ int nvram_init(void)
 			}
 
 			nvram_set_defaults();
-			nvram_log_recovery(2U, main_stored_crc, main_calc_crc);
+			elog_log_nvram_recovery(ELOG_NVRAM_DEFAULTS_REWRITTEN, main_stored_crc, main_calc_crc);
 			if(nvram_sync(true)){
 				xcprintf(XCOLOR_RED, "Failed to write default NVRAM values to flash.\r\n");
 				res = -1;
@@ -446,7 +428,7 @@ int nvram_init(void)
     	}
     	else
     	{
-    		nvram_log_recovery(1U, main_stored_crc, main_calc_crc);
+    		elog_log_nvram_recovery(ELOG_NVRAM_RESTORED_FROM_BACKUP, main_stored_crc, main_calc_crc);
     		CSLOG("NVRAM restored from backup.\r\n");
     	}
 	}
