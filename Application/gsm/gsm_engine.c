@@ -49,6 +49,7 @@
 #include "gsm_http_server.h"
 #include "modem_config.h"
 #include "gsm_log.h"
+#include "elog.h"
 #include "time_service.h"
 #include "iec104_process.h"
 #include "iec104_config.h"
@@ -874,7 +875,10 @@ int32_t gsm_ss_iec104_listener_cb(void)
 		if(!gsm_info.iec104_session.ip.ip) /* Bu baglanti yeni ise log al. */
 		{
 			uint8_t ip_buff[16] = {0}, ip_index = 0, comma = 0;
-			for(uint32_t i = 0; i < rx.len && i < 15; i++)
+			/* Sinir 55: web listener ayristiricisiyla ayni — #SS satiri
+			 * "#SS: <id>,<state>,<local_ip>,<lport>,<remote_ip>,<rport>"
+			 * biciminde; remote IP 4. virgulden sonra baslar. */
+			for(uint32_t i = 0; i < rx.len && i < 55U; i++)
 			{
 				if(rx.buff[i] == ',')
 				{
@@ -904,6 +908,21 @@ int32_t gsm_ss_iec104_listener_cb(void)
 						gsm_info.iec104_session.ip.b,
 						gsm_info.iec104_session.ip.c,
 						gsm_info.iec104_session.ip.d);
+
+					/* Baglanti kuruldu: karsi IP ile birlikte kalici kayit al.
+					 * info: up(1) reason(1) ip(4); reason 1 = client connected.
+					 * Oturum kapaninca gsm_reset_iec104_session_info ip'yi
+					 * sifirlar; sonraki baglanti tekrar kayit uretir. */
+					{
+						uint8_t elog_info[16] = {0};
+						elog_info[0] = 1U;
+						elog_info[1] = 1U;
+						elog_info[2] = gsm_info.iec104_session.ip.a;
+						elog_info[3] = gsm_info.iec104_session.ip.b;
+						elog_info[4] = gsm_info.iec104_session.ip.c;
+						elog_info[5] = gsm_info.iec104_session.ip.d;
+						elog_add(ELOG_IEC104_CONN, ELOG_LEVEL_INFO, elog_info, sizeof(elog_info));
+					}
 				}
 			}
 		}

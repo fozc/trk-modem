@@ -48,7 +48,7 @@ typedef enum
 	ELOG_BAT_STATE             = 51,  /* info: src(1) event(1) a(1) b(1) soc(1) soh(1) */
 
 	// Communication codes (60..69)
-	ELOG_IEC104_CONN           = 60,  /* info: up(1) reason(1) ip(4) */
+	ELOG_IEC104_CONN           = 60,  /* info: up(1) reason(1) ip(4); reason 0=closed by remote, 1=client connected */
 
 	// Audit codes (70..79)
 	ELOG_WEB_LOGIN_FAIL        = 70,  /* info: ip(4) burst_count(2) */
