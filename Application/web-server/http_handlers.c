@@ -674,11 +674,19 @@ void handle_get_syslogs_json(void)
     uint32_t skip = offset;
     uint8_t first_line = 1;
 
+    /* Stop appending entries before the tail room is gone: one decoded
+     * entry line is well under this margin and the JSON wrapper needs a
+     * few bytes. Whatever did not fit is served by the next paged
+     * request (the frontend counts returned lines, not the limit). */
+#define SYSLOGS_HEADROOM_BYTES 256
+
     while (emitted < count)
     {
         elog_entry_t chunk[8];
         uint32_t chunk_len = 0;
         uint32_t want = count - emitted;
+        uint8_t headroom_left = 1;
+
         if (want > (uint32_t)(sizeof(chunk) / sizeof(chunk[0]))) {
             want = (uint32_t)(sizeof(chunk) / sizeof(chunk[0]));
         }
@@ -691,6 +699,11 @@ void handle_get_syslogs_json(void)
          * newest log overall, so the number continues across chunks. */
         for (uint32_t i = 0; i < chunk_len; i++)
         {
+            if (pos > (buf_size - SYSLOGS_HEADROOM_BYTES)) {
+                headroom_left = 0;
+                break;
+            }
+
             const elog_entry_t *entry = &chunk[i];
             uint32_t display_idx = offset + emitted + 1;
 
@@ -722,8 +735,12 @@ void handle_get_syslogs_json(void)
         }
 
         skip += chunk_len;
+
+        if (headroom_left == 0U) {
+            break;
+        }
     }
-    
+
     /* Close "recs" field and add total count */
     pos += xsnprintf(buf + pos, buf_size - pos, "\",\"t\":%u", available_entries);
     
