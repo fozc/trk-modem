@@ -10,12 +10,14 @@
  * block, verifies its integrity byte, decodes the fields (MSB-first) and
  * drives the REC/config handshake on the PULL blocks.
  *
- * Reference: doc/PowerBoard_I2C_Protocol.md (Rev0.7, PROT_VER 0x06).
- * Block-layout authority: doc/pwr/pwr_i2c_packets.h.
+ * Reference: doc/PowerBoard_I2C_Protocol.md (Rev 1.0, PROT_VER 0x09);
+ * block-layout authority: power-card repo, upper_board_reference/pwr_i2c_packets.h.
+ * Wire-format decode lives in power_board_decode.c (host-testable).
  */
 
 #include <string.h>
 #include "power_board.h"
+#include "power_board_decode.h"
 #include "i2c_slave.h"
 #include "bsp.h"
 #include "contiki.h"
@@ -23,75 +25,6 @@
 #include "utils.h"
 #include "console_logger.h"
 #include "elog.h"
-
-/* ======================================================================
- *  Telemetry register offsets (doc section 3b)
- * ====================================================================== */
-
-#define PB_REG_SYS_STATE     ((uint8_t)0x00U)
-#define PB_REG_SYS_FAULT     ((uint8_t)0x01U)
-#define PB_REG_SYS_FLAGS     ((uint8_t)0x02U)
-#define PB_REG_CHG_STAT_RAW  ((uint8_t)0x03U)
-#define PB_REG_SOH_X10       ((uint8_t)0x04U)
-#define PB_REG_EFC           ((uint8_t)0x06U)
-#define PB_REG_EQUIV_HOURS   ((uint8_t)0x08U)
-#define PB_REG_GROSS_MAH     ((uint8_t)0x0CU)
-#define PB_REG_VBAT_MV       ((uint8_t)0x10U)
-#define PB_REG_VPV_MV        ((uint8_t)0x12U)
-#define PB_REG_VDC_MV        ((uint8_t)0x14U)
-#define PB_REG_REM_EFC       ((uint8_t)0x16U)
-#define PB_REG_REM_YEARS_X10 ((uint8_t)0x18U)
-#define PB_REG_SOC_X10       ((uint8_t)0x1AU)
-#define PB_REG_REC_FLAG      ((uint8_t)0x1CU)
-#define PB_REG_SEQ           ((uint8_t)0x1DU)
-#define PB_REG_PROT_VER      ((uint8_t)0x1EU)
-/* 0x1F reserved (0x00), included in the integrity XOR. */
-#define PB_REG_ICHG_MA       ((uint8_t)0x20U)
-#define PB_REG_BOARD_TEMP    ((uint8_t)0x22U)
-#define PB_REG_BATT_TS       ((uint8_t)0x23U)
-#define PB_REG_BATT_TEMP     ((uint8_t)0x24U)
-#define PB_REG_BQ_FAULT0     ((uint8_t)0x26U)
-#define PB_REG_BQ_FAULT1     ((uint8_t)0x27U)
-#define PB_REG_CHG_STAT      ((uint8_t)0x28U)
-#define PB_REG_ICO_STAT      ((uint8_t)0x29U)
-#define PB_REG_HEATER_STATE  ((uint8_t)0x2AU)
-#define PB_REG_BATT_STATE    ((uint8_t)0x2BU)
-#define PB_REG_BATT_CAP_AH   ((uint8_t)0x2CU)
-#define PB_REG_BATT_CRATE    ((uint8_t)0x2DU)
-#define PB_REG_ICHG_TARGET   ((uint8_t)0x2EU)
-#define PB_REG_ALARM_LIVE    ((uint8_t)0x30U)
-#define PB_REG_ALARM_LATCH   ((uint8_t)0x31U)
-#define PB_REG_CHG_PHASE     ((uint8_t)0x32U)
-#define PB_REG_DELTA_UWH     ((uint8_t)0x33U)
-#define PB_REG_TOTAL_MWH     ((uint8_t)0x37U)
-#define PB_REG_TOTAL_MAH     ((uint8_t)0x3BU)
-#define PB_REG_BMS_PRESENT   ((uint8_t)0x3FU)
-#define PB_REG_BQ_REG1B      ((uint8_t)0x40U)
-#define PB_REG_BQ_REG1D      ((uint8_t)0x41U)
-#define PB_REG_BQ_REG1E      ((uint8_t)0x42U)
-#define PB_REG_BQ_REG1F      ((uint8_t)0x43U)
-#define PB_REG_PWR_IO        ((uint8_t)0x44U)
-#define PB_REG_HIZ_TRIG      ((uint8_t)0x45U)
-#define PB_REG_MPPT_TRIG     ((uint8_t)0x46U)
-#define PB_REG_IINDPM_TRIG   ((uint8_t)0x47U)
-#define PB_REG_ACDRV_TRIG    ((uint8_t)0x48U)
-#define PB_REG_PWR_SRC       ((uint8_t)0x49U)
-#define PB_REG_BQ_VSYS_MV    ((uint8_t)0x50U)
-#define PB_REG_BQ_VBUS_MV    ((uint8_t)0x52U)
-#define PB_REG_STM_VBAT_MV   ((uint8_t)0x54U)
-#define PB_REG_IBAT_MA       ((uint8_t)0x56U)
-#define PB_REG_IBUS_MA       ((uint8_t)0x58U)
-#define PB_REG_BQ_VAC1_MV    ((uint8_t)0x5AU)
-#define PB_REG_BQ_VAC2_MV    ((uint8_t)0x5CU)
-#define PB_REG_BQ_TDIE_C     ((uint8_t)0x5EU)
-#define PB_REG_TLM_XSUM      ((uint8_t)0x5FU)   /* integrity byte */
-
-/* Power block in-block offsets (base 0xA0). */
-#define PB_PWR_PPV           ((uint8_t)0x00U)
-#define PB_PWR_PDC           ((uint8_t)0x04U)
-#define PB_PWR_PSYS          ((uint8_t)0x08U)
-#define PB_PWR_PBAT          ((uint8_t)0x0CU)
-#define PB_PWR_PIN           ((uint8_t)0x10U)
 
 /* ======================================================================
  *  Module state
@@ -111,35 +44,8 @@ static struct etimer     s_drain_timer;
 PROCESS(power_board_process, "pwrboard");
 
 /* ======================================================================
- *  Internal helpers (MSB-first / salted XSUM)
+ *  Internal helpers (MSB-first writers for the PULL blocks)
  * ====================================================================== */
-
-/**
- * @brief Read a big-endian (MSB-first) unsigned 16-bit field.
- */
-static uint16_t pb_rd_u16(const uint8_t *p_reg, uint8_t off)
-{
-    return (uint16_t)(((uint16_t)p_reg[off] << 8) | (uint16_t)p_reg[off + 1U]);
-}
-
-/**
- * @brief Read a big-endian (MSB-first) signed 16-bit field.
- */
-static int16_t pb_rd_i16(const uint8_t *p_reg, uint8_t off)
-{
-    return (int16_t)pb_rd_u16(p_reg, off);
-}
-
-/**
- * @brief Read a big-endian (MSB-first) unsigned 32-bit field.
- */
-static uint32_t pb_rd_u32(const uint8_t *p_reg, uint8_t off)
-{
-    return ((uint32_t)p_reg[off]      << 24)
-         | ((uint32_t)p_reg[off + 1U] << 16)
-         | ((uint32_t)p_reg[off + 2U] <<  8)
-         |  (uint32_t)p_reg[off + 3U];
-}
 
 /**
  * @brief Write a big-endian (MSB-first) unsigned 16-bit value into a buffer.
@@ -161,28 +67,14 @@ static void pb_wr_u32(uint8_t *p_buf, uint8_t off, uint32_t v)
     p_buf[off + 3U] = (uint8_t)v;
 }
 
-/**
- * @brief Salted XOR integrity over @c len bytes: XOR(b[0..len-1]) ^ 0x5A.
- *
- * Every block's LAST byte carries this value over all preceding bytes
- * (doc section 2). The caller compares it to the block's last byte.
- */
-static uint8_t pb_xsum(const uint8_t *p_buf, uint8_t len)
-{
-    uint8_t x = 0U;
-    for (uint8_t i = 0U; i < len; i++)
-    {
-        x = (uint8_t)(x ^ p_buf[i]);
-    }
-    return (uint8_t)(x ^ POWER_BOARD_XSUM_SALT);
-}
-
 /* ======================================================================
  *  PUSH blocks: decode
  * ====================================================================== */
 
 bool power_board_get_telemetry(power_board_telemetry_t *p_out)
 {
+    static uint8_t s_last_prot_ver = 0xFFU;
+
     if (p_out == NULL)
     {
         return false;
@@ -191,77 +83,19 @@ bool power_board_get_telemetry(power_board_telemetry_t *p_out)
     uint8_t reg[POWER_BOARD_TLM_SIZE];
     i2c_slave_snapshot(reg, POWER_BOARD_TLM_BASE, POWER_BOARD_TLM_SIZE);
 
-    /* Integrity: XOR(0x00..0x5E) ^ 0x5A == byte 0x5F. 0x1F (reserved, 0x00)
-     * lies inside the covered range and is part of the XOR. */
-    p_out->valid = (pb_xsum(reg, PB_REG_TLM_XSUM) == reg[PB_REG_TLM_XSUM]);
+    (void)power_board_decode_telemetry(reg, p_out);
 
-    p_out->prot_ver    = reg[PB_REG_PROT_VER];
-    p_out->seq         = reg[PB_REG_SEQ];
-    p_out->rec_flag    = reg[PB_REG_REC_FLAG];
-    p_out->blk_xsum    = reg[PB_REG_TLM_XSUM];
-
-    p_out->sys_state   = reg[PB_REG_SYS_STATE];
-    p_out->sys_fault   = reg[PB_REG_SYS_FAULT];
-    p_out->sys_flags   = reg[PB_REG_SYS_FLAGS];
-    p_out->chg_stat_raw = reg[PB_REG_CHG_STAT_RAW];
-
-    p_out->soh_x10     = pb_rd_u16(reg, PB_REG_SOH_X10);
-    p_out->efc         = pb_rd_u16(reg, PB_REG_EFC);
-    p_out->equiv_hours = pb_rd_u32(reg, PB_REG_EQUIV_HOURS);
-    p_out->gross_mah   = pb_rd_u32(reg, PB_REG_GROSS_MAH);
-
-    p_out->vbat_mv     = pb_rd_u16(reg, PB_REG_VBAT_MV);
-    p_out->vpv_mv      = pb_rd_u16(reg, PB_REG_VPV_MV);
-    p_out->vdc_mv      = pb_rd_u16(reg, PB_REG_VDC_MV);
-    p_out->rem_efc     = pb_rd_u16(reg, PB_REG_REM_EFC);
-    p_out->rem_years_x10 = pb_rd_u16(reg, PB_REG_REM_YEARS_X10);
-    p_out->soc_x10     = pb_rd_u16(reg, PB_REG_SOC_X10);
-
-    p_out->ichg_ma     = pb_rd_u16(reg, PB_REG_ICHG_MA);
-    p_out->ibat_ma     = pb_rd_i16(reg, PB_REG_IBAT_MA);
-    p_out->ibus_ma     = pb_rd_u16(reg, PB_REG_IBUS_MA);
-
-    p_out->board_temp_c  = (int8_t)reg[PB_REG_BOARD_TEMP];
-    p_out->batt_temp_x10 = pb_rd_i16(reg, PB_REG_BATT_TEMP);
-    p_out->batt_ts       = reg[PB_REG_BATT_TS];
-
-    p_out->chg_stat      = reg[PB_REG_CHG_STAT];
-    p_out->chg_phase     = reg[PB_REG_CHG_PHASE];
-    p_out->ico_stat      = reg[PB_REG_ICO_STAT];
-    p_out->heater_state  = reg[PB_REG_HEATER_STATE];
-    p_out->batt_state    = reg[PB_REG_BATT_STATE];
-    p_out->batt_cap_ah   = reg[PB_REG_BATT_CAP_AH];
-    p_out->batt_crate    = reg[PB_REG_BATT_CRATE];
-    p_out->ichg_target_ma = pb_rd_u16(reg, PB_REG_ICHG_TARGET);
-
-    p_out->bq_fault0   = reg[PB_REG_BQ_FAULT0];
-    p_out->bq_fault1   = reg[PB_REG_BQ_FAULT1];
-    p_out->alarm_live  = reg[PB_REG_ALARM_LIVE];
-    p_out->alarm_latch = reg[PB_REG_ALARM_LATCH];
-
-    p_out->delta_uwh   = (int32_t)pb_rd_u32(reg, PB_REG_DELTA_UWH);
-    p_out->total_mwh   = (int32_t)pb_rd_u32(reg, PB_REG_TOTAL_MWH);
-    p_out->total_mah   = (int32_t)pb_rd_u32(reg, PB_REG_TOTAL_MAH);
-    p_out->bms_present = reg[PB_REG_BMS_PRESENT];
-
-    p_out->bq_reg1b    = reg[PB_REG_BQ_REG1B];
-    p_out->bq_reg1d    = reg[PB_REG_BQ_REG1D];
-    p_out->bq_reg1e    = reg[PB_REG_BQ_REG1E];
-    p_out->bq_reg1f    = reg[PB_REG_BQ_REG1F];
-
-    p_out->pwr_io      = reg[PB_REG_PWR_IO];
-    p_out->hiz_trig    = reg[PB_REG_HIZ_TRIG];
-    p_out->mppt_trig   = reg[PB_REG_MPPT_TRIG];
-    p_out->iindpm_trig = reg[PB_REG_IINDPM_TRIG];
-    p_out->acdrv_trig  = reg[PB_REG_ACDRV_TRIG];
-    p_out->pwr_src     = reg[PB_REG_PWR_SRC];
-
-    p_out->bq_vsys_mv  = pb_rd_u16(reg, PB_REG_BQ_VSYS_MV);
-    p_out->bq_vbus_mv  = pb_rd_u16(reg, PB_REG_BQ_VBUS_MV);
-    p_out->stm_vbat_mv = pb_rd_u16(reg, PB_REG_STM_VBAT_MV);
-    p_out->bq_vac1_mv  = pb_rd_u16(reg, PB_REG_BQ_VAC1_MV);
-    p_out->bq_vac2_mv  = pb_rd_u16(reg, PB_REG_BQ_VAC2_MV);
-    p_out->bq_tdie_c   = (int8_t)reg[PB_REG_BQ_TDIE_C];
+    /* Log a protocol-version change once, not on every ~1 s frame. */
+    if (p_out->prot_ver != s_last_prot_ver)
+    {
+        s_last_prot_ver = p_out->prot_ver;
+        if (p_out->prot_ver != POWER_BOARD_PROT_VER)
+        {
+            CSLOG_WARN("[PWRB] PROT_VER 0x%02X != expected 0x%02X - frames rejected\r\n",
+                       (unsigned)p_out->prot_ver,
+                       (unsigned)POWER_BOARD_PROT_VER);
+        }
+    }
 
     return p_out->valid;
 }
@@ -276,15 +110,7 @@ bool power_board_get_power(power_board_power_t *p_out)
     uint8_t blk[POWER_BOARD_PWR_LEN];
     i2c_slave_snapshot(blk, POWER_BOARD_PWR_BASE, POWER_BOARD_PWR_LEN);
 
-    p_out->valid = (pb_xsum(blk, (uint8_t)(POWER_BOARD_PWR_LEN - 1U))
-                    == blk[POWER_BOARD_PWR_LEN - 1U]);
-
-    p_out->ppv_mw  = (int32_t)pb_rd_u32(blk, PB_PWR_PPV);
-    p_out->pdc_mw  = (int32_t)pb_rd_u32(blk, PB_PWR_PDC);
-    p_out->psys_mw = (int32_t)pb_rd_u32(blk, PB_PWR_PSYS);
-    p_out->pbat_mw = (int32_t)pb_rd_u32(blk, PB_PWR_PBAT);
-    p_out->pin_mw  = (int32_t)pb_rd_u32(blk, PB_PWR_PIN);
-
+    (void)power_board_decode_power(blk, p_out);
     return p_out->valid;
 }
 
@@ -298,22 +124,7 @@ bool power_board_get_lastgasp(power_board_lastgasp_t *p_out)
     uint8_t blk[POWER_BOARD_LG_LEN];
     i2c_slave_snapshot(blk, POWER_BOARD_LG_BASE, POWER_BOARD_LG_LEN);
 
-    bool marker_ok = (blk[0] == POWER_BOARD_LG_MARKER);
-    bool xsum_ok   = (pb_xsum(blk, (uint8_t)(POWER_BOARD_LG_LEN - 1U))
-                      == blk[POWER_BOARD_LG_LEN - 1U]);
-    p_out->valid = (marker_ok && xsum_ok);
-
-    p_out->reason      = blk[1];
-    p_out->soh_x10     = pb_rd_u16(blk, 2U);
-    p_out->efc         = pb_rd_u16(blk, 4U);
-    p_out->equiv_hours = pb_rd_u32(blk, 6U);
-    p_out->gross_mah   = pb_rd_u32(blk, 10U);
-    p_out->total_mwh   = pb_rd_u32(blk, 14U);
-    p_out->total_mah   = pb_rd_u32(blk, 18U);
-    p_out->vbat_mv     = pb_rd_u16(blk, 22U);
-    p_out->cap_ah      = blk[24];
-    p_out->soc_pct     = blk[25];
-
+    (void)power_board_decode_lastgasp(blk, p_out);
     return p_out->valid;
 }
 
@@ -326,6 +137,9 @@ void power_board_log_telemetry(void)
     power_board_telemetry_t t;
     (void)power_board_get_telemetry(&t);
 
+    /* Signed SoC: negative is normal since the 2026-08-27 model. */
+    int soc_abs = (t.soc_x10 < 0) ? -t.soc_x10 : t.soc_x10;
+
     CSLOG_NODT("[PWRB] === PowerBoard Telemetry ===\r\n");
     CSLOG_NODT("[PWRB] XSUM:%s  PROT_VER:0x%02X  SEQ:%u  REC:0x%02X\r\n",
                t.valid ? "OK" : "FAIL",
@@ -333,17 +147,22 @@ void power_board_log_telemetry(void)
     CSLOG_NODT("[PWRB] SYS_STATE:0x%02X  SYS_FAULT:0x%02X  SYS_FLAGS:0x%02X  CHG_RAW:0x%02X\r\n",
                (unsigned)t.sys_state, (unsigned)t.sys_fault,
                (unsigned)t.sys_flags, (unsigned)t.chg_stat_raw);
-    CSLOG_NODT("[PWRB] SoH:%u.%u%%  SoC:%u.%u%%  EFC:%u  yrs_left:%u.%u\r\n",
+    CSLOG_NODT("[PWRB] SoH:%u.%u%%  SoC:%s%d.%d%%  EFC:%u  yrs_left:%u.%u\r\n",
                (unsigned)(t.soh_x10 / 10U), (unsigned)(t.soh_x10 % 10U),
-               (unsigned)(t.soc_x10 / 10U), (unsigned)(t.soc_x10 % 10U),
+               (t.soc_x10 < 0) ? "-" : "",
+               soc_abs / 10, soc_abs % 10,
                (unsigned)t.efc,
                (unsigned)(t.rem_years_x10 / 10U), (unsigned)(t.rem_years_x10 % 10U));
     CSLOG_NODT("[PWRB] VBAT:%u  VPV:%u  VDC:%u mV  (STM_VBAT:%u)\r\n",
                (unsigned)t.vbat_mv, (unsigned)t.vpv_mv, (unsigned)t.vdc_mv,
                (unsigned)t.stm_vbat_mv);
-    CSLOG_NODT("[PWRB] ICHG:%u  IBAT:%d  IBUS:%u mA  (target:%u)\r\n",
-               (unsigned)t.ichg_ma, (int)t.ibat_ma, (unsigned)t.ibus_ma,
+    CSLOG_NODT("[PWRB] ICHG:%u  IBAT:%d  IBUS:%d mA  (target:%u)\r\n",
+               (unsigned)t.ichg_ma, (int)t.ibat_ma, (int)t.ibus_ma,
                (unsigned)t.ichg_target_ma);
+    CSLOG_NODT("[PWRB] CHG_REAL:%u  BQ_YAS:%u ds  BQ_ERR:%u  PSYS_ST:%u  PANIC:0x%02X  CAL:%u\r\n",
+               (unsigned)t.chg_real, (unsigned)t.bq_yas_ds,
+               (unsigned)t.bq_err_n, (unsigned)t.psys_st,
+               (unsigned)t.panic_cause, (unsigned)t.cal_ver);
 
     if (t.board_temp_c == POWER_BOARD_BOARD_TEMP_ERROR)
     {
@@ -475,12 +294,22 @@ void power_board_set_restore(const power_board_restore_t *p_in)
 
     blk[0] = POWER_BOARD_RESTORE_MARKER;                 /* 0x60 = 0xA5 */
     /* 0x61-0x62 (16K RST_SOH_X10) left 0x0000; 32K ignores it. */
-    uint16_t soc = (p_in->soc_x10 > 1000U) ? 1000U : p_in->soc_x10;
-    pb_wr_u16(blk, 3U,  soc);                            /* 0x63 soc_x10 */
+    /* 0x63 is a signed contract field, but restore only ever publishes
+     * a valid SoC: clamp into 0..1000 (never seed a negative value). */
+    int16_t soc = p_in->soc_x10;
+    if (soc < 0)
+    {
+        soc = 0;
+    }
+    if (soc > 1000)
+    {
+        soc = 1000;
+    }
+    pb_wr_u16(blk, 3U,  (uint16_t)soc);                  /* 0x63 soc_x10 */
     pb_wr_u32(blk, 5U,  p_in->equiv_hours);             /* 0x65 */
     pb_wr_u32(blk, 9U,  p_in->gross_mah);               /* 0x69 */
     pb_wr_u32(blk, 13U, (uint32_t)p_in->total_mwh);     /* 0x6D */
-    blk[17] = pb_xsum(blk, (uint8_t)(POWER_BOARD_RESTORE_LEN - 1U));  /* 0x71 */
+    blk[17] = power_board_xsum(blk, (uint8_t)(POWER_BOARD_RESTORE_LEN - 1U));  /* 0x71 */
 
     i2c_slave_write_block(POWER_BOARD_RESTORE_BASE, blk, POWER_BOARD_RESTORE_LEN);
 }
@@ -494,7 +323,7 @@ void power_board_set_restore_empty(void)
     }
 
     blk[0] = 0x00U;   /* marker != 0xA5 -> master rejects, uses clean defaults */
-    blk[17] = pb_xsum(blk, (uint8_t)(POWER_BOARD_RESTORE_LEN - 1U));
+    blk[17] = power_board_xsum(blk, (uint8_t)(POWER_BOARD_RESTORE_LEN - 1U));
 
     i2c_slave_write_block(POWER_BOARD_RESTORE_BASE, blk, POWER_BOARD_RESTORE_LEN);
 }
@@ -507,7 +336,7 @@ static void pb_statblk_publish(void)
     s_statblk[2] = s_cfg.cap_ah;
     pb_wr_u16(s_statblk, 3U, s_cfg.tcal_q15);
     s_statblk[5] = s_cfg.crate_pct;
-    s_statblk[6] = pb_xsum(s_statblk, (uint8_t)(POWER_BOARD_STATBLK_LEN - 1U));
+    s_statblk[6] = power_board_xsum(s_statblk, (uint8_t)(POWER_BOARD_STATBLK_LEN - 1U));
 
     i2c_slave_write_block(POWER_BOARD_STATBLK_BASE, s_statblk, POWER_BOARD_STATBLK_LEN);
 }

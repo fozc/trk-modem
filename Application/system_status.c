@@ -73,9 +73,12 @@ void system_status_update(void)
     g_system_status.battery_voltage = telemetry.vbat_mv;  // mV
     g_system_status.battery_current = telemetry.ibat_ma;  // mA
     g_system_status.battery_capacity        = telemetry.batt_cap_ah;  // Ah
-    g_system_status.battery_charge_percent  = telemetry.soc_x10 / 10;  // %
+    /* SoC is signed on the wire; negative means "below 0 estimate" and
+     * displays as 0 % here (raw value stays in telemetry/logs). */
+    int soc_x10 = (telemetry.soc_x10 < 0) ? 0 : telemetry.soc_x10;
+    g_system_status.battery_charge_percent  = soc_x10 / 10;  // %
     g_system_status.battery_temp    = telemetry.batt_temp_x10 / 10;  // °C
-    g_system_status.battery_soc     = telemetry.soc_x10 / 10;  // %
+    g_system_status.battery_soc     = soc_x10 / 10;  // %
     g_system_status.battery_soh     = telemetry.soh_x10 / 10;  // %
     g_system_status.battery_temp    = telemetry.batt_temp_x10 / 10;  // °C
     g_system_status.charge_state    = telemetry.chg_stat;  // 0: Idle, 1: Charging, 2: Discharging

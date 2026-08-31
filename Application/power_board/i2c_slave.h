@@ -12,13 +12,13 @@
 #include <stdint.h>
 
 /** Size of the slave register file (register-pointer address space).
- *  Covers the full PowerBoard (PROT_VER 0x06) map up to the power-block
+ *  Covers the full PowerBoard (PROT_VER 0x09) map up to the power-block
  *  integrity byte at 0xB4 (0x00..0x5F telemetry, 0x60-0x71 restore,
  *  0x72-0x78 statblk, 0x80-0x9A lastgasp, 0xA0-0xB4 power). 0xC0 leaves
  *  headroom. */
 #define I2C_SLAVE_REG_COUNT   ((uint8_t)192U)
 
-/** PUSH blocks the master writes into the register file (PROT_VER 0x06). */
+/** PUSH blocks the master writes into the register file (PROT_VER 0x09). */
 typedef enum
 {
     I2C_SLAVE_BLK_NONE = 0,    /**< No block (sentinel).               */

@@ -23,19 +23,66 @@
 >   Telefon  : 0532 743 4969
 
 
-> ## 📋 DOKÜMAN SÜRÜMÜ **Rev0.7** · TEL FORMATI **PROT_VER = 0x06** (DEĞİŞMEDİ)
+> ## 📋 DOKÜMAN SÜRÜMÜ **Rev1.0** · TEL FORMATI **PROT_VER = 0x09** ⚠️ **DEĞİŞTİ (2026-08-30)**
+>
+> **Rev0.9 → Rev1.0 (PROT_VER 0x08 → 0x09), kullanıcı kararı 2026-08-30:** `0x4D PANIC_CAUSE` (PWR_PANIC nedeni), `0x4E PSYS_ST`, `0x4F CAL_VER` tahsis edildi (önceden rezerve/0x00); `0xA8 PSYS_MW` anlamı değişti (akü modunda **ölçülen** sistem yükü, tohum 690/1020 mW); `0x49 Q` `DERIVED` üretilmez; **PWR_PANIC** VBAT kolu **11,0/11,5 V** ve yalnız akü modunda (K19). Yerleşim, blok boyu ve XSUM kuralı **aynı**; yalnız 0x4D–0x4F artık dolu olduğu için 0x5F değeri değişir. Üst kart `0x1E = 0x09` bekler.
+>
+> *(tarihsel)* ## DOKÜMAN SÜRÜMÜ Rev0.9 · TEL FORMATI PROT_VER = 0x08
 >
 > **İki ayrı sürüm numarası vardır — karıştırmayın:**
 >
 > | | Ne | Şu an | Ne zaman artar |
 > |---|---|---|---|
-> | **`PROT_VER` (0x1E)** | **Tel-üstü format sözleşmesi** — register offsetleri, alan tipleri, blok uzunlukları, XSUM kuralı, bayt sırası | **`0x06`** | **YALNIZ** tel formatı değişince (yeni/kaymış alan, blok boyu, bütünlük kuralı). Karşı tarafın ayrıştırma kodu değişmek zorunda kalırsa artar |
-> | **Doküman revizyonu** | Bu MD'nin sürümü — açıklama, sınır, kural, tablo zenginleşmesi | **Rev0.7** | Anlatım/kapsam genişleyince. **Tel formatını ETKİLEMEZ** |
+> | **`PROT_VER` (0x1E)** | **Tel-üstü format sözleşmesi** — register offsetleri, alan tipleri, blok uzunlukları, XSUM kuralı, bayt sırası | **`0x08`** | **YALNIZ** tel formatı değişince (yeni/kaymış alan, blok boyu, bütünlük kuralı). Karşı tarafın ayrıştırma kodu değişmek zorunda kalırsa artar |
+> | **Doküman revizyonu** | Bu MD'nin sürümü — açıklama, sınır, kural, tablo zenginleşmesi | **Rev0.9** | Anlatım/kapsam genişleyince. **Tel formatını ETKİLEMEZ** |
 >
-> **Rev0.6 → Rev0.7 tel formatında HİÇBİR şey değişmedi.** Üst kart (Fatih) tarafındaki
-> ayrıştırma kodu **aynen çalışır**; bu revizyon yalnız daha önce yazılı olmayan
-> elektriksel/zamansal sınırları, bloklanma kurallarını ve arayüzün I2C-dışı kısmını belgeler.
-> Farkların listesi: dosya sonundaki **Revizyon Notu — Rev0.7**.
+>
+> ⛔ **PROT_VER 0x08 KİLİTLİDİR (kullanıcı kararı 2026-08-29).** Üst kart (Fatih)
+> entegrasyonu bu sürümle **sınanana kadar** tel formatı **DEĞİŞMEZ**: yeni alan tahsisi,
+> alan kaydırma, blok boyu, bütünlük kuralı — hiçbiri. Yeni gereksinim doğarsa
+> **birikir** (`docs/DEGISIM_RAPORU_UST_KART.md`) ve entegrasyon sınavından **sonra**
+> tek bump ile (0x09) çıkar. Gerekçe: 27.08'de 0x06 için uyarılmıştı, iki günde 0x08
+> oldu; sözleşme kararsızlığı karşı tarafın emeğini riske atıyor.
+>
+> **Sürüm eşlemesi (tek şema — 2026-08-29 tutarlılık düzeltmesi):** belge revizyonu ile
+> `PROT_VER` 0x06'ya kadar bire bir gidiyordu; **Rev0.7 (2026-08-01) yalnız belge**
+> revizyonuydu, o günden beri kayma var: **Rev0.8 ↔ 0x07** (`0x4A CHG_REAL`) ·
+> **Rev0.9 ↔ 0x08** (`0x4B/0x4C` + `0x1A/0x63` işaretli). Tabloda daha önce
+> "Rev0.7 YENİ"/"Rev0.8 YENİ" diye geçen 0x4A/0x4B/0x4C etiketleri bu şemaya çekildi.
+> ⚠️ **Rev0.8 → Rev0.9 TEL FORMATI DEĞİŞTİ (PROT_VER 0x07 → 0x08).** Rezerve olan
+> **`0x4B` ve `0x4C` baytları BQ TAZELİK bilgisine tahsis edildi** (K17,
+> kullanıcı kararı 2026-08-28: *"BQ25'ten veri okunmadan PC'ye veri gitmesin;
+> BQ25 down ise DOWN bilgisi gitsin protokollerde"*).
+>
+> | reg | ad | anlam |
+> |---|---|---|
+> | **`0x4B`** | **BQ_YAS_DS** | `0` = **TAZE** · `1..255` = **BAYAT/DOWN**, değer = son başarılı poll'dan geçen süre (**0,1 s**, doygun 255 = ≥25,5 s) |
+> | **`0x4C`** | **BQ_ERR_N** | Kümülatif **başarısız poll** sayısı (**mod-256 sarar**, doygun DEĞİL — kod `err_tot & 0xFF`; üst kart ardışık okumaların farkını alır) |
+>
+> ⭐ **ÜST KART ŞARTI:** `0x4B != 0` iken **BQ kaynaklı alanlar BAYATTIR** ve
+> karara esas alınmaz: `0x03` CHG_STAT_RAW · `0x10` VBAT · `0x23` BATT_TS ·
+> `0x26/0x27` BQ_FAULT0/1 · `0x28` CHG_STAT · `0x29` ICO_STAT ·
+> `0x40-0x43` BQ_REG1B/1D/1E/1F · `0x4A` CHG_REAL · `0x50` BQ_VSYS_MV.
+> Alanlar **silinmez** (zaman sürekliliği korunsun, "veri yok" ile "kart yok"
+> karışmasın) — eleme kararı üst kartındır.
+>
+> ⚠️ **`0x4C` NEDEN AYRI:** yaş her **başarılı** poll'da sıfırlanır; sahada en
+> olası arıza kipi olan **aralıklı NACK/timeout** ("4 başarısız + 1 başarılı")
+> yaşta **hiç görünmez**. Kaynak: `docs/DENETIM_FW_2026-08.md` (216-218).
+>
+> *(Önceki değişim — Rev0.7 → Rev0.8, PROT_VER 0x06 → 0x07: rezerve olan
+> **`0x4A` baytı `CHG_REAL` olarak tahsis edildi**, K15.)* `0x00-0x49` ve `0x50-0x5F`
+> **bayt-bayt AYNI** kaldı; yalnız bir rezerve bayt doldu ve bu nedenle **`BLK_XSUM`
+> (0x5F) değeri değişti**. Üst kart tarafında gereken: ① beklenen `PROT_VER` sabiti
+> `0x06 → 0x07` ② `0x4A`'nın okunması (isteğe bağlı ama önerilir).
+> ⛔ **TEK SÖZLEŞME — geçmişe-uyum katmanı YOK** (2026-08-27 kullanıcı kararı; aynı
+> kural `0x04` ve `0x06` geçişlerinde de uygulandı). `0x1E != 0x08` görülürse telemetri
+> **REDDEDİLİR**; "eski sürümle de çalışır" yolu **YOKTUR**.
+>
+> *(Rev0.6 → Rev0.7 tel formatında hiçbir şey değiştirmemişti; o revizyon yalnız daha
+> önce yazılı olmayan elektriksel/zamansal sınırları ve arayüzün I2C-dışı kısmını
+> belgelemişti.)*
+> Farkların listesi: dosya sonundaki **Revizyon Notu — Rev0.8**.
 
 > **Kapsam:** Haberleşme Modülü Power Board (STM32C011) I2C protokolünün eksiksiz referansı — HEM 16KB
 > (F4P6, `dev-16k`) HEM 32KB (F6P6, `dev-32k`) versiyonu. **İki mantıksal I2C arayüzü** kapsanır:
@@ -137,8 +184,8 @@ bütçesi buradan çıkar → **§6b**.
 
 | # | Koşul | Eşik (kod) |
 |---|---|---|
-| 1 | Giriş YOK **ve** VBAT düşük | `VBAT < 10.0 V` (ARM) / `> 10.5 V` (temizle) |
-| 2 | BQ taze **ve** VSYS backstop | `VSYS < 11.0 V` (ARM) / `> 11.5 V` (temizle) |
+| 1 | **Akü modu** (STM VPV<2,5 V ∧ VDC<2,5 V; çıkış >3,5 V histerezis) **ve** VBAT düşük | **K19 (2026-08-30):** STM raw `< 1231` = **11,0 V** terminal (ARM) / `> 1287` = **11,5 V** (temizle); BQ yedeği 11,06/11,56 V |
+| 2 | BQ taze **ve** VSYS backstop (akü moduna KAPILI DEĞİL — "giriş var ama yetersiz" köşesi) | `VSYS < 11.0 V` (ARM) / `> 11.5 V` (temizle) |
 | 3 | Etkin akü sıcaklığı soğuk-kritik | `< −20.0 °C` (ARM) / `≥ −17.0 °C` |
 | 4 | Etkin akü sıcaklığı sıcak-kritik | `> +60.0 °C` (ARM) / `≤ +57.0 °C` |
 
@@ -309,10 +356,10 @@ veri yok (`i2c_protocol.c` 32K `:544`).
 | 0x14 | VDC_MV | u16 | STM PA5 mV | ✓ |
 | 0x16 | REM_EFC | u16 | kalan eşdeğer çevrim | **✗ (32K)** |
 | 0x18 | REM_YEARS_X10 | u16 | kalan takvim yılı x10 | **✗ (32K)** |
-| 0x1A | SOC_X10 | u16 | **16K: VBAT→OCV LUT / 32K: coulomb** | ✓ (farklı yöntem) |
+| 0x1A | SOC_X10 | **i16 ⚠️ İŞARETLİ** (Rev0.9/G-1) — `-1000..+1000` = `-%100,0..+%100,0`. **NEGATİF OLAĞANDIR**: kart mutlak SoC iddia etmez (2026-08-27 kararı), bildirilen değer = ofset + açılıştan beri coulomb. ⛔ `u16` okunursa `-%1` → **65526** görünür ve *">1000 → 1000"* kırpması **SAHTE %100** üretir; aynı sözleşme `0x63 RST_SOC_X10` için de geçerlidir | **16K: VBAT→OCV LUT / 32K: coulomb** | ✓ (farklı yöntem) |
 | 0x1C | REC_FLAG | u8 | b0=ALARM b1=CHECKPOINT | ✓ |
 | 0x1D | SEQ | u8 | artan örnek sayacı 0-255 | ✓ |
-| 0x1E | PROT_VER | u8 | **32K Rev0.6: 0x06** (Rev0.5=0x05 / Rev0.4=0x04 tarihsel; 16K FROZEN: 0x03) | ✓ |
+| 0x1E | PROT_VER | u8 | **32K Rev1.0: 0x09** (2026-08-30; Rev0.9=0x08 / Rev0.8=0x07 / Rev0.6=0x06 / Rev0.5=0x05 / Rev0.4=0x04 tarihsel; 16K FROZEN: 0x03) | ✓ |
 | 0x1F | *(REZERVE — Rev0.4)* | u8 | 0x00 gönderilir; eski BLK_XSUM konumu → **0x5F'e taşındı** (son-bayt kuralı) | ✓ |
 | 0x20 | ICHG_MA | u16 | uygulanan şarj akımı mA | ✓ |
 | 0x22 | BOARD_TEMP | i8 | kart NTC °C (-128=hata) | ✓ |
@@ -344,6 +391,12 @@ veri yok (`i2c_protocol.c` 32K `:544`).
 | 0x47 | IINDPM_TRIG | u8 | IINDPM bekçi tetik sayısı | ✓ |
 | **0x49** | **PWR_SRC** | u8 | **AKTİF GİRİŞ KAYNAĞI + Psys güven seviyesi (Rev0.6 YENİ).** `bit[3:0]=SRC` (0=NONE 1=**PV**(VAC2) 2=**DC**(VAC1) 3=AMB 4=UNK) · `bit[7:4]=Q` (0=EXACT 1=DERIVED 2=NO_ATTR 3=STALE). Üst kart aktif kaynağı **yorum yapmadan** buradan okur. `0xFF` = modül kapalı (n/a). Önceden bu bayt rezerve/`0x00` idi | **✗ (32K)** |
 | **0x48** | **ACDRV_TRIG** | u8 | **DIS_ACDRV bekçi tetik sayısı (Rev0.6 YENİ; doygun 255).** `>0` ise sahada **IBUS_OCP** yaşanmış demektir: koruma `EN_HIZ` ile birlikte `DIS_ACDRV=1` yapar, temizlenmezse **her iki giriş yolu kapalı kalır** ve kart yalnız aküden beslenir. Önceden bu bayt rezerve/`0x00` idi | **✗ (32K)** |
+| **0x4A** | **CHG_REAL** | u8 | ⭐ **TÜRETİLMİŞ "GERÇEK ŞARJ" DURUMU (Rev0.8 YENİ — PROT_VER 0x07).** `0`=HÜKÜMSÜZ (kanıt yetersiz) · `1`=ŞARJ YOK (çip öyle diyor) · `2`=GERÇEK ŞARJ (iddia **VE** akım) · `3`=**ÇELİŞKİ** (çip şarj diyor ama akım YOK). PowerBoard, çipin **faz iddiasını** (`0x28 CHG_STAT`) kendi **akım ölçümüyle** (`0x56 IBAT_MA`) karşılaştırır; ÇELİŞKİ hükmü **ısrar şartına** bağlıdır (~15 s) — anlık dalgalanma ve taper/terminasyon geçişleri çelişki sayılmaz. ⚠️ **Ham `0x28` DEĞİŞMEDİ ve otoriter kalır**; bu alan onu değiştirmez, **yanında** durur ki üst kart çelişkiyi görüp kararı kendisi versin. Önceden bu bayt rezerve/`0x00` idi | **✗ (32K)** |
+| **0x4B** | **BQ_YAS_DS** | u8 | ⭐ **BQ VERİSİNİN YAŞI (Rev0.9 YENİ — PROT_VER 0x08, K17).** `0` = **TAZE** (BQ kaynaklı alanlara güvenilebilir) · `1..255` = **BAYAT/DOWN**, değer = son **başarılı** poll'dan geçen süre (**0,1 s** birimi, doygun 255 = ≥25,5 s). Tek bayt hem **DOWN**'ı hem **yaşı** taşır — ayrı bir bayrak tutulsaydı ikisi ayrışabilirdi. ⚠️ `!= 0` iken şu alanlar **karara esas alınmaz**: `0x03` · `0x10` · `0x23` · `0x26/0x27` · `0x28` · `0x29` · `0x40-0x43` · `0x4A` · `0x50`. Kaynak: `BQ25798_PollYasDs()`, eşik `BQ25798_POLL_STALE_MS = 750 ms`. Önceden bu bayt rezerve/`0x00` idi | **✗ (32K)** |
+| **0x4D** | **PANIC_CAUSE** | u8 | ⭐ **2026-08-30 — **PROT_VER 0x09 (Rev1.0, 2026-08-30).**** `PWR_PANIC` (J21.38) LOW'un **nedeni** (G-8 kapanışı): bit0 VBAT < 11,0 V (yalnız akü modunda: STM VPV<2,5 V ∧ VDC<2,5 V; K19) · bit1 VSYS < 11,0 V (backstop) · bit2 akü SOĞUK (< −20 °C) · bit3 akü SICAK (> +60 °C). `0` = panik yok. Histerezis: bit, ilgili panik temizlenince düşer | **✗ (32K)** |
+| **0x4E** | **PSYS_ST** | u8 | ⭐ **PROT_VER 0x09 (Rev1.0).** `0xA8 PSYS_MW` geçerliliği: `0` TOHUM (reset sonrası 690/1020 mW varsayım) · `1` ÖLÇÜM (akü modunda 64 örnek) · `2` BAYAT (en eski örnek > 30 dk) · `3` GEÇERSİZ (BQ bayat) · `0xFF` modül kapalı. `0` /`2`/`3` iken PSYS **karara esas alınmaz**; ayrıca `0x49 Q = NO_ATTR` | **✗ (32K)** |
+| **0x4F** | **CAL_VER** | u8 | ⭐ **PROT_VER 0x09 (Rev1.0).** Karttaki `[SAHA_AYAR]` kalibrasyon seti: `1` = 2026-08-30 (STM VBAT/VPV/VDC kazanç+ofset; BQ IBUS/IBAT/VBUS). `0` = kalibresiz eski firmware. **AYIRT EDİCİ:** üst kart önce bu bayta bakar — `0` ise `0x4D/0x4E` anlamsızdır (eski firmware), `≠0` ise anlamlıdır | **✗ (32K)** |
+| **0x4C** | **BQ_ERR_N** | u8 | **KÜMÜLATİF BAŞARISIZ POLL (Rev0.9 YENİ — PROT_VER 0x08, K17).** **Mod-256 sarar** (doygun DEĞİL; kod `g_bq_poll.err_tot & 0xFF`). ⚠️ **Yaştan AYRI olmasının sebebi:** yaş her başarılı poll'da sıfırlanır, bu yüzden sahada en olası arıza kipi olan **aralıklı NACK/timeout** ("4 başarısız + 1 başarılı" = %80 hata) yaşta **hiç görünmez**. Bu sayaç artıyorsa I²C hattı marjinaldir (nem, termal çevrim, zayıf pull-up). Önceden rezerve/`0x00` idi | **✗ (32K)** |
 | 0x50 | BQ_VSYS_MV | u16 | mV | ✓ |
 | 0x52 | BQ_VBUS_MV | u16 | mV | ✓ |
 | 0x54 | STM_VBAT_MV | u16 | STM PA2 ADC VBAT mV | ✓ |
@@ -371,7 +424,7 @@ veri yok (`i2c_protocol.c` 32K `:544`).
 | — CFG_CRATE | 0x77 | (statblk[5]) | **Şarj C-rate % (Rev0.5 YENİ):** 5..20 (0.05-0.20C); `0`/`0xFF` = ayarlanmamış → firmware default %10 korunur. PowerBoard `BattCfg_Set` içinde 5-20'ye clamp'ler; ICHG = cap×crate×10 mA (5000 tavan). Uygulama SoH/SoC reset ETMEZ (crate ≠ yeni akü). **[DIŞ] Fatih: bu baytı yaz + XSUM'u 7B üzerinden hesapla** | `i2c_protocol.h I2CPROT_REG_CFG_CRATE` + `I2cProt_ReadConfigFull` |
 | — CFG_XSUM | 0x78 | (statblk[6]) | STATBLK bütünlük = SON bayt `XOR(0x72..0x77)^0x5A` | `i2c_protocol.h` |
 | LASTGASP | 0x80 | 27 B | **YALNIZ 32K** — üst karta son-nefes bloğu PUSH; bayt 26 = `XOR(0..25)^0x5A` (Rev0.4) | 32K `i2c_protocol.h:119-121`, `:491-493` |
-| **GÜÇ BLOĞU** | **0xA0-0xB4** | **21 B** | **YALNIZ 32K — Rev0.6 YENİ (2026-07-23).** Anlık güç telemetrisi PUSH; telemetri push'unun **hemen ardından**, aynı kadansta (~1 s), **ayrı burst**. `[0xA0]=PPV_MW [0xA4]=PDC_MW [0xA8]=PSYS_MW [0xAC]=PBAT_MW [0xB0]=PIN_MW` (5 × **int32 MSB-first, mW**) + `[0xB4]=XOR(0xA0..0xB3)^0x5A`. **İşaret:** `PBAT` + şarj / − deşarj · `PSYS` **NEGATİF = tüketim**. ⚠️ 0x00-0x5F bloğu **bayt-bayt DEĞİŞMEDİ** — üst kart yalnız bu yeni bölgeyi ekler | `i2c_protocol.h I2CPROT_REG_PWRBLK` + `i2c_protocol.c I2cProt_SendPowerBlock` · `power_calc.c` |
+| **GÜÇ BLOĞU** | **0xA0-0xB4** | **21 B** | **YALNIZ 32K — Rev0.6 YENİ (2026-07-23).** Anlık güç telemetrisi PUSH; telemetri push'unun **hemen ardından**, aynı kadansta (~1 s), **ayrı burst**. `[0xA0]=PPV_MW [0xA4]=PDC_MW [0xA8]=PSYS_MW [0xAC]=PBAT_MW [0xB0]=PIN_MW` (5 × **int32 MSB-first, mW**) + `[0xB4]=XOR(0xA0..0xB3)^0x5A`. **İşaret:** `PBAT` + şarj / − deşarj · `PSYS` **NEGATİF = tüketim**. ⭐ **K26 (2026-08-30) `PSYS` TANIMI DEĞİŞTİ (yerleşim aynı):** artık η-türetimi değil, **akü modunda ölçülen** sistem yükü (STM VPV<2,5 V ∧ VDC<2,5 V; son 64 örnek ort. |V_bat·I_bat|); reset sonrası **tohum 700 mW**; geçerlilik DIAG `psys_st` (0 tohum/1 ölçüm/2 bayat). ⚠️ 0x00-0x5F bloğu **bayt-bayt DEĞİŞMEDİ** — üst kart yalnız bu yeni bölgeyi ekler | `i2c_protocol.h I2CPROT_REG_PWRBLK` + `i2c_protocol.c I2cProt_SendPowerBlock` · `power_calc.c` |
 
 > **Kaynak §3:** BQ register'ları `bq25798.h:70-101` + `bq25798.c` (yazım satırları) + `bq25798_poll.c:22-25,63-111`.
 > Telemetri haritası 16K `i2c_protocol.h:48-96` / 32K `i2c_protocol.h:51-121`. Okuma blokları yukarıda.
@@ -384,7 +437,7 @@ veri yok (`i2c_protocol.c` 32K `:544`).
 **PWR_SRC (0x49, Rev0.6)** — `SRC = b[3:0]` : `0`=NONE (giriş yok/akmıyor) · `1`=**PV** (VAC2 yolu,
 Q1/ACFET2 iletiyor) · `2`=**DC** (VAC1 yolu, Q3/ACFET1) · `3`=AMB (iki VAC birbirine çok yakın,
 ayırt edilemedi) · `4`=UNK (hiçbir VAC, VBUS'a yakın değil).
-`Q = b[7:4]` : `0`=EXACT (giriş yok → `PSYS ≡ PBAT`, tam doğru) · `1`=DERIVED (η'ya bağlı) ·
+`Q = b[7:4]` : `0`=EXACT (kaynak atfedildi, STM geçerli **ve PSYS ölçüm, n=64**) — **Y-2 (2026-08-30): PSYS tohum/bayat/geçersiz iken `Q=NO_ATTR(2)`**, üst kart PSYS'e dayanmaz · `1`=DERIVED (**K26'dan beri kullanılmaz**) ·
 `2`=NO_ATTR (SRC belirsiz; **`PIN_MW` yine geçerli**) · `3`=STALE (BQ verisi bayat → **güç alanlarının
 hiçbirini kullanma**). `0xFF` = modül kapalı.
 
@@ -404,7 +457,7 @@ değil — düşük 3 bit **BQ şarj fazı**; durum makinesi dolaylı yansır.
 | Bit | İsim | Eşik | ANY'ye girer |
 |---|---|---|---|
 | 7 | ANY | özet | — |
-| 6 | OVP_PV | OVP latch (~26.5V) | ✓ |
+| 6 | OVP_PV | OVP latch — **trip 27.0 V / recover 25.0 V** (PV\|DC) | ✓ |
 | 5 | NTC_HOT | ≥70°C (kart NTC) | ✓ |
 | 4 | NTC_COLD | <0°C (kart NTC) | ✓ |
 | 3 | VBAT_LOW | <10000 mV | ✓ |
@@ -432,7 +485,7 @@ akım), 3=WARM(45-55°C, düşük gerilim), 4=HOT(>55°C, şarj durur). Öncelik
 **PWR_IO bitmask (0x44)** — b0=CE(PA8, aktif-LOW: 0=şarj), b1=OVP2HIZ(PA11: 1=Hi-Z normal),
 **b2=PA12 ENERJİ-PANİK** (2026-07-22 yeniden atandı; aktif-LOW: **1=normal, 0=PANİK/enerji-yok**),
 b3=VBAT_DIS(PA6), b4=HEAT/OVP2PDIS(PA7), b5=QON(PC15). 1=fiziksel HIGH.
-⚠️ **PA12 artık OVP DEĞİL enerji-panik sinyalidir** (donanım hattı, üst kart EXTI ile GSM sustur+FRAM-yaz;
+⚠️ **PA12 artık OVP DEĞİL enerji-panik sinyalidir** (donanım hattı, üst kart EXTI ile GSM sustur + kendi **kalıcı belleğine** yaz;
 detay Fatih dokümanı §6.11 + `power-budget-holdup.md §3b`). **OVP durumu yalnız ALARM byte b6'dan**
 (mantıksal, `OVP_IsLatched`). *(`i2c_protocol.c` `Prot_ReadPwrIo` + `main.c System_EnergyPanicTask`.)*
 
@@ -447,7 +500,7 @@ VBAT_PRESENT(b0); REG1E — ACRB2(b7) ACRB1(b6) ADC_DONE(b5) VSYS(b4) CHG_TMR(b3
 REG1F — TS_HOT(b3) TS_WARM(b2) TS_COOL(b1) TS_COLD(b0); REG20/21 — bkz. `BQ25798_Register_Reference.md`
 §FAULT (VBUS/VBAT/IBUS/IBAT/CONV/VAC OVP-OCP; VSYS_SHORT/OVP, OTG, TSHUT). *(`bq25798.h:144-192`, register-ref.)*
 
-**PROT_VER değeri:** 32K = **0x06 (Rev0.6, 2026-07-23 — güç bloğu 0xA0)** (`i2c_protocol.h`) · Rev0.5=0x05 / Rev0.4=0x04 tarihsel · 16K FROZEN = 0x03 (tarihsel).
+**PROT_VER değeri:** 32K = **0x09 (Rev1.0, 2026-08-30 — `0x4D PANIC_CAUSE` + `0x4E PSYS_ST` + `0x4F CAL_VER`, `0xA8 PSYS` anlamı, K19 eşiği)** · Rev0.9=0x08 (`0x4B`/`0x4C`) (`i2c_protocol.h`) · Rev0.8=0x07 (`0x4A CHG_REAL`) / Rev0.6=0x06 / Rev0.5=0x05 / Rev0.4=0x04 tarihsel · 16K FROZEN = 0x03 (tarihsel).
 
 > **Kaynak §4:** bit/enum satırları yukarıda inline. BQ ham-status bit tanımları `bq25798.h:144-192` +
 > `BQ25798_Register_Reference.md` (REG1B-21) ile çapraz-doğrulandı.
@@ -487,7 +540,7 @@ Kontrol iki yoldan:
 tanımlı değil** (her iki dal). Tüm I2C **blocking master (polling)**; interrupt/DMA durum makinesi yok.
 *(`stm32c0xx_it.c`.)*
 
-**NACK/timeout/busy:** her HAL çağrısı `!=HAL_OK` kontrollü → `LOG_E`/`LOG_W` + durum kodu döner. BQ poll
+**NACK/timeout/busy:** her HAL çağrısı `!=HAL_OK` kontrollü → ikili olay (`0x34 EV_TLM_FAIL`, `0x33 EV_REC_FAIL`, `0x35 EV_RESTORE`, `0x72 EV_CFG_FAIL`; K22 2026-08-30 — UART'ta metin log yok) + durum kodu döner. BQ poll
 herhangi adım hatasında `g_bq_poll.valid=0` + `HAL_ERROR` (`bq25798_poll.c:61,67,73,80`). I2C 2.8.x
 spurious-BERR ele alınmaz (weak default handler yok bile) — etkisiz.
 
@@ -529,7 +582,7 @@ geç. **UPLINK→BENCH otomatik düşüş YOK** (thrash önlemi). BENCH'te 0x48 
 > | "WD_RST her 200 ms (**200× marj**)" | 40 s / 250 ms = **160× marj** | `main.c:64` + REG10 |
 > | "REC retry: arası **`REC_RETRY_MS=5`**; her denemede 5 ms bekle" | **`REC_RETRY_MS` KODDA YOK.** T-15 ile retry **bloklamayan** hâle getirildi: `I2cProt_ServiceRec()` **poll kadansında** (~250 ms) çağrılır; 10 deneme → toplam pencere **~2.5 s** | `i2c_protocol.c:561-600` |
 > | §1 "BQ timeout **100 ms**" | **20 ms** | `Inc/bq25798.h:70` |
-> | §7 F6 "PROT_VER **0x04**" | **0x06** (Rev0.6'dan beri) | `Inc/i2c_protocol.h:136` |
+> | §7 F6 "PROT_VER **0x04**" | **0x07** (Rev0.7'den beri; 0x06 Rev0.6) | `Inc/i2c_protocol.h:149` ⚠️ *(satır atfı Rev0.8'de düzeltildi — `:136` artık PROT_VER değil)* |
 >
 > Bu satırlar **sessizce düzeltilmedi** — eski hâlleriyle birlikte raporlanıyor (proje kuralı).
 
@@ -799,7 +852,9 @@ ve aşağıdaki madde:
 | Bölge | Durum | PowerBoard ne gönderir | Üst kart ne yapmalı |
 |---|---|---|---|
 | `0x1F` | **REZERVE** (eski BLK_XSUM konumu, Rev0.4'te 0x5F'e taşındı) | **0x00** | yok say |
-| `0x4A..0x4F` | **TAHSİS EDİLMEMİŞ** — kodda hiçbir yazıcı yok | **0x00** (Init'te sıfırlanır, hiç yazılmaz) | yok say; **anlam atfetme** |
+| ~~`0x4A`~~ | ⚠️ **Rev0.7'de TAHSİS EDİLDİ → `CHG_REAL`** | artık **yazılıyor** (bkz. §3b, 0x4A satırı) | **anlam atfet** — rezerve DEĞİL |
+| `0x4D..0x4F` | **2026-08-30'dan itibaren TAHSİSLİ** (PANIC_CAUSE / PSYS_ST / CAL_VER — §3b, PROT_VER 0x09 / Rev1.0) | önceki firmware'lerde **0x00** | eski üst kart yok sayar; yeni üst kart §3b'ye göre okur |
+| `0x4B` / `0x4C` | **K17 (Rev0.9 / PROT_VER 0x08): TAHSİS EDİLDİ** — `BQ_YAS_DS` / `BQ_ERR_N` | `i2c_protocol.c` her turda yazar | **oku** — `0x4B != 0` ⇒ BQ alanları bayat |
 | Modülü kapalı alanlar (ör. `0x2A`, `0x2B`, `0x49`) | modül `ENABLE_*=0` ise | **`0xFF` = n/a** | `0xFF`'i "**veri yok**" olarak işle, geçerli bir enum değeri sanma |
 | 16K'da olmayan alanlar | — | **0x00** | "veri yok" (§7 F8/F9) |
 
@@ -821,7 +876,7 @@ ve aşağıdaki madde:
 | F3 | ISR | I2C ISR yok (blocking) | AYNI | **ÖZDEŞ** |
 | F4 | Bus-recovery / REC retry / mod makinesi | var | AYNI | **ÖZDEŞ** |
 | F5 | Komut seti | monitor-only, dispatch yok | AYNI | **ÖZDEŞ** |
-| F6 | PROT_VER | 0x03 | ~~0x03~~ **0x04 (Rev0.4)** | ⚠️ **PARİTE BOZULDU (bilinçli, 2026-07-22):** 32K uçtan-uca bütünlük (BLK_XSUM 0x1F→0x5F + tuz + STATBLK); 16K FROZEN eski kuralda. Üst kart sürümü PROT_VER'den ayırt eder |
+| F6 | PROT_VER | 0x03 | **0x07 (Rev0.7)** *(tarihsel zincir: 0x04 Rev0.4 → 0x05 Rev0.5 → 0x06 Rev0.6 → 0x07 Rev0.7)* | ⚠️ **PARİTE BOZULDU (bilinçli, 2026-07-22'den itibaren):** 32K uçtan-uca bütünlük (BLK_XSUM 0x1F→0x5F + tuz), STATBLK 7B + CFG_CRATE, GÜÇ bloğu (0xA0) ve `0x4A CHG_REAL` sırasıyla 0x04/0x05/0x06/0x07'yi getirdi; 16K FROZEN eski kuralda. Üst kart sürümü PROT_VER'den ayırt eder. **Kod otoritesi:** `i2c_protocol.h` §PROT_VER |
 | F7 | Bekçi sayaçları 0x45-47 | var | var | **ÖZDEŞ** (parite) |
 | F8 | Enerji/ömür alanları (0x06,08,0C,16,18,33,37,3B) | **YOK (0 gelir)** | DOLU (EFC/EQUIV_HOURS/GROSS_MAH/REM_*/DELTA/TOTAL) | **32K ekler** |
 | F9 | Durum alanları (0x29,2A,2B,2D,2E,3F) | **YOK (0 gelir)** | DOLU (ICO/HEATER/BATT_STATE/CRATE/ICHG_TARGET/BMS) | **32K ekler** |
@@ -1059,10 +1114,15 @@ ACK yoksa ≤10 kez tekrar (5ms arayla, ~250ms tavan). Başarıda UART `LOG_I("R
 seviyesinde GİZLİ — sessiz başarı)**; 10 fail'de `LOG_E("REC FAIL seq=..")` + **LED 6× blink** (CLAUDE.md
 LED tablosu). `REC_FLAG` bit1 = CHECKPOINT (periyodik/olay kalıcı yazma; aynı ACK mekanizması).
 > **Üst-kart tasarım rehberi:** ACK döngüsü kötü durumda ana döngüyü ~250ms bloklar.
-> ⚠️ **NETLEŞTİRME (2026-07-21):** Bu pencerede aktif olan **BQ25798 çip içi `VAC_OVP` donanım koruması**dır
-> (POR ~26V; `BQ25798_Register_Reference.md` REG10[5:4], §7.5.1.13). **STM32 AWD1 donanım-OVP yolu BUGÜN ÖLÜDÜR**
-> (`CLAUDE.md` OVP kutusu — ratio/shift ölçeği nedeniyle tetiklenmiyor, `HT1=1523` onarımı henüz uygulanmadı)
-> → yani "OVP donanım yedeği", **BQ çipi**dir, STM değil. Üst kart `REC_ACK`'i **<5ms** güncellemeli;
+> ⚠️ **NETLEŞTİRME (2026-07-21) — 🔴 GÜNCELLENDİ 2026-08-21:** Bu pencerede **İKİ bağımsız donanım
+> koruması** aktiftir: **(1) STM32 `AWD1` analog watchdog — CANLI** (`HT1=761`, trip **27.0 V**,
+> tepki **~56 µs**; §6c.3 tablosuyla aynı), **(2) BQ25798 çip içi `VAC_OVP`** (POR ~26 V;
+> `BQ25798_Register_Reference.md` REG10[5:4], §7.5.1.13).
+> ~~*"STM32 AWD1 donanım-OVP yolu BUGÜN ÖLÜDÜR · `HT1=1523` onarımı henüz uygulanmadı"*~~
+> **— BU HÜKÜM GERİ ÇEKİLDİ.** AWD1 onarımı **22.07.2026'da (I-7) UYGULANDI**; uygulanan değer
+> `HT1=1523` değil **`HT1=761`** (ratio 4 / shift 0) olmuştur. `HT1=1523` önerisi hiç kodlanmadı.
+> Kaynak izi: `Inc/ovp_control.h:45-47` · `Inc/feature_config.h:24` (`ENABLE_I7_ADC_DMA=1`).
+> *(Bu satır §6c.3 ile **çelişiyordu**; §6c.3 doğruydu.)* Üst kart `REC_ACK`'i **<5ms** güncellemeli;
 > `SEQ` atlaması bu pencereyi zaten görünür kılar.
 
 **CFG_GEN nabız mekanizması (`0x73`):** Slave (üst kart) master'ı asenkron uyaramaz → PowerBoard config'i
@@ -1071,10 +1131,14 @@ eder (~8s / her 8. periyot); `CFG_GEN` değişince bloğu tam okur + uygular. **
 `CFG_CAP_AH (0x74)` 7-50 Ah → `ICHG = cap × C/10`; aralık dışı → 12 Ah. Kapasite **değişimi** SoH/SoC/enerji
 sayaçlarını reset tetikler → detay + reset tablosu: **`Battery_State_Management.md`**.
 
-**PROT_VER (Rev0.6):** 32K `0x1E` = **0x06** — **TEK SÖZLEŞME, geçmişe-uyum katmanı YOK**
-(kullanıcı kararı 2026-07-22): üst kart 32K karta karşı Rev0.5 kurallarını uygular (XSUM 0x5F,
-STATBLK **0x72-0x78 = 7B** [CFG_CRATE 0x77 dahil], tuz 0x5A). *(Rev0.4=0x04 tarihsel; 16K arşiv
-kartı bağlanırsa PROT_VER=0x03 görülür — o eski kural setidir; 16K üretimi durdu.)*
+**PROT_VER (Rev0.8):** 32K `0x1E` = **0x08** — **TEK SÖZLEŞME, geçmişe-uyum katmanı YOK**
+(kullanıcı kararı 2026-07-22, **2026-08-27'de 0x07 için YİNELENDİ**): üst kart 32K karta karşı
+Rev0.7 kurallarını uygular (XSUM 0x5F, STATBLK **0x72-0x78 = 7B** [CFG_CRATE 0x77 dahil],
+tuz 0x5A, **`0x4A` = CHG_REAL — rezerve DEĞİL**).
+⛔ Üst kart `0x1E != 0x08` görürse telemetriyi **REDDEDER**; XSUM tek başına yetmez —
+XSUM yalnız *bozulmayı* yakalar, alan kayması üreten bir *sürüm farkını* geçerli XSUM ile
+birlikte geçirir. *(Rev0.6=0x06 / Rev0.5=0x05 / Rev0.4=0x04 tarihsel; 16K arşiv kartı
+bağlanırsa PROT_VER=0x03 görülür — o eski kural setidir; 16K üretimi durdu.)*
 
 **Telemetri alanı → üreten firmware modülü (mimari):**
 | Alan (off) | Üreten modül |
@@ -1132,7 +1196,12 @@ numaraları Rev C'ye güncellendi, teknik değer uydurulmadı.
 | 2b | §3a REG48 satırı + kutu | **🔴→✅ KAPATILDI** (2026-07-21 araştırma): çelişki DEĞİL — `0x18`=maskeli PN (`pn&0x38==0x18`), `0x19`=tam POR bayt (DEV_REV=001 dahil). İkisi de doğru | Datasheet Rev C §7.5.1.57 s.128 ile teyitli; register'ın iki görünümü |
 | 3 | §6 BQ watchdog | POR=40s → **kaynak izi eklendi** (REG10 WATCHDOG, §7.5.1.13 T7-26 s.72) | İzsiz sayısal değer |
 | 4 | §8 [AÇIK] üst kart pinleri | **`I2C3=PD12(SCL)/PD13(SDA)` [PROJE] notu** eklendi; [AÇIK] korundu | Proje gerçeği; nihai Fatih/donanım teyidi bekliyor |
-| 5 | §10 REC penceresi | "OVP donanım yedeği aktif" → **netleştirme**: aktif olan **BQ çip VAC_OVP (~26V)**; **STM AWD1 yolu BUGÜN ÖLÜ** | "STM donanım OVP boşluğu kapatıyor" yanılgısını önlemek için |
+| 5 | §10 REC penceresi | "OVP donanım yedeği aktif" → **netleştirme**: aktif olan **BQ çip VAC_OVP (~26V)**; ~~**STM AWD1 yolu BUGÜN ÖLÜ**~~ | "STM donanım OVP boşluğu kapatıyor" yanılgısını önlemek için |
+
+> 🔴 **Yukarıdaki 5 no'lu satırın "AWD1 ÖLÜ" kısmı SUPERSEDED'dir** (22.07.2026 I-7 ile
+> AWD1 CANLI oldu, `HT1=761`, 27,0 V, ~56 µs). Bir alttaki 2026-07-22 notu ve dosya
+> sonundaki **2026-08-21** notu geçerlidir. *(Bu satır tarihsel iz olarak bırakıldı;
+> 2026-08-21'de işaretlendi — işaretsiz hâli okuyucuyu yanlış yönlendiriyordu.)*
 
 **Silinen doğru içerik yok.**
 
@@ -1270,3 +1339,167 @@ bilinmeyenler **§8b Bilinen Boşluklar** (G-1…G-13).
 - **Fatih-teslim paketi (PDF + ZIP)** — kullanıcı revizyonu tahkim edecek, **S0** sonucu
   (0x48 onayı) eklendikten sonra üretilecek.
 - Kod değişikliği **YOK** — bu tur yalnız dokümandır.
+
+---
+
+### 📝 Revizyon Notu — 2026-08-17 (yalnız düzeltme; tel formatı ve kod DEĞİŞMEDİ)
+
+| # | Ne | Nerede | Neden |
+|---|---|---|---|
+| 1 | §7 **F6 satırı**: 32K sütunu `0x04 (Rev0.4)` → **`0x06 (Rev0.6)`** (tarihsel zincir satır içinde korundu) | §7 16K→32K fark tablosu | Satır **bayattı**: Rev0.5 (0x05) ve Rev0.6 (0x06) bump'ları tabloya işlenmemişti. §3b (`0x1E` satırı), Rev0.6 revizyon notu ve `i2c_protocol.h:136` **0x06** diyor; ayrıca Rev0.7 turunda **E-6** olarak zaten *bulunmuş ama düzeltilmemişti*. Cihazdan okunan ikili kayıtta da `prot_ver=0x06` teyitli |
+
+> **Etki:** yok — doküman içi tutarsızlık giderildi; **`PROT_VER` = `0x06` değişmedi**,
+> üst kart tarafında hiçbir ayrıştırma kodu etkilenmez. **Silinen doğru içerik yok.**
+
+---
+
+### 📝 Revizyon Notu — 2026-08-21 (OVP eşiği + AWD1 durumu; tel formatı ve kod DEĞİŞMEDİ)
+
+**Tetikleyen:** Fatih Özcan'ın 2026-08-20 tarihli `J21.38 / OVP_PV` sorusu. Soruyu
+araştırırken **bu dokümanın kendi içinde çeliştiği** görüldü — ve çelişkinin **yanlış
+yarısı müşteriye teslim edilmişti**.
+
+| # | Ne | Nerede | Neden |
+|---|---|---|---|
+| 1 | `ALARM_LIVE` bit6 eşiği: `~26.5V` → **`trip 27.0 V / recover 25.0 V`** | §ALARM bit tablosu (bit 6 `OVP_PV`) | **Bayattı.** 26,5 V eşiği I-7 **öncesi** (legacy `ENABLE_I7_ADC_DMA=0`) yoluna aittir; aktif derleme I-7 yolundadır. Kaynak izi: `Inc/ovp_control.h:45-47` (`OVP_TRIP_CODE=3046`=27,0 V · `OVP_RECOVER_CODE=2820`=25,0 V) · `Inc/feature_config.h:24` |
+| 2 | 🔴 *"STM32 AWD1 donanım-OVP yolu BUGÜN ÖLÜDÜR · `HT1=1523` onarımı henüz uygulanmadı"* → **GERİ ÇEKİLDİ**; AWD1 **CANLI**, `HT1=`**`761`** | §6c.3 altındaki REC/`VAC_OVP` netleştirme kutusu | **Doküman kendi içinde çelişiyordu:** §6c.3 tablosu *"AWD1 donanım OVP (27.0 V), ~56 µs, `HT1=761`"* derken aynı dokümanın ~390 satır aşağısı *"AWD1 ÖLÜ"* diyordu. §6c.3 **doğruydu**. AWD1 onarımı 22.07.2026'da (I-7, Commit 5) uygulandı; uygulanan değer `1523` değil **`761`** (ratio 4 / shift 0). `HT1=1523` önerisi **hiç kodlanmadı** |
+
+> **Güvenlik açısından anlamı:** Eski metin, OVP donanım yedeğinin **yalnız BQ25798
+> `VAC_OVP`** olduğunu söylüyordu. Doğrusu **iki bağımsız donanım katmanı** vardır:
+> STM32 `AWD1` (27,0 V, ~56 µs) **ve** BQ `VAC_OVP` (~26 V POR). Yani koruma eski
+> metnin ima ettiğinden **daha güçlüdür** — hüküm eksik yöndeydi, tehlikeli yönde değil.
+>
+> **Etki:** **tel formatı DEĞİŞMEDİ**, `PROT_VER` = `0x06` duruyor, üst kartta hiçbir
+> ayrıştırma kodu etkilenmez. Firmware **derlenmedi/değişmedi** — bu tur yalnız belge
+> düzeltmesidir. **Silinen doğru içerik yok** (geri çekilen hükümler üstü çizili bırakıldı).
+>
+> ⚠️ **Dağıtım notu:** Bu iki hata, **01.08.2026 ve 17.08.2026 gönderimlerindeki
+> kopyalarda da vardır.** Paylaşılan sürücüdeki kopyalar bu revizyonla güncellendi ve
+> durum Fatih Bey'e 2026-08-21 yanıtında bildirildi.
+
+---
+
+### 📝 Revizyon Notu — **Rev0.9** (2026-08-28) — PROTOKOL **PROT_VER 0x07 → 0x08**: `0x4B BQ_YAS_DS` + `0x4C BQ_ERR_N`
+
+**Kullanıcı kararı:** *"BQ25'ten veri okunmadan PC'ye veri gitmesin — tabii bu I²C
+içinde de geçerli. Ham veriler bizi yanıltır."* + *"Son BQ25 verisi defalarca
+yenilenmeden gönderilmesin, I²C ve UART üzerinden. BQ25 down veya bilerek yapıldı
+ise BQ25'in DOWN bilgisi gitsin protokollerde."* Üç seçenek sunuldu; **(b) İŞARETLE**
+seçildi — alanlar gitmeye devam eder, **bayat damgasıyla**.
+
+**Ne değişti:** rezerve olan `0x4B` ve `0x4C` tahsis edildi.
+
+| reg | ad | anlam |
+|---|---|---|
+| `0x4B` | **BQ_YAS_DS** | **Tek bayt** hem DOWN'ı hem yaşı taşır: `0` = taze · `1..255` = bayat (son **başarılı** poll'dan geçen süre, 0,1 s, doygun 255 = ≥25,5 s) |
+| `0x4C` | **BQ_ERR_N** | Başarısız BQ okuma sayacı — **mod-256 sarar**; üst kart **ardışık okumaların farkını** alır, mutlak değer anlamlı değildir |
+
+**Neden iki ayrı alan:** yaş her **başarılı** poll'da sıfırlanır; sahada en olası
+arıza kipi olan **aralıklı NACK** (*"4 başarısız + 1 başarılı"* = %80 hata oranı)
+yaşta **hiç görünmez**. Kaynak: `docs/DENETIM_FW_2026-08.md` K-6 (216-218).
+
+**Aynı gün denetimden gelen düzeltmeler** (sunulmadan önce kapatıldı):
+
+| bulgu | neydi | ne yapıldı |
+|---|---|---|
+| Soğuk açılış | `last_tick` BSS'te 0 → yaş **boot'tan** ölçülüyordu; t=740 ms'te *"0,7 s bayat"* (ölçüldü). Projenin kendi **F-20** kuralının ihlali: `t == 0` sentinel yasak | Ayrı `ilk_ok` bayrağı; hiç başarılı poll yoksa **255** |
+| ADC_EN düşmesi | BQ ADC durunca alanlar **donuyor** ama I²C sağlıklı → yaş `0` = *"taze"* diyordu (tezgahta yaşandı, F9) | `adc_donuk` bayrağı → **255** |
+| Yutulan okumalar | `vindpm_r` ve `reg12/13` başarısızlığı **sayılmıyordu** — tam da hedeflenen aralıklı NACK rejiminde sayaç kör | Hata sayacına işleniyor (yaş düşürülmüyor: blok okumaları taze) |
+| Sayaç biçimi | Kümülatif + doygun: 4 Hz poll'da tam kopma **63,75 s**'te 255'e ulaşıp sonsuza dek donuyordu; ayrıca DIAG'daki üç komşusu (`d_poll_lost`/`d_rpl_stale`/`d_tx_drop`) **saniyelik delta** — aynı satırda dördüncü sayacın kümülatif olması yanlış yorumlanırdı | UART'ta **saniyelik delta** (`d_bq_err`), I²C'de **mod-256** |
+| Sınav boşluğu | Yaş hesabını **hiçbir sınav çalıştırmıyordu**; üç mutasyon sağ kalıyordu | Saf çekirdek `Inc/bq_yas.h`'e alındı, host testinde **11 ölçüt**; üç mutasyonun üçü de artık yakalanıyor |
+
+⚠️ **"BQ down" ile "poll bilerek durduruldu" ayrımı:** kart FAULT fazında tam poll'u
+**durdurur** (yalnız WD_RST) → yaş büyür. Ayrım `0x00 SYS_STATE` faz maskesindedir:
+`yaş>0 ∧ faz=FAULT` ⇒ **kasıtlı duruş** · `yaş>0 ∧ faz≠FAULT` ⇒ **BQ down**.
+
+**Blok boyu DEĞİŞMEDİ** (`0x60`); `BLK_XSUM` (`0x5F` = `XOR(0x00..0x5E)^0x5A`) yeni
+baytları **zaten kapsar** — üst kartın XSUM algoritması bozulmaz, yalnız değeri değişir.
+
+⚠️ **Üst kart tarafı EKSİK (ROADMAP K17-d):** `docs/upper_board_reference/`
+içindeki `PWR_I2C_PROT_VER` `0x08`'e çekildi (aksi halde referans ayrıştırıcı **her
+çerçeveyi reddederdi**), ama `PwrTelemetry_t` iki yeni alanı **taşımıyor** ve
+`PwrI2c_ParseTelemetry()` onları **okumuyor**. DOWN bilgisi tel üzerinde var,
+referans tüketici henüz kullanmıyor.
+
+### Aynı sürümde ikinci değişiklik — **G-1: `0x1A` ve `0x63` İŞARETLİ**
+
+SoC modeli 2026-08-27'de **işaretli** yapıldı (kart mutlak SoC iddia etmez;
+açılışta 0, negatif olabilir). Ama `0x1A` sözleşmede `u16` idi ve **kapalı
+döngü sahte %100 üretiyordu**:
+
+```
+kart -%1,0 bildirir      -> tel: 0xFFF6
+üst kart u16 okur        -> 65526
+restore bloğu kırpar     -> 1000
+kart reset olur, restore -> +%100,0   ← SAHTE
+```
+
+⚠️ **Denetim uyarısı (2026-08-28):** ilk düzeltme **yalnız telemetri ayağına**
+dokundu ve tel üzerinde hiçbir şeyi değiştirmedi (bayt akışı zaten ikiye
+tümleyendi, eklenen kelepçe erişilemezdi). Turun asıl halkası **restore**
+ayağıydı ve açıktı. Şimdi dört halkanın **dördü** de işaretli:
+`Src/i2c_protocol.c` telemetri + restore · `docs/upper_board_reference/`
+okuma + restore kurulumu.
+
+**Bu, `PROT_VER 0x08` bump'ına bindirildi** — ayrı bir `0x09` dağıtımı
+gerekmedi (bump henüz sahaya çıkmamıştı).
+
+**Kod:** `Inc/i2c_protocol.h` · `Src/i2c_protocol.c` · `Inc/bq_yas.h` (saf yaş
+hesabı) · `Inc/bq25798_poll.h` · `Src/bq25798_poll.c` · `Src/diag_telem.c` ·
+`tests/binlog_host_test.c`. **UART karşılığı:** DIAG `114 bq_yas_ds` / `115 d_bq_err`,
+`BINLOG_PKT_VER 6→7`, `schema_sum 0x7A55→0x7D33`.
+
+---
+
+### 📝 Revizyon Notu — **Rev0.8** (2026-08-27) — PROTOKOL **PROT_VER 0x06 → 0x07**: `0x4A CHG_REAL`
+
+> ⚠️ **BU REVİZYONDA TEL FORMATI DEĞİŞTİ.** Rev0.7 ve öncesindeki üç revizyon notu
+> (2026-08-01 / 08-17 / 08-21) yalnız belge düzeltmesiydi; **bu değil.**
+
+**Kod:** `Inc/i2c_protocol.h:139` (`I2CPROT_REG_CHG_REAL`), `:149` (`PROT_VER_VAL 0x07`) ·
+`Src/i2c_protocol.c:390` (`s_tlm[0x4A] = g_bq_poll.chg_real`) ·
+`Src/bq25798_poll.c:255-284` (türetim) · `Inc/bq25798_poll.h:38-48` (eşikler).
+Commit: `bfb43b8` (2026-08-26) + belge/sözleşme senkronu (2026-08-27).
+
+| # | Ne | Nerede | Neden |
+|---|---|---|---|
+| 1 | **`0x4A` rezerve → `CHG_REAL` (u8)** | §3b register tablosu · §6d rezerve tablosu | Çip kendi **faz iddiasıyla** kendi **akım ölçümünü** çelişkiye düşürebiliyor; üst kart ham bayrağa bakıp **yanlış bilgileniyordu** |
+| 2 | **PROT_VER 0x06 → 0x07** | 0x1E + §PROT_VER (4 yer) + başlık kutusu | Rezerve bir bayt doldu → **`BLK_XSUM` (0x5F) değeri değişti** → karşı tarafın sürüm denetimi tetiklenmeli |
+| 3 | Doküman revizyonu Rev0.7 → **Rev0.8** | başlık kutusu | Tel formatı değiştiği için ikisi birlikte arttı |
+| 4 | Referans kod: **`PROT_VER` denetimi EKLENDİ** | `docs/upper_board_reference/pwr_i2c_packets.c:88-92` | 🔴 **Rev0.6 referansında `PWR_I2C_PROT_VER` tanımlıydı ama `PwrI2c_ParseTelemetry()` onu HİÇ KULLANMIYORDU** — yalnız XSUM denetleniyordu. Tek sözleşme kuralı kodda karşılıksızdı |
+| 5 | Bayat satır atıfları düzeltildi | §6 Rev0.7 düzeltme tablosu · §7 F6 | `Inc/i2c_protocol.h:136` artık PROT_VER değil; doğrusu **`:149`** |
+
+**Ölçülen gerekçe (uydurma değil):** 2026-08-26, 11:16:50–14:34:53 (**3,30 saat**),
+`bench/2026-08-25/kayit_gece/run_20260825_211256.bin` segment 1 —
+`chg_stat = FAST_CC(3)` sabitken `ibat` ortalaması **0,0 mA**; **11.924 örneğin
+yalnız 50'sinde** `ibat ≥ 10 mA` (**%99,58**, payda tüm pencere), tepe **62 mA**.
+
+⭐ **Tasarım kararı — ham bayrak KORUNDU (Seçenek A, kullanıcı kararı 2026-08-26):**
+`0x28 CHG_STAT` **değiştirilmedi** ve otoriter kalır; türetilmiş bayrak **yanına**
+kondu. Üst kart **ikisini de görür ve kararı kendisi verir**. Reddedilen seçenekler:
+**B** = ham bayrağı düzelt (çipin gerçeğini gizlerdi) · **C** = hiç değiştirme
+(üst kart yanlış bilgilenmeye devam ederdi).
+
+⛔ **TEK SÖZLEŞME — GEÇMİŞE-UYUM KATMANI YOK** (kullanıcı kararı 2026-08-27).
+Aynı kural `0x04` (Rev0.4) ve `0x06` (Rev0.6) geçişlerinde de uygulandı.
+`i2c_protocol.h`'te bir ara *"üst kart eski sürümle de çalışır"* yorumu vardı —
+politikayla çeliştiği için **kaldırıldı**.
+
+**Üst kart tarafında gereken (tam liste):**
+1. `PWR_I2C_PROT_VER` sabiti `0x06` → **`0x07`**
+2. `PwrI2c_ParseTelemetry()` içinde **sürüm denetimi** (referans `.c`'ye eklendi)
+3. `0x4A CHG_REAL` okunması — *isteğe bağlı ama önerilir*; okunmazsa yalnız çelişki görülemez
+4. `0x00-0x49` ve `0x50-0x5F` **bayt-bayt AYNI** — başka hiçbir ayrıştırma değişikliği yok
+
+**Silinen doğru içerik yok** (tarihsel sürüm zinciri korundu).
+
+
+### 📝 Revizyon Notu — 2026-08-29 (yalnız tutarlılık + KİLİT; tel formatı ve kod DEĞİŞMEDİ)
+
+- **PROT_VER 0x08 KİLİTLENDİ** (kullanıcı kararı) — üst kart entegrasyonu sınanana kadar bump yok; üstteki kutu.
+- Belge içi **iki sürüm şeması** bir aradaydı: tablo satırları `0x4A` "Rev0.7 YENİ", `0x4B/0x4C` "Rev0.8 YENİ",
+  `0x1E` "32K Rev0.8: 0x08" derken revizyon notları **Rev0.8 = 0x07, Rev0.9 = 0x08** diyordu (DEVLOG 2026-08-27 de öyle).
+  Notlar otoriter alındı; satırlar 33 · 345 · 377 · 378 · 379 · 484 · 838 tek şemaya çekildi.
+- `0x4C BQ_ERR_N` üst kutuda ve tabloda **"doygun 255"** yazıyordu; kod `err_tot & 0xFF` → **mod-256 sarar**
+  (Rev0.9 notu zaten doğruydu). İki yer düzeltildi.
+- Firmware başlık yorumları (`Inc/i2c_protocol.h` `:72`, `:176`) aynı şemaya çekildi.
