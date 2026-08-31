@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define WEB_SHELL_TX_BUF_SIZE  1024
+#define WEB_SHELL_TX_BUF_SIZE  2048
 
 /**
  * @brief Callback type for data received from web

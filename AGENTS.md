@@ -63,6 +63,10 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   for explicit approval.
 - **Layering:** Application -> Service/Driver -> HAL/HW. No direct register
   access outside `Core/` or BSP.
+- **Shell command output channel:** shell command handlers must print their
+  response with `SHELL_LOG`/`SHELL_CLOG` (routed to the active terminal,
+  web included). `CSLOG` is for background/process logging only — output
+  printed with `CSLOG` is invisible to the web terminal.
 - **CubeMX:** edit only between `/* USER CODE BEGIN/END */` markers;
   everything else is regenerated.
 - **Linker configs:** Debug `STM32U375VETX_FLASH.ld` (0x08000000),

@@ -25,25 +25,25 @@ static int console_logger_shell_cmd_handler(int argc, char *argv[])
 {
 	if (argc != 2)
 	{
-		CSLOG("Usage: cslog <on/1|off/0>\r\n");
+		SHELL_LOG("Usage: cslog <on/1|off/0>\r\n");
 	    return -1;
 	}
 
 	if (strcmp(argv[1], "on") == 0 || strcmp(argv[1], "1") == 0)
 	{
 		console_logger_set_enabled(true, true);
-		CSLOG("Console logger started!\r\n");
+		SHELL_LOG("Console logger started!\r\n");
 	    return 0;
 	}
 
 	if (strcmp(argv[1], "off") == 0 || strcmp(argv[1], "0") == 0)
 	{
-		CSLOG("Console logger stopped!\r\n");
+		SHELL_LOG("Console logger stopped!\r\n");
 		console_logger_set_enabled(false, true);
 	    return 0;
 	}
 
-	CSLOG("Unknown argument!\r\n");
+	SHELL_LOG("Unknown argument!\r\n");
 
 	return -1;
 }

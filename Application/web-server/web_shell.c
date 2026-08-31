@@ -4,12 +4,14 @@
  */
 
 #include "web_shell.h"
+#include <stdbool.h>
 #include <string.h>
 #include "shell.h"
 
 static web_shell_rx_cb_t rx_cb;
 static uint8_t tx_buf[WEB_SHELL_TX_BUF_SIZE];
 static uint16_t tx_pos;
+static bool tx_truncated;   /* buffer doldu, ciktinin sonu atildi */
 
 static void default_rx_handler(const uint8_t *data, uint16_t len)
 {
@@ -35,6 +37,7 @@ void web_shell_init(web_shell_rx_cb_t rx_callback)
 {
     rx_cb = rx_callback ? rx_callback : default_rx_handler;
     tx_pos = 0;
+    tx_truncated = false;
     memset(tx_buf, 0, sizeof(tx_buf));
 }
 
@@ -51,6 +54,9 @@ int web_shell_send(const uint8_t *data, uint16_t len)
         memcpy(&tx_buf[tx_pos], data, to_copy);
         tx_pos += to_copy;
     }
+    if (to_copy < len) {
+        tx_truncated = true;   /* eksik kalsin ama gizli kalmasin */
+    }
 
     return to_copy;
 }
@@ -64,6 +70,20 @@ uint16_t web_shell_flush(uint8_t *out_buf, uint16_t buf_size)
     uint16_t to_copy = (tx_pos < buf_size) ? tx_pos : buf_size;
     memcpy(out_buf, tx_buf, to_copy);
     tx_pos = 0;
+
+    if (tx_truncated) {
+        static const char marker[] = "\r\n[TRUNCATED]\r\n";
+        uint16_t room = (buf_size > to_copy) ? (uint16_t)(buf_size - to_copy) : 0U;
+        uint16_t m_len = (uint16_t)(sizeof(marker) - 1U);
+        if (m_len > room) {
+            m_len = room;
+        }
+        if (m_len > 0U) {
+            memcpy(&out_buf[to_copy], marker, m_len);
+            to_copy += m_len;
+        }
+        tx_truncated = false;
+    }
 
     return to_copy;
 }
