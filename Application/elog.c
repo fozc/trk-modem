@@ -475,9 +475,27 @@ const char *elog_info_to_text(const elog_entry_t *entry)
                       info[0], info[1], info[2], info[3]);
             break;
 
+        case ELOG_CONFIG_DEVICE_CHANGED:
+        case ELOG_CONFIG_IEC104_CHANGED:
+        case ELOG_CONFIG_MODBUS_CHANGED:
+        case ELOG_CONFIG_RF_CHANGED:
+        {
+            /* ip(4) source(1) area[10] flags(1); area is copied out so a
+             * full-width label cannot run past the flag byte. */
+            char area[11];
+            memcpy(area, &info[5], 10U);
+            area[10] = '\0';
+
+            xsnprintf(text, sizeof(text), "%s via %s %u.%u.%u.%u %s",
+                      area,
+                      (info[4] == (uint8_t)ELOG_SOURCE_WEB) ? "web" : "serial",
+                      info[0], info[1], info[2], info[3],
+                      (info[15] != 0U) ? "ok" : "FAILED");
+            break;
+        }
         default:
-            /* Config changes carry ip(4) source(1) area[11]; GSM events
-             * carry a phone number or diagnostics - printable covers both. */
+            /* GSM events carry a phone number or diagnostics - printable
+             * covers both. */
             elog_printable_or_dash(info, text, sizeof(text));
             break;
     }
@@ -721,7 +739,8 @@ void elog_shell_init(void)
 void elog_log_config_change(elog_code_t code,
                             elog_config_source_t source,
                             uint32_t ip,
-                            const char *p_area)
+                            const char *p_area,
+                            bool success)
 {
     uint8_t info[16] = {0};
 
@@ -731,13 +750,14 @@ void elog_log_config_change(elog_code_t code,
     info[3] = (uint8_t)( ip         & 0xFFU);
 
     info[4] = (uint8_t)source;
+    info[15] = success ? 1U : 0U;   /* bit0: change committed */
 
     if (p_area != NULL)
     {
         size_t len = strlen(p_area);
-        if (len > 11U)
+        if (len > 10U)              /* [5..14]; [15] holds the flag */
         {
-            len = 11U;
+            len = 10U;
         }
         memcpy(&info[5], p_area, len);
     }
@@ -745,7 +765,8 @@ void elog_log_config_change(elog_code_t code,
     elog_add(code, ELOG_LEVEL_INFO, info, sizeof(info));
 
     const char *src_str = (source == ELOG_SOURCE_WEB) ? "web" : "serial";
-    CSLOG_WARN("[ELOG] Config changed: %s src:%s ip:%u.%u.%u.%u\r\n",
+    CSLOG_WARN("[ELOG] Config %s: %s src:%s ip:%u.%u.%u.%u\r\n",
+            success ? "changed" : "change FAILED",
             p_area ? p_area : "?", src_str,
             (unsigned int)info[0], (unsigned int)info[1],
             (unsigned int)info[2], (unsigned int)info[3]);

@@ -75,17 +75,21 @@ typedef enum
  * info payload (16 bytes):
  *   [0..3]  client IP (big-endian, 0 when source is serial)
  *   [4]     source  (elog_config_source_t)
- *   [5..15] area label (null-terminated, truncated if needed)
+ *   [5..14] area label (null-terminated, truncated if needed)
+ *   [15]    flags: bit0 set when the change was committed to NVRAM
  *
  * @param[in] code    Elog code identifying the config area.
  * @param[in] source  ELOG_SOURCE_WEB or ELOG_SOURCE_SERIAL.
  * @param[in] ip      Remote client IP (uint32_t, big-endian). Pass 0 for serial.
  * @param[in] p_area  Short area label (e.g. "device", "rf").
+ * @param[in] success true when the change was committed, false on a failed
+ *                    save attempt (recorded so failed attempts are auditable).
  */
 void elog_log_config_change(elog_code_t code,
                             elog_config_source_t source,
                             uint32_t ip,
-                            const char *p_area);
+                            const char *p_area,
+                            bool success);
 
 /* ======================================================================
  * Semantic logging API

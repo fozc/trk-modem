@@ -7,6 +7,7 @@
 #include "uart.h"
 #include "main.h"
 #include "stm32u3xx_ll_usart.h"
+#include "stm32u3xx_ll_rcc.h"
 
 #if defined (LPUART1)
 #include "stm32u3xx_ll_lpuart.h"
@@ -126,6 +127,56 @@ void uart_set_rx_timeout(uart_port_t port, uint32_t bit_times)
     LL_USART_EnableRxTimeout(uart);
     LL_USART_ClearFlag_RTO(uart);
     LL_USART_EnableIT_RTO(uart);
+}
+
+static uint32_t get_uart_kernel_clock(uart_port_t port)
+{
+    switch (port) {
+#ifdef USART1
+    case UART_1:
+        return LL_RCC_GetUSARTClockFreq(LL_RCC_USART1_CLKSOURCE);
+#endif
+#ifdef USART2
+    case UART_2:
+        return LL_RCC_GetUSARTClockFreq(LL_RCC_USART2_CLKSOURCE);
+#endif
+#ifdef USART3
+    case UART_3:
+        return LL_RCC_GetUSARTClockFreq(LL_RCC_USART3_CLKSOURCE);
+#endif
+#if defined(UART4) || defined(USART4)
+    case UART_4:
+        return LL_RCC_GetUARTClockFreq(LL_RCC_UART4_CLKSOURCE);
+#endif
+#if defined(UART5) || defined(USART5)
+    case UART_5:
+        return LL_RCC_GetUARTClockFreq(LL_RCC_UART5_CLKSOURCE);
+#endif
+    default:
+        return 0U;
+    }
+}
+
+void uart_set_baudrate(uart_port_t port, uint32_t baudrate)
+{
+    USART_TypeDef *uart = get_uart_instance(port);
+    if ((uart == NULL) || (baudrate == 0U)) {
+        return;
+    }
+
+    uint32_t kernel_clock = get_uart_kernel_clock(port);
+    if (kernel_clock == 0U) {
+        return;
+    }
+
+    /* BRR, cevresel birim kapaliyken yeniden programlanir (RM sirasi),
+     * sonra birim tekrar acilir. Aktif transfer yokken cagrilmalidir.
+     * Prescaler DIV1: MX_UART4_Init HAL default'una uygun. Oversampling
+     * mevcut CR1 ayarindan okunur. */
+    LL_USART_Disable(uart);
+    LL_USART_SetBaudRate(uart, kernel_clock, LL_USART_PRESCALER_DIV1,
+                         LL_USART_GetOverSampling(uart), baudrate);
+    LL_USART_Enable(uart);
 }
 
 /* Donanıma Özel Fonksiyonlar */

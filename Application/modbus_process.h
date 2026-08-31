@@ -21,6 +21,16 @@ void modbus_process_init(void);
 void modbus_process_poll(void);
 
 /**
+ * @brief Apply the NVRAM Modbus baud rate to UART4 immediately.
+ *
+ * Call after changing the baud rate in the NVRAM Modbus config (e.g.
+ * modbus_config_set_baud_rate() + modbus_config_sync()). The new rate takes
+ * effect right away, so an in-flight Modbus transaction continues at the
+ * new rate. A redundant write (value equals the active rate) is skipped.
+ */
+void modbus_process_notify_config_changed(void);
+
+/**
  * @brief Feed one received byte to the Modbus slave - call from the UART RX ISR.
  *
  * Buffers the byte in the bus instance and, in software-timeout mode, wakes the

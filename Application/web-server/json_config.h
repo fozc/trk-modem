@@ -210,6 +210,6 @@ void set_device_config(const modem_config_t *config);
 
 /* IEC104 and Modbus config setters - No getters needed, use config managers directly */
 void set_iec_config(const jiec_config_t *config);
-void set_modbus_config(const jmodbus_configs_t *config);
+int set_modbus_config(const jmodbus_configs_t *config);
 
 #endif /* JSON_CONFIG_H_ */
