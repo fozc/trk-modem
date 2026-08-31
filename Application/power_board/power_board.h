@@ -11,10 +11,10 @@
  *   - RESTORE    0x60..0x71  (18 B, boot only)
  *   - STATBLK    0x72..0x78  (7 B, ~8 s; REC_ACK + config)
  *
- * Reference: doc/PowerBoard_I2C_Protocol.md (Rev0.7, PROT_VER 0x06).
+ * Reference: doc/PowerBoard_I2C_Protocol.md (Rev 1.0, PROT_VER 0x09).
  * All multi-byte fields are MSB-first (big-endian). Every block's LAST byte
  * is an integrity byte: XOR(all preceding bytes) ^ 0x5A (salt). Block layout
- * authority: doc/pwr/pwr_i2c_packets.h.
+ * authority: power-card repo, upper_board_reference/pwr_i2c_packets.h.
  */
 
 #ifndef POWER_BOARD_POWER_BOARD_H_
@@ -35,13 +35,14 @@ extern "C" {
 #define POWER_BOARD_TLM_BASE           ((uint8_t)0x00U)
 #define POWER_BOARD_TLM_SIZE           ((uint8_t)96U)
 
-/** Expected protocol version (single contract; 16K/0x03 is archival). */
-#define POWER_BOARD_PROT_VER           ((uint8_t)0x06U)
+/** Expected protocol version (single contract; frames at another
+ *  PROT_VER are rejected - see power_board_decode.c). */
+#define POWER_BOARD_PROT_VER           ((uint8_t)0x09U)
 
 /** Integrity salt applied to every block's last-byte XSUM. */
 #define POWER_BOARD_XSUM_SALT          ((uint8_t)0x5AU)
 
-/** PUSH block bases / lengths / markers (PROT_VER 0x06). */
+/** PUSH block bases / lengths / markers (PROT_VER 0x09). */
 #define POWER_BOARD_PWR_BASE           ((uint8_t)0xA0U)
 #define POWER_BOARD_PWR_LEN            ((uint8_t)21U)
 #define POWER_BOARD_LG_BASE            ((uint8_t)0x80U)
@@ -76,6 +77,34 @@ extern "C" {
 
 /** Sentinel: BOARD_TEMP (0x22) sensor error. */
 #define POWER_BOARD_BOARD_TEMP_ERROR   ((int8_t)-128)
+
+/**
+ * @brief CHG_REAL (0x4A): derived "really charging" verdict.
+ *
+ * The chip's charge-phase claim compared against measured current. Only
+ * PB_CHG_REAL_CHARGING means current actually flows into the battery.
+ */
+typedef enum
+{
+    PB_CHG_REAL_NO_VERDICT   = 0,  /**< not enough evidence yet            */
+    PB_CHG_REAL_NOT_CHARGING = 1,  /**< chip says not charging              */
+    PB_CHG_REAL_CHARGING     = 2,  /**< chip says charging AND current flows */
+    PB_CHG_REAL_CONFLICT     = 3   /**< chip says charging BUT no current    */
+} pb_chg_real_t;
+
+/**
+ * @brief PSYS_ST (0x4E): validity of PSYS_MW (0xA8).
+ *
+ * Only PB_PSYS_ST_MEASURED may be trusted for decisions; other states are
+ * the startup seed, stale or explicitly invalid values.
+ */
+typedef enum
+{
+    PB_PSYS_ST_SEED      = 0,  /**< startup seed, not measured             */
+    PB_PSYS_ST_MEASURED  = 1,  /**< measured average (n=64) - trust this   */
+    PB_PSYS_ST_STALE     = 2,  /**< measurement went stale                 */
+    PB_PSYS_ST_INVALID   = 3   /**< explicitly invalid                     */
+} pb_psys_st_t;
 
 /** Minimum periodic-log interval accepted by the monitor. */
 #define POWER_BOARD_LOG_MIN_PERIOD_MS  ((uint32_t)200U)
@@ -116,11 +145,12 @@ typedef struct
     uint16_t vdc_mv;         /**< 0x14 DC voltage (mV).                    */
     uint16_t rem_efc;        /**< 0x16 remaining equivalent cycles.        */
     uint16_t rem_years_x10;  /**< 0x18 remaining calendar years x10.       */
-    uint16_t soc_x10;        /**< 0x1A State-of-charge x10 (%).            */
+    int16_t  soc_x10;        /**< 0x1A State-of-charge x10 (%%), SIGNED:
+                                  -1000..+1000, negative is normal.       */
 
     uint16_t ichg_ma;        /**< 0x20 Charge current (mA).                */
     int16_t  ibat_ma;        /**< 0x56 Battery current (+chg/-dis, mA).    */
-    uint16_t ibus_ma;        /**< 0x58 Bus current (mA).                   */
+    int16_t  ibus_ma;        /**< 0x58 Bus current (mA, signed).           */
 
     int8_t   board_temp_c;   /**< 0x22 Board NTC (degC, -128 = error).     */
     int16_t  batt_temp_x10;  /**< 0x24 Battery NTC x10 (degC, -9990 n/a).  */
@@ -156,6 +186,14 @@ typedef struct
     uint8_t  iindpm_trig;    /**< 0x47 IINDPM watchdog trigger count.      */
     uint8_t  acdrv_trig;     /**< 0x48 DIS_ACDRV watchdog trigger count.   */
     uint8_t  pwr_src;        /**< 0x49 Active input source + quality.      */
+
+    uint8_t  chg_real;       /**< 0x4A pb_chg_real_t: 2 = really charging. */
+    uint8_t  bq_yas_ds;      /**< 0x4B Telemetry age (0 = fresh, 0.1 s).   */
+    uint8_t  bq_err_n;       /**< 0x4C BQ read error count (mod-256).      */
+    uint8_t  panic_cause;    /**< 0x4D Panic cause bitmask (b0 VBAT<11 V,
+                                  b1 VSYS<11 V, b2 cold, b3 hot).          */
+    uint8_t  psys_st;        /**< 0x4E pb_psys_st_t: PSYS_MW validity.     */
+    uint8_t  cal_ver;        /**< 0x4F Field calibration set.              */
 
     uint16_t bq_vsys_mv;     /**< 0x50 BQ VSYS (mV).                       */
     uint16_t bq_vbus_mv;     /**< 0x52 BQ VBUS (mV).                       */
@@ -205,7 +243,8 @@ typedef struct
  */
 typedef struct
 {
-    uint16_t soc_x10;        /**< 0x63 SoC x10 (clamped to 0..1000).       */
+    int16_t  soc_x10;        /**< 0x63 SoC x10, signed contract; published
+                                  clamped to 0..1000.                      */
     uint32_t equiv_hours;    /**< 0x65 25C-equivalent ageing hours.        */
     uint32_t gross_mah;      /**< 0x69 gross throughput mAh.               */
     int32_t  total_mwh;      /**< 0x6D running total energy mWh.           */

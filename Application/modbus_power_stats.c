@@ -109,13 +109,18 @@ bool modbus_power_stats_read(uint16_t reg_addr, uint16_t* value)
 		case PWR_REG(sys_fault):      *value = (uint16_t)tlm.sys_fault;            return true;
 		case PWR_REG(sys_flags):      *value = (uint16_t)tlm.sys_flags;            return true;
 		case PWR_REG(soh_x10):        *value = tlm.soh_x10;                        return true;
-		case PWR_REG(soc_x10):        *value = tlm.soc_x10;                        return true;
+		case PWR_REG(soc_x10):        /* signed wire field; negative SoC reads 0 */
+		{
+			int16_t soc = (tlm.soc_x10 < 0) ? 0 : tlm.soc_x10;
+			*value = (uint16_t)soc;
+			return true;
+		}
 		case PWR_REG(vbat_mv):        *value = tlm.vbat_mv;                        return true;
 		case PWR_REG(vpv_mv):         *value = tlm.vpv_mv;                         return true;
 		case PWR_REG(vdc_mv):         *value = tlm.vdc_mv;                         return true;
 		case PWR_REG(ichg_ma):        *value = tlm.ichg_ma;                        return true;
 		case PWR_REG(ibat_ma):        *value = (uint16_t)tlm.ibat_ma;              return true; /* signed */
-		case PWR_REG(ibus_ma):        *value = tlm.ibus_ma;                        return true;
+		case PWR_REG(ibus_ma):        *value = (uint16_t)tlm.ibus_ma;              return true; /* signed */
 		case PWR_REG(board_temp_c):   *value = (uint16_t)(int16_t)tlm.board_temp_c;   return true; /* int8 sign-extended */
 		case PWR_REG(batt_temp_x10):  *value = (uint16_t)tlm.batt_temp_x10;        return true; /* signed */
 		case PWR_REG(batt_ts):        *value = (uint16_t)tlm.batt_ts;              return true;
