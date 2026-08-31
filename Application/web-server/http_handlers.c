@@ -276,11 +276,20 @@ void handle_post_login(const char *json_body)
     
     xprintf("[HTTP] Device IP octets - First: %d, Last: %d\r\n", ip_a, ip_d);
     
-    /* Calculate expected passwords based on IP */
-    char expected_admin_pass[8] = {0};
-    char expected_user_pass[8] = {0};
-    xsnprintf(expected_admin_pass, sizeof(expected_admin_pass), "admin%d", ip_d + 1);
-    xsnprintf(expected_user_pass, sizeof(expected_user_pass), "user%d", ip_a + 1);
+    /* Calculate expected passwords based on IP.
+     * 12 bytes covers the longest value ("admin256" + NUL);
+     * see doc/Web_Giris_Sifresi_Plani.md. */
+    char expected_admin_pass[12] = {0};
+    char expected_user_pass[12] = {0};
+    unsigned int admin_len = xsnprintf(expected_admin_pass, sizeof(expected_admin_pass),
+                                       "admin%d", ip_d + 1);
+    unsigned int user_len = xsnprintf(expected_user_pass, sizeof(expected_user_pass),
+                                      "user%d", ip_a + 1);
+    if ((admin_len >= sizeof(expected_admin_pass)) ||
+        (user_len >= sizeof(expected_user_pass)))
+    {
+        xcprintf(XCOLOR_RED, "[HTTP] Login password truncated - increase buffer!\r\n");
+    }
     
     /* Validate credentials */
     bool valid = false;
