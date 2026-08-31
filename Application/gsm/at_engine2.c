@@ -117,8 +117,10 @@ static void send_at_command(const uint8_t *p_cmd, uint16_t cmd_len)
 
 void at_engine_init(void)
 {
-
-	rbuff_init(&rx_ringbuf, rx_buffer, AT_ENGINE_RX_BUFFER_SIZE);
+	if (!rbuff_init(&rx_ringbuf, rx_buffer, AT_ENGINE_RX_BUFFER_SIZE))
+	{
+		GSM_LOG_ERR("AT [RX RING INIT ERROR]\r\n");
+	}
 }
 
 

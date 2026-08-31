@@ -132,7 +132,7 @@ void gsm_http_server_init(void)
 	  web_server_init(&wio);
 
 	  if(!rbuff_init(&tx_rb_ctx, http_tx_buff, GSM_HTTP_SERVER_TX_BUFFER_SIZE)){
-		  GSM_LOG_ERR("[GSM HTTP SERVER] Failed to initialize TX ring buffer!\r\n");
+		  GSM_LOG_ERR("[GSM HTTP SERVER] TX ring buffer init failed - HTTP sends will be rejected!\r\n");
 	  }
 }
 
