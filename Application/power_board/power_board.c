@@ -140,72 +140,72 @@ void power_board_log_telemetry(void)
     /* Signed SoC: negative is normal since the 2026-08-27 model. */
     int soc_abs = (t.soc_x10 < 0) ? -t.soc_x10 : t.soc_x10;
 
-    CSLOG_NODT("[PWRB] === PowerBoard Telemetry ===\r\n");
-    CSLOG_NODT("[PWRB] XSUM:%s  PROT_VER:0x%02X  SEQ:%u  REC:0x%02X\r\n",
+    SHELL_LOG("[PWRB] === PowerBoard Telemetry ===\r\n");
+    SHELL_LOG("[PWRB] XSUM:%s  PROT_VER:0x%02X  SEQ:%u  REC:0x%02X\r\n",
                t.valid ? "OK" : "FAIL",
                (unsigned)t.prot_ver, (unsigned)t.seq, (unsigned)t.rec_flag);
-    CSLOG_NODT("[PWRB] SYS_STATE:0x%02X  SYS_FAULT:0x%02X  SYS_FLAGS:0x%02X  CHG_RAW:0x%02X\r\n",
+    SHELL_LOG("[PWRB] SYS_STATE:0x%02X  SYS_FAULT:0x%02X  SYS_FLAGS:0x%02X  CHG_RAW:0x%02X\r\n",
                (unsigned)t.sys_state, (unsigned)t.sys_fault,
                (unsigned)t.sys_flags, (unsigned)t.chg_stat_raw);
-    CSLOG_NODT("[PWRB] SoH:%u.%u%%  SoC:%s%d.%d%%  EFC:%u  yrs_left:%u.%u\r\n",
+    SHELL_LOG("[PWRB] SoH:%u.%u%%  SoC:%s%d.%d%%  EFC:%u  yrs_left:%u.%u\r\n",
                (unsigned)(t.soh_x10 / 10U), (unsigned)(t.soh_x10 % 10U),
                (t.soc_x10 < 0) ? "-" : "",
                soc_abs / 10, soc_abs % 10,
                (unsigned)t.efc,
                (unsigned)(t.rem_years_x10 / 10U), (unsigned)(t.rem_years_x10 % 10U));
-    CSLOG_NODT("[PWRB] VBAT:%u  VPV:%u  VDC:%u mV  (STM_VBAT:%u)\r\n",
+    SHELL_LOG("[PWRB] VBAT:%u  VPV:%u  VDC:%u mV  (STM_VBAT:%u)\r\n",
                (unsigned)t.vbat_mv, (unsigned)t.vpv_mv, (unsigned)t.vdc_mv,
                (unsigned)t.stm_vbat_mv);
-    CSLOG_NODT("[PWRB] ICHG:%u  IBAT:%d  IBUS:%d mA  (target:%u)\r\n",
+    SHELL_LOG("[PWRB] ICHG:%u  IBAT:%d  IBUS:%d mA  (target:%u)\r\n",
                (unsigned)t.ichg_ma, (int)t.ibat_ma, (int)t.ibus_ma,
                (unsigned)t.ichg_target_ma);
-    CSLOG_NODT("[PWRB] CHG_REAL:%u  BQ_YAS:%u ds  BQ_ERR:%u  PSYS_ST:%u  PANIC:0x%02X  CAL:%u\r\n",
+    SHELL_LOG("[PWRB] CHG_REAL:%u  BQ_YAS:%u ds  BQ_ERR:%u  PSYS_ST:%u  PANIC:0x%02X  CAL:%u\r\n",
                (unsigned)t.chg_real, (unsigned)t.bq_yas_ds,
                (unsigned)t.bq_err_n, (unsigned)t.psys_st,
                (unsigned)t.panic_cause, (unsigned)t.cal_ver);
 
     if (t.board_temp_c == POWER_BOARD_BOARD_TEMP_ERROR)
     {
-        CSLOG_NODT("[PWRB] BoardT:err  ");
+        SHELL_LOG("[PWRB] BoardT:err  ");
     }
     else
     {
-        CSLOG_NODT("[PWRB] BoardT:%d C  ", (int)t.board_temp_c);
+        SHELL_LOG("[PWRB] BoardT:%d C  ", (int)t.board_temp_c);
     }
 
     if (t.batt_temp_x10 == POWER_BOARD_BATT_TEMP_INVALID)
     {
-        CSLOG_NODT("BattT:n/a  TS:%u\r\n", (unsigned)t.batt_ts);
+        SHELL_LOG("BattT:n/a  TS:%u\r\n", (unsigned)t.batt_ts);
     }
     else
     {
         int16_t bt  = t.batt_temp_x10;
         bool    neg = (bt < 0);
         int     mag = neg ? -(int)bt : (int)bt;
-        CSLOG_NODT("BattT:%s%d.%d C  TS:%u\r\n",
+        SHELL_LOG("BattT:%s%d.%d C  TS:%u\r\n",
                    neg ? "-" : "", mag / 10, mag % 10,
                    (unsigned)t.batt_ts);
     }
 
-    CSLOG_NODT("[PWRB] CHG:%u  PHASE:%u  ICO:%u  HEATER:%u  BATT:%u  CAP:%uAh  CRATE:%u%%\r\n",
+    SHELL_LOG("[PWRB] CHG:%u  PHASE:%u  ICO:%u  HEATER:%u  BATT:%u  CAP:%uAh  CRATE:%u%%\r\n",
                (unsigned)t.chg_stat, (unsigned)t.chg_phase, (unsigned)t.ico_stat,
                (unsigned)t.heater_state, (unsigned)t.batt_state,
                (unsigned)t.batt_cap_ah, (unsigned)t.batt_crate);
-    CSLOG_NODT("[PWRB] energy: delta=%ld uWh  total=%ld mWh/%ld mAh  equiv=%luh  gross=%lumAh\r\n",
+    SHELL_LOG("[PWRB] energy: delta=%ld uWh  total=%ld mWh/%ld mAh  equiv=%luh  gross=%lumAh\r\n",
                (long)t.delta_uwh, (long)t.total_mwh, (long)t.total_mah,
                (unsigned long)t.equiv_hours, (unsigned long)t.gross_mah);
-    CSLOG_NODT("[PWRB] ALARM live:0x%02X latch:0x%02X  PWR_IO:0x%02X  PWR_SRC:0x%02X\r\n",
+    SHELL_LOG("[PWRB] ALARM live:0x%02X latch:0x%02X  PWR_IO:0x%02X  PWR_SRC:0x%02X\r\n",
                (unsigned)t.alarm_live, (unsigned)t.alarm_latch,
                (unsigned)t.pwr_io, (unsigned)t.pwr_src);
-    CSLOG_NODT("[PWRB] BQ FAULT0:0x%02X FAULT1:0x%02X  R1B:0x%02X R1D:0x%02X R1E:0x%02X R1F:0x%02X\r\n",
+    SHELL_LOG("[PWRB] BQ FAULT0:0x%02X FAULT1:0x%02X  R1B:0x%02X R1D:0x%02X R1E:0x%02X R1F:0x%02X\r\n",
                (unsigned)t.bq_fault0, (unsigned)t.bq_fault1,
                (unsigned)t.bq_reg1b, (unsigned)t.bq_reg1d,
                (unsigned)t.bq_reg1e, (unsigned)t.bq_reg1f);
-    CSLOG_NODT("[PWRB] BQ VSYS:%u VBUS:%u VAC1/DC:%u VAC2/PV:%u mV  TDIE:%d C\r\n",
+    SHELL_LOG("[PWRB] BQ VSYS:%u VBUS:%u VAC1/DC:%u VAC2/PV:%u mV  TDIE:%d C\r\n",
                (unsigned)t.bq_vsys_mv, (unsigned)t.bq_vbus_mv,
                (unsigned)t.bq_vac1_mv, (unsigned)t.bq_vac2_mv,
                (int)t.bq_tdie_c);
-    CSLOG_NODT("[PWRB] watchdogs HIZ:%u MPPT:%u IINDPM:%u ACDRV:%u\r\n",
+    SHELL_LOG("[PWRB] watchdogs HIZ:%u MPPT:%u IINDPM:%u ACDRV:%u\r\n",
                (unsigned)t.hiz_trig, (unsigned)t.mppt_trig,
                (unsigned)t.iindpm_trig, (unsigned)t.acdrv_trig);
 }
@@ -215,8 +215,8 @@ void power_board_log_power(void)
     power_board_power_t p;
     (void)power_board_get_power(&p);
 
-    CSLOG_NODT("[PWRB] === Power Block (%s) ===\r\n", p.valid ? "OK" : "FAIL");
-    CSLOG_NODT("[PWRB] PPV:%ld  PDC:%ld  PSYS:%ld  PBAT:%ld  PIN:%ld mW\r\n",
+    SHELL_LOG("[PWRB] === Power Block (%s) ===\r\n", p.valid ? "OK" : "FAIL");
+    SHELL_LOG("[PWRB] PPV:%ld  PDC:%ld  PSYS:%ld  PBAT:%ld  PIN:%ld mW\r\n",
                (long)p.ppv_mw, (long)p.pdc_mw, (long)p.psys_mw,
                (long)p.pbat_mw, (long)p.pin_mw);
 }
@@ -226,12 +226,12 @@ void power_board_log_lastgasp(void)
     power_board_lastgasp_t g;
     (void)power_board_get_lastgasp(&g);
 
-    CSLOG_NODT("[PWRB] === LastGasp (%s) ===\r\n", g.valid ? "OK" : "FAIL");
-    CSLOG_NODT("[PWRB] reason:0x%02X  SoC:%u%%  SoH:%u.%u%%  VBAT:%u mV  CAP:%uAh\r\n",
+    SHELL_LOG("[PWRB] === LastGasp (%s) ===\r\n", g.valid ? "OK" : "FAIL");
+    SHELL_LOG("[PWRB] reason:0x%02X  SoC:%u%%  SoH:%u.%u%%  VBAT:%u mV  CAP:%uAh\r\n",
                (unsigned)g.reason, (unsigned)g.soc_pct,
                (unsigned)(g.soh_x10 / 10U), (unsigned)(g.soh_x10 % 10U),
                (unsigned)g.vbat_mv, (unsigned)g.cap_ah);
-    CSLOG_NODT("[PWRB] EFC:%u  equiv:%luh  gross:%lumAh  total:%lumWh/%lumAh\r\n",
+    SHELL_LOG("[PWRB] EFC:%u  equiv:%luh  gross:%lumAh  total:%lumWh/%lumAh\r\n",
                (unsigned)g.efc, (unsigned long)g.equiv_hours,
                (unsigned long)g.gross_mah, (unsigned long)g.total_mwh,
                (unsigned long)g.total_mah);
@@ -242,18 +242,18 @@ void power_board_log_raw(void)
     uint8_t reg[I2C_SLAVE_REG_COUNT];
     i2c_slave_snapshot(reg, 0U, (uint8_t)I2C_SLAVE_REG_COUNT);
 
-    CSLOG_NODT("[PWRB] === Register dump (%u bytes) ===\r\n",
+    SHELL_LOG("[PWRB] === Register dump (%u bytes) ===\r\n",
                (unsigned)I2C_SLAVE_REG_COUNT);
-    CSLOG_NODT("[PWRB]     00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\r\n");
+    SHELL_LOG("[PWRB]     00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\r\n");
 
     for (uint16_t row = 0U; row < (uint16_t)I2C_SLAVE_REG_COUNT; row += 16U)
     {
-        CSLOG_NODT("[PWRB] %02X:", (unsigned)row);
+        SHELL_LOG("[PWRB] %02X:", (unsigned)row);
         for (uint8_t col = 0U; col < 16U; col++)
         {
-            CSLOG_NODT(" %02X", (unsigned)reg[row + col]);
+            SHELL_LOG(" %02X", (unsigned)reg[row + col]);
         }
-        CSLOG_NODT("\r\n");
+        SHELL_LOG("\r\n");
     }
 }
 
@@ -262,16 +262,16 @@ void power_board_log_stats(void)
     i2c_slave_stats_t s;
     i2c_slave_get_stats(&s);
 
-    CSLOG_NODT("[PWRB] === I2C slave stats ===\r\n");
-    CSLOG_NODT("[PWRB] addr wr:%u  rd:%u  rx:%u  tx:%u  stop:%u\r\n",
+    SHELL_LOG("[PWRB] === I2C slave stats ===\r\n");
+    SHELL_LOG("[PWRB] addr wr:%u  rd:%u  rx:%u  tx:%u  stop:%u\r\n",
                (unsigned)s.addr_write, (unsigned)s.addr_read,
                (unsigned)s.rx_bytes, (unsigned)s.tx_bytes,
                (unsigned)s.listen_cplt);
-    CSLOG_NODT("[PWRB] err AF:%u  BERR:%u  ARLO:%u  OVR:%u  other:%u\r\n",
+    SHELL_LOG("[PWRB] err AF:%u  BERR:%u  ARLO:%u  OVR:%u  other:%u\r\n",
                (unsigned)s.err_af, (unsigned)s.err_berr,
                (unsigned)s.err_arlo, (unsigned)s.err_ovr,
                (unsigned)s.err_other);
-    CSLOG_NODT("[PWRB] recover:%u  last_error:0x%08X\r\n",
+    SHELL_LOG("[PWRB] recover:%u  last_error:0x%08X\r\n",
                (unsigned)s.recover, (unsigned)s.last_error);
 }
 
@@ -628,7 +628,7 @@ static int power_board_shell_handler(int argc, char *argv[])
         if ((argc >= 3) && (strcmp(argv[2], "clear") == 0))
         {
             i2c_slave_clear_stats();
-            CSLOG("[PWRB] stats cleared\r\n");
+            SHELL_LOG("[PWRB] stats cleared\r\n");
             return 0;
         }
         power_board_log_stats();
@@ -650,13 +650,13 @@ static int power_board_shell_handler(int argc, char *argv[])
             }
             power_board_set_config((uint8_t)cap, (uint8_t)crate, tcal);
             power_board_get_config(&c);
-            CSLOG("[PWRB] cfg applied: cap=%uAh crate=%u%% tcal=0x%04X gen=%u\r\n",
+            SHELL_LOG("[PWRB] cfg applied: cap=%uAh crate=%u%% tcal=0x%04X gen=%u\r\n",
                   (unsigned)c.cap_ah, (unsigned)c.crate_pct,
                   (unsigned)c.tcal_q15, (unsigned)c.cfg_gen);
         }
         else
         {
-            CSLOG("[PWRB] cfg: rec_ack=%u gen=%u cap=%uAh crate=%u%% tcal=0x%04X\r\n",
+            SHELL_LOG("[PWRB] cfg: rec_ack=%u gen=%u cap=%uAh crate=%u%% tcal=0x%04X\r\n",
                   (unsigned)c.rec_ack, (unsigned)c.cfg_gen,
                   (unsigned)c.cap_ah, (unsigned)c.crate_pct, (unsigned)c.tcal_q15);
         }
@@ -675,26 +675,26 @@ static int power_board_shell_handler(int argc, char *argv[])
             }
         }
         power_board_periodic_log_start(period);
-        CSLOG("[PWRB] periodic log ON (%u ms)\r\n", (unsigned)period);
+        SHELL_LOG("[PWRB] periodic log ON (%u ms)\r\n", (unsigned)period);
         return 0;
     }
 
     if (strcmp(argv[1], "stop") == 0)
     {
         power_board_periodic_log_stop();
-        CSLOG("[PWRB] periodic log OFF\r\n");
+        SHELL_LOG("[PWRB] periodic log OFF\r\n");
         return 0;
     }
 
-    CSLOG("Usage: pwrboard [show]      - print telemetry once\r\n");
-    CSLOG("       pwrboard power      - print power block\r\n");
-    CSLOG("       pwrboard lastgasp   - print last-gasp block\r\n");
-    CSLOG("       pwrboard raw        - hex dump full register file\r\n");
-    CSLOG("       pwrboard stats [clear] - I2C slave diagnostics\r\n");
-    CSLOG("       pwrboard cfg [cap crate [tcal]] - show/apply config\r\n");
-    CSLOG("       pwrboard mon [ms]    - start periodic log (default %u ms)\r\n",
+    SHELL_LOG("Usage: pwrboard [show]      - print telemetry once\r\n");
+    SHELL_LOG("       pwrboard power      - print power block\r\n");
+    SHELL_LOG("       pwrboard lastgasp   - print last-gasp block\r\n");
+    SHELL_LOG("       pwrboard raw        - hex dump full register file\r\n");
+    SHELL_LOG("       pwrboard stats [clear] - I2C slave diagnostics\r\n");
+    SHELL_LOG("       pwrboard cfg [cap crate [tcal]] - show/apply config\r\n");
+    SHELL_LOG("       pwrboard mon [ms]    - start periodic log (default %u ms)\r\n",
           (unsigned)POWER_BOARD_LOG_DEF_PERIOD_MS);
-    CSLOG("       pwrboard stop        - stop periodic log\r\n");
+    SHELL_LOG("       pwrboard stop        - stop periodic log\r\n");
     return -1;
 }
 

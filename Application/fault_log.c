@@ -140,7 +140,7 @@ static void fault_log_load_feeder(uint8_t feeder_id)
 
 static void print_log(int entry_num, const fault_log_t *log)
 {
-	CCSLOG_NODT(XCOLOR_CYAN, "  [%2d] %02u-%02u-%04u %02u:%02u:%02u  I=%.1fA  T=%ums  Nominal=%s  Power=%s\r\n",
+	SHELL_CLOG(XCOLOR_CYAN, "  [%2d] %02u-%02u-%04u %02u:%02u:%02u  I=%.1fA  T=%ums  Nominal=%s  Power=%s\r\n",
 			entry_num,
 			log->tm.day, log->tm.month, (uint32_t)(log->tm.year + 2000),
 			log->tm.hour, log->tm.minute, cp56time2a_get_second(&log->tm),
@@ -157,19 +157,19 @@ void fault_log_dump(void)
 		fault_log_load_feeder((uint8_t)feeder);
 		const fault_log_feeder_history_t *fh = &g_feeder_log;
 
-		CSLOG("\r\n=== Feeder %d ===\r\n", feeder + 1);
+		SHELL_LOG("\r\n=== Feeder %d ===\r\n", feeder + 1);
 
 		for(int phase = 0; phase < PHASE_MAX; phase++)
 		{
 			uint32_t total_temp = fh->total_temporary_faults[phase];
 			uint32_t temp_count = total_temp > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_temp;
 
-			CSLOG("  Phase %d — TEMPORARY FAULTS (total: %u, showing: %u, newest first):\r\n",
+			SHELL_LOG("  Phase %d — TEMPORARY FAULTS (total: %u, showing: %u, newest first):\r\n",
 					phase + 1, total_temp, temp_count);
 
 			if(temp_count == 0)
 			{
-				CSLOG("  (none)\r\n");
+				SHELL_LOG("  (none)\r\n");
 			}
 			else
 			{
@@ -184,12 +184,12 @@ void fault_log_dump(void)
 			uint32_t total_perm = fh->total_permanent_faults[phase];
 			uint32_t perm_count = total_perm > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_perm;
 
-			CSLOG("  Phase %d — PERMANENT FAULTS (total: %u, showing: %u, newest first):\r\n",
+			SHELL_LOG("  Phase %d — PERMANENT FAULTS (total: %u, showing: %u, newest first):\r\n",
 					phase + 1, total_perm, perm_count);
 
 			if(perm_count == 0)
 			{
-				CSLOG("  (none)\r\n");
+				SHELL_LOG("  (none)\r\n");
 			}
 			else
 			{
@@ -201,7 +201,7 @@ void fault_log_dump(void)
 				}
 			}
 		}
-		CSLOG("\r\n");
+		SHELL_LOG("\r\n");
 	}
 }
 
@@ -248,7 +248,7 @@ static void test_fault_log_add_random(void)
 	}
 
 	fault_log_sync();
-	CSLOG("Test logs added: %d feeders x %d phases x 5 temp + 5 perm.\r\n",
+	SHELL_LOG("Test logs added: %d feeders x %d phases x 5 temp + 5 perm.\r\n",
 			MAX_POWER_LINE_COUNT, PHASE_MAX);
 }
 
@@ -261,7 +261,7 @@ void fault_log_clear(void)
 		memset(&g_feeder_log, 0, sizeof(g_feeder_log));
 		fault_log_sync_current();
 	}
-	CSLOG("Fault log cleared.\r\n");
+	SHELL_LOG("Fault log cleared.\r\n");
 }
 
 static int shell_fltlog_dump(int argc, char *argv[])

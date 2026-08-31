@@ -38,37 +38,37 @@ static void breaker_shell_dump_line(uint32_t line_index)
         return;
     }
 
-    CSLOG_NODT("[BREAKER] === Line %u (index %u) ===\r\n",
+    SHELL_LOG("[BREAKER] === Line %u (index %u) ===\r\n",
           (unsigned)(line_index + 1U), (unsigned)line_index);
-    CSLOG_NODT("[BREAKER] In use: %s\r\n", p_line->iec104.in_use ? "yes" : "no");
-    CSLOG_NODT("[BREAKER] %-22s | %10s | %10s | %10s\r\n",
+    SHELL_LOG("[BREAKER] In use: %s\r\n", p_line->iec104.in_use ? "yes" : "no");
+    SHELL_LOG("[BREAKER] %-22s | %10s | %10s | %10s\r\n",
           "Field", "L1", "L2", "L3");
 
-    CSLOG_NODT("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "ariza_akimi (A)",
+    SHELL_LOG("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "ariza_akimi (A)",
           p_feeder->phase[PHASE_L1].ariza_akimi,
           p_feeder->phase[PHASE_L2].ariza_akimi,
           p_feeder->phase[PHASE_L3].ariza_akimi);
-    CSLOG_NODT("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "anlik_akim (A)",
+    SHELL_LOG("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "anlik_akim (A)",
           p_feeder->phase[PHASE_L1].anlik_akim,
           p_feeder->phase[PHASE_L2].anlik_akim,
           p_feeder->phase[PHASE_L3].anlik_akim);
-    CSLOG_NODT("[BREAKER] %-22s | %10.0f | %10.0f | %10.0f\r\n", "ariza_suresi (ms)",
+    SHELL_LOG("[BREAKER] %-22s | %10.0f | %10.0f | %10.0f\r\n", "ariza_suresi (ms)",
           p_feeder->phase[PHASE_L1].ariza_suresi,
           p_feeder->phase[PHASE_L2].ariza_suresi,
           p_feeder->phase[PHASE_L3].ariza_suresi);
-    CSLOG_NODT("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "ariza_kalicimi",
+    SHELL_LOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "ariza_kalicimi",
           (unsigned)p_feeder->phase[PHASE_L1].ariza_kalicimi,
           (unsigned)p_feeder->phase[PHASE_L2].ariza_kalicimi,
           (unsigned)p_feeder->phase[PHASE_L3].ariza_kalicimi);
-    CSLOG_NODT("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "enerji_varyok",
+    SHELL_LOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "enerji_varyok",
           (unsigned)p_feeder->phase[PHASE_L1].enerji_varyok,
           (unsigned)p_feeder->phase[PHASE_L2].enerji_varyok,
           (unsigned)p_feeder->phase[PHASE_L3].enerji_varyok);
-    CSLOG_NODT("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "nominal_akim_varyok",
+    SHELL_LOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "nominal_akim_varyok",
           (unsigned)p_feeder->phase[PHASE_L1].nominal_akim_varyok,
           (unsigned)p_feeder->phase[PHASE_L2].nominal_akim_varyok,
           (unsigned)p_feeder->phase[PHASE_L3].nominal_akim_varyok);
-    CSLOG_NODT("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "rf_haberlesme_varyok",
+    SHELL_LOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "rf_haberlesme_varyok",
           (unsigned)p_feeder->phase[PHASE_L1].rf_haberlesme_varyok,
           (unsigned)p_feeder->phase[PHASE_L2].rf_haberlesme_varyok,
           (unsigned)p_feeder->phase[PHASE_L3].rf_haberlesme_varyok);
@@ -77,7 +77,7 @@ static void breaker_shell_dump_line(uint32_t line_index)
 static int breaker_shell_handler(int argc, char *argv[])
 {
     if (argc < 2) {
-        CSLOG("Usage: breaker <line 1..%u | all>\r\n", (unsigned)MAX_POWER_LINE_COUNT);
+        SHELL_LOG("Usage: breaker <line 1..%u | all>\r\n", (unsigned)MAX_POWER_LINE_COUNT);
         return -1;
     }
 
@@ -91,7 +91,7 @@ static int breaker_shell_handler(int argc, char *argv[])
     int line_no = xstrtoi(argv[1]);
 
     if ((line_no < 1) || (line_no > (int)MAX_POWER_LINE_COUNT)) {
-        CSLOG("[BREAKER] Invalid line %d (valid: 1..%u or 'all')\r\n",
+        SHELL_LOG("[BREAKER] Invalid line %d (valid: 1..%u or 'all')\r\n",
               line_no, (unsigned)MAX_POWER_LINE_COUNT);
         return -1;
     }

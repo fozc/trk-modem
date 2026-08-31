@@ -354,7 +354,7 @@ static int xmodem_shell_handler(int argc, char *argv[])
 {
 	if (argc < 2)
 	{
-		CSLOG("XMODEM mode: %s\r\n", s_xmodem_active ? "ACTIVE" : "inactive");
+		SHELL_LOG("XMODEM mode: %s\r\n", s_xmodem_active ? "ACTIVE" : "inactive");
 		return 0;
 	}
 
@@ -362,13 +362,13 @@ static int xmodem_shell_handler(int argc, char *argv[])
 	{
 		if (shell_get_session_level() < SHELL_LVL_SUPER_USER)
 		{
-			CSLOG_ERR("Permission denied. Requires superuser.\r\n");
+			SHELL_CLOG(XCOLOR_RED, "Permission denied. Requires superuser.\r\n");
 			return -1;
 		}
 
 		if (s_xmodem_active)
 		{
-			CSLOG("XMODEM mode already active.\r\n");
+			SHELL_LOG("XMODEM mode already active.\r\n");
 			return 0;
 		}
 
@@ -380,13 +380,13 @@ static int xmodem_shell_handler(int argc, char *argv[])
 	{
 		if (shell_get_session_level() < SHELL_LVL_SUPER_USER)
 		{
-			CSLOG_ERR("Permission denied. Requires superuser.\r\n");
+			SHELL_CLOG(XCOLOR_RED, "Permission denied. Requires superuser.\r\n");
 			return -1;
 		}
 
 		if (!s_xmodem_active)
 		{
-			CSLOG("XMODEM mode is not active.\r\n");
+			SHELL_LOG("XMODEM mode is not active.\r\n");
 			return 0;
 		}
 
@@ -397,12 +397,12 @@ static int xmodem_shell_handler(int argc, char *argv[])
 	if (strcmp(argv[1], "status") == 0)
 	{
 		uint32_t dl_addr = get_download_address();
-		CSLOG("XMODEM mode: %s\r\n", s_xmodem_active ? "ACTIVE" : "inactive");
-		CSLOG("Target area: %s (0x%06X)\r\n", get_download_area_name(dl_addr), (unsigned)dl_addr);
+		SHELL_LOG("XMODEM mode: %s\r\n", s_xmodem_active ? "ACTIVE" : "inactive");
+		SHELL_LOG("Target area: %s (0x%06X)\r\n", get_download_area_name(dl_addr), (unsigned)dl_addr);
 		return 0;
 	}
 
-	CSLOG("Unknown argument: %s\r\n", argv[1]);
+	SHELL_LOG("Unknown argument: %s\r\n", argv[1]);
 	return -1;
 }
 
