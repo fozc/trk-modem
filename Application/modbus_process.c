@@ -66,6 +66,10 @@
 /* Modbus slave instance for the UART4 bus. Kept private so the ISR stays trivial. */
 static modbus_slave_t s_modbus;
 
+/* Baud rate currently active on UART4; skips a redundant BRR write when the
+ * stored value already matches (115200 is the CubeMX MX_UART4_Init default). */
+static uint32_t active_baud = 115200U;
+
 /*
  * Modbus response transmit method (compile-time selectable):
  *   1 (default): non-blocking DMA transfer. The response is copied to a
@@ -510,6 +514,25 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
     return MODBUS_REG_OK;
 }
 
+/**
+ * @brief Apply the NVRAM Modbus baud rate to UART4.
+ *
+ * Skips the write when the stored value equals the active baud rate, so a
+ * boot-time call with the factory default (115200) leaves BRR untouched.
+ * Must run with the UART idle (no transmission in flight).
+ */
+static void modbus_uart_apply_baudrate(void)
+{
+    const modbus_configs_t *cfg = nvram_get_modbus_config();
+
+    if ((cfg->baud_rate != 0U) && (cfg->baud_rate != active_baud))
+    {
+        uart_set_baudrate(UART_4, cfg->baud_rate);
+        active_baud = cfg->baud_rate;
+        CSLOG_WARN("MODBUS: UART baudrate set to %u\r\n", active_baud);
+    }
+}
+
 PROCESS(modbus_process, "modbus_process");
 PROCESS_THREAD(modbus_process, ev, data)
 {
@@ -589,12 +612,19 @@ PROCESS_THREAD(modbus_process, ev, data)
 
 void modbus_process_init(void)
 {
+	modbus_uart_apply_baudrate();
 	process_start(&modbus_process, NULL);
 }
 
 void modbus_process_poll(void)
 {
 	process_poll(&modbus_process);
+}
+
+void modbus_process_notify_config_changed(void)
+{
+	/* Aninda uygula: yeni hiz hemen devreye girer. */
+	modbus_uart_apply_baudrate();
 }
 
 void modbus_process_isr_rx_byte(uint8_t byte)

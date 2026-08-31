@@ -69,6 +69,18 @@ void uart_send_buffer_rs485(uart_port_t port,
  */
 void uart_set_rx_timeout(uart_port_t port, uint32_t bit_times);
 
+/**
+ * @brief Change the baud rate of a UART port at run time.
+ *
+ * Disables the peripheral, reprograms BRR for @p baudrate and re-enables
+ * it, so the port must be idle when called (no transfer in flight).
+ * The kernel clock frequency is resolved from the RCC configuration.
+ *
+ * @param[in] port      UART port.
+ * @param[in] baudrate  New baud rate in baud (e.g. 9600, 115200); zero is ignored.
+ */
+void uart_set_baudrate(uart_port_t port, uint32_t baudrate);
+
 
 typedef enum
 {

@@ -18,6 +18,7 @@
 #include "iec104_util.h"
 #include "iec104_config.h"
 #include "modbus_config.h"
+#include "modbus_process.h"
 #include "rf_config.h"
 #include "rf.h"
 #include "system_status.h"
@@ -2185,14 +2186,15 @@ void set_iec_config(const jiec_config_t *config)
 }
 
 /* Modbus Config Setter - Converts JSON format to NVRAM format */
-void set_modbus_config(const jmodbus_configs_t *config)
+int set_modbus_config(const jmodbus_configs_t *config)
 {
     if(!config) {
-    	return;
+    	return -1;
     }
 
     // Create local config struct from current NVRAM state
     modbus_configs_t config_to_write = {0};
+
     const modbus_configs_t *current_config = modbus_config_get();
     if (current_config) {
         config_to_write = *current_config;  // Copy current config
@@ -2249,6 +2251,13 @@ void set_modbus_config(const jmodbus_configs_t *config)
 	xcprintf(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
 			res == 0 ? "[MODBUS] Modbus config synchronized successfully\r\n"
 					: "[MODBUS] ERROR: Modbus config synchronization failed\r\n");
+
+	if (res == 0) {
+		modbus_process_notify_config_changed();
+		return 0;
+	}
+
+	return -1;
 }
 
 

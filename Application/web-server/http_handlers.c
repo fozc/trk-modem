@@ -546,7 +546,7 @@ void handle_post_device_config_json(const char *json_body)
     set_device_config(&config);
     
     elog_log_config_change(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
-                           gsm_get_web_client_ip(), "device");
+                           gsm_get_web_client_ip(), "device", true);
     xprintf("[HTTP] Config saved to data_model\r\n");
 
     const char *response_body = "{\"message\":\"Device configuration saved\",\"success\":true}";
@@ -1060,7 +1060,7 @@ void handle_post_iec_config_json(const char *json_body)
     set_iec_config(&config);
     
     elog_log_config_change(ELOG_CONFIG_IEC104_CHANGED, ELOG_SOURCE_WEB,
-                           gsm_get_web_client_ip(), "iec104");
+                           gsm_get_web_client_ip(), "iec104", true);
     xprintf("[HTTP] IEC config saved\r\n");
 
     const char *response_body = "{\"message\":\"IEC104 configuration saved\",\"success\":true}";
@@ -1335,14 +1335,16 @@ void handle_post_modbus_config_json(const char *json_body)
     xprintf("[HTTP] CihazID: %u\r\n", config.device_addr);
     xprintf("[HTTP] BaudRate: %u\r\n", config.baud_rate);
     
-    /* TODO: Save config to persistent storage */
-    set_modbus_config(&config);
-    
-    elog_log_config_change(ELOG_CONFIG_MODBUS_CHANGED, ELOG_SOURCE_WEB,
-                           gsm_get_web_client_ip(), "modbus");
-    xprintf("[HTTP] Modbus config saved\r\n");
+    int res = set_modbus_config(&config);
 
-    const char *response_body = "{\"message\":\"IEC104 configuration saved\",\"success\":true}";
+    elog_log_config_change(ELOG_CONFIG_MODBUS_CHANGED, ELOG_SOURCE_WEB,
+                           gsm_get_web_client_ip(), "modbus", (res == 0));
+
+    xprintf("[HTTP] Modbus config %s\r\n", res == 0 ? "saved" : "save failed");
+
+    const char *response_body = res == 0 ? "{\"message\":\"Modbus configuration saved\",\"success\":true}"
+    		: "{\"message\":\"Failed to save Modbus configuration\",\"success\":false}";
+
     http_send_json(response_body, strlen(response_body));
 }
 
@@ -1491,7 +1493,7 @@ void handle_post_rf_config_json(const char *json_body)
     
     xprintf("[HTTP] RF config saved\r\n");
     elog_log_config_change(ELOG_CONFIG_RF_CHANGED, ELOG_SOURCE_WEB,
-                           gsm_get_web_client_ip(), "rf");
+                           gsm_get_web_client_ip(), "rf", true);
 
     const char *response_body = "{\"message\":\"RF configuration saved\",\"success\":true}";
     http_send_json(response_body, strlen(response_body));
