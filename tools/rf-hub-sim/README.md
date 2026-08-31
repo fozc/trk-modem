@@ -5,9 +5,8 @@ gercek UART uzerinden konusturur; tum gelen/giden cerceveleri hex +
 yorum olarak loglar, klavyeden proaktif bildirim ve hata enjeksiyonu
 yapmanizi saglar.
 
-Referanslar: `doc/mailden/Fatih_Paketi_20260821_R1.md`,
-`doc/mailden/scp_komut_kullanim_tablosu_R0.md`,
-`doc/mailden/0x40_0x44_yanit_duzeni_R1.md`.
+Referanslar: `doc/SCP_Arayuz_Paketi_R1_yeniden_yazim.md`,
+`doc/nihai/Ayirici_Config_Arayuz_Spec_R2_teslim.md`.
 
 ## Derleme
 

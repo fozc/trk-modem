@@ -8,9 +8,8 @@
  * yanit verir, proaktif bildirimleri gonderir, SEQ/idempotency, cfg grup
  * durum makinesi ve olay halkasini simule eder.
  *
- * Referanslar: doc/mailden/Fatih_Paketi_20260821_R1.md,
- * doc/mailden/scp_komut_kullanim_tablosu_R0.md,
- * doc/mailden/0x40_0x44_yanit_duzeni_R1.md.
+ * Referanslar: doc/SCP_Arayuz_Paketi_R1_yeniden_yazim.md,
+ * doc/nihai/Ayirici_Config_Arayuz_Spec_R2_teslim.md.
  *
  * Cekirdek saf C'dir: gonderim geri cagrisi ve zaman disaridan enjekte
  * edilir (kendi-kendini-test modu ayni kodu kullanir).
