@@ -369,7 +369,14 @@ void handle_post_web_shell(const char *json_body)
         return;
     }
 
+    /* Build {"rx":"..."}: capture terminal output directly into the
+     * response buffer while the command runs (no intermediate copy). */
+    char *buf = handler_state.tx_buffer;
+    int buf_size = handler_state.tx_buffer_size;
+    int pos = xsnprintf(buf, buf_size, "{\"rx\":\"");
+
     /* Parse "tx" field from JSON: {"tx":"..."} */
+    int flush_len = 0;
     const char *tx_start = strstr(json_body, "\"tx\":\"");
     if (tx_start) {
         tx_start += 6; /* skip '"tx":"' */
@@ -378,84 +385,29 @@ void handle_post_web_shell(const char *json_body)
             *tx_end = '\0';
             uint16_t len = (uint16_t)(tx_end - tx_start);
             if (len > 0) {
+                web_shell_capture_begin(buf + pos, buf_size - pos - 2);
                 web_shell_on_rx((const uint8_t *)tx_start, len);
+                flush_len = web_shell_capture_end();
             }
         }
     }
 
-    /* Check if the callback produced an immediate (synchronous) response */
-    static uint8_t flush_buf[WEB_SHELL_TX_BUF_SIZE];
-    uint16_t flush_len = web_shell_flush(flush_buf, sizeof(flush_buf));
-
-    if (flush_len == 0U) {
+    if (flush_len == 0) {
         /* No immediate data; client must poll GET /serial */
         http_send_json("{\"pending\":true}", 16);
         return;
     }
 
-    /* Immediate response available — build {"rx":"..."} */
-    char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "{\"rx\":\"");
-
-    for (uint16_t i = 0; i < flush_len && pos < buf_size - 4; i++) {
-        uint8_t ch = flush_buf[i];
-        if (ch == '\"') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\\"");
-        } else if (ch == '\\') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\\\");
-        } else if (ch == '\n') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\n");
-        } else if (ch == '\r') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\r");
-        } else if (ch == '\t') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\t");
-        } else if (ch >= 0x20U && ch < 0x7FU) {
-            buf[pos++] = (char)ch;
-        } else {
-            /* skip other control characters */
-        }
-    }
-
+    pos += flush_len;
     pos += xsnprintf(buf + pos, buf_size - pos, "\"}");
     http_send_json(buf, pos);
 }
 
 void handle_get_web_shell(void)
 {
-    char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "{\"rx\":\"");
-
-    /* Flush web_shell TX data and JSON-escape it */
-    static uint8_t flush_buf[WEB_SHELL_TX_BUF_SIZE];
-    uint16_t flush_len = web_shell_flush(flush_buf, sizeof(flush_buf));
-
-    for (uint16_t i = 0; i < flush_len && pos < buf_size - 4; i++) {
-        uint8_t ch = flush_buf[i];
-        if (ch == '\"') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\\"");
-        } else if (ch == '\\') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\\\");
-        } else if (ch == '\n') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\n");
-        } else if (ch == '\r') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\r");
-        } else if (ch == '\t') {
-            pos += xsnprintf(buf + pos, buf_size - pos, "\\t");
-        } else if (ch >= 0x20U && ch < 0x7FU) {
-            buf[pos++] = (char)ch;
-        } else {
-            /* skip other control characters */
-        }
-    }
-
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"}");
-    http_send_json(buf, pos);
+    /* Capture is request-scoped: the POST response already carried the
+     * command output, background output is never captured. */
+    http_send_json("{\"rx\":\"\"}", 9);
 }
 
 

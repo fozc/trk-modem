@@ -1,97 +1,179 @@
 /**
  * @file web_shell.c
  * @brief Web shell - raw data transport between web UI and MCU
+ *
+ * Request-scoped capture: the HTTP handler provides the response buffer
+ * (web_shell_capture_begin); command output and the rf echo are
+ * JSON-escaped straight into it. There is no internal staging buffer.
  */
 
 #include "web_shell.h"
 #include <stdbool.h>
 #include <string.h>
-#include "shell.h"
+#include "xprintf.h"
+
+/* ======================================================================
+ *  Capture state (active only between capture_begin/end, single context)
+ * ====================================================================== */
+
+/** Escaped form of the truncation marker (raw text: CRLF[TRUNCATED]CRLF). */
+#define WEB_SHELL_TRUNC_MARKER      "\\r\\n[TRUNCATED]\\r\\n"
+#define WEB_SHELL_TRUNC_MARKER_LEN  ((int)(sizeof(WEB_SHELL_TRUNC_MARKER) - 1U))
+
+static char *cap_dst;
+static int   cap_cap;       /* content limit: marker + NUL always fit      */
+static int   cap_pos;
+static bool  cap_active;
+static bool  cap_truncated;
+
+/** Write one raw byte into the capture, JSON-escaped. */
+static void capture_putc(uint8_t ch)
+{
+    if (!cap_active)
+    {
+        return;   /* no capture in progress: drop */
+    }
+
+    char a = 0;
+    char b = 0;
+    int written = 1;
+
+    if (ch == '"')
+    {
+        a = '\\'; b = '"';
+        written = 2;
+    }
+    else if (ch == '\\')
+    {
+        a = '\\'; b = '\\';
+        written = 2;
+    }
+    else if (ch == '\n')
+    {
+        a = '\\'; b = 'n';
+        written = 2;
+    }
+    else if (ch == '\r')
+    {
+        a = '\\'; b = 'r';
+        written = 2;
+    }
+    else if (ch == '\t')
+    {
+        a = '\\'; b = 't';
+        written = 2;
+    }
+    else if ((ch >= 0x20U) && (ch < 0x7FU))
+    {
+        a = (char)ch;
+    }
+    else
+    {
+        /* other control characters are skipped */
+        return;
+    }
+
+    if (cap_pos + written > cap_cap)
+    {
+        cap_truncated = true;
+        return;
+    }
+
+    cap_dst[cap_pos++] = a;
+    if (written == 2)
+    {
+        cap_dst[cap_pos++] = b;
+    }
+}
+
+/* ======================================================================
+ *  RX callback: rf echo or shell command execution
+ * ====================================================================== */
 
 static web_shell_rx_cb_t rx_cb;
-static uint8_t tx_buf[WEB_SHELL_TX_BUF_SIZE];
-static uint16_t tx_pos;
-static bool tx_truncated;   /* buffer doldu, ciktinin sonu atildi */
 
 static void default_rx_handler(const uint8_t *data, uint16_t len)
 {
     if(memcmp(data, "rf", 2) == 0)
     {
-        web_shell_send(data, len);
+        /* rf passthrough: echo the command text back */
+        for (uint16_t i = 0U; i < len; i++)
+        {
+            capture_putc(data[i]);
+        }
     }
     else
 	{
-        shell_putchar_fn_t prev = shell_get_putchar();
-        shell_set_putchar(web_shell_putchar);   /* SHELL_LOG → TX buffer */
+		shell_putchar_fn_t prev_putc = shell_get_putchar();
+		void (*prev_xout)(int) = xfunc_output;
 
-        while(*data) {
-            shell_on_rx_received(*data++);
-        }
-        shell_on_rx_received('\r');
-        shell_process();                    /* Execute command after full line is received */
-        shell_set_putchar(prev);            /* restore */
+		shell_set_putchar(web_shell_putchar);   /* SHELL_LOG -> capture */
+		xdev_out(web_shell_putchar);            /* CSLOG/xprintf -> capture */
+
+		while(*data) {
+			shell_on_rx_received(*data++);
+		}
+		shell_on_rx_received('\r');
+		shell_process();                    /* Execute command after full line is received */
+
+		shell_set_putchar(prev_putc);       /* restore */
+		xdev_out(prev_xout);                /* restore */
 	}
 }
+
+/* ======================================================================
+ *  Public API
+ * ====================================================================== */
 
 void web_shell_init(web_shell_rx_cb_t rx_callback)
 {
     rx_cb = rx_callback ? rx_callback : default_rx_handler;
-    tx_pos = 0;
-    tx_truncated = false;
-    memset(tx_buf, 0, sizeof(tx_buf));
+    cap_dst = NULL;
+    cap_cap = 0;
+    cap_pos = 0;
+    cap_active = false;
+    cap_truncated = false;
 }
 
-int web_shell_send(const uint8_t *data, uint16_t len)
+void web_shell_capture_begin(char *dst, int room)
 {
-    if (!data || len == 0) {
-        return 0;
-    }
-
-    uint16_t available = WEB_SHELL_TX_BUF_SIZE - tx_pos;
-    uint16_t to_copy = (len < available) ? len : available;
-
-    if (to_copy > 0) {
-        memcpy(&tx_buf[tx_pos], data, to_copy);
-        tx_pos += to_copy;
-    }
-    if (to_copy < len) {
-        tx_truncated = true;   /* eksik kalsin ama gizli kalmasin */
-    }
-
-    return to_copy;
+    cap_dst = dst;
+    cap_cap = (room > (WEB_SHELL_TRUNC_MARKER_LEN + 1))
+                  ? (room - (WEB_SHELL_TRUNC_MARKER_LEN + 1))
+                  : 0;
+    cap_pos = 0;
+    cap_truncated = false;
+    cap_active = (dst != NULL) && (cap_cap > 0);
 }
 
-uint16_t web_shell_flush(uint8_t *out_buf, uint16_t buf_size)
+int web_shell_capture_end(void)
 {
-    if (!out_buf || buf_size == 0 || tx_pos == 0) {
-        return 0;
+    int len = cap_pos;
+
+    if (cap_active && (cap_dst != NULL))
+    {
+        if (cap_truncated)
+        {
+            memcpy(&cap_dst[cap_pos], WEB_SHELL_TRUNC_MARKER,
+                   (size_t)WEB_SHELL_TRUNC_MARKER_LEN);
+            cap_pos += WEB_SHELL_TRUNC_MARKER_LEN;
+            len = cap_pos;
+        }
+        cap_dst[cap_pos] = '\0';
     }
 
-    uint16_t to_copy = (tx_pos < buf_size) ? tx_pos : buf_size;
-    memcpy(out_buf, tx_buf, to_copy);
-    tx_pos = 0;
+    cap_dst = NULL;
+    cap_cap = 0;
+    cap_pos = 0;
+    cap_active = false;
+    cap_truncated = false;
 
-    if (tx_truncated) {
-        static const char marker[] = "\r\n[TRUNCATED]\r\n";
-        uint16_t room = (buf_size > to_copy) ? (uint16_t)(buf_size - to_copy) : 0U;
-        uint16_t m_len = (uint16_t)(sizeof(marker) - 1U);
-        if (m_len > room) {
-            m_len = room;
-        }
-        if (m_len > 0U) {
-            memcpy(&out_buf[to_copy], marker, m_len);
-            to_copy += m_len;
-        }
-        tx_truncated = false;
-    }
-
-    return to_copy;
+    return len;
 }
 
 void web_shell_putchar(int ch)
 {
-    uint8_t b = (uint8_t)ch;
-    web_shell_send(&b, 1U);
+    capture_putc((uint8_t)ch);
 }
 
 void web_shell_on_rx(const uint8_t *data, uint16_t len)
