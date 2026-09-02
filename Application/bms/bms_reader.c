@@ -84,8 +84,6 @@ static void send_soh_request(void)
  * payload packing and level policy live in elog.c. */
 static void bms_log_transitions(const bms_data_t *d)
 {
-	static bool have_prev = false;
-	static uint8_t prev_work = 0U;
 	static bool low20 = false;
 	static bool low10 = false;
 
@@ -94,11 +92,8 @@ static void bms_log_transitions(const bms_data_t *d)
 	uint8_t soh_u8 = (d->soh_percent < 0.0f) ? 0U
 	              : ((d->soh_percent > 100.0f) ? 100U : (uint8_t)d->soh_percent);
 
-	if (have_prev && (d->work_state != prev_work))
-	{
-		elog_log_battery_state_change(ELOG_BAT_SRC_BMS, prev_work,
-		                              (uint8_t)d->work_state, soc_u8, soh_u8);
-	}
+	/* Yalnizca batarya dusuk seviye kayitlari tutulur: SOC esikleri.
+	 * Work-state gecisleri (sarj/deşarj hukumleri) loglanmaz. */
 
 	/* SOC thresholds with hysteresis: set at <=20/<=10, clear at >=25/>=15. */
 	if ((!low20 && (d->soc_percent <= 20.0f)) || (low20 && (d->soc_percent >= 25.0f)))
@@ -120,9 +115,6 @@ static void bms_log_transitions(const bms_data_t *d)
 			elog_log_battery_soc_threshold(10U, set, soc_u8, soh_u8);
 		}
 	}
-
-	prev_work = (uint8_t)d->work_state;
-	have_prev = true;
 }
 
 void bms_process_package()
