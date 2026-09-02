@@ -24,11 +24,13 @@ typedef struct
     uint16_t panel_voltage;  // Panel Voltaji (mV)
     int16_t battery_current; // Batarya Akimi (mA)
     uint16_t battery_voltage;  // Batarya Voltaji (mV)
-    uint16_t battery_capacity;      // Batarya Kapasitesi (mAh)
-    uint8_t battery_charge_percent; // Batarya Sarj Orani (%)
-    int8_t battery_temp;     // Batarya Sicakligi (°C)
-    uint8_t battery_soc;     // Batarya SOC (%)
-    uint8_t battery_soh;     // Batarya SOH (%)
+    uint16_t battery_capacity;      // Batarya Kapasitesi (Ah)
+    /* x10 alanlari I2C'den geldigi gibi (raw) tutulur: 995 = %99.5,
+     * 245 = 24.5C. Donusum yalniz gosterim noktasinda yapilir. */
+    int16_t battery_charge_x10; // Batarya Sarj Orani (x10 %, isaretli)
+    int16_t battery_temp_x10;   // Batarya Sicakligi (x10 C; -9990 = NTC yok)
+    int16_t battery_soc_x10;    // Batarya SOC (x10 %, isaretli)
+    uint16_t battery_soh_x10;   // Batarya SOH (x10 %)
     uint8_t charge_state; // Batarya Sarj Durumu
     int8_t gsm_signal;       // GSM Sinyal Gucü (dBm)
     uint8_t gsm_rat;         // GSM RAT

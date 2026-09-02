@@ -25,6 +25,8 @@ void system_status_init(void)
 {
 	g_system_status.tdie_temp_min = INT8_MAX;
 	g_system_status.tdie_temp_max = INT8_MIN;
+	g_system_status.temp_min = INT8_MAX;
+	g_system_status.temp_max = INT8_MIN;
 }
 
 void system_status_update_tdie()
@@ -62,25 +64,22 @@ void system_status_update(void)
     g_system_status.rly[0] = relay_is_on(RELAY_CH_1);
     g_system_status.rly[1] = relay_is_on(RELAY_CH_2);
 
-    /* Supply voltages (mV) from the ADC module. */
-    g_system_status.v19  = 19;
+    /* Supply voltages (mV) from the ADC module (no V19 channel exists). */
     g_system_status.v3v3 = adc_get_voltage_mv(ADC_CH_3V3);
     g_system_status.v3v8 = adc_get_voltage_mv(ADC_CH_3V8);
     g_system_status.v5v  = adc_get_voltage_mv(ADC_CH_5V);
 
+    /* PB'de dogrudan PV akimi alani yok; panel akimi bilinmiyor (0). */
     g_system_status.panel_current = 0;
-    g_system_status.panel_voltage = 0;
+    g_system_status.panel_voltage = telemetry.vpv_mv;  // mV
     g_system_status.battery_voltage = telemetry.vbat_mv;  // mV
     g_system_status.battery_current = telemetry.ibat_ma;  // mA
     g_system_status.battery_capacity        = telemetry.batt_cap_ah;  // Ah
-    /* SoC is signed on the wire; negative means "below 0 estimate" and
-     * displays as 0 % here (raw value stays in telemetry/logs). */
-    int soc_x10 = (telemetry.soc_x10 < 0) ? 0 : telemetry.soc_x10;
-    g_system_status.battery_charge_percent  = soc_x10 / 10;  // %
-    g_system_status.battery_temp    = telemetry.batt_temp_x10 / 10;  // °C
-    g_system_status.battery_soc     = soc_x10 / 10;  // %
-    g_system_status.battery_soh     = telemetry.soh_x10 / 10;  // %
-    g_system_status.battery_temp    = telemetry.batt_temp_x10 / 10;  // °C
+    /* x10 alanlari ham (raw) tutulur; donusum gosterimde yapilir. */
+    g_system_status.battery_charge_x10  = telemetry.soc_x10;
+    g_system_status.battery_temp_x10    = telemetry.batt_temp_x10;
+    g_system_status.battery_soc_x10     = telemetry.soc_x10;
+    g_system_status.battery_soh_x10     = telemetry.soh_x10;
     g_system_status.charge_state    = telemetry.chg_stat;  // 0: Idle, 1: Charging, 2: Discharging
 
     g_system_status.gsm_signal = gsm_info_get_signal_quality();
@@ -88,13 +87,24 @@ void system_status_update(void)
 
 
     g_system_status.ambient_temp = 0;
-    g_system_status.temp = 0;
-    g_system_status.temp_max = 0;
-    g_system_status.temp_min = 0;
+
+    /* Board temperature from the PB telemetry; -128 = sensor error. */
+    if (telemetry.board_temp_c != POWER_BOARD_BOARD_TEMP_ERROR)
+    {
+        g_system_status.temp = telemetry.board_temp_c;
+        if (g_system_status.temp < g_system_status.temp_min)
+        {
+            g_system_status.temp_min = g_system_status.temp;
+        }
+        if (g_system_status.temp > g_system_status.temp_max)
+        {
+            g_system_status.temp_max = g_system_status.temp;
+        }
+    }
     system_status_update_tdie();
 
-    //TODO: Isıtıcı kontrol GPIO'sundan okuyun
-    g_system_status.heater_state = 0;  // GPIO_ReadPin(HEATER_CTRL_GPIO_Port, HEATER_CTRL_Pin);
+    /* Heater state from the PB telemetry (0x2A). */
+    g_system_status.heater_state = telemetry.heater_state;
     //TODO: Isıtıcı PWM duty cycle'dan güç hesaplayın
     g_system_status.heater_power = 0;  // PWM_DutyCycle * MAX_HEATER_POWER / 100;
 }

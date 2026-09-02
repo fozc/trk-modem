@@ -167,6 +167,9 @@ if __name__ == '__main__':
     parser.add_argument("--minify", "-m", action="store_true", help="Minify HTML before embedding")
     parser.add_argument("--gzip", "-g", action="store_true", help="Gzip compress HTML")
     parser.add_argument("--brotli", "-b", action="store_true", help="Brotli compress HTML (better than gzip)")
+    parser.add_argument("--version", "-V", default=None,
+                        help="Replace {{WEB_VERSION}} placeholders with this string. "
+                             "'auto' uses the current date/time (YYYY-MM-DD HH:MM).")
     args = parser.parse_args()
 
     # Check for conflicting options
@@ -215,7 +218,27 @@ if __name__ == '__main__':
     # Read HTML content
     with open(input_html, 'r', encoding='utf-8') as f:
         html_content = f.read()
-    
+
+    # Inject the web UI version before minify/compress.
+    # Source of truth: web-page/VERSION (the web UI's own version, bumped
+    # by hand with UI changes). The build date is appended automatically
+    # so stale pages on a device are immediately recognizable.
+    from datetime import datetime
+    build_date = datetime.now().strftime('%Y-%m-%d')
+    version_file = os.path.join(project_root, 'VERSION')
+    web_ver = ''
+    if os.path.exists(version_file):
+        with open(version_file, 'r', encoding='utf-8') as vf:
+            web_ver = vf.read().strip()
+
+    if args.version and args.version != 'auto':
+        ver = args.version
+    else:
+        ver = ('v%s %s' % (web_ver, build_date)) if web_ver else build_date
+
+    html_content = html_content.replace('{{WEB_VERSION}}', ver)
+    print(f"Version stamp: {ver}")
+
     original_size = len(html_content)
     print(f"Original: {original_size} bytes")
     
