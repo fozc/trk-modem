@@ -158,6 +158,11 @@ int main(void)
   MX_ICACHE_Init();
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
+
+#ifdef DEBUG
+  LL_GPIO_SetPinMode(EWDT_FEED_GPIO_Port, EWDT_FEED_Pin, LL_GPIO_MODE_INPUT);
+#endif
+
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 
   LL_SPI_Enable(SPI2);
@@ -983,11 +988,11 @@ static void MX_GPIO_Init(void)
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOH);
 
   /**/
-  LL_GPIO_ResetOutputPin(GPIOA, RF_IO1_Pin|MODBUS_OE_Pin);
+  LL_GPIO_ResetOutputPin(GPIOE, EWDT_FEED_Pin|LED_RGB2_RED_Pin|LED_RGB2_GREEN_Pin|LED_RGB2_BLUE_Pin
+                          |LED_RGB1_RED_Pin|LED_RGB1_GREEN_Pin|LED_RGB1_BLUE_Pin|MODBUS_EN_FLT_Pin);
 
   /**/
-  LL_GPIO_ResetOutputPin(GPIOE, LED_RGB2_RED_Pin|LED_RGB2_GREEN_Pin|LED_RGB2_BLUE_Pin|LED_RGB1_RED_Pin
-                          |LED_RGB1_GREEN_Pin|LED_RGB1_BLUE_Pin|MODBUS_EN_FLT_Pin);
+  LL_GPIO_ResetOutputPin(GPIOA, RF_IO1_Pin|MODBUS_OE_Pin);
 
   /**/
   LL_GPIO_ResetOutputPin(GPIOB, RF_RESET_Pin|GSM_ONOFF_Pin|GSM_SHUTDOWM_Pin);
@@ -1009,10 +1014,12 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = EWDT_FEED_Pin|GSM_SW_RDY_Pin;
-  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pin = EWDT_FEED_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
-  LL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  LL_GPIO_Init(EWDT_FEED_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   GPIO_InitStruct.Pin = LL_GPIO_PIN_13|LL_GPIO_PIN_2|LL_GPIO_PIN_3|LL_GPIO_PIN_6
@@ -1111,6 +1118,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(GPIOH, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = GSM_SW_RDY_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(GSM_SW_RDY_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   LL_EXTI_SetEXTISource(LL_EXTI_CONFIG_PORTE, LL_EXTI_CONFIG_LINE15);

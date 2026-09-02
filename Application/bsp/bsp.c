@@ -227,8 +227,8 @@ void bsp_putchr(int chr)
 
 void bsp_kick_wdt(void)
 {
-#ifdef RELEASE
-	gpio_toogle_pin(EXT_WDT_KICK_GPIO, EXT_WDT_KICK_PIN);
+#ifndef DEBUG
+	gpio_toggle_pin(EXT_WDT_KICK_GPIO, EXT_WDT_KICK_PIN);
 #endif
 }
 
