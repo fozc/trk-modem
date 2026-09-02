@@ -105,8 +105,8 @@ void breaker_init(void)
     shell_register_command(&(shell_cmd_t){
         .cmd   = "breaker",
         .desc  = "Dump a power line's L1/L2/L3 phase data\r\n"
-                 "\tbreaker <line 1..8> - show feeder values for one line\r\n"
-                 "\tbreaker all         - show feeder values for all lines",
+                 "\tbreaker <line>  - show feeder values for one line\r\n"
+                 "\tbreaker all     - show feeder values for all lines",
         .level = SHELL_LVL_USER,
         .func  = breaker_shell_handler
     });
