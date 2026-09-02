@@ -539,8 +539,6 @@ void handle_get_board_status_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"DIN\":[%u,%u,%u,%u],", 
                     status->din[0], status->din[1], status->din[2], status->din[3]);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RLY\":[%u,%u],", status->rly[0], status->rly[1]);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"VBAT\":%u,", status->battery_voltage);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"V19\":%u,", status->v19);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"3V3\":%u,", status->v3v3);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"3V8\":%u,", status->v3v8);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"5V\":%u,", status->v5v);
@@ -554,14 +552,16 @@ void handle_get_board_status_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIE\":%d,", status->tdie_temp);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIEMax\":%d,", status->tdie_temp_max);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIEMin\":%d,", status->tdie_temp_min);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ChargePertance\":%u,", status->battery_charge_percent);
+    /* x10 alanlari ham gonderilir (995 = %99.5, 245 = 24.5C);
+     * donusum istemci tarafinda gosterim aninda yapilir. */
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"ChargePertance\":%d,", status->battery_charge_x10);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"Capacity\":%u,", status->battery_capacity);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"GsmSig\":%d,", status->gsm_signal);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"GsmRAT\":%u,", status->gsm_rat);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"BataryaAkimi\":%d,", status->battery_current);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatteryTemp\":%d,", status->battery_temp);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatterySOC\":%u,", status->battery_soc);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatterySOH\":%u,", status->battery_soh);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatteryTemp\":%d,", status->battery_temp_x10);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatterySOC\":%d,", status->battery_soc_x10);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatterySOH\":%u,", status->battery_soh_x10);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"OrtamSicakligi\":%d,", status->ambient_temp);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"HeaterState\":%u,", status->heater_state);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"HeaterPower\":%u", status->heater_power);
