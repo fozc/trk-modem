@@ -9,6 +9,8 @@
 #include "contiki.h"
 #include "stm32u3xx.h"
 
+static uint32_t reboot_delay_ms;
+
 void reboot_system(void)
 {
 	CCSLOG(XCOLOR_RED, "Rebooting system...\r\n");
@@ -38,11 +40,11 @@ PROCESS_THREAD(reboot_process, ev, data)
     PROCESS_END();
 }
 
-
 void reboot_system_delayed(uint32_t delay_ms)
 {
-	CCSLOG(XCOLOR_YELLOW, "Rebooting system in %d ms...\r\n", delay_ms);
+	CSLOG_WARN("Rebooting system in %d ms...\r\n", delay_ms);
 
-	process_start(&reboot_process, &delay_ms);
+	reboot_delay_ms = delay_ms;
+	process_start(&reboot_process, &reboot_delay_ms);
 }
 

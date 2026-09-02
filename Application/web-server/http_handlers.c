@@ -18,6 +18,7 @@
 #include "../utils.h"
 #include "version.h"
 #include "app_ipc.h"
+#include "reboot.h"
 
 #include "system_status.h"
 #include "index_html.h"
@@ -2081,16 +2082,18 @@ void handle_fw_apply(void) {
 
     xcprintf(XCOLOR_YELLOW, "[FW] Requesting bootloader update mode via IPC...\r\n");
 
-    /* Send response before IPC reset. */
-    http_send_json("{\"status\":\"ok\"}", 15);
-
-    /* This call does not return on success — it resets the MCU. */
     elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_START, 0U);
     int result = app_ipc_request_update(false);
 
-    if(result) {
+    if(result != APP_IPC_OK)
+    {
         xcprintf(XCOLOR_RED, "[FW] ERROR: IPC request failed (%d)\r\n", result);
-    } else {
-        xcprintf(XCOLOR_GREEN, "[FW] IPC request successful, Reboot Device.\r\n");
+        http_send_json("{\"status\":\"error\",\"error\":\"ipc failed\"}", 39);
+        return;
     }
+
+    xcprintf(XCOLOR_GREEN, "[FW] Update armed - reset in 10 s\r\n");
+    /* Response goes out before the countdown starts. */
+    http_send_json("{\"status\":\"ok\",\"reset_in\":10}", 29);
+    reboot_system_delayed(10000U);
 }
