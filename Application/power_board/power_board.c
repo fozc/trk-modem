@@ -481,46 +481,40 @@ bool power_board_periodic_log_is_active(void)
  *  Contiki process - drain PUSH blocks + periodic logging
  * ====================================================================== */
 
-/* Report telemetry transitions to elog: latched alarms (set/clear) and
- * battery presence state. Called on every drained telemetry block; the
- * payload packing and level policy live in elog.c. */
+/* Report the battery-low-voltage alarm edge to elog. Called on every
+ * drained telemetry block; the payload packing and level policy live in
+ * elog.c. Only the VBAT_LOW latch bit (doc alarm bit 3) triggers a
+ * record - other alarm bits, battery presence (PROBING flaps when the
+ * BQ link is unhealthy; BATT_STATE is report-only) and BMS work-state
+ * transitions are deliberately not logged. */
+#define PB_VBAT_LOW_BIT     0x08U
+
 static void pb_log_transitions(const power_board_telemetry_t *t)
 {
-    static bool     have_prev  = false;
-    static uint8_t  prev_latch = 0U;
-    static uint8_t  prev_batt  = 0U;
+    static bool have_prev     = false;
+    static bool prev_vbat_low = false;
 
     if (!t->valid)
     {
         return;
     }
 
-    if (have_prev)
-    {
-        if (t->alarm_latch != prev_latch)
-        {
-            elog_power_alarm_t alarm;
-            alarm.latch     = t->alarm_latch;
-            alarm.live      = t->alarm_live;
-            alarm.sys_fault = t->sys_fault;
-            alarm.bq_fault0 = t->bq_fault0;
-            alarm.bq_fault1 = t->bq_fault1;
-            alarm.rising    = ((t->alarm_latch & (uint8_t)~prev_latch) != 0U);
-            elog_log_power_alarm(&alarm);
-        }
+    bool vbat_low = ((t->alarm_latch & PB_VBAT_LOW_BIT) != 0U);
 
-        if (t->batt_state != prev_batt)
-        {
-            elog_log_battery_state_change(ELOG_BAT_SRC_POWER_BOARD,
-                                          prev_batt, t->batt_state,
-                                          (uint8_t)(t->soc_x10 / 10U),
-                                          (uint8_t)(t->soh_x10 / 10U));
-        }
+    if (have_prev && (vbat_low != prev_vbat_low))
+    {
+        elog_power_alarm_t alarm;
+        alarm.latch     = t->alarm_latch;
+        alarm.live      = t->alarm_live;
+        alarm.sys_fault = t->sys_fault;
+        alarm.bq_fault0 = t->bq_fault0;
+        alarm.bq_fault1 = t->bq_fault1;
+        alarm.rising    = vbat_low;
+        elog_log_power_alarm(&alarm);
     }
 
-    prev_latch = t->alarm_latch;
-    prev_batt  = t->batt_state;
-    have_prev  = true;
+    prev_vbat_low = vbat_low;
+    have_prev     = true;
 }
 
 PROCESS_THREAD(power_board_process, ev, data)
