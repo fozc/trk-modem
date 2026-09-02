@@ -12,6 +12,7 @@
 #include "datetime.h"
 #include "shell.h"
 #include "cp56time2a.h"
+#include "utils.h"
 
 #define FAULT_LOG_COUNT 15
 
@@ -150,58 +151,63 @@ static void print_log(int entry_num, const fault_log_t *log)
 			log->info.power_status ? "On" : "Off");
 }
 
+static void fault_log_dump_feeder(uint8_t feeder)
+{
+	fault_log_load_feeder(feeder);
+	const fault_log_feeder_history_t *fh = &g_feeder_log;
+
+	SHELL_LOG("\r\n=== Feeder %d ===\r\n", feeder + 1);
+
+	for(int phase = 0; phase < PHASE_MAX; phase++)
+	{
+		uint32_t total_temp = fh->total_temporary_faults[phase];
+		uint32_t temp_count = total_temp > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_temp;
+
+		SHELL_LOG("  Phase %d — TEMPORARY FAULTS (total: %u, showing: %u, newest first):\r\n",
+				phase + 1, total_temp, temp_count);
+
+		if(temp_count == 0)
+		{
+			SHELL_LOG("  (none)\r\n");
+		}
+		else
+		{
+			uint8_t write_idx = fh->temporary_fault_log_index[phase];
+			for(uint32_t i = 0; i < temp_count; i++)
+			{
+				uint8_t idx = (uint8_t)((write_idx - 1u - i + FAULT_LOG_COUNT) % FAULT_LOG_COUNT); // Show newest first
+				print_log((int)(i + 1), &fh->temporary_fault_log[phase][idx]);
+			}
+		}
+
+		uint32_t total_perm_flt = fh->total_permanent_faults[phase];
+		uint32_t perm_flt_count = total_perm_flt > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_perm_flt;
+
+		SHELL_LOG("  Phase %d — PERMANENT FAULTS (total: %u, showing: %u, newest first):\r\n",
+				phase + 1, total_perm_flt, perm_flt_count);
+
+		if(perm_flt_count == 0)
+		{
+			SHELL_LOG("  (none)\r\n");
+		}
+		else
+		{
+			uint8_t perm_write_idx = fh->permanent_fault_log_index[phase];
+			for(uint32_t i = 0; i < perm_flt_count; i++)
+			{
+				uint8_t idx = (uint8_t)((perm_write_idx - 1u - i + FAULT_LOG_COUNT) % FAULT_LOG_COUNT);
+				print_log((int)(i + 1), &fh->permanent_fault_log[phase][idx]);
+			}
+		}
+	}
+	SHELL_LOG("\r\n");
+}
+
 void fault_log_dump(void)
 {
 	for(int feeder = 0; feeder < MAX_POWER_LINE_COUNT; feeder++)
 	{
-		fault_log_load_feeder((uint8_t)feeder);
-		const fault_log_feeder_history_t *fh = &g_feeder_log;
-
-		SHELL_LOG("\r\n=== Feeder %d ===\r\n", feeder + 1);
-
-		for(int phase = 0; phase < PHASE_MAX; phase++)
-		{
-			uint32_t total_temp = fh->total_temporary_faults[phase];
-			uint32_t temp_count = total_temp > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_temp;
-
-			SHELL_LOG("  Phase %d — TEMPORARY FAULTS (total: %u, showing: %u, newest first):\r\n",
-					phase + 1, total_temp, temp_count);
-
-			if(temp_count == 0)
-			{
-				SHELL_LOG("  (none)\r\n");
-			}
-			else
-			{
-				uint8_t write_idx = fh->temporary_fault_log_index[phase];
-				for(uint32_t i = 0; i < temp_count; i++)
-				{
-					uint8_t idx = (uint8_t)((write_idx - 1u - i + FAULT_LOG_COUNT) % FAULT_LOG_COUNT); // Show newest first
-					print_log((int)(i + 1), &fh->temporary_fault_log[phase][idx]);
-				}
-			}
-
-			uint32_t total_perm = fh->total_permanent_faults[phase];
-			uint32_t perm_count = total_perm > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_perm;
-
-			SHELL_LOG("  Phase %d — PERMANENT FAULTS (total: %u, showing: %u, newest first):\r\n",
-					phase + 1, total_perm, perm_count);
-
-			if(perm_count == 0)
-			{
-				SHELL_LOG("  (none)\r\n");
-			}
-			else
-			{
-				uint8_t perm_write_idx = fh->permanent_fault_log_index[phase];
-				for(uint32_t i = 0; i < perm_count; i++)
-				{
-					uint8_t idx = (uint8_t)((perm_write_idx - 1u - i + FAULT_LOG_COUNT) % FAULT_LOG_COUNT);
-					print_log((int)(i + 1), &fh->permanent_fault_log[phase][idx]);
-				}
-			}
-		}
-		SHELL_LOG("\r\n");
+		fault_log_dump_feeder((uint8_t)feeder);
 	}
 }
 
@@ -266,9 +272,6 @@ void fault_log_clear(void)
 
 static int shell_fltlog_dump(int argc, char *argv[])
 {
-	(void)argc;
-	(void)argv;
-
 	if(argc > 1 && strcmp(argv[1], "test") == 0)
 	{
 		test_fault_log_add_random();
@@ -277,8 +280,34 @@ static int shell_fltlog_dump(int argc, char *argv[])
 	{
 		fault_log_clear();
 	}
-	else if(argc == 1){
-		fault_log_dump();
+	else if(argc > 1 && strcmp(argv[1], "dump") == 0)
+	{
+		if(argc > 2)
+		{
+			int feeder = xstrtoi(argv[2]);
+
+			if((feeder < 1) || (feeder > (int)MAX_POWER_LINE_COUNT))
+			{
+				SHELL_LOG("Usage: fltlog dump [feeder 1..%u]\r\n",
+						(unsigned)MAX_POWER_LINE_COUNT);
+				return -1;
+			}
+
+			fault_log_dump_feeder((uint8_t)(feeder - 1));
+		}
+		else
+		{
+			fault_log_dump();
+		}
+	}
+	else
+	{
+		SHELL_LOG("Usage: fltlog <command>\r\n"
+				"  dump [1..%u] - dump all feeders or feeder n\r\n"
+				"  test         - add random test logs\r\n"
+				"  clear        - clear all logs\r\n",
+				(unsigned)MAX_POWER_LINE_COUNT);
+		return -1;
 	}
 
 	return 0;
@@ -324,7 +353,10 @@ void fault_log_init(void)
 
 	shell_register_command( &(shell_cmd_t){
 		.cmd = "fltlog",
-		.desc = "Dump fault logs",
+		.desc = "Fault log management\r\n"
+			"fltlog dump [n]  - dump all feeders or a single feeder\r\n"
+			"fltlog test      - add random test logs\r\n"
+			"fltlog clear     - clear all logs",
 		.func = shell_fltlog_dump}
 	);
 }
