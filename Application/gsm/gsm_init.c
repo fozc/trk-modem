@@ -278,7 +278,7 @@ static void gsm_init_step_reset_module(void)
 	led_driver_set_modem_mode(LED_MODEM_ERROR);
 	if (s_pin_reset_state)
 	{
-		LOG(0, "! s_pin_reset_state: 1, hard reset !");
+		CSLOG_ERR("Hard Reset!\r\nWaiting for EWDT reset...\r\n");
 		while(1);
 	}
 	if (++gsm.reboot_counter > 2)

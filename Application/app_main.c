@@ -79,6 +79,8 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 
 	while (1)
 	{
+		bsp_kick_wdt();
+
 		if(timer_expired(&led_timer))
 		{
 			timer_reset(&led_timer);
