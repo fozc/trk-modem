@@ -481,18 +481,6 @@ const char *elog_info_to_text(const elog_entry_t *entry)
             }
             break;
 
-        case ELOG_IEC104_CONN:
-            if (info[0] != 0U)
-            {
-                xsnprintf(text, sizeof(text), "connected %u.%u.%u.%u",
-                          info[2], info[3], info[4], info[5]);
-            }
-            else
-            {
-                xsnprintf(text, sizeof(text), "closed by remote");
-            }
-            break;
-
         case ELOG_WEB_LOGIN_FAIL:
             xsnprintf(text, sizeof(text), "fail x%u from %u.%u.%u.%u",
                       (unsigned)((info[4] << 8) | info[5]),
@@ -935,41 +923,6 @@ void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
     elog_add(ELOG_BAT_STATE,
              (threshold <= 10U) ? ELOG_LEVEL_ERROR : ELOG_LEVEL_WARN,
              info, sizeof(info));
-}
-
-void elog_log_iec104_connected(uint32_t peer_ip)
-{
-    /* info: up=1(1) reason=1 client connected(1) peer_ip(4) */
-    uint8_t info[16] = {0};
-
-    info[0] = 1U;
-    info[1] = 1U;
-    elog_pack_u32_be(&info[2], peer_ip);
-    elog_add(ELOG_IEC104_CONN, ELOG_LEVEL_INFO, info, sizeof(info));
-}
-
-/* One connection-loss record per window; a flapping SCADA link must not
- * flood the ring. */
-#define ELOG_IEC104_DOWN_MIN_INTERVAL_MS 60000UL
-
-void elog_log_iec104_disconnected(void)
-{
-    /* info: up=0(1) reason=0 closed by remote(1) */
-    static uint32_t last_log_tick = 0U;
-
-    uint32_t now = bsp_get_tick();
-
-    if ((last_log_tick != 0U)
-        && ((now - last_log_tick) < ELOG_IEC104_DOWN_MIN_INTERVAL_MS))
-    {
-        return;
-    }
-    last_log_tick = now;
-
-    uint8_t info[16] = {0};
-    info[0] = 0U;
-    info[1] = 0U;
-    elog_add(ELOG_IEC104_CONN, ELOG_LEVEL_WARN, info, sizeof(info));
 }
 
 void elog_log_web_login_fail(uint32_t client_ip)

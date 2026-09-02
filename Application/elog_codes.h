@@ -49,7 +49,6 @@ typedef enum
 	ELOG_BAT_STATE             = 51,  /* info: src(1) event(1) a(1) b(1) soc(1) soh(1) */
 
 	// Communication codes (60..69)
-	ELOG_IEC104_CONN           = 60,  /* info: up(1) reason(1) ip(4); reason 0=closed by remote, 1=client connected */
 
 	// Audit codes (70..79)
 	ELOG_WEB_LOGIN_FAIL        = 70,  /* info: ip(4) burst_count(2) */
@@ -90,7 +89,6 @@ static inline const char* elog_code_to_string(elog_code_t code)
 		case ELOG_SYSTEM_FW_APPROVED:     return "FW_APPROVED";
 		case ELOG_PWR_ALARM:              return "PWR_ALARM";
 		case ELOG_BAT_STATE:              return "BAT_STATE";
-		case ELOG_IEC104_CONN:            return "IEC104_CONN";
 		case ELOG_WEB_LOGIN_FAIL:         return "WEB_LOGIN_FAIL";
 
 		default: return "UNKNOWN_CODE";

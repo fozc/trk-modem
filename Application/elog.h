@@ -174,14 +174,6 @@ void elog_log_battery_state_change(uint8_t source, uint8_t old_state,
 void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
                                     uint8_t soc, uint8_t soh);
 
-/* ---- ELOG_IEC104_CONN ------------------------------------------------ */
-
-/* info: up=1(1) reason=1 client connected(1) peer_ip(4, big-endian) */
-void elog_log_iec104_connected(uint32_t peer_ip);
-
-/* info: up=0(1) reason=0 closed by remote(1).
- * Rate limited to one record per 60 s. */
-void elog_log_iec104_disconnected(void);
 
 /* ---- ELOG_WEB_LOGIN_FAIL --------------------------------------------- */
 
