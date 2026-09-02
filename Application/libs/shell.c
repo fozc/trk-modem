@@ -87,8 +87,10 @@ void shell_putchr(int chr)
 
 static inline void shell_puts(const char *buff)
 {
+	/* Route through the shell writer so redirected consumers (web shell
+	 * capture) also see core messages; default writer is unchanged. */
 	while(*buff){
-		bsp_putchr(*buff++);
+		shell_putchr(*buff++);
 	}
 }
 
