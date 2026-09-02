@@ -2085,6 +2085,7 @@ void handle_fw_apply(void) {
     http_send_json("{\"status\":\"ok\"}", 15);
 
     /* This call does not return on success — it resets the MCU. */
+    elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_START, 0U);
     int result = app_ipc_request_update(false);
 
     if(result) {

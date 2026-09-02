@@ -42,6 +42,7 @@ typedef enum
 	ELOG_SYSTEM_NVRAM_RECOVERED = 41, /* info: action(1) stored_crc(4) calc_crc(4) */
 	ELOG_SYSTEM_FW_UPDATE      = 42,  /* info: source(1) result(1) size(4) */
 	ELOG_SYSTEM_HARDFAULT      = 43,  /* info: pc(4) lr(4) cfsr(4) hfsr(4) */
+	ELOG_SYSTEM_FW_APPROVED    = 44,  /* info: - (approval IPC sent) */
 
 	// Power / battery codes (50..59)
 	ELOG_PWR_ALARM             = 50,  /* info: latch(1) live(1) sys_fault(1) bq0(1) bq1(1) rising(1) */
@@ -86,6 +87,7 @@ static inline const char* elog_code_to_string(elog_code_t code)
 		case ELOG_SYSTEM_NVRAM_RECOVERED: return "NVRAM_RECOVERED";
 		case ELOG_SYSTEM_FW_UPDATE:       return "FW_UPDATE";
 		case ELOG_SYSTEM_HARDFAULT:       return "HARDFAULT";
+		case ELOG_SYSTEM_FW_APPROVED:     return "FW_APPROVED";
 		case ELOG_PWR_ALARM:              return "PWR_ALARM";
 		case ELOG_BAT_STATE:              return "BAT_STATE";
 		case ELOG_IEC104_CONN:            return "IEC104_CONN";

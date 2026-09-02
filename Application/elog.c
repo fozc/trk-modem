@@ -15,6 +15,7 @@
  */
 
 #include "elog.h"
+#include "version.h"
 #include <string.h>
 #include "bsp.h"
 #include "shell.h"
@@ -404,7 +405,14 @@ const char *elog_info_to_text(const elog_entry_t *entry)
 
         case ELOG_SYSTEM_FW_UPDATE:
         {
-            const char *src = (info[0] == ELOG_FW_SRC_XMODEM) ? "xmodem" : "rfwu";
+            const char *src = "?";
+            switch (info[0])
+            {
+                case ELOG_FW_SRC_XMODEM:   src = "uart-xmodem"; break;
+                case ELOG_FW_SRC_RFWU:     src = "web";         break;
+                case ELOG_FW_SRC_BOOT_CMD: src = "console";      break;
+                default: break;
+            }
             const char *res = "?";
             switch (info[1])
             {
@@ -414,10 +422,26 @@ const char *elog_info_to_text(const elog_entry_t *entry)
                 case ELOG_FW_RESULT_AUTH_FAIL: res = "auth-fail"; break;
                 default: break;
             }
-            xsnprintf(text, sizeof(text), "%s %s %luB",
-                      src, res, (unsigned long)elog_rd_be32(&info[2]));
+            uint32_t size = elog_rd_be32(&info[2]);
+            if (size != 0U)
+            {
+                xsnprintf(text, sizeof(text), "%s %s %luB v%u.%u.%u.%u",
+                          src, res, (unsigned long)size,
+                          info[6], info[7], info[8], info[9]);
+            }
+            else
+            {
+                xsnprintf(text, sizeof(text), "%s %s v%u.%u.%u.%u",
+                          src, res,
+                          info[6], info[7], info[8], info[9]);
+            }
             break;
         }
+
+        case ELOG_SYSTEM_FW_APPROVED:
+            xsnprintf(text, sizeof(text), "approved v%u.%u.%u.%u",
+                      info[0], info[1], info[2], info[3]);
+            break;
 
         case ELOG_SYSTEM_HARDFAULT:
             xsnprintf(text, sizeof(text), "pc=0x%08lX lr=0x%08lX cfsr=0x%08lX hfsr=0x%08lX",
@@ -490,6 +514,7 @@ const char *elog_info_to_text(const elog_entry_t *entry)
                       area,
                       (info[4] == (uint8_t)ELOG_SOURCE_WEB) ? "web" : "serial",
                       info[0], info[1], info[2], info[3],
+                      (info[15] == 0xFFU) ? "?" :
                       (info[15] != 0U) ? "ok" : "FAILED");
             break;
         }
@@ -750,7 +775,7 @@ void elog_log_config_change(elog_code_t code,
     info[3] = (uint8_t)( ip         & 0xFFU);
 
     info[4] = (uint8_t)source;
-    info[15] = success ? 1U : 0U;   /* bit0: change committed */
+    info[15] = success ? 1U : 0U;   /* 1 = committed, 0 = save failed */
 
     if (p_area != NULL)
     {
@@ -832,11 +857,26 @@ void elog_log_fw_update(uint8_t source, uint8_t result, uint32_t size)
     info[0] = source;
     info[1] = result;
     elog_pack_u32_be(&info[2], size);
+    info[6] = VERSION_MAJOR;
+    info[7] = VERSION_MINOR;
+    info[8] = VERSION_PATCH;
+    info[9] = VERSION_EXTRA;
     elog_add(ELOG_SYSTEM_FW_UPDATE,
              (result == ELOG_FW_RESULT_FAIL) ? ELOG_LEVEL_ERROR
              : (result == ELOG_FW_RESULT_AUTH_FAIL) ? ELOG_LEVEL_WARN
              : ELOG_LEVEL_INFO,
              info, sizeof(info));
+}
+
+void elog_log_fw_approved(void)
+{
+    uint8_t info[16] = {0};
+
+    info[0] = VERSION_MAJOR;
+    info[1] = VERSION_MINOR;
+    info[2] = VERSION_PATCH;
+    info[3] = VERSION_EXTRA;
+    elog_add(ELOG_SYSTEM_FW_APPROVED, ELOG_LEVEL_INFO, info, sizeof(info));
 }
 
 void elog_log_power_alarm(const elog_power_alarm_t *alarm)
