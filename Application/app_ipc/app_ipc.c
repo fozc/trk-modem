@@ -15,6 +15,7 @@
 #include <string.h>
 #include "console_logger.h"
 #include "shell.h"
+#include "elog.h"
 /* CMSIS core for NVIC_SystemReset */
 #include "stm32u3xx.h"
 
@@ -136,6 +137,8 @@ int app_ipc_approve_firmware(bool do_reset)
         return APP_IPC_OK_ALREADY_APPROVED; /* Already approved -- skip write. */
     }
 
+    /* Log before the send: with do_reset the IPC call never returns. */
+    elog_log_fw_approved();
     return app_ipc_send_and_reset(1U, BOOT_IPC_REQ_NONE, do_reset);
 }
 
@@ -181,6 +184,7 @@ static int boot_shell_handler(int argc, char *argv[])
     if (strcmp(argv[1], "update") == 0)
     {
         CSLOG("[BOOT] Requesting firmware update...\r\n");
+        elog_log_fw_update(ELOG_FW_SRC_BOOT_CMD, ELOG_FW_RESULT_START, 0U);
         int ret = app_ipc_request_update(true);
         if (ret != APP_IPC_OK)
         {

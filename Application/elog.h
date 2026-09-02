@@ -76,7 +76,8 @@ typedef enum
  *   [0..3]  client IP (big-endian, 0 when source is serial)
  *   [4]     source  (elog_config_source_t)
  *   [5..14] area label (null-terminated, truncated if needed)
- *   [15]    flags: bit0 set when the change was committed to NVRAM
+ *   [15]    outcome: 1 = committed, 0 = failed save attempt,
+ *           0xFF = undefined (erased-flash value)
  *
  * @param[in] code    Elog code identifying the config area.
  * @param[in] source  ELOG_SOURCE_WEB or ELOG_SOURCE_SERIAL.
@@ -124,13 +125,24 @@ void elog_log_nvram_recovery(uint8_t action, uint32_t stored_crc, uint32_t calc_
 /* Firmware update sources / results for elog_log_fw_update(). */
 #define ELOG_FW_SRC_XMODEM    1U
 #define ELOG_FW_SRC_RFWU      2U
+#define ELOG_FW_SRC_BOOT_CMD  3U
 #define ELOG_FW_RESULT_START     0U
 #define ELOG_FW_RESULT_OK        1U
 #define ELOG_FW_RESULT_FAIL      2U
 #define ELOG_FW_RESULT_AUTH_FAIL 3U
 
-/* info: source(1) result(1) size(4, big-endian) */
+/* info: source(1) result(1) size(4 BE) version(4: major, minor, patch, extra) */
 void elog_log_fw_update(uint8_t source, uint8_t result, uint32_t size);
+
+/* ---- ELOG_SYSTEM_FW_APPROVED ----------------------------------------- */
+
+/**
+ * @brief Log that the running firmware was approved (self-test passed).
+ *
+ * Recorded when the approval IPC is sent to the bootloader.
+ * info: version(4: major, minor, patch, extra) of the approved firmware.
+ */
+void elog_log_fw_approved(void);
 
 /* ---- ELOG_PWR_ALARM / ELOG_BAT_STATE --------------------------------- */
 

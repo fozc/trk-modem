@@ -79,6 +79,8 @@ static volatile bool s_transfer_started = false;
 static volatile uint32_t s_last_activity_tick = 0U;
 static bool s_download_complete = false;
 static bool s_download_success = false;
+/** Total payload bytes of the completed download (0 while inactive). */
+static uint32_t s_total_bytes_received = 0U;
 static bool s_cslog_was_enabled = false;
 
 /*
@@ -89,7 +91,6 @@ static bool s_cslog_was_enabled = false;
  */
 static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 {
-	static uint32_t total_bytes_received = 0U;
 
 	/* Any event counts as activity */
 	s_last_activity_tick = bsp_get_tick();
@@ -99,21 +100,21 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 	case XMODEM_EVT_FILE_DOWNLOAD_STARTED:
 		/* ISR context -- keep minimal */
 		s_transfer_started = true;
-		total_bytes_received = 0U;
+		s_total_bytes_received = 0U;
 		s_write_addr = 0U;
 		s_transfer_overflow = false;
 		break;
 
 	case XMODEM_EVT_FILE_DOWNLOAD_CANCELED:
 		/* ISR context -- keep minimal */
-		total_bytes_received = 0U;
+		s_total_bytes_received = 0U;
 		s_write_addr = 0U;
 		s_rx_buff_index = 0U;
 		s_transfer_overflow = false;
 		break;
 
 	case XMODEM_EVT_FILE_DOWNLOAD_COMPLETE:
-		CSLOG("Download Complete: Size: %u\r\n", total_bytes_received);
+		CSLOG("Download Complete: Size: %u\r\n", s_total_bytes_received);
 
 		if (s_transfer_overflow)
 		{
@@ -124,7 +125,7 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 
 		if(s_rx_buff_index > 0U)
 		{
-			if(total_bytes_received < FIRMWARE_FLASH_AREA_SIZE)
+			if(s_total_bytes_received < FIRMWARE_FLASH_AREA_SIZE)
 			{
 				w25qxx_erase_sector(s_write_addr);
 				w25qxx_write_sector(s_write_addr, s_rx_buff, s_rx_buff_index);
@@ -139,7 +140,7 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 		break;
 
 	case XMODEM_EVT_FILE_CHUNK_RECEIVED:
-		if(total_bytes_received == 0U)
+		if(s_total_bytes_received == 0U)
 		{
 			s_write_addr = get_download_address();
 			s_rx_buff_index = 0U;
@@ -152,7 +153,7 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 			break;  /* Silently drop -- CAN already sent. */
 		}
 
-		if ((total_bytes_received + size) > FIRMWARE_FLASH_AREA_SIZE)
+		if ((s_total_bytes_received + size) > FIRMWARE_FLASH_AREA_SIZE)
 		{
 			CSLOG("ERROR: Transfer exceeds max firmware size (%u bytes). "
 			      "Aborting.\r\n", (unsigned)FIRMWARE_FLASH_AREA_SIZE);
@@ -171,7 +172,7 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 
 			if(s_rx_buff_index >= sizeof(s_rx_buff))
 			{
-				if(total_bytes_received < FIRMWARE_FLASH_AREA_SIZE)
+				if(s_total_bytes_received < FIRMWARE_FLASH_AREA_SIZE)
 				{
 					w25qxx_erase_sector(s_write_addr);
 					w25qxx_write_sector(s_write_addr, s_rx_buff, s_rx_buff_index);
@@ -185,9 +186,9 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 			CSLOG("Xmodem buffer overflow ! Size: %u  Buff Index: %u\r\n", size, s_rx_buff_index);
 		}
 
-		total_bytes_received += size;
+		s_total_bytes_received += size;
 		CSLOG("Xmodem Chunk Received: Size: [%u] Total: [%u] Addr: [0x%00000X]\r\n",
-		      size, total_bytes_received, s_write_addr + total_bytes_received);
+		      size, s_total_bytes_received, s_write_addr + s_total_bytes_received);
 		break;
 
 	default:
@@ -307,10 +308,12 @@ PROCESS_THREAD(xmodem_watchdog_process, ev, data)
 			if (s_download_success)
 			{
 				CSLOG("Firmware download successful. Requesting update & reset...\r\n");
-				elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_OK, 0U);
+				elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_OK,
+					   s_total_bytes_received);
 				/* Small delay for log to flush */
 				etimer_set(&timer, CLOCK_SECOND * 2);
 				PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+				elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_START, 0U);
 				app_ipc_request_update(true);
 			}
 			else
