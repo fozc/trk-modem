@@ -17,6 +17,7 @@
 #include <string.h>
 #include "../utils.h"
 #include "version.h"
+#include "boot.h"
 #include "app_ipc.h"
 #include "reboot.h"
 
@@ -449,14 +450,42 @@ void handle_get_device_config_json(void)
     /* TODO: Convert epoch to human-readable date format */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"UretimTarihi\":%u,", config->production_date);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"LifeTime\":%u,", config->lifetime);
-    /* Firmware versions as semantic version strings */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%s %s %s)\",",
-    		VERSION_MAJOR,
-			VERSION_MINOR,
-			VERSION_PATCH,
-			__COMPILE_DATE__,
-			__COMPILE_TIME__,
-			GIT_COMMIT_HASH);
+    /* Firmware versions as semantic version strings. Kurulan imajin
+     * kimligi boot superblock'tan; okunamazsa derleme makrolari + ----- */
+    {
+        fw_info_t fw = {0};
+        char hash_str[9];
+
+        boot_installed_hash_to_str(hash_str, sizeof(hash_str));
+
+        if (boot_get_installed_fw_info(&fw))
+        {
+            pos += xsnprintf(buf + pos, buf_size - pos,
+                             "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%04u-%02u-%02u %02u:%02u:%02u %s)\",",
+                             (unsigned)fw.version.major,
+                             (unsigned)fw.version.minor,
+                             (unsigned)fw.version.patch,
+                             (unsigned)fw.year, (unsigned)fw.month, (unsigned)fw.day,
+                             (unsigned)fw.hour, (unsigned)fw.minute, (unsigned)fw.second,
+                             hash_str);
+        }
+        else
+        {
+            pos += xsnprintf(buf + pos, buf_size - pos,
+                             "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%s %s %s)\",",
+                             (unsigned)VERSION_MAJOR,
+                             (unsigned)VERSION_MINOR,
+                             (unsigned)VERSION_PATCH,
+                             __COMPILE_DATE__,
+                             __COMPILE_TIME__,
+                             hash_str);   /* superblock yoksa "-----" */
+        }
+
+        /* Kurulum zamani: epoch; 0 = bilinmiyor (UI '-----' gosterir).
+         * Bootloader bu alani henuz RTC ile doldurmuyor. */
+        pos += xsnprintf(buf + pos, buf_size - pos, "\"KurulumTarihi\":%lu,",
+                         (unsigned long)fw.installation_date);
+    }
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RFYazilimVeriyonu\":\"v%u.%u.%u\",",
                      config->rf_firmware_version[0],
                      config->rf_firmware_version[1],

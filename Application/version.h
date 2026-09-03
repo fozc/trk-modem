@@ -15,13 +15,11 @@
 #define PRODUCT_TYPE            "Troika-Smart-Breaker"
 
 /* Derleme damgasi: derleyici makrolari, kullanan dosya derlendiginde
- * guncellenir. Surum cikislari temiz (rebuild) derleme ile alinmalidir. */
+ * guncellenir. Surum cikislari temiz (rebuild) derleme ile alinmalidir.
+ * Kurulan imajin kimligi (hash, build takvimi, kurulum tarihi) boot
+ * superblock'tan okunur (bkz. boot_get_installed_fw_info). */
 #define __COMPILE_DATE__        __DATE__     /* ornek: "Sep  3 2026" */
 #define __COMPILE_TIME__        __TIME__     /* ornek: "21:45:12"    */
-
-/* Kisaltilmis git hash'i pre-build adimi (tools/gen_version.py)
- * tarafindan version_gen.h icine uretilir. */
-#include "version_gen.h"
 
 #endif /* _VERSION_H_ */
 
