@@ -127,6 +127,11 @@ bool iec104_get_sbo_state(void)
 {
 	return config.is_sbo_active;
 }
+
+bool iec104_is_link_active(void)
+{
+	return link_active;
+}
  
 static bool iec104_send(const uint8_t *data, size_t length)
 {
@@ -503,8 +508,6 @@ void iec104_interrogation_send_c_sc_na_1_object(ioa_3byte_t ioa, uint8_t state, 
     iec104_send((uint8_t *)&pkt, type_id_length + 2); // +2 for start char and length byte
 }
 
-void iec104_send_feeder_temporary_faults(cause_of_transmission_t cause);
-
 void iec104_interrogation_send_group1()
 {
     CSLOG("Sending all objects for interrogation group 1...\r\n");
@@ -529,11 +532,7 @@ void iec104_interrogation_send_group3()
 {
     CSLOG("Sending all objects for temporary faults [interrogation group 3]...\r\n");
 
-    //iec104_send_feeder_temporary_faults(COT_INTERROGATED_GROUP3);
- 
     notify_event(IEC104_EVT_SEND_TEMP_FAULTS);
-
-    //iec104_process_tx_buffer_dump();
 }
 
 void iec104_interrogation_send_group4()
@@ -2303,9 +2302,11 @@ typedef enum
     FAULT_SP_FIELD_ENERJI_VARYOK,
 } fault_sp_field_t;
 
-/* Engine: M_ME_TF_1 (olculen float deger + timestamp) */
-static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_type_t log_type, fault_me_field_t field,
-    cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
+/* Engine: M_ME_TF_1 (olculen float deger + timestamp)
+ * resume_index kalinan nesne indisini tasir: kuyruk veya k-penceresi dolarsa
+ * yayim durur ve false doner; cagiran bekleyip ayni durumla devam eder. */
+static bool send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_type_t log_type, fault_me_field_t field,
+    cause_of_transmission_t cause, uint8_t *resume_index)
 {
     uint8_t max_objs_per_packet = (253 - 10) / sizeof(m_me_tf_1_t);
     if (max_objs_per_packet > TEMPORARY_FAULT_COUNT) {
@@ -2355,8 +2356,7 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         }
     }
 
-    uint16_t buff_written = 0;
-    uint8_t sent = 0;
+    uint8_t sent = (NULL != resume_index) ? *resume_index : 0U;
     while (sent < obj_count)
     {
         uint8_t batch = obj_count - sent;
@@ -2380,67 +2380,25 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         CSLOG("Sending fault ME_TF_1 (field=%d, type=%d): %d objs (sent %d/%d)\r\n",
               field, log_type, batch, sent + batch, obj_count);
 
-        if (buff != NULL && len != NULL) 
+        if (!iec104_send((uint8_t *)&pkt, total_len + 2))
         {
-            /*
-            * [MIMARI NOT]:
-            * Bu yolda kare iec104_send() yerine dis bir arabellege yaziliyor ve
-            * aga baska bir mekanizma tarafindan basiliyor. Sayaclar (send_sn,
-            * k_counter, t1) burada, ancak kare arabellege gercekten yazildiktan
-            * sonra ilerletilir; yer yoksa hicbir sayac dokunulmadan cikilir.
-            */
-            if (!link_active)
-            {
-                CSLOG_WARN("Link is not active, I-frame not queued\r\n");
-                break;
-            }
-
-            if ((buff_written + total_len + 2) > max_len)
-            {
-                CSLOG_ERR("Not enough buffer space to write the packet\r\n");
-                break;
-            }
-
-            if (k_counter >= config.k_max)
-            {
-                CSLOG_ERR("Window full, cannot queue more I-frames\r\n");
-                break;
-            }
-
-            memcpy(&buff[buff_written], &pkt, total_len + 2);
-            buff_written += total_len + 2;
-            *len = buff_written;
-
-            if (k_counter == 0)
-            {
-            	t1_timer = 0;
-                wait_for_ack = true;
-            }
-
-            k_counter++;
-            send_sn = (send_sn + 1) & 0x7FFF; // maks 32768;
-
-            w_counter = 0;
-            t2_timer = 0;
-        } 
-        else 
-        {
-            if (!iec104_send((uint8_t *)&pkt, total_len + 2))
-            {
-                break;
-            }
+            break;
         }
+
         sent += batch;
     }
 
-    if (len != NULL) { 
-        *len = buff_written; 
+    if (NULL != resume_index)
+    {
+        *resume_index = sent;
     }
+
+    return (sent >= obj_count);
 }
 
 /* Engine: M_SP_TB_1 (tek-bit durum + timestamp) */
-static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_type_t log_type, fault_sp_field_t field,
-    cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
+static bool send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_type_t log_type, fault_sp_field_t field,
+    cause_of_transmission_t cause, uint8_t *resume_index)
 {
     uint8_t max_objs_per_packet = (253 - 10) / sizeof(m_sp_tb_1_t);
     if (max_objs_per_packet > TEMPORARY_FAULT_COUNT) {
@@ -2489,8 +2447,7 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         }
     }
 
-    uint16_t buff_written = 0;
-    uint8_t sent = 0;
+    uint8_t sent = (NULL != resume_index) ? *resume_index : 0U;
     while (sent < obj_count) 
     {
         uint8_t batch = obj_count - sent;
@@ -2514,191 +2471,85 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         CSLOG("Sending fault SP_TB_1 (field=%d, type=%d): %d objs (sent %d/%d)\r\n",
               field, log_type, batch, sent + batch, obj_count);
 
-        if (buff != NULL && len != NULL) 
+        if (!iec104_send((uint8_t *)&pkt, total_len + 2))
         {
-            /*
-            * [MIMARI NOT]:
-            * Bu yolda kare iec104_send() yerine dis bir arabellege yaziliyor ve
-            * aga baska bir mekanizma tarafindan basiliyor. Sayaclar (send_sn,
-            * k_counter, t1) burada, ancak kare arabellege gercekten yazildiktan
-            * sonra ilerletilir; yer yoksa hicbir sayac dokunulmadan cikilir.
-            */
-            if (!link_active)
-            {
-                CSLOG_WARN("Link is not active, I-frame not queued\r\n");
-                break;
-            }
-
-            if ((buff_written + total_len + 2) > max_len)
-            {
-                CSLOG_ERR("Not enough buffer space to write the packet\r\n");
-                break;
-            }
-
-            if (k_counter >= config.k_max)
-            {
-                CSLOG_ERR("Window full, cannot queue more I-frames\r\n");
-                break;
-            }
-
-            memcpy(&buff[buff_written], &pkt, total_len + 2);
-            buff_written += total_len + 2;
-            *len = buff_written;
-
-            if (k_counter == 0)
-            {
-            	t1_timer = 0;
-                wait_for_ack = true;
-            }
-
-            k_counter++;
-            send_sn = (send_sn + 1) & 0x7FFF; // maks 32768;
-
-            w_counter = 0;
-            t2_timer = 0;
+            break;
         }
-        else 
-        {
-            if (!iec104_send((uint8_t *)&pkt, total_len + 2))
-            {
-                break;
-            }
-        }
+
         sent += batch;
     }
 
-    if (len != NULL) {
-    	*len = buff_written;
+    if (NULL != resume_index)
+    {
+        *resume_index = sent;
     }
+
+    return (sent >= obj_count);
 }
 
 /* ---------------------------------------------------------------
- * Public wrapper'lar — temporary
+ * Public yayicilar — bir fider/faz icin dort alan sirayla
  * --------------------------------------------------------------- */
-void iec104_send_feeder_temporary_faults_ariza_akimi(uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
-{
-    send_fault_me_tf_1(feeder_id, phase, FAULT_LOG_TYPE_TEMPORARY, FAULT_ME_FIELD_ARIZA_AKIMI, cause, buff, len, max_len);
-}
+#define FAULT_EMIT_STEP_COUNT   4U
 
-void iec104_send_feeder_temporary_faults_ariza_suresi(uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
+static bool emit_feeder_faults(uint8_t feeder_id, phase_id_t phase, fault_log_type_t log_type,
+    cause_of_transmission_t cause, iec104_fault_emit_state_t *state)
 {
-    send_fault_me_tf_1(feeder_id, phase, FAULT_LOG_TYPE_TEMPORARY, FAULT_ME_FIELD_ARIZA_SURESI, cause, buff, len, max_len);
-}
-
-void iec104_send_feeder_temporary_faults_nominal_akimvaryok(uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
-{
-    send_fault_sp_tb_1(feeder_id, phase, FAULT_LOG_TYPE_TEMPORARY, FAULT_SP_FIELD_NOMINAL_AKIM, cause, buff, len, max_len);
-}
-
-void iec104_send_feeder_temporary_faults_enerji_varyok(uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
-{
-    send_fault_sp_tb_1(feeder_id, phase, FAULT_LOG_TYPE_TEMPORARY, FAULT_SP_FIELD_ENERJI_VARYOK, cause, buff, len, max_len);
-}
-
-void iec104_send_feeder_temporary_faults(cause_of_transmission_t cause)
-{
-    for(int feeder_id = 0; feeder_id < MAX_POWER_LINE_COUNT; feeder_id++)
+    if (NULL == state)
     {
-        const power_line_t *line = breaker_get_power_line_by_idx(feeder_id);
-        if (line == NULL || !line->iec104.in_use) {
-            continue;
-        }
-        iec104_send_feeder_temporary_faults_ariza_akimi(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
-        iec104_send_feeder_temporary_faults_ariza_suresi(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
-        iec104_send_feeder_temporary_faults_nominal_akimvaryok(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
-        iec104_send_feeder_temporary_faults_enerji_varyok(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
+        return true;
     }
-}
 
-void iec104_get_feeder_temporary_faults(uint8_t *buff, uint16_t *len, uint16_t max_len, uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause)
-{
-    uint16_t written = 0;
-
-    iec104_send_feeder_temporary_faults_ariza_akimi(feeder_id, phase, cause, &buff[*len], &written, max_len - *len); //711 byte 3 faz icin
-    *len += written;  written = 0;
-
-    iec104_send_feeder_temporary_faults_ariza_suresi(feeder_id, phase, cause, &buff[*len], &written, max_len - *len); //711 byte 3 faz icin
-    *len += written;  written = 0;
-
-    iec104_send_feeder_temporary_faults_nominal_akimvaryok(feeder_id, phase, cause, &buff[*len], &written, max_len - *len); // 531 byte 3 faz icin
-    *len += written;  written = 0;
-
-    iec104_send_feeder_temporary_faults_enerji_varyok(feeder_id, phase, cause, &buff[*len], &written, max_len - *len); // 531 byte 3 faz icin
-    *len += written;
-}
-
-/* ---------------------------------------------------------------
- * Public wrapper'lar — permanent
- * --------------------------------------------------------------- */
-
-
-void iec104_send_feeder_permenent_faults_ariza_akimi(uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
-{
-    send_fault_me_tf_1(feeder_id, phase, FAULT_LOG_TYPE_PERMANENT, FAULT_ME_FIELD_ARIZA_AKIMI, cause, buff, len, max_len);
-}
-
-void iec104_send_feeder_permenent_faults_ariza_suresi(uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
-{
-    send_fault_me_tf_1(feeder_id, phase, FAULT_LOG_TYPE_PERMANENT, FAULT_ME_FIELD_ARIZA_SURESI, cause, buff, len, max_len);
-}
-
-void iec104_send_feeder_permenent_faults_nominal_akimvaryok(uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
-{
-    send_fault_sp_tb_1(feeder_id, phase, FAULT_LOG_TYPE_PERMANENT, FAULT_SP_FIELD_NOMINAL_AKIM, cause, buff, len, max_len);
-}
-
-void iec104_send_feeder_permenent_faults_enerji_varyok(uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause, uint8_t *buff, uint16_t *len, uint16_t max_len)
-{
-    send_fault_sp_tb_1(feeder_id, phase, FAULT_LOG_TYPE_PERMANENT, FAULT_SP_FIELD_ENERJI_VARYOK, cause, buff, len, max_len);
-}
-
-void iec104_send_feeder_permanent_faults(cause_of_transmission_t cause)
-{
-    for(int feeder_id = 0; feeder_id < MAX_POWER_LINE_COUNT; feeder_id++)
+    while (state->step < FAULT_EMIT_STEP_COUNT)
     {
-        const power_line_t *line = breaker_get_power_line_by_idx(feeder_id);
+        bool step_done;
 
-        if(line == NULL || !line->iec104.in_use){
-        	continue;
+        switch (state->step)
+        {
+            case 0U:
+                step_done = send_fault_me_tf_1(feeder_id, phase, log_type,
+                    FAULT_ME_FIELD_ARIZA_AKIMI, cause, &state->obj_index);
+                break;
+            case 1U:
+                step_done = send_fault_me_tf_1(feeder_id, phase, log_type,
+                    FAULT_ME_FIELD_ARIZA_SURESI, cause, &state->obj_index);
+                break;
+            case 2U:
+                step_done = send_fault_sp_tb_1(feeder_id, phase, log_type,
+                    FAULT_SP_FIELD_NOMINAL_AKIM, cause, &state->obj_index);
+                break;
+            case 3U:
+                step_done = send_fault_sp_tb_1(feeder_id, phase, log_type,
+                    FAULT_SP_FIELD_ENERJI_VARYOK, cause, &state->obj_index);
+                break;
+            default:
+                step_done = true;
+                break;
         }
-        iec104_send_feeder_permenent_faults_ariza_akimi(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
-        iec104_send_feeder_permenent_faults_ariza_suresi(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
-        iec104_send_feeder_permenent_faults_nominal_akimvaryok(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
-        iec104_send_feeder_permenent_faults_enerji_varyok(feeder_id, PHASE_ALL, cause, NULL, NULL, 0);
+
+        if (!step_done)
+        {
+            return false;
+        }
+
+        state->step++;
+        state->obj_index = 0U;
     }
+
+    return true;
 }
 
-void iec104_get_feeder_permanent_faults(uint8_t *buff, uint16_t *len, uint16_t max_len, uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause)
+bool iec104_emit_feeder_temporary_faults(uint8_t feeder_id, phase_id_t phase,
+    cause_of_transmission_t cause, iec104_fault_emit_state_t *state)
 {
-    uint16_t written = 0;
-
-    iec104_send_feeder_permenent_faults_ariza_akimi(feeder_id, phase, cause, &buff[*len], &written, max_len - *len);
-    *len += written;  written = 0;
-
-    iec104_send_feeder_permenent_faults_ariza_suresi(feeder_id, phase, cause, &buff[*len], &written, max_len - *len);
-    *len += written;  written = 0;
-
-    iec104_send_feeder_permenent_faults_nominal_akimvaryok(feeder_id, phase, cause, &buff[*len], &written, max_len - *len);
-    *len += written;  written = 0;
-
-    iec104_send_feeder_permenent_faults_enerji_varyok(feeder_id, phase, cause, &buff[*len], &written, max_len - *len);
-    *len += written;
+    return emit_feeder_faults(feeder_id, phase, FAULT_LOG_TYPE_TEMPORARY, cause, state);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+bool iec104_emit_feeder_permanent_faults(uint8_t feeder_id, phase_id_t phase,
+    cause_of_transmission_t cause, iec104_fault_emit_state_t *state)
+{
+    return emit_feeder_faults(feeder_id, phase, FAULT_LOG_TYPE_PERMANENT, cause, state);
+}
 
 /* ========================================================= */
 

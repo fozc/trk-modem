@@ -4,15 +4,10 @@
 #include "bsp.h"
 #include "contiki.h"
 #include "contiki_process.h"
-#include "gsm_engine.h"
 #include "breaker.h"
 #include "fault_log.h"
 #include "gsm_listener_process.h"
 #include "sys/pt-sem.h"
-
-static uint8_t tx_buff[1024];
-static uint16_t tx_len = 0;
-
 
 static struct pt_sem g_tx_sem;
 
@@ -60,7 +55,8 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
     static struct etimer timer;
     static uint8_t feeder_id;
     static phase_id_t phase_id;
-    static uint16_t tx_sent_index;
+    static iec104_fault_emit_state_t emit_state;
+    static bool link_lost;
 
     PROCESS_EXITHANDLER({
         iec104_send_general_interrogation_term(QOI_GROUP_3);
@@ -74,46 +70,38 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
     CSLOG("PROCESS %s START \r\n", PROCESS_CURRENT()->name);
     etimer_set(&timer, 100);
     feeder_id = 0;
+    link_lost = false;
 
     PT_SEM_WAIT(&iec104_send_temporary_faults.pt, &g_tx_sem);
 
     CSLOG("Starting to send temporary fault data for feeders and phases...\r\n");
     iec104_send_general_interrogation_con(QOI_GROUP_3, 0);
 
-    for(feeder_id = 0; feeder_id < MAX_POWER_LINE_COUNT; feeder_id++)
+    for(feeder_id = 0; (feeder_id < MAX_POWER_LINE_COUNT) && !link_lost; feeder_id++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(feeder_id);
         if (line == NULL || !line->iec104.in_use) {
             continue;
         }
 
-        for(phase_id = PHASE_L1; phase_id < PHASE_MAX; phase_id++)
+        for(phase_id = PHASE_L1; (phase_id < PHASE_MAX) && !link_lost; phase_id++)
         {
-            tx_len = 0;
-            iec104_get_feeder_temporary_faults(tx_buff, &tx_len, sizeof(tx_buff),
-                                               feeder_id, phase_id,
-                                               COT_INTERROGATED_GROUP3);
-            tx_sent_index = 0;
+            emit_state = (iec104_fault_emit_state_t){0};
 
-            while(tx_len > 0)
+            while(!iec104_emit_feeder_temporary_faults(feeder_id, phase_id,
+                                                      COT_INTERROGATED_GROUP3,
+                                                      &emit_state))
             {
-                uint16_t len_to_send = tx_len - tx_sent_index;
-                if(len_to_send > 1024) {
-                    len_to_send = 1024;
+                /* Hat dustuyse yayim asla tamamlanamaz; semafor birakilabilsin
+                 * diye donguden temiz cikilir. */
+                if(!iec104_is_link_active())
+                {
+                    link_lost = true;
+                    break;
                 }
 
-                if (gsm_get_tx_state() == GSM_TX_READY &&
-                    gsm_send_to_socket(&tx_buff[tx_sent_index], len_to_send,
-                                       GSM_TX_DIR_IEC104_SOCKET, false, false) == 0)
-                {
-                    tx_len       -= len_to_send;
-                    tx_sent_index += len_to_send;
-                }
-                else
-                {
-                    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
-                    etimer_reset(&timer);
-                }
+                PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+                etimer_reset(&timer);
             }
         }
     }
@@ -131,7 +119,8 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
     static struct etimer timer;
     static uint8_t feeder_id;
     static phase_id_t phase_id;
-    static uint16_t tx_sent_index;
+    static iec104_fault_emit_state_t emit_state;
+    static bool link_lost;
 
     PROCESS_EXITHANDLER({
         iec104_send_general_interrogation_term(QOI_GROUP_4);
@@ -144,46 +133,38 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
     CSLOG("PROCESS %s START \r\n", PROCESS_CURRENT()->name);
     etimer_set(&timer, 100);
     feeder_id = 0;
+    link_lost = false;
 
     PT_SEM_WAIT(&iec104_send_permanent_faults.pt, &g_tx_sem);
 
     CSLOG("Starting to send permanent fault data for feeders and phases...\r\n");
     iec104_send_general_interrogation_con(QOI_GROUP_4, 0);
 
-    for(feeder_id = 0; feeder_id < MAX_POWER_LINE_COUNT; feeder_id++)
+    for(feeder_id = 0; (feeder_id < MAX_POWER_LINE_COUNT) && !link_lost; feeder_id++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(feeder_id);
         if (line == NULL || !line->iec104.in_use) {
             continue;
         }
 
-        for(phase_id = PHASE_L1; phase_id < PHASE_MAX; phase_id++)
+        for(phase_id = PHASE_L1; (phase_id < PHASE_MAX) && !link_lost; phase_id++)
         {
-            tx_len = 0;
-            iec104_get_feeder_permanent_faults(tx_buff, &tx_len, sizeof(tx_buff),
-                                               feeder_id, phase_id,
-                                               COT_INTERROGATED_GROUP4);
-            tx_sent_index = 0;
+            emit_state = (iec104_fault_emit_state_t){0};
 
-            while(tx_len > 0)
+            while(!iec104_emit_feeder_permanent_faults(feeder_id, phase_id,
+                                                      COT_INTERROGATED_GROUP4,
+                                                      &emit_state))
             {
-                uint16_t len_to_send = tx_len - tx_sent_index;
-                if(len_to_send > 1024) {
-                    len_to_send = 1024;
+                /* Hat dustuyse yayim asla tamamlanamaz; semafor birakilabilsin
+                 * diye donguden temiz cikilir. */
+                if(!iec104_is_link_active())
+                {
+                    link_lost = true;
+                    break;
                 }
 
-                if (gsm_get_tx_state() == GSM_TX_READY &&
-                    gsm_send_to_socket(&tx_buff[tx_sent_index], len_to_send,
-                                       GSM_TX_DIR_IEC104_SOCKET, false, false) == 0)
-                {
-                    tx_len       -= len_to_send;
-                    tx_sent_index += len_to_send;
-                }
-                else
-                {
-                    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
-                    etimer_reset(&timer);
-                }
+                PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+                etimer_reset(&timer);
             }
         }
     }
