@@ -116,7 +116,7 @@ static void ftoa (
 				if (val != 0) {		/* Not a true zero? */
 					val += i10x(ilog10(val) - prec) / 2;	/* Round (nearest) */
 					e = ilog10(val);
-					if (e > 99 || prec + 6 >= SZB_OUTPUT) {	/* Buffer overflow or E > +99? */
+					if (e > 99 || prec + 7 >= SZB_OUTPUT) {	/* Buffer overflow or E > +99? */
 						er = "OV";
 					} else {
 						if (e < -99) e = -99;

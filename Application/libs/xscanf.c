@@ -532,10 +532,15 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                             if (out) *out = val;
                             count++;
                         }
+                    } else {
+                        /* Ciplak %s: boyut belirsiz. Sessiz no-op bir sonraki
+                         * donusumun va_arg'ini kaydirir (Y10.4); sesli
+                         * format hatasi ver. (%s8/%s16/%s32 kullanilmali.) */
+                        err = XSCANF_ERR_INVALID_FORMAT;
                     }
                     break;
                 }
-                
+
                 case 'x':
                 case 'X': {
                     /* Hexadecimal - max 8 hex digits, user width capped */
@@ -579,11 +584,10 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                         if (out) {
                             s = parse_string(s, end, out, (size_t)(width + 1), delimiter, &err);
                             if (err == XSCANF_OK || err == XSCANF_ERR_BUFFER_OVERFLOW) {
+                                /* Kesme: sigan kisim yazildi ve sayildi; err
+                                 * BUFFER_OVERFLOW olarak yayilir (Y10.3) -
+                                 * xscanf_get_last_error() ile ayirt edilir. */
                                 count++;
-                                if (err == XSCANF_ERR_BUFFER_OVERFLOW) {
-                                    /* Still count as success but record error */
-                                    err = XSCANF_OK;
-                                }
                             }
                         }
                     } else {
