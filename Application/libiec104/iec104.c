@@ -133,6 +133,14 @@ static bool iec104_send(const uint8_t *data, size_t length)
 	const iec104_package_t * pkt = (const iec104_package_t *)data;
 	const bool is_i_frame = iec104_is_i_format(pkt);
 
+	/* STOPDT sonrasi yeni kullanici verisi kuyruga alinmaz. Kuyrukta bekleyen
+	 * kareler akmaya devam eder; atilmalari N(S) ucurumu birakirdi. */
+	if(is_i_frame && !link_active)
+	{
+		CSLOG_WARN("Link is not active, I-frame not queued\r\n");
+		return false;
+	}
+
 	if(is_i_frame && (k_counter >= config.k_max))
 	{
 		CSLOG_ERR("Window full, cannot send more I-frames\r\n");
@@ -168,6 +176,24 @@ static bool iec104_send(const uint8_t *data, size_t length)
 		// I-Frame gondererek karsi tarafi onaylamis olduk
 		w_counter = 0;
 		t2_timer = 0;
+	}
+
+	return true;
+}
+
+/* Sayac tasimayan APCI-only kareler (U/S formatinda sabit diziler) icin. */
+static bool iec104_send_raw(const uint8_t *data, uint16_t length)
+{
+	if(NULL == iec_io.send)
+	{
+		CSLOG_ERR("No transport bound, frame dropped\r\n");
+		return false;
+	}
+
+	if(iec_io.send(data, length) != 0)
+	{
+		CSLOG_ERR("Transport rejected U-frame (%u bytes)\r\n", (unsigned)length);
+		return false;
 	}
 
 	return true;
@@ -761,9 +787,12 @@ void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)
 void iec104_send_test_frame()
 {
     static const uint8_t test_frame[] = {0x68, 0x04, (IEC104_TESTFR_ACT << 2) | 0x03, 0x00, 0x00, 0x00};
-    iec_io.send(test_frame, sizeof(test_frame));
 
-    wait_for_testfr_con = true;
+    /* Gonderilemeyen TESTFR icin CON beklenmez; bir sonraki t3 dolumunda yinelenir. */
+    if(iec104_send_raw(test_frame, sizeof(test_frame)))
+    {
+        wait_for_testfr_con = true;
+    }
 }
 
 void iec104_process_u_frame(const u_format_control_t *uframe)
@@ -771,7 +800,6 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
     static const uint8_t startdt_act_con[] = {0x68, 0x04, (IEC104_STARTDT_CON << 2) | 0x03, 0x00, 0x00, 0x00};
     static const uint8_t stopdt_act_con[] = {0x68, 0x04,  (IEC104_STOPDT_CON << 2) | 0x03, 0x00, 0x00, 0x00};
     static const uint8_t testfr_act_con[] = {0x68, 0x04,  (IEC104_TESTFR_CON << 2) | 0x03, 0x00, 0x00, 0x00};
-    static const uint8_t end_of_init[] = {0x68, 0x0E, 0x00, 0x00, 0x00, 0x00, 0x46, 0x01, 0x04, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}; // M_EI_NA_1
 
     if (uframe == NULL) {
     	CSLOG_WARN("Invalid U-Frame packet\r\n");
@@ -784,23 +812,22 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
     {
     case IEC104_STARTDT_ACT:
         CSLOG("  StartDT Act received, sending StartDT Con\r\n");
-        iec_io.send(startdt_act_con, sizeof(startdt_act_con));
-        //iec_io.send(end_of_init, sizeof(end_of_init));
+        (void)iec104_send_raw(startdt_act_con, sizeof(startdt_act_con));
 
         iec104_reset();
+        link_active = true; /* end-of-init bir I-frame'dir; kapi ondan once acilmali */
         iec104_send_end_of_initialization();
-        link_active = true; // !!! iec104_reset bunu sifirliyor, bu nedenle link_active true olarak ayarlanmali
         break;
     case IEC104_STOPDT_ACT:
         CSLOG("  StopDT Act received, stopping data transfer\r\n");
         /* Veri transferi durur: bu noktadan sonra I/S kareleri islenmez ve
          * yeni I-frame uretilmez. Yeniden baslatma STARTDT_ACT ile olur. */
         link_active = false;
-        iec_io.send(stopdt_act_con, sizeof(stopdt_act_con));
+        (void)iec104_send_raw(stopdt_act_con, sizeof(stopdt_act_con));
         break;
     case IEC104_TESTFR_ACT:
         CSLOG("  TestFR Act received, sending TestFR Con\r\n");
-        iec_io.send(testfr_act_con, sizeof(testfr_act_con));
+        (void)iec104_send_raw(testfr_act_con, sizeof(testfr_act_con));
         break;
     case IEC104_TESTFR_CON:
         CSLOG("  TestFR Con received, link is alive.\r\n");
@@ -822,13 +849,13 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
 void iec104_send_stopdt_con(void)
 {
     const uint8_t stopdt_act[] = {0x68, 0x04, (IEC104_STOPDT_CON << 2) | 0x03, 0x00, 0x00, 0x00};
-    iec_io.send(stopdt_act , sizeof(stopdt_act)); 
+    (void)iec104_send_raw(stopdt_act, sizeof(stopdt_act));
 }
 
 void iec104_send_stopdt_act(void)
 {
     const uint8_t stopdt_con[] = {0x68, 0x04, (IEC104_STOPDT_ACT << 2) | 0x03, 0x00, 0x00, 0x00};
-    iec_io.send(stopdt_con , sizeof(stopdt_con)); 
+    (void)iec104_send_raw(stopdt_con, sizeof(stopdt_con));
 }
 
 bool iec104_send_s_frame(uint16_t receive_seq)
@@ -2362,6 +2389,12 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             * k_counter, t1) burada, ancak kare arabellege gercekten yazildiktan
             * sonra ilerletilir; yer yoksa hicbir sayac dokunulmadan cikilir.
             */
+            if (!link_active)
+            {
+                CSLOG_WARN("Link is not active, I-frame not queued\r\n");
+                break;
+            }
+
             if ((buff_written + total_len + 2) > max_len)
             {
                 CSLOG_ERR("Not enough buffer space to write the packet\r\n");
@@ -2490,6 +2523,12 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             * k_counter, t1) burada, ancak kare arabellege gercekten yazildiktan
             * sonra ilerletilir; yer yoksa hicbir sayac dokunulmadan cikilir.
             */
+            if (!link_active)
+            {
+                CSLOG_WARN("Link is not active, I-frame not queued\r\n");
+                break;
+            }
+
             if ((buff_written + total_len + 2) > max_len)
             {
                 CSLOG_ERR("Not enough buffer space to write the packet\r\n");
