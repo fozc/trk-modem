@@ -3463,13 +3463,26 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			break;
 	}
 
+	/* Uzunluk korumasi: CR at_buff[at_len]'e yazilacak ve at motoru
+	 * cmd_len + 1 <= AT_ENGINE_MAX_CMD_LEN (128) istiyor -> at_len <= 126. */
+	if (at_len + 2U > sizeof(at_buff))
+	{
+		GSM_LOG_ERR("AT query %u: komut cok uzun\r\n", (unsigned)query);
+		gsm_set_free();
+		return 0;
+	}
 	buff_ptr[at_len - 2] = '\r'; /* at_len 2 den basliyor, en sona \r ekle */
 	at_len++;
 	gsm.prev_at_cmd[1] =  gsm.prev_at_cmd[0]; /* 0-> Guncel gonderilen, 1-> bir onceki gonderilen */
 	gsm.prev_at_cmd[0] =  query;
 	//LOG(_GSM_, " Gonderilen at cmd: %d Onceki at cmd: %d", gsm.prev_at_cmd[0], gsm.prev_at_cmd[1]);
 
-	at_engine_send_at_command(at_buff, at_len, res, res_len, try, timeout);
+	if (!at_engine_send_at_command(at_buff, at_len, res, res_len, try, timeout))
+	{
+		GSM_LOG_ERR("AT query %u: at motoru komutu reddetti\r\n", (unsigned)query);
+		gsm_set_free();
+		return 0;
+	}
 
 	gsm.query_id    = query;
 	gsm.query_state = GSM_WAITING_RESPONSE; /* AT sorgusu modeme gonderildi, simdi cevap bekleniyor */
