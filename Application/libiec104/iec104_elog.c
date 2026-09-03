@@ -109,9 +109,24 @@ static void iec104_elog_add(iec104_elog_code_t code, iec104_elog_level_t level,
  *  Semantic API
  * ====================================================================== */
 
+/* One record per side per window; a flapping SCADA link must not flood
+ * the ring. Applied symmetrically to connect and disconnect records. */
+#define IEC104_ELOG_FLAP_MIN_INTERVAL_MS 60000UL
+
 void iec104_elog_connected(uint32_t peer_ip)
 {
     /* info: up=1(1) reason=1 client connected(1) peer_ip(4 BE) */
+    static uint32_t last_log_tick = 0U;
+    uint32_t now = bsp_get_tick();
+
+    /* Connect tarafi da flap supresyonlu: 60 sn'de en fazla bir kayit. */
+    if ((last_log_tick != 0U) &&
+        ((now - last_log_tick) < IEC104_ELOG_FLAP_MIN_INTERVAL_MS))
+    {
+        return;
+    }
+    last_log_tick = now;
+
     uint8_t info[16] = {0};
 
     info[0] = 1U;
@@ -123,18 +138,14 @@ void iec104_elog_connected(uint32_t peer_ip)
     iec104_elog_add(IEC104_ELOG_CONN, IEC104_ELOG_LEVEL_INFO, info, sizeof(info));
 }
 
-/* One connection-loss record per window; a flapping SCADA link must not
- * flood the ring. */
-#define IEC104_ELOG_DOWN_MIN_INTERVAL_MS 60000UL
-
-void iec104_elog_disconnected(void)
+void iec104_elog_disconnected(iec104_elog_disc_reason_t reason)
 {
-    /* info: up=0(1) reason=0 closed by remote(1) */
+    /* info: up=0(1) disc reason(1) reserved(2) */
     static uint32_t last_log_tick = 0U;
-
     uint32_t now = bsp_get_tick();
+
     if ((last_log_tick != 0U) &&
-        ((now - last_log_tick) < IEC104_ELOG_DOWN_MIN_INTERVAL_MS))
+        ((now - last_log_tick) < IEC104_ELOG_FLAP_MIN_INTERVAL_MS))
     {
         return;
     }
@@ -143,7 +154,7 @@ void iec104_elog_disconnected(void)
     uint8_t info[16] = {0};
 
     info[0] = 0U;
-    info[1] = 0U;
+    info[1] = (uint8_t)reason;
     iec104_elog_add(IEC104_ELOG_DISC, IEC104_ELOG_LEVEL_WARN, info, sizeof(info));
 }
 
@@ -299,7 +310,28 @@ const char *iec104_elog_info_to_text(const iec104_elog_entry_t *entry)
             break;
         }
         case IEC104_ELOG_DISC:
-            xsnprintf(text, sizeof(text), "disconnected (closed by remote)");
+            switch ((iec104_elog_disc_reason_t)info[1])
+            {
+                case IEC104_ELOG_DISC_CLOSED_BY_REMOTE:
+                    xsnprintf(text, sizeof(text), "disconnected (closed by remote)");
+                    break;
+                case IEC104_ELOG_DISC_NO_CARRIER:
+                    xsnprintf(text, sizeof(text), "disconnected (no carrier)");
+                    break;
+                case IEC104_ELOG_DISC_CONN_TIMEOUT:
+                    xsnprintf(text, sizeof(text), "disconnected (connection timeout)");
+                    break;
+                case IEC104_ELOG_DISC_LOCAL_CLOSE:
+                    xsnprintf(text, sizeof(text), "disconnected (local close)");
+                    break;
+                case IEC104_ELOG_DISC_SOCKET_CLOSED:
+                    xsnprintf(text, sizeof(text), "disconnected (socket closed)");
+                    break;
+                case IEC104_ELOG_DISC_UNKNOWN:
+                default:
+                    xsnprintf(text, sizeof(text), "disconnected (unknown)");
+                    break;
+            }
             break;
         default:
             xsnprintf(text, sizeof(text), "?");
