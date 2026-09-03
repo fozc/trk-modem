@@ -22,25 +22,25 @@ void iec104_application_init(void)
     PT_SEM_INIT(&g_tx_sem, 1);
 }
 
-void iec104_application_event_handler(iec104_app_event_t evt)
+void iec104_application_event_handler(iec104_event_t evt)
 {
-    if(evt == IEC104_APP_EVT_SEND_TEMP_FAULTS)
+    if(evt == IEC104_EVT_SEND_TEMP_FAULTS)
     {
         if (!process_is_running(&iec104_send_temporary_faults)) {
             process_start(&iec104_send_temporary_faults, NULL);
         }
     }
-    else if(evt == IEC104_APP_EVT_SEND_PERM_FAULTS)
+    else if(evt == IEC104_EVT_SEND_PERM_FAULTS)
     {
         if (!process_is_running(&iec104_send_permanent_faults)) {
             process_start(&iec104_send_permanent_faults, NULL);
         }
     }
-    else if(evt == IEC104_APP_EVT_REQUEST_SOCKET_CLOSE)
+    else if(evt == IEC104_EVT_REQUEST_SOCKET_CLOSE)
     {
         gsm_listener_socket_event_handler(GSM_LISTENER_IEC104, GSM_USER_EVENT_CLOSE_SOCKET);
     }
-    else if(evt == IEC104_APP_EVT_SOCKET_CLOSED)
+    else if(evt == IEC104_EVT_SOCKET_CLOSED)
     {
         if(process_is_running(&iec104_send_temporary_faults)){
             process_exit(&iec104_send_temporary_faults);

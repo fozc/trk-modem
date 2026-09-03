@@ -6,9 +6,7 @@
  */
 #include "iec104.h"
 #include "cp56time2a.h"
-#include <stdio.h>
 #include <string.h>
-#include <assert.h>
 #include "breaker.h"
 #include "time_service.h"
 #include "bsp.h"
@@ -16,7 +14,6 @@
 #include "iec104_util.h"
 #include "fault_log.h"
 #include "iec104_config.h"
-#include "iec104_application.h"
 
 static const uint8_t supported_asdu_types[] = {
     M_DP_TB_1, // 31, Double Point Information
@@ -112,6 +109,15 @@ static inline bool iec104_is_s_format(const iec104_package_t *packet) {
 static inline bool iec104_is_u_format(const iec104_package_t *packet) {
     return (packet->frame.apci.control_field[0] & 0x03) == 0x03;
 }
+
+static void notify_event(iec104_event_t evt)
+{
+    if(NULL != iec_io.on_event)
+    {
+        iec_io.on_event(evt);
+    }
+}
+
 void iec104_set_sbo_state(bool is_active)
 {
 	config.is_sbo_active = is_active;
@@ -499,7 +505,7 @@ void iec104_interrogation_send_group3()
 
     //iec104_send_feeder_temporary_faults(COT_INTERROGATED_GROUP3);
  
-    iec104_application_event_handler(IEC104_APP_EVT_SEND_TEMP_FAULTS);
+    notify_event(IEC104_EVT_SEND_TEMP_FAULTS);
 
     //iec104_process_tx_buffer_dump();
 }
@@ -508,7 +514,7 @@ void iec104_interrogation_send_group4()
 {
 	CSLOG("Sending all objects for temporary faults [interrogation group 4]...\r\n");
 
-    iec104_application_event_handler(IEC104_APP_EVT_SEND_PERM_FAULTS);
+    notify_event(IEC104_EVT_SEND_PERM_FAULTS);
 
 }
 
@@ -886,7 +892,7 @@ bool on_ack_received(uint16_t nr)
 
             // Gerçek sira hatasinda soketi guvenli moda cekmek mantiklidir
             iec104_reset();
-            iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
+            notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
             return false;
         }
     }
@@ -957,7 +963,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         CSLOG_ERR("Sequence desync detected! Expected N(S)=%d, Got %d\r\n", receive_sn, iframe->send_seq);
 
         iec104_reset();
-        iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
+        notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
         return;
     }
 
@@ -1346,7 +1352,7 @@ void libiec104_poll(void)
         CSLOG_WARN("T1 timer expired, resend is necessary\r\n");
 
         iec104_reset();
-        iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
+        notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
     }
 
     if (!wait_for_testfr_con)
@@ -1369,7 +1375,7 @@ void libiec104_poll(void)
                 t3_timer = 0;
 
                 iec104_reset();
-                iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
+                notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
             }
         }
 

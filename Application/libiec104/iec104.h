@@ -30,9 +30,20 @@
 #define IEC104_TESTFR_ACT  0x10   // TestFR activation
 #define IEC104_TESTFR_CON  0x20   // TestFR confirmation
 
+/* Kutuphanenin uygulama katmanina bildirdigi olaylar. SOCKET_CLOSED'i
+ * kutuphane uretmez; tasiyici tarafindan uygulamaya bildirilir. */
+typedef enum
+{
+    IEC104_EVT_SEND_TEMP_FAULTS = 1,
+    IEC104_EVT_SEND_PERM_FAULTS = 2,
+    IEC104_EVT_SOCKET_CLOSED = 3,
+    IEC104_EVT_REQUEST_SOCKET_CLOSE = 4,
+} iec104_event_t;
+
 typedef struct
 {
     int (*send)(const uint8_t *data, uint16_t length);
+    void (*on_event)(iec104_event_t evt);
 
     int (*get_ariza_akimi)(uint32_t power_line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp);
     int (*get_ariza_suresi)(uint32_t power_line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp);
