@@ -179,12 +179,6 @@ void iec104_on_data(const uint8_t *data, uint16_t len, void *user)
     iec104_data_received(data, len);
 }
 
-static int handle_c_sc_na_1(ioa_3byte_t ioa, uint8_t state)
-{
-	CSLOG("C_SC_NA_1: IOA=%u, State=%u\r\n", iec104_ioa_3byte_to_uint32(ioa), state);
-    return 0;
-}
-
 static bool iec104_periodic_send(void)
 {
 	if(gsm_get_tx_state() != GSM_TX_READY){
