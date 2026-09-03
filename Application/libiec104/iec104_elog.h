@@ -59,19 +59,35 @@ void iec104_elog_init(void);
  *
  * info: up=1(1) reason=1 client connected(1) peer_ip(4, big-endian)
  *
+ * Flap-suppressed: at most one record per 60 s, symmetric with
+ * iec104_elog_disconnected() - a flapping SCADA link must not flood
+ * the ring.
+ *
  * @param peer_ip  Remote SCADA IP (network byte order as read from GSM).
  */
 void iec104_elog_connected(uint32_t peer_ip);
 
+/** Disconnect reason stored in iec104_elog_disconnected() records.
+ *  Value 0 matches the historical "closed by remote" records. */
+typedef enum
+{
+    IEC104_ELOG_DISC_CLOSED_BY_REMOTE = 0, /**< Remote end closed the link     */
+    IEC104_ELOG_DISC_NO_CARRIER,           /**< Modem URC: connection dropped  */
+    IEC104_ELOG_DISC_CONN_TIMEOUT,         /**< First-data / idle / AT timeout */
+    IEC104_ELOG_DISC_LOCAL_CLOSE,          /**< Local close (protocol/modem)   */
+    IEC104_ELOG_DISC_SOCKET_CLOSED,        /**< Socket state dropped to 0      */
+    IEC104_ELOG_DISC_UNKNOWN               /**< No reason recorded             */
+} iec104_elog_disc_reason_t;
+
 /**
  * @brief Record a lost IEC-104 connection.
  *
- * info: up=0(1) reason=0 closed by remote(1) reserved(2)
+ * info: up=0(1) disc reason(1) reserved(2)
  *
- * Flap-suppressed: at most one record per 60 s - a flapping SCADA link
- * must not flood the ring.
+ * Flap-suppressed: at most one record per 60 s, symmetric with
+ * iec104_elog_connected() - a flapping SCADA link must not flood the ring.
  */
-void iec104_elog_disconnected(void);
+void iec104_elog_disconnected(iec104_elog_disc_reason_t reason);
 
 /** Copy up to count entries (newest first), skipping skip_newest newest.
  *  Returns 0 on success; *out_count reports entries copied. */

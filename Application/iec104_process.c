@@ -11,6 +11,7 @@
 #include "contiki.h"
 #include "contiki_process.h"
 #include "gsm_engine.h"
+#include "gsm_socket.h"
 #include "breaker.h"
 #include "iec104_application.h"
 #include "iec104_elog.h"
@@ -52,10 +53,33 @@ static void tx_reset(void)
 	tx.pending = 0;
 }
 
+/* GSM katmani zaten soket basina kopus nedeni kaydediyor; elog'a burada
+ * eslenir (libiec104, gsm basliklarini gormez - katmanlama korunur). */
+static iec104_elog_disc_reason_t map_disc_reason(void)
+{
+	const gsm_socket_stats_t *stats = gsm_socket_get_stats(IEC104_LISTENER_SOCKET);
+
+	if (NULL == stats)
+	{
+		return IEC104_ELOG_DISC_UNKNOWN;
+	}
+
+	switch ((sock_disconnect_reason_t)stats->last_disconnect_reason)
+	{
+		case SOCK_DISC_NO_CARRIER:        return IEC104_ELOG_DISC_NO_CARRIER;
+		case SOCK_DISC_FIRST_DATA_TIMEOUT:
+		case SOCK_DISC_IDLE_TIMEOUT:
+		case SOCK_DISC_TIMEOUT:           return IEC104_ELOG_DISC_CONN_TIMEOUT;
+		case SOCK_DISC_MANUAL:            return IEC104_ELOG_DISC_LOCAL_CLOSE;
+		case SOCK_DISC_SOCKET_CLOSED:     return IEC104_ELOG_DISC_SOCKET_CLOSED;
+		default:                          return IEC104_ELOG_DISC_UNKNOWN;
+	}
+}
+
 void iec104_process_socket_closed_cb(void)
 {
 	CCSLOG(XCOLOR_RED, "IEC104 Socket Closed by Remote\r\n");
-	iec104_elog_disconnected();
+	iec104_elog_disconnected(map_disc_reason());
 	iec104_application_event_handler(IEC104_EVT_SOCKET_CLOSED);
 	tx_reset();
 }
