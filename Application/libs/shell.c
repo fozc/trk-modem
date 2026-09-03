@@ -28,7 +28,7 @@ enum
 #define SHELL_TEXT_MAXLEN 64
 #define SHELL_TEXT_MAXARGS 8
 
-#define SHELL_MAX_CMD_LIST_COUNT 24
+#define SHELL_MAX_CMD_LIST_COUNT 32
 
 #ifdef SHELL_HISTORY
 typedef struct
@@ -143,7 +143,8 @@ int shell_register_command(const shell_cmd_t *cmd)
 {
 	if(!cmd || (cmd_list_counter >= SHELL_MAX_CMD_LIST_COUNT))
 	{
-		SHELL_LOG("Shell Command registration failed!\r\n");
+		SHELL_LOG("Shell Command registration failed! (%s)\r\n",
+		          ((NULL == cmd) || (NULL == cmd->cmd)) ? "NULL" : cmd->cmd);
 		return -1;
 	}
 
