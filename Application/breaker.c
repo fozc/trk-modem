@@ -14,7 +14,6 @@
  
 #define breaker (nvram_get_breaker_rw())
 
-static bool breaker_initialized = false;
 static breaker_data_t breaker_data = {0};
 
 static inline bool is_ioa_equal(ioa_3byte_t ioa1, ioa_3byte_t ioa2)
@@ -166,6 +165,9 @@ const feeder_data_t * breaker_get_feeder_data(uint32_t line_index)
 
 
 #ifdef C_SC_NA_1_ENABLED
+
+static bool breaker_initialized = false;
+
 int breaker_set_power_line_sbo_state(ioa_3byte_t ioa, sbo_state_t state)
 {
     if (!breaker_initialized) {

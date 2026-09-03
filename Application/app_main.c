@@ -69,8 +69,6 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 	static struct timer stack_timer;
 	static struct timer rf_dummy_timer;
 
-	static struct timer three_second_timer;
-
 	PROCESS_BEGIN();
 
 	etimer_set(&timer, CLOCK_SECOND / 100); // 10 Hz

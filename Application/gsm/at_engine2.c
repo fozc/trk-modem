@@ -68,7 +68,6 @@ static void log_response(const char *p_result_str);
 
 /* TX state for non-blocking (interrupt-driven) send */
 static volatile uint16_t s_tx_remaining = 0U;
-static volatile const uint8_t *s_tx_ptr = NULL;
 static volatile uint8_t s_tx_done_flag = 0U;
 
 
@@ -968,6 +967,8 @@ void at_engine_dma_tx_complete_callback(void)
 
 
 #if 0
+static volatile const uint8_t *s_tx_ptr = NULL;
+
 void at_engine_send_raw_async(uint8_t *p_data, uint16_t len)
 {
 	if((p_data == NULL) || (len == 0U))
