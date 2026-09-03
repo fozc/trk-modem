@@ -689,15 +689,21 @@ void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)
     CSLOG("Processing C_CS_NA_1 command\r\n");
     cp56time2a_print(timestamp);
 
+    const bool is_valid_time = (pkt->frame.c_cs_na_1.timestamp.iv_bit == 0);
+    const uint16_t frame_length = (uint16_t)(pkt->frame.apci.apdu_length + 2); // +2 for start char and length byte
 
     iec104_package_t pkt_response;
 
-    memcpy(pkt_response.data, pkt->data, pkt->frame.apci.apdu_length + 2); // +2 for start char and length byte
+    memcpy(pkt_response.data, pkt->data, frame_length);
+
+    /* Kontrol alani master'dan kopyalanamaz: kendi sira numaralarimizla kurulur. */
+    pkt_response.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
     pkt_response.frame.asdu_header.cot.cause = COT_ACTIVATION_CON;
+    pkt_response.frame.asdu_header.cot.pn_bit = (uint8_t)(is_valid_time ? 0U : 1U);
 
-    iec104_send(pkt_response.data, (pkt_response.frame.apci.apdu_length + 2));
+    iec104_send(pkt_response.data, frame_length);
 
-    if(pkt->frame.c_cs_na_1.timestamp.iv_bit){
+    if(!is_valid_time){
         CSLOG("Invalid timestamp received!\r\n");
         return;
     }
