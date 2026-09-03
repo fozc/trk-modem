@@ -7,6 +7,7 @@
 #include "xmodem_process.h"
 #include "xmodem.h"
 #include "bsp.h"
+#include "boot.h"
 #include "spi_flash_organization.h"
 #include "w25qxx.h"
 #include "app_ipc.h"
@@ -22,36 +23,6 @@
 #define XMODEM_START_TIMEOUT_MS       (1U * 60U * 1000U)  /* 1 minute */
 
 #define FIRMWARE_FLASH_AREA_SIZE  SPIFLASH_SECTION_SIZE(SPIFLASH_SECTION_FIRMWARE_A)
-
-/* Minimal superblock read — only what we need to determine download address */
-#define BOOTLOADER_SUPERBLOCK_MAGIC  0xB007000BUL
-#define BOOT_FW_SECTION_A  0U
-#define BOOT_FW_SECTION_B  1U
-
-static uint32_t get_download_address(void)
-{
-	uint8_t buf[12];
-	w25qxx_read_buff(SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_BOOTLOADER_SB), buf, sizeof(buf));
-
-	uint32_t magic;
-	memcpy(&magic, &buf[0], sizeof(magic));
-
-	if (magic != BOOTLOADER_SUPERBLOCK_MAGIC)
-	{
-		/* Superblock invalid — default to Section A */
-		CSLOG_ERR("Superblock magic invalid, defaulting to FW_A.\r\n");
-		return SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_A);
-	}
-
-	/* backup_section is at offset 8 in the superblock struct */
-	uint8_t backup_section = buf[8];
-
-	if (backup_section == BOOT_FW_SECTION_A)
-	{
-		return SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_B);
-	}
-	return SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_A);
-}
 
 static const char * get_download_area_name(uint32_t addr)
 {
@@ -142,7 +113,7 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 	case XMODEM_EVT_FILE_CHUNK_RECEIVED:
 		if(s_total_bytes_received == 0U)
 		{
-			s_write_addr = get_download_address();
+			s_write_addr = boot_get_download_address();
 			s_rx_buff_index = 0U;
 			s_transfer_overflow = false;
 		}
@@ -260,7 +231,7 @@ static void xmodem_stop_mode(void)
 static void xmodem_start_mode(void)
 {
 	CSLOG("XMODEM mode activated. Waiting for file transfer...\r\n");
-	uint32_t dl_addr = get_download_address();
+	uint32_t dl_addr = boot_get_download_address();
 	CSLOG("Target area: %s (0x%06X)\r\n", get_download_area_name(dl_addr), (unsigned)dl_addr);
 	CSLOG("Start timeout: 1 min, inactivity timeout: 10 min.\r\n");
 
@@ -399,7 +370,7 @@ static int xmodem_shell_handler(int argc, char *argv[])
 
 	if (strcmp(argv[1], "status") == 0)
 	{
-		uint32_t dl_addr = get_download_address();
+		uint32_t dl_addr = boot_get_download_address();
 		SHELL_LOG("XMODEM mode: %s\r\n", s_xmodem_active ? "ACTIVE" : "inactive");
 		SHELL_LOG("Target area: %s (0x%06X)\r\n", get_download_area_name(dl_addr), (unsigned)dl_addr);
 		return 0;
