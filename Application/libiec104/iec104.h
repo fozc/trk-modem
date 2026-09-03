@@ -52,7 +52,7 @@ void iec104_set_common_address(uint16_t address);
 void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config);
 void iec104_data_received(const uint8_t *data, uint16_t length);
 void libiec104_poll(void);
-void iec104_send_s_frame(uint16_t receive_seq);
+bool iec104_send_s_frame(uint16_t receive_seq);
 
 uint16_t iec104_get_receive_sn(void);
 uint16_t iec104_get_send_sn(void);
