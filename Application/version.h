@@ -14,9 +14,14 @@
 
 #define PRODUCT_TYPE            "Troika-Smart-Breaker"
 
-#define __COMPILE_TIME__	("2025-09-16")
-#define __COMPILE_DATE__	("22:05:23")
-#define GIT_COMMIT_HASH		("fc7feae")
+/* Derleme damgasi: derleyici makrolari, kullanan dosya derlendiginde
+ * guncellenir. Surum cikislari temiz (rebuild) derleme ile alinmalidir. */
+#define __COMPILE_DATE__        __DATE__     /* ornek: "Sep  3 2026" */
+#define __COMPILE_TIME__        __TIME__     /* ornek: "21:45:12"    */
+
+/* Kisaltilmis git hash'i pre-build adimi (tools/gen_version.py)
+ * tarafindan version_gen.h icine uretilir. */
+#include "version_gen.h"
 
 #endif /* _VERSION_H_ */
 

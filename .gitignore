@@ -80,3 +80,6 @@ doc/*
 tools/rf-hub-sim/rf_hub_sim.exe
 tools/rf-hub-sim/hub_selftest.exe
 tools/rf-hub-sim/build/
+
+# uretilmis surum dosyasi (tools/gen_version.py, pre-build adimi)
+Application/version_gen.h

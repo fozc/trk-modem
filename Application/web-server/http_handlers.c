@@ -450,10 +450,13 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"UretimTarihi\":%u,", config->production_date);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"LifeTime\":%u,", config->lifetime);
     /* Firmware versions as semantic version strings */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ModemYazilimVeriyonu\":\"v%u.%u.%u\",", 
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%s %s %s)\",",
     		VERSION_MAJOR,
 			VERSION_MINOR,
-			VERSION_PATCH);
+			VERSION_PATCH,
+			__COMPILE_DATE__,
+			__COMPILE_TIME__,
+			GIT_COMMIT_HASH);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RFYazilimVeriyonu\":\"v%u.%u.%u\",",
                      config->rf_firmware_version[0],
                      config->rf_firmware_version[1],
