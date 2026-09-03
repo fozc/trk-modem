@@ -19,6 +19,7 @@
 #include "efw_crc.h"
 #include "console_logger.h"
 #include "elog.h"
+#include "app_ipc.h"
 
 #include <string.h>
 #include <stddef.h>
@@ -42,6 +43,7 @@ static struct {
     rfwu_header_t hdr;          /* decoded header of the current packet  */
 
     /* Transfer state */
+    bool     authenticated;     /* HELLO auth passed on this connection  */
     bool     session_active;
     uint32_t write_head;        /* next byte offset expected from client */
 
@@ -274,6 +276,7 @@ static void handle_cmd_hello(void)
     }
 
     s.session_active = true;
+    s.authenticated  = true;
     s.write_head     = resume_offset;
     send_ack(s.write_head);
 }
@@ -383,12 +386,45 @@ static void handle_cmd_finish(void)
 
 static void handle_cmd_query(void)
 {
+    if (!s.authenticated) {
+        send_nack(RFWU_ERR_AUTH, 0U);
+        return;
+    }
+
     send_status();
+}
+
+/* True when NVRAM holds a fully received image awaiting installation. */
+static bool transfer_is_complete(void)
+{
+    const rfwu_nvram_t *p_nv = nvram_get_rfwu();
+
+    return (p_nv->magic == RFWU_SESSION_MAGIC) &&
+           (p_nv->total_size != 0U) &&
+           (p_nv->received_bytes == p_nv->total_size);
 }
 
 static void handle_cmd_reboot(void)
 {
+    if (!s.authenticated) {
+        send_nack(RFWU_ERR_AUTH, 0U);
+        return;
+    }
+
     CCSLOG(XCOLOR_RED, "[RFWU] Reboot requested\r\n");
+
+    /* Without this the bootloader boots straight back into the running
+     * application and the downloaded image is never installed. */
+    if (transfer_is_complete()) {
+        elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_START, 0U);
+
+        if (app_ipc_request_update(false) != APP_IPC_OK) {
+            CCSLOG(XCOLOR_RED, "[RFWU] IPC update request failed\r\n");
+            send_nack(RFWU_ERR_FLASH, s.write_head);
+            return;
+        }
+    }
+
     send_ack(s.write_head);
 
     if ((s.p_ops != NULL) && (s.p_ops->fw_reboot != NULL)) {
@@ -398,6 +434,11 @@ static void handle_cmd_reboot(void)
 
 static void handle_cmd_abort(void)
 {
+    if (!s.authenticated) {
+        send_nack(RFWU_ERR_AUTH, 0U);
+        return;
+    }
+
     CCSLOG(XCOLOR_YELLOW, "[RFWU] Transfer aborted\r\n");
     session_clear();
     send_ack(0U);
@@ -541,4 +582,5 @@ void rfwu_on_disconnect(void)
     /* Reset parser; NVRAM session is preserved for resume on next connection */
     reset_parser();
     s.session_active = false;
+    s.authenticated  = false;
 }
