@@ -112,7 +112,21 @@ void iec104_send_general_interrogation_con(iec104_qoi_t qoi, uint8_t is_negative
 void iec104_send_general_interrogation_term(iec104_qoi_t qoi);
 
 
-void iec104_get_feeder_temporary_faults(uint8_t *buff, uint16_t *len, uint16_t max_len, uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause);
-void iec104_get_feeder_permanent_faults(uint8_t *buff, uint16_t *len, uint16_t max_len, uint8_t feeder_id, phase_id_t phase, cause_of_transmission_t cause);
+bool iec104_is_link_active(void);
+
+/* Bir fider/faz icin arıza kayitlarinin yayim ilerlemesi. Cagiran sifirlanmis
+ * bir kopya ile baslar ve yayim bitene kadar ayni kopyayla geri gelir. */
+typedef struct
+{
+    uint8_t step;       /* sirasi gelen alan (0..3) */
+    uint8_t obj_index;  /* o alanda kalinan nesne indisi */
+} iec104_fault_emit_state_t;
+
+/* Kareleri tek TX huniye (iec104_send) verir. Kuyruk veya k-penceresi dolarsa
+ * false doner; cagiran beklemeli ve ayni state ile yeniden cagirmalidir. */
+bool iec104_emit_feeder_temporary_faults(uint8_t feeder_id, phase_id_t phase,
+    cause_of_transmission_t cause, iec104_fault_emit_state_t *state);
+bool iec104_emit_feeder_permanent_faults(uint8_t feeder_id, phase_id_t phase,
+    cause_of_transmission_t cause, iec104_fault_emit_state_t *state);
 
 #endif /* IEC104_H_ */
