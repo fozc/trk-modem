@@ -29,7 +29,11 @@ static const uint8_t supported_asdu_types[] = {
 	C_CS_NA_1 // 103, clock synchronization command
 };
 
-static uint8_t iec104_rx_buffer[512] = {0};
+/* Bir SRECV yigini (1024 B) ile bekleyen en buyuk parcali APDU (254 B) ayni
+ * anda sigmalidir; aksi halde TCP segment sinirinda kare kaybi olur. */
+#define IEC104_RX_BUFFER_SIZE 1280U
+
+static uint8_t iec104_rx_buffer[IEC104_RX_BUFFER_SIZE] = {0};
 static uint16_t iec104_rx_buffer_len = 0;
 
 static iec104_io_t iec_io = {0};
@@ -1137,14 +1141,20 @@ void iec104_data_received(const uint8_t *data, uint16_t length)
         return;
     }
 
-	if(length > sizeof(iec104_rx_buffer)){
-		CSLOG("IEC104 RX buffer overflow! Data length: %d, Buffer size: %d\r\n", length, sizeof(iec104_rx_buffer));
+	if(length > IEC104_RX_BUFFER_SIZE){
+		/* Yigin tek basina arabellege sigmiyor: akis senkronu zaten kayip. */
+		CSLOG_ERR("IEC104 RX chunk too large! Data length: %u, Buffer size: %u\r\n",
+		          (unsigned)length, (unsigned)IEC104_RX_BUFFER_SIZE);
+		iec104_rx_buffer_len = 0;
 		return;
 	}
 
-	if(iec104_rx_buffer_len + length > sizeof(iec104_rx_buffer)){
-		length = sizeof(iec104_rx_buffer) - iec104_rx_buffer_len;
-		CSLOG("IEC104 RX buffer overflow on append! Current length: %d, Data length: %d, Buffer size: %d\r\n", iec104_rx_buffer_len, length, sizeof(iec104_rx_buffer));
+	if((uint32_t)iec104_rx_buffer_len + (uint32_t)length > IEC104_RX_BUFFER_SIZE){
+		/* Basta tamamlanmayan bir kare bekliyor. Yeni veriyi kirpmak yerine
+		 * bayat kalintiyi at: kirpma sessiz bozulma, atma tek seferlik kayiptir. */
+		CSLOG_ERR("IEC104 RX buffer full, dropping %u stale bytes (incoming %u)\r\n",
+		          (unsigned)iec104_rx_buffer_len, (unsigned)length);
+		iec104_rx_buffer_len = 0;
 	}
 
 	memcpy(&iec104_rx_buffer[iec104_rx_buffer_len], data, length);
@@ -1245,19 +1255,26 @@ void iec104_process_package(void)
         idx += frame_length;
     }
 
-    if(idx > 0 && idx < iec104_rx_buffer_len)
+    /* idx == 0 iken arabellegin basinda henuz tamamlanmamis bir kare vardir;
+     * silinirse sonraki TCP parcasi karenin ortasindan baslar ve desync olur. */
+    if(idx > 0)
     {
-        uint16_t remaining = iec104_rx_buffer_len - idx;
-        memmove(iec104_rx_buffer, &iec104_rx_buffer[idx], remaining);
-        iec104_rx_buffer_len = remaining;
-        CSLOG("Remaining %d bytes in buffer\r\n", remaining);
-    }
-    else
-    {
-        iec104_rx_buffer_len = 0;
+        if(idx < iec104_rx_buffer_len)
+        {
+            uint16_t remaining = iec104_rx_buffer_len - idx;
+            memmove(iec104_rx_buffer, &iec104_rx_buffer[idx], remaining);
+            iec104_rx_buffer_len = remaining;
+            CSLOG("Remaining %d bytes in buffer\r\n", remaining);
+        }
+        else
+        {
+            iec104_rx_buffer_len = 0;
+        }
     }
 
-    package_ready = (iec104_rx_buffer_len >= 6);
+    /* Arabellekte kalan baytlar tanimi geregi eksik bir karedir; yeni veri
+     * gelmeden tekrar ayristirmanin anlami yok. */
+    package_ready = false;
 }
 
 void libiec104_poll(void)
