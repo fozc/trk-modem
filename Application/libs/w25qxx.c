@@ -342,6 +342,10 @@ int w25qxx_erase_sector(uint32_t addr)
 		return 1;
 	}
 
+	/* Sektor silme 45-400 ms surer ve kooperatif cekirdegi bloklar;
+	 * EWDT'yi silme oncesi besle (write_buff icindeki desen ile ayni). */
+	bsp_kick_wdt();
+
 	int res = w25qxx_erase_(CMD_SECTOR_ERASE, addr);
 	return res;
 }
