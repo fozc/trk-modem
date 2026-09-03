@@ -44,6 +44,32 @@ static uint8_t  s_rx_buff[4096];
 static uint16_t s_rx_buff_index = 0U;
 static uint32_t s_write_addr = 0U;
 static bool     s_transfer_overflow = false;
+static bool     s_write_failed = false;
+
+/* Sector erase can take hundreds of ms and blocks every other process,
+ * so the watchdog has to be fed around it. */
+static bool flash_write_chunk(uint32_t addr, const void *data, uint32_t len)
+{
+	bsp_kick_wdt();
+
+	int res = w25qxx_erase_sector(addr);
+	if(res != W25QXX_RES_OK)
+	{
+		CSLOG_ERR("XMODEM: sector erase failed at 0x%06X (%d)\r\n", (unsigned)addr, res);
+		return false;
+	}
+
+	bsp_kick_wdt();
+
+	res = w25qxx_write_sector(addr, data, len);
+	if(res != W25QXX_RES_OK)
+	{
+		CSLOG_ERR("XMODEM: sector write failed at 0x%06X (%d)\r\n", (unsigned)addr, res);
+		return false;
+	}
+
+	return true;
+}
 
 static volatile bool s_xmodem_active = false;
 static volatile bool s_transfer_started = false;
@@ -98,14 +124,16 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 		{
 			if(s_total_bytes_received < FIRMWARE_FLASH_AREA_SIZE)
 			{
-				w25qxx_erase_sector(s_write_addr);
-				w25qxx_write_sector(s_write_addr, s_rx_buff, s_rx_buff_index);
+				if(!flash_write_chunk(s_write_addr, s_rx_buff, s_rx_buff_index))
+				{
+					s_write_failed = true;
+				}
 				s_write_addr += 4096U;
 			}
 			s_rx_buff_index = 0U;
 		}
 
-		s_download_success = true;
+		s_download_success = !s_write_failed;
 		s_download_complete = true;
 
 		break;
@@ -116,6 +144,7 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 			s_write_addr = boot_get_download_address();
 			s_rx_buff_index = 0U;
 			s_transfer_overflow = false;
+			s_write_failed = false;
 		}
 
 		/* Abort if firmware exceeds max size. */
@@ -145,8 +174,10 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 			{
 				if(s_total_bytes_received < FIRMWARE_FLASH_AREA_SIZE)
 				{
-					w25qxx_erase_sector(s_write_addr);
-					w25qxx_write_sector(s_write_addr, s_rx_buff, s_rx_buff_index);
+					if(!flash_write_chunk(s_write_addr, s_rx_buff, s_rx_buff_index))
+					{
+						s_write_failed = true;
+					}
 					s_write_addr += 4096U;
 				}
 				s_rx_buff_index = 0U;
@@ -245,6 +276,7 @@ static void xmodem_start_mode(void)
 	s_transfer_started = false;
 	s_download_complete = false;
 	s_download_success = false;
+	s_write_failed = false;
 	s_last_activity_tick = bsp_get_tick();
 
 	/* Start the 10 ms poll process for this transfer session */
