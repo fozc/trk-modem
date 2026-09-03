@@ -759,9 +759,11 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
         link_active = true; // !!! iec104_reset bunu sifirliyor, bu nedenle link_active true olarak ayarlanmali
         break;
     case IEC104_STOPDT_ACT:
-        CSLOG("  StopDT Act received, sending StopDT Con\r\n");
+        CSLOG("  StopDT Act received, stopping data transfer\r\n");
+        /* Veri transferi durur: bu noktadan sonra I/S kareleri islenmez ve
+         * yeni I-frame uretilmez. Yeniden baslatma STARTDT_ACT ile olur. */
+        link_active = false;
         iec_io.send(stopdt_act_con, sizeof(stopdt_act_con));
-        //TODO: Baglantiyi kes
         break;
     case IEC104_TESTFR_ACT:
         CSLOG("  TestFR Act received, sending TestFR Con\r\n");
