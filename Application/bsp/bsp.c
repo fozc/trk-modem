@@ -11,6 +11,7 @@
 #include "uart.h"
 #include "led_driver.h"
 #include "gsm_signal_led.h"
+#include "time_service.h"
 
 #include <stdbool.h>
 
@@ -30,6 +31,9 @@ static uint32_t base_epoch_time = 0;
 void bsp_tick_handler(void)
 {
 	life_timer++;
+	time_service_tick(); /* life_timer ile kilit adim: ikisi de bu kesmede
+	                      * +1 artar; millis() ile yazilan select_time
+	                      * karsilastirmalari buna dayanir */
 	if(etimer_pending()) {
 		etimer_request_poll();
 	}
