@@ -33,6 +33,7 @@
 #include "modem_config.h"
 #include "periodic_reset.h"
 #include "app_ipc.h"
+#include "boot.h"
 
 #include "fault_log.h"
 #include "stack_monitor.h"
@@ -222,6 +223,9 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	w25qxx_init();
 	//w25qxx_test();
+
+	/* Resolves the A/B download target; must run before any update path. */
+	boot_init();
 
 	/* elog must be up before any module that logs to it (nvram recovery,
 	 * power board, ...). */
