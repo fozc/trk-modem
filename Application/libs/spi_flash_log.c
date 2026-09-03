@@ -321,11 +321,7 @@ log_status_t log_write(log_ctx_t *ctx, const void *payload) {
     if (payload == NULL) {
         return LOG_ERR_INVALID_PARAM;
     }
-    /* Seq taşması koruması: 0xFFFFFFFF ENTRY_SEQ_EMPTY ile çakıştığı için bu
-     * sınıra ulaşılınca yazma güvenli biçimde durdurulur. */
-    if (ctx->next_seq == ENTRY_SEQ_EMPTY) {
-        return LOG_ERR_SEQ_OVERFLOW;
-    }
+    /* Seq taşma sınırı yoktur: seq_next(), ENTRY_SEQ_EMPTY'yi atlayarak sarar. */
 
     uint8_t  buf[LOG_MAX_ENTRY_SIZE];
     uint16_t seq = (uint16_t)ctx->next_seq;
@@ -438,10 +434,9 @@ log_status_t log_read_last(log_ctx_t *ctx, uint32_t count,
         return LOG_OK;                    /* Yineleme çoktan bitti */
     }
     if (page->_state == 0u) {
-        if (ctx->next_seq == 0u) {
-            page->_state = 2u;            /* Log boş */
-            return LOG_OK;
-        }
+        /* "Log boş" için next_seq sınanmaz: seq 0xFFFE'den sonra 0'a sardığı
+         * için bu değer boş logu değil sarmayı da gösterebilir. Boş log zaten
+         * aşağıdaki geri tarama ilk ENTRY_EMPTY slotta durarak saptanır. */
         page->_state  = 1u;
         /* Yazma head'inin hemen gerisinden (yazılmış son slottan) başla */
         page->_sector = ctx->write_sector_index;

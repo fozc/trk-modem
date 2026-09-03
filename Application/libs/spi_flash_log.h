@@ -55,7 +55,7 @@ typedef enum {
     LOG_ERR_FLASH_PROGRAM   = -3,   /**< Flash programlama hatası                           */
     LOG_ERR_FLASH_ERASE     = -4,   /**< Flash sektör silme hatası                          */
     LOG_ERR_NOT_INITIALIZED = -5,   /**< Bağlam (context) henüz init edilmedi               */
-    LOG_ERR_SEQ_OVERFLOW    = -6    /**< Seq numarası taştı (2^32 sınırı)                   */
+    LOG_ERR_SEQ_OVERFLOW    = -6    /**< KULLANILMIYOR: seq 16-bit ve sarmalı; ayrılmıştır  */
 } log_status_t;
 
 /* -------------------------------------------------------------------------- */
