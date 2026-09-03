@@ -625,6 +625,14 @@ void modbus_process_notify_config_changed(void)
 {
 	/* Aninda uygula: yeni hiz hemen devreye girer. */
 	modbus_uart_apply_baudrate();
+
+	/* CihazID acilista bir kez okunup uygulanir; web'den degistirilince
+	 * de aninda uygula (API 1..247 disini reddeder, web tarafi zaten
+	 * dogruluyor). Yoksa kullanici "kaydedildi" alir ama cihaz eski
+	 * adresten yanitlamaya devam ederdi. */
+	uint8_t id = nvram_get_modbus_device_addr();
+	libmodbusrtu_modbus_set_slave_id(&s_modbus, id);
+	CSLOG_WARN("MODBUS: cihaz adresi %u olarak uygulandi\r\n", (unsigned)id);
 }
 
 void modbus_process_isr_rx_byte(uint8_t byte)
