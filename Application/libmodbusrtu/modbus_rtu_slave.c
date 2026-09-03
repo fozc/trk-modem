@@ -361,6 +361,13 @@ static void modbus_rx_reset(modbus_slave_t *p_ctx)
     p_ctx->busy        = false;
 }
 
+void libmodbusrtu_modbus_reset_rx(modbus_slave_t *p_ctx)
+{
+    if (p_ctx != NULL) {
+        modbus_rx_reset(p_ctx);
+    }
+}
+
 void libmodbusrtu_modbus_rx_byte(modbus_slave_t *p_ctx, uint8_t byte)
 {
     /* The main loop owns the buffer while parsing - drop bytes until it is done. */
