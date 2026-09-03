@@ -26,11 +26,16 @@ static const char *banner =  "\r\n+=================TROIKA======================
 #endif
 
 static volatile uint32_t life_timer = 0;
+static volatile uint32_t life_timer_wraps = 0; /* life_timer'in 2^32 ms sarma sayisi */
 static uint32_t base_epoch_time = 0;
 
 void bsp_tick_handler(void)
 {
 	life_timer++;
+	if (0U == life_timer) /* 0xFFFFFFFF -> 0 sarmasi aninda sayilir */
+	{
+		life_timer_wraps++;
+	}
 	time_service_tick(); /* life_timer ile kilit adim: ikisi de bu kesmede
 	                      * +1 artar; millis() ile yazilan select_time
 	                      * karsilastirmalari buna dayanir */
@@ -143,9 +148,28 @@ uint32_t bsp_get_run_time(void)
 	return life_timer;
 }
 
+/* life_timer + sarma sayisini tutarli ikili olarak oku; ikisi de TIM17
+ * ISR'inde guncellenir. Kilitsiz okuma sarma aninda (wraps eski, ticks
+ * yeni) 49,7 gunluk hata uretir - o yuzden PRIMASK (rtc_snapshot deseni).
+ * 2^32 ms = 4294967,296 s oldugundan toplam 64-bit hesaplanir; base'e
+ * katlama yapsak her sarmada 0,296 s birikirdi. */
+static uint64_t life_timer_total_ms(void)
+{
+	uint32_t wraps;
+	uint32_t ticks;
+	uint32_t primask = __get_PRIMASK();
+
+	__disable_irq();
+	wraps = life_timer_wraps;
+	ticks = life_timer;
+	__set_PRIMASK(primask);
+
+	return (((uint64_t)wraps << 32) + (uint64_t)ticks);
+}
+
 uint32_t bsp_get_epoch_time(void)
 {
-	return (life_timer / 1000U) + base_epoch_time;
+	return (uint32_t)(life_timer_total_ms() / 1000U) + base_epoch_time;
 }
 
 pdate_t bsp_get_pdate(void)
@@ -163,7 +187,7 @@ pdate_t bsp_get_pdate(void)
 
 void bsp_set_epoch_time(uint32_t epoch_time)
 {
-	base_epoch_time = epoch_time - (life_timer / 1000U);
+	base_epoch_time = epoch_time - (uint32_t)(life_timer_total_ms() / 1000U);
 }
 
 uint32_t bsp_get_tick(void)
