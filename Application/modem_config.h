@@ -25,6 +25,12 @@ uint32_t modem_config_get_serial_number(void);
 uint16_t modem_config_get_web_port(void);
 void modem_config_set_web_port(uint16_t port);
 
+// Listener timeout settings (seconds, 0 = disabled)
+uint16_t modem_config_get_web_first_data_timeout_sec(void);
+uint16_t modem_config_get_web_idle_timeout_sec(void);
+uint16_t modem_config_get_iec104_first_data_timeout_sec(void);
+uint16_t modem_config_get_iec104_idle_timeout_sec(void);
+
 // sim_card_pin (Read-Write)
 uint16_t modem_config_get_sim_pin(void);
 void modem_config_set_sim_pin(uint16_t pin);

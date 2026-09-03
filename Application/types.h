@@ -201,7 +201,7 @@ typedef struct
 /** NVRAM layout surumu. Yapi boyutu/ofseti degistiginde bump edilir
  *  (nvram_init eski surumu bilincli default-reset ile karsilar).
  *  v2: eski rf_config alani kaldirildi (tek-blok modeli tek alan). */
-#define NVRAM_SCHEMA_VERSION  2U
+#define NVRAM_SCHEMA_VERSION  1U
 
 typedef struct
 {

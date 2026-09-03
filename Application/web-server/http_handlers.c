@@ -105,6 +105,11 @@ const char* http_handlers_get_query_string(void)
     return handler_state.current_query_string;
 }
 
+bool http_handlers_session_active(void)
+{
+    return handler_state.session_token != 0U;
+}
+
 bool http_handlers_is_authenticated(void)
 {
     return handler_state.is_authenticated;
@@ -465,6 +470,10 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"Time\":%u,", rtc_get_epoch());
     pos += xsnprintf(buf + pos, buf_size - pos, "\"TimeZone\":%d,", config->time_zone);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"PeriyodikModemResetPeriyodu\":%u,", config->periodic_modem_reset_period);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"WebIlkVeriZamanAsimi\":%u,", config->web_first_data_timeout_sec);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"WebBostaKalmaZamanAsimi\":%u,", config->web_idle_timeout_sec);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"IEC104IlkVeriZamanAsimi\":%u,", config->iec104_first_data_timeout_sec);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"IEC104BostaKalmaZamanAsimi\":%u,", config->iec104_idle_timeout_sec);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"DevreyeAlinmaZamani\":%u", config->commissioning_time);
     
     pos += xsnprintf(buf + pos, buf_size - pos, "}");

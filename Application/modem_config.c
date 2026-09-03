@@ -71,6 +71,26 @@ uint16_t modem_config_get_web_port(void)
 	return modem_config->web_interface_port;
 }
 
+uint16_t modem_config_get_web_first_data_timeout_sec(void)
+{
+	return modem_config->web_first_data_timeout_sec;
+}
+
+uint16_t modem_config_get_web_idle_timeout_sec(void)
+{
+	return modem_config->web_idle_timeout_sec;
+}
+
+uint16_t modem_config_get_iec104_first_data_timeout_sec(void)
+{
+	return modem_config->iec104_first_data_timeout_sec;
+}
+
+uint16_t modem_config_get_iec104_idle_timeout_sec(void)
+{
+	return modem_config->iec104_idle_timeout_sec;
+}
+
 void modem_config_set_web_port(uint16_t port)
 {
 	modem_config->web_interface_port = port;

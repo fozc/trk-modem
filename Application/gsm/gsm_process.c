@@ -492,6 +492,7 @@ void gsm_normal_mode(void)
 
 	gsm_listener_iec104_process();
 	gsm_listener_web_process();
+	gsm_listener_timeout_watch();
 	//gsm_dialer_socket_process();
 
 	gsm_periodical_event_process();

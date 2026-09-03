@@ -514,6 +514,7 @@ void      gsm_listener_set_rx_available     (gsm_listener_id_t id, uint8_t v);
 uint8_t   gsm_listener_get_rx_available     (gsm_listener_id_t id);
 void      gsm_listener_set_new_conn_req     (gsm_listener_id_t id, uint8_t v);
 uint8_t   gsm_listener_get_new_conn_req     (gsm_listener_id_t id);
+void      gsm_listener_timeout_watch(void);
 void      gsm_listener_request_close_socket(gsm_listener_id_t id);
 void      gsm_listener_request_close_socket_clear(gsm_listener_id_t id);
 uint8_t   gsm_listener_is_close_socket_requested(gsm_listener_id_t id);

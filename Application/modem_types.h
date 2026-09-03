@@ -73,6 +73,10 @@ typedef struct
     uint32_t production_date;                 // RO Uretim tarihi epoch olarak
     uint32_t lifetime;                        // RO Cihazin toplam calisma suresi saniye cinsinden
     uint32_t periodic_modem_reset_period;     // RW Periyodik modem reset periyodu saniye cinsinden
+    uint16_t web_first_data_timeout_sec;         // RW Web listener: ilk veri zaman asimi (s), 0=kapali
+    uint16_t web_idle_timeout_sec;               // RW Web listener: bosta kalma zaman asimi (s), 0=kapali
+    uint16_t iec104_first_data_timeout_sec;      // RW IEC104 listener: ilk veri zaman asimi (s), 0=kapali
+    uint16_t iec104_idle_timeout_sec;            // RW IEC104 listener: bosta kalma zaman asimi (s), 0=kapali
     uint32_t commissioning_time;              // RO Devreye alma zamani (epoch)
     uint8_t  rf_firmware_version[4];          // RO RF firmware versiyonu semantic version
     uint32_t web_session_counter;                 // RO Modem oturum sayaci
