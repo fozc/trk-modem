@@ -410,7 +410,9 @@ void shell_on_rx_received(int chr)
 		}
 		else
 		{
-			if(rx_idx < SHELL_TEXT_MAXLEN)
+			/* Backspace satira girmez; yalnizca onceki karakteri siler.
+			 * (Sakla-sonra-geri-al dansi dolu tamponda yanlis siliyordu.) */
+			if((chr != SHELL_BACKSPACE_CODE) && (rx_idx < SHELL_TEXT_MAXLEN))
 			{
 				//TODO: start timeouttimer
 				rx_buff[rx_idx++] = (uint8_t)chr;
@@ -428,7 +430,6 @@ void shell_on_rx_received(int chr)
 			}
 			else if(chr == SHELL_BACKSPACE_CODE)
 			{
-				rx_idx--; /* remove the backspace character */
 				if(rx_idx > 0)
 				{
 					rx_idx--; /* remove the previous character */
