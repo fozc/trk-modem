@@ -198,6 +198,29 @@ static inline i_format_control_t make_iframe_control(uint16_t send_seq, uint16_t
     };
 }
 
+/* Kalite bayraklari standart SIQ/DIQ bit konumlarinda gelir: BL(4) SB(5) NT(6) IV(7). */
+static inline siq_t make_siq(uint8_t value, uint8_t quality)
+{
+    return (siq_t){
+        .spi         = (uint8_t)(value & 0x01U),
+        .blocked     = (uint8_t)((quality >> 4) & 0x01U),
+        .substituted = (uint8_t)((quality >> 5) & 0x01U),
+        .not_topical = (uint8_t)((quality >> 6) & 0x01U),
+        .invalid     = (uint8_t)((quality >> 7) & 0x01U)
+    };
+}
+
+static inline diq_t make_diq(uint8_t value, uint8_t quality)
+{
+    return (diq_t){
+        .dpi         = (uint8_t)(value & 0x03U),
+        .blocked     = (uint8_t)((quality >> 4) & 0x01U),
+        .substituted = (uint8_t)((quality >> 5) & 0x01U),
+        .not_topical = (uint8_t)((quality >> 6) & 0x01U),
+        .invalid     = (uint8_t)((quality >> 7) & 0x01U)
+    };
+}
+
 static inline asdu_header_t make_asdu_header(uint8_t type_id, cot_t cot, uint16_t originator_address, uint16_t common_address,
                                              uint8_t vsq_number_of_objects, uint8_t vsq_sq_bit)
 {
@@ -1374,7 +1397,7 @@ void iec104_send_M_SP_TB_1_spontan(ioa_3byte_t ioa, uint8_t value, uint8_t quali
     m_sp_tb_1_t *m_sp_tb_1 = (m_sp_tb_1_t *)&pkt.data[DATA_START_IDX];
 
     m_sp_tb_1->ioa = ioa;
-    m_sp_tb_1->siq.spi = (quality << 1) | value;
+    m_sp_tb_1->siq = make_siq(value, quality);
 
 #ifdef IEC104_TEST   
     m_sp_tb_1->timestamp = cp56time2a_make(44073, 25, 21, 1, 5, 8, 25); 
@@ -1414,7 +1437,7 @@ void iec104_send_M_DP_TB_1_spontan(ioa_3byte_t ioa,  uint8_t value, uint8_t qual
     // Double Point Information Object
 
     pkt.frame.m_dp_tb_1.ioa = ioa;
-    pkt.frame.m_dp_tb_1.diq.dpi = value;
+    pkt.frame.m_dp_tb_1.diq = make_diq(value, quality);
     pkt.frame.m_dp_tb_1.timestamp = cp56time2a_now();
 
    

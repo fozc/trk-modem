@@ -68,6 +68,8 @@ bool iec104_ioa_3byte_equals(ioa_3byte_t ioa1, ioa_3byte_t ioa2);
 uint32_t iec104_ioa_3byte_to_uint32(ioa_3byte_t ioa);
  
 
+/* value: SPI (0/1) veya DPI (0-3). quality: standart SIQ/DIQ kalite bayti -
+ * BL(0x10), SB(0x20), NT(0x40), IV(0x80). */
 void iec104_send_M_SP_TB_1_spontan(ioa_3byte_t ioa, uint8_t value, uint8_t quality);
 void iec104_send_M_DP_TB_1_spontan(ioa_3byte_t ioa, uint8_t value, uint8_t quality);
 void iec104_send_M_ME_TF_1(cot_t cot, ioa_3byte_t ioa, float value, qds_t quality);
