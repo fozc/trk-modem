@@ -294,17 +294,28 @@ void gsm_reset_process_old(void)
 	gsm_load_common_init_vector();
 	gsm_set_init_state(GSM_RESET_MODULE);
 	gsm_set_main_state(GSM_COMMON_INIT_MODE);
-	gsm.listener[GSM_LISTENER_WEB].state = GSM_LS_IDLE;
 	gsm.dialer_socket_state = 0;
 	gsm.tx_error   = 0;
 	gsm.tx_flag    = GSM_TX_NOT_AVAILABLE;
 
-	gsm.listener[GSM_LISTENER_WEB].socket_timer = 0;
 	gsm.join_timer = 0;
 	gsm.disconnect_from_headend = 0;
 
+	/* Her iki listener SM -> IDLE. Yalniz WEB'i sifirlamak IEC104
+	 * makinesini cevapsiz kalmis bir wait-response durumunda birakiyor;
+	 * takilan makine siradaki sorgunun cevabini caliyor ve periodical
+	 * zincirini bloke ediyordu (K4b.1). gsm_wtd_soft_recover'daki
+	 * desenin aynisi. */
+	for (uint8_t i = 0; i < (uint8_t)GSM_LISTENER_COUNT; ++i)
+	{
+		gsm.listener[i].state = GSM_LS_IDLE;
+		gsm.listener[i].phase = GSM_INIT_PHASE_SEND;
+		gsm.listener[i].socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
+	}
+
 	gsm.periodical_event_state = 0;
 	gsm.periodical_phase       = GSM_INIT_PHASE_SEND;
+	gsm.net_check_requested    = 0;
 	gsm.sms_check_timer 	 = gsm_get_tick() + 30 * 1000;
 	gsm.signal_quality_timer = gsm_get_tick() + 30 * 1000;
 	gsm.simcard_state_timer  = gsm_get_tick() + 30 * 1000;
