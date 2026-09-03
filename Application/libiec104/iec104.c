@@ -125,16 +125,30 @@ bool iec104_get_sbo_state(void)
 static bool iec104_send(const uint8_t *data, size_t length)
 {
 	const iec104_package_t * pkt = (const iec104_package_t *)data;
+	const bool is_i_frame = iec104_is_i_format(pkt);
 
-	if(iec104_is_i_format(pkt))
+	if(is_i_frame && (k_counter >= config.k_max))
 	{
-		if(k_counter >= config.k_max)
-		{
-			CSLOG_ERR("Window full, cannot send more I-frames\r\n");
-            //TODO: que'ya almamiz gerekiyor!
-			return false;
-		}
+		CSLOG_ERR("Window full, cannot send more I-frames\r\n");
+		return false;
+	}
 
+	if(NULL == iec_io.send)
+	{
+		CSLOG_ERR("No transport bound, frame dropped\r\n");
+		return false;
+	}
+
+	/* Sayaclar yalnizca kare gercekten tasiyiciya teslim edildiginde ilerler;
+	 * aksi halde master, hic gonderilmemis bir N(S) bekler. */
+	if(iec_io.send(data, (uint16_t)length) != 0)
+	{
+		CSLOG_ERR("Transport rejected frame (%u bytes)\r\n", (unsigned)length);
+		return false;
+	}
+
+	if(is_i_frame)
+	{
 		// T1 zamanlayıcısı yalnızca ilk onaysız pakette sıfırlanıp başlatılmalıdır
 		if(k_counter == 0)
 		{
@@ -146,15 +160,11 @@ static bool iec104_send(const uint8_t *data, size_t length)
 		send_sn = (send_sn + 1) & 0x7FFF; // 15-bit maskeleme
 
 		// I-Frame gondererek karsi tarafi onaylamis olduk
-        w_counter = 0;
-        t2_timer = 0;
+		w_counter = 0;
+		t2_timer = 0;
 	}
 
-    if(iec_io.send) {
-        iec_io.send(data, length);
-    }
-
-    return true;
+	return true;
 }
 
 static int send_package(const uint8_t *data, uint16_t length)
@@ -798,7 +808,7 @@ void iec104_send_stopdt_act(void)
     iec_io.send(stopdt_con , sizeof(stopdt_con)); 
 }
 
-void iec104_send_s_frame(uint16_t receive_seq)
+bool iec104_send_s_frame(uint16_t receive_seq)
 {
 	receive_seq &= 0x7FFF; // 15-bits
 
@@ -811,7 +821,7 @@ void iec104_send_s_frame(uint16_t receive_seq)
     pkt.frame.apci.s_frame.format2 = 0x00;
 	pkt.frame.apci.s_frame.receive_seq = receive_seq;
 
-	iec104_send(pkt.data, 6);
+	return iec104_send(pkt.data, 6);
 }
 
 void on_ack_received(uint16_t nr) 
@@ -970,9 +980,10 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     on_ack_received(iframe->receive_seq);
 
     if(++w_counter >= config.w_max){
-        iec104_send_s_frame(receive_sn);
-        w_counter = 0;
-        t2_timer = 0; // Hatalı t1_timer ataması t2_timer olarak düzeltildi.
+        if(iec104_send_s_frame(receive_sn)){
+            w_counter = 0;
+            t2_timer = 0; // Hatalı t1_timer ataması t2_timer olarak düzeltildi.
+        }
     }
 
     // ASDU Tip Destegi
@@ -1302,9 +1313,10 @@ void libiec104_poll(void)
 	if((w_counter >= config.w_max) || ((w_counter > 0) && (t2_timer >= config.t2_max)))
 	{
         CSLOG("Sending ACK: %d\r\n", receive_sn);
-		iec104_send_s_frame(receive_sn);
-		t2_timer = 0;
-		w_counter = 0;
+		if(iec104_send_s_frame(receive_sn)){
+			t2_timer = 0;
+			w_counter = 0;
+		}
 	}
 
     if(t1_timer > config.t1_max)
@@ -1741,7 +1753,9 @@ void iec104_send_phase_currents(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
 
         CSLOG("Sending phase currents: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        iec104_send((uint8_t *)&pkt, total_len + 2);
+        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+            break;
+        }
 
         sent += batch;
     }
@@ -1816,7 +1830,9 @@ void iec104_send_fault_currents(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
 
         CSLOG("Sending fault currents: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        iec104_send((uint8_t *)&pkt, total_len + 2);
+        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+            break;
+        }
 
         sent += batch;
     }
@@ -1891,7 +1907,9 @@ void iec104_send_fault_durations(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
 
         CSLOG("Sending fault durations: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        iec104_send((uint8_t *)&pkt, total_len + 2);
+        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+            break;
+        }
 
         sent += batch;
     }
@@ -1964,7 +1982,9 @@ void iec104_send_fault_types(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
 
         CSLOG("Sending fault types: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        iec104_send((uint8_t *)&pkt, total_len + 2);
+        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+            break;
+        }
 
         sent += batch;
     }
@@ -2037,7 +2057,9 @@ void iec104_send_energy_states(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
 
         CSLOG("Sending energy states: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        iec104_send((uint8_t *)&pkt, total_len + 2);
+        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+            break;
+        }
 
         sent += batch;
     }
@@ -2124,7 +2146,9 @@ void iec104_send_nominal_current_states(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
 
         CSLOG("Sending nominal current states: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        iec104_send((uint8_t *)&pkt, apdu_len + 2);
+        if (!iec104_send((uint8_t *)&pkt, apdu_len + 2)) {
+            break;
+        }
 
         sent += batch;
     }
@@ -2197,7 +2221,9 @@ void iec104_send_rf_communication_states(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
 
         CSLOG("Sending RF communication states: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        iec104_send((uint8_t *)&pkt, total_len + 2);
+        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+            break;
+        }
 
         sent += batch;
     }
