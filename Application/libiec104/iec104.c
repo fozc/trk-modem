@@ -2321,19 +2321,34 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             (cot_t){.cause = cause, .pn_bit = 0, .test_bit = 0},
             config.originator_address, config.common_address, batch, 0);
 
+        memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
+        CSLOG("Sending fault ME_TF_1 (field=%d, type=%d): %d objs (sent %d/%d)\r\n",
+              field, log_type, batch, sent + batch, obj_count);
+
         if (buff != NULL && len != NULL) 
         {
             /*
-            * [MİMARİ UYARI - DİKKAT!]:
-            * Burada paketler iec104_send() fonksiyonundan geçirilmeden doğrudan dış bir arabelleğe (buff)
-            * yazılıyor. Sıra numarası (send_sn) doğru şekilde artırılsa da, IEC 104 state makinesindeki
-            * k_counter (onay bekleyen I-Frame sayısı) ARTIRILMAMAKTADIR ve t1_timer BAŞLATILMAMAKTADIR.
-            *
-            * Eğer bu buffer'daki veriler daha sonra TCP/GSM soketine doğrudan basılırsa, RTU bu paketlerin
-            * ulaşıp ulaşmadığını (T1 ACK Timeout ve K Max penceresi) takip edemez. Bu buffer'ı ağ üzerinden
-            * gönderen dış mekanizma, gönderdiği I-Frame sayısı kadar k_counter'ı artırmalı ve
-            * wait_for_ack = true yaparak T1 zamanlayıcısını tetiklemelidir.
+            * [MIMARI NOT]:
+            * Bu yolda kare iec104_send() yerine dis bir arabellege yaziliyor ve
+            * aga baska bir mekanizma tarafindan basiliyor. Sayaclar (send_sn,
+            * k_counter, t1) burada, ancak kare arabellege gercekten yazildiktan
+            * sonra ilerletilir; yer yoksa hicbir sayac dokunulmadan cikilir.
             */
+            if ((buff_written + total_len + 2) > max_len)
+            {
+                CSLOG_ERR("Not enough buffer space to write the packet\r\n");
+                break;
+            }
+
+            if (k_counter >= config.k_max)
+            {
+                CSLOG_ERR("Window full, cannot queue more I-frames\r\n");
+                break;
+            }
+
+            memcpy(&buff[buff_written], &pkt, total_len + 2);
+            buff_written += total_len + 2;
+            *len = buff_written;
 
             if (k_counter == 0)
             {
@@ -2346,26 +2361,13 @@ static void send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
 
             w_counter = 0;
             t2_timer = 0;
-        }
-
-        memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
-        CSLOG("Sending fault ME_TF_1 (field=%d, type=%d): %d objs (sent %d/%d)\r\n",
-              field, log_type, batch, sent + batch, obj_count);
-
-        if (buff != NULL && len != NULL) 
-        {
-            if (buff_written + total_len + 2 > max_len)
-            {
-                CSLOG_ERR("Not enough buffer space to write the packet\r\n");
-                return;
-            }
-            memcpy(&buff[buff_written], &pkt, total_len + 2);
-            buff_written += total_len + 2;
-            *len = buff_written;
         } 
         else 
         {
-            iec104_send((uint8_t *)&pkt, total_len + 2);
+            if (!iec104_send((uint8_t *)&pkt, total_len + 2))
+            {
+                break;
+            }
         }
         sent += batch;
     }
@@ -2447,19 +2449,34 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             (cot_t){.cause = cause, .pn_bit = 0, .test_bit = 0},
             config.originator_address, config.common_address, batch, 0);
 
+        memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
+        CSLOG("Sending fault SP_TB_1 (field=%d, type=%d): %d objs (sent %d/%d)\r\n",
+              field, log_type, batch, sent + batch, obj_count);
+
         if (buff != NULL && len != NULL) 
         {
             /*
-            * [MİMARİ UYARI - DİKKAT!]:
-            * Burada paketler iec104_send() fonksiyonundan geçirilmeden doğrudan dış bir arabelleğe (buff)
-            * yazılıyor. Sıra numarası (send_sn) doğru şekilde artırılsa da, IEC 104 state makinesindeki
-            * k_counter (onay bekleyen I-Frame sayısı) ARTIRILMAMAKTADIR ve t1_timer BAŞLATILMAMAKTADIR.
-            *
-            * Eğer bu buffer'daki veriler daha sonra TCP/GSM soketine doğrudan basılırsa, RTU bu paketlerin
-            * ulaşıp ulaşmadığını (T1 ACK Timeout ve K Max penceresi) takip edemez. Bu buffer'ı ağ üzerinden
-            * gönderen dış mekanizma, gönderdiği I-Frame sayısı kadar k_counter'ı artırmalı ve
-            * wait_for_ack = true yaparak T1 zamanlayıcısını tetiklemelidir.
+            * [MIMARI NOT]:
+            * Bu yolda kare iec104_send() yerine dis bir arabellege yaziliyor ve
+            * aga baska bir mekanizma tarafindan basiliyor. Sayaclar (send_sn,
+            * k_counter, t1) burada, ancak kare arabellege gercekten yazildiktan
+            * sonra ilerletilir; yer yoksa hicbir sayac dokunulmadan cikilir.
             */
+            if ((buff_written + total_len + 2) > max_len)
+            {
+                CSLOG_ERR("Not enough buffer space to write the packet\r\n");
+                break;
+            }
+
+            if (k_counter >= config.k_max)
+            {
+                CSLOG_ERR("Window full, cannot queue more I-frames\r\n");
+                break;
+            }
+
+            memcpy(&buff[buff_written], &pkt, total_len + 2);
+            buff_written += total_len + 2;
+            *len = buff_written;
 
             if (k_counter == 0)
             {
@@ -2473,25 +2490,12 @@ static void send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             w_counter = 0;
             t2_timer = 0;
         }
-
-        memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
-        CSLOG("Sending fault SP_TB_1 (field=%d, type=%d): %d objs (sent %d/%d)\r\n",
-              field, log_type, batch, sent + batch, obj_count);
-
-        if (buff != NULL && len != NULL) 
-        {
-            if (buff_written + total_len + 2 > max_len) 
-            {
-            	CSLOG_ERR("Not enough buffer space to write the packet\r\n");
-                return;
-            }
-            memcpy(&buff[buff_written], &pkt, total_len + 2);
-            buff_written += total_len + 2;
-            *len = buff_written;
-        }
         else 
         {
-            iec104_send((uint8_t *)&pkt, total_len + 2);
+            if (!iec104_send((uint8_t *)&pkt, total_len + 2))
+            {
+                break;
+            }
         }
         sent += batch;
     }
