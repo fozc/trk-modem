@@ -110,6 +110,9 @@ const char* http_handlers_get_query_string(void);
  */
 bool http_handlers_is_authenticated(void);
 
+/** @brief True while a web session token is active (not yet expired). */
+bool http_handlers_session_active(void);
+
 /**
  * @brief Check if current session has admin role
  * 

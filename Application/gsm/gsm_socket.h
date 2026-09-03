@@ -27,7 +27,9 @@ typedef enum
     SOCK_DISC_TIMEOUT,        /**< AT command timeout                */
     SOCK_DISC_MANUAL,         /**< Local close (#SH) or reconnect   */
     SOCK_DISC_ERROR,          /**< AT ERROR response                 */
-    SOCK_DISC_SOCKET_CLOSED   /**< State went to '0' unexpectedly   */
+    SOCK_DISC_SOCKET_CLOSED,  /**< State went to '0' unexpectedly   */
+    SOCK_DISC_FIRST_DATA_TIMEOUT, /**< Listener T1: no RX since connect */
+    SOCK_DISC_IDLE_TIMEOUT    /**< Listener T2: RX flow stalled      */
 } sock_disconnect_reason_t;
 
 /** @brief Per-socket session statistics (non-volatile during runtime). */
@@ -59,6 +61,20 @@ void     gsm_socket_touch_activity(uint8_t socket);
 uint8_t  gsm_socket_get_state(uint8_t socket);
 uint32_t gsm_socket_get_last_activity(uint8_t socket);
 bool     gsm_socket_is_check_expired(uint8_t socket);
+
+/** @brief Listener timeout watch helpers.
+ *
+ * first_data_expired: connected, NO rx yet, and the connect instant is
+ * older than timeout_ms (T1 - dead connection / port scanner).
+ * idle_expired: connected, rx seen before, and the last activity is
+ * older than timeout_ms (T2 - stalled data flow). Both return false
+ * when the socket is not connected or timeout_ms is 0 (disabled).
+ */
+bool     gsm_socket_first_data_expired(uint8_t socket, uint32_t timeout_ms);
+bool     gsm_socket_idle_expired(uint8_t socket, uint32_t timeout_ms);
+
+/** @brief True while the socket is in a connected state (2/3). */
+bool     gsm_socket_is_connected(uint8_t socket);
 
 /** @brief Record a disconnect event with reason. */
 void     gsm_socket_record_disconnect(uint8_t socket, sock_disconnect_reason_t reason);

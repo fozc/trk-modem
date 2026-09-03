@@ -818,6 +818,18 @@ static bool parse_device_config_internal(const char **str, modem_config_t *dev) 
                 return false;
             }
             dev->web_interface_port = v16;
+        } else if (match_key(str, "WebIlkVeriZamanAsimi")) {
+            if (!parse_uint16(str, &v16)) return false;
+            dev->web_first_data_timeout_sec = v16;
+        } else if (match_key(str, "WebBostaKalmaZamanAsimi")) {
+            if (!parse_uint16(str, &v16)) return false;
+            dev->web_idle_timeout_sec = v16;
+        } else if (match_key(str, "IEC104IlkVeriZamanAsimi")) {
+            if (!parse_uint16(str, &v16)) return false;
+            dev->iec104_first_data_timeout_sec = v16;
+        } else if (match_key(str, "IEC104BostaKalmaZamanAsimi")) {
+            if (!parse_uint16(str, &v16)) return false;
+            dev->iec104_idle_timeout_sec = v16;
         } else if (match_key(str, "SimKartPin")) {
             if (!parse_uint16(str, &v16)) return false;
             dev->sim_card_pin = v16;

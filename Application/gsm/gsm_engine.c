@@ -48,6 +48,7 @@
 #include "xscanf.h"
 #include "gsm_http_server.h"
 #include "modem_config.h"
+#include "http_handlers.h"
 #include "gsm_log.h"
 #include "elog.h"
 #include "iec104_elog.h"
@@ -405,6 +406,89 @@ void gsm_listener_set_new_conn_req(gsm_listener_id_t id, uint8_t v)
 uint8_t gsm_listener_get_new_conn_req(gsm_listener_id_t id)
 {
 	return (id < GSM_LISTENER_COUNT) ? gsm.listener[id].new_connection_req : 0U;
+}
+
+/**
+ * @brief Listener socket timeout watchdog (runs from the 50 ms GSM loop).
+ *
+ * T1 first-data: a connected listener with no RX since connect is a dead
+ * client (port scanner / half-open TCP); closed after the configured
+ * first-data timeout. T2 idle: data flowed once, then the flow stalled
+ * for the configured idle timeout. 0 disables a timer.
+ */
+void gsm_listener_timeout_watch(void)
+{
+	struct
+	{
+		uint8_t  socket;
+		uint16_t first_data_timeout_sec;
+		uint16_t idle_timeout_sec;
+	} cfg[GSM_LISTENER_COUNT] = {
+		{ LISTENER_SOCKET,        0U, 0U },
+		{ IEC104_LISTENER_SOCKET, 0U, 0U },
+	};
+
+	cfg[GSM_LISTENER_WEB].first_data_timeout_sec =
+			modem_config_get_web_first_data_timeout_sec();
+	cfg[GSM_LISTENER_WEB].idle_timeout_sec =
+			modem_config_get_web_idle_timeout_sec();
+	cfg[GSM_LISTENER_IEC104].first_data_timeout_sec =
+			modem_config_get_iec104_first_data_timeout_sec();
+	cfg[GSM_LISTENER_IEC104].idle_timeout_sec =
+			modem_config_get_iec104_idle_timeout_sec();
+
+	static const gsm_listener_id_t listener_of[GSM_LISTENER_COUNT] = {
+			GSM_LISTENER_WEB, GSM_LISTENER_IEC104 };
+	static bool close_pending[GSM_LISTENER_COUNT] = { false, false };
+
+	for (uint8_t i = 0U; i < GSM_LISTENER_COUNT; i++)
+	{
+		/* Web listener idle (T2) atlamasi: oturum acikken devre disi -
+		 * HTTP_SESSION_TIMEOUT_MS (15 dk) zaten oturumu yonetiyor;
+		 * T2 burada cakisir ve acik sayfayi koparir. Ilk-veri (T1)
+		 * tetiklenmeye devam eder: login POST'u ilk istektir. */
+		bool skip_idle =
+				(listener_of[i] == GSM_LISTENER_WEB) &&
+				http_handlers_session_active();
+
+		/* Soket dinleme/kapali durumuna donene kadar tek istek: state
+		 * connected kaldigi surece tekrar atesleme yapma (50 ms spam). */
+		if (!gsm_socket_is_connected(cfg[i].socket))
+		{
+			close_pending[i] = false;
+			continue;
+		}
+		if (close_pending[i])
+		{
+			continue;
+		}
+
+		uint32_t t1_ms = (uint32_t)cfg[i].first_data_timeout_sec * 1000U;
+		uint32_t t2_ms = (uint32_t)cfg[i].idle_timeout_sec * 1000U;
+
+		if (gsm_socket_first_data_expired(cfg[i].socket, t1_ms))
+		{
+			gsm_socket_record_disconnect(cfg[i].socket,
+					SOCK_DISC_FIRST_DATA_TIMEOUT);
+			gsm_listener_request_close_socket(listener_of[i]);
+			close_pending[i] = true;
+			GSM_LOG_WRN("Listener %u closed: no data within %u s\r\n",
+					(unsigned)(i + 1U), cfg[i].first_data_timeout_sec);
+		}
+		else if (!skip_idle && gsm_socket_idle_expired(cfg[i].socket, t2_ms))
+		{
+			gsm_socket_record_disconnect(cfg[i].socket,
+					SOCK_DISC_IDLE_TIMEOUT);
+			gsm_listener_request_close_socket(listener_of[i]);
+			close_pending[i] = true;
+			GSM_LOG_WRN("Listener %u closed: idle %u s\r\n",
+					(unsigned)(i + 1U), cfg[i].idle_timeout_sec);
+		}
+		else
+		{
+			/* no timeout */
+		}
+	}
 }
 
 void gsm_listener_request_close_socket(gsm_listener_id_t id)

@@ -25,6 +25,7 @@ typedef struct
     uint8_t            state;
     uint32_t           last_activity;
     uint32_t           check_timeout;
+    bool               session_has_rx;  /* RX seen since connect (T1 watch) */
     gsm_socket_stats_t stats;
 } gsm_socket_entry_t;
 
@@ -57,6 +58,7 @@ static void session_start(gsm_socket_entry_t *p_entry)
     p_entry->stats.connect_tick   = now;
     p_entry->stats.connect_epoch  = bsp_get_epoch_time();
     p_entry->stats.total_sessions++;
+    p_entry->session_has_rx       = false;   /* first-data timeout watch */
 }
 
 static void session_end(gsm_socket_entry_t *p_entry, sock_disconnect_reason_t reason)
@@ -148,6 +150,7 @@ void gsm_socket_touch_activity(uint8_t socket)
     }
 
     s_sockets[socket].last_activity = bsp_get_tick();
+    s_sockets[socket].session_has_rx = true;
 }
 
 uint8_t gsm_socket_get_state(uint8_t socket)
@@ -168,6 +171,50 @@ uint32_t gsm_socket_get_last_activity(uint8_t socket)
     }
 
     return s_sockets[socket].last_activity;
+}
+
+bool gsm_socket_is_connected(uint8_t socket)
+{
+    if (socket >= (uint8_t)GSM_SOCKET_COUNT)
+    {
+        return false;
+    }
+
+    return is_connected_state(s_sockets[socket].state);
+}
+
+bool gsm_socket_first_data_expired(uint8_t socket, uint32_t timeout_ms)
+{
+    if ((socket >= (uint8_t)GSM_SOCKET_COUNT) || (timeout_ms == 0U))
+    {
+        return false;
+    }
+
+    gsm_socket_entry_t *p = &s_sockets[socket];
+
+    if (!is_connected_state(p->state) || p->session_has_rx)
+    {
+        return false;
+    }
+
+    return tick_diff_ms(p->stats.connect_tick, bsp_get_tick()) >= timeout_ms;
+}
+
+bool gsm_socket_idle_expired(uint8_t socket, uint32_t timeout_ms)
+{
+    if ((socket >= (uint8_t)GSM_SOCKET_COUNT) || (timeout_ms == 0U))
+    {
+        return false;
+    }
+
+    gsm_socket_entry_t *p = &s_sockets[socket];
+
+    if (!is_connected_state(p->state) || !p->session_has_rx)
+    {
+        return false;
+    }
+
+    return tick_diff_ms(p->last_activity, bsp_get_tick()) >= timeout_ms;
 }
 
 bool gsm_socket_is_check_expired(uint8_t socket)
