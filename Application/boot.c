@@ -31,6 +31,12 @@ static uint8_t s_backup_section = (uint8_t)BOOT_FW_SECTION_B;
 /** Flag set when xmodem download completes successfully. */
 static bool s_new_fw_downloaded = false;
 
+/** Cached installed_fw from the last valid superblock read. */
+static fw_info_t s_installed_fw = {0};
+
+/** True after boot_init() found a valid (primary or backup) superblock. */
+static bool s_installed_fw_valid = false;
+
 /* ------------------------------------------------------------------ */
 /*  Internal helpers                                                  */
 /* ------------------------------------------------------------------ */
@@ -89,6 +95,8 @@ void boot_init(void)
     if (is_superblock_valid(&sb))
     {
         s_backup_section = validated_backup_section(sb.backup_section);
+        s_installed_fw = sb.installed_fw;
+        s_installed_fw_valid = true;
         CSLOG("BOOT: Primary superblock OK, backup_section=%c\n",
               (s_backup_section == (uint8_t)BOOT_FW_SECTION_A) ? 'A' : 'B');
         return;
@@ -103,6 +111,8 @@ void boot_init(void)
     if (is_superblock_valid(&sb))
     {
         s_backup_section = validated_backup_section(sb.backup_section);
+        s_installed_fw = sb.installed_fw;
+        s_installed_fw_valid = true;
         CSLOG("BOOT: Backup superblock OK, backup_section=%c\n",
               (s_backup_section == (uint8_t)BOOT_FW_SECTION_A) ? 'A' : 'B');
         return;
@@ -131,6 +141,58 @@ uint32_t boot_get_download_address(void)
     }
 
     return SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_A);
+}
+
+bool boot_get_installed_fw_info(fw_info_t *out)
+{
+    if (!s_installed_fw_valid || (out == NULL))
+    {
+        return false;
+    }
+
+    *out = s_installed_fw;
+    return true;
+}
+
+void boot_installed_hash_to_str(char *out, uint32_t out_size)
+{
+    uint32_t i = 0U;
+
+    if ((out == NULL) || (out_size == 0U))
+    {
+        return;
+    }
+
+    if (s_installed_fw_valid)
+    {
+        /* short_commit_hash: 8 bayt ASCII, NUL garantisi yok (bin2efw
+         * sifir ile doldurur) -> ilk NUL'e kadar kopyala. */
+        while ((i < 8U) && (i < (out_size - 1U)) &&
+               (s_installed_fw.short_commit_hash[i] != 0U))
+        {
+            out[i] = (char)s_installed_fw.short_commit_hash[i];
+            i++;
+        }
+    }
+
+    if (i == 0U)
+    {
+        /* Okunamadi ya da bos: gorunur bilinmez isareti. */
+        const char unknown[] = "-----";
+        uint32_t n = sizeof(unknown) - 1U;
+
+        if (n > (out_size - 1U))
+        {
+            n = out_size - 1U;
+        }
+        for (uint32_t j = 0U; j < n; j++)
+        {
+            out[j] = unknown[j];
+        }
+        i = n;
+    }
+
+    out[i] = '\0';
 }
 
 bool boot_is_new_firmware_downloaded(void)

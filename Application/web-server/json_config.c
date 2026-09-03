@@ -861,13 +861,15 @@ static bool parse_device_config_internal(const char **str, modem_config_t *dev) 
             if (!parse_uint32(str, &v32)) return false;
             dev->commissioning_time = v32;
         }
-        /* RO Fields - Skip these (serial_number, production_date, lifetime, 
-         * modem_firmware_version, rf_firmware_version, coordinates) */
-        else if (match_key(str, "SeriNumarasi") || 
-                 match_key(str, "UretimTarihi") || 
+        /* RO Fields - Skip these (serial_number, production_date, lifetime,
+         * modem_firmware_version, rf_firmware_version, installation_date,
+         * coordinates) */
+        else if (match_key(str, "SeriNumarasi") ||
+                 match_key(str, "UretimTarihi") ||
                  match_key(str, "LifeTime") ||
                  match_key(str, "ModemYazilimVeriyonu") ||
                  match_key(str, "RFYazilimVeriyonu") ||
+                 match_key(str, "KurulumTarihi") ||
                  match_key(str, "CihazKoordinati")) {
             /* Skip RO field value - these are not written from JSON */
             if (!skip_value(str)) return false;
