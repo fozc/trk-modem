@@ -50,7 +50,7 @@
 #include "modem_config.h"
 #include "http_handlers.h"
 #include "gsm_log.h"
-#include "elog.h"
+#include "gsm_elog.h"
 #include "iec104_elog.h"
 #include "time_service.h"
 #include "iec104_process.h"
@@ -1573,7 +1573,7 @@ bool gsm_cusd_parse_phone_number(const char *msg)
 	{
 		LOG(_GSM_, "Yeni Sim: %s Eski: %s", new_number.number, prev_number.number);
 		modem_config_set_simcard_phone_number(&new_number);
-		gsm_log_modem_event_with_arg(ELOG_GSM_EVENT_SIMCARD_CHANGED, &new_number, sizeof(new_number));
+		gsm_elog_modem_event_with_arg(ELOG_GSM_EVENT_SIMCARD_CHANGED, &new_number, sizeof(new_number));
 		modem_config_sync();
 	}
 
