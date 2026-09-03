@@ -325,7 +325,10 @@ void modem_config_set_simcard_phone_number(const phone_number_t* phone_number)
 void modem_config_set_imei(const char* imei)
 {
 	if(imei) {
-		memcpy(modem_config->imei, imei, sizeof(modem_config->imei));
+		size_t copy_len = strnlen(imei, sizeof(modem_config->imei) - 1U);
+
+		memcpy(modem_config->imei, imei, copy_len);
+		modem_config->imei[copy_len] = '\0';
 	}
 }
 
