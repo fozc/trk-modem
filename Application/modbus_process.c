@@ -519,7 +519,9 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
  *
  * Skips the write when the stored value equals the active baud rate, so a
  * boot-time call with the factory default (115200) leaves BRR untouched.
- * Must run with the UART idle (no transmission in flight).
+ * Enforces the "UART idle" precondition itself: an in-flight response DMA
+ * is aborted, the RS-485 driver is released and the RX framing state is
+ * reset before the peripheral is reprogrammed.
  */
 static void modbus_uart_apply_baudrate(void)
 {
@@ -527,6 +529,22 @@ static void modbus_uart_apply_baudrate(void)
 
     if ((cfg->baud_rate != 0U) && (cfg->baud_rate != active_baud))
     {
+#if (MODBUS_TX_USE_DMA != 0)
+        /* Havadaki yanit DMA'sini temizce iptal et, OE'yu birak. Yarim
+         * kalan yanit gider; master timeout/retry yapar. Takili DMA +
+         * OE basili + tx_busy sonsuz senaryosu boyle kokten kalkar. */
+        if (s_modbus_tx_busy)
+        {
+            if (HAL_UART_AbortTransmit(&huart4) != HAL_OK)
+            {
+                CSLOG_ERR("MODBUS: TX abort basarisiz\r\n");
+            }
+            gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
+            s_modbus_tx_busy = false;
+        }
+#endif
+        libmodbusrtu_modbus_reset_rx(&s_modbus);
+
         uart_set_baudrate(UART_4, cfg->baud_rate);
         active_baud = cfg->baud_rate;
         CSLOG_WARN("MODBUS: UART baudrate set to %u\r\n", active_baud);

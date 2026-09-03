@@ -222,6 +222,16 @@ void libmodbusrtu_register_write_callback(modbus_slave_t *p_ctx,
 void libmodbusrtu_modbus_set_slave_id(modbus_slave_t *p_ctx, uint8_t id);
 
 /**
+ * @brief Reset the receive framing state.
+ * @param[in] p_ctx Slave instance.
+ *
+ * Drops a partially received frame (buffer index, framing flags) and arms
+ * the receiver for the next frame. Does not touch the slave ID or the
+ * registered callbacks.
+ */
+void libmodbusrtu_modbus_reset_rx(modbus_slave_t *p_ctx);
+
+/**
  * @brief Get the most recent Modbus exception code sent by this slave.
  *
  * Records the standard exception code (e.g. MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS)
