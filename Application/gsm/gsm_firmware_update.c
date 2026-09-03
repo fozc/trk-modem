@@ -14,6 +14,7 @@
 #include "reboot.h"
 
 static uint32_t flash_address = FIRMWARE_A_ADDRESS;
+static uint32_t section_end  = FIRMWARE_A_ADDRESS + FIRMWARE_FLASH_AREA_SIZE;
 static uint8_t fw_update_buffer[4096] = {0}; 
 static uint32_t fw_update_buffer_index = 0; 
 
@@ -31,6 +32,7 @@ static int fw_update_init(uint32_t total_size)
 	}
 
 	flash_address = boot_get_download_address();
+	section_end   = flash_address + FIRMWARE_FLASH_AREA_SIZE;
 	fw_update_buffer_index = 0;
 
 	GSM_LOG_INF_C(XCOLOR_CYAN, "Download target: section %c (0x%08lX)\r\n",
@@ -56,7 +58,7 @@ static int fw_update_write_handler(uint32_t offset, const uint8_t *data, uint32_
 		uint32_t space   = 4096U - fw_update_buffer_index;
 		uint32_t to_copy = (size < space) ? size : space;   /* to_copy ∈ [1, 4096] */
 
-		if(flash_address >= (FIRMWARE_A_ADDRESS + FIRMWARE_FLASH_AREA_SIZE))
+		if(flash_address >= section_end)
 		{
 			GSM_LOG_ERR("Firmware update write error: Exceeded maximum firmware size!\r\n");
 			return -1;
@@ -127,8 +129,8 @@ void gsm_firmware_update_init(void)
 /* ── RFWU flash callbacks ───────────────────────────────────────── */
 
 /*
- * rfwu-specific init: sets the internal flash pointer to
- * FIRMWARE_A_ADDRESS + resume_offset so sequential fw_write calls land
+ * rfwu-specific init: sets the internal flash pointer to the download
+ * section base + resume_offset so sequential fw_write calls land
  * in the right place.  resume_offset is always 4 KB-aligned.
  */
 static int fw_update_rfwu_init(uint32_t total_size, uint32_t resume_offset)
@@ -139,7 +141,10 @@ static int fw_update_rfwu_init(uint32_t total_size, uint32_t resume_offset)
 		            (unsigned long)total_size, (unsigned long)FIRMWARE_FLASH_AREA_SIZE);
 		return -1;
 	}
-	flash_address         = boot_get_download_address() + resume_offset;
+	const uint32_t section_base = boot_get_download_address();
+
+	flash_address          = section_base + resume_offset;
+	section_end            = section_base + FIRMWARE_FLASH_AREA_SIZE;
 	fw_update_buffer_index = 0U;
 	return 0;
 }
