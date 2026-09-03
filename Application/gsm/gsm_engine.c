@@ -3101,10 +3101,12 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			at_len += xsprintf(buff_ptr, "#SGACT=1,1");
 			char_ptr = modem_config_get_sim_apn_username();
 			char_ptr2 = modem_config_get_sim_apn_password();
-			if(char_ptr && char_ptr[0] > 0 && char_ptr2[0] > 0)
+			if(char_ptr && char_ptr[0] > 0 && char_ptr2 && char_ptr2[0] > 0)
 			{
-				buff_ptr += at_len - 2; /* AT cmd zaten eklenmis idi */
-				at_len += xsnprintf(buff_ptr,sizeof(at_buff) - at_len, ",\"%s\",\"%s\"", char_ptr, char_ptr2);
+				/* Ek mutlak ofsetle yazilir: buff_ptr ilerletilmez,
+				 * fonksiyon sonundaki CR yazimi buff_ptr'e goreli. */
+				at_len += xsnprintf((char *)(at_buff + at_len), sizeof(at_buff) - at_len,
+				                    ",\"%s\",\"%s\"", char_ptr, char_ptr2);
 			}
 			break;
 		case ATQUERY_GET_GPRS_STATUS:
