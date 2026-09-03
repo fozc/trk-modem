@@ -170,17 +170,11 @@ static bool iec104_send(const uint8_t *data, size_t length)
 static int send_package(const uint8_t *data, uint16_t length)
 {
     CSLOG("Data sended (%d bytes): ", length);
-    for (size_t i = 0; i < length && i < length; i++) {
+    for (uint16_t i = 0; i < length; i++) {
         CSLOG_NODT("%02X ", data[i]);
     }
     CSLOG_NODT("\r\n");
 
-    return 0;
-}
-
-static int handle_c_sc_na_1(ioa_3byte_t ioa, uint8_t state)
-{
-    CSLOG("C_SC_NA_1: IOA=%u, State=%u\r\n", iec104_ioa_3byte_to_uint32(ioa), state);
     return 0;
 }
 
@@ -879,17 +873,6 @@ void iec104_process_s_frame(const s_format_control_t *sframe)
     CSLOG("Processing S-Frame: Receive Sequence Number: %d\r\n", sframe->receive_seq);
 
     on_ack_received(sframe->receive_seq);
-}
-
-void iec104_send_i_frame()
-{
-	i_format_control_t iframe;
-
-	iframe.send_seq = send_sn;
-	iframe.receive_seq = receive_sn;
-
-	send_sn = (send_sn + 1) % 0x7FFF;
-
 }
 
 void iec104_send_negative_ack(const iec104_package_t *original_pkt, uint8_t cause)
