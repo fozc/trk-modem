@@ -56,7 +56,7 @@ void iec104_process_socket_closed_cb(void)
 {
 	CCSLOG(XCOLOR_RED, "IEC104 Socket Closed by Remote\r\n");
 	iec104_elog_disconnected();
-	iec104_application_event_handler(IEC104_APP_EVT_SOCKET_CLOSED);
+	iec104_application_event_handler(IEC104_EVT_SOCKET_CLOSED);
 	tx_reset();
 }
 
@@ -349,6 +349,7 @@ PROCESS_THREAD(iec104_process, ev, data)
 
 	  iec104_init(&(iec104_io_t){
 	      .send = iec104_send,
+	    .on_event = iec104_application_event_handler,
 	    .get_ariza_akimi = read_ariza_akimi,
 	    .get_ariza_suresi = read_ariza_suresi,
 	    .get_anlik_akim = read_anlik_akim,

@@ -9,16 +9,9 @@
 #define IEC104_APPLICATION_H_
 
 #include "types.h"
+#include "iec104.h"
 
-typedef enum {
-    IEC104_APP_EVT_SEND_TEMP_FAULTS = 1,
-	IEC104_APP_EVT_SEND_PERM_FAULTS = 2,
-	IEC104_APP_EVT_SOCKET_CLOSED = 3,
-	IEC104_APP_EVT_REQUEST_SOCKET_CLOSE = 4,
-} iec104_app_event_t;
-
-
-void iec104_application_event_handler(iec104_app_event_t evt);
+void iec104_application_event_handler(iec104_event_t evt);
 void iec104_application_init(void);
 
 #endif /* IEC104_APPLICATION_H_ */
