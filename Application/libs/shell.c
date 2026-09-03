@@ -335,6 +335,10 @@ void shell_on_command_received(const char *str)
         }
     }
 
+    /* Erken break'te NULL kalan argvp girdilerini ele: gecerli token
+     * sayisina indir. Normal yolda i == argc oldugundan davranis ayni. */
+    argc = i;
+
     int res = shell_command_executer(argc, &argvp[0]);
 
     if(res == -2)
