@@ -1022,24 +1022,26 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     *
     * Eger gelen paket, beyan edilen tip icin gereken veriden daha kisa ise
     * bu durum paket parcalanmasi veya bozunumu (malformed packet) olarak
-    * kabul edilir. Bu kontrol olmadan, kodun union icerisindeki
-    * struct alanlarina erismesi bellek tasmasina (buffer over-read) veya
-    * sistemsel hataya (Hard Fault) yol acabilir.
+    * kabul edilir. Bu kontrol olmadan, handler'in okudugu alanlar 'package'
+    * icinde bir onceki kareden kalan bayatlarla doldurulur (ornegin bozuk
+    * bir zaman damgasiyla RTC senkronu).
     *
     * Hata durumunda NEGATIVE ACK (UkTypeId) gonderilerek SCADA'ya
     * paketin reddedildigi bildirilmektedir.
     */
 
-    // 1. Beklenen minimum veri uzunlugunu al
+    // 1. Beklenen minimum veri uzunlugunu al (tablo IOA haric obje boyutunu verir)
     uint8_t min_data_len = get_type_id_length(package.frame.asdu_header.type_id);
 
     // 2. Gelen paket uzunlugunu kontrol et
-    // (APCI 4 byte + ASDU Header 6 byte = 10 byte overhead)
-    if (package.frame.apci.apdu_length < (10 + min_data_len)) {
-        CSLOG_ERR("Malformed packet: Type %d needs %d bytes, but got %d\r\n",
+    // (APCI 4 byte + ASDU header 6 byte = 10 byte overhead, + 3 byte IOA)
+    const uint16_t min_apdu_length = (uint16_t)(10U + sizeof(ioa_3byte_t) + min_data_len);
+
+    if (package.frame.apci.apdu_length < min_apdu_length) {
+        CSLOG_ERR("Malformed packet: Type %d needs apdu_length %d, but got %d\r\n",
                    package.frame.asdu_header.type_id,
-                   min_data_len,
-                   package.frame.apci.apdu_length - 10);
+                   min_apdu_length,
+                   package.frame.apci.apdu_length);
 
         iec104_send_negative_ack(&package, UkTypeId);
         return;
