@@ -492,6 +492,16 @@ unsigned int xsnprintf (			/* Put a formatted string to the memory */
 	va_end(arp);
 	if (len > 0U) {
 		*strptr = 0;	/* Terminate output string */
+		/* Donus degeri kesme olsa bile tampona sigan uzunlukla
+		 * sinirlanir: "pos += xsnprintf(buf + pos, size - pos, ...)"
+		 * birikim desenlerinde pos asla size'i asamaz ve size - pos
+		 * ifadesi isaretsiz sarmaz (Y6.6/Y7.1). */
+		if (count > (len - 1U)) {
+			count = len - 1U;
+		}
+	}
+	else {
+		count = 0U;
 	}
 	strptr = 0;			/* Disable destination for memory */
 	strptr_end = 0;
