@@ -7,7 +7,9 @@
 #include "time_service.h"
 #include <stdio.h>
 
-static uint32_t system_ticks = 0; // in milliseconds
+/* TIM17 ISR (1 ms) yazar, ana baglam okur -> volatile sart (life_timer da
+ * boyle). life_timer ile ayni kesmede, kilit adim artar. */
+static volatile uint32_t system_ticks = 0; // in milliseconds
 
 
 #ifdef TEST
