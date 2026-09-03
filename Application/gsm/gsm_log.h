@@ -9,16 +9,7 @@
 #define GSM_GSM_LOG_H_
 
 #include <stdint.h>
-#include "elog_codes.h"
 #include "console_logger_config.h"
-
-/* ── Flash event logging (elog) ─────────────────────────────────── */
-
-void gsm_log_modem_event(elog_code_t code);
-void gsm_log_modem_event_with_arg(elog_code_t code, const void *arg,
-                                  uint8_t arg_len);
-void gsm_log_modem_error(elog_code_t code, const char *info,
-                         uint8_t info_len);
 
 /* ── Console log level control ──────────────────────────────────── */
 

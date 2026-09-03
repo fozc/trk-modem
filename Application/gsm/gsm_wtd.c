@@ -11,6 +11,7 @@
 #include "gsm_process.h"
 #include "gsm_listener_process.h"
 #include "gsm_log.h"
+#include "gsm_elog.h"
 #include "at_engine2.h"
 #include "bsp.h"
 
@@ -111,7 +112,7 @@ static void gsm_wtd_log_diagnostic(elog_code_t code)
 	    (unsigned)busy_sec);
 
 	/* Persistent log */
-	gsm_log_modem_event_with_arg(code, info, sizeof(info));
+	gsm_elog_modem_event_with_arg(code, info, sizeof(info));
 }
 
 /**
