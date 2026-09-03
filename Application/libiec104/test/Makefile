@@ -1,127 +1,53 @@
-# Makefile for IEC104 Event Queue Host-Based Testing
-# 
-# Usage:
-#   make simple        - Build simple structure validation test
-#   make comprehensive - Build comprehensive functional tests
-#   make all           - Build all tests
-#   make run-simple    - Build and run simple test
-#   make run-comp      - Build and run comprehensive test
-#   make clean         - Remove build artifacts
+# Host tests for the libiec104 protocol core.
+#
+#   make          - build
+#   make run      - build and run
+#   make clean    - remove build artifacts
 
-CC := gcc
-CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -O2 -g
-BUILD_DIR := build
+CC      := gcc
+CFLAGS  := -std=c11 -Wall -Wextra -Werror -Wshadow -O1 -g
+BUILD   := build
 
-# Directories
-SRC_DIR := ..
-LIBS_DIR := ../../libs
-BSP_DIR := ../../bsp
+LIB_DIR := ..
+APP_DIR := ../..
 
-# Include paths
-INCLUDES := -I$(SRC_DIR) -I. -I$(LIBS_DIR) -I$(BSP_DIR)
+INCLUDES := -I. -I$(LIB_DIR) -I$(APP_DIR) -I$(APP_DIR)/libs -I$(APP_DIR)/bsp \
+            -I$(APP_DIR)/cslog -I$(APP_DIR)/rf -I$(APP_DIR)/gsm \
+            -I$(APP_DIR)/libscp -I$(APP_DIR)/power_board -I$(APP_DIR)/bms
 
-# Source files
-MOCK_FLASH_SRC := mock_flash.c
-MOCK_BSP_SRC := mock_bsp.c
-IEC104_QUEUE_SRC := $(SRC_DIR)/iec104_event_queue.c
-CRC_SRC := $(LIBS_DIR)/crc32.c
+# The target build carries no warning flags yet, so libiec104 still trips
+# -Wunused-*. Warnings stay visible here but do not fail the test run.
+LIB_CFLAGS := $(CFLAGS) -Wno-error
 
-# Object files
-MOCK_FLASH_OBJ := $(BUILD_DIR)/mock_flash.o
-MOCK_BSP_OBJ := $(BUILD_DIR)/mock_bsp.o
-IEC104_QUEUE_OBJ := $(BUILD_DIR)/iec104_event_queue.o
-CRC_OBJ := $(BUILD_DIR)/crc32.o
+TEST_SRCS := test_iec104_protocol.c mock_platform.c
+LIB_SRCS  := $(LIB_DIR)/iec104.c \
+             $(LIB_DIR)/iec104_config.c \
+             $(LIB_DIR)/iec104_util.c \
+             $(LIB_DIR)/cp56time2a.c
 
-# Simple test
-SIMPLE_SRC := iec104_test_simple.c
-SIMPLE_OBJ := $(BUILD_DIR)/iec104_test_simple.o
-SIMPLE_TARGET := $(BUILD_DIR)/iec104_test_simple
+TEST_OBJS := $(addprefix $(BUILD)/,$(TEST_SRCS:.c=.o))
+LIB_OBJS  := $(addprefix $(BUILD)/,$(notdir $(LIB_SRCS:.c=.o)))
 
-# Comprehensive test
-COMP_SRC := iec104_test_comprehensive.c
-COMP_OBJ := $(BUILD_DIR)/iec104_test_comprehensive.o
-COMP_TARGET := $(BUILD_DIR)/iec104_test_comprehensive
-COMP_DEPS := $(MOCK_FLASH_OBJ) $(MOCK_BSP_OBJ) $(IEC104_QUEUE_OBJ) $(CRC_OBJ)
+TARGET := $(BUILD)/test_iec104_protocol
 
-.PHONY: all simple comprehensive run-simple run-comp clean help
+.PHONY: all run clean
 
-all: simple comprehensive
+all: $(TARGET)
 
-# Create build directory
-$(BUILD_DIR):
-	@mkdir -p $(BUILD_DIR)
+$(BUILD):
+	@mkdir -p $(BUILD)
 
-# Simple structure validation test
-simple: $(SIMPLE_TARGET) 
+$(BUILD)/%.o: %.c | $(BUILD)
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(SIMPLE_TARGET): $(BUILD_DIR) $(SIMPLE_OBJ)
-	@echo "Linking $(SIMPLE_TARGET)..."
-	@$(CC) $(SIMPLE_OBJ) -o $(SIMPLE_TARGET)
-	@echo "Build complete!"
+$(BUILD)/%.o: $(LIB_DIR)/%.c | $(BUILD)
+	$(CC) $(LIB_CFLAGS) $(INCLUDES) -c $< -o $@
 
-$(SIMPLE_OBJ): $(SIMPLE_SRC)
-	@echo "Compiling $<..."
-	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+$(TARGET): $(TEST_OBJS) $(LIB_OBJS)
+	$(CC) $(TEST_OBJS) $(LIB_OBJS) -o $@
 
-# Comprehensive functional test
-comprehensive: $(COMP_TARGET)
+run: $(TARGET)
+	@./$(TARGET)
 
-$(COMP_TARGET): $(BUILD_DIR) $(COMP_OBJ) $(COMP_DEPS)
-	@echo "Linking $(COMP_TARGET)..."
-	@$(CC) $(COMP_OBJ) $(COMP_DEPS) -o $(COMP_TARGET)
-	@echo "Build complete!"
-
-$(COMP_OBJ): $(COMP_SRC)
-	@echo "Compiling $<..."
-	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-# Mock objects
-$(MOCK_FLASH_OBJ): $(MOCK_FLASH_SRC)
-	@echo "Compiling $<..."
-	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-$(MOCK_BSP_OBJ): $(MOCK_BSP_SRC)
-	@echo "Compiling $<..."
-	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-# IEC104 queue source
-$(IEC104_QUEUE_OBJ): $(IEC104_QUEUE_SRC)
-	@echo "Compiling $<..."
-	@$(CC) $(CFLAGS) $(INCLUDES) -DTEST_BUILD -c $< -o $@
-
-# CRC source
-$(CRC_OBJ): $(CRC_SRC)
-	@echo "Compiling $<..."
-	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-# Run tests
-run-simple: simple
-	@echo ""
-	@echo "Running simple structure test..."
-	@echo "================================"
-	@$(SIMPLE_TARGET)
-
-run-comp: comprehensive
-	@echo ""
-	@echo "Running comprehensive test suite..."
-	@echo "==================================="
-	@$(COMP_TARGET)
-
-# Clean build artifacts
 clean:
-	@echo "Cleaning..."
-	@rm -rf $(BUILD_DIR)
-	@echo "Clean complete."
-
-# Help
-help:
-	@echo "IEC104 Event Queue Test Makefile"
-	@echo ""
-	@echo "Targets:"
-	@echo "  make simple        - Build simple structure test"
-	@echo "  make comprehensive - Build comprehensive functional tests"
-	@echo "  make all           - Build all tests"
-	@echo "  make run-simple    - Build and run simple test"
-	@echo "  make run-comp      - Build and run comprehensive test"
-	@echo "  make clean         - Remove build artifacts"
-	@echo "  make help          - Show this help"
+	@rm -rf $(BUILD)
