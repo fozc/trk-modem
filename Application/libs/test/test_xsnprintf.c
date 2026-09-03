@@ -247,6 +247,35 @@ static void test_float_fit(void)
           "float fits: matches snprintf");
 }
 
+/* E-notation worst case: sign(1) + digit(1) + '.'(1) + prec digits +
+ * 'e'(1) + exp-sign(1) + exp(2) + NUL(1) = prec + 8 bytes. prec=24 fills
+ * the 32-byte canvas exactly; the guard must reject prec >= 25 with "OV". */
+static void test_float_e_notation_boundaries(void)
+{
+    canvas_t c;
+    char ref[48];
+    unsigned int ret;
+
+    canvas_init(&c);
+    ret = xsnprintf(c.buf, BUF_N, "%.24e", -1.5);
+    (void)snprintf(ref, sizeof(ref), "%.24e", -1.5);
+    check((ret == 31U) && (strcmp(c.buf, ref) == 0),
+          "e-notation prec=24: full output fits the canvas exactly");
+    check(guards_intact(&c), "e-notation prec=24: guards intact");
+
+    canvas_init(&c);
+    ret = xsnprintf(c.buf, BUF_N, "%.25e", -1.5);
+    check((ret == 3U) && (strcmp(c.buf, "-OV") == 0),
+          "e-notation prec=25: rejected with -OV");
+    check(guards_intact(&c), "e-notation prec=25: guards intact");
+
+    canvas_init(&c);
+    ret = xsnprintf(c.buf, BUF_N, "%.26e", -1.5);
+    check((ret == 3U) && (strcmp(c.buf, "-OV") == 0),
+          "e-notation prec=26: rejected with -OV");
+    check(guards_intact(&c), "e-notation prec=26: guards intact");
+}
+
 static void test_width_pad_truncation(void)
 {
     canvas_t c;
@@ -271,6 +300,7 @@ int main(void)
     test_empty_format();
     test_interleaved_calls();
     test_float_fit();
+    test_float_e_notation_boundaries();
     test_width_pad_truncation();
 
     printf("\n--------------------------------\npassed: %d   failed: %d\n",
