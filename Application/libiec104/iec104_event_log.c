@@ -544,7 +544,7 @@ static int shell_iec104evtlog(int argc, char *argv[])
 void iec104_event_log_shell_init(void)
 {
     shell_register_command(&(shell_cmd_t){
-        .cmd  = "iec104log",
+        .cmd  = "iec104evtlog",
         .desc = "IEC104 event log: [dump] | test <N> | clear",
         .func = shell_iec104evtlog
     });
