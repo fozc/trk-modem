@@ -1915,7 +1915,11 @@ uint32_t gsm_engine_trace_socket_send(uint8_t socket, const uint8_t *buff, uint1
 	uint32_t res = 0;
 	if(socket == ATQUERY_SEND_DATA_TO_TRACE_SOCKET)
 	{
-		at_engine_send_data(buff, len, 2000);
+		if (!at_engine_send_data(buff, len, 2000))
+		{
+			GSM_LOG_ERR("trace socket: at motoru veri gonderimini reddetti\r\n");
+			return res;
+		}
 		res = 1;
 		gsm.at_callback = gsm_default_at_cb;
 		gsm.query_id    = socket;
@@ -1931,7 +1935,11 @@ uint32_t gsm_engine_socket_send(uint8_t socket)
 	   (socket == ATQUERY_SEND_DATA_TO_LISTENER_SOCKET && gsm_get_socket_state(LISTENER_SOCKET) == SOCKET_DATA_MODE) ||
 	   (socket == ATQUERY_SEND_DATA_TO_IEC104_LISTENER_SOCKET && gsm_get_socket_state(IEC104_LISTENER_SOCKET) == SOCKET_DATA_MODE))
 	{
-		at_engine_send_data(gsm.tx_buff, gsm.tx_index, 20000);
+		if (!at_engine_send_data(gsm.tx_buff, gsm.tx_index, 20000))
+		{
+			GSM_LOG_ERR("socket %u: at motoru veri gonderimini reddetti\r\n", (unsigned)socket);
+			return res;
+		}
 		res = 1;
 		gsm.at_callback = gsm_default_at_cb;
 		gsm.query_id    = socket;
