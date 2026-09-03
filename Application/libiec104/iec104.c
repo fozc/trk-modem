@@ -841,7 +841,7 @@ bool iec104_send_s_frame(uint16_t receive_seq)
 	return iec104_send(pkt.data, 6);
 }
 
-void on_ack_received(uint16_t nr) 
+bool on_ack_received(uint16_t nr)
 {
     nr &= 0x7FFF;
     // 15-bit modülo aritmetiğine göre kaç paketin onaylandığını hesapla
@@ -857,7 +857,7 @@ void on_ack_received(uint16_t nr)
         if (num_acked > (0x7FFF - config.k_max))
         {
             CSLOG("-> Delayed/Duplicate old ACK ignored (nr: %d, ack_sn: %d)\r\n", nr, ack_sn);
-            return;
+            return true;
         }
 
         if (num_acked <= k_counter)
@@ -887,15 +887,18 @@ void on_ack_received(uint16_t nr)
             // Gerçek sira hatasinda soketi guvenli moda cekmek mantiklidir
             iec104_reset();
             iec104_application_event_handler(IEC104_APP_EVT_REQUEST_SOCKET_CLOSE);
+            return false;
         }
     }
+
+    return true;
 }
 
 void iec104_process_s_frame(const s_format_control_t *sframe)
 {
     CSLOG("Processing S-Frame: Receive Sequence Number: %d\r\n", sframe->receive_seq);
 
-    on_ack_received(sframe->receive_seq);
+    (void)on_ack_received(sframe->receive_seq);
 }
 
 void iec104_send_negative_ack(const iec104_package_t *original_pkt, uint8_t cause)
@@ -983,7 +986,12 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     CSLOG("  Originator Address: %d\r\n", package.frame.asdu_header.originator_address);
     CSLOG("  Common ASDU Address: %d\r\n", package.frame.asdu_header.common_asdu_address);
 
-    on_ack_received(iframe->receive_seq);
+    /* Sira hatasinda iec104_reset() 'package' yapisini sifirlar; asagidaki
+     * ASDU islemesi artik bos bir kare uzerinde calisirdi. */
+    if (!on_ack_received(iframe->receive_seq))
+    {
+        return;
+    }
 
     if(++w_counter >= config.w_max){
         if(iec104_send_s_frame(receive_sn)){
@@ -1278,6 +1286,14 @@ void iec104_process_package(void)
                 {
                     CSLOG("Unknown or damaged package!\r\n");
                 }
+
+        /* Handler iec104_reset() cagirmis olabilir: arabellek ve 'package'
+         * sifirlandi, eski idx ile ilerlemek anlamsiz. */
+        if(0U == iec104_rx_buffer_len)
+        {
+            package_ready = false;
+            return;
+        }
 
         idx += frame_length;
     }
