@@ -13,7 +13,7 @@
 #include "gsm_engine.h"
 #include "breaker.h"
 #include "iec104_application.h"
-#include "iec104_log.h"
+#include "iec104_elog.h"
 
 static iec104_config_t iec104_config = {0};
 static struct timer periodic_send_timer;
@@ -55,7 +55,7 @@ static void tx_reset(void)
 void iec104_process_socket_closed_cb(void)
 {
 	CCSLOG(XCOLOR_RED, "IEC104 Socket Closed by Remote\r\n");
-	iec104_log_disconnected();
+	iec104_elog_disconnected();
 	iec104_application_event_handler(IEC104_APP_EVT_SOCKET_CLOSED);
 	tx_reset();
 }

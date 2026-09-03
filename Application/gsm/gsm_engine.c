@@ -50,7 +50,7 @@
 #include "modem_config.h"
 #include "gsm_log.h"
 #include "elog.h"
-#include "iec104_log.h"
+#include "iec104_elog.h"
 #include "time_service.h"
 #include "iec104_process.h"
 #include "iec104_config.h"
@@ -913,7 +913,7 @@ int32_t gsm_ss_iec104_listener_cb(void)
 					/* Baglanti kuruldu: karsi IP ile kalici kayit. Oturum
 					 * kapaninca gsm_reset_iec104_session_info ip'yi sifirlar;
 					 * sonraki baglanti tekrar kayit uretir. */
-					iec104_log_connected(gsm_info.iec104_session.ip.ip);
+					iec104_elog_connected(gsm_info.iec104_session.ip.ip);
 				}
 			}
 		}

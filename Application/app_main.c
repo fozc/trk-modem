@@ -21,7 +21,7 @@
 #include "rf_comm.h"
 #include "rf_shell.h"
 #include "elog.h"
-#include "iec104_log.h"
+#include "iec104_elog.h"
 #include "hardfault_handler.h"
 #include "xmodem_process.h"
 #include "modbus_process.h"
@@ -227,7 +227,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	 * power board, ...). */
 	elog_init();
 	elog_log_boot_events();
-	iec104_log_init();
+	iec104_elog_init();
 
 	process_init();
 	process_start(&etimer_process, NULL);
@@ -264,7 +264,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	CSLOG("sizeof(breaker_t)      = 0x%08X bytes\r\n", sizeof(breaker_t));
 
 	elog_shell_init();
-	iec104_log_shell_init();
+	iec104_elog_shell_init();
 	xmodem_app_init();
 	app_ipc_init();
 	modbus_process_init();
