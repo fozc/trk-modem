@@ -120,6 +120,17 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 			break;
 		}
 
+		/* Hic veri gelmeden EOT = bos "basarili" indirme + reboot
+		 * dongusune dusmemek icin reddet (O9.5). */
+		if (s_total_bytes_received == 0U)
+		{
+			CSLOG_ERR("ERROR: EOT without any data - not a valid download.\r\n");
+			s_rx_buff_index = 0U;
+			s_download_success = false;
+			s_download_complete = true;
+			break;
+		}
+
 		if(s_rx_buff_index > 0U)
 		{
 			if(s_total_bytes_received < FIRMWARE_FLASH_AREA_SIZE)
