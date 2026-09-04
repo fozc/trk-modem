@@ -411,6 +411,13 @@ Also consider checking the C implementation's atomic macros where appropriate:
 #if !ATOMIC_INT_LOCK_FREE
 #error "int atomic must be lock-free"
 #endif
+
+Project verification (GCC 14.3.rel1, `-mcpu=cortex-m33`, `-O0` and `-O2`,
+STM32CubeIDE toolchain): byte/halfword/word atomics are always lock-free;
+`atomic_fetch_or` / `atomic_exchange` on a byte compile to
+LDREXB/STLE(X)B / LDAEXB/STREXB retry loops with no library calls, and
+acquire/release ordering is realized through instruction variants with
+no DMB barrier.
 ```
 
 Do not blindly assume that every `_Atomic T` is equally suitable for ISR use.

@@ -11,6 +11,12 @@
 #include "bsp.h"
 #include "w25qxx.h"
 
+/* evt_pending ISR baglaminda kullanilir: bayt atomigi lock-free olmali
+ * (GCC 14.3.rel1 / Cortex-M33: LDREXB/STLEXB dongusu, kutuphane cagrisi
+ * yok - cortex-m-atomic-isr.instructions.md 10. madde). */
+_Static_assert(__atomic_always_lock_free(1, 0),
+               "evt_pending atomics must be lock-free in ISR context");
+
 #ifdef XMODEM_TEST
 static uint8_t xmodem_test_frame[] = {
 		0x01, 0x01, 0xFE, 0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00, 0x34, 0xBC, 0x27, 0x56, 0xB6, 0xDC, 0x57, 0xBF,
@@ -21,6 +27,20 @@ static uint8_t xmodem_test_frame[] = {
 		0xD8, 0xAE, 0x8A, 0x1A, 0x2A, 0xDA, 0xE5, 0xA1, 0x24, 0x96, 0xA8, 0x11, 0xD0, 0xC6, 0x4A, 0x6B, 0x94, 0x54, 0x87, 0x1A, 0x75,
 		0x85, 0xA8, 0x01, 0x82, 0xFC, 0xF6, 0xCC};
 #endif
+
+
+
+
+
+#if ATOMIC_INT_LOCK_FREE == 0
+#error "int atomic is never lock-free"
+#elif ATOMIC_INT_LOCK_FREE == 1
+#warning "int atomic is sometimes lock-free"
+#elif ATOMIC_INT_LOCK_FREE == 2
+#warning "int atomic is always lock-free"
+#endif
+
+
 
 
 #define XMODEM_SOH 0x01
