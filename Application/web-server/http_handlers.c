@@ -1754,9 +1754,13 @@ void handle_get_fw_status(void) {
     int pos = 0;
 
     /* TODO: fw_state yalniz RAM'de — reset sonrasi "ready" durumu kaybolur.
-     * Tamamlanmis indirmeyi NVRAM rfwu_nvram_t'ye isaretle ve acilista
-     * "apply hazir" olarak geri yukle; arada gelen chunk'lari da
-     * (received_bytes) NVRAM'e yazarak kaldigi yerden devam et. */
+     * NVRAM rfwu_nvram_t'ye su alanlari kalici yap:
+     *   - received_bytes (4 KB hizali kontrol noktasi — yarida kalan
+     *     transfer kaldigi yerden devam etsin)
+     *   - total_size + file_hash (dosya kimligi — ayni dosya mi kontrolu)
+     *   - tamamlanmis indirme isareti (acilista "apply hazir" geri yukle)
+     * Resume akisi: fw_start'ta hash eslesirse received_bytes'tan devam;
+     * eslesmezse (farkli dosya) sifirdan basla. */
 
     if (fw_state.in_progress) {
         pos += xsnprintf(buf + pos, buf_size - pos,
