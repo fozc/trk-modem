@@ -989,6 +989,21 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
                 return false;
             }
         }
+        else if (match_key(str, "ScadaIPAdresi"))
+        {
+            /* GET yayinliyor ama POST hic parse etmiyordu - kullanici
+             * "kaydedildi" aliyor, deger sessizce eski kaliyordu (O6.7). */
+            if (!parse_string(str, iec->scada_ip_address,
+                              sizeof(iec->scada_ip_address))) {
+                return false;
+            }
+            if (!validate_ip_address(iec->scada_ip_address)) {
+                xcprintf(XCOLOR_RED,
+                         "[JSON] ERROR: Invalid SCADA IP: %s\r\n",
+                         iec->scada_ip_address);
+                return false;
+            }
+        }
         else if (match_key(str, "T0"))
         {
             if (!parse_uint8(str, &iec->t0_timeout))
