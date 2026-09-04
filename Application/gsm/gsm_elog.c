@@ -16,9 +16,16 @@ void gsm_elog_modem_event(elog_code_t code)
 }
 
 void gsm_elog_modem_event_with_arg(elog_code_t code, const void *arg,
-                                  uint8_t arg_len)
+                                   uint8_t arg_len)
 {
 	uint8_t info[16] = {0};
+
+	/* Acik API savunmasi (O4.6): NULL/bos arguman kaydi degil, sessizce
+	 * yok sayar - argumansiz kayit icin gsm_elog_modem_event var. */
+	if ((NULL == arg) || (0U == arg_len))
+	{
+		return;
+	}
 
 	memcpy(info, arg,
 	       arg_len < sizeof(info) ? arg_len : sizeof(info));
