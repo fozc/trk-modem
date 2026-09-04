@@ -454,12 +454,13 @@ void handle_get_device_config_json(void)
      * kimligi boot superblock'tan; okunamazsa derleme makrolari + ----- */
     {
         fw_info_t fw = {0};
-        char hash_str[9];
-
-        boot_installed_hash_to_str(hash_str, sizeof(hash_str));
 
         if (boot_get_installed_fw_info(&fw))
         {
+            char hash_str[9];
+
+            /* Gecerli superblock: hash alani yine de bossa ----- basar */
+            boot_installed_hash_to_str(hash_str, sizeof(hash_str));
             pos += xsnprintf(buf + pos, buf_size - pos,
                              "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%04u-%02u-%02u %02u:%02u:%02u %s)\",",
                              (unsigned)fw.version.major,
@@ -471,6 +472,7 @@ void handle_get_device_config_json(void)
         }
         else
         {
+            /* Superblock yok: calisan kodun derleme damgasi + bilinmez hash */
             pos += xsnprintf(buf + pos, buf_size - pos,
                              "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%s %s %s)\",",
                              (unsigned)VERSION_MAJOR,
@@ -478,7 +480,7 @@ void handle_get_device_config_json(void)
                              (unsigned)VERSION_PATCH,
                              __COMPILE_DATE__,
                              __COMPILE_TIME__,
-                             hash_str);   /* superblock yoksa "-----" */
+                             "-----");
         }
 
         /* Kurulum zamani: epoch; 0 = bilinmiyor (UI '-----' gosterir).
