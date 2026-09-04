@@ -1753,11 +1753,25 @@ void handle_get_fw_status(void) {
     int buf_size = handler_state.tx_buffer_size;
     int pos = 0;
 
+    /* TODO: fw_state yalniz RAM'de — reset sonrasi "ready" durumu kaybolur.
+     * Tamamlanmis indirmeyi NVRAM rfwu_nvram_t'ye isaretle ve acilista
+     * "apply hazir" olarak geri yukle; arada gelen chunk'lari da
+     * (received_bytes) NVRAM'e yazarak kaldigi yerden devam et. */
+
     if (fw_state.in_progress) {
         pos += xsnprintf(buf + pos, buf_size - pos,
                          "{\"active\":true,\"received\":%u,\"total\":%u,\"fh\":%u}",
                          fw_state.received_bytes, fw_state.total_size, fw_state.file_hash);
-    } else {
+    }
+    else if ((fw_state.total_size > 0U) &&
+             (fw_state.received_bytes == fw_state.total_size))
+    {
+        /* Transfer bitti, apply bekliyor — UI butonu gostersin */
+        pos += xsnprintf(buf + pos, buf_size - pos,
+                         "{\"active\":false,\"ready\":true,\"received\":%u,\"total\":%u,\"fh\":%u}",
+                         fw_state.received_bytes, fw_state.total_size, fw_state.file_hash);
+    }
+    else {
         pos += xsnprintf(buf + pos, buf_size - pos, "{\"active\":false}");
     }
 

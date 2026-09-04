@@ -272,7 +272,12 @@ async function init(){
   try{
     const r=await apiFetch('/fw_status');
     const d=await r.json();
-    if(d.active){
+    if(d.ready){
+      if(d.fh) fhash=d.fh;
+      setPhase('READY');setBtns(false,true,false,true,false);
+      log('Transfer complete ('+fmt(d.total)+' bytes). Ready to apply — click Apply Firmware.','warn');
+      document.getElementById('rb').style.display='none';
+    }else if(d.active){
       if(d.fh) fhash=d.fh;
       document.getElementById('rb').style.display='block';
       document.getElementById('ri').textContent=fmt(d.received)+' / '+fmt(d.total)+' already uploaded';
