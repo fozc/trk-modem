@@ -170,25 +170,26 @@ const fw_info_t *boot_get_installed_fw_info(void)
 
 void boot_log_installed_fw(void)
 {
-    const fw_info_t *fw = boot_get_installed_fw_info();
-
-    if (fw == NULL)
+    /* Getter artik hic NULL donmedigi icin gecerlilik bayragi burada
+     * okunur; superblock yoksa ----- ile cik. */
+    if (!s_installed_fw_valid)
     {
         CSLOG("Git Commit: [-----]\n");
         return;
     }
 
     /* Hash alani cache'e alinirken NUL ile sonlandirilir */
-    CSLOG("Git Commit: [%s]\n", (const char *)fw->short_commit_hash);
+    CSLOG("Git Commit: [%s]\n", (const char *)s_installed_fw.short_commit_hash);
     CSLOG("Image Build: [%04u-%02u-%02u %02u:%02u:%02u]\n",
-          (unsigned)fw->year, (unsigned)fw->month, (unsigned)fw->day,
-          (unsigned)fw->hour, (unsigned)fw->minute, (unsigned)fw->second);
+          (unsigned)s_installed_fw.year, (unsigned)s_installed_fw.month,
+          (unsigned)s_installed_fw.day, (unsigned)s_installed_fw.hour,
+          (unsigned)s_installed_fw.minute, (unsigned)s_installed_fw.second);
 
-    if (fw->installation_date != 0U)
+    if (s_installed_fw.installation_date != 0U)
     {
         datetime_t dt = {0};
 
-        dt_conv_from_epoch((time32_t)fw->installation_date, &dt);
+        dt_conv_from_epoch((time32_t)s_installed_fw.installation_date, &dt);
         CSLOG("Kurulum: [%04u-%02u-%02u %02u:%02u:%02u]\n",
               (unsigned)dt.date.year, (unsigned)dt.date.month, (unsigned)dt.date.day,
               (unsigned)dt.time.hour, (unsigned)dt.time.minute, (unsigned)dt.time.second);
