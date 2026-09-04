@@ -23,6 +23,13 @@ static uint32_t     s_period_s = 0UL;
 void periodic_reset_tick(void)
 {
     uint32_t cfg_period = modem_config_get_reset_period();
+
+    /* Eski NVRAM degerlerinde kalmis dev periyotlar da kiskalanir */
+    if (cfg_period > PERIODIC_RESET_PERIOD_MAX_S)
+    {
+        cfg_period = PERIODIC_RESET_PERIOD_MAX_S;
+    }
+
     if (cfg_period != s_period_s)
     {
         CCSLOG(XCOLOR_CYAN,

@@ -15,6 +15,11 @@
 extern "C" {
 #endif
 
+/* Periyot ust siniri (saniye). Web arayuzu saat girer (0-720 h); 0 =
+ * periyodik reset kapali. Saniye cinsinden bu sinir, tick carpiminin
+ * (period * CLOCK_SECOND) 32-bit tasmamasini garanti eder (Y3.13). */
+#define PERIODIC_RESET_PERIOD_MAX_S  (720UL * 3600UL)   /* 30 gun */
+
 /**
  * @brief Periodic-reset tick — call from the heart_beat_process loop.
  *

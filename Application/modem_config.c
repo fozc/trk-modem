@@ -8,6 +8,7 @@
 #include "modem_config.h"
 #include "nvram.h"
 #include "bsp.h"
+#include "periodic_reset.h"
 
 #define modem_config (nvram_get_modem_config_rw())
 
@@ -245,6 +246,13 @@ uint32_t modem_config_get_reset_period(void)
 
 void modem_config_set_reset_period(uint32_t period)
 {
+	/* Y3.13: ust kiskaç — period * CLOCK_SECOND carpimini sarmaya
+	 * karsi korur (butun yazma yollari bu setter'tan gecer). */
+	if (period > PERIODIC_RESET_PERIOD_MAX_S)
+	{
+		period = PERIODIC_RESET_PERIOD_MAX_S;
+	}
+
 	modem_config->periodic_modem_reset_period = period;
 }
 
