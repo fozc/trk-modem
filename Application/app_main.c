@@ -242,7 +242,7 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	reset_source_print();
 
-	CSLOG("Troika Smart Breaker Modem Started\r\n");
+	CSLOG("-Troika Smart Breaker Modem Started\r\n");
 	CSLOG("Board started...Compile Time [%s %s]\r\n", __TIME__, __DATE__);
 	CSLOG("Product Type: [%s]\r\n", PRODUCT_TYPE);
 	CSLOG("Device Type: [%d] Dev Model: [%d] App Type: [%d]\r\n", DEVICE_TYPE, DEVICE_MODEL, APP_TYPE);
