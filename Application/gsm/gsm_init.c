@@ -15,6 +15,7 @@
 #include "gsm_listener_process.h"
 #include "modem_config.h"
 #include "led_driver.h"
+#include "gsm_elog.h"
 #include <string.h>
 #include <stdbool.h>
 
@@ -279,6 +280,10 @@ static void gsm_init_step_reset_module(void)
 	if (s_pin_reset_state)
 	{
 		CSLOG_ERR("Hard Reset!\r\nWaiting for EWDT reset...\r\n");
+		/* Kalici kanit: modem kurulumu PIN reset sonrasi da tukendi,
+		 * cihaz bilincl olarak EWDT reseti bekliyor. Bu kayit olmadan
+		 * reset sonrasi neden oldugu anlasilamazdi (RAM izi yok olur). */
+		gsm_elog_modem_event(ELOG_GSM_INIT_EXHAUSTED);
 		while(1);
 	}
 	if (++gsm.reboot_counter > 2)

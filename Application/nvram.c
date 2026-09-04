@@ -450,7 +450,13 @@ int nvram_init(void)
 
 int nvram_sync(bool crc_no_check)
 {
-	crc32_t crc = nvram_calculate_crc();
+    /* TODO (Y3.7/Y3.10): sync bloklamadir (2x erase+16 sayfa yaz+verify,
+     * yuzlerce ms - tum surecler donar). Kirilma yollari (reboot_system,
+     * gsm_init EWDT-bekleme) reset oncesi bekleyen NVRAM degisikliklerini
+     * bu fonksiyonla bosaltmalidir; bloklama kirilma aninda kabul
+     * edilebilir ama normal isleyiste dirty-bayrak + arka plan (dilimli)
+     * yazima tasinmali. */
+    crc32_t crc = nvram_calculate_crc();
 
     if(!crc_no_check && crc == nvram.crc)
 	{
