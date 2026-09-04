@@ -65,6 +65,8 @@ void nvram_set_defaults(void)
      * sonraki acilista yine default-reset'e dusardi. */
     nvram.magic = NVRAM_MAGIC;
     nvram.schema_version = NVRAM_SCHEMA_VERSION;
+    nvram.length = (uint32_t)sizeof(nvram_t);
+    nvram.sequence = 0U;
 
     // Modem Config Defaults
 	nvram.modem_config.serial_number = DEVICE_DEFAULT_SERIAL_NUMBER;
@@ -352,6 +354,8 @@ void nvram_dump()
 
 	/* CRC SECTION */
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
+	CSLOG_NODT("  NVRAM Version/Length/Seq    : v%u / %u / %u\r\n",
+	           nvram.schema_version, nvram.length, nvram.sequence);
 	CSLOG_NODT("  NVRAM CRC                  : 0x%08X\r\n", nvram.crc);
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
 	CSLOG_NODT("\r\n");
@@ -368,9 +372,32 @@ static bool is_nvram_empty_or_uninitialized(void)
 	return 1; // Empty
 }
 
+/* RAM-aynasina okunmus bir kopyanin gecerliligi. Goruntu kendi
+ * boyutunu tanimlar (v2 baslik): magic -> length siniri -> CRC
+ * goruntunun length-4 bayti uzerinde. Schema ayri kontrol edilir
+ * (eski/yeni surum ayrimi mesaj icin lazim). */
+static bool nvram_image_valid(void)
+{
+    if (nvram.magic != NVRAM_MAGIC)
+    {
+        return false;
+    }
+
+    if ((nvram.length < (uint32_t)(offsetof(nvram_t, crc) + 4U)) ||
+        (nvram.length > (uint32_t)sizeof(nvram_t)))
+    {
+        return false;
+    }
+
+    crc32_t crc = crc32_init();
+    crc = crc32_update(crc, &nvram, nvram.length - sizeof(nvram.crc));
+    return (crc32_finalize(crc) == nvram.crc);
+}
+
 /* Magic + schema_version kontrolu. Layout degisikligi (eski surum /
  * silinmis/bos flash) CRC tesadufune dusmeden bilincli default-reset
- * olarak ele alinir. */
+ * olarak ele alinir. v1 goruntusu sahada yok; v3'ten itibaren eski
+ * surumler burada migration ile karsilanir. */
 static bool nvram_schema_valid(void)
 {
     return (nvram.magic == NVRAM_MAGIC) &&
@@ -385,46 +412,79 @@ int nvram_init(void)
 
 	int res = 0;
 
+    /* --- Ana kopya --- */
     w25qxx_read_buff(NVRAM_ADDRESS, &nvram, sizeof(nvram));
-    bool schema_ok = nvram_schema_valid();
-    crc32_t crc = nvram_calculate_crc();
 
-    if(!schema_ok || (crc != nvram.crc))
+    if (nvram_image_valid() && nvram_schema_valid())
     {
-        /* Keep the failing values: nvram is about to be re-read from backup. */
-        uint32_t main_stored_crc = nvram.crc;
-        uint32_t main_calc_crc = crc;
-
-        if(!schema_ok)
+        /* Iki kopyaya da ayni goruntu yazilir; yazim ortasinda guc
+         * kesilirse sequence'lari farkli kalir. Yedek gecerli VE daha
+         * taze (yuksek sequence) ise onu kullan - eskiden gecerli ana
+         * kopya, daha yeni yedegin onune gecabiliyordu. */
+        struct
         {
-            xcprintf(XCOLOR_RED, "NVRAM schema mismatch: magic=0x%08X version=%u (expected 0x%08X/%u)\r\n",
-                     nvram.magic, nvram.schema_version, NVRAM_MAGIC, NVRAM_SCHEMA_VERSION);
+            uint32_t magic;
+            uint32_t schema_version;
+            uint32_t length;
+            uint32_t sequence;
+        } backup_hdr;
+
+        w25qxx_read_buff(NVRAM_BACKUP_ADDRESS, &backup_hdr, sizeof(backup_hdr));
+
+        if ((backup_hdr.magic == NVRAM_MAGIC) &&
+            (backup_hdr.sequence > nvram.sequence))
+        {
+            w25qxx_read_buff(NVRAM_BACKUP_ADDRESS, &nvram, sizeof(nvram));
+
+            if (nvram_image_valid() && nvram_schema_valid())
+            {
+                elog_log_nvram_recovery(ELOG_NVRAM_RESTORED_FROM_BACKUP,
+                                        nvram.crc, nvram.crc);
+                CSLOG("NVRAM: yedek kopya daha taze (sequence), onu kullandik.\r\n");
+            }
+            else
+            {
+                /* Yedek basligi iyi gorunuyordu ama icerigi bozuk:
+                 * gecerli olan ana kopyayi geri yukle. */
+                w25qxx_read_buff(NVRAM_ADDRESS, &nvram, sizeof(nvram));
+            }
+        }
+    }
+    else
+    {
+        uint32_t main_stored_crc = nvram.crc;
+
+        if (nvram.magic != NVRAM_MAGIC)
+        {
+            /* bos/silinmis flash */
+        }
+        else if (nvram.schema_version != NVRAM_SCHEMA_VERSION)
+        {
+            xcprintf(XCOLOR_RED, "NVRAM schema mismatch: version=%u (expected %u) - migration yok, default-reset\r\n",
+                     nvram.schema_version, NVRAM_SCHEMA_VERSION);
         }
         else
         {
-            xcprintf(XCOLOR_RED, "NVRAM CRC mismatch: stored=0x%08X, calculated=0x%08X\r\n", nvram.crc, crc);
+            xcprintf(XCOLOR_RED, "NVRAM CRC mismatch: stored=0x%08X, calculated=0x%08X\r\n",
+                     nvram.crc, nvram_calculate_crc());
         }
 
-    	bool is_main_nvram_empty_or_uninitialized = is_nvram_empty_or_uninitialized();
-		if(is_main_nvram_empty_or_uninitialized){
+    	if(is_nvram_empty_or_uninitialized()){
 			CSLOG("NVRAM uninitialized.\n");
 		}
     	w25qxx_read_buff(NVRAM_BACKUP_ADDRESS, &nvram, sizeof(nvram));
-    	schema_ok = nvram_schema_valid();
-    	crc = nvram_calculate_crc();
 
-    	if(!schema_ok || (crc != nvram.crc))
+    	if (!(nvram_image_valid() && nvram_schema_valid()))
     	{
-    		xcprintf(XCOLOR_RED, "NVRAM backup invalid: schema=%s crc=stored 0x%08X / calc 0x%08X\r\n",
-    		         (schema_ok ? "ok" : "mismatch"), nvram.crc, crc);
+    		xcprintf(XCOLOR_RED, "NVRAM backup invalid: schema=%s crc=stored 0x%08X\r\n",
+    		         (nvram_schema_valid() ? "ok" : "mismatch"), nvram.crc);
 
-    		bool is_backup_nvram_empty_or_uninitialized = is_nvram_empty_or_uninitialized();
-        	if(is_backup_nvram_empty_or_uninitialized){
+        	if(is_nvram_empty_or_uninitialized()){
 				CSLOG("NVRAM backup uninitialized.\r\n");
 			}
 
 			nvram_set_defaults();
-			elog_log_nvram_recovery(ELOG_NVRAM_DEFAULTS_REWRITTEN, main_stored_crc, main_calc_crc);
+			elog_log_nvram_recovery(ELOG_NVRAM_DEFAULTS_REWRITTEN, main_stored_crc, main_stored_crc);
 			if(nvram_sync(true)){
 				xcprintf(XCOLOR_RED, "Failed to write default NVRAM values to flash.\r\n");
 				res = -1;
@@ -432,7 +492,7 @@ int nvram_init(void)
     	}
     	else
     	{
-    		elog_log_nvram_recovery(ELOG_NVRAM_RESTORED_FROM_BACKUP, main_stored_crc, main_calc_crc);
+    		elog_log_nvram_recovery(ELOG_NVRAM_RESTORED_FROM_BACKUP, main_stored_crc, main_stored_crc);
     		CSLOG("NVRAM restored from backup.\r\n");
     	}
 	}
@@ -463,6 +523,13 @@ int nvram_sync(bool crc_no_check)
 		xcprintf(XCOLOR_YELLOW, "NVRAM CRC unchanged, skipping write.\r\n");
 		return 0;
 	}
+
+    /* Gercek yazim: goruntu basligi guncellenir - length sabit (layout
+     * donmus), sequence monoton artar. Torn yazimda kopyalar arasi
+     * fark kalir; acilistaki cift-kopya hakemligi bununla yapilir. */
+    nvram.length = (uint32_t)sizeof(nvram_t);
+    nvram.sequence++;
+    crc = nvram_calculate_crc();
 
     nvram.crc = crc;
     int res1 = w25qxx_write_buff(NVRAM_ADDRESS, &nvram, sizeof(nvram));

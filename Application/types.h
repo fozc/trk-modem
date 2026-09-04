@@ -200,13 +200,18 @@ typedef struct
 #define NVRAM_MAGIC           0x54524B4EU
 /** NVRAM layout surumu. Yapi boyutu/ofseti degistiginde bump edilir
  *  (nvram_init eski surumu bilincli default-reset ile karsilar).
- *  v2: eski rf_config alani kaldirildi (tek-blok modeli tek alan). */
-#define NVRAM_SCHEMA_VERSION  1U
+ *  v2: basliga length + sequence eklendi - goruntu kendi boyutunu
+ *  tanimlar (CRC/okuma kapsami goruntuden) ve cift kopyada taze
+ *  (yuksek sequence) olan kazanir. v1->v2 gecisinde sahada cihaz
+ *  yoktu; v3'ten itibaren eski surumler migration ile tasinir. */
+#define NVRAM_SCHEMA_VERSION  2U
 
 typedef struct
 {
     uint32_t magic;            /**< NVRAM_MAGIC - CRC'den ONCE kontrol edilir */
     uint32_t schema_version;   /**< NVRAM_SCHEMA_VERSION */
+    uint32_t length;           /**< Toplam goruntu boyutu (crc dahil) - okuma ve CRC kapsami buna gore */
+    uint32_t sequence;         /**< Monoton yazim sayaci; cift kopyada taze olan kazanir */
 	modem_config_t modem_config;
 	iec104_config_t iec104_config;
 	modbus_configs_t modbus_config;
@@ -222,13 +227,16 @@ typedef struct
 
 /* Layout kaymasini derleme hatasina cevir (rf_feeder_t bekcisi
  * rf_types.h icindedir). Bu yapi degistiginde NVRAM_SCHEMA_VERSION
- * bump edilir. 2452 = GCC 14.3.rel1 / Cortex-M33 olcumu (Y3.11);
- * CRC sizeof-4 uzerinden hesaplanir - layout kaysa eski flash
- * goruntuleri sessizce CRC'den dusup default-reset olurdu; bu
- * bekci kaymayi derleme zamaninda yakalar. */
+ * bump edilir. 2460 = GCC 14.3.rel1 / Cortex-M33 olcumu (Y3.11);
+ * CRC goruntunun length-4 bayti uzerinde hesaplanir - layout kaysa
+ * eski flash goruntuleri sessizce CRC'den dusup default-reset
+ * olurdu; bu bekci kaymayi derleme zamaninda yakalar. */
 _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
-_Static_assert(sizeof(nvram_t) == 2452U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
-_Static_assert(offsetof(nvram_t, crc) == 2448U, "nvram_t: crc sondan hemen once, kuyruk padding yok");
+_Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
+_Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
+_Static_assert(sizeof(nvram_t) == 2460U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
+_Static_assert(offsetof(nvram_t, crc) == 2456U, "nvram_t: crc sondan hemen once, kuyruk padding yok");
+_Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */

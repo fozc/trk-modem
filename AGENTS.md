@@ -72,6 +72,14 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
 
 ## Repo-specific constraints
 
+- **NVRAM layout changes need discipline:** bump
+  `NVRAM_SCHEMA_VERSION`, add fields only at the tail (before `crc`),
+  update the layout asserts in `types.h` (`sizeof`/`offsetof`, measured
+  on the project toolchain), and — once devices exist in the field —
+  write a migration plus a host test. The image header
+  (magic/version/length/sequence) is self-describing and the dual
+  copies are arbitrated by `sequence`; keep both properties intact.
+
 - **Critical decisions require user approval:** never make or commit a
   decision that directly affects the user without asking first. This
   includes: git commits, git operations (push/merge/rebase/reset),

@@ -139,6 +139,13 @@ compile-time removable via preprocessor switches.
   it diverges from BARR-C; for **new files**, follow the standards fully,
   including the file-header template (`barr-c.instructions.md` §9.15).
 - Keep functions at **<= 100 lines**; refactor when larger.
+- **NVRAM layout changes need discipline:** bump
+  `NVRAM_SCHEMA_VERSION`, add fields only at the tail (before `crc`),
+  update the layout asserts in `types.h` (`sizeof`/`offsetof`, measured
+  on the project toolchain), and — once devices exist in the field —
+  write a migration plus a host test. The image header
+  (magic/version/length/sequence) is self-describing and the dual
+  copies are arbitrated by `sequence`; keep both properties intact.
 - When you change a module's logic, run its Ceedling test under that
   module's `test/` directory.
 - **Never invent hardware details** — register addresses, timing, or clock
