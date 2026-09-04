@@ -3111,8 +3111,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			char_ptr2 = modem_config_get_sim_apn_password();
 			if(char_ptr && char_ptr[0] > 0 && char_ptr2 && char_ptr2[0] > 0)
 			{
-				/* Ek mutlak ofsetle yazilir: buff_ptr ilerletilmez,
-				 * fonksiyon sonundaki CR yazimi buff_ptr'e goreli. */
+				/* #SGACT=1,1 yazimini tut  */
 				at_len += xsnprintf((char *)(at_buff + at_len), sizeof(at_buff) - at_len,
 				                    ",\"%s\",\"%s\"", char_ptr, char_ptr2);
 			}

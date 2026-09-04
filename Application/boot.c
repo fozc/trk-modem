@@ -111,12 +111,12 @@ void boot_init(void)
     {
         s_backup_section = validated_backup_section(sb.backup_section);
         cache_installed_fw(&sb);
-        CSLOG("BOOT: Primary superblock OK, backup_section=%c\n",
+        CSLOG("BOOT: Primary superblock OK, backup_section=%c\r\n",
               (s_backup_section == (uint8_t)BOOT_FW_SECTION_A) ? 'A' : 'B');
         return;
     }
 
-    CSLOG("BOOT: Primary superblock invalid, trying backup...\n");
+    CSLOG("BOOT: Primary superblock invalid, trying backup...\r\n");
 
     /* Try backup superblock */
     w25qxx_read_buff(SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_BOOTLOADER_SB_BACKUP),
@@ -126,14 +126,14 @@ void boot_init(void)
     {
         s_backup_section = validated_backup_section(sb.backup_section);
         cache_installed_fw(&sb);
-        CSLOG("BOOT: Backup superblock OK, backup_section=%c\n",
+        CSLOG("BOOT: Backup superblock OK, backup_section=%c\r\n",
               (s_backup_section == (uint8_t)BOOT_FW_SECTION_A) ? 'A' : 'B');
         return;
     }
 
     /* Both invalid -- default: download to section A */
     s_backup_section = (uint8_t)BOOT_FW_SECTION_B;
-    CSLOG_ERR("BOOT: Both superblocks invalid, defaulting download to section A\n");
+    CSLOG_ERR("BOOT: Both superblocks invalid, defaulting download to section A\r\n");
 }
 
 boot_fw_section_t boot_get_download_section(void)
@@ -174,13 +174,13 @@ void boot_log_installed_fw(void)
      * okunur; superblock yoksa ----- ile cik. */
     if (!s_installed_fw_valid)
     {
-        CSLOG("Git Commit: [-----]\n");
+        CSLOG("Git Commit: [-----]\r\n");
         return;
     }
 
     /* Hash alani cache'e alinirken NUL ile sonlandirilir */
     CSLOG("Git Commit: [%s]\n", (const char *)s_installed_fw.short_commit_hash);
-    CSLOG("Image Build: [%04u-%02u-%02u %02u:%02u:%02u]\n",
+    CSLOG("Image Build: [%04u-%02u-%02u %02u:%02u:%02u]\r\n",
           (unsigned)s_installed_fw.year, (unsigned)s_installed_fw.month,
           (unsigned)s_installed_fw.day, (unsigned)s_installed_fw.hour,
           (unsigned)s_installed_fw.minute, (unsigned)s_installed_fw.second);
@@ -190,14 +190,14 @@ void boot_log_installed_fw(void)
         datetime_t dt = {0};
 
         dt_conv_from_epoch((time32_t)s_installed_fw.installation_date, &dt);
-        CSLOG("Kurulum: [%04u-%02u-%02u %02u:%02u:%02u]\n",
+        CSLOG("Kurulum: [%04u-%02u-%02u %02u:%02u:%02u]\r\n",
               (unsigned)dt.date.year, (unsigned)dt.date.month, (unsigned)dt.date.day,
               (unsigned)dt.time.hour, (unsigned)dt.time.minute, (unsigned)dt.time.second);
     }
     else
     {
         /* Bootloader henuz RTC damgasi yazmiyor */
-        CSLOG("Kurulum: [-----]\n");
+        CSLOG("Kurulum: [-----]\r\n");
     }
 }
 
