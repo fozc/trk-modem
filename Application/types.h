@@ -199,12 +199,13 @@ typedef struct
 /** NVRAM layout gecerlilik magic'i - "TRKN". */
 #define NVRAM_MAGIC           0x54524B4EU
 /** NVRAM layout surumu. Yapi boyutu/ofseti degistiginde bump edilir
- *  (nvram_init eski surumu bilincli default-reset ile karsilar).
- *  v2: basliga length + sequence eklendi - goruntu kendi boyutunu
- *  tanimlar (CRC/okuma kapsami goruntuden) ve cift kopyada taze
- *  (yuksek sequence) olan kazanir. v1->v2 gecisinde sahada cihaz
- *  yoktu; v3'ten itibaren eski surumler migration ile tasinir. */
-#define NVRAM_SCHEMA_VERSION  2U
+ *  (nvram_init eski surumu bilincli default-reset ile karsilar;
+ *  release sonrasi bump = migration + test zorunlu — bkz. AGENTS.md).
+ *  v1: baslikta magic + schema_version + length + sequence — goruntu
+ *  kendi boyutunu tanimlar (CRC/okuma kapsami goruntuden) ve cift
+ *  kopyada taze (yuksek sequence) olan kazanir. Release oncesi tek
+ *  surum; release sonrasi yapilan degisiklikler v2'ye bump. */
+#define NVRAM_SCHEMA_VERSION  1U
 
 typedef struct
 {
