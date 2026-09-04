@@ -338,10 +338,15 @@ log_status_t log_write(log_ctx_t *ctx, const void *payload) {
 
     /* 1. program komutu: seq + payload (sayfa sinirinda bolunebilir) */
     if (program_split(ctx, addr, buf, crc_off) != 0) {
+        /* Torn slot: offset ilerlet ki ayni adrese yeniden yazilmasin.
+         * NOR 1->0 AND kisiratmasi: farkli payload ayni slota yazilirsa
+         * iki degerin AND'i kalir, CRC sonsuza dek tutmaz (O9.6). */
+        ctx->write_offset += ctx->entry_size;
         return LOG_ERR_FLASH_PROGRAM;
     }
     /* 2. program komutu: crc (en son) */
     if (program_split(ctx, addr + crc_off, buf + crc_off, LOG_CRC_SIZE) != 0) {
+        ctx->write_offset += ctx->entry_size;
         return LOG_ERR_FLASH_PROGRAM;
     }
 
