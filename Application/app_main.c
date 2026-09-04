@@ -34,7 +34,6 @@
 #include "periodic_reset.h"
 #include "app_ipc.h"
 #include "boot.h"
-#include "datetime.h"
 
 #include "fault_log.h"
 #include "stack_monitor.h"
@@ -248,40 +247,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	CSLOG("Product Type: [%s]\r\n", PRODUCT_TYPE);
 	CSLOG("Device Type: [%d] Dev Model: [%d] App Type: [%d]\r\n", DEVICE_TYPE, DEVICE_MODEL, APP_TYPE);
 	CSLOG("Soft Ver: [%d.%d.%d.%d]\r\n", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_EXTRA);
-	{
-		/* Kurulan imajin kimligi boot superblock'tan; okunamazsa ----- */
-		fw_info_t fw = {0};
-		char hash_str[9];
-
-		boot_installed_hash_to_str(hash_str, sizeof(hash_str));
-		CSLOG("Git Commit: [%s]\r\n", hash_str);
-
-		if (boot_get_installed_fw_info(&fw))
-		{
-			CSLOG("Image Build: [%04u-%02u-%02u %02u:%02u:%02u]\r\n",
-			      (unsigned)fw.year, (unsigned)fw.month, (unsigned)fw.day,
-			      (unsigned)fw.hour, (unsigned)fw.minute, (unsigned)fw.second);
-
-			if (fw.installation_date != 0U)
-			{
-				datetime_t dt = {0};
-
-				dt_conv_from_epoch((time32_t)fw.installation_date, &dt);
-				CSLOG("Kurulum: [%04u-%02u-%02u %02u:%02u:%02u]\r\n",
-				      (unsigned)dt.date.year, (unsigned)dt.date.month, (unsigned)dt.date.day,
-				      (unsigned)dt.time.hour, (unsigned)dt.time.minute, (unsigned)dt.time.second);
-			}
-			else
-			{
-				/* Bootloader henuz RTC damgasi yazmiyor */
-				CSLOG("Kurulum: [-----]\r\n");
-			}
-		}
-		else
-		{
-			CSLOG("Kurulum: [-----]\r\n");
-		}
-	}
+	boot_log_installed_fw();
 
 #ifndef DEBUG
 	CSLOG("\r\nRunning in Release Mode\r\n");

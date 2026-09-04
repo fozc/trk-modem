@@ -120,6 +120,14 @@ bool boot_get_installed_fw_info(fw_info_t *out);
 void boot_installed_hash_to_str(char *out, uint32_t out_size);
 
 /**
+ * @brief Print the installed image identity (git hash, image build
+ *        date-time, installation date) to the console log. Data comes
+ *        from the cached superblock; unavailable parts are shown as
+ *        "-----" or omitted.
+ */
+void boot_log_installed_fw(void);
+
+/**
  * @brief Check if a new firmware file has been downloaded.
  */
 bool boot_is_new_firmware_downloaded(void);
