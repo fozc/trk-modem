@@ -1267,10 +1267,12 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse HatID array\r\n");
                 return false;
             }
-            /* Fider_ID 0-7 (0 = provizyonsuz, spec R2 section 3.2) */
+            /* Fider_ID 0-7 (0 = provizyonsuz, spec R2 section 3.2).
+             * Aralik kontrolu in_use farketmeksizin - pasif hatta
+             * girilen cöp deger sonradan aktiflesince devrede olur. */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 0U, 7U, "HatID (Fider_ID)")) {
+                    if (!validate_rf_uint(temp_uint[i], 0U, 7U, "HatID (Fider_ID)")) {
                         return false;
                     }
                     configs[i]->config.fider_id = (uint8_t)temp_uint[i];
@@ -1283,10 +1285,10 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
                 xcprintf(XCOLOR_RED, "[JSON] ERROR: Failed to parse ZoneID array\r\n");
                 return false;
             }
-            /* Zone_ID 0-7 (spec R2 section 3.2) */
+            /* Zone_ID 0-7 (spec R2 section 3.2). in_use farketmeksizin. */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_rf_uint(temp_uint[i], 0U, 7U, "ZoneID")) {
+                    if (!validate_rf_uint(temp_uint[i], 0U, 7U, "ZoneID")) {
                         return false;
                     }
                     configs[i]->config.zone_id = (uint8_t)temp_uint[i];
@@ -1694,6 +1696,19 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             if (!skip_unknown_key_value(str)) return false;
         }
         skip_comma(str);
+    }
+
+    /* Spec R2 3.2/6.3: in_use bir hat provizyonsuz (fider_id=0) olamaz -
+     * bu durumda hub'a body[1]=0 itilir ve RF koordinasyona girmez (Y7.4).
+     * Tarayici JS'i engelliyordu ama dogrudan POST ile atlanabiliyordu. */
+    for (int i = 0; i < MAX_ARRAYS; i++) {
+        if ((configs[i] != NULL) && configs[i]->in_use &&
+            (configs[i]->config.fider_id == 0U)) {
+            xcprintf(XCOLOR_RED,
+                     "[VALIDATION] ERROR: Line %d is in use but has no Feeder ID\r\n",
+                     i + 1);
+            return false;
+        }
     }
 
     /* Capraz dogrulama (spec R2 section 4.6): Ia >= 1.2 x Nominal.
