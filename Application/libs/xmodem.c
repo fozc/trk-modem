@@ -7,6 +7,7 @@
 
 #include "xmodem.h"
 #include <string.h>
+#include <stdatomic.h>
 #include "bsp.h"
 #include "w25qxx.h"
 
@@ -80,7 +81,9 @@ typedef struct
 	volatile uint8_t      session_state;
 	volatile uint16_t     timer;
 	uint8_t               can_count;
-	volatile uint8_t      evt_pending;
+	/* ISR kurar (fetch_or/release), poll tek adimda alir-siler
+	 * (exchange/acquire) - oku-sil arasina dusen bayrak kaybi yok (Y3.14). */
+	atomic_uint8_t        evt_pending;
 }xmodem_t;
 
 #ifdef XMODEM_USE_CACHE
@@ -268,7 +271,9 @@ void xmodem_rx_isr(uint8_t data)
 			xm.pckg.state = XMODEM_SEQ1;
 			if(xm.session_state == XMODEM_WAITING)
 			{
-				xm.evt_pending  |= XMODEM_EVT_FILE_DOWNLOAD_STARTED;
+				atomic_fetch_or_explicit(&xm.evt_pending,
+				                         XMODEM_EVT_FILE_DOWNLOAD_STARTED,
+				                         memory_order_release);
 				xm.session_state = XMODEM_DOWNLOADING;
 				xm.timer = 0;
 			}
@@ -281,7 +286,9 @@ void xmodem_rx_isr(uint8_t data)
 			{
 				if(xm.session_state == XMODEM_DOWNLOADING)
 				{
-					xm.evt_pending  |= XMODEM_EVT_FILE_DOWNLOAD_CANCELED;
+					atomic_fetch_or_explicit(&xm.evt_pending,
+					                         XMODEM_EVT_FILE_DOWNLOAD_CANCELED,
+					                         memory_order_release);
 					xm.session_state = XMODEM_CANCEL;
 				}
 				xm.can_count = 0;
@@ -386,11 +393,13 @@ uint32_t xmodem_check_package(void)
 
 void xmodem_poll(void)
 {
-	/* Dispatch events deferred from ISR context */
-	if(xm.evt_pending != 0U)
+	/* Dispatch events deferred from ISR context. Oku-sil tek atomik
+	 * takasla yapilir (Y3.14). */
+	uint8_t evt = atomic_exchange_explicit(&xm.evt_pending, 0U,
+	                                       memory_order_acquire);
+
+	if(evt != 0U)
 	{
-		uint8_t evt = xm.evt_pending;
-		xm.evt_pending = 0;
 		if(cfg.event_callback != NULL)
 		{
 			if(evt & XMODEM_EVT_FILE_DOWNLOAD_STARTED)
