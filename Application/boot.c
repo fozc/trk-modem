@@ -146,8 +146,14 @@ uint32_t boot_get_download_address(void)
 
 bool boot_get_installed_fw_info(fw_info_t *out)
 {
-    if (!s_installed_fw_valid || (out == NULL))
+    if (out == NULL)
     {
+        return false;
+    }
+
+    if (!s_installed_fw_valid)
+    {
+        memset(out, 0, sizeof(*out));
         return false;
     }
 

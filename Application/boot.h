@@ -103,9 +103,12 @@ uint32_t boot_get_download_address(void);
  *        superblock (version, size, CRC, git hash, image build
  *        date-time, installation date).
  *
- * @param[out] out  Destination for the cached fw_info_t.
- * @return true if a valid superblock was read at boot_init(), else false
- *         (out is left untouched).
+ * Contract: *out is ALWAYS written - the cached data when a valid
+ * superblock exists, all zeros otherwise. NULL out is handled safely.
+ *
+ * @param[out] out  Destination for the fw_info_t.
+ * @return true if a valid superblock was read at boot_init(), else
+ *         false (out is zero-filled).
  */
 bool boot_get_installed_fw_info(fw_info_t *out);
 

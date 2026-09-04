@@ -453,7 +453,7 @@ void handle_get_device_config_json(void)
     /* Firmware versions as semantic version strings. Kurulan imajin
      * kimligi boot superblock'tan; okunamazsa derleme makrolari + ----- */
     {
-        fw_info_t fw = {0};
+        fw_info_t fw;   /* getter her durumda doldurur (gecersizse sifir) */
 
         if (boot_get_installed_fw_info(&fw))
         {
