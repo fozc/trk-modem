@@ -361,47 +361,81 @@ void nvram_dump()
 	CSLOG_NODT("\r\n");
 }
 
-static bool is_nvram_empty_or_uninitialized(void)
+/* Slot basligi - nvram_t'nin ilk 16 bayti ile ayni sirada
+ * (types.h'teki offsetof assert'leri bu sozlesmesi korur). */
+typedef struct
 {
-	const uint8_t* nvram_ptr = (const uint8_t*)&nvram;
-	for(int i = 0; i < sizeof(nvram); i++){
-		if(nvram_ptr[i] != 0xFF){
-			return 0; // Not empty
-		}
-	}
-	return 1; // Empty
+    uint32_t magic;
+    uint32_t schema_version;
+    uint32_t length;
+    uint32_t sequence;
+} nvram_hdr_t;
+
+typedef enum
+{
+    NVRAM_SLOT_OK = 0,
+    NVRAM_SLOT_BAD_MAGIC,
+    NVRAM_SLOT_BAD_LENGTH,
+    NVRAM_SLOT_BAD_CRC,
+    NVRAM_SLOT_BAD_SCHEMA
+} nvram_slot_status_t;
+
+static void nvram_read_hdr(uint32_t addr, nvram_hdr_t *hdr)
+{
+    w25qxx_read_buff(addr, hdr, sizeof(*hdr));
 }
 
-/* RAM-aynasina okunmus bir kopyanin gecerliligi. Goruntu kendi
- * boyutunu tanimlar (v2 baslik): magic -> length siniri -> CRC
- * goruntunun length-4 bayti uzerinde. Schema ayri kontrol edilir
- * (eski/yeni surum ayrimi mesaj icin lazim). */
-static bool nvram_image_valid(void)
+/* Baslik inanilabilir mi? (magic + length siniri - govde dogrulamasi
+ * nvram_load_slot'ta; baslik asla yalan soylemez diye bir sey yok.) */
+static bool nvram_hdr_plausible(const nvram_hdr_t *hdr)
 {
+    return (hdr->magic == NVRAM_MAGIC) &&
+           (hdr->length >= (uint32_t)(offsetof(nvram_t, crc) + 4U)) &&
+           (hdr->length <= (uint32_t)sizeof(nvram_t));
+}
+
+/* Slotu RAM-aynasina yukle; goruntu KENDI length'i uzerinde dogrulanir
+ * (magic -> length siniri -> CRC -> schema). Durum kodu log icin. */
+static nvram_slot_status_t nvram_load_slot(uint32_t addr)
+{
+    w25qxx_read_buff(addr, &nvram, sizeof(nvram));
+
     if (nvram.magic != NVRAM_MAGIC)
     {
-        return false;
+        return NVRAM_SLOT_BAD_MAGIC;
     }
-
     if ((nvram.length < (uint32_t)(offsetof(nvram_t, crc) + 4U)) ||
-        (nvram.length > (uint32_t)sizeof(nvram_t)))
+        (nvram.length > (uint32_t)sizeof(nvram)))
     {
-        return false;
+        return NVRAM_SLOT_BAD_LENGTH;
     }
 
     crc32_t crc = crc32_init();
     crc = crc32_update(crc, &nvram, nvram.length - sizeof(nvram.crc));
-    return (crc32_finalize(crc) == nvram.crc);
+
+    if (crc32_finalize(crc) != nvram.crc)
+    {
+        return NVRAM_SLOT_BAD_CRC;
+    }
+    if (nvram.schema_version != NVRAM_SCHEMA_VERSION)
+    {
+        return NVRAM_SLOT_BAD_SCHEMA;   /* v3'ten itibaren migration buraya */
+    }
+
+    return NVRAM_SLOT_OK;
 }
 
-/* Magic + schema_version kontrolu. Layout degisikligi (eski surum /
- * silinmis/bos flash) CRC tesadufune dusmeden bilincli default-reset
- * olarak ele alinir. v1 goruntusu sahada yok; v3'ten itibaren eski
- * surumler burada migration ile karsilanir. */
-static bool nvram_schema_valid(void)
+static const char *nvram_slot_status_str(nvram_slot_status_t st)
 {
-    return (nvram.magic == NVRAM_MAGIC) &&
-           (nvram.schema_version == NVRAM_SCHEMA_VERSION);
+    switch (st)
+    {
+        case NVRAM_SLOT_OK:         return "ok";
+        case NVRAM_SLOT_BAD_MAGIC:  return "magic";
+        case NVRAM_SLOT_BAD_LENGTH: return "length";
+        case NVRAM_SLOT_BAD_CRC:    return "crc";
+        case NVRAM_SLOT_BAD_SCHEMA: return "schema";
+        default:                    return "?";
+    }
 }
 
 int nvram_init(void)
@@ -411,95 +445,99 @@ int nvram_init(void)
 #endif
 
 	int res = 0;
+    bool loaded_from_backup = false;
 
-    /* --- Ana kopya --- */
-    w25qxx_read_buff(NVRAM_ADDRESS, &nvram, sizeof(nvram));
+    /* Faz 1 - karar: iki slotun basligini oku, mumkun olanlardan
+     * TAZE (yuksek sequence) olan tercih edilir. Esitlikte ana slot.
+     * Iki kopyaya ayni goruntu yazilir; yazim ortasinda guc kesilirse
+     * sequence'lari farkli kalir - hakemlik bununla yapilir. */
+    nvram_hdr_t main_hdr;
+    nvram_hdr_t backup_hdr;
+    nvram_read_hdr(NVRAM_ADDRESS, &main_hdr);
+    nvram_read_hdr(NVRAM_BACKUP_ADDRESS, &backup_hdr);
 
-    if (nvram_image_valid() && nvram_schema_valid())
+    bool main_candidate = nvram_hdr_plausible(&main_hdr);
+    bool backup_candidate = nvram_hdr_plausible(&backup_hdr);
+
+    uint32_t first_addr = 0U;    /* 0 = ikisi de mumkun degil */
+    uint32_t second_addr = 0U;
+    bool have_second = false;
+
+    if (main_candidate && backup_candidate)
     {
-        /* Iki kopyaya da ayni goruntu yazilir; yazim ortasinda guc
-         * kesilirse sequence'lari farkli kalir. Yedek gecerli VE daha
-         * taze (yuksek sequence) ise onu kullan - eskiden gecerli ana
-         * kopya, daha yeni yedegin onune gecabiliyordu. */
-        struct
+        if (backup_hdr.sequence > main_hdr.sequence)
         {
-            uint32_t magic;
-            uint32_t schema_version;
-            uint32_t length;
-            uint32_t sequence;
-        } backup_hdr;
-
-        w25qxx_read_buff(NVRAM_BACKUP_ADDRESS, &backup_hdr, sizeof(backup_hdr));
-
-        if ((backup_hdr.magic == NVRAM_MAGIC) &&
-            (backup_hdr.sequence > nvram.sequence))
+            first_addr = NVRAM_BACKUP_ADDRESS;
+            second_addr = NVRAM_ADDRESS;
+        }
+        else
         {
-            w25qxx_read_buff(NVRAM_BACKUP_ADDRESS, &nvram, sizeof(nvram));
+            first_addr = NVRAM_ADDRESS;
+            second_addr = NVRAM_BACKUP_ADDRESS;
+        }
+        have_second = true;
+    }
+    else if (main_candidate)
+    {
+        first_addr = NVRAM_ADDRESS;
+    }
+    else if (backup_candidate)
+    {
+        first_addr = NVRAM_BACKUP_ADDRESS;
+    }
+    else
+    {
+        first_addr = 0U;
+    }
 
-            if (nvram_image_valid() && nvram_schema_valid())
-            {
-                elog_log_nvram_recovery(ELOG_NVRAM_RESTORED_FROM_BACKUP,
-                                        nvram.crc, nvram.crc);
-                CSLOG("NVRAM: yedek kopya daha taze (sequence), onu kullandik.\r\n");
-            }
-            else
-            {
-                /* Yedek basligi iyi gorunuyordu ama icerigi bozuk:
-                 * gecerli olan ana kopyayi geri yukle. */
-                w25qxx_read_buff(NVRAM_ADDRESS, &nvram, sizeof(nvram));
-            }
+    /* Faz 2 - yukleme: kazanan slot bir kez okunur; govde bozuksa ve
+     * digeri mumkunsa ona dusulur. Her slot en fazla bir kez okunur. */
+    nvram_slot_status_t st = NVRAM_SLOT_BAD_MAGIC;
+
+    if (first_addr != 0U)
+    {
+        st = nvram_load_slot(first_addr);
+        loaded_from_backup = ((st == NVRAM_SLOT_OK) &&
+                              (first_addr == NVRAM_BACKUP_ADDRESS));
+
+        if ((st != NVRAM_SLOT_OK) && have_second)
+        {
+            xcprintf(XCOLOR_RED, "NVRAM slot@0x%06X gecersiz (%s) - diger slot deneniyor\r\n",
+                     first_addr, nvram_slot_status_str(st));
+            st = nvram_load_slot(second_addr);
+            loaded_from_backup = ((st == NVRAM_SLOT_OK) &&
+                                  (second_addr == NVRAM_BACKUP_ADDRESS));
+        }
+    }
+
+    if (st == NVRAM_SLOT_OK)
+    {
+        if (loaded_from_backup)
+        {
+            elog_log_nvram_recovery(ELOG_NVRAM_RESTORED_FROM_BACKUP,
+                                    main_hdr.sequence, backup_hdr.sequence);
+            CSLOG("NVRAM yedek slottan yuklendi (ana sequence=%u, yedek=%u).\r\n",
+                  main_hdr.sequence, backup_hdr.sequence);
+        }
+        else
+        {
+            CSLOG("NVRAM loaded successfully.\r\n");
         }
     }
     else
     {
-        uint32_t main_stored_crc = nvram.crc;
-
-        if (nvram.magic != NVRAM_MAGIC)
+        xcprintf(XCOLOR_RED, "NVRAM: kullanilabilir slot yok (%s / %s) - defaults\r\n",
+                 nvram_slot_status_str(st),
+                 (main_candidate || backup_candidate) ? "fallback-denendi" : "bosluk");
+        nvram_set_defaults();
+        elog_log_nvram_recovery(ELOG_NVRAM_DEFAULTS_REWRITTEN,
+                                main_hdr.sequence, backup_hdr.sequence);
+        if (nvram_sync(true))
         {
-            /* bos/silinmis flash */
+            xcprintf(XCOLOR_RED, "Failed to write default NVRAM values to flash.\r\n");
+            res = -1;
         }
-        else if (nvram.schema_version != NVRAM_SCHEMA_VERSION)
-        {
-            xcprintf(XCOLOR_RED, "NVRAM schema mismatch: version=%u (expected %u) - migration yok, default-reset\r\n",
-                     nvram.schema_version, NVRAM_SCHEMA_VERSION);
-        }
-        else
-        {
-            xcprintf(XCOLOR_RED, "NVRAM CRC mismatch: stored=0x%08X, calculated=0x%08X\r\n",
-                     nvram.crc, nvram_calculate_crc());
-        }
-
-    	if(is_nvram_empty_or_uninitialized()){
-			CSLOG("NVRAM uninitialized.\n");
-		}
-    	w25qxx_read_buff(NVRAM_BACKUP_ADDRESS, &nvram, sizeof(nvram));
-
-    	if (!(nvram_image_valid() && nvram_schema_valid()))
-    	{
-    		xcprintf(XCOLOR_RED, "NVRAM backup invalid: schema=%s crc=stored 0x%08X\r\n",
-    		         (nvram_schema_valid() ? "ok" : "mismatch"), nvram.crc);
-
-        	if(is_nvram_empty_or_uninitialized()){
-				CSLOG("NVRAM backup uninitialized.\r\n");
-			}
-
-			nvram_set_defaults();
-			elog_log_nvram_recovery(ELOG_NVRAM_DEFAULTS_REWRITTEN, main_stored_crc, main_stored_crc);
-			if(nvram_sync(true)){
-				xcprintf(XCOLOR_RED, "Failed to write default NVRAM values to flash.\r\n");
-				res = -1;
-			}
-    	}
-    	else
-    	{
-    		elog_log_nvram_recovery(ELOG_NVRAM_RESTORED_FROM_BACKUP, main_stored_crc, main_stored_crc);
-    		CSLOG("NVRAM restored from backup.\r\n");
-    	}
-	}
-    else
-    {
-		CSLOG("NVRAM loaded successfully.\r\n");
-	}
+    }
 
     console_logger_init();
     gsm_log_init();
