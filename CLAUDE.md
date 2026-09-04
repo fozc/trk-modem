@@ -16,6 +16,7 @@ imported verbatim below. They govern **all** C/C++ you generate or modify:
 @.github/copilot-instructions.md
 @.github/instructions/barr-c.instructions.md
 @.github/instructions/cpp.instructions.md
+@.github/instructions/cortex-m-atomic-isr.instructions.md
 
 The most load-bearing rules, restated so they are never missed:
 
@@ -28,6 +29,13 @@ The most load-bearing rules, restated so they are never missed:
   **`errno` is forbidden** — use the project `status_t` enum.
 - **MISRA essentials** — every `switch` has a `default`; every
   `if ... else if` ends with an `else`; no VLA, no recursion, no back-jumping `goto`.
+- **ISR-shared state & atomics** — follow
+  `.github/instructions/cortex-m-atomic-isr.instructions.md`: C11
+  `<stdatomic.h>` with explicit operations (`atomic_fetch_or` to set
+  flags, `atomic_exchange` for read-and-clear, release/acquire for
+  publication, `relaxed` for independent counters); `volatile` alone is
+  not synchronization; multi-field transactions use short PRIMASK
+  critical sections; verify lock-free for ISR-path atomics.
 - **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns,
   `g_/p_/s_/b_` prefixes, Yoda conditions, `for (;;)` for infinite loops,
   `/*** end of file ***/` trailer.
@@ -108,9 +116,10 @@ This port builds with `_PLATFORM_=_WIN32_`, which stubs
 `int-master` / `critical_enter` to **no-ops on ARM**. The application
 deliberately does not rely on interrupt-masking for synchronization.
 Do **not** introduce code that depends on `critical_enter()` actually
-masking IRQs. For ISR-shared state use `volatile` for simple flags and
-atomic read-modify-write where RMW races exist (see copilot-instructions
-§Interrupt & Concurrency Safety).
+masking IRQs. For ISR-shared state follow
+`.github/instructions/cortex-m-atomic-isr.instructions.md`
+(C11 atomics with explicit memory orders; `volatile` only for MMIO and
+simple single-writer flags).
 
 ---
 

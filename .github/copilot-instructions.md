@@ -207,7 +207,7 @@ typedef enum {
 
 ## Interrupt & Concurrency Safety
 
-- Mark shared variables between ISR and main context as `volatile` for simple read/write flags. For compound operations (read-modify-write), use atomics (`<stdatomic.h>` / `std::atomic`) or interrupt masking to prevent race conditions.
+- Shared variables between ISR and main/task context MUST follow `.github/instructions/cortex-m-atomic-isr.instructions.md`: C11 `<stdatomic.h>` with explicit operations and memory orders (`atomic_fetch_or` to set event flags, `atomic_exchange` for atomic read-and-clear, release/acquire for publication, `relaxed` for independent counters). `volatile` alone is **not** a synchronization primitive — use it only for MMIO and simple single-writer flags. Multi-field transactions use short critical sections.
 - Protect critical sections with interrupt disable/enable pairs or CMSIS `__disable_irq()` / `__enable_irq()`.
 - Keep ISRs **short**: set a flag, write to a ring buffer, or post to a queue — then return.
 - Never call blocking functions from ISRs.
