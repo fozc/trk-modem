@@ -194,7 +194,7 @@ typedef struct
     uint32_t total_size;      /**< Declared firmware image size in bytes     */
     uint32_t received_bytes;  /**< Flash-committed offset (4 KB-aligned)     */
     uint32_t shared_key;      /**< PSK for auth token derivation             */
-} rfwu_nvram_t;
+}__attribute__((packed)) rfwu_nvram_t;
 
 /** NVRAM layout gecerlilik magic'i - "TRKN". */
 #define NVRAM_MAGIC           0x54524B4EU
@@ -222,8 +222,13 @@ typedef struct
 
 /* Layout kaymasini derleme hatasina cevir (rf_feeder_t bekcisi
  * rf_types.h icindedir). Bu yapi degistiginde NVRAM_SCHEMA_VERSION
- * bump edilir. */
+ * bump edilir. 2452 = GCC 14.3.rel1 / Cortex-M33 olcumu (Y3.11);
+ * CRC sizeof-4 uzerinden hesaplanir - layout kaysa eski flash
+ * goruntuleri sessizce CRC'den dusup default-reset olurdu; bu
+ * bekci kaymayi derleme zamaninda yakalar. */
 _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
+_Static_assert(sizeof(nvram_t) == 2452U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
+_Static_assert(offsetof(nvram_t, crc) == 2448U, "nvram_t: crc sondan hemen once, kuyruk padding yok");
 
 #endif /* TYPES_H_ */
