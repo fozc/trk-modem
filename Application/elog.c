@@ -928,14 +928,18 @@ void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
 void elog_log_web_login_fail(uint32_t client_ip)
 {
     /* info: client_ip(4) burst_count(2). First failure logs at once, then
-     * one record per 60 s window carrying the failures in the burst. */
+     * one record per 60 s window carrying the failures in the burst.
+     * logged_once: tick==0 sentinel yerine ayrik bayrak — life_timer
+     * 49,7 gunde bir tam 0'a denk gelirse eski sentinel o pencerede
+     * korumayi devre disi birakiyordu (O9.8). */
     static uint32_t burst = 0U;
     static uint32_t last_log_tick = 0U;
+    static bool logged_once = false;
 
     uint32_t now = bsp_get_tick();
 
     burst++;
-    if ((last_log_tick == 0U) || ((now - last_log_tick) > 60000UL))
+    if (!logged_once || ((now - last_log_tick) > 60000UL))
     {
         uint8_t info[16] = {0};
         elog_pack_u32_be(&info[0], client_ip);
@@ -943,6 +947,7 @@ void elog_log_web_login_fail(uint32_t client_ip)
         info[5] = (uint8_t)(burst);
         elog_add(ELOG_WEB_LOGIN_FAIL, ELOG_LEVEL_WARN, info, sizeof(info));
         last_log_tick = now;
+        logged_once = true;
         burst = 0U;
     }
 }
