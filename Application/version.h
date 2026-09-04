@@ -4,7 +4,11 @@
 
 #define DEVICE_TYPE             (100)
 #define DEVICE_MODEL            (1)
-#define APP_TYPE                (1)
+/* bin2efw.py dosya-tipi eslemesi: 1=Bootloader(0x40), 2=Application(0x60).
+ * Bu image uygulama oldugu icin 2 olmali; aksi halde paketlenen .efw
+ * "Bootloader" tipli uretilir (bootloader bugun kontrol etmiyor olsa da
+ * yanlis, ve file_type dogrulamasi eklendiginde reddedilir). */
+#define APP_TYPE                (2)
 #define VERSION_MAJOR           (1)
 #define VERSION_MINOR           (0)
 #define VERSION_PATCH           (0)

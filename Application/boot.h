@@ -19,6 +19,13 @@
 
 #define BOOTLOADER_SUPERBLOCK_MAGIC  0xB007000B
 
+/*
+ * Superblock layout version -- must mirror the bootloader's boot.h.
+ * This copy is synchronized by hand between the two repositories; the
+ * format byte lets drift be detected at run time (see boot.c).
+ */
+#define BOOTLOADER_SUPERBLOCK_FORMAT 0x02U
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
@@ -62,7 +69,9 @@ typedef struct
     uint8_t   is_recovery_attempted;
     uint8_t   is_approved;
     uint8_t   backup_section;         /* boot_fw_section_t: A=0, B=1 */
-    uint8_t   _reserved[3];
+    uint8_t   installed_src_section;  /* boot_fw_section_t: SPI section installed_fw came from */
+    uint8_t   sb_format;              /* BOOTLOADER_SUPERBLOCK_FORMAT */
+    uint8_t   _reserved;
     fw_info_t installed_fw;
     fw_info_t backup_fw;
     uint32_t  crc;

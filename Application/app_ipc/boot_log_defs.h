@@ -44,6 +44,8 @@ typedef enum
     BOOT_LOG_AUTH_FAIL            = 0x09U,
     BOOT_LOG_SYSTEM_RESET         = 0x0AU,
     BOOT_LOG_DOWNGRADE_REJECTED   = 0x0BU,
+    BOOT_LOG_FW_APPROVED          = 0x0CU,
+    BOOT_LOG_HARDFAULT            = 0x0DU,
 } boot_log_event_t;
 
 /* ------------------------------------------------------------------ */
