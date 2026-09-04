@@ -103,7 +103,21 @@ static void route_and_handle_request(http_request_t *request)
 
     /* GET requests */
     if (request->method == HTTP_METHOD_GET) {
-        
+
+        /* Admin-only GET uçlari (Y6.5): hassas konfigürasyon + konsol.
+         * user rolü izleme (status/monitor/faults) + reboot yapabilir. */
+        if ((strcmp(request->path, "/config/device") == 0) ||
+            (strcmp(request->path, "/config/iec104") == 0) ||
+            (strcmp(request->path, "/syslogs") == 0) ||
+            (strcmp(request->path, "/serial") == 0)) {
+
+            if (!http_handlers_is_admin()) {
+                CCSLOG(XCOLOR_RED, "[HTTP] Forbidden (GET): %s\r\n", request->path);
+                http_send_error(403, "Admin role required");
+                return;
+            }
+        }
+
         /* GET / or GET /index.html */
         if (strcmp(request->path, "/") == 0 || 
             strcmp(request->path, "/index.html") == 0) {
