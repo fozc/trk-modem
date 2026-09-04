@@ -256,7 +256,7 @@ void rtc_sync(const rtc_t *dt)
 {
 	if ((dt == NULL) || !rtc_is_valid(dt))
 	{
-		CCSLOG_WARN("RTC sync reddedildi: gecersiz tarih "
+		CSLOG_WARN("RTC sync reddedildi: gecersiz tarih "
 		            "%02u.%02u.%02u %02u:%02u:%02u\r\n",
 		            dt ? (unsigned)dt->day : 0U,
 		            dt ? (unsigned)dt->month : 0U,
