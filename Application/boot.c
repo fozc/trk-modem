@@ -19,6 +19,7 @@
 #include "w25qxx.h"
 #include "crc32.h"
 #include "console_logger.h"
+#include "datetime.h"
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
@@ -193,6 +194,39 @@ void boot_installed_hash_to_str(char *out, uint32_t out_size)
     }
 
     out[i] = '\0';
+}
+
+void boot_log_installed_fw(void)
+{
+    char hash_str[9];
+
+    boot_installed_hash_to_str(hash_str, sizeof(hash_str));
+    CSLOG("Git Commit: [%s]\n", hash_str);
+
+    if (!s_installed_fw_valid)
+    {
+        return;    /* Superblock yok: hash ----- ile basildi, gerisi yok */
+    }
+
+    CSLOG("Image Build: [%04u-%02u-%02u %02u:%02u:%02u]\n",
+          (unsigned)s_installed_fw.year, (unsigned)s_installed_fw.month,
+          (unsigned)s_installed_fw.day, (unsigned)s_installed_fw.hour,
+          (unsigned)s_installed_fw.minute, (unsigned)s_installed_fw.second);
+
+    if (s_installed_fw.installation_date != 0U)
+    {
+        datetime_t dt = {0};
+
+        dt_conv_from_epoch((time32_t)s_installed_fw.installation_date, &dt);
+        CSLOG("Kurulum: [%04u-%02u-%02u %02u:%02u:%02u]\n",
+              (unsigned)dt.date.year, (unsigned)dt.date.month, (unsigned)dt.date.day,
+              (unsigned)dt.time.hour, (unsigned)dt.time.minute, (unsigned)dt.time.second);
+    }
+    else
+    {
+        /* Bootloader henuz RTC damgasi yazmiyor */
+        CSLOG("Kurulum: [-----]\n");
+    }
 }
 
 bool boot_is_new_firmware_downloaded(void)
