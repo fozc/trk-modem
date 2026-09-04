@@ -7,6 +7,8 @@ and the directives under `.github/`. Full standards live in:
 - `.github/copilot-instructions.md` — embedded engineering directives
 - `.github/instructions/barr-c.instructions.md` — BARR-C:2018 C style standard
 - `.github/instructions/cpp.instructions.md` — Embedded C++20 subset rules
+- `.github/instructions/cortex-m-atomic-isr.instructions.md` — ISR/main-context
+  shared state: C11 atomics policy (mandatory reference for atomic operations)
 
 Read those files when writing or reviewing C/C++ in this repo. The
 non-negotiable rules are restated here so they are never missed.
@@ -29,6 +31,17 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
 - **MISRA essentials** — every `switch` has a `default`; every
   `if ... else if` ends with an `else`; no VLA, no recursion, no
   back-jumping `goto`, no commented-out code.
+- **ISR-shared state & atomics:** follow
+  `.github/instructions/cortex-m-atomic-isr.instructions.md` — C11
+  `<stdatomic.h>` with explicit operations and memory orders
+  (`atomic_fetch_or` to set flags, `atomic_exchange` for atomic
+  read-and-clear, release/acquire for publication, `relaxed` for
+  independent counters). `volatile` alone is **not** a synchronization
+  primitive (MMIO / simple single-writer flags only). Multi-field
+  transactions: short PRIMASK critical sections. Verify lock-free for
+  ISR-path atomics (`__atomic_always_lock_free`). Exact-width atomic
+  typedefs (`atomic_uint8_t` etc.) are C11-optional — use `_Atomic T`
+  or the mandatory `atomic_uint_leastN_t`/`_fastN_t` family.
 - **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns, LF line
   endings, no tabs, Yoda conditions
   (`NULL == obj`), `for (;;)` for infinite loops, signed/unsigned never
