@@ -18,6 +18,12 @@
 #include "ring_buff.h"
 #include <string.h>
 
+/* ISR uretici baglaminda kullanilir: 32-bit atomikler lock-free
+ * olmali (GCC 14.3.rel1 / Cortex-M33: LDREX/STREX dongusu, kutuphane
+ * cagrisi yok - cortex-m-atomic-isr.instructions.md 10. madde). */
+_Static_assert(__atomic_always_lock_free(4, 0),
+               "ring indices must be lock-free in ISR context");
+
 static inline bool is_power_of_two(uint32_t x)
 {
     return (x != 0U) && ((x & (x - 1U)) == 0U);

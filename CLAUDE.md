@@ -35,7 +35,9 @@ The most load-bearing rules, restated so they are never missed:
   flags, `atomic_exchange` for read-and-clear, release/acquire for
   publication, `relaxed` for independent counters); `volatile` alone is
   not synchronization; multi-field transactions use short PRIMASK
-  critical sections; verify lock-free for ISR-path atomics.
+  critical sections; enforce lock-free ISR-path atomics with
+  `_Static_assert(__atomic_always_lock_free(sizeof(T), 0), ...)`
+  next to the definition.
 - **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns,
   `g_/p_/s_/b_` prefixes, Yoda conditions, `for (;;)` for infinite loops,
   `/*** end of file ***/` trailer.

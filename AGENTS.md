@@ -38,8 +38,13 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   read-and-clear, release/acquire for publication, `relaxed` for
   independent counters). `volatile` alone is **not** a synchronization
   primitive (MMIO / simple single-writer flags only). Multi-field
-  transactions: short PRIMASK critical sections. Verify lock-free for
-  ISR-path atomics (`__atomic_always_lock_free`). Exact-width atomic
+  transactions: short PRIMASK critical sections. Enforce lock-free for
+  ISR-path atomics with
+  `_Static_assert(__atomic_always_lock_free(sizeof(T), 0), ...)`
+  next to the definition (verified on GCC 14.3.rel1 / Cortex-M33:
+  byte and word RMW inline as LDREXB/STREXB retry loops, no library
+  calls; acquire/release compile to instruction variants, no DMB).
+  Exact-width atomic
   typedefs (`atomic_uint8_t` etc.) are C11-optional — use `_Atomic T`
   or the mandatory `atomic_uint_leastN_t`/`_fastN_t` family.
 - **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns, LF line
