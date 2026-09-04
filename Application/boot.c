@@ -43,6 +43,20 @@ static bool s_installed_fw_valid = false;
 /* ------------------------------------------------------------------ */
 
 /**
+ * @brief Cache installed_fw from a valid superblock.
+ *
+ * short_commit_hash 8 bayttir ve NUL sonlandirmasi garanti degildir;
+ * burada zorlanir (7 karakter hash + NUL), boylece cagiranlar alani
+ * dogrudan dizgi olarak kullanabilir.
+ */
+static void cache_installed_fw(const boot_superblock_t *p_sb)
+{
+    s_installed_fw = p_sb->installed_fw;
+    s_installed_fw.short_commit_hash[7] = 0U;
+    s_installed_fw_valid = true;
+}
+
+/**
  * @brief Validate a superblock read from SPI flash.
  *
  * @param[in] p_sb  Pointer to the superblock data.
@@ -96,8 +110,7 @@ void boot_init(void)
     if (is_superblock_valid(&sb))
     {
         s_backup_section = validated_backup_section(sb.backup_section);
-        s_installed_fw = sb.installed_fw;
-        s_installed_fw_valid = true;
+        cache_installed_fw(&sb);
         CSLOG("BOOT: Primary superblock OK, backup_section=%c\n",
               (s_backup_section == (uint8_t)BOOT_FW_SECTION_A) ? 'A' : 'B');
         return;
@@ -112,8 +125,7 @@ void boot_init(void)
     if (is_superblock_valid(&sb))
     {
         s_backup_section = validated_backup_section(sb.backup_section);
-        s_installed_fw = sb.installed_fw;
-        s_installed_fw_valid = true;
+        cache_installed_fw(&sb);
         CSLOG("BOOT: Backup superblock OK, backup_section=%c\n",
               (s_backup_section == (uint8_t)BOOT_FW_SECTION_A) ? 'A' : 'B');
         return;
@@ -144,86 +156,37 @@ uint32_t boot_get_download_address(void)
     return SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_A);
 }
 
-bool boot_get_installed_fw_info(fw_info_t *out)
+const fw_info_t *boot_get_installed_fw_info(void)
 {
-    if (out == NULL)
-    {
-        return false;
-    }
-
     if (!s_installed_fw_valid)
     {
-        memset(out, 0, sizeof(*out));
-        return false;
+        return NULL;    /* Gecerli superblock yok */
     }
 
-    *out = s_installed_fw;
-    return true;
-}
-
-void boot_installed_hash_to_str(char *out, uint32_t out_size)
-{
-    uint32_t i = 0U;
-
-    if ((out == NULL) || (out_size == 0U))
-    {
-        return;
-    }
-
-    if (s_installed_fw_valid)
-    {
-        /* short_commit_hash: 8 bayt ASCII, NUL garantisi yok (bin2efw
-         * sifir ile doldurur) -> ilk NUL'e kadar kopyala. */
-        while ((i < 8U) && (i < (out_size - 1U)) &&
-               (s_installed_fw.short_commit_hash[i] != 0U))
-        {
-            out[i] = (char)s_installed_fw.short_commit_hash[i];
-            i++;
-        }
-    }
-
-    if (i == 0U)
-    {
-        /* Okunamadi ya da bos: gorunur bilinmez isareti. */
-        const char unknown[] = "-----";
-        uint32_t n = sizeof(unknown) - 1U;
-
-        if (n > (out_size - 1U))
-        {
-            n = out_size - 1U;
-        }
-        for (uint32_t j = 0U; j < n; j++)
-        {
-            out[j] = unknown[j];
-        }
-        i = n;
-    }
-
-    out[i] = '\0';
+    return &s_installed_fw;
 }
 
 void boot_log_installed_fw(void)
 {
-    char hash_str[9];
+    const fw_info_t *fw = boot_get_installed_fw_info();
 
-    boot_installed_hash_to_str(hash_str, sizeof(hash_str));
-    CSLOG("Git Commit: [%s]\n", hash_str);
-
-    if (!s_installed_fw_valid)
+    if (fw == NULL)
     {
-        return;    /* Superblock yok: hash ----- ile basildi, gerisi yok */
+        CSLOG("Git Commit: [-----]\n");
+        return;
     }
 
+    /* Hash alani cache'e alinirken NUL ile sonlandirilir */
+    CSLOG("Git Commit: [%s]\n", (const char *)fw->short_commit_hash);
     CSLOG("Image Build: [%04u-%02u-%02u %02u:%02u:%02u]\n",
-          (unsigned)s_installed_fw.year, (unsigned)s_installed_fw.month,
-          (unsigned)s_installed_fw.day, (unsigned)s_installed_fw.hour,
-          (unsigned)s_installed_fw.minute, (unsigned)s_installed_fw.second);
+          (unsigned)fw->year, (unsigned)fw->month, (unsigned)fw->day,
+          (unsigned)fw->hour, (unsigned)fw->minute, (unsigned)fw->second);
 
-    if (s_installed_fw.installation_date != 0U)
+    if (fw->installation_date != 0U)
     {
         datetime_t dt = {0};
 
-        dt_conv_from_epoch((time32_t)s_installed_fw.installation_date, &dt);
+        dt_conv_from_epoch((time32_t)fw->installation_date, &dt);
         CSLOG("Kurulum: [%04u-%02u-%02u %02u:%02u:%02u]\n",
               (unsigned)dt.date.year, (unsigned)dt.date.month, (unsigned)dt.date.day,
               (unsigned)dt.time.hour, (unsigned)dt.time.minute, (unsigned)dt.time.second);
