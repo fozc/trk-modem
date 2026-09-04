@@ -14,6 +14,9 @@ static uint32_t reboot_delay_ms;
 void reboot_system(void)
 {
 	CCSLOG(XCOLOR_RED, "Rebooting system...\r\n");
+
+	//TODO: nvram sync()
+
 	NVIC_SystemReset();
 	while(1)
 	{
