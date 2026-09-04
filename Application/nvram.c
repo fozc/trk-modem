@@ -132,10 +132,14 @@ void nvram_set_defaults(void)
             nvram.breaker.line[i].iec104.enerji_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 40 + ph);
             nvram.breaker.line[i].iec104.nominal_akim_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 50 + ph);
             nvram.breaker.line[i].iec104.rf_haberlesme_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 60 + ph);
-
-            nvram.breaker.line[i].iec104.temporary_fault = iec104_make_ioa_3byte(base_ioa + 100 + (ph * 10));
-            nvram.breaker.line[i].iec104.permanent_fault = iec104_make_ioa_3byte(base_ioa + 200 + (ph * 10));
         }
+
+        /* temporary/permanent fault: skaler alan bir BAZ adrestir; faz
+         * (x20) ve kayit ofsetlerini tuketici hesaplar (iec104_config.c).
+         * Faz dongusu icinde ph*10 ile atamak R/S degerlerini eziyordu
+         * (Y3.12) - dongu disinda sabit baz atanir. */
+        nvram.breaker.line[i].iec104.temporary_fault = iec104_make_ioa_3byte(base_ioa + 100);
+        nvram.breaker.line[i].iec104.permanent_fault = iec104_make_ioa_3byte(base_ioa + 200);
         
         // Initialize Modbus line config with default register addresses.
         // Contiguous map (see MODBUS_REGISTER_MAP.md): FLOAT32 fields take two
@@ -548,12 +552,6 @@ int nvram_init(void)
 
 int nvram_sync(bool crc_no_check)
 {
-    /* TODO (Y3.7/Y3.10): sync bloklamadir (2x erase+16 sayfa yaz+verify,
-     * yuzlerce ms - tum surecler donar). Kirilma yollari (reboot_system,
-     * gsm_init EWDT-bekleme) reset oncesi bekleyen NVRAM degisikliklerini
-     * bu fonksiyonla bosaltmalidir; bloklama kirilma aninda kabul
-     * edilebilir ama normal isleyiste dirty-bayrak + arka plan (dilimli)
-     * yazima tasinmali. */
     crc32_t crc = nvram_calculate_crc();
 
     if(!crc_no_check && crc == nvram.crc)
@@ -562,9 +560,6 @@ int nvram_sync(bool crc_no_check)
 		return 0;
 	}
 
-    /* Gercek yazim: goruntu basligi guncellenir - length sabit (layout
-     * donmus), sequence monoton artar. Torn yazimda kopyalar arasi
-     * fark kalir; acilistaki cift-kopya hakemligi bununla yapilir. */
     nvram.length = (uint32_t)sizeof(nvram_t);
     nvram.sequence++;
     crc = nvram_calculate_crc();
