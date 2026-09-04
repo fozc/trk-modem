@@ -749,8 +749,10 @@ static void consume_rx_data(bool check_response)
 	/* Response buffer overflow: ring buffer still has data but response buffer
 	 * is full.  Drain the remaining bytes to prevent stale data from
 	 * contaminating the next AT command's response on retry/next cycle.
-	 * The current command will likely timeout and be retried. */
-	if((at_engine.response_buffer_len >= AT_ENGINE_RESPONSE_BUFFER_SIZE) &&
+	 * The current command will likely timeout and be retried.
+	 * Not: dongu siniri (SIZE - 1) yuzunden response_buffer_len en fazla
+	 * SIZE-1 olur; eski >= SIZE kosulu hic tetiklenmiyordu (O4.3). */
+	if((at_engine.response_buffer_len >= (AT_ENGINE_RESPONSE_BUFFER_SIZE - 1U)) &&
 	   (rbuff_available(&rx_ringbuf) > 0U))
 	{
 		GSM_LOG_ERR("AT response buffer overflow! Draining %u stale bytes from ring buffer\r\n",
