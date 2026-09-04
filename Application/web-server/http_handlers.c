@@ -451,24 +451,21 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"UretimTarihi\":%u,", config->production_date);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"LifeTime\":%u,", config->lifetime);
     /* Firmware versions as semantic version strings. Kurulan imajin
-     * kimligi boot superblock'tan; okunamazsa derleme makrolari + ----- */
+     * kimligi boot superblock'tan; yoksa NULL -> derleme makrolari + ----- */
     {
-        fw_info_t fw;   /* getter her durumda doldurur (gecersizse sifir) */
+        const fw_info_t *fw = boot_get_installed_fw_info();
 
-        if (boot_get_installed_fw_info(&fw))
+        if (fw != NULL)
         {
-            char hash_str[9];
-
-            /* Gecerli superblock: hash alani yine de bossa ----- basar */
-            boot_installed_hash_to_str(hash_str, sizeof(hash_str));
+            /* Hash alani NUL sonlandirmali: dogrudan %s ile basilir */
             pos += xsnprintf(buf + pos, buf_size - pos,
                              "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%04u-%02u-%02u %02u:%02u:%02u %s)\",",
-                             (unsigned)fw.version.major,
-                             (unsigned)fw.version.minor,
-                             (unsigned)fw.version.patch,
-                             (unsigned)fw.year, (unsigned)fw.month, (unsigned)fw.day,
-                             (unsigned)fw.hour, (unsigned)fw.minute, (unsigned)fw.second,
-                             hash_str);
+                             (unsigned)fw->version.major,
+                             (unsigned)fw->version.minor,
+                             (unsigned)fw->version.patch,
+                             (unsigned)fw->year, (unsigned)fw->month, (unsigned)fw->day,
+                             (unsigned)fw->hour, (unsigned)fw->minute, (unsigned)fw->second,
+                             (const char *)fw->short_commit_hash);
         }
         else
         {
@@ -486,7 +483,7 @@ void handle_get_device_config_json(void)
         /* Kurulum zamani: epoch; 0 = bilinmiyor (UI '-----' gosterir).
          * Bootloader bu alani henuz RTC ile doldurmuyor. */
         pos += xsnprintf(buf + pos, buf_size - pos, "\"KurulumTarihi\":%lu,",
-                         (unsigned long)fw.installation_date);
+                         (unsigned long)((fw != NULL) ? fw->installation_date : 0U));
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RFYazilimVeriyonu\":\"v%u.%u.%u\",",
                      config->rf_firmware_version[0],

@@ -99,28 +99,18 @@ boot_fw_section_t boot_get_download_section(void);
 uint32_t boot_get_download_address(void);
 
 /**
- * @brief Copy the installed-firmware identity from the last valid
- *        superblock (version, size, CRC, git hash, image build
- *        date-time, installation date).
+ * @brief Installed-firmware identity from the last valid superblock
+ *        (version, size, CRC, git hash, image build date-time,
+ *        installation date).
  *
- * Contract: *out is ALWAYS written - the cached data when a valid
- * superblock exists, all zeros otherwise. NULL out is handled safely.
+ * short_commit_hash is guaranteed NUL-terminated (7 characters + NUL),
+ * so it can be printed directly with %s.
  *
- * @param[out] out  Destination for the fw_info_t.
- * @return true if a valid superblock was read at boot_init(), else
- *         false (out is zero-filled).
+ * @return Pointer to the cached fw_info_t, or NULL when no valid
+ *         superblock was read at boot_init(). The pointer stays valid
+ *         until the next boot_init() call.
  */
-bool boot_get_installed_fw_info(fw_info_t *out);
-
-/**
- * @brief Render the installed image's short git hash as a NUL-terminated
- *        string ("c11e23c"). Writes "-----" when the superblock was not
- *        readable or the hash field is empty.
- *
- * @param[out] out      Destination buffer (9 bytes for the full hash).
- * @param[in]  out_size Size of the destination buffer.
- */
-void boot_installed_hash_to_str(char *out, uint32_t out_size);
+const fw_info_t *boot_get_installed_fw_info(void);
 
 /**
  * @brief Print the installed image identity (git hash, image build
