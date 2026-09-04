@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.3 |
-| Tarih | 2026-07-14 |
+| Dokuman surumu | 1.4 |
+| Tarih | 2026-09-04 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -124,7 +124,6 @@ Hat taban adresi (base-0)    = hat_index * 100
 | Line 5 | 4 | 40400 | 400 |
 | Line 6 | 5 | 40500 | 500 |
 | Line 7 | 6 | 40600 | 600 |
-| Line 8 | 7 | 40700 | 700 |
 
 ### 5.1.1 Hat Adres Araliklari (Canli Veri Blogu)
 
@@ -140,14 +139,13 @@ hat icin tek pencerede okunacak adres araligini ve okuma parametrelerini verir.
 | Line 5 | 40400 .. 40426 | 400 .. 426 | Address 400, Quantity 27 |
 | Line 6 | 40500 .. 40526 | 500 .. 526 | Address 500, Quantity 27 |
 | Line 7 | 40600 .. 40626 | 600 .. 626 | Address 600, Quantity 27 |
-| Line 8 | 40700 .. 40726 | 700 .. 726 | Address 700, Quantity 27 |
 
-> **Aktif olmayan hatlar:** Cihaz en fazla 8 hat destekler ancak sahada hepsi
-> aktif olmayabilir. Aktif olmayan bir hattin register araligi icin cihazin
-> davranisi su sekildedir: (bu davranis firmware tarafinda netlestirilecektir -
-> bkz. dokuman notu). Onerilen davranis: aktif olmayan hat icin tum register'lar
-> 0 doner (boylece master sabit pencereyle hatasiz okur ve "veri yok" durumunu
-> degerden anlar).
+> **Aktif olmayan hatlar:** Cihaz 7 hat destekler (v1.4'te kesinlesti)
+> ancak sahada hepsi aktif olmayabilir. Aktif olmayan bir hattin register
+> araligi icin cihazin davranisi: tum register'lar 0 doner (boylece master
+> sabit pencereyle hatasiz okur ve "veri yok" durumunu degerden anlar).
+> 40700 ve uzeri (8. hat) **desteklenmez** - master bu araligi okursa
+> exception 02 (ILLEGAL DATA ADDRESS) alir.
 
 > **Offset 27..99 araligi:** Her hat blogunda canli veriden sonra gelen bu aralik
 > ileride ariza kayit (fault-log) bloklari icin **rezerve** edilmistir; bu surumde
