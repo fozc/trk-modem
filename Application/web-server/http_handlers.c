@@ -450,46 +450,28 @@ void handle_get_device_config_json(void)
     /* TODO: Convert epoch to human-readable date format */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"UretimTarihi\":%u,", config->production_date);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"LifeTime\":%u,", config->lifetime);
-    /* Firmware versions as semantic version strings. Kurulan imajin
-     * kimligi boot superblock'tan; yoksa NULL -> derleme makrolari + ----- */
-    {
-        const fw_info_t *fw = boot_get_installed_fw_info();
 
-        if (fw != NULL)
-        {
-            /* Hash alani NUL sonlandirmali: dogrudan %s ile basilir */
-            pos += xsnprintf(buf + pos, buf_size - pos,
-                             "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%04u-%02u-%02u %02u:%02u:%02u %s)\",",
-                             (unsigned)fw->version.major,
-                             (unsigned)fw->version.minor,
-                             (unsigned)fw->version.patch,
-                             (unsigned)fw->year, (unsigned)fw->month, (unsigned)fw->day,
-                             (unsigned)fw->hour, (unsigned)fw->minute, (unsigned)fw->second,
-                             (const char *)fw->short_commit_hash);
-        }
-        else
-        {
-            /* Superblock yok: calisan kodun derleme damgasi + bilinmez hash */
-            pos += xsnprintf(buf + pos, buf_size - pos,
-                             "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%s %s %s)\",",
-                             (unsigned)VERSION_MAJOR,
-                             (unsigned)VERSION_MINOR,
-                             (unsigned)VERSION_PATCH,
-                             __COMPILE_DATE__,
-                             __COMPILE_TIME__,
-                             "-----");
-        }
+    fw_info_t fw = *boot_get_installed_fw_info();
 
-        /* Kurulum zamani: epoch; 0 = bilinmiyor (UI '-----' gosterir).
-         * Bootloader bu alani henuz RTC ile doldurmuyor. */
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"KurulumTarihi\":%lu,",
-                         (unsigned long)((fw != NULL) ? fw->installation_date : 0U));
-    }
+    pos += xsnprintf(buf + pos, buf_size - pos,
+                     "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%04u-%02u-%02u %02u:%02u:%02u %s)\",",
+                     (unsigned)VERSION_MAJOR,
+                     (unsigned)VERSION_MINOR,
+                     (unsigned)VERSION_PATCH,
+                     (unsigned)fw.year, (unsigned)fw.month, (unsigned)fw.day,
+                     (unsigned)fw.hour, (unsigned)fw.minute, (unsigned)fw.second,
+                     (const char *)fw.short_commit_hash);
+
+    /* Kurulum zamani: ham epoch sayisi (UI fmtEpoch ile cevirir; 0 ->
+     * '-----'). Bootloader bu alani henuz RTC ile doldurmuyor. */
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"KurulumTarihi\":%lu,",
+                     (unsigned long)fw.installation_date);
+
     pos += xsnprintf(buf + pos, buf_size - pos, "\"RFYazilimVeriyonu\":\"v%u.%u.%u\",",
                      config->rf_firmware_version[0],
                      config->rf_firmware_version[1],
                      config->rf_firmware_version[2]);
-    
+
     /* RW Fields */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"WebArayuzuPortu\":%u,", config->web_interface_port);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SimKartPin\":%u,", config->sim_card_pin);
