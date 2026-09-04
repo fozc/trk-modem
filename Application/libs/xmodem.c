@@ -82,8 +82,10 @@ typedef struct
 	volatile uint16_t     timer;
 	uint8_t               can_count;
 	/* ISR kurar (fetch_or/release), poll tek adimda alir-siler
-	 * (exchange/acquire) - oku-sil arasina dusen bayrak kaybi yok (Y3.14). */
-	atomic_uint8_t        evt_pending;
+	 * (exchange/acquire) - oku-sil arasina dusen bayrak kaybi yok (Y3.14).
+	 * Sabit genislikli atomic_uint8_t C11'de opsiyoneldir; _least8_t
+	 * zorunlu siniftir (ring_buff'un _fast32_t kullanimi ile ayni aile). */
+	atomic_uint_least8_t  evt_pending;
 }xmodem_t;
 
 #ifdef XMODEM_USE_CACHE
