@@ -160,8 +160,10 @@ const fw_info_t *boot_get_installed_fw_info(void)
 {
     if (!s_installed_fw_valid)
     {
-        return NULL;    /* Gecerli superblock yok */
+    	s_installed_fw =  (fw_info_t){0};   /* Gecerli superblock yok */
     }
+
+    s_installed_fw.short_commit_hash[7] = 0U;
 
     return &s_installed_fw;
 }
