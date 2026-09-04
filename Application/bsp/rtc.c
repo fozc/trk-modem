@@ -10,6 +10,7 @@
 #include "bsp.h"
 #include "main.h"
 #include "datetime.h"
+#include "console_logger.h"
 #include <stddef.h>
 
 /* Hardware RTC handle defined in main.c. */
@@ -222,10 +223,47 @@ void rtc_hw_write(const rtc_t *dt)
 /*  Unified sync                                                      */
 /* ------------------------------------------------------------------ */
 
+/* Dis kaynaktan (GSM CCLK, IEC-104 CP56Time2a) gelen degerlerde
+ * month=13 / day=32 gibi gecersiz alan days_lookup dizisini tasirir
+ * (UB) ve RTC'ye cop yazar. Tek noktadan sinir dogrulamasi (O8.8). */
+static bool rtc_is_valid(const rtc_t *dt)
+{
+	static const uint8_t days_in_month[] = {
+		0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+	};
+	uint8_t max_day;
+
+	if ((dt->month < 1U) || (dt->month > 12U) ||
+	    (dt->day   < 1U) ||
+	    (dt->hour  > 23U) || (dt->minute > 59U) || (dt->second > 59U))
+	{
+		return false;
+	}
+
+	max_day = days_in_month[dt->month];
+
+	/* Subat artik yil (2000 tabanli iki hane) */
+	if ((dt->month == 2U) &&
+	    ((0U == (dt->year % 4U)) && (0U != (dt->year % 100U))))
+	{
+		max_day = 29U;
+	}
+
+	return (dt->day <= max_day);
+}
+
 void rtc_sync(const rtc_t *dt)
 {
-	if (dt == NULL)
+	if ((dt == NULL) || !rtc_is_valid(dt))
 	{
+		CCSLOG_WARN("RTC sync reddedildi: gecersiz tarih "
+		            "%02u.%02u.%02u %02u:%02u:%02u\r\n",
+		            dt ? (unsigned)dt->day : 0U,
+		            dt ? (unsigned)dt->month : 0U,
+		            dt ? (unsigned)dt->year : 0U,
+		            dt ? (unsigned)dt->hour : 0U,
+		            dt ? (unsigned)dt->minute : 0U,
+		            dt ? (unsigned)dt->second : 0U);
 		return;
 	}
 
