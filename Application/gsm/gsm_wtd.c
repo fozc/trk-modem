@@ -154,6 +154,13 @@ static void gsm_wtd_soft_recover(void)
  * ------------------------------------------------------------------------- */
 void gsm_wtd_check(void)
 {
+	/* TODO (O4b.3): Bu watchdog yalniz stuck-BUSY'i yakalar; stuck-FREE
+	 * kilitleri (listener SM asili ama motor bos) gorunmez — motor bos
+	 * oldugu icin WDT surekli beslenir, tepki/kurtama tetiklenmez.
+	 * Cozum: gsm_periodical_tick'ten liveness ping (gsm_wtd_liveness_ping)
+	 * alip, motor bos + periodical 10 dk'dir sessiz ise yumusak kurtarma
+	 * tetiklemek (gsm_wtd_soft_recover cagrisi). */
+
 	/* Feed when GSM is not busy — normal operation */
 	if (!gsm_is_busy())
 	{
