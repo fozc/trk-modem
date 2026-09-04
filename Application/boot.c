@@ -179,7 +179,7 @@ void boot_log_installed_fw(void)
     }
 
     /* Hash alani cache'e alinirken NUL ile sonlandirilir */
-    CSLOG("Git Commit: [%s]\n", (const char *)s_installed_fw.short_commit_hash);
+    CSLOG("Git Commit: [%s]\r\n", (const char *)s_installed_fw.short_commit_hash);
     CSLOG("Image Build: [%04u-%02u-%02u %02u:%02u:%02u]\r\n",
           (unsigned)s_installed_fw.year, (unsigned)s_installed_fw.month,
           (unsigned)s_installed_fw.day, (unsigned)s_installed_fw.hour,
