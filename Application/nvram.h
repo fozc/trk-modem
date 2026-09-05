@@ -57,6 +57,9 @@ bool nvram_is_cslog_enabled(void);
 void    nvram_set_gsm_log_level(uint8_t level);
 uint8_t nvram_get_gsm_log_level(void);
 
+void    nvram_set_rf_log_level(uint8_t level);
+uint8_t nvram_get_rf_log_level(void);
+
 
 
 

@@ -15,6 +15,7 @@
 #include "gsm/utils.h"
 #include "console_logger.h"
 #include "gsm_log.h"
+#include "rf_log.h"
 #include "rf_config.h"
 #include "elog.h"
 
@@ -182,6 +183,7 @@ void nvram_set_defaults(void)
     }
 
     nvram.gsm_log_level = 2U; /* GSM_LOG_VERBOSE */
+    nvram.rf_log_level  = 1U; /* RF_LOG_NORMAL (ham paket dokumu VERBOSE'ta) */
 }
 
 void nvram_dump()
@@ -545,6 +547,7 @@ int nvram_init(void)
 
     console_logger_init();
     gsm_log_init();
+    rf_log_init();
     nvram_dump();
 
     return res;
@@ -590,6 +593,16 @@ uint8_t nvram_get_gsm_log_level(void)
 void nvram_set_gsm_log_level(uint8_t level)
 {
 	nvram.gsm_log_level = level;
+}
+
+uint8_t nvram_get_rf_log_level(void)
+{
+	return nvram.rf_log_level;
+}
+
+void nvram_set_rf_log_level(uint8_t level)
+{
+	nvram.rf_log_level = level;
 }
 
 
