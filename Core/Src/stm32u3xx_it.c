@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "modbus_rtu_slave.h"
 #include "modbus_process.h"
+#include "rf_uart_bridge.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -315,8 +316,15 @@ void USART3_IRQHandler(void)
 
 			if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
 		{
-			void rf_comm_rx_interrupt_handler(uint8_t data);
-			rf_comm_rx_interrupt_handler(rx_byte);
+			if (rf_uart_bridge_is_enabled())
+			{
+				rf_uart_bridge_usart3_to_lpuart1(rx_byte);
+			}
+			else
+			{
+				void rf_comm_rx_interrupt_handler(uint8_t data);
+				rf_comm_rx_interrupt_handler(rx_byte);
+			}
 		}
 	}
   /* USER CODE END USART3_IRQn 0 */
@@ -428,16 +436,24 @@ void LPUART1_IRQHandler(void)
 
 		if (!(error_flags & (USART_ISR_FE | USART_ISR_PE)))
 		{
-			extern bool xmodem_is_active(void);
-			if (xmodem_is_active())
+			if (rf_uart_bridge_is_enabled())
 			{
-				extern void xmodem_rx_isr(uint8_t data);
-				xmodem_rx_isr(data);
+				rf_uart_bridge_lpuart1_to_usart3(data);
 			}
 			else
 			{
-				extern void shell_on_rx_received(uint8_t data);
-				shell_on_rx_received(data);
+				/* Normal konsol modu: shell / XMODEM. */
+				extern bool xmodem_is_active(void);
+				if (xmodem_is_active())
+				{
+					extern void xmodem_rx_isr(uint8_t data);
+					xmodem_rx_isr(data);
+				}
+				else
+				{
+					extern void shell_on_rx_received(uint8_t data);
+					shell_on_rx_received(data);
+				}
 			}
 		}
 	}
