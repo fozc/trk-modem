@@ -6,7 +6,7 @@
  */
 
 #include "json_config.h"
-#include "console_logger.h"
+#include "http_log.h"
 #include "bsp.h"
 #include <stdio.h>
 #include <string.h>
@@ -195,7 +195,7 @@ static bool parse_string(const char **str, char *dest, size_t max_len) {
     }
     
     if (*s != '"') {
-        CSLOG_ERR( "[JSON] ERROR: String not properly terminated\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: String not properly terminated\r\n");
         return false;
     }
     s++;
@@ -204,7 +204,7 @@ static bool parse_string(const char **str, char *dest, size_t max_len) {
     
     /* Warn if string was truncated */
     if (truncated) {
-        CSLOG_WARN("[JSON] WARNING: String truncated at %zu bytes (max: %zu)\r\n", i, max_len - 1);
+        HTTP_LOG_WRN("[JSON] WARNING: String truncated at %zu bytes (max: %zu)\r\n", i, max_len - 1);
     }
     
     *str = s;
@@ -223,7 +223,7 @@ static bool parse_uint32(const char **str, uint32_t *value) {
         
         /* Overflow detection: check if next multiplication would overflow */
         if (*value > (UINT32_MAX - digit) / 10) {
-            CSLOG_ERR( "[JSON] ERROR: Integer overflow detected\r\n");
+            HTTP_LOG_ERR( "[JSON] ERROR: Integer overflow detected\r\n");
             return false;
         }
         
@@ -242,7 +242,7 @@ static bool parse_uint16(const char **str, uint16_t *value) {
     
     /* Range check for uint16_t */
     if (temp > 65535) {
-        CSLOG_ERR( "[JSON] ERROR: Value %u exceeds uint16_t max (65535)\r\n", temp);
+        HTTP_LOG_ERR( "[JSON] ERROR: Value %u exceeds uint16_t max (65535)\r\n", temp);
         return false;
     }
     
@@ -257,7 +257,7 @@ static bool parse_uint8(const char **str, uint8_t *value) {
     
     /* Range check for uint8_t */
     if (temp > 255) {
-        CSLOG_ERR( "[JSON] ERROR: Value %u exceeds uint8_t max (255)\r\n", temp);
+        HTTP_LOG_ERR( "[JSON] ERROR: Value %u exceeds uint8_t max (255)\r\n", temp);
         return false;
     }
     
@@ -283,7 +283,7 @@ static bool parse_int32(const char **str, int32_t *value) {
         
         /* Overflow detection */
         if (temp > (UINT32_MAX - digit) / 10) {
-            CSLOG_ERR( "[JSON] ERROR: Integer overflow detected\r\n");
+            HTTP_LOG_ERR( "[JSON] ERROR: Integer overflow detected\r\n");
             return false;
         }
         
@@ -294,13 +294,13 @@ static bool parse_int32(const char **str, int32_t *value) {
     /* Check int32_t range */
     if (negative) {
         if (temp > 2147483648U) {
-            CSLOG_ERR( "[JSON] ERROR: Value exceeds int32_t min\r\n");
+            HTTP_LOG_ERR( "[JSON] ERROR: Value exceeds int32_t min\r\n");
             return false;
         }
         *value = -(int32_t)temp;
     } else {
         if (temp > 2147483647U) {
-            CSLOG_ERR( "[JSON] ERROR: Value exceeds int32_t max\r\n");
+            HTTP_LOG_ERR( "[JSON] ERROR: Value exceeds int32_t max\r\n");
             return false;
         }
         *value = (int32_t)temp;
@@ -317,7 +317,7 @@ static bool parse_int16(const char **str, int16_t *value) {
     
     /* Range check for int16_t */
     if (temp < -32768 || temp > 32767) {
-        CSLOG_ERR( "[JSON] ERROR: Value %d exceeds int16_t range (-32768 to 32767)\r\n", temp);
+        HTTP_LOG_ERR( "[JSON] ERROR: Value %d exceeds int16_t range (-32768 to 32767)\r\n", temp);
         return false;
     }
     
@@ -332,7 +332,7 @@ static bool parse_int8(const char **str, int8_t *value) {
     
     /* Range check for int8_t */
     if (temp < -128 || temp > 127) {
-        CSLOG_ERR( "[JSON] ERROR: Value %d exceeds int8_t range (-128 to 127)\r\n", temp);
+        HTTP_LOG_ERR( "[JSON] ERROR: Value %d exceeds int8_t range (-128 to 127)\r\n", temp);
         return false;
     }
     
@@ -376,7 +376,7 @@ static bool parse_float(const char **str, float *value) {
     
     /* NaN and Infinity validation */
     if (isnan(*value) || isinf(*value)) {
-        CSLOG_ERR( "[JSON] ERROR: Invalid float value (NaN or Inf)\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: Invalid float value (NaN or Inf)\r\n");
         return false;
     }
     
@@ -411,7 +411,7 @@ static bool validate_ip_address(const char *ip) {
     
     size_t len = strlen(ip);
     if (len < 7 || len > 15) {  /* Min: "0.0.0.0", Max: "255.255.255.255" */
-        CSLOG_ERR( "[VALIDATION] ERROR: Invalid IP length: %zu\r\n", len);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Invalid IP length: %zu\r\n", len);
         return false;
     }
     
@@ -422,31 +422,31 @@ static bool validate_ip_address(const char *ip) {
     for (size_t i = 0; i <= len; i++) {
         if (ip[i] == '.' || ip[i] == '\0') {
             if (digit_count == 0 || digit_count > 3) {
-                CSLOG_ERR( "[VALIDATION] ERROR: Invalid IP format\r\n");
+                HTTP_LOG_ERR( "[VALIDATION] ERROR: Invalid IP format\r\n");
                 return false;
             }
             if (num > 255) {
-                CSLOG_ERR( "[VALIDATION] ERROR: Invalid IP octet: %d (max: 255)\r\n", num);
+                HTTP_LOG_ERR( "[VALIDATION] ERROR: Invalid IP octet: %d (max: 255)\r\n", num);
                 return false;
             }
             count++;
             num = 0;
             digit_count = 0;
             if (count > 4) {
-                CSLOG_ERR( "[VALIDATION] ERROR: Too many IP octets\r\n");
+                HTTP_LOG_ERR( "[VALIDATION] ERROR: Too many IP octets\r\n");
                 return false;
             }
         } else if (ip[i] >= '0' && ip[i] <= '9') {
             num = num * 10 + (ip[i] - '0');
             digit_count++;
         } else {
-            CSLOG_ERR( "[VALIDATION] ERROR: Invalid IP character: '%c'\r\n", ip[i]);
+            HTTP_LOG_ERR( "[VALIDATION] ERROR: Invalid IP character: '%c'\r\n", ip[i]);
             return false;
         }
     }
     
     if (count != 4) {
-        CSLOG_ERR( "[VALIDATION] ERROR: IP must have 4 octets, got %d\r\n", count);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: IP must have 4 octets, got %d\r\n", count);
         return false;
     }
     
@@ -456,7 +456,7 @@ static bool validate_ip_address(const char *ip) {
 /* Validate port number (1-65535) */
 static bool validate_port(uint16_t port) {
     if (port == 0) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Port cannot be 0\r\n");
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Port cannot be 0\r\n");
         return false;
     }
     /* port is uint16_t, so max is automatically 65535 */
@@ -466,7 +466,7 @@ static bool validate_port(uint16_t port) {
 /* Validate zone ID (6-bit value: 0-63) */
 static bool validate_zone_id(uint8_t zone_id) {
     if (zone_id > 63) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Invalid zone_id: %u (max: 63)\r\n", zone_id);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Invalid zone_id: %u (max: 63)\r\n", zone_id);
         return false;
     }
     return true;
@@ -479,23 +479,23 @@ static bool validate_zone_id(uint8_t zone_id) {
 /* Validate IEC104 timeout values (must be logical: T0 < T1 < T2 < T3) */
 static bool validate_iec_timeouts(const jiec_config_t *config) {
     if (config->t0_timeout < 1) {
-        CSLOG_ERR( "[VALIDATION] ERROR: T0 must be >= 1 second\r\n");
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: T0 must be >= 1 second\r\n");
         return false;
     }
     if (config->t1_timeout < 1) {
-        CSLOG_ERR( "[VALIDATION] ERROR: T1 must be >= 1 second\r\n");
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: T1 must be >= 1 second\r\n");
         return false;
     }
     if (config->t2_timeout < 1) {
-        CSLOG_ERR( "[VALIDATION] ERROR: T2 must be >= 1 second\r\n");
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: T2 must be >= 1 second\r\n");
         return false;
     }
     if (config->t3_timeout < 1) {
-        CSLOG_ERR( "[VALIDATION] ERROR: T3 must be >= 1 second\r\n");
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: T3 must be >= 1 second\r\n");
         return false;
     }
     if (config->t1_timeout >= config->t3_timeout) {
-        CSLOG_WARN("[VALIDATION] WARNING: T1 (%u) should be < T3 (%u) for optimal operation\r\n",
+        HTTP_LOG_WRN("[VALIDATION] WARNING: T1 (%u) should be < T3 (%u) for optimal operation\r\n",
                config->t1_timeout, config->t3_timeout);
     }
     return true;
@@ -504,22 +504,22 @@ static bool validate_iec_timeouts(const jiec_config_t *config) {
 /* Validate IEC104 window parameters (K and W, uint8_t: 1-255) */
 static bool validate_iec_windows(const jiec_config_t *config) {
     if (config->k_max < 1) {
-        CSLOG_ERR( "[VALIDATION] ERROR: K must be 1-255, got %u\r\n", config->k_max);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: K must be 1-255, got %u\r\n", config->k_max);
         return false;
     }
     if (config->w_max < 1) {
-    	CSLOG_ERR( "[VALIDATION] ERROR: W must be 1-255, got %u\r\n", config->w_max);
+    	HTTP_LOG_ERR( "[VALIDATION] ERROR: W must be 1-255, got %u\r\n", config->w_max);
         return false;
     }
     if (config->w_max >= config->k_max) {
-    	CSLOG_ERR( "[VALIDATION] WARNING: W (%u) should be < K (%u) for optimal flow control\r\n",
+    	HTTP_LOG_ERR( "[VALIDATION] WARNING: W (%u) should be < K (%u) for optimal flow control\r\n",
                config->w_max, config->k_max);
     }
     if (config->k_max > 100) {
-        CSLOG_WARN("[VALIDATION] WARNING: K=%u is very large, may impact performance\r\n", config->k_max);
+        HTTP_LOG_WRN("[VALIDATION] WARNING: K=%u is very large, may impact performance\r\n", config->k_max);
     }
     if (config->w_max > 100) {
-        CSLOG_WARN("[VALIDATION] WARNING: W=%u is very large, may impact performance\r\n", config->w_max);
+        HTTP_LOG_WRN("[VALIDATION] WARNING: W=%u is very large, may impact performance\r\n", config->w_max);
     }
     return true;
 }
@@ -527,12 +527,12 @@ static bool validate_iec_windows(const jiec_config_t *config) {
 /* Validate IEC104 common address (1-65535) */
 static bool validate_common_address(uint8_t common_address) {
     if (common_address == 0) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Common address cannot be 0\r\n");
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Common address cannot be 0\r\n");
         return false;
     }
     /* 255 is broadcast address, should be avoided for single device */
     if (common_address == 255) {
-        CSLOG_WARN("[VALIDATION] WARNING: Common address 255 is broadcast\r\n");
+        HTTP_LOG_WRN("[VALIDATION] WARNING: Common address 255 is broadcast\r\n");
     }
     return true;
 }
@@ -540,7 +540,7 @@ static bool validate_common_address(uint8_t common_address) {
 /* Validate RF working mode - Operating_Mode (spec R2 section 4.3: {0,1}) */
 static bool validate_working_mode(uint8_t mode) {
     if (mode > 1) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Working mode %u invalid (0=threshold, 1=di/dt)\r\n", mode);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Working mode %u invalid (0=threshold, 1=di/dt)\r\n", mode);
         return false;
     }
     return true;
@@ -549,7 +549,7 @@ static bool validate_working_mode(uint8_t mode) {
 /* Validate RF line frequency - HatFrekansi (spec R2 section 4.2: {50,60}) */
 static bool validate_rf_frequency(uint32_t freq_hz) {
     if ((freq_hz != 50U) && (freq_hz != 60U)) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Line frequency %u Hz invalid (50 or 60 only)\r\n", freq_hz);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Line frequency %u Hz invalid (50 or 60 only)\r\n", freq_hz);
         return false;
     }
     return true;
@@ -559,7 +559,7 @@ static bool validate_rf_frequency(uint32_t freq_hz) {
  * reddedilir - cihaza asla gonderilmemelidir (spec section 5.3-2). */
 static bool validate_rf_float(float value, float min, float max, const char *name) {
     if ((value < min) || (value > max)) {
-        CSLOG_ERR( "[VALIDATION] ERROR: %s %.3f out of range [%.3f, %.3f]\r\n",
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: %s %.3f out of range [%.3f, %.3f]\r\n",
                name, value, min, max);
         return false;
     }
@@ -568,7 +568,7 @@ static bool validate_rf_float(float value, float min, float max, const char *nam
 
 static bool validate_rf_uint(uint32_t value, uint32_t min, uint32_t max, const char *name) {
     if ((value < min) || (value > max)) {
-        CSLOG_ERR( "[VALIDATION] ERROR: %s %u out of range [%u, %u]\r\n",
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: %s %u out of range [%u, %u]\r\n",
                name, value, min, max);
         return false;
     }
@@ -582,19 +582,19 @@ static bool validate_rf_uint_set(uint32_t value, const uint32_t *allowed, int co
             return true;
         }
     }
-    CSLOG_ERR( "[VALIDATION] ERROR: %s %u not one of allowed values\r\n", name, value);
+    HTTP_LOG_ERR( "[VALIDATION] ERROR: %s %u not one of allowed values\r\n", name, value);
     return false;
 }
 
 /* Validate timeout values (general) */
 static bool validate_timeout(uint32_t timeout_sec, uint32_t min_sec, uint32_t max_sec, const char *name) {
     if (timeout_sec < min_sec) {
-        CSLOG_ERR( "[VALIDATION] ERROR: %s timeout %u is too short (min: %u seconds)\r\n",
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: %s timeout %u is too short (min: %u seconds)\r\n",
                name, timeout_sec, min_sec);
         return false;
     }
     if (timeout_sec > max_sec) {
-        CSLOG_ERR( "[VALIDATION] ERROR: %s timeout %u is too long (max: %u seconds)\r\n",
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: %s timeout %u is too long (max: %u seconds)\r\n",
                name, timeout_sec, max_sec);
         return false;
     }
@@ -614,10 +614,10 @@ static bool validate_baud_rate(uint32_t baud) {
         case 4800:
         case 14400:
         case 28800:
-            CSLOG_WARN("[VALIDATION] WARNING: Baud rate %u is uncommon but supported\r\n", baud);
+            HTTP_LOG_WRN("[VALIDATION] WARNING: Baud rate %u is uncommon but supported\r\n", baud);
             return true;
         default:
-            CSLOG_ERR( "[VALIDATION] ERROR: Invalid baud rate %u (standard: 9600, 19200, 38400, 57600, 115200)\r\n", baud);
+            HTTP_LOG_ERR( "[VALIDATION] ERROR: Invalid baud rate %u (standard: 9600, 19200, 38400, 57600, 115200)\r\n", baud);
             return false;
     }
 }
@@ -625,10 +625,10 @@ static bool validate_baud_rate(uint32_t baud) {
 /* Validate Modbus device ID (1-247) */
 static bool validate_modbus_device_id(uint8_t device_addr) {
     if (device_addr == 0) {
-        CSLOG_WARN( "[VALIDATION] WARNING: Modbus device ID 0 is broadcasting address\r\n");
+        HTTP_LOG_WRN( "[VALIDATION] WARNING: Modbus device ID 0 is broadcasting address\r\n");
     }
     if (device_addr > 247) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Modbus device ID %u exceeds valid range (1-247)\r\n", device_addr);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Modbus device ID %u exceeds valid range (1-247)\r\n", device_addr);
         return false;
     }
     return true;
@@ -637,7 +637,7 @@ static bool validate_modbus_device_id(uint8_t device_addr) {
 /* Validate SIM card PIN (uint16_t alani: en az 4 basamak) */
 static bool validate_sim_pin(uint16_t pin) {
     if (pin < 1000) {
-        CSLOG_ERR( "[VALIDATION] ERROR: SIM PIN %u invalid (expected 4+ digits)\r\n", pin);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: SIM PIN %u invalid (expected 4+ digits)\r\n", pin);
         return false;
     }
     return true;
@@ -646,7 +646,7 @@ static bool validate_sim_pin(uint16_t pin) {
 /* Validate timezone offset (-12 to +14 hours) */
 static bool validate_timezone(int32_t timezone_offset) {
     if (timezone_offset < -12 || timezone_offset > 14) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Timezone offset %d invalid (range: -12 to +14)\r\n", timezone_offset);
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Timezone offset %d invalid (range: -12 to +14)\r\n", timezone_offset);
         return false;
     }
     return true;
@@ -885,17 +885,17 @@ static bool parse_device_config_internal(const char **str, modem_config_t *dev) 
     /* Validation */
     if (dev->sim_card_pin > 0) {
         if (!validate_sim_pin(dev->sim_card_pin)) {
-            CSLOG_ERR( "[JSON] ERROR: SIM PIN validation failed\r\n");
+            HTTP_LOG_ERR( "[JSON] ERROR: SIM PIN validation failed\r\n");
             return false;
         }
     }
     if (!validate_timezone(dev->time_zone)) {
-        CSLOG_ERR( "[JSON] ERROR: Timezone validation failed\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: Timezone validation failed\r\n");
         return false;
     }
     if (dev->periodic_modem_reset_period > 0) {
         if (!validate_timeout(dev->periodic_modem_reset_period, 3600, 2592000, "Modem reset period")) {
-            CSLOG_ERR( "[JSON] ERROR: Modem reset period validation failed\r\n");
+            HTTP_LOG_ERR( "[JSON] ERROR: Modem reset period validation failed\r\n");
             return false;
         }
     }
@@ -907,9 +907,9 @@ static bool parse_device_config_internal(const char **str, modem_config_t *dev) 
 
 /* IEC Hat parse et */
 static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
-    CSLOG("[JSON]   Parsing IEC Hatlar...\r\n");
+    HTTP_LOG_INF("[JSON]   Parsing IEC Hatlar...\r\n");
     if (!expect_object_start(str)) {
-        CSLOG_ERR( "[JSON]   ERROR: Expected '{' for Hatlar object\r\n");
+        HTTP_LOG_ERR( "[JSON]   ERROR: Expected '{' for Hatlar object\r\n");
         return false;
     }
     while (!is_object_end(str)) {
@@ -958,12 +958,12 @@ static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
         } else if (match_key(str, "IOA_T_RfhabVarYok")) {
             if (!parse_uint32_array(str, hat->ioa_t_rfhab_varyok, MAX_ARRAYS)) return false;
         } else {
-            CSLOG_WARN("[JSON]   WARNING: Unknown key in Hatlar object, skipping...\r\n");
+            HTTP_LOG_WRN("[JSON]   WARNING: Unknown key in Hatlar object, skipping...\r\n");
             if (!skip_unknown_key_value(str)) return false;
         }
         skip_comma(str);
     }
-    CSLOG("[JSON]   IEC Hatlar parsed successfully\r\n");
+    HTTP_LOG_INF("[JSON]   IEC Hatlar parsed successfully\r\n");
     return true;
 }
 
@@ -999,7 +999,7 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
                 return false;
             }
             if (!validate_ip_address(iec->scada_ip_address)) {
-                CSLOG_ERR(
+                HTTP_LOG_ERR(
                          "[JSON] ERROR: Invalid SCADA IP: %s\r\n",
                          iec->scada_ip_address);
                 return false;
@@ -1079,25 +1079,25 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
     }
 
     if (!validate_iec_timeouts(iec)) {
-    	CSLOG_ERR( "[JSON] ERROR: IEC timeout validation failed\r\n");
+    	HTTP_LOG_ERR( "[JSON] ERROR: IEC timeout validation failed\r\n");
         return false;
     }
     if (!validate_iec_windows(iec)) {
-    	CSLOG_ERR( "[JSON] ERROR: IEC window validation failed\r\n");
+    	HTTP_LOG_ERR( "[JSON] ERROR: IEC window validation failed\r\n");
         return false;
     }
     if (!validate_common_address(iec->common_address)) {
-    	CSLOG_ERR( "[JSON] ERROR: Common address validation failed\r\n");
+    	HTTP_LOG_ERR( "[JSON] ERROR: Common address validation failed\r\n");
         return false;
     }
     if (iec->sbo_active) {
         if (!validate_timeout(iec->sbo_timeout, 1, 300, "SBO")) {
-        	CSLOG_ERR( "[JSON] ERROR: SBO timeout validation failed\r\n");
+        	HTTP_LOG_ERR( "[JSON] ERROR: SBO timeout validation failed\r\n");
             return false;
         }
     }
     if (!validate_timeout(iec->periodical_send_interval, 1, 86400, "Periodical send")) {
-        CSLOG_ERR( "[JSON] ERROR: Periodical send interval validation failed\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: Periodical send interval validation failed\r\n");
         return false;
     }
     return true;
@@ -1180,11 +1180,11 @@ static bool parse_modbus_config_internal(const char **str, jmodbus_configs_t *mo
         skip_comma(str);
     }
     if (!validate_modbus_device_id(modbus->device_addr)) {
-        CSLOG_ERR( "[JSON] ERROR: Modbus device ID validation failed\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: Modbus device ID validation failed\r\n");
         return false;
     }
     if (!validate_baud_rate(modbus->baud_rate)) {
-        CSLOG_ERR( "[JSON] ERROR: Modbus baud rate validation failed\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: Modbus baud rate validation failed\r\n");
         return false;
     }
     return true;
@@ -1239,7 +1239,7 @@ static bool rf_hatid_duplicates_exist(rf_feeder_t *const *configs)
             if ((configs[j] == NULL) || (!configs[j]->in_use)) { continue; }
 
             if (configs[j]->config.fider_id == configs[i]->config.fider_id) {
-                CSLOG_ERR(
+                HTTP_LOG_ERR(
                          "[VALIDATION] ERROR: Lines %d and %d share Feeder ID %u\r\n",
                          i + 1, j + 1, (unsigned)configs[i]->config.fider_id);
                 return true;
@@ -1256,13 +1256,13 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
     char temp_hex[MAX_ARRAYS][RF_EUI64_HEX_LEN];
 
     if (!expect_object_start(str)) {
-        CSLOG_ERR( "[JSON] ERROR: Expected '{' at start of RF config\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: Expected '{' at start of RF config\r\n");
         return false;
     }
 
     while (!is_object_end(str)) {
         if (match_key(str, "inUse")) {
-            CSLOG("[JSON] Parsing inUse array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing inUse array...\r\n");
             if (!expect_array_start(str)) return false;
             int idx = 0;
             const char *s = skip_whitespace(*str);
@@ -1275,12 +1275,12 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
                 s = skip_whitespace(*str);
             }
             if (!skip_array_remainder(str)) return false;
-            CSLOG("[JSON] inUse parsed: %d elements\r\n", idx);
+            HTTP_LOG_INF("[JSON] inUse parsed: %d elements\r\n", idx);
 
         } else if (match_key(str, "HatID")) {
-            CSLOG("[JSON] Parsing HatID array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing HatID array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse HatID array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse HatID array\r\n");
                 return false;
             }
             /* Fider_ID 0-7 (0 = provizyonsuz, spec R2 section 3.2).
@@ -1296,9 +1296,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "ZoneID")) {
-            CSLOG("[JSON] Parsing ZoneID array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing ZoneID array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse ZoneID array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse ZoneID array\r\n");
                 return false;
             }
             /* Zone_ID 0-7 (spec R2 section 3.2). in_use farketmeksizin. */
@@ -1312,51 +1312,51 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "R_DEVICEID")) {
-            CSLOG("[JSON] Parsing R_DEVICEID array (EUI-64 hex)...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing R_DEVICEID array (EUI-64 hex)...\r\n");
             if (!parse_str_array(str, temp_hex, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse R_DEVICEID array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse R_DEVICEID array\r\n");
                 return false;
             }
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i] && !rf_eui64_from_hex(configs[i]->r_eui64, temp_hex[i])) {
-                    CSLOG_ERR( "[JSON] ERROR: Line %d R_DEVICEID '%s' is not 16-hex or empty\r\n",
+                    HTTP_LOG_ERR( "[JSON] ERROR: Line %d R_DEVICEID '%s' is not 16-hex or empty\r\n",
                              i + 1, temp_hex[i]);
                     return false;
                 }
             }
 
         } else if (match_key(str, "S_DEVICEID")) {
-            CSLOG("[JSON] Parsing S_DEVICEID array (EUI-64 hex)...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing S_DEVICEID array (EUI-64 hex)...\r\n");
             if (!parse_str_array(str, temp_hex, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse S_DEVICEID array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse S_DEVICEID array\r\n");
                 return false;
             }
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i] && !rf_eui64_from_hex(configs[i]->s_eui64, temp_hex[i])) {
-                    CSLOG_ERR( "[JSON] ERROR: Line %d S_DEVICEID '%s' is not 16-hex or empty\r\n",
+                    HTTP_LOG_ERR( "[JSON] ERROR: Line %d S_DEVICEID '%s' is not 16-hex or empty\r\n",
                              i + 1, temp_hex[i]);
                     return false;
                 }
             }
 
         } else if (match_key(str, "T_DEVICEID")) {
-            CSLOG("[JSON] Parsing T_DEVICEID array (EUI-64 hex)...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing T_DEVICEID array (EUI-64 hex)...\r\n");
             if (!parse_str_array(str, temp_hex, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse T_DEVICEID array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse T_DEVICEID array\r\n");
                 return false;
             }
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i] && !rf_eui64_from_hex(configs[i]->t_eui64, temp_hex[i])) {
-                    CSLOG_ERR( "[JSON] ERROR: Line %d T_DEVICEID '%s' is not 16-hex or empty\r\n",
+                    HTTP_LOG_ERR( "[JSON] ERROR: Line %d T_DEVICEID '%s' is not 16-hex or empty\r\n",
                              i + 1, temp_hex[i]);
                     return false;
                 }
             }
 
         } else if (match_key(str, "CalismaModu")) {
-            CSLOG("[JSON] Parsing CalismaModu array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing CalismaModu array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse CalismaModu array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse CalismaModu array\r\n");
                 return false;
             }
             /* Operating_Mode {0,1} (spec R2 section 4.3) */
@@ -1370,9 +1370,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "SistemNominalAkimi")) {
-            CSLOG("[JSON] Parsing SistemNominalAkimi array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing SistemNominalAkimi array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse SistemNominalAkimi array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse SistemNominalAkimi array\r\n");
                 return false;
             }
             /* Nominal_Current [2.00, 240/1.2] (spec R2 section 4.6) */
@@ -1386,9 +1386,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "SetEdilebilirActirmaEsikAkimi")) {
-            CSLOG("[JSON] Parsing SetEdilebilirActirmaEsikAkimi array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing SetEdilebilirActirmaEsikAkimi array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse SetEdilebilirActirmaEsikAkimi array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse SetEdilebilirActirmaEsikAkimi array\r\n");
                 return false;
             }
             /* Ia_Threshold [2.00x1.2, 240.0] (spec R2 section 4.6) */
@@ -1402,9 +1402,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "SetEdilebilirAcmaArizaSayisi")) {
-            CSLOG("[JSON] Parsing SetEdilebilirAcmaArizaSayisi array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing SetEdilebilirAcmaArizaSayisi array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse SetEdilebilirAcmaArizaSayisi array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse SetEdilebilirAcmaArizaSayisi array\r\n");
                 return false;
             }
             /* Set_Count [1,4] (spec R2 section 3.4) */
@@ -1418,9 +1418,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "ArtimliAkimEsigi")) {
-            CSLOG("[JSON] Parsing ArtimliAkimEsigi array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing ArtimliAkimEsigi array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse ArtimliAkimEsigi array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse ArtimliAkimEsigi array\r\n");
                 return false;
             }
             /* di_dt_Threshold [250, 2500] A/s (spec R2 section 3.1 / 7.1) */
@@ -1434,9 +1434,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "HatKopukHatBosta")) {
-            CSLOG("[JSON] Parsing HatKopukHatBosta array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing HatKopukHatBosta array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse HatKopukHatBosta array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse HatKopukHatBosta array\r\n");
                 return false;
             }
             /* Line_Break_Threshold [0.30, 5.00] A (spec R2 section 3.1) */
@@ -1450,9 +1450,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "OluHatAkimiDogrulamaSuresi")) {
-            CSLOG("[JSON] Parsing OluHatAkimiDogrulamaSuresi array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing OluHatAkimiDogrulamaSuresi array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse OluHatAkimiDogrulamaSuresi array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse OluHatAkimiDogrulamaSuresi array\r\n");
                 return false;
             }
             /* Dead_Line_Verify_ms [80, 200] (spec R2 section 3.3) */
@@ -1466,9 +1466,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "YenilenmeSifirlamaSuresi")) {
-            CSLOG("[JSON] Parsing YenilenmeSifirlamaSuresi array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing YenilenmeSifirlamaSuresi array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse YenilenmeSifirlamaSuresi array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse YenilenmeSifirlamaSuresi array\r\n");
                 return false;
             }
             /* T_Reclaim_Sec [10, 300] saniye (spec R2 section 3.3) */
@@ -1482,9 +1482,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "HatFrekansi")) {
-            CSLOG("[JSON] Parsing HatFrekansi array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing HatFrekansi array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse HatFrekansi array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse HatFrekansi array\r\n");
                 return false;
             }
             /* Line_Frequency {50, 60} - ayrik kume (spec R2 section 4.2) */
@@ -1498,9 +1498,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "IsSafety")) {
-            CSLOG("[JSON] Parsing IsSafety array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing IsSafety array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse IsSafety array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse IsSafety array\r\n");
                 return false;
             }
             /* Is_Safety [0.100, 0.300] A (spec R2 section 3.1) */
@@ -1514,9 +1514,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "ThresholdMs")) {
-            CSLOG("[JSON] Parsing ThresholdMs array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing ThresholdMs array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse ThresholdMs array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse ThresholdMs array\r\n");
                 return false;
             }
             /* Threshold_ms [20, 140] (spec R2 section 3.3) */
@@ -1530,9 +1530,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "TMemDeadSec")) {
-            CSLOG("[JSON] Parsing TMemDeadSec array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing TMemDeadSec array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse TMemDeadSec array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse TMemDeadSec array\r\n");
                 return false;
             }
             /* T_Mem_Dead_Sec [30, 600] (spec R2 section 3.3) */
@@ -1546,9 +1546,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "InrushTimerMs")) {
-            CSLOG("[JSON] Parsing InrushTimerMs array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing InrushTimerMs array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse InrushTimerMs array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse InrushTimerMs array\r\n");
                 return false;
             }
             /* Inrush_Timer_ms [20, 80] (spec R2 section 3.3) */
@@ -1562,9 +1562,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "InrushMultiplier")) {
-            CSLOG("[JSON] Parsing InrushMultiplier array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing InrushMultiplier array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse InrushMultiplier array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse InrushMultiplier array\r\n");
                 return false;
             }
             /* Inrush_Multiplier [1.00, 15.00] (spec R2 section 3.3) */
@@ -1578,9 +1578,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "SyncTripDelayMs")) {
-            CSLOG("[JSON] Parsing SyncTripDelayMs array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing SyncTripDelayMs array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse SyncTripDelayMs array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse SyncTripDelayMs array\r\n");
                 return false;
             }
             /* Sync_Trip_Delay_ms [0, 100] (spec R2 section 3.3) */
@@ -1594,9 +1594,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "TripPulseDurationMs")) {
-            CSLOG("[JSON] Parsing TripPulseDurationMs array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing TripPulseDurationMs array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse TripPulseDurationMs array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse TripPulseDurationMs array\r\n");
                 return false;
             }
             /* Trip_Pulse_Duration_ms [20, 120] (spec R2 section 3.3) */
@@ -1610,9 +1610,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "TripMode")) {
-            CSLOG("[JSON] Parsing TripMode array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing TripMode array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse TripMode array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse TripMode array\r\n");
                 return false;
             }
             /* Trip_Mode {0,1} (spec R2 section 4.4) */
@@ -1627,9 +1627,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "Inrush100HzRatio")) {
-            CSLOG("[JSON] Parsing Inrush100HzRatio array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing Inrush100HzRatio array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse Inrush100HzRatio array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse Inrush100HzRatio array\r\n");
                 return false;
             }
             /* Inrush_100Hz_Ratio [10, 40] % (spec R2 section 3.4) */
@@ -1643,9 +1643,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "ClpEnabled")) {
-            CSLOG("[JSON] Parsing ClpEnabled array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing ClpEnabled array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse ClpEnabled array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse ClpEnabled array\r\n");
                 return false;
             }
             /* CLP_Enabled {0,1} (spec R2 section 4.5) */
@@ -1660,9 +1660,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "ClpMultiplier")) {
-            CSLOG("[JSON] Parsing ClpMultiplier array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing ClpMultiplier array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse ClpMultiplier array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse ClpMultiplier array\r\n");
                 return false;
             }
             /* CLP_Multiplier [1.00, 3.00] (spec R2 section 3.5) */
@@ -1676,9 +1676,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "ClpDurationMs")) {
-            CSLOG("[JSON] Parsing ClpDurationMs array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing ClpDurationMs array...\r\n");
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse ClpDurationMs array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse ClpDurationMs array\r\n");
                 return false;
             }
             /* CLP_Duration_MS [100, 12000] (spec R2 section 3.5) */
@@ -1692,9 +1692,9 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else if (match_key(str, "VtripTarget")) {
-            CSLOG("[JSON] Parsing VtripTarget array...\r\n");
+            HTTP_LOG_INF("[JSON] Parsing VtripTarget array...\r\n");
             if (!parse_float_array(str, temp_float, MAX_ARRAYS)) {
-                CSLOG_ERR( "[JSON] ERROR: Failed to parse VtripTarget array\r\n");
+                HTTP_LOG_ERR( "[JSON] ERROR: Failed to parse VtripTarget array\r\n");
                 return false;
             }
             /* Vtrip_Target [24.00, 45.00] V (spec R2 section 3.6) */
@@ -1708,7 +1708,7 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             }
 
         } else {
-            CSLOG_WARN("[JSON] WARNING: Unknown key in RF config, skipping...\r\n");
+            HTTP_LOG_WRN("[JSON] WARNING: Unknown key in RF config, skipping...\r\n");
             if (!skip_unknown_key_value(str)) return false;
         }
         skip_comma(str);
@@ -1720,7 +1720,7 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
     for (int i = 0; i < MAX_ARRAYS; i++) {
         if ((configs[i] != NULL) && configs[i]->in_use &&
             (configs[i]->config.fider_id == 0U)) {
-            CSLOG_ERR(
+            HTTP_LOG_ERR(
                      "[VALIDATION] ERROR: Line %d is in use but has no Feeder ID\r\n",
                      i + 1);
             return false;
@@ -1734,7 +1734,7 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             const float nom = configs[i]->config.nominal_current;
             const float ia = configs[i]->config.ia_threshold;
             if (ia < (nom * 1.2f) - 0.001f) {
-                CSLOG_ERR( "[VALIDATION] ERROR: Line %d: Ia_Threshold %.2f < 1.2 x Nominal (%.2f)\r\n",
+                HTTP_LOG_ERR( "[VALIDATION] ERROR: Line %d: Ia_Threshold %.2f < 1.2 x Nominal (%.2f)\r\n",
                          i + 1, ia, nom);
                 return false;
             }
@@ -1744,18 +1744,18 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
     /* EUI-64 benzersizligi (spec R2 section 1.2): ayni cihaz iki (fider,
      * faz) slotuna baglanamaz. */
     if (rf_eui_duplicates_exist(configs)) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Duplicate EUI-64 in RF config\r\n");
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Duplicate EUI-64 in RF config\r\n");
         return false;
     }
 
     /* Fider benzersizligi (spec R2 section 1.2 / 5.3-1): ayni Fider_ID'yi
      * iki in_use fider alamaz - RF adres cakismasi olusur. */
     if (rf_hatid_duplicates_exist(configs)) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Duplicate Feeder ID in RF config\r\n");
+        HTTP_LOG_ERR( "[VALIDATION] ERROR: Duplicate Feeder ID in RF config\r\n");
         return false;
     }
 
-    CSLOG("[JSON] RF config parsed and validated successfully\r\n");
+    HTTP_LOG_INF("[JSON] RF config parsed and validated successfully\r\n");
     return true;
 }
 
@@ -1775,11 +1775,11 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
 
 int parse_device_config(const char *json_str, modem_config_t *config) {
     if (!json_str || !config) {
-        CSLOG_ERR( "[JSON] ERROR: parse_device_config - null parameters\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: parse_device_config - null parameters\r\n");
         return 0;
     }
     
-    CSLOG("[JSON] Parsing device config...\r\n");
+    HTTP_LOG_INF("[JSON] Parsing device config...\r\n");
 
     const char *str = skip_whitespace(json_str);
     
@@ -1790,234 +1790,234 @@ int parse_device_config(const char *json_str, modem_config_t *config) {
 
     bool result = parse_device_config_internal(&str, config);
     if (!result) {
-        CSLOG_ERR( "[JSON] ERROR: Device config parse failed\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: Device config parse failed\r\n");
         return 0;
     }
     
-    CSLOG("[JSON] Device config parsed successfully\r\n");
-    CSLOG("[JSON]   WebArayuzuPortu: %u\r\n", config->web_interface_port);
-    CSLOG("[JSON]   SimKartPin: %u\r\n", config->sim_card_pin);
-    CSLOG("[JSON]   SimKartAPN: %s\r\n", config->apn.apn);
-    CSLOG("[JSON]   SimKartAPNUsername: %s\r\n", config->apn.user_name);
-    CSLOG("[JSON]   SimKartAPNSifresi: %s\r\n", config->apn.user_pass);
-    CSLOG("[JSON]   NtpServer: %s\r\n", config->ntp_server);
-    CSLOG("[JSON]   NtpServerPortu: %u\r\n", config->ntp_server_port);
-    CSLOG("[JSON]   Time: %u\r\n", config->time);
-    CSLOG("[JSON]   TimeZone: %d\r\n", config->time_zone);
-    CSLOG("[JSON]   PeriyodikModemResetPeriyodu: %u\r\n", config->periodic_modem_reset_period);
-    CSLOG("[JSON]   DevreyeAlinmaZamani: %u\r\n", config->commissioning_time);
+    HTTP_LOG_INF("[JSON] Device config parsed successfully\r\n");
+    HTTP_LOG_INF("[JSON]   WebArayuzuPortu: %u\r\n", config->web_interface_port);
+    HTTP_LOG_INF("[JSON]   SimKartPin: %u\r\n", config->sim_card_pin);
+    HTTP_LOG_INF("[JSON]   SimKartAPN: %s\r\n", config->apn.apn);
+    HTTP_LOG_INF("[JSON]   SimKartAPNUsername: %s\r\n", config->apn.user_name);
+    HTTP_LOG_INF("[JSON]   SimKartAPNSifresi: %s\r\n", config->apn.user_pass);
+    HTTP_LOG_INF("[JSON]   NtpServer: %s\r\n", config->ntp_server);
+    HTTP_LOG_INF("[JSON]   NtpServerPortu: %u\r\n", config->ntp_server_port);
+    HTTP_LOG_INF("[JSON]   Time: %u\r\n", config->time);
+    HTTP_LOG_INF("[JSON]   TimeZone: %d\r\n", config->time_zone);
+    HTTP_LOG_INF("[JSON]   PeriyodikModemResetPeriyodu: %u\r\n", config->periodic_modem_reset_period);
+    HTTP_LOG_INF("[JSON]   DevreyeAlinmaZamani: %u\r\n", config->commissioning_time);
     
     return 1;
 }
 
 int parse_iec_config(const char *json_str, jiec_config_t *iec) {
     if (!json_str || !iec) {
-        CSLOG_ERR( "[JSON] ERROR: parse_iec_config - null parameters\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: parse_iec_config - null parameters\r\n");
         return 0;
     }
-    CSLOG("[JSON] Parsing IEC config...\r\n");
+    HTTP_LOG_INF("[JSON] Parsing IEC config...\r\n");
 
     const char *str = skip_whitespace(json_str);
     bool result = parse_iec_config_internal(&str, iec);
     if (!result) {
-        CSLOG_ERR( "[JSON] ERROR: IEC config parse failed\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: IEC config parse failed\r\n");
         return 0;
     }
-    CSLOG("[JSON] IEC config parsed successfully\r\n");
-    CSLOG("[JSON]   PeriyodikGonderimZamani: %u\r\n", iec->periodical_send_interval );
-    CSLOG("[JSON]   ScadaIPAdresi: %s\r\n", iec->scada_ip_address);
-    CSLOG("[JSON]   ScadaPort: %u\r\n", iec->scada_port);
-    CSLOG("[JSON]   T0TimeoutSuresi: %u\r\n", iec->t0_timeout);
-    CSLOG("[JSON]   T1TimeoutSuresi: %u\r\n", iec->t1_timeout);
-    CSLOG("[JSON]   T2TimeoutSuresi: %u\r\n", iec->t2_timeout);
-    CSLOG("[JSON]   T3TimeoutSuresi: %u\r\n", iec->t3_timeout);
-    CSLOG("[JSON]   K: %u\r\n", iec->k_max);
-    CSLOG("[JSON]   W: %u\r\n", iec->w_max);
-    CSLOG("[JSON]   OriginatorAdresi: %u\r\n", iec->originator_address);
-    CSLOG("[JSON]   CommonAdres: %u\r\n", iec->common_address);
-    CSLOG("[JSON]   SBO: %s\r\n", iec->sbo_active ? "true" : "false");
-    CSLOG("[JSON]   SBOTimeout: %u\r\n", iec->sbo_timeout);
-    CSLOG("[JSON]   AkuUyarisi: %u\r\n", iec->ioa_aku_uyarisi);
-    CSLOG("[JSON]   ModemReset: %u\r\n", iec->ioa_modem_reset);
+    HTTP_LOG_INF("[JSON] IEC config parsed successfully\r\n");
+    HTTP_LOG_INF("[JSON]   PeriyodikGonderimZamani: %u\r\n", iec->periodical_send_interval );
+    HTTP_LOG_INF("[JSON]   ScadaIPAdresi: %s\r\n", iec->scada_ip_address);
+    HTTP_LOG_INF("[JSON]   ScadaPort: %u\r\n", iec->scada_port);
+    HTTP_LOG_INF("[JSON]   T0TimeoutSuresi: %u\r\n", iec->t0_timeout);
+    HTTP_LOG_INF("[JSON]   T1TimeoutSuresi: %u\r\n", iec->t1_timeout);
+    HTTP_LOG_INF("[JSON]   T2TimeoutSuresi: %u\r\n", iec->t2_timeout);
+    HTTP_LOG_INF("[JSON]   T3TimeoutSuresi: %u\r\n", iec->t3_timeout);
+    HTTP_LOG_INF("[JSON]   K: %u\r\n", iec->k_max);
+    HTTP_LOG_INF("[JSON]   W: %u\r\n", iec->w_max);
+    HTTP_LOG_INF("[JSON]   OriginatorAdresi: %u\r\n", iec->originator_address);
+    HTTP_LOG_INF("[JSON]   CommonAdres: %u\r\n", iec->common_address);
+    HTTP_LOG_INF("[JSON]   SBO: %s\r\n", iec->sbo_active ? "true" : "false");
+    HTTP_LOG_INF("[JSON]   SBOTimeout: %u\r\n", iec->sbo_timeout);
+    HTTP_LOG_INF("[JSON]   AkuUyarisi: %u\r\n", iec->ioa_aku_uyarisi);
+    HTTP_LOG_INF("[JSON]   ModemReset: %u\r\n", iec->ioa_modem_reset);
     
     /* Hat bilgilerini de yazdır */
-    CSLOG_NODT("[JSON]   Hatlar.inUse: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.inUse: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%s", iec->line.in_use[i] ? "true" : "false");
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%s", iec->line.in_use[i] ? "true" : "false");
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaAkimi: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_R_ArizaAkimi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_ariza_akimi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_r_ariza_akimi[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaAkimi: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_S_ArizaAkimi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_ariza_akimi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_s_ariza_akimi[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaAkimi: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_T_ArizaAkimi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_ariza_akimi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_t_ariza_akimi[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaSuresi: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_R_ArizaSuresi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_ariza_suresi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_r_ariza_suresi[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaSuresi: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_S_ArizaSuresi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_ariza_suresi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_s_ariza_suresi[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaSuresi: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_T_ArizaSuresi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_ariza_suresi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_t_ariza_suresi[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaTuru: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_R_ArizaTuru: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_ariza_turu[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_r_ariza_turu[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaTuru: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_S_ArizaTuru: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_ariza_turu[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_s_ariza_turu[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaTuru: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_T_ArizaTuru: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_ariza_turu[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_t_ariza_turu[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_AnlikAkim: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_R_AnlikAkim: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_anlik_akim[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_r_anlik_akim[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_AnlikAkim: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_S_AnlikAkim: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_anlik_akim[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_s_anlik_akim[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_AnlikAkim: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_T_AnlikAkim: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_anlik_akim[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_t_anlik_akim[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_EnerjiVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_R_EnerjiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_enerji_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_r_enerji_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_EnerjiVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_S_EnerjiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_enerji_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_s_enerji_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_EnerjiVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_T_EnerjiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_enerji_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_t_enerji_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_NominalAkimVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_R_NominalAkimVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_nominal_akim_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_r_nominal_akim_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_NominalAkimVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_S_NominalAkimVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_nominal_akim_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_s_nominal_akim_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_NominalAkimVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_T_NominalAkimVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_nominal_akim_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_t_nominal_akim_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_RfhabVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_R_RfhabVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_rfhab_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_r_rfhab_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_RfhabVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_S_RfhabVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_rfhab_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_s_rfhab_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_RfhabVarYok: [");
+    HTTP_LOG_NODT("[JSON]   Hatlar.IOA_T_RfhabVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_rfhab_varyok[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
+        HTTP_LOG_NODT("%u", iec->line.ioa_t_rfhab_varyok[i]);
+        if (i < MAX_ARRAYS - 1) HTTP_LOG_NODT(", ");
     }
-    CSLOG_NODT("]\r\n");
+    HTTP_LOG_NODT("]\r\n");
 
     return 1;
 }
 
 int parse_modbus_config(const char *json_str, jmodbus_configs_t *modbus) {
     if (!json_str || !modbus) {
-        CSLOG_ERR( "[JSON] ERROR: parse_modbus_config - null parameters\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: parse_modbus_config - null parameters\r\n");
         return 0;
     }
     
-    CSLOG("[JSON] Parsing Modbus config...\r\n");
+    HTTP_LOG_INF("[JSON] Parsing Modbus config...\r\n");
 
     const char *str = skip_whitespace(json_str);
     
     bool result = parse_modbus_config_internal(&str, modbus);
     if (!result) {
-        CSLOG_ERR( "[JSON] ERROR: Modbus config parse failed\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: Modbus config parse failed\r\n");
         return 0;
     }
     
-    CSLOG("[JSON] Modbus config parsed successfully\r\n");
-    CSLOG("[JSON]   CihazAddr: %u\r\n", modbus->device_addr);
-    CSLOG("[JSON]   SonHataKodu: %u\r\n", modbus->last_error_code);
-    CSLOG("[JSON]   BaudRate: %u\r\n", modbus->baud_rate);
+    HTTP_LOG_INF("[JSON] Modbus config parsed successfully\r\n");
+    HTTP_LOG_INF("[JSON]   CihazAddr: %u\r\n", modbus->device_addr);
+    HTTP_LOG_INF("[JSON]   SonHataKodu: %u\r\n", modbus->last_error_code);
+    HTTP_LOG_INF("[JSON]   BaudRate: %u\r\n", modbus->baud_rate);
     return 1;
 }
 
@@ -2060,18 +2060,18 @@ static void rf_config_to_jayirici(const rf_feeder_t *src, jayirici_rf_config_t *
 
 int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf) {
     if (!json_str || !rf) {
-        CSLOG_ERR( "[JSON] ERROR: parse_rf_config - null parameters\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: parse_rf_config - null parameters\r\n");
         return 0;
     }
 
-    CSLOG("[JSON] Parsing RF config...\r\n");
+    HTTP_LOG_INF("[JSON] Parsing RF config...\r\n");
 
     // Get pointers to all rf_feeder_t structures from storage
     rf_feeder_t *configs[MAX_POWER_LINE_COUNT];
     for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         configs[i] = rf_store_get_mutable((feeder_id_t)i);
         if (!configs[i]) {
-            CSLOG_ERR( "[JSON] ERROR: Failed to get mutable config pointer for line %d\r\n", i);
+            HTTP_LOG_ERR( "[JSON] ERROR: Failed to get mutable config pointer for line %d\r\n", i);
             return 0;
         }
     }
@@ -2080,7 +2080,7 @@ int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf) {
 
     bool result = parse_rf_config_internal(&str, configs);
     if (!result) {
-        CSLOG_ERR( "[JSON] ERROR: RF config parse failed\r\n");
+        HTTP_LOG_ERR( "[JSON] ERROR: RF config parse failed\r\n");
         return 0;
     }
 
@@ -2092,15 +2092,15 @@ int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf) {
         }
     }
 
-    CSLOG("[JSON] RF config parsed successfully\r\n");
+    HTTP_LOG_INF("[JSON] RF config parsed successfully\r\n");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         if (rf->in_use[i]) {
-            CSLOG("[JSON]   Line %d: inUse=%d, HatID=%u, ZoneID=%u\r\n",
+            HTTP_LOG_INF("[JSON]   Line %d: inUse=%d, HatID=%u, ZoneID=%u\r\n",
                     i + 1, rf->in_use[i], rf->hat_id[i], rf->zone_id[i]);
-            CSLOG("[JSON]     EUI-64: [%s, %s, %s]\r\n",
+            HTTP_LOG_INF("[JSON]     EUI-64: [%s, %s, %s]\r\n",
                     rf->r_eui64[i], rf->s_eui64[i], rf->t_eui64[i]);
-            CSLOG("[JSON]     CalismaModu: %u\r\n", rf->mode[i]);
-            CSLOG("[JSON]     SistemNominalAkimi: %.1f\r\n", rf->sistem_nominal_akimi[i]);
+            HTTP_LOG_INF("[JSON]     CalismaModu: %u\r\n", rf->mode[i]);
+            HTTP_LOG_INF("[JSON]     SistemNominalAkimi: %.1f\r\n", rf->sistem_nominal_akimi[i]);
         }
     }
     return 1;
@@ -2121,7 +2121,7 @@ void set_device_config(const modem_config_t *config) {
     modem_config_set(config);
     int res = modem_config_sync();
 
-    CCSLOG(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
+    HTTP_LOG_INF_C(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
 			res == 0 ? "[Modem Config] Modem config synchronized successfully\r\n"
 					: "[Modem Config] ERROR: Modem config synchronization failed\r\n");
 }
@@ -2225,7 +2225,7 @@ void set_iec_config(const jiec_config_t *config)
 
     int res =  iec104_config_sync();
 
-    CCSLOG(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
+    HTTP_LOG_INF_C(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
     		res == 0 ? "[IEC104] IEC config synchronized successfully\r\n"
     				: "[IEC104] ERROR: IEC config synchronization failed\r\n");
 }
@@ -2293,7 +2293,7 @@ int set_modbus_config(const jmodbus_configs_t *config)
     }
 
     int res =  modbus_config_sync();
-	CCSLOG(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
+	HTTP_LOG_INF_C(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
 			res == 0 ? "[MODBUS] Modbus config synchronized successfully\r\n"
 					: "[MODBUS] ERROR: Modbus config synchronization failed\r\n");
 
