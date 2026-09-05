@@ -187,7 +187,7 @@ static void route_and_handle_request(http_request_t *request)
         }
 
         if (strcmp(request->path, "/device/reboot") == 0) {
-            xcprintf(XCOLOR_YELLOW, "[HTTP] GET /device/reboot - Rebooting device\r\n");
+            CSLOG_WARN("[HTTP] GET /device/reboot - Rebooting device\r\n");
             const char *response_body = "{\"message\":\"Rebooting\",\"success\":true}";
             http_send_json(response_body, strlen(response_body));
 
@@ -288,7 +288,7 @@ static void route_and_handle_request(http_request_t *request)
         }
 
         if (strcmp(request->path, "/device/reboot") == 0) {
-            xcprintf(XCOLOR_YELLOW, "[HTTP] GET /device/reboot - Rebooting device\r\n");
+            CSLOG_WARN("[HTTP] GET /device/reboot - Rebooting device\r\n");
             const char *response_body = "{\"message\":\"Rebooting\",\"success\":true}";
             http_send_json(response_body, strlen(response_body));
 
