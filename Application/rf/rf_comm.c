@@ -26,6 +26,7 @@
 #include "rf_scp.h"
 #include "rf_inventory.h"
 #include "rf_discovery.h"
+#include "rf_log.h"
 #include "rtc.h"
 #include "cp56time2a.h"
 
@@ -143,6 +144,15 @@ void rf_comm_rx_interrupt_handler(uint8_t data)
 
 static void rf_comm_transmit(const uint8_t *frame, size_t frame_len)
 {
+    /* Ham frame dokumu (COBS kodlu wire baytlari) - yalniz VERBOSE.
+     * modbus TX dokumu ile ayni desen. */
+    RF_LOG_NODT("\r\nRF TX[%u]: ", (unsigned)frame_len);
+    for (size_t i = 0U; i < frame_len; i++)
+    {
+        RF_LOG_NODT("%02X ", frame[i]);
+    }
+    RF_LOG_NODT("\r\n");
+
 #ifdef RF_SIMULATOR
     bms_send_buff(frame, frame_len);
 #else
@@ -197,7 +207,7 @@ bool scp_send_command(uint8_t type, uint8_t cmd,
     cmd_ctx.done         = done;
     cmd_ctx.deadline_ms  = HAL_GetTick() + timeout_ms;
 
-    CSLOG("[RF ST->RF] cmd=0x%02X seq=%u gonderildi (timeout=%ums, retries=%u)\r\n",
+    RF_LOG_INF("[RF ST->RF] cmd=0x%02X seq=%u gonderildi (timeout=%ums, retries=%u)\r\n",
 		  cmd_ctx.last_req.cmd, cmd_ctx.last_req.seq,
 		  (unsigned)cmd_ctx.timeout_ms, (unsigned)cmd_ctx.retries_left);
 
@@ -229,7 +239,7 @@ void scp_process(uint32_t now_ms)
         (void)scp_send(&scp_ctx, &cmd_ctx.last_req);
         cmd_ctx.deadline_ms = now_ms + cmd_ctx.timeout_ms;
 
-        CSLOG("[RF] retry cmd=0x%02X seq=%u (kalan=%u)\r\n",
+        RF_LOG_INF("[RF] retry cmd=0x%02X seq=%u (kalan=%u)\r\n",
               cmd_ctx.last_req.cmd, cmd_ctx.last_req.seq,
               cmd_ctx.retries_left);
     }
@@ -243,7 +253,7 @@ void scp_process(uint32_t now_ms)
          * baslatilabilir */
         cmd_ctx.busy = false;
 
-        CSLOG_WARN("[RF] cmd=0x%02X seq=%u TIMEOUT\r\n",
+        RF_LOG_WRN("[RF] cmd=0x%02X seq=%u TIMEOUT\r\n",
                    cmd_ctx.last_req.cmd, cmd_ctx.last_req.seq);
 
         if (done != NULL)
@@ -260,7 +270,7 @@ void scp_on_response(const scp_packet_t *pkt)
 
     if (!cmd_ctx.busy)
     {
-    	CSLOG_WARN("[RF] Yanit beklenmiyor cmd=0x%02X seq=%u - atla\r\n",
+    	RF_LOG_WRN("[RF] Yanit beklenmiyor cmd=0x%02X seq=%u - atla\r\n",
 				   pkt->cmd, pkt->seq);
         return;             /* bekleyen komut yok - bayat yanit */
     }
@@ -269,7 +279,7 @@ void scp_on_response(const scp_packet_t *pkt)
     if ((pkt->cmd != cmd_ctx.last_req.cmd) ||
         (pkt->seq != cmd_ctx.last_req.seq))
     {
-    	CSLOG_WARN("[RF] Belenen CMD/SEQ cmd=0x%02X seq=%u yanit cmd=0x%02X seq=%u - atla\r\n",
+    	RF_LOG_WRN("[RF] Belenen CMD/SEQ cmd=0x%02X seq=%u yanit cmd=0x%02X seq=%u - atla\r\n",
 				   cmd_ctx.last_req.cmd, cmd_ctx.last_req.seq,
 				   pkt->cmd, pkt->seq);
         return;             /* baska istegin yanitina benziyor - atla */
@@ -285,7 +295,7 @@ void scp_on_response(const scp_packet_t *pkt)
     }
     else
     {
-    	CSLOG_WARN("[RF] Gecersiz yanit tip=%u cmd=0x%02X seq=%u - atla\r\n",
+    	RF_LOG_WRN("[RF] Gecersiz yanit tip=%u cmd=0x%02X seq=%u - atla\r\n",
     							   pkt->type, pkt->cmd, pkt->seq);
         return;             /* ACK/ERROR disi - gecersiz yanit */
     }
@@ -338,7 +348,7 @@ static const char *scp_cmd_to_string(uint8_t cmd)
 
 static void print_scp_packet(const scp_packet_t *pkt)
 {
-    CSLOG("[RF RF->ST] %s %s seq=%u len=%u\r\n",
+    RF_LOG_INF("[RF RF->ST] %s %s seq=%u len=%u\r\n",
           scp_type_to_string(pkt->type),
           scp_cmd_to_string(pkt->cmd),
           pkt->seq, (unsigned)pkt->data_len);
@@ -376,7 +386,7 @@ static void on_time_sync_done(scp_cmd_result_t result,
 
     if (SCP_CMD_OK == result)
     {
-        CSLOG("[RF] hub saati senkronize (TIME_SYNC ACK)\r\n");
+        RF_LOG_INF("[RF] hub saati senkronize (TIME_SYNC ACK)\r\n");
 
         /* Devreye alma zincirinin 3. adimi: saat tamam -> envanter push */
         rf_inventory_start();
@@ -390,7 +400,7 @@ static void on_time_sync_done(scp_cmd_result_t result,
         }
         else
         {
-            CSLOG_WARN("[RF] TIME_SYNC %u denemede basarisiz\r\n",
+            RF_LOG_WRN("[RF] TIME_SYNC %u denemede basarisiz\r\n",
                        time_sync_tries);
         }
     }
@@ -423,19 +433,19 @@ static void handle_boot_notify(const scp_packet_t *pkt)
 
     if (pkt->data_len < 1U)
     {
-        CSLOG_WARN("[RF] BOOT_NOTIFY gecersiz (bos govde)\r\n");
+        RF_LOG_WRN("[RF] BOOT_NOTIFY gecersiz (bos govde)\r\n");
         return;
     }
 
     major = pkt->data[0];
     if (major != RF_SCP_MAJOR_EXPECTED)
     {
-        CSLOG_WARN("[RF] BOOT_NOTIFY scp_major=%u (beklenen %u) - uyari, "
+        RF_LOG_WRN("[RF] BOOT_NOTIFY scp_major=%u (beklenen %u) - uyari, "
                    "devam\r\n",
                    (unsigned)major, (unsigned)RF_SCP_MAJOR_EXPECTED);
     }
 
-    CSLOG("[RF] BOOT_NOTIFY (scp_major=%u) -> TIME_SYNC hazirlaniyor\r\n",
+    RF_LOG_INF("[RF] BOOT_NOTIFY (scp_major=%u) -> TIME_SYNC hazirlaniyor\r\n",
           (unsigned)major);
     time_sync_pending = true;
     time_sync_tries   = 0;
@@ -454,7 +464,7 @@ static void handle_proactive(const scp_packet_t *pkt)
             if ((pkt->data_len >= 8U) &&
                 (rf_discovery_add(pkt->data)))
             {
-                CSLOG("[RF] kesif: yeni cihaz "
+                RF_LOG_INF("[RF] kesif: yeni cihaz "
                       "EUI=%02X%02X%02X%02X%02X%02X%02X%02X\r\n",
                       pkt->data[0], pkt->data[1], pkt->data[2],
                       pkt->data[3], pkt->data[4], pkt->data[5],
@@ -463,7 +473,7 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         default:    /* MISRA 16.4 - S3-S5'te yeni case'ler gelecek */
-            CSLOG("[RF] proactive (henuz islenmiyor)\r\n");
+            RF_LOG_INF("[RF] proactive (henuz islenmiyor)\r\n");
             break;
     }
 }
@@ -514,6 +524,16 @@ static void rf_comm_check_rx(void)
         {
             const scp_packet_t *pkt = scp_get_packet(&scp_ctx);
 
+            /* Ham frame dokumu: PACKET_READY'de rx_buf/rx_idx scp'nin
+             * decode edilmis wire baytlarini scp_packet_done'a kadar
+             * dondurur (scp.c "frozen until done"). Yalniz VERBOSE. */
+            RF_LOG_NODT("\r\nRF RX[%u]: ", (unsigned)scp_ctx.rx_idx);
+            for (size_t i = 0U; i < scp_ctx.rx_idx; i++)
+            {
+                RF_LOG_NODT("%02X ", scp_ctx.rx_buf[i]);
+            }
+            RF_LOG_NODT("\r\n");
+
             print_scp_packet(pkt);
             rf_comm_on_data_received(pkt);
             scp_packet_done(&scp_ctx);
@@ -535,7 +555,7 @@ static void on_status_done(scp_cmd_result_t result,
 
         if (RF_CMD_OK == rf_scp_decode_status(rsp, &status))
         {
-            CSLOG("[RF] hub up=%us fw=%s sched=%u cyc=%u\r\n",
+            RF_LOG_INF("[RF] hub up=%us fw=%s sched=%u cyc=%u\r\n",
                   (unsigned)status.uptime_sec, status.fw_version,
                   (unsigned)status.sched_active,
                   (unsigned)status.sched_cycle_count);
@@ -617,14 +637,14 @@ void rf_comm_init(uint8_t device_address)
 {
     if (!rbuff_init(&rx_ring, rx_buff, sizeof(rx_buff)))
     {
-        CSLOG_ERR("[RF] Failed to initialize RX ring buffer!\r\n");
+        RF_LOG_ERR("[RF] Failed to initialize RX ring buffer!\r\n");
         return;
     }
 
     if (scp_init(&scp_ctx, device_address, rf_comm_transmit,
                  HAL_GetTick, RF_SCP_TIMEOUT_MS) != SCP_STATUS_OK)
     {
-        CSLOG_ERR("[RF] Failed to initialize SCP context!\r\n");
+        RF_LOG_ERR("[RF] Failed to initialize SCP context!\r\n");
         return;
     }
 

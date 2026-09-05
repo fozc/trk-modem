@@ -21,6 +21,7 @@
 #include "rf_config.h"
 #include "rf_comm.h"
 #include "rf_inventory.h"
+#include "rf_log.h"
 
 /* ======================================================================
  * Sanal cihaz uretici
@@ -112,6 +113,57 @@ static int rf_shell_inv(int argc, char **argv)
 }
 
 /* ======================================================================
+ * Log seviyesi alt komutu (gsm log ile ayni model)
+ * ====================================================================== */
+
+static const char *rf_log_level_name(rf_log_level_t lvl)
+{
+    switch (lvl)
+    {
+        case RF_LOG_OFF:     return "OFF";
+        case RF_LOG_NORMAL:  return "NORMAL";
+        case RF_LOG_VERBOSE: return "VERBOSE";
+        default:             return "?";
+    }
+}
+
+static int rf_shell_log(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        SHELL_LOG("RF log level: %s (%u)\r\n",
+                  rf_log_level_name(rf_log_get_level()),
+                  (unsigned)rf_log_get_level());
+        SHELL_LOG("Usage: rf log <off|on|verbose>\r\n");
+        return 0;
+    }
+
+    if (0 == strcmp(argv[1], "off"))
+    {
+        rf_log_set_level(RF_LOG_OFF);
+        SHELL_LOG("RF log: OFF\r\n");
+        return 0;
+    }
+
+    if (0 == strcmp(argv[1], "on"))
+    {
+        rf_log_set_level(RF_LOG_NORMAL);
+        SHELL_LOG("RF log: NORMAL (hata/uyari)\r\n");
+        return 0;
+    }
+
+    if (0 == strcmp(argv[1], "verbose"))
+    {
+        rf_log_set_level(RF_LOG_VERBOSE);
+        SHELL_LOG("RF log: VERBOSE (tum iz + ham paket dokumu)\r\n");
+        return 0;
+    }
+
+    SHELL_LOG("Bilinmeyen seviye '%s'. Usage: off | on | verbose\r\n", argv[1]);
+    return -1;
+}
+
+/* ======================================================================
  * Ana komut dispatch
  * ====================================================================== */
 
@@ -120,10 +172,11 @@ static int rf_shell_command(int argc, char *argv[])
     if (argc < 2)
     {
         xfprintf(shell_putchr,
-                 "Usage: rf <disc|status|inv>\r\n"
+                 "Usage: rf <disc|status|inv|log>\r\n"
                  "  disc   : kesif kuyruguna sanal cihaz ekle\r\n"
                  "  status : hub ve link durumu\r\n"
-                 "  inv    : envanteri yeniden push et\r\n");
+                 "  inv    : envanteri yeniden push et\r\n"
+                 "  log    : log seviyesi (off/on/verbose)\r\n");
         return -1;
     }
 
@@ -142,6 +195,11 @@ static int rf_shell_command(int argc, char *argv[])
         return rf_shell_inv(argc - 1, &argv[1]);
     }
 
+    if (0 == strcmp(argv[1], "log"))
+    {
+        return rf_shell_log(argc - 1, &argv[1]);
+    }
+
     xfprintf(shell_putchr, "Bilinmeyen alt komut: %s\r\n", argv[1]);
     return -1;
 }
@@ -154,7 +212,7 @@ void rf_shell_init(void)
 {
     shell_register_command(&(shell_cmd_t){
         .cmd = "rf",
-        .desc = "RF hub islemleri (disc/status/inv)",
+        .desc = "RF hub islemleri (disc/status/inv/log)",
         .level = SHELL_LVL_USER,
         .func = rf_shell_command
     });

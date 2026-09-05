@@ -203,9 +203,10 @@ typedef struct
  *  release sonrasi bump = migration + test zorunlu — bkz. AGENTS.md).
  *  v1: baslikta magic + schema_version + length + sequence — goruntu
  *  kendi boyutunu tanimlar (CRC/okuma kapsami goruntuden) ve cift
- *  kopyada taze (yuksek sequence) olan kazanir. Release oncesi tek
- *  surum; release sonrasi yapilan degisiklikler v2'ye bump. */
-#define NVRAM_SCHEMA_VERSION  1U
+ *  kopyada taze (yuksek sequence) olan kazanir.
+ *  v2: kuyruga rf_log_level eklendi (saha cihazi yok - default-reset
+ *  yeterli, migration gerekmez). */
+#define NVRAM_SCHEMA_VERSION  2U
 
 typedef struct
 {
@@ -223,12 +224,16 @@ typedef struct
 
     rfwu_nvram_t rfwu;
 
+    uint8_t rf_log_level;   /**< rf_log_level_t persisted value (v2) */
+
     uint32_t crc;
 }nvram_t;
 
 /* Layout kaymasini derleme hatasina cevir (rf_feeder_t bekcisi
  * rf_types.h icindedir). Bu yapi degistiginde NVRAM_SCHEMA_VERSION
  * bump edilir. 2460 = GCC 14.3.rel1 / Cortex-M33 olcumu (Y3.11);
+ * v2'de rf_log_level eski kuyruk padding'ine oturdu - boyut ve crc
+ * ofseti degismedi (rfwu 2-hizali, 20 bayt; rf_log_level @2454).
  * CRC goruntunun length-4 bayti uzerinde hesaplanir - layout kaysa
  * eski flash goruntuleri sessizce CRC'den dusup default-reset
  * olurdu; bu bekci kaymayi derleme zamaninda yakalar. */
@@ -237,7 +242,7 @@ _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
 _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
 _Static_assert(sizeof(nvram_t) == 2460U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
-_Static_assert(offsetof(nvram_t, crc) == 2456U, "nvram_t: crc sondan hemen once, kuyruk padding yok");
+_Static_assert(offsetof(nvram_t, crc) == 2456U, "nvram_t: crc kuyrugun sonunda (rf_log_level'dan sonra 1 bayt pad)");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */

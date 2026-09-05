@@ -10,6 +10,7 @@
  *   rf disc    - Kesif kuyruguna sanal cihaz ekle (test icin)
  *   rf status  - Hub ve link durumu ozeti
  *   rf inv     - Envanteri yeniden push et
+ *   rf log     - RF log seviyesi: off | on | verbose (kalici)
  */
 
 #ifndef RF_RF_SHELL_H_
