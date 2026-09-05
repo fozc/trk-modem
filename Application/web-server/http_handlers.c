@@ -37,6 +37,7 @@
 #include "datetime.h"
 #include "bsp.h"
 #include "rtc.h"
+#include "console_logger.h"
 
 /* ============================================================================
  * CONSTANTS
@@ -90,7 +91,7 @@ void http_handlers_reset(void)
      * can continue using the same token after a socket reconnect. */
     handler_state.is_authenticated = false;
     handler_state.current_query_string = NULL;
-    xprintf("[HTTP] Connection closed, session preserved\r\n");
+    CSLOG("[HTTP] Connection closed, session preserved\r\n");
 }
 
 char* http_handlers_get_tx_buffer(int *size)
@@ -208,7 +209,7 @@ void http_handlers_set_auth_from_token(const char *query_string)
         handler_state.is_authenticated = false;
         handler_state.session_token    = 0U;
         handler_state.username[0]      = '\0';
-        xprintf("[HTTP] Session expired\r\n");
+        CSLOG("[HTTP] Session expired\r\n");
         return;
     }
 
@@ -245,7 +246,7 @@ void handle_get_fw_update(void)
  */
 void handle_post_login(const char *json_body)
 {
-    xprintf("[HTTP] POST /auth/login - Login attempt\r\n");
+    CSLOG("[HTTP] POST /auth/login - Login attempt\r\n");
     
     if (!json_body) {
         http_send_json("{\"success\":false,\"error\":\"No body\"}", 35);
@@ -274,14 +275,14 @@ void handle_post_login(const char *json_body)
         }
     }
     
-    xprintf("[HTTP] Login attempt - Username: %s\r\n", username);
+    CSLOG("[HTTP] Login attempt - Username: %s\r\n", username);
     
     /* Get device IP address */
     uint32_t ip = gsm_get_ip_addr();
     uint8_t ip_a = (ip >> 24) & 0xFF;  /* First octet */
     uint8_t ip_d = ip & 0xFF;           /* Last octet */
     
-    xprintf("[HTTP] Device IP octets - First: %d, Last: %d\r\n", ip_a, ip_d);
+    CSLOG("[HTTP] Device IP octets - First: %d, Last: %d\r\n", ip_a, ip_d);
     
     /* Calculate expected passwords based on IP.
      * 12 bytes covers the longest value ("admin256" + NUL);
@@ -295,7 +296,7 @@ void handle_post_login(const char *json_body)
     if ((admin_len >= sizeof(expected_admin_pass)) ||
         (user_len >= sizeof(expected_user_pass)))
     {
-        xcprintf(XCOLOR_RED, "[HTTP] Login password truncated - increase buffer!\r\n");
+        CSLOG_ERR("[HTTP] Login password truncated - increase buffer!\r\n");
     }
     
     /* Validate credentials */
@@ -304,14 +305,14 @@ void handle_post_login(const char *json_body)
         valid = true;
         strncpy(handler_state.username, USER_ROLE_ADMIN, sizeof(handler_state.username) - 1);
         handler_state.username[sizeof(handler_state.username) - 1] = '\0';
-        xprintf("[HTTP] Admin login successful\r\n");
+        CSLOG("[HTTP] Admin login successful\r\n");
     } else if (strcmp(username, USER_ROLE_USER) == 0 && strcmp(password, expected_user_pass) == 0) {
         valid = true;
         strncpy(handler_state.username, USER_ROLE_USER, sizeof(handler_state.username) - 1);
         handler_state.username[sizeof(handler_state.username) - 1] = '\0';
-        xprintf("[HTTP] User login successful\r\n");
+        CSLOG("[HTTP] User login successful\r\n");
     } else {
-        xcprintf(XCOLOR_RED, "[HTTP] Login failed - Invalid credentials\r\n");
+        CSLOG_ERR("[HTTP] Login failed - Invalid credentials\r\n");
         elog_log_web_login_fail(gsm_get_web_client_ip());
     }
     
@@ -326,7 +327,7 @@ void handle_post_login(const char *json_body)
         handler_state.last_activity_tick = bsp_get_tick();
         handler_state.is_authenticated   = true;
 
-        xprintf("[HTTP] Session authenticated, token: %08lX\r\n", (unsigned long)new_token);
+        CSLOG("[HTTP] Session authenticated, token: %08lX\r\n", (unsigned long)new_token);
 
         char *buf = handler_state.tx_buffer;
         int   pos = xsnprintf(buf, handler_state.tx_buffer_size,
@@ -344,14 +345,14 @@ void handle_post_login(const char *json_body)
  */
 void handle_post_logout(void)
 {
-    xprintf("[HTTP] POST /auth/logout - Logout request\r\n");
+    CSLOG("[HTTP] POST /auth/logout - Logout request\r\n");
     
     /* Clear authentication state */
     handler_state.is_authenticated = false;
     handler_state.session_token    = 0U;
     memset(handler_state.username, 0, sizeof(handler_state.username));
 
-    xprintf("[HTTP] Session cleared\r\n");
+    CSLOG("[HTTP] Session cleared\r\n");
     
     /* Send success response */
     const char *success_response = "{\"success\":true}";
@@ -427,10 +428,10 @@ void handle_get_web_shell(void)
  */
 void handle_get_device_config_json(void)
 {
-    xprintf("[HTTP] GET /r?deviceConfig - Reading device config\r\n");
+    CSLOG("[HTTP] GET /r?deviceConfig - Reading device config\r\n");
     const modem_config_t *config = get_device_config();
     if (!config) {
-        xcprintf(XCOLOR_RED, "[HTTP] ERROR: Config not available\r\n");
+        CSLOG_ERR("[HTTP] ERROR: Config not available\r\n");
         http_send_error(500, "Config not available");
         return;
     }
@@ -490,9 +491,9 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"DevreyeAlinmaZamani\":%u", config->commissioning_time);
     
     pos += xsnprintf(buf + pos, buf_size - pos, "}");
-    xprintf("[HTTP] JSON response size: %d bytes\r\n", pos);
+    CSLOG("[HTTP] JSON response size: %d bytes\r\n", pos);
     if (pos >= buf_size - 1) {
-        xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
     }
     http_send_json(buf, pos);
 }
@@ -502,15 +503,15 @@ void handle_get_device_config_json(void)
  */
 void handle_post_device_config_json(const char *json_body)
 {
-    xprintf("[HTTP] POST /w?deviceConfig - Updating device config\r\n");
+    CSLOG("[HTTP] POST /w?deviceConfig - Updating device config\r\n");
     
     if (!json_body) {
-    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: No JSON body\n");
+    	CSLOG_ERR("[HTTP] ERROR: No JSON body\r\n");
         http_send_bad_request();
         return;
     }
     
-    xprintf("[HTTP] JSON body: %.100s...\r\n", json_body);
+    CSLOG("[HTTP] JSON body: %.100s...\r\n", json_body);
     
     modem_config_t config;
 
@@ -518,20 +519,20 @@ void handle_post_device_config_json(const char *json_body)
     config = *get_device_config();
 
     if (!parse_device_config(json_body, &config)) {
-    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: JSON parse failed\r\n");
+    	CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");
         http_send_error(400, "JSON parse error");
         return;
     }
     
-    xprintf("[HTTP] JSON parsed successfully\r\n");
-    xprintf("[HTTP] SimKartAPN: %s\r\n", config.apn.apn);
+    CSLOG("[HTTP] JSON parsed successfully\r\n");
+    CSLOG("[HTTP] SimKartAPN: %s\r\n", config.apn.apn);
     
     /* Save config via data_model */
     set_device_config(&config);
     
     elog_log_config_change(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
                            gsm_get_web_client_ip(), "device", true);
-    xprintf("[HTTP] Config saved to data_model\r\n");
+    CSLOG("[HTTP] Config saved to data_model\r\n");
 
     const char *response_body = "{\"message\":\"Device configuration saved\",\"success\":true}";
     http_send_json(response_body, strlen(response_body));
@@ -542,13 +543,13 @@ void handle_post_device_config_json(const char *json_body)
  */
 void handle_get_board_status_json(void)
 {
-    xprintf("[HTTP] GET /r?boardStatus - Reading board status\n");
+    CSLOG("[HTTP] GET /r?boardStatus - Reading board status\r\n");
     
     const system_status_t *status = system_status_get();
 
 
     if (!status) {
-        xprintf("[HTTP] ERROR: Board status not available\n");
+        CSLOG_ERR("[HTTP] ERROR: Board status not available\r\n");
         http_send_error(500, "Board status not available");
         return;
     }
@@ -590,11 +591,11 @@ void handle_get_board_status_json(void)
     
     pos += xsnprintf(buf + pos, buf_size - pos, "}");
     
-    xprintf("[HTTP] Board status JSON size: %d bytes\r\n", pos);
+    CSLOG("[HTTP] Board status JSON size: %d bytes\r\n", pos);
     
     /* Buffer overflow check */
     if (pos >= buf_size - 1) {
-        xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
     }
     
     http_send_json(buf, pos);
@@ -605,7 +606,7 @@ void handle_get_board_status_json(void)
  */
 void handle_get_syslogs_json(void)
 {
-    xprintf("[HTTP] GET /syslogs - Reading system logs\r\n");
+    CSLOG("[HTTP] GET /syslogs - Reading system logs\r\n");
     
     /* Parse query parameters */
     uint32_t offset = 0;
@@ -629,7 +630,7 @@ void handle_get_syslogs_json(void)
     uint16_t max_entries = elog_get_max_entries();
     uint16_t available_entries = (total_entries < max_entries) ? total_entries : max_entries;
     
-    xprintf("[HTTP] System Logs - offset=%lu, limit=%lu, total=%u, available=%u\r\n", 
+    CSLOG("[HTTP] System Logs - offset=%lu, limit=%lu, total=%u, available=%u\r\n", 
             offset, limit, total_entries, available_entries);
     
     /* Sanitize offset */
@@ -730,11 +731,11 @@ void handle_get_syslogs_json(void)
     
     pos += xsnprintf(buf + pos, buf_size - pos, "}");
     
-    xprintf("[HTTP] System Logs JSON size: %d bytes\r\n", pos);
+    CSLOG("[HTTP] System Logs JSON size: %d bytes\r\n", pos);
     
     /* Buffer overflow check */
     if (pos >= buf_size - 1) {
-        xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
     }
     
     http_send_json(buf, pos);
@@ -745,11 +746,11 @@ void handle_get_syslogs_json(void)
  */
 void handle_get_iec_config_json(void)
 {
-    xprintf("[HTTP] GET /r?iecConfig - Reading IEC config\n");
+    CSLOG("[HTTP] GET /r?iecConfig - Reading IEC config\r\n");
     
     const iec104_config_t *config = iec104_config_get();
     if (!config) {
-    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: IEC config not available\n");
+    	CSLOG_ERR("[HTTP] ERROR: IEC config not available\r\n");
         http_send_error(500, "IEC config not available");
         return;
     }
@@ -942,11 +943,11 @@ void handle_get_iec_config_json(void)
     
     pos += xsnprintf(buf + pos, buf_size - pos, "}");
     
-    xprintf("[HTTP] IEC config JSON size: %d bytes\r\n", pos);
+    CSLOG("[HTTP] IEC config JSON size: %d bytes\r\n", pos);
     
     /* Buffer overflow check */
     if (pos >= buf_size - 1) {
-    	xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    	CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
     }
     
     http_send_json(buf, pos);
@@ -957,23 +958,23 @@ void handle_get_iec_config_json(void)
  */
 void handle_post_iec_config_json(const char *json_body)
 {
-    xprintf("[HTTP] POST /w?iecConfig - Updating IEC config\r\n");
+    CSLOG("[HTTP] POST /w?iecConfig - Updating IEC config\r\n");
     
     if (!json_body) {
-    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: No JSON body\r\n");
+    	CSLOG_ERR("[HTTP] ERROR: No JSON body\r\n");
         http_send_bad_request();
         return;
     }
     
     int body_len = strlen(json_body);
-    xprintf("[HTTP] JSON body length: %d bytes\r\n", body_len);
-    xprintf("[HTTP] JSON body (full): %s\r\n", json_body);
+    CSLOG("[HTTP] JSON body length: %d bytes\r\n", body_len);
+    CSLOG("[HTTP] JSON body (full): %s\r\n", json_body);
     
     // Create local config from current NVRAM state
     jiec_config_t config = {0};
     const iec104_config_t *nvram_config = iec104_config_get();
     if (!nvram_config) {
-        xcprintf(XCOLOR_RED, "[HTTP] ERROR: Cannot read current config\r\n");
+        CSLOG_ERR("[HTTP] ERROR: Cannot read current config\r\n");
         http_send_error(500, "Config read error");
         return;
     }
@@ -1030,22 +1031,22 @@ void handle_post_iec_config_json(const char *json_body)
     }
     
     if (!parse_iec_config(json_body, &config)) {
-    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: JSON parse failed\r\n");
+    	CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");
         http_send_error(400, "JSON parse error");
         return;
     }
     
-    xprintf("[HTTP] JSON parsed successfully\r\n");
-    xprintf("[HTTP] ScadaIPAdresi: %s\r\n", config.scada_ip_address);
-    xprintf("[HTTP] ScadaPort: %u\r\n", config.scada_port);
-    xprintf("[HTTP] PeriyodikGonderimZamani: %u\r\n", config.periodical_send_interval);
+    CSLOG("[HTTP] JSON parsed successfully\r\n");
+    CSLOG("[HTTP] ScadaIPAdresi: %s\r\n", config.scada_ip_address);
+    CSLOG("[HTTP] ScadaPort: %u\r\n", config.scada_port);
+    CSLOG("[HTTP] PeriyodikGonderimZamani: %u\r\n", config.periodical_send_interval);
     
     /* TODO: Save config to persistent storage */
     set_iec_config(&config);
     
     elog_log_config_change(ELOG_CONFIG_IEC104_CHANGED, ELOG_SOURCE_WEB,
                            gsm_get_web_client_ip(), "iec104", true);
-    xprintf("[HTTP] IEC config saved\r\n");
+    CSLOG("[HTTP] IEC config saved\r\n");
 
     const char *response_body = "{\"message\":\"IEC104 configuration saved\",\"success\":true}";
     http_send_json(response_body, strlen(response_body));
@@ -1057,11 +1058,11 @@ void handle_post_iec_config_json(const char *json_body)
  */
 void handle_get_modbus_config_json(void)
 {
-    xprintf("[HTTP] GET /r?modbusConfigs - Reading Modbus config\r\n");
+    CSLOG("[HTTP] GET /r?modbusConfigs - Reading Modbus config\r\n");
     
     const modbus_configs_t *config = modbus_config_get();
     if (!config) {
-        xprintf("[HTTP] ERROR: Modbus config not available\r\n");
+        CSLOG_ERR("[HTTP] ERROR: Modbus config not available\r\n");
         http_send_error(500, "Modbus config not available");
         return;
     }
@@ -1236,11 +1237,11 @@ void handle_get_modbus_config_json(void)
     
     pos += xsnprintf(buf + pos, buf_size - pos, "}");
     
-    xprintf("[HTTP] Modbus config JSON size: %d bytes\n", pos);
+    CSLOG("[HTTP] Modbus config JSON size: %d bytes\r\n", pos);
     
     /* Buffer overflow check */
     if (pos >= buf_size - 1) {
-    	xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    	CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
     }
     
     http_send_json(buf, pos);
@@ -1251,22 +1252,22 @@ void handle_get_modbus_config_json(void)
  */
 void handle_post_modbus_config_json(const char *json_body)
 {
-    xprintf("[HTTP] POST /w?modbusConfigs - Updating Modbus config\r\n");
+    CSLOG("[HTTP] POST /w?modbusConfigs - Updating Modbus config\r\n");
     
     if (!json_body) {
-        xprintf("[HTTP] ERROR: No JSON body\r\n");
+        CSLOG_ERR("[HTTP] ERROR: No JSON body\r\n");
         http_send_bad_request();
         return;
     }
     
     int body_len = strlen(json_body);
-    xprintf("[HTTP] JSON body length: %d bytes\r\n", body_len);
+    CSLOG("[HTTP] JSON body length: %d bytes\r\n", body_len);
     
     // Create local config from current NVRAM state
     jmodbus_configs_t config = {0};
     const modbus_configs_t *nvram_config = modbus_config_get();
     if (!nvram_config) {
-        xcprintf(XCOLOR_RED, "[HTTP] ERROR: Cannot read current config\r\n");
+        CSLOG_ERR("[HTTP] ERROR: Cannot read current config\r\n");
         http_send_error(500, "Config read error");
         return;
     }
@@ -1310,21 +1311,21 @@ void handle_post_modbus_config_json(const char *json_body)
     }
     
     if (!parse_modbus_config(json_body, &config)) {
-        xprintf("[HTTP] ERROR: JSON parse failed\r\n");
+        CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");
         http_send_error(400, "JSON parse error");
         return;
     }
     
-    xprintf("[HTTP] JSON parsed successfully\r\n");
-    xprintf("[HTTP] CihazID: %u\r\n", config.device_addr);
-    xprintf("[HTTP] BaudRate: %u\r\n", config.baud_rate);
+    CSLOG("[HTTP] JSON parsed successfully\r\n");
+    CSLOG("[HTTP] CihazID: %u\r\n", config.device_addr);
+    CSLOG("[HTTP] BaudRate: %u\r\n", config.baud_rate);
     
     int res = set_modbus_config(&config);
 
     elog_log_config_change(ELOG_CONFIG_MODBUS_CHANGED, ELOG_SOURCE_WEB,
                            gsm_get_web_client_ip(), "modbus", (res == 0));
 
-    xprintf("[HTTP] Modbus config %s\r\n", res == 0 ? "saved" : "save failed");
+    CSLOG("[HTTP] Modbus config %s\r\n", res == 0 ? "saved" : "save failed");
 
     const char *response_body = res == 0 ? "{\"message\":\"Modbus configuration saved\",\"success\":true}"
     		: "{\"message\":\"Failed to save Modbus configuration\",\"success\":false}";
@@ -1347,7 +1348,7 @@ void handle_get_rf_discovery_json(void)
     char     hex[RF_EUI64_HEX_LEN];
     uint8_t  eui[RF_EUI64_LEN];
 
-    xprintf("[HTTP] GET /discovery/rf\r\n");
+    CSLOG("[HTTP] GET /discovery/rf\r\n");
 
     count = rf_discovery_get_count();
 
@@ -1410,15 +1411,15 @@ void handle_get_rf_config_json(void)
     int   buf_size = handler_state.tx_buffer_size;
     int   pos;
 
-    xprintf("[HTTP] GET /r?ayiriciRFConfig - Reading RF config\r\n");
+    CSLOG("[HTTP] GET /r?ayiriciRFConfig - Reading RF config\r\n");
 
     /* Govde uretimi tablo-tabanli rf_json modulundedir (kod hafizasi). */
     pos = rf_json_config_build(buf, buf_size);
-    xprintf("[HTTP] RF config JSON size: %d bytes\r\n", pos);
+    CSLOG("[HTTP] RF config JSON size: %d bytes\r\n", pos);
 
     if (pos >= (buf_size - 1))
     {
-        xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n",
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n",
                  pos, buf_size);
     }
 
@@ -1430,22 +1431,22 @@ void handle_get_rf_config_json(void)
  */
 void handle_post_rf_config_json(const char *json_body)
 {
-    xprintf("[HTTP] POST /w?ayiriciRFConfig - Updating RF config\r\n");
+    CSLOG("[HTTP] POST /w?ayiriciRFConfig - Updating RF config\r\n");
     
     if (!json_body) {
-    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: No JSON body\r\n");
+    	CSLOG_ERR("[HTTP] ERROR: No JSON body\r\n");
         http_send_bad_request();
         return;
     }
     
     int body_len = strlen(json_body);
-    xprintf("[HTTP] JSON body length: %d bytes\r\n", body_len);
+    CSLOG("[HTTP] JSON body length: %d bytes\r\n", body_len);
     
     jayirici_rf_config_t config;
 
     /* Staging: parse yarida kalirsa yarim yazma kalici store'a gecmez. */
     if (!rf_store_stage_begin()) {
-    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: RF staging busy\r\n");
+    	CSLOG_ERR("[HTTP] ERROR: RF staging busy\r\n");
         http_send_error(500, "RF config staging busy");
         return;
     }
@@ -1453,16 +1454,16 @@ void handle_post_rf_config_json(const char *json_body)
     // Parse JSON - writes go to the staging copy via rf_store_get_mutable()
     if (!parse_rf_config(json_body, &config)) {
     	rf_store_stage_abort();
-    	xcprintf(XCOLOR_RED, "[HTTP] ERROR: JSON parse failed\r\n");
+    	CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");
         http_send_error(400, "JSON parse error");
         return;
     }
     rf_store_stage_commit();
 
-    xprintf("[HTTP] JSON parsed successfully\r\n");
+    CSLOG("[HTTP] JSON parsed successfully\r\n");
     for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
         if (config.in_use[i]) {
-            xprintf("[HTTP] Line %d: HatID=%u, ZoneID=%u, EUI-64=[%s, %s, %s]\r\n",
+            CSLOG("[HTTP] Line %d: HatID=%u, ZoneID=%u, EUI-64=[%s, %s, %s]\r\n",
                    i+1, config.hat_id[i], config.zone_id[i],
                    config.r_eui64[i], config.s_eui64[i], config.t_eui64[i]);
         }
@@ -1470,12 +1471,12 @@ void handle_post_rf_config_json(const char *json_body)
     
     // Sync to persistent storage (data is already in breaker_config)
     if (rf_store_sync() != 0) {
-        xcprintf(XCOLOR_RED, "[HTTP] ERROR: Failed to sync RF config to storage\r\n");
+        CSLOG_ERR("[HTTP] ERROR: Failed to sync RF config to storage\r\n");
         http_send_error(500, "Failed to save configuration");
         return;
     }
     
-    xprintf("[HTTP] RF config saved\r\n");
+    CSLOG("[HTTP] RF config saved\r\n");
     elog_log_config_change(ELOG_CONFIG_RF_CHANGED, ELOG_SOURCE_WEB,
                            gsm_get_web_client_ip(), "rf", true);
 
@@ -1491,7 +1492,7 @@ void handle_post_rf_config_json(const char *json_body)
 static void send_rf_monitor_json(int line_filter)
 {
     if (line_filter >= MAX_POWER_LINE_COUNT) {
-        xprintf("[HTTP] ERROR: Invalid line index: %d\r\n", line_filter);
+        CSLOG_ERR("[HTTP] ERROR: Invalid line index: %d\r\n", line_filter);
         http_send_error(400, "Invalid line index (out of range)");
         return;
     }
@@ -1505,7 +1506,7 @@ static void send_rf_monitor_json(int line_filter)
     for (int i = start_line; i < end_line; i++) {
         const rf_monitor_t *monitor = rf_get_monitor(i);
         if (!monitor) {
-            xcprintf(XCOLOR_RED, "[HTTP] ERROR: RF monitor data not available for line %d\r\n", i);
+            CSLOG_ERR("[HTTP] ERROR: RF monitor data not available for line %d\r\n", i);
             continue;
         }
         
@@ -1550,9 +1551,9 @@ static void send_rf_monitor_json(int line_filter)
         pos += xsnprintf(buf + pos, buf_size - pos, "}");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "]}");
-    xprintf("[HTTP] RF monitor JSON size: %d bytes (lines: %d-%d)\r\n", pos, start_line + 1, end_line);
+    CSLOG("[HTTP] RF monitor JSON size: %d bytes (lines: %d-%d)\r\n", pos, start_line + 1, end_line);
     if (pos >= buf_size - 1) {
-        xcprintf(XCOLOR_RED, "[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
     }
     http_send_json(buf, pos);
 }
@@ -1564,7 +1565,7 @@ static void send_rf_monitor_json(int line_filter)
  */
 void handle_get_rf_monitor_line_json(int line_id)
 {
-    xprintf("[HTTP] GET RF monitor for line %d\r\n", line_id);
+    CSLOG("[HTTP] GET RF monitor for line %d\r\n", line_id);
     send_rf_monitor_json(line_id);
 }
 
@@ -1578,16 +1579,16 @@ void handle_get_rf_monitor_line_json(int line_id)
  */
 void handle_get_rf_monitor_json(void)
 {
-    xprintf("[HTTP] GET /r?ayiriciRFMonitor - Reading RF monitor data\r\n");
+    CSLOG("[HTTP] GET /r?ayiriciRFMonitor - Reading RF monitor data\r\n");
     
     int line_filter = -1;  /* -1 = all lines */
     if (handler_state.current_query_string) {
         char line_value[8];
         if (http_get_query_param(handler_state.current_query_string, "line", line_value, sizeof(line_value))) {
             line_filter = xstrtoi(line_value);
-            xprintf("[HTTP] Line filter: %d\n", line_filter);
+            CSLOG("[HTTP] Line filter: %d\r\n", line_filter);
             if (line_filter < 0 || line_filter >= MAX_POWER_LINE_COUNT) {
-                xprintf("[HTTP] ERROR: Invalid line index: %d\r\n", line_filter);
+                CSLOG_ERR("[HTTP] ERROR: Invalid line index: %d\r\n", line_filter);
                 http_send_error(400, "Invalid line index (out of range)");
                 return;
             }
@@ -1614,7 +1615,7 @@ static struct {
     uint32_t start_time;        /* Transfer start timestamp (tick count) */
     uint32_t last_chunk_time;   /* Last chunk receive time */
     uint32_t first_chunk_size;  /* Size of first chunk (for chunk_num calculation) */
-    uint32_t file_hash;         /* Fletcher-16 of first 64 bytes — file identity for resume detection */
+    uint32_t file_hash;         /* Fletcher-16 of first 64 bytes - file identity for resume detection */
     bool in_progress;
 } fw_state = {0};
 
@@ -1633,7 +1634,7 @@ void fw_update_register_callbacks(const fw_update_callbacks_t *callbacks) {
     if (callbacks) {
         fw_callbacks = *callbacks;  /* Copy the structure */
         fw_callbacks_registered = true;
-        xprintf("[FW] Firmware update callbacks registered\r\n");
+        CSLOG("[FW] Firmware update callbacks registered\r\n");
     }
 }
 
@@ -1645,7 +1646,7 @@ void fw_update_set_version_info(const char *version, const char *build_date, con
 
 void handle_get_fault_records_json(void)
 {
-    xprintf("[HTTP] GET /faults - Reading IEC104 fault records\r\n");
+    CSLOG("[HTTP] GET /faults - Reading IEC104 fault records\r\n");
 
     int feeder = -1;
     if (handler_state.current_query_string) {
@@ -1656,7 +1657,7 @@ void handle_get_fault_records_json(void)
     }
 
     if (feeder < 0 || feeder >= MAX_POWER_LINE_COUNT) {
-        xprintf("[HTTP] /faults: invalid feeder=%d\r\n", feeder);
+        CSLOG("[HTTP] /faults: invalid feeder=%d\r\n", feeder);
         http_send_bad_request();
         return;
     }
@@ -1725,15 +1726,15 @@ void handle_get_fault_records_json(void)
         (unsigned)tc[0], (unsigned)tc[1], (unsigned)tc[2],
         (unsigned)pc[0], (unsigned)pc[1], (unsigned)pc[2]);
 
-    xprintf("[HTTP] /faults JSON size: %d bytes (feeder %d)\r\n", pos, feeder);
+    CSLOG("[HTTP] /faults JSON size: %d bytes (feeder %d)\r\n", pos, feeder);
     if (pos >= buf_size - 1) {
-        xprintf("[HTTP] WARNING: /faults buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+        CSLOG_WARN("[HTTP] WARNING: /faults buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
     }
     http_send_json(buf, pos);
 }
 
 void handle_get_fw_version(void) {
-    xprintf("[FW] GET /r?fwVersion\r\n");
+    CSLOG("[FW] GET /r?fwVersion\r\n");
     
     char *buf = handler_state.tx_buffer;
     int buf_size = handler_state.tx_buffer_size;
@@ -1753,11 +1754,11 @@ void handle_get_fw_status(void) {
     int buf_size = handler_state.tx_buffer_size;
     int pos = 0;
 
-    /* TODO: fw_state yalniz RAM'de — reset sonrasi "ready" durumu kaybolur.
+    /* TODO: fw_state yalniz RAM'de - reset sonrasi "ready" durumu kaybolur.
      * NVRAM rfwu_nvram_t'ye su alanlari kalici yap:
-     *   - received_bytes (4 KB hizali kontrol noktasi — yarida kalan
+     *   - received_bytes (4 KB hizali kontrol noktasi - yarida kalan
      *     transfer kaldigi yerden devam etsin)
-     *   - total_size + file_hash (dosya kimligi — ayni dosya mi kontrolu)
+     *   - total_size + file_hash (dosya kimligi - ayni dosya mi kontrolu)
      *   - tamamlanmis indirme isareti (acilista "apply hazir" geri yukle)
      * Resume akisi: fw_start'ta hash eslesirse received_bytes'tan devam;
      * eslesmezse (farkli dosya) sifirdan basla. */
@@ -1770,7 +1771,7 @@ void handle_get_fw_status(void) {
     else if ((fw_state.total_size > 0U) &&
              (fw_state.received_bytes == fw_state.total_size))
     {
-        /* Transfer bitti, apply bekliyor — UI butonu gostersin */
+        /* Transfer bitti, apply bekliyor - UI butonu gostersin */
         pos += xsnprintf(buf + pos, buf_size - pos,
                          "{\"active\":false,\"ready\":true,\"received\":%u,\"total\":%u,\"fh\":%u}",
                          fw_state.received_bytes, fw_state.total_size, fw_state.file_hash);
@@ -1783,10 +1784,10 @@ void handle_get_fw_status(void) {
 }
 
 void handle_fw_start(const char *json_body) {
-    xprintf("[FW] POST /s (fw_start)\r\n");
+    CSLOG("[FW] POST /s (fw_start)\r\n");
 
     if (!fw_callbacks_registered || !fw_callbacks.fw_init) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: Callbacks not registered\r\n");
+        CSLOG_ERR("[FW] ERROR: Callbacks not registered\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"not supported\"}", 41);
         return;
     }
@@ -1817,7 +1818,7 @@ void handle_fw_start(const char *json_body) {
     }
 
     if (size == 0U) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: Invalid size\r\n");
+        CSLOG_ERR("[FW] ERROR: Invalid size\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"invalid size\"}", 40);
         return;
     }
@@ -1832,7 +1833,7 @@ void handle_fw_start(const char *json_body) {
         (fw_state.total_size == size) &&
         (hash == 0U || fw_state.file_hash == hash))
     {
-        xcprintf(XCOLOR_GREEN, "[FW] RESUME: same file detected, continuing from %u/%u bytes\r\n",
+        CCSLOG(XCOLOR_GREEN, "[FW] RESUME: same file detected, continuing from %u/%u bytes\r\n",
                  fw_state.received_bytes, fw_state.total_size);
         char *buf = handler_state.tx_buffer;
         int len = xsnprintf(buf, handler_state.tx_buffer_size,
@@ -1846,18 +1847,18 @@ void handle_fw_start(const char *json_body) {
      * Different file (size or hash mismatch) or no transfer in progress:
      * reset all state and re-initialise flash. */
     if (fw_state.in_progress) {
-        xcprintf(XCOLOR_YELLOW, "[FW] Different file — resetting previous upload (was %u/%u bytes)\r\n",
+        CSLOG_WARN("[FW] Different file - resetting previous upload (was %u/%u bytes)\r\n",
                  fw_state.received_bytes, fw_state.total_size);
     }
 
-    xcprintf(XCOLOR_CYAN, "[FW] ========== FIRMWARE UPDATE START ==========\r\n");
-    xprintf("[FW] Total Size: %u bytes\r\n", size);
-    xprintf("[FW] Total Chunks: %u\r\n", chunks);
-    xprintf("[FW] File Hash: 0x%04X\r\n", hash);
+    CCSLOG(XCOLOR_CYAN, "[FW] ========== FIRMWARE UPDATE START ==========\r\n");
+    CSLOG("[FW] Total Size: %u bytes\r\n", size);
+    CSLOG("[FW] Total Chunks: %u\r\n", chunks);
+    CSLOG("[FW] File Hash: 0x%04X\r\n", hash);
 
     int result = fw_callbacks.fw_init(size);
     if (result != 0) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: Flash init failed: %d\r\n", result);
+        CSLOG_ERR("[FW] ERROR: Flash init failed: %d\r\n", result);
         http_send_json("{\"status\":\"error\",\"error\":\"flash init\"}", 38);
         return;
     }
@@ -1874,7 +1875,7 @@ void handle_fw_start(const char *json_body) {
     fw_state.file_hash        = hash;
     fw_state.in_progress      = true;
 
-    xcprintf(XCOLOR_GREEN, "[FW] Flash initialized, ready for chunks\r\n");
+    CCSLOG(XCOLOR_GREEN, "[FW] Flash initialized, ready for chunks\r\n");
     http_send_json("{\"status\":\"ok\",\"cs\":4096,\"received\":0}", 38);
 }
 
@@ -1896,7 +1897,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     }
     
     if (!fw_state.in_progress) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: No update in progress\r\n");
+        CSLOG_ERR("[FW] ERROR: No update in progress\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"no update\"}", 37);
         return;
     }
@@ -1904,7 +1905,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     /* Remember first chunk size for accurate chunk number calculation */
     if (offset == 0 && size > 0) {
         fw_state.first_chunk_size = size;
-        xprintf("[FW] First chunk size: %u bytes\r\n", size);
+        CSLOG("[FW] First chunk size: %u bytes\r\n", size);
     }
     
     /* Calculate chunk number - use received_chunks for current position
@@ -1930,10 +1931,10 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     if (has_checksum) {
         if (calc_checksum != expected_checksum) {
             fw_state.checksum_errors++;
-            xcprintf(XCOLOR_RED, "[FW] CHECKSUM FAIL! Chunk #%u @offset=%u\r\n", chunk_num, offset);
-            xcprintf(XCOLOR_RED, "[FW]   Expected: 0x%04X\r\n", expected_checksum);
-            xcprintf(XCOLOR_RED, "[FW]   Received: 0x%04X\r\n", calc_checksum);
-            xcprintf(XCOLOR_RED, "[FW]   Size: %u bytes, Total CS errors: %u\r\n", 
+            CSLOG_ERR("[FW] CHECKSUM FAIL! Chunk #%u @offset=%u\r\n", chunk_num, offset);
+            CSLOG_ERR("[FW]   Expected: 0x%04X\r\n", expected_checksum);
+            CSLOG_ERR("[FW]   Received: 0x%04X\r\n", calc_checksum);
+            CSLOG_ERR("[FW]   Size: %u bytes, Total CS errors: %u\r\n", 
                      size, fw_state.checksum_errors);
             
             /* Request retry - send error with expected chunk number */
@@ -1944,11 +1945,11 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
             return;
         }
         /* Checksum OK - log for debugging */
-        xprintf("[FW] Chunk #%u: offset=%u, size=%u, CS=0x%04X OK\r\n", 
+        CSLOG("[FW] Chunk #%u: offset=%u, size=%u, CS=0x%04X OK\r\n", 
                 chunk_num, offset, size, calc_checksum);
     } else {
         /* No checksum provided - log warning */
-        xcprintf(XCOLOR_YELLOW, "[FW] Chunk #%u: offset=%u, size=%u (NO CHECKSUM)\r\n",
+        CSLOG_WARN("[FW] Chunk #%u: offset=%u, size=%u (NO CHECKSUM)\r\n",
                  chunk_num, offset, size);
     }
     
@@ -1957,7 +1958,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
         fw_state.retry_count++;
         /* Check if it's the previous chunk being retried */
         if (offset + size == fw_state.received_bytes) {
-            xcprintf(XCOLOR_YELLOW, "[FW] Retry chunk #%u accepted (total retries: %u)\r\n", 
+            CSLOG_WARN("[FW] Retry chunk #%u accepted (total retries: %u)\r\n", 
                      chunk_num, fw_state.retry_count);
             len = xsnprintf(buf, handler_state.tx_buffer_size, 
                             "{\"status\":\"ok\",\"chunk\":%u}", chunk_num);
@@ -1965,7 +1966,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
             return;
         }
         /* Offset is in the middle of received data - could be partial retry */
-        xcprintf(XCOLOR_YELLOW, "[FW] Late retry? offset=%u < received=%u (chunk #%u)\r\n", 
+        CSLOG_WARN("[FW] Late retry? offset=%u < received=%u (chunk #%u)\r\n", 
                  offset, fw_state.received_bytes, chunk_num);
         /* Don't update received_bytes, just ACK */
         len = xsnprintf(buf, handler_state.tx_buffer_size, 
@@ -1977,9 +1978,9 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     /* Check for gap in data (offset > received_bytes) */
     if (offset > fw_state.received_bytes) {
         uint32_t expected_chunk = fw_state.received_chunks;
-        xcprintf(XCOLOR_RED, "[FW] GAP DETECTED! offset=%u, expected=%u\r\n", 
+        CSLOG_ERR("[FW] GAP DETECTED! offset=%u, expected=%u\r\n", 
                  offset, fw_state.received_bytes);
-        xcprintf(XCOLOR_RED, "[FW]   Missing %u bytes (chunk #%u expected)\r\n",
+        CSLOG_ERR("[FW]   Missing %u bytes (chunk #%u expected)\r\n",
                  offset - fw_state.received_bytes, expected_chunk);
         len = xsnprintf(buf, handler_state.tx_buffer_size,
                        "{\"status\":\"error\",\"error\":\"gap\",\"expected\":%u}",
@@ -1989,7 +1990,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     }
     
     if (offset + size > fw_state.total_size) {
-        xcprintf(XCOLOR_RED, "[FW] OVERFLOW! offset=%u + size=%u > total=%u\r\n", 
+        CSLOG_ERR("[FW] OVERFLOW! offset=%u + size=%u > total=%u\r\n", 
                  offset, size, fw_state.total_size);
         http_send_json("{\"status\":\"error\",\"error\":\"overflow\"}", 36);
         return;
@@ -1998,7 +1999,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     /* Write chunk to flash */
     int result = fw_callbacks.fw_write(offset, data, size);
     if (result != 0) {
-        xcprintf(XCOLOR_RED, "[FW] FLASH WRITE FAIL! offset=%u, error=%d\r\n", offset, result);
+        CSLOG_ERR("[FW] FLASH WRITE FAIL! offset=%u, error=%d\r\n", offset, result);
         fw_state.in_progress = false;
         http_send_json("{\"status\":\"error\",\"error\":\"write fail\"}", 38);
         return;
@@ -2011,7 +2012,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     uint32_t progress = (fw_state.received_bytes * 100) / fw_state.total_size;
     static uint32_t last_progress = 0;
     if (progress / 10 != last_progress / 10) {
-        xcprintf(XCOLOR_GREEN, "[FW] Progress: %u%% (%u/%u bytes, chunk %u/%u)\r\n", 
+        CCSLOG(XCOLOR_GREEN, "[FW] Progress: %u%% (%u/%u bytes, chunk %u/%u)\r\n", 
                  progress, fw_state.received_bytes, fw_state.total_size,
                  fw_state.received_chunks, fw_state.total_chunks);
         last_progress = progress;
@@ -2024,33 +2025,33 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
 }
 
 void handle_fw_finish(const char *json_body) {
-    xcprintf(XCOLOR_CYAN, "[FW] ========== FIRMWARE UPDATE FINISH ==========\r\n");
+    CCSLOG(XCOLOR_CYAN, "[FW] ========== FIRMWARE UPDATE FINISH ==========\r\n");
     
     if (!fw_callbacks_registered || !fw_callbacks.fw_finish) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: Callbacks not registered\r\n");
+        CSLOG_ERR("[FW] ERROR: Callbacks not registered\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"not supported\"}", 41);
         return;
     }
     
     if (!fw_state.in_progress) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: No update in progress\r\n");
+        CSLOG_ERR("[FW] ERROR: No update in progress\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"no update\"}", 37);
         return;
     }
     
     /* Print detailed transfer summary */
-    xprintf("[FW] ---- Transfer Summary ----\r\n");
-    xprintf("[FW] Total Size:      %u bytes\r\n", fw_state.total_size);
-    xprintf("[FW] Received:        %u bytes\r\n", fw_state.received_bytes);
-    xprintf("[FW] Expected Chunks: %u\r\n", fw_state.total_chunks);
-    xprintf("[FW] Received Chunks: %u\r\n", fw_state.received_chunks);
-    xprintf("[FW] Checksum Errors: %u\r\n", fw_state.checksum_errors);
-    xprintf("[FW] Retry Count:     %u\r\n", fw_state.retry_count);
+    CSLOG("[FW] ---- Transfer Summary ----\r\n");
+    CSLOG("[FW] Total Size:      %u bytes\r\n", fw_state.total_size);
+    CSLOG("[FW] Received:        %u bytes\r\n", fw_state.received_bytes);
+    CSLOG("[FW] Expected Chunks: %u\r\n", fw_state.total_chunks);
+    CSLOG("[FW] Received Chunks: %u\r\n", fw_state.received_chunks);
+    CSLOG("[FW] Checksum Errors: %u\r\n", fw_state.checksum_errors);
+    CSLOG("[FW] Retry Count:     %u\r\n", fw_state.retry_count);
     
     if (fw_state.received_bytes != fw_state.total_size) {
         uint32_t missing = fw_state.total_size - fw_state.received_bytes;
-        xcprintf(XCOLOR_RED, "[FW] ERROR: Incomplete transfer!\r\n");
-        xcprintf(XCOLOR_RED, "[FW]   Missing: %u bytes (%.1f%%)\r\n", 
+        CSLOG_ERR("[FW] ERROR: Incomplete transfer!\r\n");
+        CSLOG_ERR("[FW]   Missing: %u bytes (%.1f%%)\r\n", 
                  missing, (missing * 100.0f) / fw_state.total_size);
         
         char *buf = handler_state.tx_buffer;
@@ -2062,12 +2063,12 @@ void handle_fw_finish(const char *json_body) {
         return;
     }
     
-    xprintf("[FW] Transfer complete, verifying...\r\n");
+    CSLOG("[FW] Transfer complete, verifying...\r\n");
     
     /* Finalize - verification is done by callback if needed */
     int result = fw_callbacks.fw_finish(fw_state.total_size);
     if (result != 0) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: Verification failed! Code: %d\r\n", result);
+        CSLOG_ERR("[FW] ERROR: Verification failed! Code: %d\r\n", result);
         fw_state.in_progress = false;
         http_send_json("{\"status\":\"error\",\"error\":\"verify fail\"}", 39);
         return;
@@ -2076,25 +2077,25 @@ void handle_fw_finish(const char *json_body) {
     fw_state.in_progress = false;
     
     /* Print success summary */
-    xcprintf(XCOLOR_GREEN, "[FW] ========================================\r\n");
-    xcprintf(XCOLOR_GREEN, "[FW] FIRMWARE UPDATE SUCCESSFUL!\r\n");
-    xcprintf(XCOLOR_GREEN, "[FW] ========================================\r\n");
-    xprintf("[FW] Total: %u bytes in %u chunks\r\n", 
+    CCSLOG(XCOLOR_GREEN, "[FW] ========================================\r\n");
+    CCSLOG(XCOLOR_GREEN, "[FW] FIRMWARE UPDATE SUCCESSFUL!\r\n");
+    CCSLOG(XCOLOR_GREEN, "[FW] ========================================\r\n");
+    CSLOG("[FW] Total: %u bytes in %u chunks\r\n", 
             fw_state.total_size, fw_state.received_chunks);
     if (fw_state.checksum_errors > 0 || fw_state.retry_count > 0) {
-        xcprintf(XCOLOR_YELLOW, "[FW] Note: %u checksum errors, %u retries during transfer\r\n",
+        CSLOG_WARN("[FW] Note: %u checksum errors, %u retries during transfer\r\n",
                  fw_state.checksum_errors, fw_state.retry_count);
     }
-    xprintf("[FW] Ready for reboot command (/rb)\r\n");
+    CSLOG("[FW] Ready for reboot command (/rb)\r\n");
     
     http_send_json("{\"status\":\"ok\"}", 15);
 }
 
 void handle_fw_reboot(void) {
-    xcprintf(XCOLOR_CYAN, "[FW] ========== REBOOT REQUEST ==========\r\n");
+    CCSLOG(XCOLOR_CYAN, "[FW] ========== REBOOT REQUEST ==========\r\n");
     
     if (!fw_callbacks_registered || !fw_callbacks.fw_reboot) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: Reboot callback not registered\r\n");
+        CSLOG_ERR("[FW] ERROR: Reboot callback not registered\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"not supported\"}", 41);
         return;
     }
@@ -2106,33 +2107,33 @@ void handle_fw_reboot(void) {
 }
 
 void handle_fw_apply(void) {
-    xcprintf(XCOLOR_CYAN, "[FW] ========== APPLY FW REQUEST ==========\r\n");
+    CCSLOG(XCOLOR_CYAN, "[FW] ========== APPLY FW REQUEST ==========\r\n");
 
     if (!fw_state.in_progress && (0U == fw_state.total_size)) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: No firmware downloaded\r\n");
+        CSLOG_ERR("[FW] ERROR: No firmware downloaded\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"no firmware\"}", 43);
         return;
     }
 
     if (fw_state.received_bytes != fw_state.total_size) {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: Download incomplete\r\n");
+        CSLOG_ERR("[FW] ERROR: Download incomplete\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"incomplete\"}", 42);
         return;
     }
 
-    xcprintf(XCOLOR_YELLOW, "[FW] Requesting bootloader update mode via IPC...\r\n");
+    CSLOG_WARN("[FW] Requesting bootloader update mode via IPC...\r\n");
 
     elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_START, 0U);
     int result = app_ipc_request_update(false);
 
     if(result != APP_IPC_OK)
     {
-        xcprintf(XCOLOR_RED, "[FW] ERROR: IPC request failed (%d)\r\n", result);
+        CSLOG_ERR("[FW] ERROR: IPC request failed (%d)\r\n", result);
         http_send_json("{\"status\":\"error\",\"error\":\"ipc failed\"}", 39);
         return;
     }
 
-    xcprintf(XCOLOR_GREEN, "[FW] Update armed - reset in 10 s\r\n");
+    CCSLOG(XCOLOR_GREEN, "[FW] Update armed - reset in 10 s\r\n");
     /* Response goes out before the countdown starts. */
     http_send_json("{\"status\":\"ok\",\"reset_in\":10}", 29);
     reboot_system_delayed(10000U);
