@@ -6,6 +6,7 @@
  * send / wait-response phases (mirroring gsm_init pattern).
  */
 
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_periodical.h"
 #include "gsm_types.h"
 #include "gsm_engine.h"

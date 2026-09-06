@@ -6,6 +6,7 @@
  * parametric process, differentiated only by their const config struct.
  */
 
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_listener_process.h"
 #include "gsm_process.h"
 #include "gsm_socket.h"

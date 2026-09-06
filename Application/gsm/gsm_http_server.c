@@ -4,6 +4,7 @@
  *  Created on: Dec 20, 2025
  *      Author: fatih
  */
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_http_server.h"
 #include "gsm_engine.h"
 #include "web_server.h"
@@ -63,9 +64,9 @@ void gsm_http_server_client_data_received(const uint8_t* data, uint16_t length)
 
 	if(g_http_server.rx_data_received) {
 		if (!g_http_server.is_rfwu) {
-			GSM_LOG_WRN("[GSM HTTP SERVER] -->>> Warning: Previous RX data overwritten! <<--\r\n");
-			GSM_LOG_WRN("[GSM HTTP SERVER] -->>> Warning: Previous RX data overwritten! <<--\r\n");
-			GSM_LOG_WRN("[GSM HTTP SERVER] -->>> Warning: Previous RX data overwritten! <<--\r\n");
+			CSLOG_WARN("[GSM HTTP SERVER] -->>> Warning: Previous RX data overwritten! <<--\r\n");
+			CSLOG_WARN("[GSM HTTP SERVER] -->>> Warning: Previous RX data overwritten! <<--\r\n");
+			CSLOG_WARN("[GSM HTTP SERVER] -->>> Warning: Previous RX data overwritten! <<--\r\n");
 		}
     }
 
@@ -76,13 +77,13 @@ void gsm_http_server_client_data_received(const uint8_t* data, uint16_t length)
 		g_http_server.rx_data_received = true;
 
 		if (!g_http_server.is_rfwu) {
-			GSM_LOG_INF_C(XCOLOR_CYAN, "[GSM HTTP SERVER] Client data received: %d bytes\r\n", length);
+			CCSLOG(XCOLOR_CYAN, "[GSM HTTP SERVER] Client data received: %d bytes\r\n", length);
 		}
 	}
 	else
 	{
 		if (!g_http_server.is_rfwu) {
-			GSM_LOG_ERR("[GSM HTTP SERVER] Invalid client data length: %d bytes\r\n", length);
+			CSLOG_ERR("[GSM HTTP SERVER] Invalid client data length: %d bytes\r\n", length);
 		}
 	}
 }
@@ -91,7 +92,7 @@ static int http_server_send(const void *data, uint32_t len)
 {
 	if(gsm_get_listener_socket_state() == SOCKET_CLOSED){
 		if (!g_http_server.is_rfwu) {
-			GSM_LOG_ERR("[GSM HTTP SERVER] Listener socket not open, cannot send data!\r\n");
+			CSLOG_ERR("[GSM HTTP SERVER] Listener socket not open, cannot send data!\r\n");
 		}
 		return -1;
 	}
@@ -105,7 +106,7 @@ static int http_server_send(const void *data, uint32_t len)
 	else
 	{
 		if (!g_http_server.is_rfwu) {
-			GSM_LOG_ERR("[GSM HTTP SERVER] TX buffer overflow, cannot send %d bytes!\r\n", len);
+			CSLOG_ERR("[GSM HTTP SERVER] TX buffer overflow, cannot send %d bytes!\r\n", len);
 		}
 		return -1;
 	}
@@ -114,7 +115,7 @@ static int http_server_send(const void *data, uint32_t len)
 void gsm_http_server_reset(void)
 {
 	if (!g_http_server.is_rfwu) {
-		GSM_LOG_WRN("[GSM HTTP SERVER] Reset  gsm_server\r\n");
+		CSLOG_WARN("[GSM HTTP SERVER] Reset  gsm_server\r\n");
 	}
 	g_http_server.rx_length = 0;
 	g_http_server.rx_data_received = false;
@@ -132,7 +133,7 @@ void gsm_http_server_init(void)
 	  web_server_init(&wio);
 
 	  if(!rbuff_init(&tx_rb_ctx, http_tx_buff, GSM_HTTP_SERVER_TX_BUFFER_SIZE)){
-		  GSM_LOG_ERR("[GSM HTTP SERVER] TX ring buffer init failed - HTTP sends will be rejected!\r\n");
+		  CSLOG_ERR("[GSM HTTP SERVER] TX ring buffer init failed - HTTP sends will be rejected!\r\n");
 	  }
 }
 
@@ -146,7 +147,7 @@ void gsm_http_server_send_response(void)
 	if(gsm_get_listener_socket_state() == SOCKET_CLOSED)
 	{
 		if (!g_http_server.is_rfwu) {
-			GSM_LOG_ERR("[GSM HTTP SERVER] Listener socket not open, cannot send response!\r\n");
+			CSLOG_ERR("[GSM HTTP SERVER] Listener socket not open, cannot send response!\r\n");
 		}
 		g_http_server.tx_data_ready = false;
 		rbuff_clear(&tx_rb_ctx);
@@ -167,7 +168,7 @@ void gsm_http_server_send_response(void)
     if(rbuff_available(&tx_rb_ctx) == 0)
     {
 		if (!g_http_server.is_rfwu) {
-			GSM_LOG_INF_C(XCOLOR_GREEN, "[GSM HTTP SERVER] Response sent completely\r\n");
+			CCSLOG(XCOLOR_GREEN, "[GSM HTTP SERVER] Response sent completely\r\n");
 		}
         g_http_server.tx_data_ready = false;
         g_http_server.state = GSM_HTTP_SERVER_STATE_IDLE;
@@ -180,7 +181,7 @@ void gsm_http_server_process_rx_data(void)
 	{
 		g_http_server.rx_buffer[g_http_server.rx_length] = 0;
 		if (!g_http_server.is_rfwu) {
-			GSM_LOG_INF_C(XCOLOR_CYAN, "[GSM HTTP SERVER] Processing received data. Len[%d]\r\n", g_http_server.rx_length);
+			CCSLOG(XCOLOR_CYAN, "[GSM HTTP SERVER] Processing received data. Len[%d]\r\n", g_http_server.rx_length);
 		}
 #if 0
 		CSLOG("[GSM HTTP SERVER] [%s]\r\n", g_http_server.rx_buffer);

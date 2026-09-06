@@ -4,6 +4,7 @@
  *  Created on: Oct 26, 2025
  *      Author: fatih
  */
+#define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_process.h"
 #include "iec104.h"
 #include "nvram.h"

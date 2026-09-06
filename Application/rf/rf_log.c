@@ -4,43 +4,22 @@
  *  Created on: Sep 05, 2026
  *      Author: fatih
  *
- * RF log seviyesi durumu - gsm_log ile ayni model, NVRAM destekli.
+ * RF log seviyesi - ince delegasyon katmani: durum ve NVRAM eslemesi
+ * console_logger'in merkez tablosunda yasrar. Fonksiyon API'si korunur
+ * (rf_shell); seviye sabitleri log_lvl_t ile birebir ortusur (0/1/2).
  */
 
 #include "rf_log.h"
-#include "nvram.h"
+#include "console_logger.h"
 
-/* -- RF log seviyesi --------------------------------------------- */
-
-static rf_log_level_t level = RF_LOG_NORMAL;
-
-void rf_log_init(void)
+void rf_log_set_level(rf_log_level_t level)
 {
-    uint8_t stored = nvram_get_rf_log_level();
-
-    if (stored > (uint8_t)RF_LOG_VERBOSE)
-    {
-        stored = (uint8_t)RF_LOG_VERBOSE;
-    }
-
-    level = (rf_log_level_t)stored;
-}
-
-void rf_log_set_level(rf_log_level_t new_level)
-{
-    if (new_level > RF_LOG_VERBOSE)
-    {
-        new_level = RF_LOG_VERBOSE;
-    }
-
-    level = new_level;
-    nvram_set_rf_log_level((uint8_t)new_level);
-    nvram_sync(false);
+    console_logger_set_level(LOG_MOD_RF, (log_lvl_t)level);
 }
 
 rf_log_level_t rf_log_get_level(void)
 {
-    return level;
+    return (rf_log_level_t)console_logger_get_level(LOG_MOD_RF);
 }
 
 /*** end of file ***/

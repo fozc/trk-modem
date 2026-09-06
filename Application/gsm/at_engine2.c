@@ -4,6 +4,7 @@
  *  Created on: Apr 11, 2026
  *      Author: fatih
  */
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "at_engine2.h"
 #include "bsp.h"
 #include "ring_buff.h"
@@ -105,7 +106,7 @@ void at_engine_send_with_dma(const uint8_t *p_data, uint16_t len)
 	if(res != HAL_OK)
 	{
 		s_tx_done_flag = 0U; /* Failed to start DMA, allow retry */
-		GSM_LOG_ERR("AT [DMA TX ERROR]\r\n");
+		CSLOG_ERR("AT [DMA TX ERROR]\r\n");
 	}
 }
 
@@ -118,7 +119,7 @@ void at_engine_init(void)
 {
 	if (!rbuff_init(&rx_ringbuf, rx_buffer, AT_ENGINE_RX_BUFFER_SIZE))
 	{
-		GSM_LOG_ERR("AT [RX RING INIT ERROR]\r\n");
+		CSLOG_ERR("AT [RX RING INIT ERROR]\r\n");
 	}
 }
 
@@ -245,7 +246,7 @@ static void at_engine_send_process(void)
 			extern UART_HandleTypeDef huart1;
 			(void)HAL_UART_AbortTransmit(&huart1);
 			s_tx_done_flag = 0U;
-			GSM_LOG_ERR("AT [DMA TX TIMEOUT]\r\n");
+			CSLOG_ERR("AT [DMA TX TIMEOUT]\r\n");
 		}
 		else
 		{
@@ -261,7 +262,7 @@ static void at_engine_send_process(void)
 	}
 	else
 	{
-		GSM_LOG_INF_C(XCOLOR_GREEN, "AT TX> %.*s\r\n",
+		CCSLOG(XCOLOR_GREEN, "AT TX> %.*s\r\n",
 		              (int)at_engine.cmd_len, at_engine.cmd);
 
 		at_engine_send_with_dma(at_engine.cmd, at_engine.cmd_len);
@@ -377,7 +378,7 @@ static bool check_urc_in_response(void)
 		memcpy(urc_buffer, &at_engine.response_buffer[content_start], content_len);
 		urc_buffer[content_len] = '\0';
 
-		GSM_LOG_INF_C(XCOLOR_YELLOW, "AT URC: %.*s\r\n",
+		CCSLOG(XCOLOR_YELLOW, "AT URC: %.*s\r\n",
 		              (int)content_len, urc_buffer);
 
 		gsm_URC_callback(urc_buffer, content_len);
@@ -755,7 +756,7 @@ static void consume_rx_data(bool check_response)
 	if((at_engine.response_buffer_len >= (AT_ENGINE_RESPONSE_BUFFER_SIZE - 1U)) &&
 	   (rbuff_available(&rx_ringbuf) > 0U))
 	{
-		GSM_LOG_ERR("AT response buffer overflow! Draining %u stale bytes from ring buffer\r\n",
+		CSLOG_ERR("AT response buffer overflow! Draining %u stale bytes from ring buffer\r\n",
 		            rbuff_available(&rx_ringbuf));
 		rbuff_clear(&rx_ringbuf);
 	}

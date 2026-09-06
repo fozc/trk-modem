@@ -14,8 +14,6 @@
 #include "version.h"
 #include "gsm/utils.h"
 #include "console_logger.h"
-#include "gsm_log.h"
-#include "rf_log.h"
 #include "rf_config.h"
 #include "elog.h"
 
@@ -182,8 +180,9 @@ void nvram_set_defaults(void)
         rf_config_defaults(&nvram.breaker.line[i].rf);
     }
 
-    nvram.gsm_log_level = 2U; /* GSM_LOG_VERBOSE */
-    nvram.rf_log_level  = 1U; /* RF_LOG_NORMAL (ham paket dokumu VERBOSE'ta) */
+    nvram.gsm_log_level    = 2U; /* LOG_LVL_VERBOSE (gsm varsayilan) */
+    nvram.rf_log_level     = 1U; /* LOG_LVL_NORMAL (ham paket dokumu VERBOSE'ta) */
+    nvram.iec104_log_level = 1U; /* LOG_LVL_NORMAL (baglanti akisi VERBOSE'ta) */
 }
 
 void nvram_dump()
@@ -545,9 +544,7 @@ int nvram_init(void)
         }
     }
 
-    console_logger_init();
-    gsm_log_init();
-    rf_log_init();
+    console_logger_init();   /* on/off + modul seviyelerini NVRAM'den yukler */
     nvram_dump();
 
     return res;
@@ -603,6 +600,16 @@ uint8_t nvram_get_rf_log_level(void)
 void nvram_set_rf_log_level(uint8_t level)
 {
 	nvram.rf_log_level = level;
+}
+
+uint8_t nvram_get_iec104_log_level(void)
+{
+	return nvram.iec104_log_level;
+}
+
+void nvram_set_iec104_log_level(uint8_t level)
+{
+	nvram.iec104_log_level = level;
 }
 
 

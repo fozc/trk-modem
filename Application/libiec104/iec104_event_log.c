@@ -25,6 +25,7 @@
  * areas and immediately persists the updated superblock.
  */
 
+#define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_event_log.h"
 #include <string.h>
 #include <stdlib.h>

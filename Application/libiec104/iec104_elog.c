@@ -9,6 +9,7 @@
  *
  * Reference layout: spi_flash_organization.h IEC104_LOG_* macros.
  */
+#define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_elog.h"
 
 #include <string.h>

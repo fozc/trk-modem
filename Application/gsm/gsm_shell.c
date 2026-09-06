@@ -4,6 +4,7 @@
  *  Created on: Jan 24, 2026
  *      Author: fatih
  */
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_shell.h"
 #include "bsp.h"
 #include "shell.h"

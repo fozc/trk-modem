@@ -1,3 +1,4 @@
+#define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_application.h"
 #include "iec104.h"
 #include "nvram.h"
