@@ -274,7 +274,7 @@ async function init(){
     const d=await r.json();
     if(d.ready){
       if(d.fh) fhash=d.fh;
-      setPhase('READY');setBtns(false,true,false,true,false);
+      setPhase('READY');setBtns(false,true,false,true,true);
       log('Transfer complete ('+fmt(d.total)+' bytes). Ready to apply — click Apply Firmware.','warn');
       document.getElementById('rb').style.display='none';
     }else if(d.active){
@@ -317,10 +317,17 @@ async function doStatus(){
   log('Querying status...');
   setPhase('CHECKING');
   setBtns(false,false,false,true,false);
+  let ready=false;
   try{
     const r=await apiFetch('/fw_status');
     const d=await r.json();
-    if(d.active){
+    if(d.ready){
+      ready=true;
+      if(d.fh) fhash=d.fh;
+      log('Status: READY (transfer complete, image NOT applied)','rx');
+      log('  Total:    '+fmt(d.total),'info');
+      if(d.fh) log('  File ID:  0x'+d.fh.toString(16).toUpperCase().padStart(4,'0'),'info');
+    }else if(d.active){
       log('Status: ACTIVE','rx');
       log('  Total:    '+fmt(d.total),'info');
       log('  Received: '+fmt(d.received)+'  ('+(d.received*100/d.total).toFixed(1)+'%)','info');
@@ -335,8 +342,8 @@ async function doStatus(){
       log('Status: INACTIVE (no session)','info');
     }
   }catch(e){log('Status query failed: '+e.message,'err');}
-  setPhase('IDLE');
-  setBtns(true,!!fdata,false,true,false);
+  setPhase(ready?'READY':'IDLE');
+  setBtns(true,!!fdata,false,true,ready);
 }
 
 /* ── Transfer ──────────────────────────────────────────────── */
