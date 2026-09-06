@@ -1435,7 +1435,7 @@ int32_t gsm_cesq_cb(void)
 	gsm_info_set_4G_rsrq(rsrq);
 	gsm_info_set_signal_quality_4G(rsrp);
 
-	CSLOG("2G rxlev:%u ber:%u 4G rsrq:%u rsrp:%u\r\n", (unsigned)rxlev, (unsigned)ber, (unsigned)rsrq, (unsigned)rsrp);
+	GSM_LOG_INF("2G rxlev:%u ber:%u 4G rsrq:%u rsrp:%u\r\n", (unsigned)rxlev, (unsigned)ber, (unsigned)rsrq, (unsigned)rsrp);
 
 	return at_res;
 }
@@ -2296,7 +2296,7 @@ static int32_t gsm_si_all_cb(void)
 
 			if(conn_id == 1 || conn_id == 2)
 			{
-				CSLOG("SI[%u] sent:%u rcv:%u buf:%u ack:%u\r\n",
+				GSM_LOG_INF("SI[%u] sent:%u rcv:%u buf:%u ack:%u\r\n",
 						conn_id, sent, received, buff_in, ack_waiting);
 			}
 
@@ -2579,7 +2579,7 @@ int32_t gsm_COPS_state_cb(void)
 				        	break;
 				    }
 
-				CSLOG("Access Technology: %s\r\n", access_tech_str);
+				GSM_LOG_INF("Access Technology: %s\r\n", access_tech_str);
 				gsm_info_set_access_technology(tech);
 				led_driver_set_gsm_mode(signal_led_mode);
 			}
