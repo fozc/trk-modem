@@ -25,8 +25,21 @@ PROCESS_THREAD(gsm_power_on, ev, data)
 	static struct etimer timer;
 	static struct timer sw_rdy_timer;
 	static bool sw_rdy_asserted = false;
+	static bool recovery_mode = false;
 
 	PROCESS_BEGIN();
+
+	/* process_start'in data parametresi kullanim amacini tasir:
+	 * NULL = acilis - bugunku sinirsiz retry davranisi korunur,
+	 * NULL degil = kurtarma - tek atimlik guc dizisi, tekrar yok. */
+	if (ev == PROCESS_EVENT_INIT)
+	{
+		recovery_mode = (data != NULL);
+	}
+	else
+	{
+		/* Sonraki olaylarda INIT'te yakalanan deger gecerli kalir. */
+	}
 
 	while(1)
 	{
@@ -74,13 +87,18 @@ PROCESS_THREAD(gsm_power_on, ev, data)
 		  }
 
 		if(sw_rdy_asserted){
+			CSLOG("GSM_SW_RDY = HIGH (%lu ms)\r\n", timer_remaining(&sw_rdy_timer));
+			break;
+		}else if(recovery_mode){
+			/* Kurtarma tek atimlik: tekrar deneme yok. Sonraki karar
+			 * merdivenin ust kademelerinde (init -> ENHRST -> pin reset
+			 * -> 2. deneme -> EWDT) verilir. */
+			CSLOG_ERR("GSM power-on recovery failed\r\n");
 			break;
 		}else{
 			CSLOG_WARN("Retrying GSM power on sequence...\r\n");
 		}
 	}
-
-	CSLOG("GSM_SW_RDY = HIGH (%lu ms)\r\n", timer_remaining(&sw_rdy_timer));
 
 	PROCESS_END();
 }
@@ -90,32 +108,56 @@ PROCESS(gsm_process_contiki, "gsm_process_contiki");
 PROCESS_THREAD(gsm_process_contiki, ev, data)
 {
 	static struct etimer timer;
+	static bool first_start = true;
+	static const uint8_t recovery_marker = 1U;
+	process_data_t power_on_data = NULL;
 
 	PROCESS_BEGIN();
 
-	process_start(&gsm_power_on, NULL);
-	PROCESS_WAIT_EVENT_UNTIL((ev == PROCESS_EVENT_EXITED) &&
-	                         (data == &gsm_power_on));
-
-	at_engine_init();
-	gsm_process_init_old();
-	gsm_http_server_init();
-	gsm_firmware_update_init();
-	gsm_firmware_update_rfwu_init();
-	gsm_shell_init();
-
-	uart_set_rx_interrupt(UART_1, UART_RX_INT_ENABLE);
-
-	etimer_set(&timer, 50);
-	while (1)
+	while(1)
 	{
- 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
- 		etimer_restart(&timer);
+		/* Guc dizisi oncesi RX kesmesini kapat ve bayragi temizle;
+		 * boylece kurtarma yeniden baslatmasi acilis yoluyla birebir
+		 * ayni kosullarda kosar (acilista kesme zaten kapalidir). */
+		uart_set_rx_interrupt(UART_1, UART_RX_INT_DISABLE);
+		gsm_clear_module_restart();
 
-		gsm_process_old();
-		(void)at_engine_process();
-		gsm_http_server_process();
+		if (!first_start)
+		{
+			power_on_data = (process_data_t)&recovery_marker;
+		}
+		first_start = false;
 
+		process_start(&gsm_power_on, power_on_data);
+		PROCESS_WAIT_EVENT_UNTIL((ev == PROCESS_EVENT_EXITED) &&
+		                         (data == &gsm_power_on));
+
+		at_engine_init();
+		at_engine_reset();
+		gsm_process_init_old();
+		gsm_http_server_init();
+		gsm_firmware_update_init();
+		gsm_firmware_update_rfwu_init();
+		gsm_shell_init();
+
+		uart_set_rx_interrupt(UART_1, UART_RX_INT_ENABLE);
+
+		etimer_set(&timer, 50);
+		while (!gsm_module_restart_requested())
+		{
+			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+			etimer_restart(&timer);
+
+			gsm_process_old();
+			(void)at_engine_process();
+			gsm_http_server_process();
+
+		}
+
+		/* Modem kurtarma merdiveni tam guc cevrimi istedi: dongu
+		 * basina donulur - gsm_power_on dizisi + tam yeniden init.
+		 * Zombi LC riski yoktur: ayni protothread'in duz C akisinda
+		 * ilerlenir, paylasilan pt uzerine baska yazma olmaz. */
 	}
 
 	PROCESS_END();
