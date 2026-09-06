@@ -28,6 +28,7 @@
 #include "rf_inventory.h"
 #include "rf_discovery.h"
 #include "rf_log.h"
+#include "rf_uart_bridge.h"
 #include "rtc.h"
 #include "cp56time2a.h"
 
@@ -145,6 +146,15 @@ void rf_comm_rx_interrupt_handler(uint8_t data)
 
 static void rf_comm_transmit(const uint8_t *frame, size_t frame_len)
 {
+    /* Saydam kopru acikken USART3 RF modulun kendisine ayrilmistir:
+     * liveness/time-sync/retry frame'leri saydam akisa karismasin.
+     * Tum SCP TX yollari bu fonksiyondan gecer; reset ile kopru
+     * kapanir ve SCP kendiliginden normale doner. */
+    if (rf_uart_bridge_is_enabled())
+    {
+        return;
+    }
+
     /* Ham frame dokumu (COBS kodlu wire baytlari) - yalniz VERBOSE.
      * modbus TX dokumu ile ayni desen. */
 	CSLOG("\r\nRF TX[%u]: [", (unsigned)frame_len);
