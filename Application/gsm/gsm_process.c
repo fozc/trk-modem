@@ -622,6 +622,32 @@ void gsm_power_outage_mode(void)
 	}
 }
 
+/* -----------------------------------------------------------------------
+ *  Module restart flag
+ *
+ *  gsm_init.c kurtarma merdiveninin son basamagi (ENHRST + pin reset
+ *  tukendi) bu bayragi set eder; gsm_process_contiki poll dongusu bayragi
+ *  gorunce modemi tam guc cevrimiyle (gsm_power_on) bastan baslatir.
+ *  Bayrak yalnizca ayni yumusak calisma baglaminda okunup yazilir
+ *  (ISR erisimi yok) - atomik gerektirmez.
+ * --------------------------------------------------------------------- */
+static uint8_t module_restart_request = 0U;
+
+void gsm_request_module_restart(void)
+{
+	module_restart_request = 1U;
+}
+
+bool gsm_module_restart_requested(void)
+{
+	return module_restart_request != 0U;
+}
+
+void gsm_clear_module_restart(void)
+{
+	module_restart_request = 0U;
+}
+
 void gsm_process_init_old(void)
 {
 	memset(&gsm, 0x00, sizeof(gsm_t));

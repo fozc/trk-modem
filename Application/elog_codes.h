@@ -31,6 +31,7 @@ typedef enum
 	ELOG_GSM_WTD_SOFT_RECOVERY = 23,
 	ELOG_GSM_WTD_HARD_RESET = 24,
 	ELOG_GSM_INIT_EXHAUSTED = 25,
+	ELOG_GSM_COLD_BOOT = 26,  /* info: attempt(1) - 1-based cold boot number */
 
 	// Configuration change codes
 	ELOG_CONFIG_DEVICE_CHANGED = 30,
@@ -78,6 +79,7 @@ static inline const char* elog_code_to_string(elog_code_t code)
 		case ELOG_GSM_WTD_SOFT_RECOVERY: return "GSM_WTD_SOFT_RECOVERY";
 		case ELOG_GSM_WTD_HARD_RESET: return "GSM_WTD_HARD_RESET";
 		case ELOG_GSM_INIT_EXHAUSTED: return "GSM_INIT_EXHAUSTED";
+		case ELOG_GSM_COLD_BOOT: return "GSM_COLD_BOOT";
 
 		case ELOG_CONFIG_DEVICE_CHANGED: return "CONFIG_DEVICE";
 		case ELOG_CONFIG_IEC104_CHANGED: return "CONFIG_IEC104";

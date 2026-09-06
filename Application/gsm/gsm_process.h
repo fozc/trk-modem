@@ -274,6 +274,11 @@ void gsm_process_init_old   			(void);
 void gsm_process_old     				(void);
 uint32_t  gsm_is_ready	    				(void);
 
+/* Modem yeniden baslatma bayragi (kurtarma merdiveni -> surec dongusu) */
+void gsm_request_module_restart			(void);
+bool gsm_module_restart_requested		(void);
+void gsm_clear_module_restart			(void);
+
 
 
 #endif /* GSM_PROCESS_H_ */

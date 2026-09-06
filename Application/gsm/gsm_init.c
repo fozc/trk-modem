@@ -28,6 +28,11 @@
 #define GSM_SIGNAL_QUALITY_PERIOD_MS          (30UL * 1000UL)
 #define GSM_NETWORK_CHECK_PERIOD_MS           (60UL * 1000UL)
 
+/* Kurtarma merdiveninin tam guc cevrimi (soguk baslatma) hakki. Guc
+ * dizisinin kendisi gsm_power_on surecinde kosar; burada yalnizca kac
+ * kez istenebilecegi sayilir. */
+#define GSM_COLD_BOOT_MAX_ATTEMPTS            2U
+
 /* -----------------------------------------------------------------------
  *  Module-scope state
  * --------------------------------------------------------------------- */
@@ -36,6 +41,7 @@ extern gsm_t gsm;
 
 static uint32_t s_connection_time = 0;
 static uint8_t  s_pin_reset_state = 0;
+static uint8_t  cold_boot_count   = 0;
 
 /* -----------------------------------------------------------------------
  *  Init vectors
@@ -279,10 +285,28 @@ static void gsm_init_step_reset_module(void)
 	led_driver_set_modem_mode(LED_MODEM_ERROR);
 	if (s_pin_reset_state)
 	{
+		if (cold_boot_count < GSM_COLD_BOOT_MAX_ATTEMPTS)
+		{
+			/* ENHRST ve pin reset basamaklari tukenmis, modem hala
+			 * yanit vermiyor. Modemin tam guc cevrimi (soguk baslatma)
+			 * istenir: MCU ayakta kalir, paylasilan I2C hatti ve
+			 * diger servisler etkilenmez. Guc dizisini gsm_power_on
+			 * sureci, sonraki tam yeniden init'i gsm_process_contiki
+			 * dongusu yurutur. */
+			++cold_boot_count;
+			CSLOG_ERR("Modem cold boot (%u/%u) - ENHRST/pin reset exhausted\r\n",
+			          (unsigned)cold_boot_count,
+			          (unsigned)GSM_COLD_BOOT_MAX_ATTEMPTS);
+			gsm_elog_modem_event_with_arg(ELOG_GSM_COLD_BOOT,
+			                              &cold_boot_count, 1U);
+			gsm_request_module_restart();
+			return;
+		}
 		CSLOG_ERR("Hard Reset!\r\nWaiting for EWDT reset...\r\n");
-		/* Kalici kanit: modem kurulumu PIN reset sonrasi da tukendi,
-		 * cihaz bilincl olarak EWDT reseti bekliyor. Bu kayit olmadan
-		 * reset sonrasi neden oldugu anlasilamazdi (RAM izi yok olur). */
+		/* Kalici kanit: modem kurulumu PIN reset ve soguk baslatma
+		 * denemeleri sonrasi da tukendi, cihaz bilincl olarak EWDT
+		 * reseti bekliyor. Bu kayit olmadan reset sonrasi neden oldugu
+		 * anlasilamazdi (RAM izi yok olur). */
 		gsm_elog_modem_event(ELOG_GSM_INIT_EXHAUSTED);
 		while(1);
 	}
@@ -1015,6 +1039,9 @@ static void gsm_init_step_done(void)
 	gsm.module_state = 0;
 	gsm_set_init_state(0);
 	gsm.reboot_counter = 0;
+	/* Init basarili - kurtarma merdiveninin tamam yeniden hak kazandi. */
+	s_pin_reset_state = 0;
+	cold_boot_count = 0U;
 	if (gsm_get_main_state() == GSM_COMMON_INIT_MODE)
 	{
 		gsm_set_init_vector(gsm_LE910R1_init_vector, sizeof(gsm_LE910R1_init_vector));
