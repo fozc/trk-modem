@@ -12,6 +12,7 @@
  * rf inv     - Envanter push'u yeniden tetikler.
  */
 
+#define CSLOG_MODULE LOG_MOD_RF
 #include "rf_shell.h"
 #include "shell.h"
 #include "xprintf.h"

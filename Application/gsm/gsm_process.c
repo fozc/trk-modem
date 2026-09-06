@@ -5,6 +5,7 @@
  *      Author: fozcan
  */
 
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_types.h"
 #include <string.h>
 #include "gsm_process.h"
@@ -47,12 +48,12 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		if (*(ptr + 8) == ',') /* Soketten data geldi*/
 		{
 			gsm_listener_set_rx_available(GSM_LISTENER_WEB, 1);
-			GSM_LOG_INF_C(XCOLOR_YELLOW, "URC: WEB Soketten veri geldi.\r\n");
+			CCSLOG(XCOLOR_YELLOW, "URC: WEB Soketten veri geldi.\r\n");
 		}
 		else /* Baglanti istegi*/
 		{
 			gsm_listener_set_new_conn_req(GSM_LISTENER_WEB, 1);
-			GSM_LOG_WRN("URC: WEB Soketten baglanti istegi geldi.\r\n");
+			CSLOG_WARN("URC: WEB Soketten baglanti istegi geldi.\r\n");
 		}
 		return;
 	}
@@ -66,7 +67,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		gsm_listener_set_no_carrier(GSM_LISTENER_WEB, 1);
 		//hes_event_listener_socket_close();
 		gsm_set_socket_state(LISTENER_SOCKET, SOCKET_CLOSED);
-		GSM_LOG_WRN("URC: NO CARRIER: LISTENER Soket ile baglanti sonlandirildi.\r\n");
+		CSLOG_WARN("URC: NO CARRIER: LISTENER Soket ile baglanti sonlandirildi.\r\n");
 		return;
 	}
 
@@ -74,7 +75,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	if(ptr != NULL)
 	{
 		gsm.dialer_socket_rx_available = 1;
-		GSM_LOG_INF_C(XCOLOR_YELLOW, "URC: DIALER Soketten veri geldi.\r\n");
+		CCSLOG(XCOLOR_YELLOW, "URC: DIALER Soketten veri geldi.\r\n");
 		return;
 	}
 
@@ -84,7 +85,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	}
 	if(ptr != NULL)
 	{
-		GSM_LOG_WRN("URC: NO CARRIER: DIALER Soket ile baglanti sonlandirildi.\r\n");
+		CSLOG_WARN("URC: NO CARRIER: DIALER Soket ile baglanti sonlandirildi.\r\n");
 		gsm.dialer_socket_no_carrier = 1;
 		return;
 	}
@@ -95,13 +96,13 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		if (*(ptr + 8) == ',') /* Soketten data geldi*/
 		{
 			//trace_gsm_callback(TR_EVENT_RX_DATA_AVAILABLE, NULL, 0);
-			GSM_LOG_INF_C(XCOLOR_YELLOW, "URC: IEC104 Soketten veri geldi.\r\n");
+			CCSLOG(XCOLOR_YELLOW, "URC: IEC104 Soketten veri geldi.\r\n");
 			gsm_listener_set_rx_available(GSM_LISTENER_IEC104, 1);
 		}
 		else /* Baglanti istegi*/
 		{
 			//trace_gsm_callback(TR_EVENT_NEW_CONN_REQ, NULL, 0);
-			GSM_LOG_WRN("URC: IEC104 Soketten baglanti istegi geldi.\r\n");
+			CSLOG_WARN("URC: IEC104 Soketten baglanti istegi geldi.\r\n");
 			gsm_listener_set_new_conn_req(GSM_LISTENER_IEC104, 1);
 		}
 		return;
@@ -113,7 +114,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	}
 	if(ptr != NULL)
 	{
-		GSM_LOG_WRN("URC: NO CARRIER: IEC104 Soket ile baglanti sonlandirildi.\r\n");
+		CSLOG_WARN("URC: NO CARRIER: IEC104 Soket ile baglanti sonlandirildi.\r\n");
 		//trace_gsm_callback(TR_EVENT_NO_CARRIER, NULL, 0);
 		gsm_set_socket_state(IEC104_LISTENER_SOCKET, SOCKET_CLOSED);
 		gsm_listener_set_no_carrier(GSM_LISTENER_IEC104, 1);
@@ -123,7 +124,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	ptr = strstr((char *)msg, "#SL: ABORTED"); /* Listener soket network tarafindan kapatildi ! */
 	if(ptr != NULL)
 	{
-		GSM_LOG_WRN("URC: SL: ABORTED [%s]\r\n", ptr);
+		CSLOG_WARN("URC: SL: ABORTED [%s]\r\n", ptr);
 		if(gsm_get_main_state() == GSM_NORMAL_MODE)
 		{
 			gsm_listener_set_no_carrier(GSM_LISTENER_WEB, 1);
@@ -143,14 +144,14 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	ptr = strstr((char *)msg, "#HTTPRING:");
 	if(ptr != NULL)
 	{
-		GSM_LOG_INF_C(XCOLOR_YELLOW, "URC: HTTP data received.\r\n");
+		CCSLOG(XCOLOR_YELLOW, "URC: HTTP data received.\r\n");
 
 		/* Format: #HTTPRING: <prof>,<status_code>,<content_len>\r\n */
 		/* Find first comma (after prof) */
 		const char *comma1 = strchr(ptr + 10, ',');
 		if(comma1 == NULL)
 		{
-			GSM_LOG_WRN("URC: HTTPRING format error !\r\n");
+			CSLOG_WARN("URC: HTTPRING format error !\r\n");
 			return;
 		}
 		comma1++; /* skip comma, now points to status_code */
@@ -160,7 +161,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		   (comma1[1] < '0') || (comma1[1] > '9') ||
 		   (comma1[2] < '0') || (comma1[2] > '9'))
 		{
-			GSM_LOG_WRN("URC: HTTPRING format error !\r\n");
+			CSLOG_WARN("URC: HTTPRING format error !\r\n");
 			return;
 		}
 		uint16_t s_code = (uint16_t)((comma1[0] - '0') * 100 +
@@ -172,7 +173,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 
 		char *crlf = strstr((char *)(comma1 + 3), "\r\n");
 		if(crlf == NULL) { 
-			GSM_LOG_WRN("URC: HTTPRING format error !\r\n");
+			CSLOG_WARN("URC: HTTPRING format error !\r\n");
 			return; 
 		}
 		const char *p_digit = crlf - 1;
@@ -198,7 +199,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 
 			p_digit--;
 		}
-		GSM_LOG_INF_C(XCOLOR_YELLOW, "Status Code: %d Content Len: %d\r\n", s_code, c_len);
+		CCSLOG(XCOLOR_YELLOW, "Status Code: %d Content Len: %d\r\n", s_code, c_len);
 		//gsm_http_status_code_content_len(s_code, c_len);
 		return;
 	}
@@ -207,12 +208,12 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	if(ptr != NULL)
 	{
 		/* Sebeke gprs baglantisini kestiginde veya koptugunda, **+CGEV: NW DETACH** raporu geliyor. */
-		GSM_LOG_INF_C(XCOLOR_YELLOW, "URC: - GPRS Event Reporting\r\n");
+		CCSLOG(XCOLOR_YELLOW, "URC: - GPRS Event Reporting\r\n");
 
 		ptr = strstr((char *)msg, "DETACH");
 		if(ptr != NULL)
 		{
-			GSM_LOG_WRN("URC: - GPRS Baglantisi koptu !\r\n");
+			CSLOG_WARN("URC: - GPRS Baglantisi koptu !\r\n");
 			//log_save_system(LOG_SYSTEM_GPRS_ERROR, 0x10, 0, 0); /* GPRS baglantisi koptu */
 			//gsm_internet_connection_faild_cd();
 		}
@@ -220,7 +221,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		ptr = strstr((char *)msg, "ME CLASS");
 		if(ptr != NULL)
 		{
-			GSM_LOG_WRN("URC: Sebeke class degisimi istiyor !\r\n");
+			CSLOG_WARN("URC: Sebeke class degisimi istiyor !\r\n");
 			//log_save_system(LOG_SYSTEM_GSM_ERROR, LOG_GSM_ERROR_CLASS_ERR, 0, 0);
 		}
 
@@ -232,7 +233,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	ptr = strstr((char *)msg, "#NITZ");
 	if(ptr != NULL)
 	{
-		GSM_LOG_INF_C(XCOLOR_YELLOW, "URC: Tarih Saat\r\n");
+		CCSLOG(XCOLOR_YELLOW, "URC: Tarih Saat\r\n");
 		//log_write_hw_serial_port((char*)msg, len);
 		return;
 	}
@@ -244,16 +245,16 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		 * birlikte degil, asenkron URC olarak gelir. Numarayi buradan ayikla. */
 		if(gsm_cusd_parse_phone_number((const char *)msg))
 		{
-			GSM_LOG_INF_C(XCOLOR_YELLOW, "URC: CUSD abone numarasi alindi.\r\n");
+			CCSLOG(XCOLOR_YELLOW, "URC: CUSD abone numarasi alindi.\r\n");
 		}
 		else
 		{
-			GSM_LOG_WRN("URC: CUSD yaniti islenemedi.\r\n");
+			CSLOG_WARN("URC: CUSD yaniti islenemedi.\r\n");
 		}
 		return;
 	}
 
-	GSM_LOG_INF_C(XCOLOR_YELLOW, "URC not handled [%s]\r\n", msg);
+	CCSLOG(XCOLOR_YELLOW, "URC not handled [%s]\r\n", msg);
 }
 
 /*
@@ -486,7 +487,7 @@ void gsm_module_event_process(void)
  */
 void gsm_sim_error_mode(void)
 {
-	GSM_LOG_ERR("SIM error mode - resetting modem.\r\n");
+	CSLOG_ERR("SIM error mode - resetting modem.\r\n");
 	bsp_system_reset();
 }
 

@@ -4,6 +4,7 @@
  *  Created on: 26 Tem 2025
  *      Author: fatih
  */
+#define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104.h"
 #include "cp56time2a.h"
 #include <string.h>

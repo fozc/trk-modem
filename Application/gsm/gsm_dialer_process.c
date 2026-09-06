@@ -6,6 +6,7 @@
  * data transfer, socket status monitoring, and reconnection logic.
  */
 
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_dialer_process.h"
 #include "gsm_process.h"
 #include "gsm_engine.h"

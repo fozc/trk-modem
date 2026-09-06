@@ -17,7 +17,8 @@
 #define WARNING  2
 
 /**
- * @brief Level-aware LOG macro for GSM module.
+ * @brief Level-aware LOG macro for GSM module (CSLOG ailesine bagli;
+ *        dosya basinda CSLOG_MODULE tanimliysa LOG_MOD_GSM seviyesine tabidir).
  *
  * When x == WARNING the message is printed at NORMAL level (yellow).
  * Otherwise it is printed only at VERBOSE level (default color).
@@ -26,13 +27,13 @@
     do {                                                              \
         if ((x) == WARNING)                                           \
         {                                                             \
-            GSM_LOG_WRN(__VA_ARGS__);                                 \
-            GSM_LOG_NODT("\r\n");                                     \
+            CSLOG_WARN(__VA_ARGS__);                                 \
+            CSLOG_NODT("\r\n");                                     \
         }                                                             \
         else                                                          \
         {                                                             \
-            GSM_LOG_INF(__VA_ARGS__);                                 \
-            GSM_LOG_NODT("\r\n");                                     \
+            CSLOG(__VA_ARGS__);                                 \
+            CSLOG_NODT("\r\n");                                     \
         }                                                             \
     } while (0)
 

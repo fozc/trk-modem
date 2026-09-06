@@ -13,11 +13,11 @@
  *                           boundaries so resume always starts on an aligned offset.
  */
 
+#define CSLOG_MODULE LOG_MOD_HTTP
 #include "raw_tcp_fw_update.h"
 
 #include "nvram.h"
 #include "efw_crc.h"
-#include "http_log.h"
 #include "elog.h"
 #include "app_ipc.h"
 
@@ -240,7 +240,7 @@ static void handle_cmd_hello(void)
     uint32_t expected_token = crc32_calc((const uint8_t *)&shared_key, 4U) ^ total_size;
 
     if (auth_token != expected_token) {
-        HTTP_LOG_INF_C(XCOLOR_RED, "[RFWU] Auth failed\r\n");
+        CCSLOG(XCOLOR_RED, "[RFWU] Auth failed\r\n");
         elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_AUTH_FAIL, total_size);
         send_nack(RFWU_ERR_AUTH, 0U);
         return;
@@ -253,7 +253,7 @@ static void handle_cmd_hello(void)
         (p_nv->file_hash  == file_hash))
     {
         resume_offset = p_nv->received_bytes;
-        HTTP_LOG_INF_C(XCOLOR_CYAN, "[RFWU] Resume from %lu bytes\r\n", resume_offset);
+        CCSLOG(XCOLOR_CYAN, "[RFWU] Resume from %lu bytes\r\n", resume_offset);
     }
     else
     {
@@ -266,7 +266,7 @@ static void handle_cmd_hello(void)
         upd.shared_key     = shared_key;
         nvram_set_rfwu(&upd);
 
-        HTTP_LOG_INF_C(XCOLOR_CYAN, "[RFWU] New transfer, size=%lu\r\n", total_size);
+        CCSLOG(XCOLOR_CYAN, "[RFWU] New transfer, size=%lu\r\n", total_size);
     }
 
     /* Initialise flash layer */
@@ -300,7 +300,7 @@ static void handle_cmd_data(void)
 
     /* Retry: we already have this data */
     if (offset < s.write_head) {
-        HTTP_LOG_INF_C(XCOLOR_YELLOW, "[RFWU] Retry: offset=%lu < write_head=%lu, skipping\r\n",
+        CCSLOG(XCOLOR_YELLOW, "[RFWU] Retry: offset=%lu < write_head=%lu, skipping\r\n",
                (unsigned long)offset, (unsigned long)s.write_head);
         send_ack(s.write_head);
         return;
@@ -308,7 +308,7 @@ static void handle_cmd_data(void)
 
     /* Gap: client jumped ahead */
     if (offset > s.write_head) {
-        HTTP_LOG_INF_C(XCOLOR_RED, "[RFWU] Gap: offset=%lu, expected=%lu\r\n",
+        CCSLOG(XCOLOR_RED, "[RFWU] Gap: offset=%lu, expected=%lu\r\n",
                (unsigned long)offset, (unsigned long)s.write_head);
         send_nack(RFWU_ERR_GAP, s.write_head);
         return;
@@ -317,7 +317,7 @@ static void handle_cmd_data(void)
     /* Overflow: would write past declared file size */
     const rfwu_nvram_t *p_nv = nvram_get_rfwu();
     if ((offset + chunk_size) > p_nv->total_size) {
-        HTTP_LOG_INF_C(XCOLOR_RED, "[RFWU] Overflow: offset=%lu + chunk=%lu > total=%lu\r\n",
+        CCSLOG(XCOLOR_RED, "[RFWU] Overflow: offset=%lu + chunk=%lu > total=%lu\r\n",
                (unsigned long)offset, (unsigned long)chunk_size,
                (unsigned long)p_nv->total_size);
         send_nack(RFWU_ERR_OVERFLOW, s.write_head);
@@ -380,7 +380,7 @@ static void handle_cmd_finish(void)
 
     elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_OK, total_size);
 
-    HTTP_LOG_INF_C(XCOLOR_GREEN, "[RFWU] Transfer complete: %lu bytes\r\n", total_size);
+    CCSLOG(XCOLOR_GREEN, "[RFWU] Transfer complete: %lu bytes\r\n", total_size);
     send_ack(s.write_head);
 }
 
@@ -411,7 +411,7 @@ static void handle_cmd_reboot(void)
         return;
     }
 
-    HTTP_LOG_INF_C(XCOLOR_RED, "[RFWU] Reboot requested\r\n");
+    CCSLOG(XCOLOR_RED, "[RFWU] Reboot requested\r\n");
 
     /* Without this the bootloader boots straight back into the running
      * application and the downloaded image is never installed. */
@@ -419,7 +419,7 @@ static void handle_cmd_reboot(void)
         elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_START, 0U);
 
         if (app_ipc_request_update(false) != APP_IPC_OK) {
-            HTTP_LOG_INF_C(XCOLOR_RED, "[RFWU] IPC update request failed\r\n");
+            CCSLOG(XCOLOR_RED, "[RFWU] IPC update request failed\r\n");
             send_nack(RFWU_ERR_FLASH, s.write_head);
             return;
         }
@@ -439,7 +439,7 @@ static void handle_cmd_abort(void)
         return;
     }
 
-    HTTP_LOG_INF_C(XCOLOR_YELLOW, "[RFWU] Transfer aborted\r\n");
+    CCSLOG(XCOLOR_YELLOW, "[RFWU] Transfer aborted\r\n");
     session_clear();
     send_ack(0U);
 }
@@ -470,7 +470,7 @@ static void process_packet(void)
     uint32_t computed_crc = crc32_calc(s.buf, payload_end);
 
     if (computed_crc != expected_crc) {
-        HTTP_LOG_INF_C(XCOLOR_RED, "[RFWU] CRC error\r\n");
+        CCSLOG(XCOLOR_RED, "[RFWU] CRC error\r\n");
         send_nack(RFWU_ERR_CRC, s.write_head);
         return;
     }
@@ -488,7 +488,7 @@ static void process_packet(void)
         case RFWU_CMD_REBOOT: handle_cmd_reboot(); break;
         case RFWU_CMD_ABORT:  handle_cmd_abort();  break;
         default:
-            HTTP_LOG_INF_C(XCOLOR_RED, "[RFWU] Unknown cmd: 0x%02X\r\n", s.hdr.cmd);
+            CCSLOG(XCOLOR_RED, "[RFWU] Unknown cmd: 0x%02X\r\n", s.hdr.cmd);
             send_nack(RFWU_ERR_CRC, s.write_head);
             break;
     }

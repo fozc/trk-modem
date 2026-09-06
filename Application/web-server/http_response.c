@@ -3,11 +3,12 @@
  * @brief HTTP response building and sending implementation
  */
 
+#define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_response.h"
+#include "console_logger.h"
 #include "html_resources.h"  /* For HTML_COMPRESS_* constants */
 #include "xprintf.h"  /* For xsprintf */
 #include <string.h>
-#include "http_log.h"
 /* ============================================================================
  * INTERNAL STATE
  * ============================================================================ */
@@ -124,10 +125,10 @@ void http_send_response(int status_code,
 
 #if 1
     /* Print response for debugging */
-    HTTP_LOG_INF_C(XCOLOR_CYAN, "\r\n=== HTTP RESPONSE ===\r\n");
-    HTTP_LOG_INF("%s", header_buffer);
-    HTTP_LOG_INF("[Body: %d bytes] \r\n%s", body_length, body);
-    HTTP_LOG_INF_C(XCOLOR_CYAN,"\r\n=== END RESPONSE ===\r\n\r\n");
+    CCSLOG(XCOLOR_CYAN, "\r\n=== HTTP RESPONSE ===\r\n");
+    CSLOG("%s", header_buffer);
+    CSLOG("[Body: %d bytes] \r\n%s", body_length, body);
+    CCSLOG(XCOLOR_CYAN,"\r\n=== END RESPONSE ===\r\n\r\n");
 #endif
     /* Send headers */
     http_send_data(header_buffer, header_length);
@@ -189,10 +190,10 @@ void http_send_html_resource(const html_resource_t *resource)
         );
 
         /* Print response for debugging */
-        HTTP_LOG_INF("\r\n=== HTTP RESPONSE (%s) ===\r\n", encoding);
-        HTTP_LOG_INF("%s", header_buffer);
-        HTTP_LOG_INF("[Body: %d bytes compressed]\r\n", resource->length);
-        HTTP_LOG_INF("=== END RESPONSE ===\r\n\r\n");
+        CSLOG("\r\n=== HTTP RESPONSE (%s) ===\r\n", encoding);
+        CSLOG("%s", header_buffer);
+        CSLOG("[Body: %d bytes compressed]\r\n", resource->length);
+        CSLOG("=== END RESPONSE ===\r\n\r\n");
 
         /* Send headers and compressed body */
         http_send_data(header_buffer, header_length);

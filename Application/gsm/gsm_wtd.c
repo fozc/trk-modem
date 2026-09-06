@@ -5,6 +5,7 @@
  * Detects stuck busy states and performs graduated recovery.
  */
 
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_wtd.h"
 
 #include "gsm_engine.h"

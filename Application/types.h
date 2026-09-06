@@ -205,8 +205,10 @@ typedef struct
  *  kendi boyutunu tanimlar (CRC/okuma kapsami goruntuden) ve cift
  *  kopyada taze (yuksek sequence) olan kazanir.
  *  v2: kuyruga rf_log_level eklendi (saha cihazi yok - default-reset
- *  yeterli, migration gerekmez). */
-#define NVRAM_SCHEMA_VERSION  2U
+ *  yeterli, migration gerekmez).
+ *  v3: kuyruga iec104_log_level eklendi - yine padding'e oturdu,
+ *  boyut/crc ofseti degismedi (olcum assertleri guncel). */
+#define NVRAM_SCHEMA_VERSION  3U
 
 typedef struct
 {
@@ -224,7 +226,8 @@ typedef struct
 
     rfwu_nvram_t rfwu;
 
-    uint8_t rf_log_level;   /**< rf_log_level_t persisted value (v2) */
+    uint8_t rf_log_level;     /**< rf_log_level_t persisted value (v2) */
+    uint8_t iec104_log_level; /**< log_lvl_t persisted value (v3) */
 
     uint32_t crc;
 }nvram_t;
@@ -242,7 +245,7 @@ _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
 _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
 _Static_assert(sizeof(nvram_t) == 2460U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
-_Static_assert(offsetof(nvram_t, crc) == 2456U, "nvram_t: crc kuyrugun sonunda (rf_log_level'dan sonra 1 bayt pad)");
+_Static_assert(offsetof(nvram_t, crc) == 2456U, "nvram_t: crc kuyrugun sonunda (iec104_log_level pad'i doldurdu)");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */

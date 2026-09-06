@@ -36,6 +36,7 @@
  *
  */
 
+#define CSLOG_MODULE LOG_MOD_GSM
 #include <gsm_types.h>
 #include "gsm_engine.h"
 #include "gsm_info.h"
@@ -108,7 +109,7 @@ static uint32_t gsm_at_response_ready(void)
 			return (uint32_t)GSM_ERROR;
 
 		case AT_ENGINE_RESULT_NO_SIM:
-			GSM_LOG_ERR("NO SIM CARD !\r\n");
+			CSLOG_ERR("NO SIM CARD !\r\n");
 			if (gsm_get_main_state() == GSM_NORMAL_MODE)
 			{
 				gsm_set_main_state(GSM_SIM_ERROR_MODE);
@@ -289,18 +290,18 @@ void gsm_set_raw_socket_state(uint8_t socket, uint8_t state)
 		gsm_listener_id_t lid = (socket == LISTENER_SOCKET) ? GSM_LISTENER_WEB : GSM_LISTENER_IEC104;
 
 		if(state == '0'){
-			GSM_LOG_WRN("[#SS] %s baglantisi kapandi!\r\n", (lid == GSM_LISTENER_WEB) ? "WEB SOCKET" : "IEC104");
+			CSLOG_WARN("[#SS] %s baglantisi kapandi!\r\n", (lid == GSM_LISTENER_WEB) ? "WEB SOCKET" : "IEC104");
 			if(gsm_get_socket_state(socket) != SOCKET_CLOSED){
 				gsm_listener_set_no_carrier(lid, 1);
 			}
 			gsm_set_socket_state(socket, SOCKET_CLOSED);
 		}
 		if(state == '3'){
-			GSM_LOG_INF_C(XCOLOR_CYAN, "[#SS] %s okunmayi bekleyen data var!\r\n", (lid == GSM_LISTENER_WEB) ? "WEB SOCKET" : "IEC104 SOCKET");
+			CCSLOG(XCOLOR_CYAN, "[#SS] %s okunmayi bekleyen data var!\r\n", (lid == GSM_LISTENER_WEB) ? "WEB SOCKET" : "IEC104 SOCKET");
 			gsm_listener_set_rx_available(lid, 1);
 		}
 		if(state == '5'){
-			GSM_LOG_WRN("[#SS] %s baglanti istegi geldi!\r\n", (lid == GSM_LISTENER_WEB) ? "WEB SOCKET" : "IEC104 SOCKET");
+			CSLOG_WARN("[#SS] %s baglanti istegi geldi!\r\n", (lid == GSM_LISTENER_WEB) ? "WEB SOCKET" : "IEC104 SOCKET");
 			gsm_listener_set_new_conn_req(lid, 1);
 		}
 	}
@@ -472,7 +473,7 @@ void gsm_listener_timeout_watch(void)
 					SOCK_DISC_FIRST_DATA_TIMEOUT);
 			gsm_listener_request_close_socket(listener_of[i]);
 			close_pending[i] = true;
-			GSM_LOG_WRN("Listener %u closed: no data within %u s\r\n",
+			CSLOG_WARN("Listener %u closed: no data within %u s\r\n",
 					(unsigned)(i + 1U), cfg[i].first_data_timeout_sec);
 		}
 		else if (!skip_idle && gsm_socket_idle_expired(cfg[i].socket, t2_ms))
@@ -481,7 +482,7 @@ void gsm_listener_timeout_watch(void)
 					SOCK_DISC_IDLE_TIMEOUT);
 			gsm_listener_request_close_socket(listener_of[i]);
 			close_pending[i] = true;
-			GSM_LOG_WRN("Listener %u closed: idle %u s\r\n",
+			CSLOG_WARN("Listener %u closed: idle %u s\r\n",
 					(unsigned)(i + 1U), cfg[i].idle_timeout_sec);
 		}
 		else
@@ -1435,7 +1436,7 @@ int32_t gsm_cesq_cb(void)
 	gsm_info_set_4G_rsrq(rsrq);
 	gsm_info_set_signal_quality_4G(rsrp);
 
-	GSM_LOG_INF("2G rxlev:%u ber:%u 4G rsrq:%u rsrp:%u\r\n", (unsigned)rxlev, (unsigned)ber, (unsigned)rsrq, (unsigned)rsrp);
+	CSLOG("2G rxlev:%u ber:%u 4G rsrq:%u rsrp:%u\r\n", (unsigned)rxlev, (unsigned)ber, (unsigned)rsrq, (unsigned)rsrp);
 
 	return at_res;
 }
@@ -1917,7 +1918,7 @@ uint32_t gsm_engine_trace_socket_send(uint8_t socket, const uint8_t *buff, uint1
 	{
 		if (!at_engine_send_data(buff, len, 2000))
 		{
-			GSM_LOG_ERR("trace socket: at motoru veri gonderimini reddetti\r\n");
+			CSLOG_ERR("trace socket: at motoru veri gonderimini reddetti\r\n");
 			return res;
 		}
 		res = 1;
@@ -1937,7 +1938,7 @@ uint32_t gsm_engine_socket_send(uint8_t socket)
 	{
 		if (!at_engine_send_data(gsm.tx_buff, gsm.tx_index, 20000))
 		{
-			GSM_LOG_ERR("socket %u: at motoru veri gonderimini reddetti\r\n", (unsigned)socket);
+			CSLOG_ERR("socket %u: at motoru veri gonderimini reddetti\r\n", (unsigned)socket);
 			return res;
 		}
 		res = 1;
@@ -2296,7 +2297,7 @@ static int32_t gsm_si_all_cb(void)
 
 			if(conn_id == 1 || conn_id == 2)
 			{
-				GSM_LOG_INF("SI[%u] sent:%u rcv:%u buf:%u ack:%u\r\n",
+				CSLOG("SI[%u] sent:%u rcv:%u buf:%u ack:%u\r\n",
 						conn_id, sent, received, buff_in, ack_waiting);
 			}
 
@@ -2579,7 +2580,7 @@ int32_t gsm_COPS_state_cb(void)
 				        	break;
 				    }
 
-				GSM_LOG_INF("Access Technology: %s\r\n", access_tech_str);
+				CSLOG("Access Technology: %s\r\n", access_tech_str);
 				gsm_info_set_access_technology(tech);
 				led_driver_set_gsm_mode(signal_led_mode);
 			}
@@ -2929,7 +2930,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 
 	if(query >= ATQUERY_LIST_LEN)
 	{
-		GSM_LOG_ERR("_GSM_ ATQUERY_LIST_LEN !!!\r\n");
+		CSLOG_ERR("_GSM_ ATQUERY_LIST_LEN !!!\r\n");
 		return 0;
 	}
 
@@ -3474,7 +3475,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 	 * cmd_len + 1 <= AT_ENGINE_MAX_CMD_LEN (128) istiyor -> at_len <= 126. */
 	if (at_len + 2U > sizeof(at_buff))
 	{
-		GSM_LOG_ERR("AT query %u: komut cok uzun\r\n", (unsigned)query);
+		CSLOG_ERR("AT query %u: komut cok uzun\r\n", (unsigned)query);
 		gsm_set_free();
 		return 0;
 	}
@@ -3486,7 +3487,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 
 	if (!at_engine_send_at_command(at_buff, at_len, res, res_len, try, timeout))
 	{
-		GSM_LOG_ERR("AT query %u: at motoru komutu reddetti\r\n", (unsigned)query);
+		CSLOG_ERR("AT query %u: at motoru komutu reddetti\r\n", (unsigned)query);
 		gsm_set_free();
 		return 0;
 	}

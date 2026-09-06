@@ -3,8 +3,9 @@
  * @brief HTTP request parsing implementation
  */
 
+#define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_request_parser.h"
-#include "http_log.h"
+#include "console_logger.h"
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
@@ -35,7 +36,7 @@ static bool validate_path(const char *path) {
     
     /* Path traversal check */
     if (strstr(path, "..") != NULL) {
-        HTTP_LOG_ERR("[HTTP] ERROR: Path traversal attempt detected: %s\r\n", path);
+        CSLOG_ERR("[HTTP] ERROR: Path traversal attempt detected: %s\r\n", path);
         return false;
     }
     
@@ -45,7 +46,7 @@ static bool validate_path(const char *path) {
      * limit is treated as too long. */
     size_t len = strnlen(path, (size_t)HTTP_MAX_PATH_LEN + 1U);
     if (len > HTTP_MAX_PATH_LEN) {
-        HTTP_LOG_ERR("[HTTP] ERROR: Path too long (max: %d)\r\n", HTTP_MAX_PATH_LEN);
+        CSLOG_ERR("[HTTP] ERROR: Path too long (max: %d)\r\n", HTTP_MAX_PATH_LEN);
         return false;
     }
     
@@ -91,16 +92,16 @@ bool http_is_request_complete(const char *buffer,
     /* Check if body is complete (if Content-Length specified) */
     if (request->content_length > 0) {
         int available_body = buffer_length - request->header_end_offset;
-        HTTP_LOG_NODT("[HTTP] Content-Length: %d, Available body: %d, Buffer length: %d\r\n",
+        CSLOG_NODT("[HTTP] Content-Length: %d, Available body: %d, Buffer length: %d\r\n",
                 request->content_length, available_body, buffer_length);
         
         if (available_body < request->content_length) {
-            HTTP_LOG_NODT("[HTTP] Body incomplete - waiting for %d more bytes\r\n",
+            CSLOG_NODT("[HTTP] Body incomplete - waiting for %d more bytes\r\n",
                     request->content_length - available_body);
             return false;  /* Still waiting for body data */
         }
         
-        HTTP_LOG_NODT("[HTTP] Body complete - all %d bytes received\r\n", request->content_length);
+        CSLOG_NODT("[HTTP] Body complete - all %d bytes received\r\n", request->content_length);
     }
 
     return true;
@@ -201,7 +202,7 @@ int http_parse_content_length(const char *headers_start, int headers_length)
             
             /* Validate Content-Length limit */
             if (content_length > MAX_CONTENT_LENGTH) {
-                HTTP_LOG_ERR("[HTTP] ERROR: Content-Length too large: %d bytes (max: %d)\r\n",
+                CSLOG_ERR("[HTTP] ERROR: Content-Length too large: %d bytes (max: %d)\r\n",
                        content_length, MAX_CONTENT_LENGTH);
                 return -1;  /* Signal error */
             }
@@ -226,7 +227,7 @@ int http_parse_request(char *buffer,
                       http_request_t *request)
 {
     if (!buffer || !request || buffer_length < 4) {
-        HTTP_LOG_ERR("[HTTP] Parse: Invalid params (buffer=%p, request=%p, length=%d)\r\n",
+        CSLOG_ERR("[HTTP] Parse: Invalid params (buffer=%p, request=%p, length=%d)\r\n",
                 buffer, request, buffer_length);
         return -1;
     }
@@ -237,16 +238,16 @@ int http_parse_request(char *buffer,
     /* Find header end */
     int header_end = http_find_header_end(buffer, buffer_length);
     if (header_end < 0) {
-        HTTP_LOG_NODT("[HTTP] Parse: Headers not complete (header_end=%d)\r\n", header_end);
+        CSLOG_NODT("[HTTP] Parse: Headers not complete (header_end=%d)\r\n", header_end);
         return -1;  /* Headers not complete yet */
     }
     request->header_end_offset = header_end;
-    HTTP_LOG_NODT("[HTTP] Parse: Headers complete at offset %d\r\n", header_end);
+    CSLOG_NODT("[HTTP] Parse: Headers complete at offset %d\r\n", header_end);
 
     /* Find end of request line */
     char *request_line_end = strstr(buffer, "\r\n");
     if (!request_line_end) {
-        HTTP_LOG_ERR("[HTTP] Parse: No CRLF found in request line\r\n");
+        CSLOG_ERR("[HTTP] Parse: No CRLF found in request line\r\n");
         return -1;  /* Invalid request */
     }
 
@@ -257,13 +258,13 @@ int http_parse_request(char *buffer,
                                 &request->method,
                                 &request->path,
                                 &request->query_string) != 0) {
-        HTTP_LOG_ERR("[HTTP] Parse: Request line parse failed\r\n");
+        CSLOG_ERR("[HTTP] Parse: Request line parse failed\r\n");
         return -1;
     }
     
     /* Validate path for security issues */
     if (!validate_path(request->path)) {
-        HTTP_LOG_ERR("[HTTP] Parse: Path validation failed\r\n");
+        CSLOG_ERR("[HTTP] Parse: Path validation failed\r\n");
         return -1;
     }
 
@@ -275,11 +276,11 @@ int http_parse_request(char *buffer,
     
     /* Check for Content-Length parsing error */
     if (request->content_length < 0) {
-        HTTP_LOG_ERR("[HTTP] Parse: Content-Length validation failed\r\n");
+        CSLOG_ERR("[HTTP] Parse: Content-Length validation failed\r\n");
         return -1;
     }
     
-    HTTP_LOG_NODT("[HTTP] Parse: Content-Length parsed as %d\r\n", request->content_length);
+    CSLOG_NODT("[HTTP] Parse: Content-Length parsed as %d\r\n", request->content_length);
 
     /* Set body pointer */
     if (request->content_length > 0) {

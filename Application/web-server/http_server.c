@@ -9,8 +9,8 @@
  * - http_handlers: Endpoint handlers
  */
 
+#define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_server.h"
-#include "http_log.h"
 #include "http_request_parser.h"
 #include "http_response.h"
 #include "http_handlers.h"
@@ -97,7 +97,7 @@ static void route_and_handle_request(http_request_t *request)
     
     /* Require authentication for all other endpoints */
     if (!is_public_endpoint && !http_handlers_is_authenticated()) {
-    	HTTP_LOG_INF_C(XCOLOR_RED, "[HTTP] Unauthorized access attempt to: %s\r\n", request->path);
+    	CCSLOG(XCOLOR_RED, "[HTTP] Unauthorized access attempt to: %s\r\n", request->path);
         http_send_error(401, "Unauthorized");
         return;
     }
@@ -113,7 +113,7 @@ static void route_and_handle_request(http_request_t *request)
             (strcmp(request->path, "/serial") == 0)) {
 
             if (!http_handlers_is_admin()) {
-                HTTP_LOG_INF_C(XCOLOR_RED, "[HTTP] Forbidden (GET): %s\r\n", request->path);
+                CCSLOG(XCOLOR_RED, "[HTTP] Forbidden (GET): %s\r\n", request->path);
                 http_send_error(403, "Admin role required");
                 return;
             }
@@ -188,7 +188,7 @@ static void route_and_handle_request(http_request_t *request)
         }
 
         if (strcmp(request->path, "/device/reboot") == 0) {
-            HTTP_LOG_WRN("[HTTP] GET /device/reboot - Rebooting device\r\n");
+            CSLOG_WARN("[HTTP] GET /device/reboot - Rebooting device\r\n");
             const char *response_body = "{\"message\":\"Rebooting\",\"success\":true}";
             http_send_json(response_body, strlen(response_body));
 
@@ -256,7 +256,7 @@ static void route_and_handle_request(http_request_t *request)
 
         /* All other POST endpoints require admin role */
         if (!http_handlers_is_admin()) {
-        	HTTP_LOG_INF_C(XCOLOR_RED, "[HTTP] Forbidden: Admin role required for: %s\r\n", request->path);
+        	CCSLOG(XCOLOR_RED, "[HTTP] Forbidden: Admin role required for: %s\r\n", request->path);
             http_send_error(403, "Admin role required");
             return;
         }
@@ -289,7 +289,7 @@ static void route_and_handle_request(http_request_t *request)
         }
 
         if (strcmp(request->path, "/device/reboot") == 0) {
-            HTTP_LOG_WRN("[HTTP] GET /device/reboot - Rebooting device\r\n");
+            CSLOG_WARN("[HTTP] GET /device/reboot - Rebooting device\r\n");
             const char *response_body = "{\"message\":\"Rebooting\",\"success\":true}";
             http_send_json(response_body, strlen(response_body));
 
@@ -385,7 +385,7 @@ void http_server_reset(void)
         return;
     }
     
-    HTTP_LOG_INF("[HTTP] Server reset - clearing all buffers\r\n");
+    CSLOG("[HTTP] Server reset - clearing all buffers\r\n");
     reset_server_state();
     http_handlers_reset();
 }
@@ -416,7 +416,7 @@ void http_server_on_receive(const uint8_t *data, int length)
     memcpy(server_state.rx_buffer + server_state.rx_length, data, length);
     server_state.rx_length += length;
     
-    HTTP_LOG_INF("[HTTP] Appended %d bytes, total rx_length=%d\r\n", length, server_state.rx_length);
+    CSLOG("[HTTP] Appended %d bytes, total rx_length=%d\r\n", length, server_state.rx_length);
     
     /* Parse request only once (first time headers are complete) */
     if (!server_state.request_parsed) {
@@ -424,7 +424,7 @@ void http_server_on_receive(const uint8_t *data, int length)
                                              server_state.rx_length, 
                                              &server_state.cached_request);
         
-        HTTP_LOG_INF("[HTTP] Parse result: %d\r\n", parse_result);
+        CSLOG("[HTTP] Parse result: %d\r\n", parse_result);
         
         if (parse_result != 0) {
             /* Request not complete yet, or parse error */
@@ -434,22 +434,22 @@ void http_server_on_receive(const uint8_t *data, int length)
                                                  server_state.rx_length);
             if (header_end > 0) {
                 /* Headers are complete but parsing failed - bad request */
-            	HTTP_LOG_INF_C(XCOLOR_RED, "[HTTP] ERROR: Headers complete but parse failed - Bad Request\r\n");
+            	CCSLOG(XCOLOR_RED, "[HTTP] ERROR: Headers complete but parse failed - Bad Request\r\n");
                 http_send_bad_request();
                 reset_server_state();
                 return;
             }
             
             /* Otherwise, wait for more data */
-            HTTP_LOG_INF("[HTTP] Headers not complete yet - waiting\r\n");
+            CSLOG("[HTTP] Headers not complete yet - waiting\r\n");
             return;
         }
         
         /* Parse successful - cache it */
         server_state.request_parsed = true;
-        HTTP_LOG_INF("[HTTP] Request parsed and cached\r\n");
+        CSLOG("[HTTP] Request parsed and cached\r\n");
     } else {
-        HTTP_LOG_INF("[HTTP] Using cached parsed request\r\n");
+        CSLOG("[HTTP] Using cached parsed request\r\n");
     }
     
     /* Check if request is complete (headers + body) */
@@ -457,7 +457,7 @@ void http_server_on_receive(const uint8_t *data, int length)
                                   server_state.rx_length, 
                                   &server_state.cached_request)) {
         /* Wait for more body data */
-        HTTP_LOG_INF("[HTTP] Request incomplete - waiting for more data (rx_length=%d)\n",
+        CSLOG("[HTTP] Request incomplete - waiting for more data (rx_length=%d)\n",
                 server_state.rx_length);
         return;
     }
@@ -467,11 +467,11 @@ void http_server_on_receive(const uint8_t *data, int length)
         server_state.cached_request.body = server_state.rx_buffer + 
                                            server_state.cached_request.header_end_offset;
         server_state.cached_request.body_length = server_state.cached_request.content_length;
-        HTTP_LOG_INF("[HTTP] Body pointer updated, body_length=%d\r\n",
+        CSLOG("[HTTP] Body pointer updated, body_length=%d\r\n",
                 server_state.cached_request.body_length);
     }
     
-    HTTP_LOG_INF("[HTTP] Request complete - processing...\r\n");
+    CSLOG("[HTTP] Request complete - processing...\r\n");
     
     /* Request is complete - route and handle it */
     route_and_handle_request(&server_state.cached_request);

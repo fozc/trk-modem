@@ -6,6 +6,7 @@
  * registration, GPRS activation, and listener socket opening.
  */
 
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_init.h"
 #include "gsm_types.h"
 #include "gsm_engine.h"
@@ -251,7 +252,7 @@ static void gsm_init_simple_step(uint8_t at_query, bool skip_on_error, uint16_t 
 
 static void gsm_init_step_soft_init(void)
 {
-	GSM_LOG_INF("GSM soft init...\r\n");
+	CSLOG("GSM soft init...\r\n");
 	led_driver_set_gsm_mode(LED_GSM_OFF);
 	gsm_info_init();
 

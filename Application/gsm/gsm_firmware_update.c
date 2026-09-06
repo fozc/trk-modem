@@ -4,6 +4,7 @@
  *  Created on: Dec 28, 2025
  *      Author: fatih
  */
+#define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_firmware_update.h"
 #include "http_handlers.h"
 #include "raw_tcp_fw_update.h"
@@ -20,13 +21,13 @@ static uint32_t fw_update_buffer_index = 0;
 
 static int fw_update_init(uint32_t total_size)
 {
-	GSM_LOG_INF_C(XCOLOR_CYAN, "Firmware update init, total size: %d bytes\r\n", total_size);
+	CCSLOG(XCOLOR_CYAN, "Firmware update init, total size: %d bytes\r\n", total_size);
 
 	/* Reject images that cannot fit in a firmware section before accepting the
 	 * transfer (the per-write guard would otherwise fail only mid-download). */
 	if(total_size > FIRMWARE_FLASH_AREA_SIZE)
 	{
-		GSM_LOG_ERR("Firmware update init error: size %lu exceeds max %lu bytes\r\n",
+		CSLOG_ERR("Firmware update init error: size %lu exceeds max %lu bytes\r\n",
 		            (unsigned long)total_size, (unsigned long)FIRMWARE_FLASH_AREA_SIZE);
 		return -1;
 	}
@@ -35,7 +36,7 @@ static int fw_update_init(uint32_t total_size)
 	section_end   = flash_address + FIRMWARE_FLASH_AREA_SIZE;
 	fw_update_buffer_index = 0;
 
-	GSM_LOG_INF_C(XCOLOR_CYAN, "Download target: section %c (0x%08lX)\r\n",
+	CCSLOG(XCOLOR_CYAN, "Download target: section %c (0x%08lX)\r\n",
 	       (flash_address == FIRMWARE_A_ADDRESS) ? 'A' : 'B',
 	       (unsigned long)flash_address);
 
@@ -44,7 +45,7 @@ static int fw_update_init(uint32_t total_size)
 
 static int fw_update_write_handler(uint32_t offset, const uint8_t *data, uint32_t size)
 {
-	GSM_LOG_INF_C(XCOLOR_CYAN, "Firmware update write, offset: %d, size: %d bytes\r\n", offset, size);
+	CCSLOG(XCOLOR_CYAN, "Firmware update write, offset: %d, size: %d bytes\r\n", offset, size);
 
 	(void)offset;   /* offset kullanılmıyor; yazım konumu flash_address ile ilerler */
 
@@ -60,7 +61,7 @@ static int fw_update_write_handler(uint32_t offset, const uint8_t *data, uint32_
 
 		if(flash_address >= section_end)
 		{
-			GSM_LOG_ERR("Firmware update write error: Exceeded maximum firmware size!\r\n");
+			CSLOG_ERR("Firmware update write error: Exceeded maximum firmware size!\r\n");
 			return -1;
 		}
 
@@ -74,7 +75,7 @@ static int fw_update_write_handler(uint32_t offset, const uint8_t *data, uint32_
 			int res = w25qxx_write_buff(flash_address, fw_update_buffer, 4096);
 			if(res != W25QXX_RES_OK)
 			{
-				GSM_LOG_ERR("Firmware update write error: Failed to write to flash! Error code: %d\r\n", res);
+				CSLOG_ERR("Firmware update write error: Failed to write to flash! Error code: %d\r\n", res);
 				return -1;
 			}
 			flash_address += 4096U;
@@ -87,7 +88,7 @@ static int fw_update_write_handler(uint32_t offset, const uint8_t *data, uint32_
 
 static int fw_update_finish_handler(uint32_t total_size)
 {
-	GSM_LOG_INF_C(XCOLOR_GREEN, "Firmware update finish, total size: %d bytes\r\n", total_size);
+	CCSLOG(XCOLOR_GREEN, "Firmware update finish, total size: %d bytes\r\n", total_size);
 
 	/* Bug fix: flush the last partial sector if any bytes remain in the buffer.
 	 * Previously the buffer was never flushed unless exactly 4096 bytes accumulated,
@@ -97,7 +98,7 @@ static int fw_update_finish_handler(uint32_t total_size)
 		int res = w25qxx_write_buff(flash_address, fw_update_buffer, fw_update_buffer_index);
 		if(res != W25QXX_RES_OK)
 		{
-			GSM_LOG_ERR("Firmware update finish: failed to flush last %lu bytes, error %d\r\n",
+			CSLOG_ERR("Firmware update finish: failed to flush last %lu bytes, error %d\r\n",
 				   fw_update_buffer_index, res);
 			return -1;
 		}
@@ -112,7 +113,7 @@ static int fw_update_finish_handler(uint32_t total_size)
 	{
 		const uint32_t base = boot_get_download_address();
 
-		GSM_LOG_INF("FW image stored in section %c (0x%08lX), not applied\r\n",
+		CSLOG("FW image stored in section %c (0x%08lX), not applied\r\n",
 			    (base == FIRMWARE_A_ADDRESS) ? 'A' : 'B',
 			    (unsigned long)base);
 	}
@@ -149,7 +150,7 @@ static int fw_update_rfwu_init(uint32_t total_size, uint32_t resume_offset)
 {
 	if(total_size > FIRMWARE_FLASH_AREA_SIZE)
 	{
-		GSM_LOG_ERR("RFWU init error: size %lu exceeds max %lu bytes\r\n",
+		CSLOG_ERR("RFWU init error: size %lu exceeds max %lu bytes\r\n",
 		            (unsigned long)total_size, (unsigned long)FIRMWARE_FLASH_AREA_SIZE);
 		return -1;
 	}

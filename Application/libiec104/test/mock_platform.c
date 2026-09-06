@@ -17,6 +17,7 @@
 
 #include "types.h"
 #include "nvram.h"
+#include "console_logger_config.h"
 #include "breaker.h"
 #include "fault_log.h"
 #include "rtc.h"
@@ -194,6 +195,15 @@ bsp_rtc_t bsp_get_datetime(void)
 /* ---------------------------------------------------------------- */
 
 bool console_logger_is_enabled_flag = false;
+
+/* Seviye kapi stub'u: testler log ciktisi dogrulamadigindan her seyi
+ * reddeder - CSLOG ailesinin modullu makrolari bunu cagirir. */
+bool console_logger_level_enabled(log_mod_t module, log_lvl_t min_level)
+{
+    (void)module;
+    (void)min_level;
+    return false;
+}
 
 unsigned int xprintf(const char *fmt, ...)
 {

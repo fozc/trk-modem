@@ -24,6 +24,7 @@
  *   rf_scp.h    -> komut kodlari
  */
 
+#define CSLOG_MODULE LOG_MOD_RF
 #include "rf_inventory.h"
 #include "rf_comm.h"
 #include "rf_config.h"
@@ -125,7 +126,7 @@ static void on_set_done(scp_cmd_result_t result, const scp_packet_t *rsp)
     else
     {
         skipped_count++;
-        RF_LOG_WRN("[RF-INV] fider=%u faz=%u atlandi (hata)\r\n",
+        CSLOG_WARN("[RF-INV] fider=%u faz=%u atlandi (hata)\r\n",
                    (unsigned)(feeder_index + 1U),
                    (unsigned)(phase_index + 1U));
     }
@@ -142,12 +143,12 @@ static void on_end_done(scp_cmd_result_t result, const scp_packet_t *rsp)
     if (SCP_CMD_OK == result)
     {
         loaded = true;
-        RF_LOG_INF("[RF-INV] envanter yuklendi: %u cihaz gonderildi, %u atlandi\r\n",
+        CSLOG("[RF-INV] envanter yuklendi: %u cihaz gonderildi, %u atlandi\r\n",
               (unsigned)sent_count, (unsigned)skipped_count);
     }
     else
     {
-        RF_LOG_WRN("[RF-INV] INVENTORY_END basarisiz - hub envanteri yuklu "
+        CSLOG_WARN("[RF-INV] INVENTORY_END basarisiz - hub envanteri yuklu "
                    "sayilmaz\r\n");
     }
 
@@ -182,12 +183,12 @@ static void send_next(void)
                                  TIMEOUT_MS, RETRIES,
                                  on_end_done))
             {
-                RF_LOG_INF("[RF-INV] %u cihaz tarandi, END gonderiliyor\r\n",
+                CSLOG("[RF-INV] %u cihaz tarandi, END gonderiliyor\r\n",
                       (unsigned)(sent_count + skipped_count));
             }
             else
             {
-                RF_LOG_WRN("[RF-INV] END gonderilemedi (mesgul)\r\n");
+                CSLOG_WARN("[RF-INV] END gonderilemedi (mesgul)\r\n");
                 active = false;
             }
             return;
@@ -200,7 +201,7 @@ static void send_next(void)
                          TIMEOUT_MS, RETRIES,
                          on_set_done))
     {
-        RF_LOG_INF("[RF-INV] fider=%u faz=%u gonderiliyor (EUI=%02X..%02X)\r\n",
+        CSLOG("[RF-INV] fider=%u faz=%u gonderiliyor (EUI=%02X..%02X)\r\n",
               (unsigned)(feeder_index + 1U),
               (unsigned)(phase_index + 1U),
               body[3], body[10]);
@@ -209,7 +210,7 @@ static void send_next(void)
     {
         /* Komut mekanizmasi mesgul - index bu cihazda kalir,
          * rf_inventory_continue() tekrar deneyecek. */
-        RF_LOG_INF("[RF-INV] komut mesgul, bekleniyor\r\n");
+        CSLOG("[RF-INV] komut mesgul, bekleniyor\r\n");
     }
 }
 
@@ -231,7 +232,7 @@ void rf_inventory_start(void)
     sent_count  = 0U;
     skipped_count = 0U;
 
-    RF_LOG_INF("[RF-INV] envanter push basliyor\r\n");
+    CSLOG("[RF-INV] envanter push basliyor\r\n");
     send_next();
 }
 
