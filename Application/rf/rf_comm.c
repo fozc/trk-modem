@@ -146,12 +146,12 @@ static void rf_comm_transmit(const uint8_t *frame, size_t frame_len)
 {
     /* Ham frame dokumu (COBS kodlu wire baytlari) - yalniz VERBOSE.
      * modbus TX dokumu ile ayni desen. */
-    RF_LOG_NODT("\r\nRF TX[%u]: ", (unsigned)frame_len);
+	RF_LOG_INF("\r\nRF TX[%u]: [", (unsigned)frame_len);
     for (size_t i = 0U; i < frame_len; i++)
     {
         RF_LOG_NODT("%02X ", frame[i]);
     }
-    RF_LOG_NODT("\r\n");
+    RF_LOG_NODT("]\r\n");
 
 #ifdef RF_SIMULATOR
     bms_send_buff(frame, frame_len);
@@ -527,12 +527,12 @@ static void rf_comm_check_rx(void)
             /* Ham frame dokumu: PACKET_READY'de rx_buf/rx_idx scp'nin
              * decode edilmis wire baytlarini scp_packet_done'a kadar
              * dondurur (scp.c "frozen until done"). Yalniz VERBOSE. */
-            RF_LOG_NODT("\r\nRF RX[%u]: ", (unsigned)scp_ctx.rx_idx);
+            RF_LOG_INF("RF RX[%u]: [", (unsigned)scp_ctx.rx_idx);
             for (size_t i = 0U; i < scp_ctx.rx_idx; i++)
             {
                 RF_LOG_NODT("%02X ", scp_ctx.rx_buf[i]);
             }
-            RF_LOG_NODT("\r\n");
+            RF_LOG_NODT("]\r\n");
 
             print_scp_packet(pkt);
             rf_comm_on_data_received(pkt);

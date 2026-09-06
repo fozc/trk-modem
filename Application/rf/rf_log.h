@@ -10,6 +10,19 @@
  * degistirilir.
  */
 
+/* TODO (merkezilestirme): ucuncu kopya (gsm_log.h, rf_log.h,
+ * http_log.h) ayni seviye makro ailesini tasiyor. Dorduncu alt sistem
+ * seviye istediginde (modbus / iec104 adaylari) tek tabloya gecelim:
+ * Application/cslog/mod_log.c/h - log_mod_t enum (GSM/RF/HTTP/...),
+ * uint8_t levels[LOG_MOD_COUNT], tek MOD_LOG_ERR/WRN/INF/NODT filtresi;
+ * alt sistem basliklari tek satirlik delegasyona iner
+ * (#define RF_LOG_ERR(...) MOD_LOG_ERR(LOG_MOD_RF, __VA_ARGS__)) -
+ * cagri noktalari ve gsm_log fonksiyon API'si (at_engine2 kullaniyor)
+ * degismez. Tek shell komutu: "log <mod> <off|on|verbose>", "log"
+ * (liste), "log all <seviye>". HTTP'in gsm seviyesini takip etmesi
+ * tabloda acik bir tercih haline gelir (kendi NVRAM alanini alabilir).
+ * NVRAM eslemesi nvram_get/set_*_log_level uzerinden kalir. */
+
 #ifndef RF_RF_LOG_H_
 #define RF_RF_LOG_H_
 
