@@ -2025,7 +2025,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
 }
 
 void handle_fw_finish(const char *json_body) {
-    HTTP_LOG_INF_C(XCOLOR_CYAN, "[FW] ========== FIRMWARE UPDATE FINISH ==========\r\n");
+    HTTP_LOG_INF_C(XCOLOR_CYAN, "[FW] ========== FIRMWARE TRANSFER FINISH ==========\r\n");
     
     if (!fw_callbacks_registered || !fw_callbacks.fw_finish) {
         HTTP_LOG_ERR("[FW] ERROR: Callbacks not registered\r\n");
@@ -2078,7 +2078,7 @@ void handle_fw_finish(const char *json_body) {
     
     /* Print success summary */
     HTTP_LOG_INF_C(XCOLOR_GREEN, "[FW] ========================================\r\n");
-    HTTP_LOG_INF_C(XCOLOR_GREEN, "[FW] FIRMWARE UPDATE SUCCESSFUL!\r\n");
+    HTTP_LOG_INF_C(XCOLOR_GREEN, "[FW] FW TRANSFER COMPLETE - IMAGE VERIFIED\r\n");
     HTTP_LOG_INF_C(XCOLOR_GREEN, "[FW] ========================================\r\n");
     HTTP_LOG_INF("[FW] Total: %u bytes in %u chunks\r\n", 
             fw_state.total_size, fw_state.received_chunks);
@@ -2086,7 +2086,7 @@ void handle_fw_finish(const char *json_body) {
         HTTP_LOG_WRN("[FW] Note: %u checksum errors, %u retries during transfer\r\n",
                  fw_state.checksum_errors, fw_state.retry_count);
     }
-    HTTP_LOG_INF("[FW] Ready for reboot command (/rb)\r\n");
+    HTTP_LOG_INF("[FW] Image NOT applied - use Apply Firmware (/fw_apply)\r\n");
     
     http_send_json("{\"status\":\"ok\"}", 15);
 }

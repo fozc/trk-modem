@@ -105,6 +105,18 @@ static int fw_update_finish_handler(uint32_t total_size)
 		fw_update_buffer_index = 0;
 	}
 
+	/* Goruntunun hangi bolumde kaldigini aktarim sonunda da belirt:
+	 * init'teki "Download target" satiri 66 chunk'lik log altinda kaybolur.
+	 * boot_get_download_address() boot_init'te cozumlenen hedefi dondurur,
+	 * oturum boyunca degismez. */
+	{
+		const uint32_t base = boot_get_download_address();
+
+		GSM_LOG_INF("FW image stored in section %c (0x%08lX), not applied\r\n",
+			    (base == FIRMWARE_A_ADDRESS) ? 'A' : 'B',
+			    (unsigned long)base);
+	}
+
 	return 0;
 }
 
