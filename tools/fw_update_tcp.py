@@ -8,6 +8,11 @@ Protocol summary (raw_tcp_fw_update.h):
   Magic : 0x55574652  ("RFWU" on wire, LE)
   CRC-32: standard zlib/Ethernet polynomial over header+data
 
+  Auth gating: the MCU rejects QUERY / REBOOT / ABORT with ERR_AUTH
+  until a successful HELLO has been sent on the same TCP connection.
+  There is no APPLY command — CMD_REBOOT installs a fully received
+  image via the bootloader before restarting.
+
 Usage:
   python fw_update_tcp.py
 """
@@ -33,7 +38,6 @@ CMD_FINISH  = 0x03
 CMD_QUERY   = 0x04
 CMD_REBOOT  = 0x05
 CMD_ABORT   = 0x06
-CMD_APPLY   = 0x07
 
 RESP_ACK    = 0x81
 RESP_NACK   = 0x82
@@ -118,6 +122,14 @@ def compute_file_hash(fw_data: bytes) -> int:
     return _crc32(fw_data[:min(1024, len(fw_data))]) & 0xFFFFFFFF
 
 
+def build_hello_payload(fw_data: bytes, shared_key: int) -> bytes:
+    """HELLO payload: total_size(4 LE) + file_hash(4 LE) + auth_token(4 LE)."""
+    total_size = len(fw_data)
+    file_hash  = compute_file_hash(fw_data)
+    auth_token = compute_auth_token(shared_key, total_size)
+    return struct.pack("<III", total_size, file_hash, auth_token)
+
+
 # ── Background workers ───────────────────────────────────────────────
 
 class TransferWorker:
@@ -176,21 +188,24 @@ class TransferWorker:
                 self.q.put(("error", str(exc)))
 
     def _do_transfer(self) -> None:
-        total_size  = len(self.fw_data)
-        file_hash   = compute_file_hash(self.fw_data)
-        auth_token  = compute_auth_token(self.shared_key, total_size)
+        total_size    = len(self.fw_data)
+        file_hash     = compute_file_hash(self.fw_data)
+        auth_token    = compute_auth_token(self.shared_key, total_size)
+        hello_payload = build_hello_payload(self.fw_data, self.shared_key)
 
         # ── Optional force restart ────────────────────────────────────
         if self._force_restart:
+            # The MCU rejects ABORT with ERR_AUTH until a HELLO succeeds
+            # on this connection — authenticate first, then clear.
+            self._log("TX  HELLO  (force restart: authenticate for ABORT)")
+            self._transact(CMD_HELLO, hello_payload)
             self._log("TX  ABORT  (force restart — clearing MCU session)")
-            try:
-                self._transact(CMD_ABORT)
-            except Exception:
-                pass  # NACK if no active session — that is fine
+            resp_cmd, _resp_data = self._transact(CMD_ABORT)
+            if resp_cmd == RESP_NACK:
+                self._log("RX  NACK  (no session to clear — continuing)")
 
         # ── HELLO ───────────────────────────────────────────────────
         self.q.put(("phase", "HELLO"))
-        hello_payload = struct.pack("<III", total_size, file_hash, auth_token)
         self._log(
             f"TX  HELLO  total={total_size:,}  hash=0x{file_hash:08X}  "
             f"token=0x{auth_token:08X}")
@@ -219,7 +234,8 @@ class TransferWorker:
             self._log(f"Starting new transfer ({total_size:,} bytes)…")
 
         self._progress(resume_offset, total_size)
-        self.q.put(("start_offset", resume_offset))  # for ETA calculation        self.q.put(("phase", "RESUMED" if resume_offset > 0 else "DATA"))
+        self.q.put(("start_offset", resume_offset))  # for ETA calculation
+        self.q.put(("phase", "RESUMED" if resume_offset > 0 else "DATA"))
         # ── DATA chunks ─────────────────────────────────────────────
         offset = resume_offset
         seq    = 0
@@ -301,8 +317,39 @@ class _OneShot:
 
 
 class StatusWorker(_OneShot):
+    """CMD_QUERY worker.
+
+    The MCU rejects QUERY with ERR_AUTH until a HELLO has succeeded on
+    the connection, so the worker can authenticate first with the
+    loaded firmware file.
+    """
+
+    def __init__(self, sock: socket.socket, q: queue.Queue,
+                 fw_data: bytes | None, shared_key: int,
+                 authenticate: bool) -> None:
+        super().__init__(sock, q)
+        self.fw_data      = fw_data
+        self.shared_key   = shared_key
+        self.authenticate = authenticate
+
     def run(self) -> None:
         try:
+            if self.authenticate:
+                # Note: authenticating with a file that differs from the
+                # device session resets the stored progress on the MCU.
+                self.q.put(("log",
+                            "TX  HELLO  (authenticate for QUERY — resets "
+                            "device progress if a different file is loaded)"))
+                resp_cmd, resp_data = self._transact(
+                    CMD_HELLO,
+                    build_hello_payload(self.fw_data, self.shared_key))
+                if resp_cmd == RESP_NACK:
+                    code = resp_data[0] if resp_data else 0
+                    self.q.put(("error",
+                                "Authentication failed "
+                                f"[{NACK_ERRORS.get(code, f'err=0x{code:02X}')}]"
+                                " — check the Key value."))
+                    return
             cmd, data = self._transact(CMD_QUERY)
             if cmd == RESP_STATUS and len(data) >= 17:
                 active, whead, nv_total, nv_rx, nv_hash = struct.unpack_from("<BIIII", data)
@@ -324,30 +371,16 @@ class RebootWorker(_OneShot):
         try:
             self._sock.sendall(build_packet(CMD_REBOOT))
             try:
-                recv_packet(self._sock)   # MCU may reset before replying — that is fine
-            except Exception:
-                pass
-            self.q.put(("log", "Reboot command sent."))
-            self.q.put(("disconnected",))  # connection closed after device reboot
-        except Exception as exc:
-            self.q.put(("error", str(exc)))
-
-
-class ApplyWorker(_OneShot):
-    def run(self) -> None:
-        try:
-            self._sock.sendall(build_packet(CMD_APPLY))
-            try:
                 resp_cmd, resp_data = recv_packet(self._sock)
                 if resp_cmd == RESP_NACK:
                     code = resp_data[0] if resp_data else 0
                     err_str = NACK_ERRORS.get(code, f"err=0x{code:02X}")
-                    self.q.put(("error", f"Apply rejected: {err_str}"))
+                    self.q.put(("error", f"Reboot rejected: {err_str}"))
                     return
             except Exception:
-                pass  # MCU may reset before replying
-            self.q.put(("log", "Apply command sent. Device entering bootloader update mode."))
-            self.q.put(("disconnected",))
+                pass  # MCU may reset before replying — that is fine
+            self.q.put(("log", "Reboot command accepted."))
+            self.q.put(("disconnected",))  # connection closed after device reboot
         except Exception as exc:
             self.q.put(("error", str(exc)))
 
@@ -444,6 +477,7 @@ class App(tk.Tk):
         self._total_size:   int                   = 0   # declared transfer size
         self._sock:         socket.socket | None  = None
         self._is_connected:      bool           = False
+        self._authenticated:     bool           = False
         self._force_restart_var: tk.BooleanVar = tk.BooleanVar(value=False)
         self._phase_var:    tk.StringVar = tk.StringVar(value="● IDLE")
         self._elapsed_var:  tk.StringVar = tk.StringVar(value="")
@@ -517,10 +551,11 @@ class App(tk.Tk):
                                       command=self._stop, state="disabled")
         self._btn_abort  = ttk.Button(af, text="Abort",
                                       command=self._abort, state="disabled")
-        self._btn_apply  = ttk.Button(af, text="Apply Firmware",
-                                      command=self._apply, state="disabled")
-        self._btn_reboot = ttk.Button(af, text="Reboot Device",
+        self._btn_reboot = ttk.Button(af, text="Apply & Reboot",
                                       command=self._reboot, state="disabled")
+        self._create_tooltip(self._btn_reboot,
+            "Reboots the device. If a fully received image is stored on\n"
+            "the device, the bootloader installs it during this reboot.")
 
         self._btn_status.pack(side="left", padx=(0, 4))
         self._btn_start.pack(side="left",  padx=(0, 4))
@@ -530,7 +565,6 @@ class App(tk.Tk):
         ttk.Checkbutton(af, text="Force restart (no resume)",
                         variable=self._force_restart_var).pack(side="left")
         self._btn_reboot.pack(side="right")
-        self._btn_apply.pack(side="right",  padx=(0, 6))
 
         # progress row
         pf = ttk.LabelFrame(self, text=" Progress ", padding=p)
@@ -714,8 +748,9 @@ class App(tk.Tk):
 
     def _set_connected(self, is_connected: bool,
                        sock: socket.socket | None = None) -> None:
-        self._is_connected = is_connected
-        self._sock         = sock
+        self._is_connected  = is_connected
+        self._authenticated = False
+        self._sock          = sock
         # Stop any existing watcher before starting a new one
         if self._watcher:
             self._watcher.stop()
@@ -745,7 +780,6 @@ class App(tk.Tk):
             self._btn_start.configure(state="disabled")
             self._btn_stop.configure(state="disabled")
             self._btn_reboot.configure(state="disabled")
-            self._btn_apply.configure(state="disabled")
             self._btn_abort.configure(state="disabled")
             self._set_phase("IDLE")
             self.title("Smart Breaker — RFWU Firmware Update")
@@ -774,7 +808,7 @@ class App(tk.Tk):
     def _browse(self) -> None:
         path = filedialog.askopenfilename(
             title="Select firmware file",
-            filetypes=[("Firmware / EFW", "*.bin *.efile"), ("All files", "*.*")])
+            filetypes=[("All files", "*.*")])
         if not path:
             return
         self._file_var.set(path)
@@ -849,11 +883,18 @@ class App(tk.Tk):
     def _check_status(self) -> None:
         if self._sock is None:
             return
+        authenticate = not self._authenticated
+        if authenticate and self._fw_data is None:
+            self._log("ERROR: The device rejects status queries until a "
+                      "HELLO succeeds on this connection. Load the firmware "
+                      "file and retry.")
+            return
         # Stop the watcher first and wait for it to fully exit
         # so it cannot consume the first byte of the STATUS response
         self._stop_watcher()
         self._log("Querying status…")
-        w = StatusWorker(self._sock, self._q)
+        _, _, key = self._get_params()
+        w = StatusWorker(self._sock, self._q, self._fw_data, key, authenticate)
         threading.Thread(target=w.run, daemon=True).start()
 
     def _start_transfer(self) -> None:
@@ -903,17 +944,40 @@ class App(tk.Tk):
         self._stop_watcher()
         self._join_worker()   # wait for worker's current recv() to finish
         self._set_transferring(False)
-        # Send CMD_ABORT — stay connected
-        if self._sock:
-            try:
-                self._sock.sendall(build_packet(CMD_ABORT))
-                recv_packet(self._sock)   # consume ACK/NACK cleanly
-            except Exception:
-                pass
+        if self._sock is None:
+            return
+        try:
+            # ABORT is rejected with ERR_AUTH until a HELLO succeeds on this
+            # connection — authenticate with the loaded file when needed.
+            if not self._authenticated:
+                if self._fw_data is None:
+                    self._log("ERROR: The device rejects ABORT until a HELLO "
+                              "succeeds on this connection. Load the firmware "
+                              "file and retry.")
+                    self._start_watcher()
+                    return
+                _, _, key = self._get_params()
+                self._log("TX  HELLO  (authenticate for ABORT)")
+                self._sock.sendall(build_packet(
+                    CMD_HELLO, build_hello_payload(self._fw_data, key)))
+                resp_cmd, resp_data = recv_packet(self._sock)
+                if resp_cmd == RESP_NACK:
+                    code = resp_data[0] if resp_data else 0
+                    self._log("ERROR: Authentication failed "
+                              f"[{NACK_ERRORS.get(code, f'err=0x{code:02X}')}]"
+                              " — abort not sent.")
+                    self._drain_socket(self._sock)
+                    self._start_watcher()
+                    return
+                self._authenticated = True
+            # Send CMD_ABORT — stay connected
+            self._sock.sendall(build_packet(CMD_ABORT))
+            recv_packet(self._sock)   # consume ACK/NACK cleanly
+        except Exception:
+            pass
         self._log("Abort sent \u2014 MCU session cleared.")
         # Drain any leftover bytes (e.g. delayed ACK) before restarting watcher
-        if self._sock:
-            self._drain_socket(self._sock)
+        self._drain_socket(self._sock)
         # Restore idle-connected UI state and restart watcher
         if self._is_connected:
             self._btn_status.configure(state="normal")
@@ -925,25 +989,14 @@ class App(tk.Tk):
     def _reboot(self) -> None:
         if self._sock is None:
             return
+        if not self._authenticated:
+            self._log("ERROR: The device rejects REBOOT until a HELLO "
+                      "succeeds on this connection. Start a transfer (or "
+                      "Check Status with the firmware file loaded) first.")
+            return
         self._stop_watcher()
-        self._log("Sending reboot command…")
+        self._log("Sending apply & reboot command…")
         w = RebootWorker(self._sock, self._q)
-        threading.Thread(target=w.run, daemon=True).start()
-
-    def _apply(self) -> None:
-        if self._sock is None:
-            return
-        from tkinter import messagebox
-        if not messagebox.askyesno(
-                "Apply Firmware",
-                "Device will reboot into bootloader update mode and apply the downloaded firmware.\n\n"
-                "Are you sure?",
-                icon="warning"):
-            return
-        self._stop_watcher()
-        self._btn_apply.configure(state="disabled")
-        self._log("TX  APPLY")
-        w = ApplyWorker(self._sock, self._q)
         threading.Thread(target=w.run, daemon=True).start()
 
     # ── Queue polling ────────────────────────────────────────────────
@@ -971,13 +1024,13 @@ class App(tk.Tk):
 
                 elif kind == "start_offset":
                     self._start_offset = item[1]
+                    self._authenticated = True   # HELLO succeeded on this connection
                     # Reset timer so ETA is relative to this session only
                     self._start_time = time.monotonic()
 
                 elif kind == "done":
                     self._set_transferring(False)
                     self._btn_reboot.configure(state="normal")
-                    self._btn_apply.configure(state="normal")
                     self._eta_var.set("Done!")
                     self._worker = None
                     self.title("Smart Breaker — RFWU Firmware Update")
@@ -991,12 +1044,16 @@ class App(tk.Tk):
                     self._worker = None
 
                 elif kind == "status_result":
+                    self._authenticated = True   # QUERY answered → connection is authenticated
                     _, active, whead, nv_total, nv_rx, nv_hash = item
                     has_nv = nv_total > 0
                     sep    = "─" * 54
                     lines  = [sep, "  Device Status"]
-                    lines.append(
-                        f"  Transfer active : {'Yes  (offset {whead:,} bytes)' if active else 'No'}")
+                    if active:
+                        lines.append(
+                            f"  Transfer active : Yes  (offset {whead:,} bytes)")
+                    else:
+                        lines.append("  Transfer active : No")
                     if has_nv:
                         pct = (nv_rx * 100 // nv_total) if nv_total > 0 else 0
                         lines.append( "  NVRAM session   : Yes")
