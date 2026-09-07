@@ -206,17 +206,15 @@ static void elog_log_boot_events(void)
 		          (unsigned long)pc, (unsigned long)cfsr);
 	}
 
-	/* Yazilim sifirlamasi (SFT) bilincli bir eylemdir - fw guncelleme
-	 * reboot'u, periyodik modem reseti vb. - ve her planli reboot'ta
-	 * elog'i doldurur. Ozel bir neden gostermeyen SFT acilislari
-	 * kaydedilmez; anormal nedenler (IWDG/WWDG/BOR/LPWR - SFT ile
-	 * birlikte gorseler bile) kayitta kalir. */
-	if (!reset_source_has(RESET_SOURCE_SOFTWARE) || reset_source_is_abnormal())
-	{
-		elog_log_reset_cause((uint32_t)reset_source_get_flags(),
-		                     reset_source_get_raw(),
-		                     reset_source_is_abnormal());
-	}
+	/* TODO (gecici, cift-boot incelemesi): TUM reset nedenleri
+	 * kaydediliyor - ozel nedeni olmayan SFT acilislari dahil.
+	 * Bolum 12:44 olayindaki ikinci resetin sinifini (SFT/PIN)
+	 * gorebilmek icin. Inceleme kapaninca eski politika geri
+	 * dondurulecek: ozel nedeni olmayan SFT kaydedilmez, anormal
+	 * nedenler (IWDG/WWDG/BOR/LPWR) her durumda kayitta kalir. */
+	elog_log_reset_cause((uint32_t)reset_source_get_flags(),
+	                     reset_source_get_raw(),
+	                     reset_source_is_abnormal());
 }
 
 __attribute__ ((noreturn)) void app_main(void)
