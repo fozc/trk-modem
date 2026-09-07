@@ -869,7 +869,7 @@ int32_t at_engine_process(void)
 			break;
 		case AT_ENGINE_URC_INCOMING:
 			at_engine_urc_incoming_process();
-			break;	
+			break;
 		case AT_ENGINE_SEND_CMD:
 			at_engine_send_process();
 			break;
@@ -883,16 +883,21 @@ int32_t at_engine_process(void)
 			 * reset) and the ring buffer, causing missed URC detections.
 			 * URC data in the ring buffer is preserved through reset and
 			 * processed in the next IDLE -> URC_INCOMING cycle. */
-			if (at_engine.result != AT_ENGINE_RESULT_TIMEOUT)
-			{
-				/* Canlilik damgasi: timeout disi biten her AT isi GSM
-				 * alt sisteminin yasadiginin kanitidir (stuck-FREE wtd). */
-				gsm_wtd_liveness_ping();
-			}
 			break;
 		default:
 			at_engine.state = AT_ENGINE_IDLE;
 			break;
+	}
+
+	/* Canlilik damgasi: timeout disi biten her AT isi GSM alt sisteminin
+	 * yasadiginin kanitidir (stuck-FREE wtd). DONE case'ine degil buraya
+	 * konmalidir: FSM (gsm_process_old) bu surecten once kosup DONE'i
+	 * tuketebildiginden case'in kendisi cogu zaman hizalamaz - DONE'a
+	 * gecis yapan turda bile ping atilmis olur. */
+	if ((at_engine.state == AT_ENGINE_DONE) &&
+	    (at_engine.result != AT_ENGINE_RESULT_TIMEOUT))
+	{
+		gsm_wtd_liveness_ping();
 	}
 
 	return 0;
