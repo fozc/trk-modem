@@ -16,6 +16,7 @@
 
 #include "elog.h"
 #include "version.h"
+#include "boot.h"
 #include <string.h>
 #include "bsp.h"
 #include "shell.h"
@@ -439,8 +440,13 @@ const char *elog_info_to_text(const elog_entry_t *entry)
         }
 
         case ELOG_SYSTEM_FW_APPROVED:
-            xsnprintf(text, sizeof(text), "approved v%u.%u.%u.%u",
-                      info[0], info[1], info[2], info[3]);
+            xsnprintf(text, sizeof(text), "approved v%u.%u.%u.%u %s",
+                      info[0], info[1], info[2], info[3],
+                      (info[4] != 0U) ? (const char *)&info[4] : "-");
+            break;
+
+        case ELOG_GSM_COLD_BOOT:
+            xsnprintf(text, sizeof(text), "cold boot attempt %u", info[0]);
             break;
 
         case ELOG_SYSTEM_HARDFAULT:
@@ -864,6 +870,15 @@ void elog_log_fw_approved(void)
     info[1] = VERSION_MINOR;
     info[2] = VERSION_PATCH;
     info[3] = VERSION_EXTRA;
+
+    /* Imaj kimligi boot superblock'tan: hangi commit onaylandi.
+     * short_commit_hash NUL sonlu 7 karakter (boot.h garantisi). */
+    const fw_info_t *fw_info = boot_get_installed_fw_info();
+    if (fw_info != NULL)
+    {
+        (void)memcpy(&info[4], fw_info->short_commit_hash, 8U);
+    }
+
     elog_add(ELOG_SYSTEM_FW_APPROVED, ELOG_LEVEL_INFO, info, sizeof(info));
 }
 
