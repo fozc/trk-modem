@@ -449,6 +449,11 @@ const char *elog_info_to_text(const elog_entry_t *entry)
             xsnprintf(text, sizeof(text), "cold boot attempt %u", info[0]);
             break;
 
+        case ELOG_GSM_WTD_LIVENESS:
+            xsnprintf(text, sizeof(text), "silent %us, recovery %u",
+                      (unsigned)((info[0] << 8) | info[1]), info[2]);
+            break;
+
         case ELOG_SYSTEM_HARDFAULT:
             xsnprintf(text, sizeof(text), "pc=0x%08lX lr=0x%08lX cfsr=0x%08lX hfsr=0x%08lX",
                       (unsigned long)elog_rd_be32(&info[0]),

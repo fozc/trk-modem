@@ -25,6 +25,16 @@ extern "C" {
  */
 void gsm_wtd_check(void);
 
+/**
+ * @brief Liveness ping - call whenever the AT engine completes work.
+ *
+ * Any finished (non-timeout) AT command proves the GSM subsystem is
+ * alive.  While the engine is FREE and no ping arrives for the
+ * liveness timeout, gsm_wtd_check() treats the subsystem as silently
+ * hung (stuck-FREE) and triggers graduated recovery.
+ */
+void gsm_wtd_liveness_ping(void);
+
 #ifdef __cplusplus
 }
 #endif

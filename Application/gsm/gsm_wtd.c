@@ -24,6 +24,12 @@
 #define GSM_WTD_TIMEOUT_MS       (5UL * 60UL * 1000UL)  /* 5 minutes */
 #define GSM_WTD_RESET_THRESHOLD  2U                      /* soft recoveries before hard reset */
 
+/* Stuck-FREE (liveness) esigi: motor bos gorunurken GSM alt sisteminin
+ * "yasadigini" kanitlayan tek sey urettigi AT isidir (07.09 12:44 vakasi:
+ * init kilitlenmesi - motor IDLE, hic AT yok, yazilim wtd kor). */
+#define GSM_WTD_LIVENESS_TIMEOUT_MS     (10UL * 60UL * 1000UL) /* 10 dk AT sessizligi */
+#define GSM_WTD_LIVENESS_MAX_RECOVERIES 2U                      /* restart hakki; sonrasi hard reset */
+
 /* ---------------------------------------------------------------------------
  *  External state
  * ------------------------------------------------------------------------- */
@@ -34,6 +40,8 @@ extern gsm_t gsm;
  * ------------------------------------------------------------------------- */
 static uint32_t s_wtd_last_activity;
 static uint8_t  s_wtd_soft_recovery_count;
+static uint32_t s_liveness_last_activity;
+static uint8_t  s_liveness_recovery_count;
 
 /* ---------------------------------------------------------------------------
  *  Internal helpers
@@ -47,6 +55,69 @@ static uint8_t  s_wtd_soft_recovery_count;
 static void gsm_wtd_feed(void)
 {
 	s_wtd_last_activity = gsm_get_tick();
+}
+
+/**
+ * @brief Canlilik damgasi - AT motoru bir isi bitirdiginde cagirir.
+ *
+ * Timeout disi her tamamlanan AT isi GSM alt sisteminin yasadiginin
+ * kanitidir; ping geldiginde kurtarma sayaci da tazelenir (canlilik
+ * geri donmustur).
+ */
+void gsm_wtd_liveness_ping(void)
+{
+	s_liveness_last_activity = gsm_get_tick();
+	s_liveness_recovery_count = 0;
+}
+
+/**
+ * @brief Stuck-FREE tespiti: motor bos ama alt sistem AT uretmiyor.
+ *
+ * Son canlilik damgasindan beri GSM_WTD_LIVENESS_TIMEOUT_MS gectiyse
+ * alt sistemi sessizce asili sayiyoruz: surec yeniden baslatma
+ * (cold boot) istenir; GSM_WTD_LIVENESS_MAX_RECOVERIES kezden sonra
+ * bilincl hard reset (elog kayitli).
+ */
+static void gsm_wtd_log_diagnostic(elog_code_t code);
+
+static void liveness_check(void)
+{
+	uint32_t silent_ms = gsm_get_tick() - s_liveness_last_activity;
+
+	if (silent_ms < GSM_WTD_LIVENESS_TIMEOUT_MS)
+	{
+		return;
+	}
+
+	/* Tetikleme basina bir kez karar ver: yeni pencere ac. */
+	s_liveness_last_activity = gsm_get_tick();
+	++s_liveness_recovery_count;
+
+	CSLOG_ERR("[GSM WTD] Liveness: motor FREE ama %u dk'dir AT isi yok - kurtarma %u/%u",
+	    (unsigned)(silent_ms / 60000U),
+	    (unsigned)s_liveness_recovery_count,
+	    (unsigned)GSM_WTD_LIVENESS_MAX_RECOVERIES);
+
+	uint8_t info[16] = {0};
+	uint16_t silent_sec = (uint16_t)(silent_ms / 1000U);
+	info[0] = (uint8_t)(silent_sec >> 8U);
+	info[1] = (uint8_t)(silent_sec & 0xFFU);
+	info[2] = s_liveness_recovery_count;
+	gsm_elog_modem_event_with_arg(ELOG_GSM_WTD_LIVENESS, info, sizeof(info));
+
+	if (s_liveness_recovery_count <= GSM_WTD_LIVENESS_MAX_RECOVERIES)
+	{
+		gsm_request_module_restart();
+	}
+	else
+	{
+		gsm_wtd_log_diagnostic(ELOG_GSM_WTD_HARD_RESET);
+		CSLOG_ERR("[GSM WTD] Liveness: %u kurtarma tukendi - hard reset",
+		    (unsigned)GSM_WTD_LIVENESS_MAX_RECOVERIES);
+		s_liveness_recovery_count = 0;
+		gsm_wtd_feed();
+		bsp_system_reset();
+	}
 }
 
 /**
@@ -155,18 +226,19 @@ static void gsm_wtd_soft_recover(void)
  * ------------------------------------------------------------------------- */
 void gsm_wtd_check(void)
 {
-	/* TODO (O4b.3): Bu watchdog yalniz stuck-BUSY'i yakalar; stuck-FREE
-	 * kilitleri (listener SM asili ama motor bos) gorunmez — motor bos
-	 * oldugu icin WDT surekli beslenir, tepki/kurtama tetiklenmez.
-	 * Cozum: gsm_periodical_tick'ten liveness ping (gsm_wtd_liveness_ping)
-	 * alip, motor bos + periodical 10 dk'dir sessiz ise yumusak kurtarma
-	 * tetiklemek (gsm_wtd_soft_recover cagrisi). */
+	/* O4b.3 (uygulandi): stuck-FREE kilitleri liveness damgasiyla
+	 * yakalaniyor - AT motoru timeout disi bir isi bitirdikce ping atar
+	 * (bkz. at_engine2.c DONE durumu). Motor bos + damga eski = alt
+	 * sistem sessizce asili: liveness_check() karar verir. Boot'taki
+	 * gsm_power_on sinirsiz retry dongusu sirasinda poll dongusu
+	 * kosmadigindan bu kontrol tetiklenmez. */
 
 	/* Feed when GSM is not busy — normal operation */
 	if (!gsm_is_busy())
 	{
 		gsm_wtd_feed();
 		s_wtd_soft_recovery_count = 0;
+		liveness_check();
 		return;
 	}
 
