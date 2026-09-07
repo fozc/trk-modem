@@ -6,6 +6,7 @@
  */
 #define CSLOG_MODULE LOG_MOD_GSM
 #include "at_engine2.h"
+#include "gsm_wtd.h"
 #include "bsp.h"
 #include "ring_buff.h"
 #include <string.h>
@@ -882,6 +883,12 @@ int32_t at_engine_process(void)
 			 * reset) and the ring buffer, causing missed URC detections.
 			 * URC data in the ring buffer is preserved through reset and
 			 * processed in the next IDLE -> URC_INCOMING cycle. */
+			if (at_engine.result != AT_ENGINE_RESULT_TIMEOUT)
+			{
+				/* Canlilik damgasi: timeout disi biten her AT isi GSM
+				 * alt sisteminin yasadiginin kanitidir (stuck-FREE wtd). */
+				gsm_wtd_liveness_ping();
+			}
 			break;
 		default:
 			at_engine.state = AT_ENGINE_IDLE;

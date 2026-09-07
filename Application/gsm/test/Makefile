@@ -32,8 +32,9 @@ TEST_OBJ := $(BUILD_DIR)/test_ring_buff.o
 TARGET := $(BUILD_DIR)/test_ring_buff
 TARGET_LADDER := $(BUILD_DIR)/test_coldboot_ladder
 TARGET_LOOP := $(BUILD_DIR)/test_restart_loop
+TARGET_WTD := $(BUILD_DIR)/test_wtd_liveness
 
-.PHONY: all run clean run_all run_coldboot run_coldboot_hang run_restart_loop
+.PHONY: all run clean run_all run_coldboot run_coldboot_hang run_restart_loop run_wtd_liveness
 
 all: $(TARGET)
 
@@ -78,7 +79,15 @@ $(TARGET_LOOP): test_restart_loop.c ../../gsm_process_contiki.c | $(BUILD_DIR)
 run_restart_loop: $(TARGET_LOOP)
 	./$(TARGET_LOOP)
 
-run_all: run run_coldboot run_coldboot_hang run_restart_loop
+# --- Stuck-FREE liveness (gsm_wtd.c include edilir) -----------------
+
+$(TARGET_WTD): test_wtd_liveness.c ../gsm_wtd.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS_PROD) $(INC) -o $@ $<
+
+run_wtd_liveness: $(TARGET_WTD)
+	./$(TARGET_WTD)
+
+run_all: run run_coldboot run_coldboot_hang run_restart_loop run_wtd_liveness
 	@echo "=== tum gsm host testleri bitti ==="
 
 clean:
