@@ -49,9 +49,24 @@ int elog_read_recent(uint32_t skip_newest, uint32_t count,
                      elog_entry_t *entries, uint32_t *out_count);
 
 void elog_print(elog_level_t level, const char *message);
-void elog_clear(void);
-uint16_t elog_get_entry_count(void);
-uint16_t elog_get_max_entries(void);
+
+/* Erase the whole ring and re-scan it. Returns true only when every
+ * sector erase succeeded and the re-scan re-initialized the ring; any
+ * failure is reported on the active terminal (SHELL_LOG) as it happens. */
+bool elog_clear(void);
+/* ---- capacity semantics -------------------------------------------------
+ * Three distinct numbers, do not conflate:
+ *   next_seq     - sequence number the NEXT record will carry (wraps at
+ *                  65535; equals the total written only before the first
+ *                  wrap - the ring does not track a lifetime total)
+ *   stored_count - records currently readable from flash (exact; scans
+ *                  the whole ring, O(ring) flash reads per call)
+ *   capacity     - maximum records the ring can preserve (erase is
+ *                  deferred, so a full ring holds every sector's worth)
+ * ------------------------------------------------------------------------ */
+uint16_t elog_get_next_seq(void);
+uint32_t elog_get_stored_count(void);
+uint16_t elog_get_capacity(void);
 
 /* Decode the info payload of an entry into human-readable text (e.g.
  * "connected 95.5.188.130", "PIN|SFT raw=0x14005500 normal").

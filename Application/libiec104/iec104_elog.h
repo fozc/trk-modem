@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -94,14 +95,20 @@ void iec104_elog_disconnected(iec104_elog_disc_reason_t reason);
 int iec104_elog_read_recent(uint32_t skip_newest, uint32_t count,
                             iec104_elog_entry_t *entries, uint32_t *out_count);
 
-/** Erase all entries and re-init the ring. */
-void iec104_elog_clear(void);
+/** Erase all entries and re-init the ring. Returns true only when every
+ *  sector erase succeeded and the re-scan re-initialized the ring; any
+ *  failure is reported on the active terminal (SHELL_LOG). */
+bool iec104_elog_clear(void);
 
-/** Total entries ever written (16-bit wrap like elog). */
-uint16_t iec104_elog_get_entry_count(void);
-
-/** Ring capacity in entries. */
-uint16_t iec104_elog_get_max_entries(void);
+/* ---- capacity semantics (same contract as elog.h) ---------------------
+ * next_seq     - sequence the NEXT record will carry (wraps at 65535;
+ *                equals the total written only before the first wrap)
+ * stored_count - records currently readable (exact; O(ring) scan)
+ * capacity     - max preservable records (full ring holds every sector)
+ * ---------------------------------------------------------------------- */
+uint16_t iec104_elog_get_next_seq(void);
+uint32_t iec104_elog_get_stored_count(void);
+uint16_t iec104_elog_get_capacity(void);
 
 /** Decode an entry's info payload into readable text (static buffer). */
 const char *iec104_elog_info_to_text(const iec104_elog_entry_t *entry);

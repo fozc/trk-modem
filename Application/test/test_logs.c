@@ -155,9 +155,9 @@ void test_populate_logs(uint16_t count)
         return;
     }
     
-    uint16_t initial_count = elog_get_entry_count();
-    SHELL_LOG("Initial entry count: %u\r\n", initial_count);
-    SHELL_LOG("Max entries: %u\r\n", elog_get_max_entries());
+    uint16_t initial_count = elog_get_next_seq();
+    SHELL_LOG("Initial next seq: %u\r\n", initial_count);
+    SHELL_LOG("Capacity: %u\r\n", elog_get_capacity());
     SHELL_LOG("\r\nGenerating %u fault records...\r\n\r\n", count);
     
     for (uint16_t i = 0; i < count; i++) {
@@ -188,15 +188,15 @@ void test_populate_logs(uint16_t count)
         }
     }
     
-    uint16_t final_count = elog_get_entry_count();
+    uint16_t final_count = elog_get_next_seq();
     SHELL_LOG("\r\n========================================\r\n");
-    SHELL_LOG("Final entry count: %u\r\n", final_count);
+    SHELL_LOG("Final next seq: %u\r\n", final_count);
     SHELL_LOG("Entries added: %u\r\n", final_count - initial_count);
-    
-    if (final_count > elog_get_max_entries()) {
+
+    if (final_count > elog_get_capacity()) {
         SHELL_LOG("NOTE: Circular buffer wrapped around!\r\n");
-        SHELL_LOG("      Oldest %u entries overwritten.\r\n", 
-                final_count - elog_get_max_entries());
+        SHELL_LOG("      Next seq %u passed capacity %u.\r\n",
+                final_count, elog_get_capacity());
     }
     
     SHELL_LOG("========================================\r\n\r\n");
@@ -237,8 +237,8 @@ void test_populate_syslogs(uint16_t count)
     };
     const uint8_t msg_count = sizeof(system_messages) / sizeof(system_messages[0]);
     
-    uint16_t initial_count = elog_get_entry_count();
-    SHELL_LOG("Initial entry count: %u\r\n", initial_count);
+    uint16_t initial_count = elog_get_next_seq();
+    SHELL_LOG("Initial next seq: %u\r\n", initial_count);
     SHELL_LOG("\r\nGenerating %u system logs...\r\n\r\n", count);
     
     for (uint16_t i = 0; i < count; i++) {
@@ -273,9 +273,9 @@ void test_populate_syslogs(uint16_t count)
         }
     }
     
-    uint16_t final_count = elog_get_entry_count();
+    uint16_t final_count = elog_get_next_seq();
     SHELL_LOG("\r\n========================================\r\n");
-    SHELL_LOG("Final entry count: %u\r\n", final_count);
+    SHELL_LOG("Final next seq: %u\r\n", final_count);
     SHELL_LOG("========================================\r\n\r\n");
 }
 
@@ -384,12 +384,12 @@ void test_clear_logs(void)
     SHELL_LOG("         CLEARING ALL LOGS\r\n");
     SHELL_LOG("========================================\r\n");
     
-    uint16_t count_before = elog_get_entry_count();
+    uint32_t count_before = elog_get_stored_count();
     SHELL_LOG("Entries before clear: %u\r\n", count_before);
-    
+
     elog_clear();
-    
-    uint16_t count_after = elog_get_entry_count();
+
+    uint32_t count_after = elog_get_stored_count();
     SHELL_LOG("Entries after clear: %u\r\n", count_after);
     SHELL_LOG("========================================\r\n\r\n");
 }

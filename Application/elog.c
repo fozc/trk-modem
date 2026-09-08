@@ -8,10 +8,14 @@
  * Storage engine: spi_flash_log append-only ring (Application/libs/).
  * The 24-byte elog_entry_t is the log payload; the library wraps it with a
  * 16-bit wrapping sequence number and a 16-bit CRC on flash (28-byte entries;
- * entries may straddle flash pages, the library splits the programs). A sector
- * is erased only when the write head wraps to it, so a log_add costs one
- * 28-byte page program instead of the four sector erase+rewrites of the old
- * engine.
+ * entries may straddle flash pages, the library splits the programs). One
+ * record costs at least two page programs (payload phase, then CRC), three
+ * when the payload phase straddles a page boundary; a sector is erased only
+ * when a new record needs its space (lazy erase: an idle full ring keeps its
+ * oldest sector). On flash errors the library keeps the
+ * write head inside the ring area, poisons a slot the driver never wrote
+ * (so the boot scan cannot hide later records) and retries a failed sector
+ * transition on the next write.
  */
 
 #include "elog.h"
@@ -47,6 +51,11 @@ static log_ctx_t elog_ctx;
 
 /* ---- w25qxx adapter layer (signatures differ from log_flash_ops_t) --- */
 
+/* w25qxx_read_buff is void-typed: the driver layer cannot distinguish a
+ * failed SPI read, so this adapter has no error to propagate and always
+ * reports success. TODO(w25qxx): add an int-returning read variant once
+ * the SPI/HAL layer can detect transfer errors; until then a read error
+ * surfaces only as a CRC/torn-slot rejection inside the log library. */
 static int elog_flash_read(uint32_t addr, void *buf, size_t len)
 {
     w25qxx_read_buff(addr, buf, (uint32_t)len);
@@ -115,8 +124,8 @@ void elog_init(void)
     }
 
     CSLOG("Error log system initialized.\r\n");
-    CSLOG("Capacity: %u entries, total written: %u\r\n",
-          elog_get_max_entries(), elog_get_entry_count());
+    CSLOG("Capacity: %u entries, next seq: %u\r\n",
+          elog_get_capacity(), elog_get_next_seq());
 }
 
 void elog_add(elog_code_t _code, elog_level_t level, const void *data, size_t data_len)
@@ -252,28 +261,53 @@ void elog_print(elog_level_t level, const char *message)
     CSLOG("[%s] %s\r\n", level_str, message);
 }
 
-void elog_clear(void)
+bool elog_clear(void)
 {
     if (!log_is_initialized(&elog_ctx))
     {
-        CSLOG("Error: elog not initialized\r\n");
-        return;
+        SHELL_LOG("Error: elog not initialized\r\n");
+        return false;
     }
 
     log_config_t cfg;
 
     elog_config_build(&cfg);
 
+    uint32_t erase_failures = 0U;
+
     for (uint32_t s = 0U; s < elog_ctx.sector_count; s++)
     {
-        (void)elog_flash_erase_sector(elog_ctx.base_addr + (s * LOG_SECTOR_SIZE));
+        if (elog_flash_erase_sector(elog_ctx.base_addr + (s * LOG_SECTOR_SIZE)) != 0)
+        {
+            erase_failures++;
+            CSLOG_ERR("[ELOG] sector %u erase failed\r\n", (unsigned int)s);
+        }
     }
 
-    (void)log_init(&elog_ctx, &cfg);
-    CSLOG("Error log cleared. All entries removed.\r\n");
+    /* Re-scan regardless: log_init recovers the true head from whatever
+     * the flash holds after the (possibly partial) erase pass. */
+    log_status_t st = log_init(&elog_ctx, &cfg);
+
+    if (erase_failures > 0U)
+    {
+        SHELL_LOG("Clear FAILED: %u sector(s) not erased, re-scan %s\r\n",
+                  (unsigned int)erase_failures,
+                  (st == LOG_OK) ? "recovered the ring" : "failed");
+        return false;
+    }
+
+    if (st != LOG_OK)
+    {
+        SHELL_LOG("Clear FAILED: re-scan error %d, log left uninitialized\r\n",
+                  (int)st);
+        return false;
+    }
+
+    SHELL_LOG("Error log cleared. All entries removed.\r\n");
+    return true;
 }
 
-uint16_t elog_get_entry_count(void)
+uint16_t elog_get_next_seq(void)
 {
     if (!log_is_initialized(&elog_ctx))
     {
@@ -282,14 +316,30 @@ uint16_t elog_get_entry_count(void)
     return (uint16_t)log_get_next_seq(&elog_ctx);
 }
 
-uint16_t elog_get_max_entries(void)
+uint32_t elog_get_stored_count(void)
+{
+    uint32_t count = 0U;
+
+    if (!log_is_initialized(&elog_ctx))
+    {
+        return 0U;
+    }
+    if (log_read_all(&elog_ctx, elog_count_visitor, &count) != LOG_OK)
+    {
+        return 0U;
+    }
+    return count;
+}
+
+uint16_t elog_get_capacity(void)
 {
     if (!log_is_initialized(&elog_ctx))
     {
         return 0U;
     }
-    /* One sector is always kept erased for the circular invariant. */
-    return (uint16_t)(elog_ctx.entries_per_sector * (elog_ctx.sector_count - 1U));
+    /* Erase is deferred to the moment a new record needs the space, so a
+     * full ring holds every sector's worth of records. */
+    return (uint16_t)(elog_ctx.entries_per_sector * elog_ctx.sector_count);
 }
 
 /* ---- shell commands ---------------------------------------------------- */
@@ -539,17 +589,6 @@ static const char* elog_level_to_string(elog_level_t level)
     }
 }
 
-static uint32_t elog_stored_count(void)
-{
-    uint32_t count = 0U;
-
-    if (log_read_all(&elog_ctx, elog_count_visitor, &count) != LOG_OK)
-    {
-        return 0U;
-    }
-    return count;
-}
-
 static void elog_shell_info(int argc, char **argv)
 {
     (void)argc;
@@ -565,8 +604,10 @@ static void elog_shell_info(int argc, char **argv)
     SHELL_LOG("       ERROR LOG SYSTEM STATUS\r\n");
     SHELL_LOG("========================================\r\n");
     SHELL_LOG("Status           : INITIALIZED (append-only ring)\r\n");
-    SHELL_LOG("Next Seq         : %u (16-bit, wraps at 65535)\r\n", elog_get_entry_count());
-    SHELL_LOG("Stored Entries   : %u / %u\r\n", elog_stored_count(), elog_get_max_entries());
+    SHELL_LOG("Next Seq         : %u (wraps at 65535)\r\n",
+              elog_get_next_seq());
+    SHELL_LOG("Stored Entries   : %u / %u\r\n",
+              elog_get_stored_count(), elog_get_capacity());
 
     SHELL_LOG("\r\nMemory Addresses:\r\n");
     SHELL_LOG("  Log Area       : 0x%08X (%u sectors)\r\n",
@@ -654,8 +695,7 @@ static void elog_shell_dump(int argc, char **argv)
         }
     }
 
-    uint32_t total = elog_stored_count();
-    bool dump_all = (count == 0U) || (count >= total);
+    bool dump_all = (count == 0U);
 
     SHELL_LOG("\r\n");
     SHELL_LOG("========================================\r\n");
@@ -674,35 +714,12 @@ static void elog_shell_dump(int argc, char **argv)
     }
     else
     {
-        /* Chronological dump of the newest count entries. elog_read_recent
-         * (skip_newest, n) returns that sub-window newest -> oldest; walk
-         * the window from its oldest chunk down and print each chunk
-         * reversed to get oldest -> newest overall. */
-        elog_entry_t chunk[8];
-        uint32_t chunk_cap = (uint32_t)(sizeof(chunk) / sizeof(chunk[0]));
-        uint32_t nchunks = (count + chunk_cap - 1U) / chunk_cap;
-
-        for (uint32_t c = nchunks; (c > 0U) ; c--)
-        {
-            uint32_t idx = c - 1U;              /* 0 = newest chunk */
-            uint32_t skip = idx * chunk_cap;
-            uint32_t want = count - skip;
-            uint32_t got = 0U;
-
-            if (want > chunk_cap)
-            {
-                want = chunk_cap;
-            }
-
-            if ((elog_read_recent(skip, want, chunk, &got) != 0) || (got == 0U))
-            {
-                break;
-            }
-
-            for (uint32_t i = got; i > 0U; i--)
-            {
-                elog_print_entry(chunk[i - 1U].entry_id, &chunk[i - 1U]);
-            }
+        /* Newest count entries, chronological: the library positions the
+         * cursor backwards once and visits forward (<= 2 x count slot
+         * reads; no re-scanning from the head per chunk). Overshoot is
+         * clamped to the stored count inside the library. */
+        if (log_read_tail(&elog_ctx, count, elog_dump_visitor, NULL) != LOG_OK) {
+            SHELL_LOG("Dump failed: flash read error\r\n");
         }
     }
 
@@ -719,9 +736,12 @@ static void elog_shell_clear(int argc, char **argv)
         return;
     }
 
-    uint16_t count = elog_get_entry_count();
-    elog_clear();
-    SHELL_LOG("\r\nCleared log (seq was at %u).\r\n", count);
+    uint16_t count = elog_get_next_seq();
+
+    if (elog_clear())
+    {
+        SHELL_LOG("\r\nCleared log (seq was at %u).\r\n", count);
+    }
 }
 
 static int elog_shell_command(int argc, char **argv)
