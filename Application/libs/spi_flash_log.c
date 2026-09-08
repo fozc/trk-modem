@@ -133,6 +133,38 @@ static entry_state_t entry_check(const log_ctx_t *ctx, const uint8_t *buf) {
 }
 
 /**
+ * @brief Birinci fazı (seq+payload) basarisiz bir yazmanin ardindan slota
+ *        "yazilmis" statusu kazandir.
+ *
+ * Program komutu hic bayt yazamadan hata verirse slot EMPTY (seq=0xFFFF)
+ * kalir. Head boyle bir deligi asarak ilerlerse, acilis taramasinin "ilk
+ * EMPTY slotta dur" kurali delikten sonraki tum kayitlari gizler ve
+ * next_seq geriye sarar. Bu yuzden delik yaratilmadan once slot kontrol
+ * edilir:
+ *   - Slot zaten EMPTY degilse (torn: kismen yazilmis) bir sey yapmaya
+ *     gerek yok; slot CORRUPT olarak atlanabilir.
+ *   - Slot hala EMPTY ise ilk bayta 0x00 "zehir" yazilir (0xFF & 0x00
+ *     AND-guvenli). Slot CORRUPT'a doner, tarama delik olarak atlar.
+ *
+ * @return true  slot EMPTY olamaz (torn ya da zehir yazildi) -> ilerle.
+ *         false slot EMPTY kalabilir (zehir/okuma basarisiz) -> ayni
+ *         slotta kal; EMPTY oldugu surece ayni adrese yeniden yazmak
+ *         AND bozulmasi riski tasimaz.
+ */
+static bool slot_poison_if_empty(const log_ctx_t *ctx, uint32_t addr) {
+    uint8_t seq_buf[LOG_SEQ_SIZE];
+    uint8_t poison = 0x00u;
+
+    if (ctx->ops.read(addr, seq_buf, LOG_SEQ_SIZE) != 0) {
+        return false;                    /* slot durumu bilinemiyor */
+    }
+    if (entry_get_seq(seq_buf) != ENTRY_SEQ_EMPTY) {
+        return true;                     /* torn: zaten EMPTY degil */
+    }
+    return ctx->ops.program(addr, &poison, 1u) == 0;
+}
+
+/**
  * @brief Bir sektörü tarayarak yazının gerçek sonunu bulur; torn (CORRUPT)
  *        delikleri ATLAYARAK son geçerli entry ve ilk boş slot bilgisini çıkarır.
  *
@@ -143,8 +175,9 @@ static entry_state_t entry_check(const log_ctx_t *ctx, const uint8_t *buf) {
  *
  * "Boş slotta dur" kuralı güvenlidir: yazımlar daima head'den itibaren ardışık
  * gider ve head her zaman ilk boş slota konur; dolayısıyla bir boş slottan
- * sonra geçerli kayıt yazılmış olamaz (yarım erase bu değişmezi bozabilir,
- * ancak açılıştaki koşulsuz erase onu iyileştirir).
+ * sonra geçerli kayıt yazılmış olamaz (yarım erase bu değişmezi bozabilir;
+ * ertelenmiş silme politikasında iyileştirme boot'ta değil, head dolu sektör
+ * sonundayken yapılan İLK yazmanın erase'ı ile gerçekleşir).
  */
 static log_status_t scan_sector(const log_ctx_t *ctx,
                                  uint32_t sector_idx,
@@ -225,6 +258,7 @@ log_status_t log_init(log_ctx_t *ctx, const log_config_t *cfg) {
     ctx->entries_per_sector = LOG_SECTOR_SIZE / entry_size;
     ctx->ops                = cfg->ops;
     ctx->initialized        = false;
+    ctx->slot_state_uncertain = false;
 
     bool     found_any       = false;
     uint32_t best_sector     = 0;
@@ -265,14 +299,12 @@ log_status_t log_init(log_ctx_t *ctx, const log_config_t *cfg) {
          * sonucu yalnızca delikler var): sektör 0'ın ilk BOŞ slotından başla.
          * Corrupt bir slota asla yazılmaz (NOR 1->0 AND bozulması riski). */
         if (sec0_full) {
-            /* Patolojik: sektör 0'ın tamamı delik -> sonraki sektörü sil ve
-             * oradan devam (idempotent erase sector 0'ı bir sonraki turda
-             * temizleyecektir). */
-            if (ctx->ops.erase_sector(ctx->base_addr + LOG_SECTOR_SIZE) != 0) {
-                return LOG_ERR_FLASH_ERASE;
-            }
-            ctx->write_sector_index = 1u;
-            ctx->write_offset       = 0u;
+            /* Patolojik: sektör 0'ın tamamı delik. Silme burada da ertelenir:
+             * head sektör 0'ın sonunda bekler; ilk yazma sektör 1'i silip
+             * oradan devam eder, sektör 0'ı da bir sonraki turdaki silme
+             * temizler. */
+            ctx->write_sector_index = 0u;
+            ctx->write_offset       = ctx->entries_per_sector * ctx->entry_size;
         } else {
             ctx->write_sector_index = 0u;
             ctx->write_offset       = sec0_first_empty;
@@ -284,16 +316,13 @@ log_status_t log_init(log_ctx_t *ctx, const log_config_t *cfg) {
 
     if (best_full) {
         /* Aktif sektörde yazılabilir boş slot kalmadı (tamamen dolu ya da
-         * sonunda delikler birikti): koşulsuz bir sonraki sektörü sil ve
-         * oradan devam et (idempotent erase — erase sırasında kesinti otomatik
-         * çözülür; sector 0'daki patolojik delik birikimi de tur sonunda
-         * bu yolla temizlenir). */
-        uint32_t next = (best_sector + 1u) % ctx->sector_count;
-        if (ctx->ops.erase_sector(ctx->base_addr + next * LOG_SECTOR_SIZE) != 0) {
-            return LOG_ERR_FLASH_ERASE;
-        }
-        ctx->write_sector_index = next;
-        ctx->write_offset       = 0;
+         * sonunda delikler birikti). Silme ERTELENMIS politika: en eski
+         * sektör, yeni bir kayıt ona gerçekten ihtiyaç duymadıkça korunur.
+         * Head dolu sektörün sonunda bekler; ilk yazma head_transition()
+         * ile ihtiyaç anında siler. Yarım kalmış (torn) bir erase de aynı
+         * idempotent erase ile bir sonraki yazışta kendini iyileştirir. */
+        ctx->write_sector_index = best_sector;
+        ctx->write_offset       = ctx->entries_per_sector * ctx->entry_size;
         ctx->next_seq           = seq_next(best_seq);
     } else {
         /* Head: son geçerli kayıttan sonraki İLK BOŞ slot. Aradaki torn
@@ -311,6 +340,25 @@ log_status_t log_init(log_ctx_t *ctx, const log_config_t *cfg) {
     return LOG_OK;
 }
 
+/* Bekleyen sektör geçişini tamamla: aktif sektörde bir girişe daha yer
+ * kalmadığında sonraki sektörü silip head'i oraya taşır. Erase idempotent
+ * olduğundan hata durumunda bir sonraki log_write çağrısı güvenle yeniden
+ * deneyebilir; hata dönerse ctx değişmez (head dolu sektörün sonunda kalır).
+ *
+ * Başarısız program/erase yollarının head'i yarı geçişli bırakabildiği
+ * (offset ilerledi ama sektör değişmedi) durum log_write girişindeki ön
+ * normalizasyon tarafından buraya yönlendirilir; böylece bir yazma asla
+ * ring alanı dışındaki bir adrese kalkışamaz. */
+static log_status_t head_transition(log_ctx_t *ctx) {
+    uint32_t next = (ctx->write_sector_index + 1u) % ctx->sector_count;
+    if (ctx->ops.erase_sector(ctx->base_addr + next * LOG_SECTOR_SIZE) != 0) {
+        return LOG_ERR_FLASH_ERASE;
+    }
+    ctx->write_sector_index = next;
+    ctx->write_offset       = 0;
+    return LOG_OK;
+}
+
 log_status_t log_write(log_ctx_t *ctx, const void *payload) {
     if (ctx == NULL) {
         return LOG_ERR_INVALID_PARAM;
@@ -322,6 +370,39 @@ log_status_t log_write(log_ctx_t *ctx, const void *payload) {
         return LOG_ERR_INVALID_PARAM;
     }
     /* Seq taşma sınırı yoktur: seq_next(), ENTRY_SEQ_EMPTY'yi atlayarak sarar. */
+
+    /* Belirsiz slot cozumlemesi: bir onceki yazma head slotunun EMPTY
+     * olmadigini DOGRULAYAMADIysa (zehir yazılamadı ya da doğrulama okuması
+     * hata verdi) slotu yeniden doğrulamadan ASLA yazma. Hata döndüren bir
+     * program komutu veriyi yazmış olabilir (ör. timeout); EMPTY olmayan
+     * slota yeniden yazmak NOR'un AND kısıtıyla kalıcı bozulma üretir. */
+    if (ctx->slot_state_uncertain) {
+        uint8_t seq_buf[LOG_SEQ_SIZE];
+        uint32_t slot_addr = ctx->base_addr
+                           + ctx->write_sector_index * LOG_SECTOR_SIZE
+                           + ctx->write_offset;
+
+        if (ctx->ops.read(slot_addr, seq_buf, LOG_SEQ_SIZE) != 0) {
+            return LOG_ERR_FLASH_READ;   /* bayrak kalır, yeniden denenir */
+        }
+        if (entry_get_seq(seq_buf) != ENTRY_SEQ_EMPTY) {
+            /* Zehir/torn verisi gercekten landi: slota dokunma, torn
+             * delik olarak tuket. */
+            ctx->write_offset += ctx->entry_size;
+        }
+        ctx->slot_state_uncertain = false;
+    }
+
+    /* Ön normalizasyon: önceki bir hata yolu head'i sektör sonunda
+     * bırakmış olabilir. Geçiş başarılı olursa kayıt bu çağrıda yazılır;
+     * başarısız olursa hiçbir şey yazılmadan dönülür ve bir sonraki
+     * çağrı geçişi yeniden dener. */
+    if (ctx->write_offset + ctx->entry_size > LOG_SECTOR_SIZE) {
+        log_status_t st = head_transition(ctx);
+        if (st != LOG_OK) {
+            return st;
+        }
+    }
 
     uint8_t  buf[LOG_MAX_ENTRY_SIZE];
     uint16_t seq = (uint16_t)ctx->next_seq;
@@ -340,8 +421,18 @@ log_status_t log_write(log_ctx_t *ctx, const void *payload) {
     if (program_split(ctx, addr, buf, crc_off) != 0) {
         /* Torn slot: offset ilerlet ki ayni adrese yeniden yazilmasin.
          * NOR 1->0 AND kisiratmasi: farkli payload ayni slota yazilirsa
-         * iki degerin AND'i kalir, CRC sonsuza dek tutmaz (O9.6). */
-        ctx->write_offset += ctx->entry_size;
+         * iki degerin AND'i kalir, CRC sonsuza dek tutmaz (O9.6).
+         * Once slot'un gercekten EMPTY olmadigindan emin ol: hic yazilmadan
+         * kalan bir delik, acilis taramasinin sonraki kayitlari gizlemesine
+         * ve next_seq'nin geriye sarmasina yol acar. */
+        if (slot_poison_if_empty(ctx, addr)) {
+            ctx->write_offset += ctx->entry_size;
+        } else {
+            /* Slotun EMPTY kaldigi DOGRULANAMADI (zehir yazılamadı ya da
+             * okuma hata verdi): head bu slotta kalsin; bir sonraki yazma
+             * giriste slotu yeniden dogrular ve ancak EMPTY ise yazar. */
+            ctx->slot_state_uncertain = true;
+        }
         return LOG_ERR_FLASH_PROGRAM;
     }
     /* 2. program komutu: crc (en son) */
@@ -353,15 +444,10 @@ log_status_t log_write(log_ctx_t *ctx, const void *payload) {
     ctx->next_seq = seq_next(ctx->next_seq);   /* wrap: 0xFFFE -> 0 */
     ctx->write_offset += ctx->entry_size;
 
-    /* Sektör sınırına ulaşıldıysa sonraki sektörü koşulsuz sil (lazy erase). */
-    if (ctx->write_offset + ctx->entry_size > LOG_SECTOR_SIZE) {
-        uint32_t next = (ctx->write_sector_index + 1u) % ctx->sector_count;
-        if (ctx->ops.erase_sector(ctx->base_addr + next * LOG_SECTOR_SIZE) != 0) {
-            return LOG_ERR_FLASH_ERASE;
-        }
-        ctx->write_sector_index = next;
-        ctx->write_offset       = 0;
-    }
+    /* Silme ERTELENMIS politika: sektör doldugunda erase burada yapilmaz.
+     * Head dolu sektörün sonunda bekler; sonraki kayit yer aradiginda girşte
+     * yapilan ön normalizasyon (head_transition) ihtiyaç aninda siler. Yeni
+     * kayit gelmedigi sürece en eski kayitlar korunur. */
 
     return LOG_OK;
 }
@@ -394,9 +480,13 @@ log_status_t log_read_all(log_ctx_t *ctx, log_visit_fn visit, void *user_ctx) {
 
     for (;;) {
         uint32_t base  = ctx->base_addr + s * LOG_SECTOR_SIZE;
-        uint32_t limit = (s == ctx->write_sector_index)
-                       ? ctx->write_offset
-                       : ctx->entries_per_sector * ctx->entry_size;
+        /* Ertelenmis silme politikasinda write_offset dolu sektörün sonunda
+         * (eps*entry_size) olabilir; limit buna kelepçelenir ki son slotun
+         * okumasi sektör sinirini asmasin. */
+        uint32_t limit = ctx->entries_per_sector * ctx->entry_size;
+        if ((s == ctx->write_sector_index) && (ctx->write_offset < limit)) {
+            limit = ctx->write_offset;
+        }
 
         for (uint32_t off = 0; off < limit; off += ctx->entry_size) {
             if (ctx->ops.read(base + off, buf, ctx->entry_size) != 0) {
@@ -450,12 +540,15 @@ log_status_t log_read_last(log_ctx_t *ctx, uint32_t count,
 
     uint8_t  buf[LOG_MAX_ENTRY_SIZE];
     uint32_t eps      = ctx->entries_per_sector;
-    uint32_t examined = 0u;
     uint32_t lap_cap  = ctx->sector_count * eps;   /* tam bir halka: güvenlik sınıri */
 
     while (page->page_count < count) {
-        if (examined++ >= lap_cap) {
-            /* Tüm halka tarandı (tümü torn gibi patolojik durum) */
+        if (page->_examined++ >= lap_cap) {
+            /* Tüm halka tarandı (tümü torn gibi patolojik durum). Sayaç
+             * cursor içinde çağrılar ARASINDA birikir: ertelenmiş silme
+             * ile tam dolu halkada EMPTY durdurucusu olmadığından tek
+             * çağrılık sınır cursor'u head'in altından geçirip kayıtları
+             * tekrarlatırdı. */
             page->_state = 2u;
             break;
         }
@@ -499,6 +592,93 @@ log_status_t log_read_last(log_ctx_t *ctx, uint32_t count,
      * veri sonuna gelindiyse yukarıda _state=2 ve has_more=false kaldı. */
     if (page->_state != 2u) {
         page->has_more = true;
+    }
+    return LOG_OK;
+}
+
+/* log_read_tail'in konumlandirma fazinda kullanilan bos ziyaretci. */
+static void tail_skip_visit(const void *payload, uint32_t payload_size,
+                            uint32_t seq, void *user_ctx) {
+    (void)payload;
+    (void)payload_size;
+    (void)seq;
+    (void)user_ctx;
+}
+
+/**
+ * @brief En yeni count gecerli kaydi KRONOLOJIK sirada (eski -> yeni)
+ *        ziyaret eder.
+ *
+ * "En yeni N kaydin dökümü" türü istemler için çift geçişli okuma:
+ *   1. Konumlandırma: log_read_last mekanizmasi bos ziyaretciyle geriye
+ *      dogru count kayit yürür; imleç pencerenin en eski kaydinin
+ *      fiziksel slotunda durir (torn delikler bu geçişte siniflandirilir,
+ *      veri kopyalanmaz).
+ *   2. Ziyaret: ayni slottan head'e dogru ileri yürünür; VALID kayitlar
+ *      ziyaret edilir, torn/EMPTY slotlar atlanir.
+ *
+ * Toplam maliyet <= 2 x count slot okumasidir. Her parçada imleci bastan
+ * tarayan çağıranların O(count^2) maliyetine karşılık ring büyüdükçe
+ * belirgin kazanç saglar.
+ */
+log_status_t log_read_tail(log_ctx_t *ctx, uint32_t count,
+                           log_visit_fn visit, void *user_ctx) {
+    if (ctx == NULL || visit == NULL || count == 0u) {
+        return LOG_ERR_INVALID_PARAM;
+    }
+    if (!ctx->initialized) {
+        return LOG_ERR_NOT_INITIALIZED;
+    }
+
+    /* Faz 1 - konumlandirma. */
+    log_page_ctx_t page;
+    memset(&page, 0, sizeof(page));
+    log_status_t st = log_read_last(ctx, count, tail_skip_visit, NULL, &page);
+    if (st != LOG_OK) {
+        return st;
+    }
+    if (page.page_count == 0u) {
+        return LOG_OK;              /* log bos */
+    }
+
+    /* Faz 2 - kronolojik ziyaret: konumlandirilan slottan head'e ileri.
+     * Pencere ile head arasinda yalnizca torn delikler olabilir; geri
+     * yuruyus erken durduysa basta kalan EMPTY bolgesi de atlanir
+     * (head konumu yuruyüsü her halükarda sonlandirir). */
+    uint32_t eps = ctx->entries_per_sector;
+    uint32_t s   = page._sector;
+    uint32_t off = page._offset;
+    uint32_t examined = 0u;
+    uint32_t visited  = 0u;
+    uint32_t lap_cap  = ctx->sector_count * eps;
+    uint8_t  buf[LOG_MAX_ENTRY_SIZE];
+
+    for (;;) {
+        if ((s == ctx->write_sector_index) && (off == ctx->write_offset)) {
+            break;                  /* head'e ulasildi */
+        }
+        if (examined++ >= lap_cap) {
+            break;                  /* patolojik güvenlik siniri */
+        }
+
+        uint32_t addr = ctx->base_addr + s * LOG_SECTOR_SIZE + off;
+        if (ctx->ops.read(addr, buf, ctx->entry_size) != 0) {
+            return LOG_ERR_FLASH_READ;
+        }
+
+        if (entry_check(ctx, buf) == ENTRY_VALID) {
+            visit(buf + LOG_SEQ_SIZE, ctx->payload_size,
+                  entry_get_seq(buf), user_ctx);
+            if (++visited >= page.page_count) {
+                break;              /* pencerenin son kaydi ziyaret edildi */
+            }
+        }
+
+        off += ctx->entry_size;
+        if (off >= eps * ctx->entry_size) {
+            off = 0u;
+            s   = (s + 1u) % ctx->sector_count;
+        }
     }
     return LOG_OK;
 }

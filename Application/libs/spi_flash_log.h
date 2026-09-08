@@ -146,6 +146,10 @@ typedef struct {
     uint32_t        write_offset;        /**< Sektör içindeki bir sonraki boş yer      */
     uint32_t        next_seq;            /**< Bir sonraki entry'ye atanacak seq        */
     bool            initialized;         /**< log_init başarıyla tamamlandı mı         */
+    bool            slot_state_uncertain; /**< Bir önceki yazma head slotunun EMPTY
+                                           *   olmadığını DOĞRULAYAMADI (zehir yazılamadı
+                                           *   ya da doğrulama okuması hata verdi);
+                                           *   sonraki yazma önce slotu yeniden doğrular */
 } log_ctx_t;
 
 /**
@@ -193,7 +197,9 @@ log_status_t log_init(log_ctx_t *ctx, const log_config_t *cfg);
  * @note Eşzamanlılık: Aynı bağlam birden fazla görev/ISR bağlamından
  *       çağrılıyorsa, çağıran tarafın bu çağrıyı bir mutex/kritik bölge ile
  *       koruması gerekir. Farklı bağlamlar birbirinden bağımsızdır.
- * @note Sektör dolduğu çağrıda, bu fonksiyon erase süresi kadar bloklayabilir.
+ * @note Sektör dolduğunda silme ERTELENİR: erase, dolu sektörden sonraki İLK
+ *       yazmada (yer arandığı anda) yapılır ve o çağrı erase süresi kadar
+ *       bloklayabilir. Yeni kayıt gelmediği sürece en eski kayıtlar korunur.
  * @note Seq sarması: seq 16-bittir ve 65534'ten sonra 0'a SARARAK devam eder;
  *       0xFFFF yalnızca "hiç yazılmamış slot" göstergesi olarak ayrıdır ve hiçbir
  *       kayda atanmaz. Tükenebilir bir ömür sınırı YOKTUR. Seq'leri karşılaştıran
@@ -242,6 +248,10 @@ typedef struct {
     uint8_t  _state;           /**< 0: başlanmadı, 1: sürüyor, 2: bitti */
     uint32_t _sector;          /**< Sonraki incelenecek sektör          */
     uint32_t _offset;          /**< Sonraki incelenecek sektör içi ofset */
+    uint32_t _examined;        /**< Çağrılar ARASINDA birikimli incelenen slot sayısı:
+                                    tam dolu halkada (ertelenmiş silme ile mümkün)
+                                    EMPTY durdurucusu olmadığından tur sınırı
+                                    cursor içinde korunmalıdır              */
 } log_page_ctx_t;
 
 /**
@@ -274,6 +284,29 @@ typedef struct {
 log_status_t log_read_last(log_ctx_t *ctx, uint32_t count,
                            log_visit_fn visit, void *user_ctx,
                            log_page_ctx_t *page);
+
+/**
+ * @brief En yeni count geçerli kaydı KRONOLOJİK sırada (eski -> yeni)
+ *        ziyaret eder.
+ *
+ * "En yeni N kaydın dökümü" türü istemler için tek imleçli okuma: önce
+ * imleç geriye doğru konumlandırılır (veri kopyalanmaz), sonra aynı
+ * slotlardan head'e doğru ileri yürünerek ziyaret edilir. Toplam maliyet
+ * <= 2 x count slot okumasıdır; her parçada baştan tarama yapan
+ * çağıranların O(count^2) maliyetine karşılık ring büyüdükçe kazanç
+ * sağlar.
+ *
+ * Torn (CRC'siz) slotlar atlanır; kayıt sayısı count'tan azsa logun
+ * tamamı döner.
+ *
+ * @param ctx        Başlatılmış log bağlamı.
+ * @param count      Ziyaret edilecek en yeni kayıt sayısı (> 0).
+ * @param visit      Her geçerli kayıt için çağrılacak callback (eski -> yeni).
+ * @param user_ctx   Callback'e aktarılacak opak pointer.
+ * @return LOG_OK başarılı; parametre/okuma hatalarında ilgili kod.
+ */
+log_status_t log_read_tail(log_ctx_t *ctx, uint32_t count,
+                           log_visit_fn visit, void *user_ctx);
 
 /* -------------------------------------------------------------------------- */
 /* Tanılama ve Durum Sorgulama Yardımcı Fonksiyonları                       */
