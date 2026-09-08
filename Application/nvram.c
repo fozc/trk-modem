@@ -19,6 +19,14 @@
 
 static nvram_t   nvram = {0};
 
+/* Son basariyla flash'a yazilan (veya acilista yuklenen) goruntunun
+ * CRC'si - "kalicilastirilan surum". nvram.crc'nin RAM kopyasindan
+ * AYRI tutulur: nvram_sync'in flash yazmalari basarisiz olursa bu
+ * guncellenmez, boylece RAM "kirli" kalir ve bir sonraki
+ * nvram_sync(false) "CRC unchanged" diyerek yeniden denemeyi atlayamaz
+ * (basarisiz kaydetme "degisiklik yok" sanilamaz). */
+static crc32_t nvram_persisted_crc;
+
 
 static uint32_t ioa_to_u32(ioa_3byte_t ioa)
 {
@@ -427,6 +435,9 @@ static nvram_slot_status_t nvram_load_slot(uint32_t addr)
         return NVRAM_SLOT_BAD_SCHEMA;   /* v3'ten itibaren migration buraya */
     }
 
+    /* Goruntu tam gecerli: flash'ta duran budur - kirli-durum algisinin
+     * baz cizgisi bu CRC olur. */
+    nvram_persisted_crc = nvram.crc;
     return NVRAM_SLOT_OK;
 }
 
@@ -554,11 +565,11 @@ int nvram_sync(bool crc_no_check)
 {
     crc32_t crc = nvram_calculate_crc();
 
-    if(!crc_no_check && crc == nvram.crc)
-	{
-		xcprintf(XCOLOR_YELLOW, "NVRAM CRC unchanged, skipping write.\r\n");
-		return 0;
-	}
+    if (!crc_no_check && (crc == nvram_persisted_crc))
+    {
+        xcprintf(XCOLOR_YELLOW, "NVRAM CRC unchanged, skipping write.\r\n");
+        return 0;
+    }
 
     nvram.length = (uint32_t)sizeof(nvram_t);
     nvram.sequence++;
@@ -568,8 +579,21 @@ int nvram_sync(bool crc_no_check)
     int res1 = w25qxx_write_buff(NVRAM_ADDRESS, &nvram, sizeof(nvram));
     int res2 = w25qxx_write_buff(NVRAM_BACKUP_ADDRESS, &nvram, sizeof(nvram));
 
+    if ((res1 != W25QXX_RES_OK) || (res2 != W25QXX_RES_OK))
+    {
+        /* Kalicilasma YOK: nvram_persisted_crc guncellenmez, RAM kirli
+         * kalir - bir sonraki nvram_sync(false) ayni veriyi yeniden
+         * yazar (write_buff sektorleri erase-once yazardigi icin yeni
+         * sequence ile yeniden yazmak AND-acisindan guvenlidir). */
+        xcprintf(XCOLOR_RED,
+                 "NVRAM write FAILED (main=%d backup=%d) - retry pending\r\n",
+                 res1, res2);
+        return -1;
+    }
+
+    nvram_persisted_crc = crc;
     CSLOG("NVRAM synchronized\r\n");
-    return (res1 != W25QXX_RES_OK || res2 != W25QXX_RES_OK) ? -1 : 0;
+    return 0;
 }
 
 bool nvram_is_cslog_enabled(void)

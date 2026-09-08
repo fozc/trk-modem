@@ -48,6 +48,11 @@
 
 int nvram_init(void);
 void nvram_dump(void);
+
+/* Degisiklikleri iki slota yazar. Donus 0: kalicilastirildi (veya zaten
+ * degisiklik yoktu). Donus -1: flash yazmasi basarisiz - RAM "kirli"
+ * kalir, boylece bir sonraki nvram_sync(false) ayni veriyi yeniden dener;
+ * cagiran hemen yeniden denemese bile degisiklik kayip "temiz" sanilmaz. */
 int nvram_sync(bool crc_no_check);
 void nvram_set_defaults(void);
 
