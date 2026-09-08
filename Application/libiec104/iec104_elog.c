@@ -30,6 +30,9 @@
 
 static log_ctx_t iec104_elog_ctx;
 
+/* Same driver limitation as elog.c: w25qxx_read_buff is void-typed, so a
+ * failed SPI read cannot be told apart here. TODO(w25qxx): int-returning
+ * read variant once the SPI/HAL layer can detect transfer errors. */
 static int iec104_elog_flash_read(uint32_t addr, void *buf, size_t len)
 {
     w25qxx_read_buff(addr, buf, (uint32_t)len);
@@ -236,28 +239,48 @@ int iec104_elog_read_recent(uint32_t skip_newest, uint32_t count,
     return 0;
 }
 
-void iec104_elog_clear(void)
+bool iec104_elog_clear(void)
 {
     if (!log_is_initialized(&iec104_elog_ctx))
     {
-        return;
+        return false;
     }
 
     log_config_t cfg;
 
     iec104_elog_config_build(&cfg);
 
+    uint32_t erase_failures = 0U;
+
     for (uint32_t s = 0U; s < iec104_elog_ctx.sector_count; s++)
     {
-        (void)iec104_elog_flash_erase_sector(
-                iec104_elog_ctx.base_addr + (s * LOG_SECTOR_SIZE));
+        if (iec104_elog_flash_erase_sector(
+                iec104_elog_ctx.base_addr + (s * LOG_SECTOR_SIZE)) != 0)
+        {
+            erase_failures++;
+            CSLOG_ERR("[IEC104ELOG] sector %u erase failed\r\n",
+                      (unsigned int)s);
+        }
     }
 
-    (void)log_init(&iec104_elog_ctx, &cfg);
-    CSLOG("IEC104 log cleared. All entries removed.\r\n");
+    /* Re-scan regardless: log_init recovers the true head from whatever
+     * the flash holds after the (possibly partial) erase pass. */
+    log_status_t st = log_init(&iec104_elog_ctx, &cfg);
+
+    if ((erase_failures > 0U) || (st != LOG_OK))
+    {
+        SHELL_LOG("IEC104 log clear FAILED: %u sector(s) not erased, "
+                  "re-scan %s\r\n",
+                  (unsigned int)erase_failures,
+                  (st == LOG_OK) ? "recovered the ring" : "failed");
+        return false;
+    }
+
+    SHELL_LOG("IEC104 log cleared. All entries removed.\r\n");
+    return true;
 }
 
-uint16_t iec104_elog_get_entry_count(void)
+uint16_t iec104_elog_get_next_seq(void)
 {
     if (!log_is_initialized(&iec104_elog_ctx))
     {
@@ -266,15 +289,43 @@ uint16_t iec104_elog_get_entry_count(void)
     return (uint16_t)log_get_next_seq(&iec104_elog_ctx);
 }
 
-uint16_t iec104_elog_get_max_entries(void)
+static void iec104_elog_count_visitor(const void *payload, uint32_t payload_size,
+                                      uint32_t seq, void *user_ctx)
+{
+    uint32_t *count = (uint32_t *)user_ctx;
+
+    (void)payload;
+    (void)payload_size;
+    (void)seq;
+
+    (*count)++;
+}
+
+uint32_t iec104_elog_get_stored_count(void)
+{
+    uint32_t count = 0U;
+
+    if (!log_is_initialized(&iec104_elog_ctx))
+    {
+        return 0U;
+    }
+    if (log_read_all(&iec104_elog_ctx, iec104_elog_count_visitor, &count) != LOG_OK)
+    {
+        return 0U;
+    }
+    return count;
+}
+
+uint16_t iec104_elog_get_capacity(void)
 {
     if (!log_is_initialized(&iec104_elog_ctx))
     {
         return 0U;
     }
-    /* One sector is always kept erased for the circular invariant. */
-    return (uint16_t)(iec104_elog_ctx.entries_per_sector *
-                      (iec104_elog_ctx.sector_count - 1U));
+    /* Erase is deferred to the moment a new record needs the space, so a
+     * full ring holds every sector's worth of records. */
+    return (uint16_t)(iec104_elog_ctx.entries_per_sector
+                      * iec104_elog_ctx.sector_count);
 }
 
 /* ======================================================================
@@ -376,6 +427,40 @@ static void iec104_elog_dump_visitor(const void *payload, uint32_t payload_size,
     iec104_elog_print_entry(seq, (const iec104_elog_entry_t *)payload);
 }
 
+/* Raw hex view, no index. */
+static void iec104_elog_raw_visitor(const void *payload, uint32_t payload_size,
+                                    uint32_t seq, void *user_ctx)
+{
+    const iec104_elog_entry_t *e = (const iec104_elog_entry_t *)payload;
+
+    (void)payload_size;
+    (void)seq;
+    (void)user_ctx;
+
+    SHELL_LOG("LVL:%u CODE:%u INFO:%02X%02X%02X%02X%02X%02X\r\n",
+              (unsigned)e->level, (unsigned)e->code,
+              e->info[0], e->info[1], e->info[2],
+              e->info[3], e->info[4], e->info[5]);
+}
+
+/* Decoded view with a 1-based display index counted from the newest. */
+typedef struct
+{
+    uint32_t idx;
+} iec104_elog_index_t;
+
+static void iec104_elog_indexed_visitor(const void *payload, uint32_t payload_size,
+                                        uint32_t seq, void *user_ctx)
+{
+    iec104_elog_index_t *ic = (iec104_elog_index_t *)user_ctx;
+
+    (void)payload_size;
+    (void)seq;
+
+    ic->idx++;
+    iec104_elog_print_entry(ic->idx, (const iec104_elog_entry_t *)payload);
+}
+
 static void iec104_elog_shell_dump(int argc, char **argv)
 {
     bool raw = false;
@@ -402,63 +487,56 @@ static void iec104_elog_shell_dump(int argc, char **argv)
     SHELL_LOG("        IEC104 ELOG DUMP\r\n");
     SHELL_LOG("========================================\r\n\r\n");
 
-    if (raw)
+    if (count == 0U)
     {
-        iec104_elog_entry_t chunk[8];
-        uint32_t got = 0U;
-        uint32_t skip = 0U;
+        /* Whole ring, single chronological pass. */
+        log_visit_fn visitor = raw ? iec104_elog_raw_visitor
+                                   : iec104_elog_dump_visitor;
 
-        while (skip < count || count == 0U)
+        if (log_read_all(&iec104_elog_ctx, visitor, NULL) != LOG_OK)
         {
-            if ((iec104_elog_read_recent(skip, 8U, chunk, &got) != 0) || (got == 0U))
-            {
-                break;
-            }
-            for (uint32_t i = 0U; i < got; i++)
-            {
-                SHELL_LOG("LVL:%u CODE:%u INFO:%02X%02X%02X%02X%02X%02X\r\n",
-                          (unsigned)chunk[i].level, (unsigned)chunk[i].code,
-                          chunk[i].info[0], chunk[i].info[1], chunk[i].info[2],
-                          chunk[i].info[3], chunk[i].info[4], chunk[i].info[5]);
-            }
-            skip += got;
-            if (got < 8U)
-            {
-                break;
-            }
-        }
-    }
-    else if (count > 0U)
-    {
-        iec104_elog_entry_t chunk[8];
-        uint32_t got = 0U;
-        uint32_t skip = 0U;
-
-        while (skip < count)
-        {
-            uint32_t want = ((count - skip) > 8U) ? 8U : (count - skip);
-
-            if ((iec104_elog_read_recent(skip, want, chunk, &got) != 0) || (got == 0U))
-            {
-                break;
-            }
-            for (uint32_t i = 0U; i < got; i++)
-            {
-                /* display index is 1-based from the newest */
-                iec104_elog_print_entry(skip + i + 1U, &chunk[i]);
-            }
-            skip += got;
-            if (got < want)
-            {
-                break;
-            }
+            SHELL_LOG("Dump failed: flash read error\r\n");
         }
     }
     else
     {
-        if (log_read_all(&iec104_elog_ctx, iec104_elog_dump_visitor, NULL) != LOG_OK)
+        /* Newest count entries (newest -> oldest) with ONE backward
+         * cursor: every page call continues where the previous stopped,
+         * so the ring is read once instead of re-scanned per chunk. */
+        log_page_ctx_t page;
+        iec104_elog_index_t index;
+
+        memset(&page, 0, sizeof(page));
+        memset(&index, 0, sizeof(index));
+
+        uint32_t visited_total = 0U;
+
+        while (visited_total < count)
         {
-            SHELL_LOG("Dump failed: flash read error\r\n");
+            uint32_t want = count - visited_total;
+
+            if (want > 8U)
+            {
+                want = 8U;
+            }
+
+            log_visit_fn visitor = raw ? iec104_elog_raw_visitor
+                                       : iec104_elog_indexed_visitor;
+            void *visitor_ctx = raw ? NULL : &index;
+
+            if ((log_read_last(&iec104_elog_ctx, want, visitor,
+                               visitor_ctx, &page) != LOG_OK)
+                || (page.page_count == 0U))
+            {
+                break;
+            }
+
+            visited_total += page.page_count;
+
+            if (!page.has_more)
+            {
+                break;
+            }
         }
     }
 
@@ -478,8 +556,10 @@ static int iec104_elog_shell_handler(int argc, char *argv[])
         SHELL_LOG("        IEC104 ELOG STATUS\r\n");
         SHELL_LOG("========================================\r\n");
         SHELL_LOG("Status           : INITIALIZED (append-only ring)\r\n");
+        SHELL_LOG("Next Seq         : %u (wraps at 65535)\r\n",
+                  iec104_elog_get_next_seq());
         SHELL_LOG("Stored Entries   : %u / %u\r\n",
-                  iec104_elog_get_entry_count(), iec104_elog_get_max_entries());
+                  iec104_elog_get_stored_count(), iec104_elog_get_capacity());
         SHELL_LOG("========================================\r\n\r\n");
     }
     else if (argc > 1 && strcmp(argv[1], "dump") == 0)
@@ -516,8 +596,8 @@ void iec104_elog_init(void)
     }
 
     CSLOG("IEC104 elog system initialized.\r\n");
-    CSLOG("Capacity: %u entries, total written: %u\r\n",
-          iec104_elog_get_max_entries(), iec104_elog_get_entry_count());
+    CSLOG("Capacity: %u entries, next seq: %u\r\n",
+          iec104_elog_get_capacity(), iec104_elog_get_next_seq());
 }
 
 void iec104_elog_shell_init(void)

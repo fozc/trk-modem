@@ -625,13 +625,13 @@ void handle_get_syslogs_json(void)
         }
     }
     
-    /* Get total entry count from elog */
-    uint16_t total_entries = elog_get_entry_count();
-    uint16_t max_entries = elog_get_max_entries();
-    uint16_t available_entries = (total_entries < max_entries) ? total_entries : max_entries;
-    
-    CSLOG("[HTTP] System Logs - offset=%lu, limit=%lu, total=%u, available=%u\r\n", 
-            offset, limit, total_entries, available_entries);
+    /* Exact stored count (ring scan): with the deferred-erase policy the
+     * ring holds up to every sector's worth of records; torn holes reduce
+     * it. Used for pagination windowing and the "t" JSON field. */
+    uint32_t available_entries = elog_get_stored_count();
+
+    CSLOG("[HTTP] System Logs - offset=%lu, limit=%lu, available=%lu\r\n",
+            offset, limit, available_entries);
     
     /* Sanitize offset */
     if (offset >= available_entries) {
