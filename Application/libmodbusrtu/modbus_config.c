@@ -123,6 +123,11 @@ bool modbus_set_line_config(uint32_t line_index, const modbus_line_config_t* lin
 		return false;
 	}
 
+	/* NVRAM save/onarim sirasinda goruntu donuktur (doc/nvram.md). */
+	if (nvram_is_busy()) {
+		return false;
+	}
+
 	breaker_config->line[line_index].modbus = *line_config;
 	return true;
 }

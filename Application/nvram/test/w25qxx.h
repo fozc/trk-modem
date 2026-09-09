@@ -16,5 +16,7 @@
 
 void w25qxx_read_buff(uint32_t addr, void *buff, uint32_t len);
 int  w25qxx_write_buff(uint32_t addr, const void *buff, uint32_t buff_len);
+int  w25qxx_erase_sector(uint32_t addr);
+int  w25qxx_page_write(uint32_t addr, const void *buff, uint32_t len);
 
 #endif /* NVRAM_TEST_STUB_W25QXX_H_ */

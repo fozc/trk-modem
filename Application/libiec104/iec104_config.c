@@ -213,6 +213,11 @@ bool iec104_set_line_config(uint32_t line_index, const iec104_line_config_t* lin
 		return false;
 	}
 
+	/* NVRAM save/onarim sirasinda goruntu donuktur (doc/nvram.md). */
+	if (nvram_is_busy()) {
+		return false;
+	}
+
 	breaker_config->line[line_index].iec104 = *line_config;
 	return true;
 }

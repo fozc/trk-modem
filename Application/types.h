@@ -204,11 +204,10 @@ typedef struct
  *  v1: baslikta magic + schema_version + length + sequence — goruntu
  *  kendi boyutunu tanimlar (CRC/okuma kapsami goruntuden) ve cift
  *  kopyada taze (yuksek sequence) olan kazanir.
- *  v2: kuyruga rf_log_level eklendi (saha cihazi yok - default-reset
- *  yeterli, migration gerekmez).
- *  v3: kuyruga iec104_log_level eklendi - yine padding'e oturdu,
- *  boyut/crc ofseti degismedi (olcum assertleri guncel). */
-#define NVRAM_SCHEMA_VERSION  3U
+ *  NOT: gelistirme sirasindaki v2/v3 kuyruk eklemeleri (rf_log_level,
+ *  iec104_log_level) uretime/saha cihazi olmadigi icin v1'e indirildi;
+ *  ilk cikistan sonraki her layout degisikligi bump + migration ister. */
+#define NVRAM_SCHEMA_VERSION  1U
 
 typedef struct
 {
