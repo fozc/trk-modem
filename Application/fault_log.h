@@ -52,6 +52,8 @@ typedef struct
 
 void fault_log_init(void);
 int fault_log_sync(void);
+void fault_log_dump(void);      /* all feeders, via the shell channel */
+void fault_log_clear(void);     /* erase every feeder (primary + backup) */
 bool fault_log_add_log(fault_log_t *log);
 bool fault_log_add(float fault_current, uint16_t fault_duration_ms, uint8_t nominal_current_status,
 		uint8_t power_status, uint8_t type, uint8_t feeder_id, uint8_t phase_id);
