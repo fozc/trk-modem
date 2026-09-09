@@ -863,11 +863,12 @@ static bool parse_device_config_internal(const char **str, modem_config_t *dev) 
             dev->commissioning_time = v32;
         }
         /* RO Fields - Skip these (serial_number, production_date, lifetime,
-         * modem_firmware_version, rf_firmware_version, installation_date,
-         * coordinates) */
+         * run_time, modem_firmware_version, rf_firmware_version,
+         * installation_date, coordinates) */
         else if (match_key(str, "SeriNumarasi") ||
                  match_key(str, "UretimTarihi") ||
                  match_key(str, "LifeTime") ||
+                 match_key(str, "RunTime") ||
                  match_key(str, "ModemYazilimVeriyonu") ||
                  match_key(str, "RFYazilimVeriyonu") ||
                  match_key(str, "KurulumTarihi") ||
