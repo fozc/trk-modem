@@ -429,6 +429,8 @@ int w25qxx_page_write(uint32_t addr, const void *buff, uint32_t len)
 		return 1;
 	}
 	
+	bsp_kick_wdt();
+
 	//uint32_t page_start_addr = addr - (addr % W25QXX_PAGE_SIZE);
 	uint32_t remain_len_in_page = W25QXX_PAGE_SIZE - (addr % W25QXX_PAGE_SIZE);
 	if(remain_len_in_page < len)
