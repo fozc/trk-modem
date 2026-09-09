@@ -528,11 +528,17 @@ void handle_post_device_config_json(const char *json_body)
     CSLOG("[HTTP] SimKartAPN: %s\r\n", config.apn.apn);
     
     /* Save config via data_model */
-    set_device_config(&config);
-    
+    int res = set_device_config(&config);
+
     elog_log_config_change(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
-                           gsm_get_web_client_ip(), "device", true);
-    CSLOG("[HTTP] Config saved to data_model\r\n");
+                           gsm_get_web_client_ip(), "device", (res == 0));
+    CSLOG("[HTTP] Config %s to data_model\r\n",
+          (res == 0) ? "saved" : "save FAILED (kept in RAM)");
+
+    if (res != 0) {
+        http_send_error(500, "Failed to save configuration");
+        return;
+    }
 
     const char *response_body = "{\"message\":\"Device configuration saved\",\"success\":true}";
     http_send_json(response_body, strlen(response_body));
@@ -1041,12 +1047,18 @@ void handle_post_iec_config_json(const char *json_body)
     CSLOG("[HTTP] ScadaPort: %u\r\n", config.scada_port);
     CSLOG("[HTTP] PeriyodikGonderimZamani: %u\r\n", config.periodical_send_interval);
     
-    /* TODO: Save config to persistent storage */
-    set_iec_config(&config);
-    
+    /* Save config to persistent storage */
+    int res = set_iec_config(&config);
+
     elog_log_config_change(ELOG_CONFIG_IEC104_CHANGED, ELOG_SOURCE_WEB,
-                           gsm_get_web_client_ip(), "iec104", true);
-    CSLOG("[HTTP] IEC config saved\r\n");
+                           gsm_get_web_client_ip(), "iec104", (res == 0));
+    CSLOG("[HTTP] IEC config %s\r\n",
+          (res == 0) ? "saved" : "save FAILED (kept in RAM)");
+
+    if (res != 0) {
+        http_send_error(500, "Failed to save configuration");
+        return;
+    }
 
     const char *response_body = "{\"message\":\"IEC104 configuration saved\",\"success\":true}";
     http_send_json(response_body, strlen(response_body));
@@ -1472,6 +1484,8 @@ void handle_post_rf_config_json(const char *json_body)
     // Sync to persistent storage (data is already in breaker_config)
     if (rf_store_sync() != 0) {
         CSLOG_ERR("[HTTP] ERROR: Failed to sync RF config to storage\r\n");
+        elog_log_config_change(ELOG_CONFIG_RF_CHANGED, ELOG_SOURCE_WEB,
+                               gsm_get_web_client_ip(), "rf", false);
         http_send_error(500, "Failed to save configuration");
         return;
     }

@@ -2114,9 +2114,9 @@ const modem_config_t* get_device_config(void)
     return modem_config_get();
 }
 
-void set_device_config(const modem_config_t *config) {
+int set_device_config(const modem_config_t *config) {
     if(!config) {
-    	return;
+    	return -1;
     }
     modem_config_set(config);
     int res = modem_config_sync();
@@ -2124,13 +2124,14 @@ void set_device_config(const modem_config_t *config) {
     CCSLOG(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
 			res == 0 ? "[Modem Config] Modem config synchronized successfully\r\n"
 					: "[Modem Config] ERROR: Modem config synchronization failed\r\n");
+    return res;
 }
 
 /* IEC Config Setter - Converts JSON format to NVRAM format */
-void set_iec_config(const jiec_config_t *config)
+int set_iec_config(const jiec_config_t *config)
 {
     if(!config) {
-    	return;
+    	return -1;
     }
 
     // Create local config struct from current NVRAM state
@@ -2228,6 +2229,7 @@ void set_iec_config(const jiec_config_t *config)
     CCSLOG(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
     		res == 0 ? "[IEC104] IEC config synchronized successfully\r\n"
     				: "[IEC104] ERROR: IEC config synchronization failed\r\n");
+    return res;
 }
 
 /* Modbus Config Setter - Converts JSON format to NVRAM format */

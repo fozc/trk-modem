@@ -206,10 +206,14 @@ int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf);
 
 /* Global Config Access Functions */
 const modem_config_t* get_device_config(void);
-void set_device_config(const modem_config_t *config);
+
+/* Setters return 0 when the change was persisted to flash, -1 when the
+ * NVRAM sync failed (the change stays in RAM and is retried on the next
+ * save attempt). */
+int set_device_config(const modem_config_t *config);
 
 /* IEC104 and Modbus config setters - No getters needed, use config managers directly */
-void set_iec_config(const jiec_config_t *config);
+int set_iec_config(const jiec_config_t *config);
 int set_modbus_config(const jmodbus_configs_t *config);
 
 #endif /* JSON_CONFIG_H_ */
