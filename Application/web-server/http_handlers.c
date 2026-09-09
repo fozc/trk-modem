@@ -452,6 +452,12 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"UretimTarihi\":%u,", config->production_date);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"LifeTime\":%u,", config->lifetime);
 
+    /* Son resetten bu yana gecen sure (saniye) - bsp_get_run_time uzerinden
+     * ayri cagri (shell'deki "Run Time" satiri ile ayni kaynak). NVRAM'de
+     * birikmez; tick acilista sifirdan baslar, ~49.7 gunde sarar. */
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"RunTime\":%u,",
+                     (unsigned)(bsp_get_run_time() / 1000U));
+
     fw_info_t fw = *boot_get_installed_fw_info();
 
     pos += xsnprintf(buf + pos, buf_size - pos,
