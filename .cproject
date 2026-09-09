@@ -102,7 +102,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="rf/test|web-server/test|libiec104/test|gsm/test|power_board/test|libs/test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="Application"/>
+						<entry excluding="rf/test|web-server/test|libiec104/test|gsm/test|power_board/test|libs/test|nvram/test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="Application"/>
 						<entry excluding="arch/cpu/x86|test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="contiki-kernel"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
@@ -208,7 +208,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="rf/test|web-server/test|libiec104/test|gsm/test|power_board/test|libs/test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="Application"/>
+						<entry excluding="rf/test|web-server/test|libiec104/test|gsm/test|power_board/test|libs/test|nvram/test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="Application"/>
 						<entry excluding="arch/cpu/x86|test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="contiki-kernel"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
