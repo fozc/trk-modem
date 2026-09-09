@@ -17,16 +17,69 @@
 #include "rf_config.h"
 #include "elog.h"
 
-static nvram_t   nvram = {0};
+static nvram_t nvram = {0};
 
-/* Son basariyla flash'a yazilan (veya acilista yuklenen) goruntunun
- * CRC'si - "kalicilastirilan surum". nvram.crc'nin RAM kopyasindan
- * AYRI tutulur: nvram_sync'in flash yazmalari basarisiz olursa bu
- * guncellenmez, boylece RAM "kirli" kalir ve bir sonraki
- * nvram_sync(false) "CRC unchanged" diyerek yeniden denemeyi atlayamaz
- * (basarisiz kaydetme "degisiklik yok" sanilamaz). */
+/* =====================================================================
+ * Iki slotlu (A ana / B yedek) depolama cekirdegi - doc/nvram.md:
+ *   - A silinmeden once B, guncel goruntunun DOGRULANMIS kopyasini tasir.
+ *   - Basarili save sonunda A ve B ayni goruntudedir.
+ *   - Her hata islemi durdurur; tek saglam kopya, digeri dogrulanmadan
+ *     asla silinmez.
+ *   - Save/onarim sirasinda global RAM goruntusu degismez (flash->flash
+ *     kopyalar kucuk sayfa tamponuyla yapilir; ikinci tam boy RAM/stack
+ *     goruntusu YOKTUR).
+ *   - Sequence yalnizca yeni kayitta, flash'taki son gecerli surumden
+ *     hazirlanir; salt onarimda artmaz. Ilk kurulum disinda sifirlanmaz.
+ * ===================================================================== */
+
+#define NVRAM_SLOT_A 0U
+#define NVRAM_SLOT_B 1U
+#define NVRAM_SLOT_COUNT 2U
+
+/* Goruntu tek sektorun icinde kalmali: slotlar bagimsiz silinir. */
+_Static_assert(sizeof(nvram_t) <= 4096U,
+               "nvram goruntusu tek 4K sektor sinirini asmamalidir");
+/* Slot adresleri sektore hizali ve birbirinden farkli olmali. */
+_Static_assert(((NVRAM_ADDRESS % 4096U) == 0U)
+               && ((NVRAM_BACKUP_ADDRESS % 4096U) == 0U),
+               "nvram slot adresleri 4K sektore hizali olmalidir");
+_Static_assert(NVRAM_ADDRESS != NVRAM_BACKUP_ADDRESS,
+               "nvram slot adresleri cakismamalidir");
+
+static const uint32_t nvram_slot_addr[NVRAM_SLOT_COUNT] =
+{
+    NVRAM_ADDRESS,        /* A: ana alan  */
+    NVRAM_BACKUP_ADDRESS  /* B: yedek alan */
+};
+
+/* Slot durumu - her save/onarim baslangicinda flash'tan kurulur. */
+typedef struct
+{
+    bool     valid;      /* header + sema + CRC dogrulandi */
+    uint32_t sequence;
+    crc32_t  crc;        /* goruntunun saklanan CRC alani */
+} nvram_slot_state_t;
+
+/* Ortak kucuk calisma tamponu: akiskan dogrulama + flash->flash kopya.
+ * Tam boy ikinci bir goruntu (RAM ya da stack) KULLANILMAZ. */
+static uint8_t nvram_page_buf[256];
+
+/* Kalicilastirilan surumun veri CRC'si: kirli-durum algisinin tek kaynagi
+ * (calc == persisted ise veri degismedi demektir). */
 static crc32_t nvram_persisted_crc;
 
+/* Save/onarim kilidi: tek sahip, ic ice lock yok. Kilitliyken RAM
+ * goruntusu donuktur - setter'lar mutasyonu reddeder. */
+static bool nvram_busy;
+
+/* Setter'larin save/onarim kilidini sorgulamasi icin (tanim asagida). */
+static bool nvram_change_allowed(void);
+
+/* Tasima guvenli tazelik karsilastirmasi (uint32 sarma). */
+static bool nvram_seq_newer(uint32_t a, uint32_t b)
+{
+    return ((int32_t)(a - b)) > 0;
+}
 
 static uint32_t ioa_to_u32(ioa_3byte_t ioa)
 {
@@ -66,6 +119,17 @@ void nvram_test_fill(void)
 
 void nvram_set_defaults(void)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
+
+    /* Fabrika reseti mevcut sequence ile devam etmeli: sequence sifirlanirsa
+     * kismi yazma hatasinda hayatta kalan ESKI yedek kopya "daha yeni" sayilir
+     * ve fabrika ayarlari sessizce geri alinir. Ilk kurulum (bakir flash) yolu
+     * nvram_init icinde acikca sifirdan baslatir. */
+    uint32_t keep_sequence = nvram.sequence;
+
     memset(&nvram, 0, sizeof(nvram));
 
     /* Layout gecerlilik isaretleri - bunlar olmadan yazilan default bir
@@ -73,7 +137,7 @@ void nvram_set_defaults(void)
     nvram.magic = NVRAM_MAGIC;
     nvram.schema_version = NVRAM_SCHEMA_VERSION;
     nvram.length = (uint32_t)sizeof(nvram_t);
-    nvram.sequence = 0U;
+    nvram.sequence = keep_sequence;
 
     // Modem Config Defaults
 	nvram.modem_config.serial_number = DEVICE_DEFAULT_SERIAL_NUMBER;
@@ -375,7 +439,7 @@ void nvram_dump()
 }
 
 /* Slot basligi - nvram_t'nin ilk 16 bayti ile ayni sirada
- * (types.h'teki offsetof assert'leri bu sozlesmesi korur). */
+ * (types.h'teki offsetof assert'leri bu sozlesme korur). */
 typedef struct
 {
     uint32_t magic;
@@ -384,171 +448,224 @@ typedef struct
     uint32_t sequence;
 } nvram_hdr_t;
 
-typedef enum
-{
-    NVRAM_SLOT_OK = 0,
-    NVRAM_SLOT_BAD_MAGIC,
-    NVRAM_SLOT_BAD_LENGTH,
-    NVRAM_SLOT_BAD_CRC,
-    NVRAM_SLOT_BAD_SCHEMA
-} nvram_slot_status_t;
-
 static void nvram_read_hdr(uint32_t addr, nvram_hdr_t *hdr)
 {
-    w25qxx_read_buff(addr, hdr, sizeof(*hdr));
+    w25qxx_read_buff(addr, hdr, sizeof(nvram_hdr_t));
 }
 
-/* Baslik inanilabilir mi? (magic + length siniri - govde dogrulamasi
- * nvram_load_slot'ta; baslik asla yalan soylemez diye bir sey yok.) */
-static bool nvram_hdr_plausible(const nvram_hdr_t *hdr)
+/* Header akil sagligi kontrolu: magic + uzunluk sinirlari (ucuz on bakis;
+ * tam dogrulama nvram_validate_slot'in CRC akisindadir). */
+static bool nvram_hdr_sane(const nvram_hdr_t *hdr)
 {
     return (hdr->magic == NVRAM_MAGIC) &&
            (hdr->length >= (uint32_t)(offsetof(nvram_t, crc) + 4U)) &&
            (hdr->length <= (uint32_t)sizeof(nvram_t));
 }
 
-/* Slotu RAM-aynasina yukle; goruntu KENDI length'i uzerinde dogrulanir
- * (magic -> length siniri -> CRC -> schema). Durum kodu log icin. */
-static nvram_slot_status_t nvram_load_slot(uint32_t addr)
+/* ---- Kucuk yardimcilar (doc/nvram.md tablosu) ------------------------ */
+
+/* Slotu AKISKAN dogrula: header -> sema -> CRC. Goruntu RAM'e YUKLENMEZ;
+ * 256 B sayfa tamponuyla okunur, CRC artimli hesaplanir - boylece ikinci
+ * tam boy goruntuye gerek kalmaz ve dogrulama fiziksel readback olur. */
+static bool nvram_validate_slot(uint32_t slot, nvram_slot_state_t *st)
 {
-    w25qxx_read_buff(addr, &nvram, sizeof(nvram));
+    const uint32_t addr = nvram_slot_addr[slot];
+    nvram_hdr_t hdr;
+    crc32_t crc;
+    uint32_t off;
+    uint32_t remaining;
+    uint32_t chunk;
+    uint32_t stored_crc;
 
-    if (nvram.magic != NVRAM_MAGIC)
-    {
-        return NVRAM_SLOT_BAD_MAGIC;
-    }
-    if ((nvram.length < (uint32_t)(offsetof(nvram_t, crc) + 4U)) ||
-        (nvram.length > (uint32_t)sizeof(nvram)))
-    {
-        return NVRAM_SLOT_BAD_LENGTH;
-    }
+    *st = (nvram_slot_state_t){0};   /* gecersiz durumda alanlar da tanimli olsun */
 
-    crc32_t crc = crc32_init();
-    crc = crc32_update(crc, &nvram, nvram.length - sizeof(nvram.crc));
-
-    if (crc32_finalize(crc) != nvram.crc)
+    nvram_read_hdr(addr, &hdr);
+    if (!nvram_hdr_sane(&hdr))
     {
-        return NVRAM_SLOT_BAD_CRC;
+        return false;
     }
-    if (nvram.schema_version != NVRAM_SCHEMA_VERSION)
+    if (hdr.schema_version != NVRAM_SCHEMA_VERSION)
     {
-        return NVRAM_SLOT_BAD_SCHEMA;   /* v3'ten itibaren migration buraya */
+        return false;
     }
 
-    /* Goruntu tam gecerli: flash'ta duran budur - kirli-durum algisinin
-     * baz cizgisi bu CRC olur. */
-    nvram_persisted_crc = nvram.crc;
-    return NVRAM_SLOT_OK;
+    crc = crc32_init();
+    off = 0U;
+    remaining = hdr.length - 4U;
+
+    while (remaining > 0U)
+    {
+        chunk = (remaining > (uint32_t)sizeof(nvram_page_buf))
+                    ? (uint32_t)sizeof(nvram_page_buf) : remaining;
+        w25qxx_read_buff(addr + off, nvram_page_buf, chunk);
+        crc = crc32_update(crc, nvram_page_buf, chunk);
+        off += chunk;
+        remaining -= chunk;
+    }
+
+    w25qxx_read_buff(addr + off, &stored_crc, 4U);
+    if (crc32_finalize(crc) != stored_crc)
+    {
+        return false;
+    }
+
+    st->valid = true;
+    st->sequence = hdr.sequence;
+    st->crc = stored_crc;
+    return true;
 }
 
-static const char *nvram_slot_status_str(nvram_slot_status_t st)
+/* Iki DOGRULANMIS slot ayni goruntu mu? Pratik esdegerlik: ayni sequence
+ * + ayni saklanan CRC. CRC esitligi bayt-esitliginin KANITI degildir
+ * (cati$ma teorik olarak mumkun); amac yalnizca "B tazeleme gerekli mi"
+ * karari verdirmektir. */
+static bool nvram_slots_equal(const nvram_slot_state_t *a,
+                              const nvram_slot_state_t *b)
 {
-    switch (st)
-    {
-        case NVRAM_SLOT_OK:         return "ok";
-        case NVRAM_SLOT_BAD_MAGIC:  return "magic";
-        case NVRAM_SLOT_BAD_LENGTH: return "length";
-        case NVRAM_SLOT_BAD_CRC:    return "crc";
-        case NVRAM_SLOT_BAD_SCHEMA: return "schema";
-        default:                    return "?";
-    }
+    return a->valid && b->valid
+           && (a->sequence == b->sequence)
+           && (a->crc == b->crc);
 }
+
+/* Global RAM goruntusunu slota yaz ve dogrula. Surucu erase-once yazar ve
+ * fiziksel readback ile dogrular: tek cagri = tek sektor silme + dogrulama. */
+static int nvram_write_slot(uint32_t slot)
+{
+    if (w25qxx_write_buff(nvram_slot_addr[slot], &nvram, sizeof(nvram))
+            != W25QXX_RES_OK)
+    {
+        return -1;
+    }
+    return 0;
+}
+
+/* Flash'tan flash'a slot kopyasi: hedefi BIR kez sil, sayfa sayfa programla,
+ * ardindan akiskan dogrula (fiziksel readback). Global RAM'e DOKUNMAZ -
+ * kaydedilmemis ayarlar korunur. Kopya, kaynak goruntuyu AYNI sequence ile
+ * tasiyacak bicimde birebir kopyalar. */
+static int nvram_copy_slot(uint32_t dst, uint32_t src)
+{
+    const uint32_t dst_addr = nvram_slot_addr[dst];
+    const uint32_t src_addr = nvram_slot_addr[src];
+    nvram_slot_state_t st;
+    uint32_t off;
+    uint32_t chunk;
+
+    if (w25qxx_erase_sector(dst_addr) != W25QXX_RES_OK)
+    {
+        return -1;
+    }
+
+    for (off = 0U; off < (uint32_t)sizeof(nvram_t);
+         off += (uint32_t)sizeof(nvram_page_buf))
+    {
+        chunk = (uint32_t)sizeof(nvram_t) - off;
+        if (chunk > (uint32_t)sizeof(nvram_page_buf))
+        {
+            chunk = (uint32_t)sizeof(nvram_page_buf);
+        }
+        w25qxx_read_buff(src_addr + off, nvram_page_buf, chunk);
+        if (w25qxx_page_write(dst_addr + off, nvram_page_buf, chunk)
+                != W25QXX_RES_OK)
+        {
+            return -1;
+        }
+    }
+
+    if (!nvram_validate_slot(dst, &st))
+    {
+        return -1;
+    }
+    return 0;
+}
+
+/* Faz 1 - yedek tamamlama: A silinmeden ONCE her iki slot elden gecirilir.
+ * Tum kopyalar flash->flash yapilir; global RAM goruntusune dokunulmaz.
+ * Donus -1: tek saglam kopya dogrulanmadan kayda gecilmez. */
+static int nvram_prepare_slots(nvram_slot_state_t *a, nvram_slot_state_t *b)
+{
+    /* Yalniz B gecerliyse (ya da B daha tazeyse): once A'yi B'den kur -
+     * boylece kayit A'yi silerken B eldeki guncel goruntuyu tasir. */
+    if (b->valid && (!a->valid || nvram_seq_newer(b->sequence, a->sequence)))
+    {
+        if (nvram_copy_slot(NVRAM_SLOT_A, NVRAM_SLOT_B) != 0)
+        {
+            return -1;
+        }
+        (void)nvram_validate_slot(NVRAM_SLOT_A, a);
+    }
+
+    /* A gecerli ve B onun aynisi degilse: B'yi A'dan tazele. */
+    if (a->valid && !nvram_slots_equal(a, b))
+    {
+        if (nvram_copy_slot(NVRAM_SLOT_B, NVRAM_SLOT_A) != 0)
+        {
+            return -1;
+        }
+        (void)nvram_validate_slot(NVRAM_SLOT_B, b);
+    }
+    return 0;
+}
+
+/* ---- Acilis ----------------------------------------------------------- */
 
 int nvram_init(void)
 {
 #ifdef IEC104_TEST
     nvram_test_fill();
 #endif
+    nvram_slot_state_t a;
+    nvram_slot_state_t b;
+    int res = 0;
 
-	int res = 0;
-    bool loaded_from_backup = false;
+    (void)nvram_validate_slot(NVRAM_SLOT_A, &a);
+    (void)nvram_validate_slot(NVRAM_SLOT_B, &b);
 
-    /* Faz 1 - karar: iki slotun basligini oku, mumkun olanlardan
-     * TAZE (yuksek sequence) olan tercih edilir. Esitlikte ana slot.
-     * Iki kopyaya ayni goruntu yazilir; yazim ortasinda guc kesilirse
-     * sequence'lari farkli kalir - hakemlik bununla yapilir. */
-    nvram_hdr_t main_hdr;
-    nvram_hdr_t backup_hdr;
-    nvram_read_hdr(NVRAM_ADDRESS, &main_hdr);
-    nvram_read_hdr(NVRAM_BACKUP_ADDRESS, &backup_hdr);
-
-    bool main_candidate = nvram_hdr_plausible(&main_hdr);
-    bool backup_candidate = nvram_hdr_plausible(&backup_hdr);
-
-    uint32_t first_addr = 0U;    /* 0 = ikisi de mumkun degil */
-    uint32_t second_addr = 0U;
-    bool have_second = false;
-
-    if (main_candidate && backup_candidate)
+    if (a.valid || b.valid)
     {
-        if (backup_hdr.sequence > main_hdr.sequence)
+        /* En guncel GECERLI goruntuyu sec ve global yapiya yukle. */
+        uint32_t load_slot = NVRAM_SLOT_A;
+
+        if (!a.valid)
         {
-            first_addr = NVRAM_BACKUP_ADDRESS;
-            second_addr = NVRAM_ADDRESS;
+            load_slot = NVRAM_SLOT_B;
         }
-        else
+        else if (b.valid && nvram_seq_newer(b.sequence, a.sequence))
         {
-            first_addr = NVRAM_ADDRESS;
-            second_addr = NVRAM_BACKUP_ADDRESS;
+            load_slot = NVRAM_SLOT_B;
         }
-        have_second = true;
-    }
-    else if (main_candidate)
-    {
-        first_addr = NVRAM_ADDRESS;
-    }
-    else if (backup_candidate)
-    {
-        first_addr = NVRAM_BACKUP_ADDRESS;
-    }
-    else
-    {
-        first_addr = 0U;
-    }
 
-    /* Faz 2 - yukleme: kazanan slot bir kez okunur; govde bozuksa ve
-     * digeri mumkunsa ona dusulur. Her slot en fazla bir kez okunur. */
-    nvram_slot_status_t st = NVRAM_SLOT_BAD_MAGIC;
+        w25qxx_read_buff(nvram_slot_addr[load_slot], &nvram, sizeof(nvram));
+        nvram_persisted_crc = nvram.crc;
 
-    if (first_addr != 0U)
-    {
-        st = nvram_load_slot(first_addr);
-        loaded_from_backup = ((st == NVRAM_SLOT_OK) &&
-                              (first_addr == NVRAM_BACKUP_ADDRESS));
-
-        if ((st != NVRAM_SLOT_OK) && have_second)
-        {
-            xcprintf(XCOLOR_RED, "NVRAM slot@0x%06X gecersiz (%s) - diger slot deneniyor\r\n",
-                     first_addr, nvram_slot_status_str(st));
-            st = nvram_load_slot(second_addr);
-            loaded_from_backup = ((st == NVRAM_SLOT_OK) &&
-                                  (second_addr == NVRAM_BACKUP_ADDRESS));
-        }
-    }
-
-    if (st == NVRAM_SLOT_OK)
-    {
-        if (loaded_from_backup)
+        if (load_slot == NVRAM_SLOT_B)
         {
             elog_log_nvram_recovery(ELOG_NVRAM_RESTORED_FROM_BACKUP,
-                                    main_hdr.sequence, backup_hdr.sequence);
+                                    a.sequence, b.sequence);
             CSLOG("NVRAM yedek slottan yuklendi (ana sequence=%u, yedek=%u).\r\n",
-                  main_hdr.sequence, backup_hdr.sequence);
+                  (unsigned)a.sequence, (unsigned)b.sequence);
         }
         else
         {
             CSLOG("NVRAM loaded successfully.\r\n");
         }
+
+        /* Acilis onarimi: iki kopya da ayni dogrulanmis goruntuyu tasin.
+         * Basarisizsa ayarlar okunabilir kalir; sonraki nvram_sync,
+         * onarimi Faz 1'de tamamlamadan A'yi silmez. */
+        if (nvram_prepare_slots(&a, &b) != 0)
+        {
+            CSLOG_ERR("NVRAM: slot repair at boot FAILED - settings usable, "
+                      "repair retried on next sync.\r\n");
+        }
     }
     else
     {
-        xcprintf(XCOLOR_RED, "NVRAM: kullanilabilir slot yok (%s / %s) - defaults\r\n",
-                 nvram_slot_status_str(st),
-                 (main_candidate || backup_candidate) ? "fallback-denendi" : "bosluk");
+        xcprintf(XCOLOR_RED, "NVRAM: kullanilabilir slot yok - defaults\r\n");
         nvram_set_defaults();
-        elog_log_nvram_recovery(ELOG_NVRAM_DEFAULTS_REWRITTEN,
-                                main_hdr.sequence, backup_hdr.sequence);
-        if (nvram_sync(true))
+        nvram.sequence = 0U;    /* ilk kurulum: bakir flash sifirdan baslar */
+        elog_log_nvram_recovery(ELOG_NVRAM_DEFAULTS_REWRITTEN, 0U, 0U);
+        if (nvram_sync(true) != 0)
         {
             xcprintf(XCOLOR_RED, "Failed to write default NVRAM values to flash.\r\n");
             res = -1;
@@ -561,48 +678,135 @@ int nvram_init(void)
     return res;
 }
 
-int nvram_sync(bool crc_no_check)
+/* ---- Save ------------------------------------------------------------- */
+
+static int nvram_sync_locked(bool crc_no_check)
 {
-    crc32_t crc = nvram_calculate_crc();
+    nvram_slot_state_t a;
+    nvram_slot_state_t b;
+    crc32_t ram_crc = nvram_calculate_crc();
 
-    if (!crc_no_check && (crc == nvram_persisted_crc))
+    (void)nvram_validate_slot(NVRAM_SLOT_A, &a);
+    (void)nvram_validate_slot(NVRAM_SLOT_B, &b);
+
+    /* Faz 1 - yedek tamamlama (flash->flash; RAM goruntusu donuk). */
+    if (nvram_prepare_slots(&a, &b) != 0)
     {
-        xcprintf(XCOLOR_YELLOW, "NVRAM CRC unchanged, skipping write.\r\n");
-        return 0;
-    }
-
-    nvram.length = (uint32_t)sizeof(nvram_t);
-    nvram.sequence++;
-    crc = nvram_calculate_crc();
-
-    nvram.crc = crc;
-    int res1 = w25qxx_write_buff(NVRAM_ADDRESS, &nvram, sizeof(nvram));
-    int res2 = w25qxx_write_buff(NVRAM_BACKUP_ADDRESS, &nvram, sizeof(nvram));
-
-    if ((res1 != W25QXX_RES_OK) || (res2 != W25QXX_RES_OK))
-    {
-        /* Kalicilasma YOK: nvram_persisted_crc guncellenmez, RAM kirli
-         * kalir - bir sonraki nvram_sync(false) ayni veriyi yeniden
-         * yazar (write_buff sektorleri erase-once yazardigi icin yeni
-         * sequence ile yeniden yazmak AND-acisindan guvenlidir). */
         xcprintf(XCOLOR_RED,
-                 "NVRAM write FAILED (main=%d backup=%d) - retry pending\r\n",
-                 res1, res2);
+                 "NVRAM: slot prepare FAILED - save rejected, good copy untouched.\r\n");
         return -1;
     }
 
-    nvram_persisted_crc = crc;
-    CSLOG("NVRAM synchronized\r\n");
+    if (!a.valid && !b.valid)
+    {
+        /* Bakir kurulum akisi: defaults init'ten buraya seq=0 ile gelir. */
+    }
+    else if (!crc_no_check && (ram_crc == nvram_persisted_crc))
+    {
+        /* Veri degismedi; slotlar Faz 1'de esitlendi - gereksiz yazma yok. */
+        return 0;
+    }
+    else if (a.valid && (a.crc == ram_crc))
+    {
+        /* Retry tamamlanmasi: A zaten RAM goruntusunun AYNISINI tasiyor ve
+         * B de Faz 1'de esitlendi - yeniden yazmaya gerek yok. */
+        nvram.crc = ram_crc;
+        nvram.sequence = a.sequence;
+        nvram_persisted_crc = ram_crc;
+        return 0;
+    }
+
+    /* Yeni goruntu: sequence YALNIZ gecerli flash goruntusunden uretilir -
+     * RAM'deki (basarisiz denemeden kalmis) sequence'e bakilmaz. Boylece
+     * hazirlik deterministiktir: retry ayni degeri tekrar uretir ve
+     * sequence ikinci kez artirilmaz. Bakir kurulumda (iki slot gecersiz)
+     * taban 0'dir. */
+    {
+        uint32_t base = 0U;
+
+        if (a.valid && b.valid)
+        {
+            base = nvram_seq_newer(a.sequence, b.sequence) ? a.sequence : b.sequence;
+        }
+        else if (a.valid)
+        {
+            base = a.sequence;
+        }
+        else if (b.valid)
+        {
+            base = b.sequence;
+        }
+        nvram.sequence = base + 1U;
+    }
+    nvram.length = (uint32_t)sizeof(nvram_t);
+    nvram.crc = nvram_calculate_crc();
+
+    /* A once: A silinmeden once B, mevcut goruntunun dogrulanmis kopyasini
+     * tasir (Faz 1). A yazilamazsa B saglam kalir. */
+    if (nvram_write_slot(NVRAM_SLOT_A) != 0)
+    {
+        xcprintf(XCOLOR_RED,
+                 "NVRAM: slot A write FAILED - B keeps the last verified image.\r\n");
+        return -1;
+    }
+
+    /* B sonra: B silinirken A yeni goruntunun dogrulanmis kopyasini tasir. */
+    if (nvram_write_slot(NVRAM_SLOT_B) != 0)
+    {
+        xcprintf(XCOLOR_RED,
+                 "NVRAM: slot B write FAILED - A holds the new verified image.\r\n");
+        return -1;
+    }
+
+    nvram_persisted_crc = nvram.crc;
     return 0;
+}
+
+int nvram_sync(bool crc_no_check)
+{
+    int res;
+
+    if (nvram_busy)
+    {
+        /* Ic ice lock yasak: tek sahip kurali. */
+        CSLOG_ERR("NVRAM: sync re-entry rejected (save in progress).\r\n");
+        return -1;
+    }
+
+    nvram_busy = true;
+    res = nvram_sync_locked(crc_no_check);
+    nvram_busy = false;
+    return res;
+}
+
+bool nvram_is_busy(void)
+{
+    return nvram_busy;
 }
 
 bool nvram_is_cslog_enabled(void)
 {
-	return (bool)nvram.cslog_enabled;
+    return (bool)nvram.cslog_enabled;
+}
+
+/* Save/onarim sirasinda RAM goruntusu donuktur: setter'lar mutasyonu
+ * reddeder (doc: kayit beklerken goruntunun degistirilmesine izin verilmez). */
+static bool nvram_change_allowed(void)
+{
+    if (nvram_busy)
+    {
+        CSLOG_ERR("NVRAM: change rejected - save/repair in progress.\r\n");
+        return false;
+    }
+    return true;
 }
 
 void nvram_set_cslog_enabled(bool enabled)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	nvram.cslog_enabled = (uint8_t)enabled;
 }
 
@@ -613,6 +817,10 @@ uint8_t nvram_get_gsm_log_level(void)
 
 void nvram_set_gsm_log_level(uint8_t level)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	nvram.gsm_log_level = level;
 }
 
@@ -623,6 +831,10 @@ uint8_t nvram_get_rf_log_level(void)
 
 void nvram_set_rf_log_level(uint8_t level)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	nvram.rf_log_level = level;
 }
 
@@ -633,12 +845,20 @@ uint8_t nvram_get_iec104_log_level(void)
 
 void nvram_set_iec104_log_level(uint8_t level)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	nvram.iec104_log_level = level;
 }
 
 
 void nvram_set_is_sbo_active(bool is_active)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
     nvram.iec104_config.is_sbo_active = is_active;
 }
 
@@ -649,6 +869,10 @@ bool nvram_get_is_sbo_active(void)
 
 void nvram_set_sbo_execute_timeout(uint16_t timeout)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
     nvram.iec104_config.sbo_execute_timeout = timeout;
 }
 
@@ -664,6 +888,10 @@ breaker_t* nvram_get_breaker(void)
 
 int nvram_set_breaker(const breaker_t* breaker)
 {
+    if (!nvram_change_allowed())
+    {
+        return -1;
+    }
     if (breaker == NULL)
     {
         return -1; // Invalid parameter
@@ -680,11 +908,19 @@ uint32_t nvram_get_device_serial_number(void)
 
 void nvram_set_device_serial_number(uint32_t serial_number)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	nvram.modem_config.serial_number = serial_number;
 }
 
 void nvram_set_modbus_device_addr(uint8_t slave_id)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	nvram.modbus_config.device_addr = slave_id;
 }
 
@@ -696,6 +932,10 @@ uint8_t nvram_get_modbus_device_addr(void)
 
 int nvram_set_m_sp_na_1_ioa(uint32_t line_index, uint8_t phase, uint32_t ioa)
 {
+    if (!nvram_change_allowed())
+    {
+        return -1;
+    }
     if (line_index >= MAX_POWER_LINE_COUNT || phase >= PHASE_MAX) {
         return -1; // Invalid parameters
     }
@@ -715,6 +955,10 @@ ioa_3byte_t nvram_get_m_sp_na_1_ioa(uint32_t line_index, uint8_t phase)
 
 int nvram_set_m_me_tf_1_ioa(uint32_t line_index, uint8_t phase, uint32_t ioa)
 {
+    if (!nvram_change_allowed())
+    {
+        return -1;
+    }
     if (line_index >= MAX_POWER_LINE_COUNT || phase >= PHASE_MAX) {
         return -1; // Invalid parameters
     }
@@ -734,6 +978,10 @@ ioa_3byte_t nvram_get_m_me_tf_1_ioa(uint32_t line_index, uint8_t phase)
 
 int nvram_set_ioa(uint8_t type_id, uint32_t line_index, uint8_t phase, uint32_t ioa)
 {
+    if (!nvram_change_allowed())
+    {
+        return -1;
+    }
     switch (type_id)
     {
     case M_SP_NA_1:
@@ -757,6 +1005,10 @@ int nvram_get_line_config(uint32_t line_index, iec104_line_config_t* config)
 
 int nvram_set_line_config(uint32_t line_index, const iec104_line_config_t* config, bool sync)
 {
+    if (!nvram_change_allowed())
+    {
+        return -1;
+    }
     if (line_index >= MAX_POWER_LINE_COUNT || config == NULL) {
         // Handle invalid line index or null pointer
         return -1;
@@ -787,6 +1039,10 @@ modem_config_t *nvram_get_modem_config_rw(void)
 
 void nvram_set_modem_config(const modem_config_t *info)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	if(info) {
 		nvram.modem_config = *info;
 	}
@@ -816,6 +1072,10 @@ iec104_config_t *nvram_get_iec104_config_rw(void)
 
 void nvram_set_iec104_config(const iec104_config_t *cfg)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	if(cfg) {
 		nvram.iec104_config = *cfg;
 		nvram_sync(false);
@@ -881,6 +1141,10 @@ modbus_configs_t *nvram_get_modbus_config_rw(void)
 
 void nvram_set_modbus_config(const modbus_configs_t *cfg)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
 	if(cfg) {
 		nvram.modbus_config = *cfg;
 		nvram_sync(false);
@@ -896,6 +1160,10 @@ const rfwu_nvram_t *nvram_get_rfwu(void)
 
 void nvram_set_rfwu(const rfwu_nvram_t *p_rfwu)
 {
+    if (!nvram_change_allowed())
+    {
+        return;
+    }
     if (p_rfwu == NULL) { return; }
     nvram.rfwu = *p_rfwu;
     (void)nvram_sync(false);

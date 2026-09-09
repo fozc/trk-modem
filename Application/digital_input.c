@@ -125,8 +125,9 @@ static void sample_pins(debouncer_t *p_db,
  *
  * @param[in] held_ticks  Debounced press duration in Contiki ticks.
  *
- * @note The MCU-reset and NVRAM-reset actions do not return (they reset
- *       the MCU).
+ * @note The MCU-reset action does not return (it resets the MCU). The
+ *       NVRAM-reset action is cancelled (returns) when the defaults
+ *       cannot be persisted, so the reboot never loads stale settings.
  */
 static void user_reset_dispatch(clock_time_t held_ticks)
 {
@@ -140,7 +141,15 @@ static void user_reset_dispatch(clock_time_t held_ticks)
         /* >= 10 s: restore factory defaults, then reboot. */
         CSLOG("[USER_RST] >=10s press -> NVRAM factory reset\r\n");
         nvram_set_defaults();
-        (void)nvram_sync(true);
+        if (nvram_sync(true) != 0)
+        {
+            /* Defaults kaliciamlasmadi: reboot edersek hayatta kalan eski
+             * goruntu geri yuklenebilir. Cihaz acik kalsin; RAM kirli
+             * kalir, kullanicinin yeni denemesi ayni defaults'u yazar. */
+            CSLOG_ERR("[USER_RST] factory reset FAILED to persist - "
+                      "reboot cancelled, try again\r\n");
+            return;
+        }
         bsp_system_reset();
         /* Never reached. */
     }

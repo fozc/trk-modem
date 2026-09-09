@@ -49,11 +49,21 @@
 int nvram_init(void);
 void nvram_dump(void);
 
-/* Degisiklikleri iki slota yazar. Donus 0: kalicilastirildi (veya zaten
- * degisiklik yoktu). Donus -1: flash yazmasi basarisiz - RAM "kirli"
- * kalir, boylece bir sonraki nvram_sync(false) ayni veriyi yeniden dener;
- * cagiran hemen yeniden denemese bile degisiklik kayip "temiz" sanilmaz. */
+/* Degisiklikleri iki slota (A once, B sonra; oncesinde yedek tamamlama)
+ * yazar. Donus 0: kalicilastirildi (veya zaten degisiklik yoktu).
+ * Donus -1: flash yazmasi basarisiz - RAM "kirli" kalir, boylece bir
+ * sonraki nvram_sync(false) ayni veriyi yeniden dener. */
 int nvram_sync(bool crc_no_check);
+
+/* Save/onarim sirasinda true: RAM goruntusu donuktur, setter'lar reddedilir.
+ * Bu genel bir eszamanlilik kilidi DEGILDIR - tek islemcili, isbirlikci
+ * (cooperative) baglamda yalnizca "save sirasinda goruntu degismez"
+ * sozlesmesini uygular. */
+bool nvram_is_busy(void);
+
+/* *_rw() erisimcileri ve nvram_get_breaker() DOGRUDAN degistirilebilir
+ * adres donderir: cagiran, nvram_is_busy() == false iken degistirmeli ve
+ * degisikligi nvram_sync() ile kalicilastirmalidir. */
 void nvram_set_defaults(void);
 
 void nvram_set_cslog_enabled(bool enabled);
