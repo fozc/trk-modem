@@ -8,11 +8,22 @@
 #include "gsm_http_server.h"
 #include "gsm_engine.h"
 #include "web_server.h"
+#include "index_html.h"
+#include "fw_update_html.h"
 #include "ring_buff.h"
 #include "gsm_log.h"
  
 #define GSM_HTTP_SERVER_RX_BUFFER_SIZE 2048
-#define GSM_HTTP_SERVER_TX_BUFFER_SIZE 1024*16
+/* Tam yanit (HTTP basligi + govde) bu ring tampona sigmak zorunda:
+ * http_send_data dongusu tampon dolunca kesilir, govde budanir ve
+ * tarayici Content-Length kadar bayti bekleyip takilir. Index sayfasi
+ * (gzip ~20.8 KB + ~160 B baslik = ~21 KB) 16 KB tasmisti.
+ *
+ * DIKKAT: rbuff_init yalniz IKTININ KUVVETI boyut kabul eder (sarmalama
+ * maski head & (size-1)). 21 KB uzeri ilk gecerli boyut 32 KB'dir;
+ * 20/24 KB gibi degerler rbuff_init'i dusurur (init failed logu).
+ * Sayfa buyurse boot'taki bekci uyir. */
+#define GSM_HTTP_SERVER_TX_BUFFER_SIZE 1024*32
 
 
 static uint8_t http_tx_buff[GSM_HTTP_SERVER_TX_BUFFER_SIZE] = {0};
@@ -106,7 +117,10 @@ static int http_server_send(const void *data, uint32_t len)
 	else
 	{
 		if (!g_http_server.is_rfwu) {
-			CSLOG_ERR("[GSM HTTP SERVER] TX buffer overflow, cannot send %d bytes!\r\n", len);
+			CSLOG_ERR("[GSM HTTP SERVER] TX buffer overflow, cannot send %d bytes! (free: %d/%d)\r\n",
+			          len,
+			          (int)rbuff_available_for_write(&tx_rb_ctx),
+			          (int)GSM_HTTP_SERVER_TX_BUFFER_SIZE);
 		}
 		return -1;
 	}
@@ -132,8 +146,29 @@ void gsm_http_server_init(void)
 	  wio.send = http_server_send; //(int (*)(const uint8_t*, int))http_server_send;
 	  web_server_init(&wio);
 
+	  /* Gomulu sayfalarin tam yaniti (govde + ~256 B HTTP basligi) TX ring
+	   * tamponuna sigmalidir; sigmazsa yanit budanir ve tarayici takilir.
+	   * Derleme sonrasi boyut denetimi - buyume buysa tamponu da buyut. */
+	  if ((get_index_html()->length + 256U) > GSM_HTTP_SERVER_TX_BUFFER_SIZE)
+	  {
+		  CSLOG_ERR("[GSM HTTP SERVER] index.html (%u B) TX tamponuna sigmiyor (%u B)!\r\n",
+		            (unsigned)get_index_html()->length,
+		            (unsigned)GSM_HTTP_SERVER_TX_BUFFER_SIZE);
+	  }
+	  if ((get_fw_update_html()->length + 256U) > GSM_HTTP_SERVER_TX_BUFFER_SIZE)
+	  {
+		  CSLOG_ERR("[GSM HTTP SERVER] fw_update.html (%u B) TX tamponuna sigmiyor (%u B)!\r\n",
+		            (unsigned)get_fw_update_html()->length,
+		            (unsigned)GSM_HTTP_SERVER_TX_BUFFER_SIZE);
+	  }
+
 	  if(!rbuff_init(&tx_rb_ctx, http_tx_buff, GSM_HTTP_SERVER_TX_BUFFER_SIZE)){
 		  CSLOG_ERR("[GSM HTTP SERVER] TX ring buffer init failed - HTTP sends will be rejected!\r\n");
+	  }
+	  else
+	  {
+		  CSLOG("[GSM HTTP SERVER] TX ring buffer ready: %d bytes\r\n",
+		        (int)GSM_HTTP_SERVER_TX_BUFFER_SIZE);
 	  }
 }
 

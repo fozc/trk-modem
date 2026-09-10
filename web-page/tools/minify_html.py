@@ -64,74 +64,131 @@ class SafeHTMLMinifier:
         return css.strip()
     
     def minify_javascript(self, js_content):
-        """Minify JavaScript while preserving string literals and functionality"""
-        # Remove single-line comments (but not URLs like http://)
-        js = re.sub(r'(?<!:)//[^\n]*', '', js_content)
-        
-        # Remove multi-line comments
-        js = re.sub(r'/\*.*?\*/', '', js, flags=re.DOTALL)
-        
-        # Preserve string literals - use list of tuples for proper restoration
+        """Minify JavaScript while preserving string/regex literals.
+
+        Literal protection uses a single-pass tokenizer instead of
+        sequential regex substitution: regex pairing breaks when an
+        apostrophe appears inside a regex literal (e.g. /[&<>"']/g),
+        which caused the old version to swallow JS syntax between
+        strings and to expose string contents to the operator-space
+        stripper (mangling e.g. 'Feeder {n}' into 'Feeder{n}')."""
+
+        def prev_nonspace(out):
+            for k in range(len(out) - 1, -1, -1):
+                if out[k] not in ' \t\r\n':
+                    return out[k]
+            return None
+
+        def is_regex_position(out):
+            """True if a '/' at this point starts a regex literal:
+            previous non-space emitted char is not an operand end."""
+            prev = prev_nonspace(out)
+            if prev is None:
+                return True
+            # After these chars a '/' can only start a regex, not a division
+            return prev in r'([,=:!&|?{;+\-*%<>~^'
+
+        def scan_string(src, i, quote):
+            """Return index of the closing quote (len(src) if unterminated)."""
+            j = i + 1
+            while j < len(src):
+                c = src[j]
+                if c == '\\':
+                    j += 2
+                    continue
+                if c == quote:
+                    return j
+                if c == '\n' and quote != '`':
+                    return len(src)  # unterminated: bail out
+                j += 1
+            return j
+
+        def scan_regex(src, i):
+            """Return index just past a regex literal starting at src[i]=='/'. """
+            j = i + 1
+            in_class = False
+            while j < len(src):
+                c = src[j]
+                if c == '\\':
+                    j += 2
+                    continue
+                if c == '[':
+                    in_class = True
+                elif c == ']':
+                    in_class = False
+                elif c == '/' and not in_class:
+                    j += 1
+                    while j < len(src) and src[j].isalpha():
+                        j += 1  # flags (g, i, m, ...)
+                    return j
+                elif c == '\n':
+                    return i + 1  # not a regex after all: treat '/' as plain
+                j += 1
+            return j
+
+        def minify_template(tpl):
+            """Strip per-line indentation from HTML-bearing template literals."""
+            if '<' in tpl and '>' in tpl:
+                body = tpl[1:-1]  # drop the surrounding backticks
+                lines = [l.strip() for l in body.split('\n') if l.strip()]
+                return '`' + ''.join(lines) + '`'
+            return tpl
+
         strings = []
-        string_counter = [0]  # Use list to allow modification in nested function
-        
-        def save_template_literal(match):
-            """Save template literal but minify its HTML content"""
-            idx = string_counter[0]
-            string_counter[0] += 1
-            placeholder = f"___JS_STR_{idx}___"
-            template_content = match.group(0)
-            
-            # If template literal contains HTML (has < and > tags), minify it
-            if '<' in template_content and '>' in template_content:
-                # Remove leading/trailing whitespace and newlines from each line
-                lines = template_content[1:-1].split('\n')  # Remove backticks
-                minified_lines = []
-                for line in lines:
-                    stripped = line.strip()
-                    if stripped:
-                        minified_lines.append(stripped)
-                # Join with no spaces - HTML doesn't need whitespace between tags
-                minified_content = '`' + ''.join(minified_lines) + '`'
-                strings.append((placeholder, minified_content))
-            else:
-                # Keep non-HTML template literals as-is
-                strings.append((placeholder, template_content))
-            
-            return placeholder
-        
-        def save_string(match):
-            idx = string_counter[0]
-            string_counter[0] += 1
-            placeholder = f"___JS_STR_{idx}___"
-            strings.append((placeholder, match.group(0)))
-            return placeholder
-        
-        # Save template literals first (they can contain quotes)
-        # Use DOTALL flag to match multi-line template literals
-        js = re.sub(r'`(?:[^`\\]|\\.|[\r\n])*`', save_template_literal, js, flags=re.DOTALL)
-        
-        # Then save regular strings
-        js = re.sub(r'"(?:[^"\\]|\\.)*"', save_string, js)
-        js = re.sub(r"'(?:[^'\\]|\\.)*'", save_string, js)
-        
+        string_counter = [0]
+        out = []
+        i = 0
+        n = len(js_content)
+        while i < n:
+            c = js_content[i]
+            # Line comment - but '//' right after ':' is a URL (http://...),
+            # preserved as plain text like the old (?<!:) behaviour.
+            if c == '/' and js_content.startswith('//', i) and prev_nonspace(out) != ':':
+                nl = js_content.find('\n', i)
+                i = n if nl == -1 else nl
+                continue
+            if c == '/' and js_content.startswith('/*', i):
+                end = js_content.find('*/', i)
+                i = n if end == -1 else end + 2
+                continue
+            if c in ('"', "'", '`'):
+                endq = scan_string(js_content, i, c)
+                lit = js_content[i:endq + 1] if endq < n else js_content[i:]
+                if c == '`':
+                    lit = minify_template(lit)
+                idx = string_counter[0]
+                string_counter[0] += 1
+                placeholder = f"___JS_STR_{idx}___"
+                strings.append((placeholder, lit))
+                out.append(placeholder)
+                i = endq + 1 if endq < n else n
+                continue
+            if c == '/' and is_regex_position(out):
+                endr = scan_regex(js_content, i)
+                out.append(js_content[i:endr])
+                i = endr
+                continue
+            out.append(c)
+            i += 1
+        js = ''.join(out)
+
         # Remove excessive whitespace (keep single spaces) - this won't affect preserved strings
         js = re.sub(r'\s+', ' ', js)
-        
+
         # Remove spaces around operators and syntax
         js = re.sub(r'\s*([{}();,=+\-*/<>!&|])\s*', r'\1', js)
-        
+
         # Add back space where needed for keywords (but NOT before method names)
         # Use negative lookahead to avoid breaking .forEach, .forOwn, etc.
         js = re.sub(r'}(else|catch|finally)\b', r'} \1', js)
         js = re.sub(r'\b(var|let|const|return|function|if|else|while|new)\b', r'\1 ', js)
         # Special handling for 'for' - only add space if NOT followed by 'E' (forEach)
         js = re.sub(r'\bfor\b(?!E)', r'for ', js)
-        
+
         # Restore string literals in reverse order (important for nested replacements)
         for placeholder, original in reversed(strings):
             js = js.replace(placeholder, original)
-        
+
         return js.strip()
     
     def minify_html(self, html_content):

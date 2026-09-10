@@ -1,6 +1,6 @@
-﻿<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Smart Breaker — Firmware Update</title>
+<!DOCTYPE html>
+<html lang="tr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Akıllı Ayırıcı — Yazılım Güncelleme</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:24px}
@@ -39,56 +39,61 @@ button:disabled{opacity:.3;cursor:not-allowed}
 #lerr{color:#f87171;font-size:12px;min-height:16px;margin-bottom:8px}
 .b-login{width:100%;padding:10px;background:#1d4ed8;color:#eff6ff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.5px}
 .b-login:hover{background:#2563eb}
-.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px}
+.hdr-left{display:flex;align-items:center;gap:14px;min-width:0}
+.hdr-right{display:flex;align-items:center;gap:14px}
+.lang-switch{display:flex;border:1px solid #334155;border-radius:5px;overflow:hidden}
+.lang-switch button{border:0;background:transparent;color:#64748b;font-size:10px;font-weight:700;padding:5px 10px;cursor:pointer;letter-spacing:.5px}
+.lang-switch button.active{background:#1d4ed8;color:#fff}
 </style></head><body>
 <!-- Login card -->
 <div class="card" id="loginCard" style="max-width:380px;margin-top:60px;display:none">
-  <h1>Firmware Update</h1>
-  <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:20px">Login required</p>
-  <div class="fld"><label>Username</label><input type="text" id="loginUser" autocomplete="username" maxlength="16"></div>
-  <div class="fld"><label>Password</label><input type="password" id="loginPass" autocomplete="current-password" maxlength="16"></div>
+  <h1 data-i="fwTitle">Yazılım Güncelleme</h1>
+  <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:20px" data-i="loginRequired">Giriş gerekli</p>
+  <div class="fld"><label data-i="username">Kullanıcı Adı</label><input type="text" id="loginUser" autocomplete="username" maxlength="16"></div>
+  <div class="fld"><label data-i="password">Şifre</label><input type="password" id="loginPass" autocomplete="current-password" maxlength="16"></div>
   <div id="lerr"></div>
-  <button class="b-login" onclick="doLogin()">Login</button>
+  <button class="b-login" onclick="doLogin()" data-i="loginBtn">Giriş</button>
 </div>
 
 <!-- Main card -->
 <div class="card" id="mainCard" style="display:none">
   <div class="hdr">
-    <h1 style="margin-bottom:0">RFWU — Firmware Update <span style="font-size:12px;color:#64748b;font-weight:400">Web UI {{WEB_VERSION}}</span></h1>
-    <span id="phase">&#9679; IDLE</span>
+    <div class="hdr-left"><h1 style="margin-bottom:0"><span data-i="mainH1">RFWU — Yazılım Güncelleme</span> <span style="font-size:12px;color:#64748b;font-weight:400">Web UI {{WEB_VERSION}}</span></h1></div>
+    <div class="hdr-right"><span id="phase">&#9679; IDLE</span><div class="lang-switch"><button id="langTr" onclick="setLang('tr')">TR</button><button id="langEn" onclick="setLang('en')">EN</button></div></div>
   </div>
 
   <!-- File section -->
   <div class="sec">
-    <div class="stitle">Firmware File</div>
-    <div id="rb"><b>Resume available:</b> <span id="ri"></span><br><small>Load the same .efw file to continue from where it stopped.</small></div>
+    <div class="stitle" data-i="fwFile">Yazılım Dosyası</div>
+    <div id="rb"><b data-i="resumeAvail">Devam edilebilir:</b> <span id="ri"></span><br><small data-i="resumeHint">Kaldığı yerden devam etmek için aynı .efw dosyasını yükleyin.</small></div>
     <div class="dz" id="dz">
       <div style="font-size:32px">&#128193;</div>
-      <p id="dp">Click or drag a .efw file here</p>
+      <p id="dp" data-i="dzHint">.efw dosyasını buraya tıklayarak veya sürükleyerek seçin</p>
       <input type="file" id="fi" accept=".efw">
     </div>
   </div>
 
   <!-- Actions section -->
   <div class="sec">
-    <div class="stitle">Actions</div>
+    <div class="stitle" data-i="actions">İşlemler</div>
     <div class="btns">
-      <button class="b-st"  id="bSt"  onclick="doStatus()">Check Status</button>
-      <button class="b-go"  id="bGo"  onclick="doStart()"   disabled>Start / Resume</button>
-      <button class="b-sp"  id="bSp"  onclick="doStop()"    disabled>Stop</button>
-      <button class="b-ab"  id="bAb"  onclick="doAbort()">Abort</button>
+      <button class="b-st"  id="bSt"  onclick="doStatus()" data-i="checkStatus">Durumu Kontrol Et</button>
+      <button class="b-go"  id="bGo"  onclick="doStart()"   disabled data-i="startResume">Başlat / Devam</button>
+      <button class="b-sp"  id="bSp"  onclick="doStop()"    disabled data-i="stop">Durdur</button>
+      <button class="b-ab"  id="bAb"  onclick="doAbort()" data-i="abort">İptal Et</button>
       <div class="opt">
         <input type="checkbox" id="forceRestart">
-        <label for="forceRestart" style="cursor:pointer">Force restart</label>
+        <label for="forceRestart" style="cursor:pointer" data-i="forceRestart">Zorla yeniden başlat</label>
       </div>
-      <button class="b-ap"  id="bAp"  onclick="doApply()"   style="margin-left:auto">Apply Firmware</button>
-      <button class="b-rb"  id="bRb"  onclick="doReboot()">Reboot Device</button>
+      <button class="b-ap"  id="bAp"  onclick="doApply()"   style="margin-left:auto" data-i="applyFw">Yazılımı Uygula</button>
+      <button class="b-rb"  id="bRb"  onclick="doReboot()" data-i="rebootDevice">Cihazı Yeniden Başlat</button>
     </div>
   </div>
 
   <!-- Progress section -->
   <div class="sec">
-    <div class="stitle">Progress</div>
+    <div class="stitle" data-i="progress">İlerleme</div>
     <div class="pw"><div class="pb" id="pb"></div></div>
     <div id="pt"></div>
     <div id="stats">
@@ -101,14 +106,70 @@ button:disabled{opacity:.3;cursor:not-allowed}
   <!-- Log section -->
   <div class="sec" style="margin-bottom:0">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div class="stitle" style="margin-bottom:0">Log</div>
-      <button class="b-cl" onclick="clearLog()">Clear</button>
+      <div class="stitle" style="margin-bottom:0" data-i="log">Günlük</div>
+      <button class="b-cl" onclick="clearLog()" data-i="clear">Temizle</button>
     </div>
     <div id="lg"></div>
   </div>
 </div>
 
 <script>
+/* ── I18N ──────────────────────────────────────────────────── */
+const I18N={
+en:{
+docTitle:'Smart Breaker \u2014 Firmware Update',fwTitle:'Firmware Update',loginRequired:'Login required',username:'Username',password:'Password',loginBtn:'Login',
+mainH1:'RFWU \u2014 Firmware Update',fwFile:'Firmware File',resumeAvail:'Resume available:',resumeHint:'Load the same .efw file to continue from where it stopped.',
+dzHint:'Click or drag a .efw file here',actions:'Actions',checkStatus:'Check Status',startResume:'Start / Resume',stop:'Stop',abort:'Abort',
+forceRestart:'Force restart',applyFw:'Apply Firmware',rebootDevice:'Reboot Device',progress:'Progress',log:'Log',clear:'Clear',
+authRequired:'Auth required',enterCred:'Enter credentials',loginFailed:'Login failed',invalidCred:'Invalid credentials',connError:'Connection error',
+onlyEfw:'Only .efw files accepted',elapsed:'Elapsed: ',etaLbl:'ETA: ',chunksTpl:'{n} chunks   {m} errors',
+mReady:'Transfer complete ({v} bytes). Ready to apply \u2014 click Apply Firmware.',mSession:'Session found: {v}',mUploaded:'already uploaded',mConnected:'Connected. No active session.',
+mStatusFail:'Status check failed: ',mFileMismatch:'File ID mismatch with server session \u2014 enable Force restart',mFileMatch:'File matches server session \u2014 will resume',mQuerying:'Querying status...',
+stReady:'Status: READY (transfer complete, image NOT applied)',stActive:'Status: ACTIVE',stInactive:'Status: INACTIVE (no session)',
+lblTotal:'  Total:    ',lblReceived:'  Received: ',lblFileId:'  File ID:  ',lblFile:'  File:     ',mMatch:'MATCH (same file loaded)',mMismatch:'MISMATCH (different file)',mStatusQueryFail:'Status query failed: ',
+mInitFail:'Init failed: ',mInitRej:'Init rejected: ',mResuming:'Resuming from {a} / {b} bytes  ({p}%)',mNewTransfer:'Starting new transfer  ({v})...',
+mStopped:'Transfer stopped. MCU session preserved \u2014 click Start to resume.',mFailAt:'Transfer failed at offset {v}. Session preserved.',mComplete:'Transfer complete!',
+mFinishRej:'Finish rejected: ',mFinishFail:'Finish failed: ',mStopReq:'Stop requested \u2014 pausing after current chunk...',
+mAbortBusy:'Abort \u2014 transfer will stop. Session cleared on next Start.',mAbortIdle:'Abort \u2014 MCU session will be cleared on next Start.',
+cAbort:'Abort transfer?\nThe MCU session will be cleared on the next Start.',cReboot:'Reboot device?',mRebootSent:'Reboot command sent. Reconnect after ~30 s.',
+cApply:'Apply downloaded firmware?\nDevice will reboot into bootloader update mode.',mApplyOk:'Apply command accepted. Device rebooting into update mode...',
+mApplyRej:'Apply rejected: ',mApplyFail:'Apply failed: ',unknownErr:'unknown error',serverErr:'server error'
+},
+tr:{
+docTitle:'Akıllı Ayırıcı \u2014 Yazılım Güncelleme',fwTitle:'Yazılım Güncelleme',loginRequired:'Giriş gerekli',username:'Kullanıcı Adı',password:'Şifre',loginBtn:'Giriş',
+mainH1:'RFWU \u2014 Yazılım Güncelleme',fwFile:'Yazılım Dosyası',resumeAvail:'Devam edilebilir:',resumeHint:'Kaldığı yerden devam etmek için aynı .efw dosyasını yükleyin.',
+dzHint:'.efw dosyasını buraya tıklayarak veya sürükleyerek seçin',actions:'İşlemler',checkStatus:'Durumu Kontrol Et',startResume:'Başlat / Devam',stop:'Durdur',abort:'İptal Et',
+forceRestart:'Zorla yeniden başlat',applyFw:'Yazılımı Uygula',rebootDevice:'Cihazı Yeniden Başlat',progress:'İlerleme',log:'Günlük',clear:'Temizle',
+authRequired:'Kimlik doğrulaması gerekli',enterCred:'Kullanıcı adı ve şifre girin',loginFailed:'Giriş başarısız',invalidCred:'Geçersiz kullanıcı adı veya şifre',connError:'Bağlantı hatası',
+onlyEfw:'Yalnızca .efw dosyaları kabul edilir',elapsed:'Geçen süre: ',etaLbl:'Kalan: ',chunksTpl:'{n} parça   {m} hata',
+mReady:'Aktarım tamamlandı ({v} bayt). Uygulamaya hazır \u2014 Yazılımı Uygula düğmesine basın.',mSession:'Oturum bulundu: {v}',mUploaded:'zaten yüklendi',mConnected:'Bağlantı kuruldu. Etkin oturum yok.',
+mStatusFail:'Durum sorgusu başarısız: ',mFileMismatch:'Dosya kimliği sunucu oturumuyla uyuşmuyor \u2014 Zorla yeniden başlat seçeneğini etkinleştirin',mFileMatch:'Dosya sunucu oturumuyla eşleşiyor \u2014 devam edilecek',mQuerying:'Durum sorgulanıyor...',
+stReady:'Durum: HAZIR (aktarım tamam, yazılım uygulanmadı)',stActive:'Durum: ETKİN',stInactive:'Durum: ETKİN DEĞİL (oturum yok)',
+lblTotal:'  Toplam:   ',lblReceived:'  Alınan:   ',lblFileId:'  Dosya No: ',lblFile:'  Dosya:    ',mMatch:'EŞLEŞTİ (aynı dosya yüklü)',mMismatch:'EŞLEŞMEDİ (farklı dosya)',mStatusQueryFail:'Durum sorgusu başarısız: ',
+mInitFail:'Başlatma başarısız: ',mInitRej:'Başlatma reddedildi: ',mResuming:'Devam ediliyor: {a} / {b} bayt  (%{p})',mNewTransfer:'Yeni aktarım başlatılıyor  ({v})...',
+mStopped:'Aktarım durduruldu. MCU oturumu korundu \u2014 devam etmek için Başlat düğmesine basın.',mFailAt:'Aktarım {v}. baytta başarısız oldu. Oturum korundu.',mComplete:'Aktarım tamamlandı!',
+mFinishRej:'Bitirme reddedildi: ',mFinishFail:'Bitirme başarısız: ',mStopReq:'Durdurma istendi \u2014 geçerli parçadan sonra duraklatılıyor...',
+mAbortBusy:'İptal \u2014 aktarım duracak. Oturum sonraki Başlat komutunda temizlenecek.',mAbortIdle:'İptal \u2014 MCU oturumu sonraki Başlat komutunda temizlenecek.',
+cAbort:'Aktarım iptal edilsin mi?\nMCU oturumu sonraki Başlat komutunda temizlenecek.',cReboot:'Cihaz yeniden başlatılsın mı?',mRebootSent:'Yeniden başlatma komutu gönderildi. ~30 s sonra yeniden bağlanın.',
+cApply:'İndirilen yazılım uygulansın mı?\nCihaz önyükleyici güncelleme kipinde yeniden başlayacak.',mApplyOk:'Uygulama komutu alındı. Cihaz güncelleme kipinde yeniden başlatılıyor...',
+mApplyRej:'Uygulama reddedildi: ',mApplyFail:'Uygulama başarısız: ',unknownErr:'bilinmeyen hata',serverErr:'sunucu hatası'
+}};
+let LNG=(()=>{try{const l=localStorage.getItem('tsb23lang');return(l==='en'||l==='tr')?l:'tr'}catch(e){return 'tr'}})();
+const t=k=>{const d=I18N[LNG];return (d&&d[k]!==undefined)?d[k]:((I18N.en[k]!==undefined)?I18N.en[k]:k)};
+const tf=(k,map)=>t(k).replace(/\{(\w+)\}/g,(_,x)=>(map&&map[x]!==undefined)?map[x]:('{'+x+'}'));
+function setLang(l){
+  if(l!=='tr'&&l!=='en')l='tr';
+  LNG=l;
+  try{localStorage.setItem('tsb23lang',l)}catch(e){}
+  document.documentElement.lang=l;
+  document.querySelectorAll('[data-i]').forEach(el=>{el.textContent=t(el.dataset.i)});
+  document.getElementById('langTr').classList.toggle('active',l==='tr');
+  document.getElementById('langEn').classList.toggle('active',l==='en');
+  if(!busy)document.title=t('docTitle');
+  if(document.getElementById('dp')&&document.getElementById('dp').dataset.touched!=='1')
+    document.getElementById('dp').textContent=t('dzHint');
+}
+
 /* ── Constants ─────────────────────────────────────────────── */
 const HTTP_TIMEOUT = 30000;
 const CHUNK_RETRY  = 3;
@@ -125,7 +186,11 @@ let startTime = 0;
 let startOff  = 0;
 let chunkCnt  = 0;
 let errCnt    = 0;
-let s_token   = sessionStorage.getItem('st') || null;
+/* Token onceligi: URL query (?t=...) > sessionStorage. Ana sayfadaki
+ * "Yazılım Güncelleme" menusu sayfayi ?t=<token> ile yeni sekmede acar;
+ * yeni sekme kendi sessionStorage'i ile basladigi icin token URL'den
+ * gelir ve ayni sekmede sonraki acilislar icin saklanir. */
+let s_token   = (()=>{try{const m=location.search.match(/[?&]t=([A-Za-z0-9]+)/);if(m){sessionStorage.setItem('st',m[1]);return m[1]}}catch(e){}return sessionStorage.getItem('st')||null})();
 
 /* ── Helpers ───────────────────────────────────────────────── */
 function fmt(b){return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB';}
@@ -143,9 +208,9 @@ function log(msg,cls){
     const s=msg.trimStart();
     if(s.startsWith('TX'))        cls='tx';
     else if(s.startsWith('RX'))   cls='rx';
-    else if(/error|failed|rejected/i.test(msg)) cls='err';
-    else if(/complete|Done!/i.test(msg))         cls='done';
-    else if(/abort|stopped/i.test(msg))          cls='warn';
+    else if(/error|failed|rejected|başarısız|reddedildi/i.test(msg)) cls='err';
+    else if(/complete|Done!|tamamlandı/i.test(msg))                  cls='done';
+    else if(/abort|stopped|iptal|durduruldu/i.test(msg))             cls='warn';
     else cls='info';
   }
   const lg=document.getElementById('lg');
@@ -169,7 +234,7 @@ function setPhase(p){
   el.textContent='\u25cf '+p;
   el.style.color=PHASE_CLR[p]||'#64748b';
   if(busy) document.title='RFWU \u2014 '+p;
-  else document.title='Smart Breaker \u2014 Firmware Update';
+  else document.title=t('docTitle');
 }
 
 function setProgress(sent,total){
@@ -177,20 +242,19 @@ function setProgress(sent,total){
   document.getElementById('pb').style.width=pct+'%';
   document.getElementById('pt').textContent=
     pct+'%  \u2014  '+fmt(sent)+' / '+fmt(total);
-  document.getElementById('pktstat').textContent=
-    chunkCnt+' chunks   '+errCnt+' errors';
+  document.getElementById('pktstat').textContent=tf('chunksTpl',{n:chunkCnt,m:errCnt});
   if(startTime>0){
     const el=(performance.now()-startTime)/1000;
     const em=Math.floor(el/60),es=Math.floor(el%60);
     document.getElementById('elapsed').textContent=
-      'Elapsed: '+em+':'+String(es).padStart(2,'0');
+      t('elapsed')+em+':'+String(es).padStart(2,'0');
     const session=sent-startOff;
     if(el>0.5&&session>0){
       const spd=session/el,rem=total-sent;
       if(spd>0){
         const eta=rem/spd,em2=Math.floor(eta/60),es2=Math.floor(eta%60);
         document.getElementById('eta').textContent=
-          (spd/1024).toFixed(1)+' KB/s  ETA: '+em2+':'+String(es2).padStart(2,'0');
+          (spd/1024).toFixed(1)+' KB/s  '+t('etaLbl')+em2+':'+String(es2).padStart(2,'0');
       }
     }
   }
@@ -220,7 +284,7 @@ async function apiFetch(url,opt={}){
     try{
       const r=await fetch(turl(url),{...opt,signal:ctrl.signal});
       clearTimeout(tid);
-      if(r.status===401){showLogin();throw new Error('Auth required');}
+      if(r.status===401){showLogin();throw new Error(t('authRequired'));}
       if(!r.ok) throw new Error('HTTP '+r.status);
       return r;
     }catch(e){
@@ -246,7 +310,7 @@ async function doLogin(){
   const pass=document.getElementById('loginPass').value.slice(0,16);
   const err=document.getElementById('lerr');
   err.textContent='';
-  if(!user||!pass){err.textContent='Enter credentials';return;}
+  if(!user||!pass){err.textContent=t('enterCred');return;}
   document.getElementById('loginPass').value='';
   try{
     let r;
@@ -254,11 +318,11 @@ async function doLogin(){
       try{r=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user,password:pass})});break;}
       catch(e){if(i===0&&e instanceof TypeError){await sleep(150);continue;}throw e;}
     }
-    if(!r.ok){err.textContent='Login failed';return;}
+    if(!r.ok){err.textContent=t('loginFailed');return;}
     const d=await r.json();
     if(d.success&&d.token){s_token=d.token;sessionStorage.setItem('st',d.token);showMain();await init();}
-    else err.textContent=d.error||'Invalid credentials';
-  }catch(e){err.textContent='Connection error';}
+    else err.textContent=d.error||t('invalidCred');
+  }catch(e){err.textContent=t('connError');}
 }
 
 document.addEventListener('keypress',e=>{
@@ -275,17 +339,17 @@ async function init(){
     if(d.ready){
       if(d.fh) fhash=d.fh;
       setPhase('READY');setBtns(false,true,false,true,true);
-      log('Transfer complete ('+fmt(d.total)+' bytes). Ready to apply — click Apply Firmware.','warn');
+      log(tf('mReady',{v:fmt(d.total)}),'warn');
       document.getElementById('rb').style.display='none';
     }else if(d.active){
       if(d.fh) fhash=d.fh;
       document.getElementById('rb').style.display='block';
-      document.getElementById('ri').textContent=fmt(d.received)+' / '+fmt(d.total)+' already uploaded';
-      log('Session found: '+fmt(d.received)+' / '+fmt(d.total),'warn');
+      document.getElementById('ri').textContent=fmt(d.received)+' / '+fmt(d.total)+' \u2014 '+t('mUploaded');
+      log(tf('mSession',{v:fmt(d.received)+' / '+fmt(d.total)}),'warn');
     }else{
-      log('Connected. No active session.','info');
+      log(t('mConnected'),'info');
     }
-  }catch(e){log('Status check failed: '+e.message,'err');}
+  }catch(e){log(t('mStatusFail')+e.message,'err');}
 }
 
 /* ── File loading ──────────────────────────────────────────── */
@@ -297,16 +361,17 @@ dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('over');if
 document.getElementById('fi').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
 
 async function loadFile(f){
-  if(!f.name.endsWith('.efw')){log('Only .efw files accepted','err');return;}
+  if(!f.name.endsWith('.efw')){log(t('onlyEfw'),'err');return;}
   fdata=new Uint8Array(await f.arrayBuffer());
   const newHash=f16(fdata.slice(0,Math.min(64,fdata.length)));
   document.getElementById('dp').textContent=f.name+'  ('+fmt(f.size)+')';
+  document.getElementById('dp').dataset.touched='1';
   dz.classList.add('ready');
   log('File: '+f.name+'  ('+fmt(f.size)+')');
   if(fhash&&fhash!==newHash)
-    log('File ID mismatch with server session \u2014 enable Force restart','warn');
+    log(t('mFileMismatch'),'warn');
   else if(fhash&&fhash===newHash)
-    log('File matches server session \u2014 will resume','done');
+    log(t('mFileMatch'),'done');
   fhash=newHash;
   setBtns(true,true,false,true,false);
 }
@@ -314,7 +379,7 @@ async function loadFile(f){
 /* ── Check Status ──────────────────────────────────────────── */
 async function doStatus(){
   if(busy) return;
-  log('Querying status...');
+  log(t('mQuerying'));
   setPhase('CHECKING');
   setBtns(false,false,false,true,false);
   let ready=false;
@@ -324,24 +389,24 @@ async function doStatus(){
     if(d.ready){
       ready=true;
       if(d.fh) fhash=d.fh;
-      log('Status: READY (transfer complete, image NOT applied)','rx');
-      log('  Total:    '+fmt(d.total),'info');
-      if(d.fh) log('  File ID:  0x'+d.fh.toString(16).toUpperCase().padStart(4,'0'),'info');
+      log(t('stReady'),'rx');
+      log(t('lblTotal')+fmt(d.total),'info');
+      if(d.fh) log(t('lblFileId')+'0x'+d.fh.toString(16).toUpperCase().padStart(4,'0'),'info');
     }else if(d.active){
-      log('Status: ACTIVE','rx');
-      log('  Total:    '+fmt(d.total),'info');
-      log('  Received: '+fmt(d.received)+'  ('+(d.received*100/d.total).toFixed(1)+'%)','info');
+      log(t('stActive'),'rx');
+      log(t('lblTotal')+fmt(d.total),'info');
+      log(t('lblReceived')+fmt(d.received)+'  ('+(d.received*100/d.total).toFixed(1)+'%)','info');
       if(d.fh){
-        log('  File ID:  0x'+d.fh.toString(16).toUpperCase().padStart(4,'0'),'info');
+        log(t('lblFileId')+'0x'+d.fh.toString(16).toUpperCase().padStart(4,'0'),'info');
         if(fdata){
           const match=d.fh===fhash;
-          log('  File:     '+(match?'MATCH (same file loaded)':'MISMATCH (different file)'),match?'done':'warn');
+          log(t('lblFile')+(match?t('mMatch'):t('mMismatch')),match?'done':'warn');
         }
       }
     }else{
-      log('Status: INACTIVE (no session)','info');
+      log(t('stInactive'),'info');
     }
-  }catch(e){log('Status query failed: '+e.message,'err');}
+  }catch(e){log(t('mStatusQueryFail')+e.message,'err');}
   setPhase(ready?'READY':'IDLE');
   setBtns(true,!!fdata,false,true,ready);
 }
@@ -374,20 +439,18 @@ async function runTransfer(){
     const r=await apiFetch('/s',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({s:fdata.length,h:sendHash})});
     d=await r.json();
-  }catch(e){log('Init failed: '+e.message,'err');endTransfer(false,'ERROR');return;}
+  }catch(e){log(t('mInitFail')+e.message,'err');endTransfer(false,'ERROR');return;}
 
-  if(d.status!=='ok'){log('Init rejected: '+(d.error||'?'),'err');endTransfer(false,'ERROR');return;}
+  if(d.status!=='ok'){log(t('mInitRej')+(d.error||'?'),'err');endTransfer(false,'ERROR');return;}
   if(d.cs>0) csz=d.cs;
   const resumeOff=typeof d.received==='number'?d.received:0;
   log('RX  ACK   resume_offset='+resumeOff.toLocaleString('en')+'  chunk_size='+csz);
 
   if(resumeOff>0){
-    log('Resuming from '+resumeOff.toLocaleString('en')+' / '+
-        fdata.length.toLocaleString('en')+' bytes  ('+
-        (resumeOff*100/fdata.length).toFixed(0)+'%)');
+    log(tf('mResuming',{a:resumeOff.toLocaleString('en'),b:fdata.length.toLocaleString('en'),p:(resumeOff*100/fdata.length).toFixed(0)}));
     setPhase('RESUMED');
   }else{
-    log('Starting new transfer  ('+fmt(fdata.length)+')...');
+    log(tf('mNewTransfer',{v:fmt(fdata.length)})+'...');
     setPhase('DATA');
   }
 
@@ -397,7 +460,7 @@ async function runTransfer(){
 
   while(off<fdata.length){
     if(stopped){
-      log('Transfer stopped. MCU session preserved \u2014 click Start to resume.','warn');
+      log(t('mStopped'),'warn');
       endTransfer(false,'STOPPED'); return;
     }
     const end=Math.min(off+csz,fdata.length);
@@ -410,7 +473,7 @@ async function runTransfer(){
     setPhase('DATA');
 
     let ok=false;
-    for(let t=0;t<CHUNK_RETRY&&!stopped;t++){
+    for(let tr=0;tr<CHUNK_RETRY&&!stopped;tr++){
       try{
         const r=await apiFetch('/c?o='+off+'&cs='+cs,{method:'POST',body:chunk});
         const res=await r.json();
@@ -418,18 +481,18 @@ async function runTransfer(){
           log('RX  ACK   received='+(off+chunk.length).toLocaleString('en'));
           off=end; chunkCnt++; setProgress(off,fdata.length); ok=true; break;
         }
-        if(res.retry){log('RX  NACK  [retry '+(t+1)+']','warn');errCnt++;await sleep(RETRY_DELAY*(t+1));continue;}
-        throw new Error(res.error||'server error');
+        if(res.retry){log('RX  NACK  [retry '+(tr+1)+']','warn');errCnt++;await sleep(RETRY_DELAY*(tr+1));continue;}
+        throw new Error(res.error||t('serverErr'));
       }catch(e){
         if(stopped) break;
         errCnt++;
-        log('RX  NACK  ['+e.message+']  retry '+(t+1),'warn');
-        if(t<CHUNK_RETRY-1) await sleep(RETRY_DELAY*(t+1));
+        log('RX  NACK  ['+e.message+']  retry '+(tr+1),'warn');
+        if(tr<CHUNK_RETRY-1) await sleep(RETRY_DELAY*(tr+1));
       }
     }
 
     if(!ok){
-      if(!stopped){log('Transfer failed at offset '+off.toLocaleString('en')+'. Session preserved.','err');endTransfer(false,'ERROR');}
+      if(!stopped){log(tf('mFailAt',{v:off.toLocaleString('en')}),'err');endTransfer(false,'ERROR');}
       else endTransfer(false,'STOPPED');
       return;
     }
@@ -444,14 +507,14 @@ async function runTransfer(){
       body:JSON.stringify({s:fdata.length})});
     const res=await r.json();
     if(res.status==='ok'){
-      log('RX  ACK   confirmed='+fdata.length.toLocaleString('en')+'  Transfer complete!','done');
+      log('RX  ACK   confirmed='+fdata.length.toLocaleString('en')+'  '+t('mComplete'),'done');
       document.getElementById('pb').classList.add('done');
       endTransfer(true,'DONE');
     }else{
-      log('Finish rejected: '+(res.error||'?'),'err');
+      log(t('mFinishRej')+(res.error||'?'),'err');
       endTransfer(false,'ERROR');
     }
-  }catch(e){log('Finish failed: '+e.message,'err');endTransfer(false,'ERROR');}
+  }catch(e){log(t('mFinishFail')+e.message,'err');endTransfer(false,'ERROR');}
 }
 
 function endTransfer(ok,phase){
@@ -466,42 +529,43 @@ function endTransfer(ok,phase){
 function doStop(){
   if(!busy) return;
   stopped=true;
-  log('Stop requested \u2014 pausing after current chunk...','warn');
+  log(t('mStopReq'),'warn');
 }
 
 async function doAbort(){
-  if(!confirm('Abort transfer?\nThe MCU session will be cleared on the next Start.')) return;
+  if(!confirm(t('cAbort'))) return;
   aborted=true;
   if(busy){
     stopped=true;
-    log('Abort \u2014 transfer will stop. Session cleared on next Start.','warn');
+    log(t('mAbortBusy'),'warn');
   }else{
-    log('Abort \u2014 MCU session will be cleared on next Start.','warn');
+    log(t('mAbortIdle'),'warn');
     setPhase('IDLE');
   }
 }
 
 async function doReboot(){
-  if(!confirm('Reboot device?')) return;
+  if(!confirm(t('cReboot'))) return;
   log('TX  REBOOT');
   try{await apiFetch('/rb',{method:'POST'});}catch(e){}
-  log('Reboot command sent. Reconnect after ~30 s.','done');
+  log(t('mRebootSent'),'done');
 }
 
 async function doApply(){
-  if(!confirm('Apply downloaded firmware?\\nDevice will reboot into bootloader update mode.')) return;
+  if(!confirm(t('cApply'))) return;
   log('TX  APPLY FW');
   try{
     const r=await apiFetch('/fw_apply',{method:'POST'});
     const d=await r.json();
     if(d.status==='ok'){
-      log('Apply command accepted. Device rebooting into update mode...','done');
+      log(t('mApplyOk'),'done');
     }else{
-      log('Apply rejected: '+(d.error||'unknown error'),'err');
+      log(t('mApplyRej')+(d.error||t('unknownErr')),'err');
     }
-  }catch(e){log('Apply failed: '+e.message,'err');}
+  }catch(e){log(t('mApplyFail')+e.message,'err');}
 }
 
 /* ── Startup ───────────────────────────────────────────────── */
+setLang(LNG);
 if(s_token){showMain();init();}else{showLogin();}
 </script></body></html>
