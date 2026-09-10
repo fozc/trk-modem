@@ -5,7 +5,7 @@
 
 #include "spi_flash_log.h"
 #include <string.h>
-
+#include "bsp.h"
 /* -------------------------------------------------------------------------- */
 /* Statik Doğrulamalar (R1 üst sınırı derleme zamanında da tutarlı olmalı)   */
 /* -------------------------------------------------------------------------- */
@@ -477,6 +477,8 @@ log_status_t log_read_all(log_ctx_t *ctx, log_visit_fn visit, void *user_ctx) {
     uint32_t start_sector = wrapped ? next_after_active : 0;
     uint32_t s = start_sector;
     uint8_t  buf[LOG_MAX_ENTRY_SIZE];
+
+    bsp_kick_wdt();
 
     for (;;) {
         uint32_t base  = ctx->base_addr + s * LOG_SECTOR_SIZE;
