@@ -331,8 +331,8 @@ void handle_post_login(const char *json_body)
 
         char *buf = handler_state.tx_buffer;
         int   pos = xsnprintf(buf, handler_state.tx_buffer_size,
-                              "{\"success\":true,\"token\":\"%08lX\"}",
-                              (unsigned long)new_token);
+                              "{\"success\":true,\"token\":\"%08lX\",\"role\":\"%s\"}",
+                              (unsigned long)new_token, handler_state.username);
         http_send_json(buf, pos);
     } else {
         const char *error_response = "{\"success\":false,\"error\":\"Invalid credentials\"}";
