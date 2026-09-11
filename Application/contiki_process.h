@@ -13,6 +13,7 @@ PROCESS_NAME(iec104_send_temporary_faults);
 PROCESS_NAME(iec104_send_permanent_faults);
 PROCESS_NAME(iec104_reboot_process);
 PROCESS_NAME(iec104_replay_process);
+PROCESS_NAME(iec104_replay_fallback_timer);
 
 
 #endif /* CONTIKI_PROCESS_H_ */

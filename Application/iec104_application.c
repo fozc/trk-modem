@@ -50,6 +50,12 @@ void iec104_application_event_handler(iec104_event_t evt)
             process_start(&iec104_reboot_process, NULL);
         }
     }
+    else if(evt == IEC104_EVT_LINK_ACTIVATED)
+    {
+        /* Emniyet sayaci: STARTDT'den 15 s sonra replay kendiliginden
+         * kalkar - IKM hangi GI'yi yaparsa yapsin (sertname 2.2.4.2). */
+        iec104_replay_link_established();
+    }
     else if(evt == IEC104_EVT_REQUEST_SOCKET_CLOSE)
     {
         gsm_listener_socket_event_handler(GSM_LISTENER_IEC104, GSM_USER_EVENT_CLOSE_SOCKET);
@@ -64,6 +70,9 @@ void iec104_application_event_handler(iec104_event_t evt)
         }
         if(process_is_running(&iec104_replay_process)){
             process_exit(&iec104_replay_process);
+        }
+        if(process_is_running(&iec104_replay_fallback_timer)){
+            process_exit(&iec104_replay_fallback_timer);
         }
 
         PT_SEM_INIT(&iec104_tx_sem, 1);
@@ -152,8 +161,6 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
     iec104_send_general_interrogation_term(QOI_GROUP_3, link_lost ? 1U : 0U);
 
     PT_SEM_SIGNAL(&process_pt, &iec104_tx_sem);
-    /* GI bitti: birikmis olay varsa replay kendini kaldirir (yoksa no-op). */
-    iec104_replay_start_if_pending();
 
     PROCESS_END();
 }
@@ -217,8 +224,6 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
     iec104_send_general_interrogation_term(QOI_GROUP_4, link_lost ? 1U : 0U);
 
     PT_SEM_SIGNAL(&process_pt, &iec104_tx_sem);
-    /* GI bitti: birikmis olay varsa replay kendini kaldirir (yoksa no-op). */
-    iec104_replay_start_if_pending();
 
     PROCESS_END();
 }

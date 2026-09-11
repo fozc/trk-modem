@@ -31,8 +31,16 @@
  * (spi_flash_log bozuk slotlari atlar); bu sayac yalnizca kuyrugun
  * uzun sure bosalmadigi durumda sureci durdurur. 150 x 100 ms = 15 s. */
 #define REPLAY_MAX_CONSEC_FAIL       150U
+/* STARTDT sonrasi emniyet suresi: IKM tipik "STARTDT -> GI" patlamasini
+ * bitirsin; sure dolunca GI turuna bakilmaksizin replay kendiliginden
+ * kalkar (sertname 2.2.4.2 - donen baglantida veri istek beklemeksizin
+ * gider). Grup 3/4 surecleri daha once bitmisse tetik zaten atlamistir. */
+#define REPLAY_FALLBACK_TIMEOUT_S    15U
 
 PROCESS(iec104_replay_process, "iec104_replay_process");
+PROCESS(iec104_replay_fallback_timer, "iec104_replay_fallback_timer");
+
+static void iec104_replay_start_if_pending(void);
 
 PROCESS_THREAD(iec104_replay_process, ev, data)
 {
@@ -52,6 +60,9 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 	});
 
 	PROCESS_BEGIN();
+
+	CSLOG("Hafizadaki %u gonderilmemis kayit icin replay basliyor\r\n",
+	      iec104_event_log_get_unsent_count());
 
 	/* GI yayicilariyla ayni semafor: replay sirasinda gelen bir grup 3/4
 	 * sorgulamasi, replay bitene kadar kendi sirasini bekler. */
@@ -112,11 +123,45 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 	PROCESS_END();
 }
 
-void iec104_replay_start_if_pending(void)
+/* Tek atimlik emniyet sayaci: STARTDT'den REPLAY_FALLBACK_TIMEOUT_S kadar
+ * sonra, GI tetikleri bugun kalmadiysa replay'i kendiliginden kaldirmaya
+ * calisir. Kosul kontrolu replay_start_if_pending icinde - sayaç bos yere
+ * atesleyebilir. Surecten sonra kendiliginden olur; yeniden STARTDT
+ * kalmadiysa calismiyorsa bastan baslatilir. */
+PROCESS_THREAD(iec104_replay_fallback_timer, ev, data)
 {
-	/* GI alt sureclerinden sonuncusu bitirdiginde cagirilir; kardes
-	 * surec hala calisiyorken replay baslamaz (siralama: GI -> replay).
-	 * Unsent sayacinin kendisi durumdur - ayri oturum bayragi yok. */
+	static struct etimer timer;
+
+	(void)ev;
+	(void)data;
+
+	PROCESS_BEGIN();
+
+	etimer_set(&timer, REPLAY_FALLBACK_TIMEOUT_S * CLOCK_SECOND);
+
+	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+
+	iec104_replay_start_if_pending();
+
+	PROCESS_END();
+}
+
+void iec104_replay_link_established(void)
+{
+	if (!process_is_running(&iec104_replay_fallback_timer))
+	{
+		process_start(&iec104_replay_fallback_timer, NULL);
+	}
+}
+
+/* Tek tetik yolu emniyet sayacidir (STARTDT + 15 s); kosullar uygunsa
+ * replay surecini kaldirir. Unsent sayacinin kendisi durumdur - ayri
+ * oturum bayragi tasimaz. */
+static void iec104_replay_start_if_pending(void)
+{
+	/* GI alt sureclerinden hicbirine bagli degil: replay yalniz
+	 * emniyet sayacindan kalkar; calisan GI surecleri varsa semafor
+	 * sirasini dogal olarak korur. */
 	if (process_is_running(&iec104_send_temporary_faults))
 	{
 		return;

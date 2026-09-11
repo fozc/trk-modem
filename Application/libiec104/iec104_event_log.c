@@ -30,6 +30,7 @@
 #include <stdlib.h>
 
 #include "nvram.h"
+#include "breaker.h"
 #include "crc32.h"
 #include "cp56time2a.h"
 #include "shell.h"
@@ -432,6 +433,35 @@ void iec104_event_log_test(uint16_t count)
         return;
     }
 
+    /* Test kayitlari once kullanimda olan fiderlere yazilir (IKM tarafinda
+     * tanimli IOA'lara densin); hicbiri yoksa tum fidere yayilir - replay
+     * in_use olmayan fidere de gonderir, varsayilan IOA'lar uzerinden. */
+    uint8_t feeders[MAX_POWER_LINE_COUNT];
+    uint8_t feeder_count = 0U;
+
+    for (uint8_t f = 0U; f < MAX_POWER_LINE_COUNT; f++)
+    {
+        const power_line_t *line = breaker_get_power_line_by_idx(f);
+
+        if ((NULL != line) && (0U != line->iec104.in_use))
+        {
+            feeders[feeder_count] = f;
+            feeder_count++;
+        }
+    }
+
+    if (0U == feeder_count)
+    {
+        for (uint8_t f = 0U; f < MAX_POWER_LINE_COUNT; f++)
+        {
+            feeders[feeder_count] = f;
+            feeder_count++;
+        }
+
+        SHELL_LOG("evtlog test: hicbir fider kullanimda degil - kayitlar "
+                  "varsayilan IOA'lar uzerinden gidecek\r\n");
+    }
+
     for (uint16_t i = 0U; i < count; i++)
     {
         const uint32_t idx = log_get_next_seq(&s_log);
@@ -442,7 +472,7 @@ void iec104_event_log_test(uint16_t count)
         e.tm                          = cp56time2a_now();
         fault_log_set_current_amps(&e, 100.0f + (float)(idx % 900U) / 10.0f);
         e.fault_duration_ms           = (uint16_t)(100U + (idx % 50U) * 20U);
-        e.info.feeder                 = (uint8_t)(idx % 8U);
+        e.info.feeder                 = feeders[idx % feeder_count];
         e.info.phase                  = (uint8_t)(idx % 3U);
         e.info.type                   = (uint8_t)(idx % 2U);
         e.info.nominal_current_status = (uint8_t)(((idx % 3U) == 0U) ? 1U : 0U);
@@ -457,8 +487,9 @@ void iec104_event_log_test(uint16_t count)
 
     (void)nvram_sync(false);
 
-    SHELL_LOG("evtlog test: %u kayit eklendi - unsent=%u\r\n",
-              (unsigned)count, (unsigned)iec104_event_log_get_unsent_count());
+    SHELL_LOG("evtlog test: %u kayit eklendi (%u fider kullaniliyor) - unsent=%u\r\n",
+              (unsigned)count, (unsigned)feeder_count,
+              (unsigned)iec104_event_log_get_unsent_count());
 }
 
 /* log_read_last ziyaretcisi: gecerli kayitlari sayar (status icin). */

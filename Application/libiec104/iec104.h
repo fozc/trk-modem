@@ -42,6 +42,8 @@ typedef enum
     IEC104_EVT_REBOOT_REQUESTED = 5, /* C_RP_NA_1 general reset onayi
                                       * kuyruga yazildi; uygulama katmani
                                       * gecikmeli fiziksel reset tetikler */
+    IEC104_EVT_LINK_ACTIVATED = 6,   /* STARTDT tamamlandi; uygulama katmani
+                                      * replay emniyet sayacini baslatir */
 } iec104_event_t;
 
 typedef struct

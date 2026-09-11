@@ -867,6 +867,10 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
         iec104_reset();
         link_active = true; /* end-of-init bir I-frame'dir; kapi ondan once acilmali */
         iec104_send_end_of_initialization();
+
+        /* Sertname 2.2.4.2: donen baglantida birikmis veri otomatik
+         * gider; uygulama katmani emniyet sayacini burada baslatir. */
+        notify_event(IEC104_EVT_LINK_ACTIVATED);
         break;
     case IEC104_STOPDT_ACT:
         CSLOG("  StopDT Act received, stopping data transfer\r\n");
@@ -1627,9 +1631,15 @@ void iec104_send_M_ME_TF_1(cot_t cot, ioa_3byte_t ioa, float value, qds_t qualit
  * Donus degeri semantigi (replay kilitlenmemesi icin kritik):
  *   false - yalnizca tasiyica/gonderme eksikligi (link kapali, k-
  *           pencere dolu, TX kuyrugu dolu): kayit yeniden denenecek
- *   true  - kayit islenmis sayilir (gonderildi VEYA icerigi gecersiz
- *           oldugu icin atlandi); gecersiz kayit icin false donulurse
- *           read_newest_unsent hep ayni kaydi verir, replay kilitlenir
+ *   true  - kayit islenmis sayilir (gonderildi VEYA yapisal olarak
+ *           gecersiz oldugu icin atlandi); gecersiz kayit icin false
+ *           donulurse read_newest_unsent hep ayni kaydi verir, replay
+ *           kilitlenir
+ *
+ * in_use KONTROLU BILINCLI YOK: fider sonradan kapatilmis olsa bile
+ * kayit gercek bir olaydir ve IOA varsayilani gecerlidir (nvram tum
+ * hatlara IOA atar); IKM tanimadigi IOA'lari yok sayar. Kayitli veri
+ * yapilandirma durumuna bakilmaksizin gider (sertname 2.2.4.2).
  *
  * Odun: ME ASDU'yu gonderip SP reddedilirse false donulur ve kayit
  * bastan denenecegi icin master'da ME bir kopya olusur. Kopya, kayiptan
@@ -1664,9 +1674,9 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
 
     const power_line_t *line = breaker_get_power_line_by_idx(record->info.feeder);
 
-    if ((NULL == line) || (0U == line->iec104.in_use))
+    if (NULL == line)
     {
-        CSLOG_WARN("evtlog replay: fider %u kullanimda degil, kayit atlandi\r\n",
+        CSLOG_WARN("evtlog replay: fider %u alinamadi, kayit atlandi\r\n",
                    (unsigned)record->info.feeder);
         return true;
     }
