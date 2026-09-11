@@ -67,6 +67,10 @@ static bool link_active = false; /* SCADA ile STARTDT suresci tamamlandi mi? */
 /* Islenen son komutun OA'si; onaylar ve sorgulama cevaplari bununla doner. */
 static uint8_t response_originator_address = 0;
 
+/* Son temizlemeden bu yana hatta cikamamis I-frame oldu mu? Sorgulamanin
+ * eksik tamamlandigini ACT_TERM'de bildirmek icin kullanilir. */
+static bool i_frame_dropped = false;
+
 void iec104_send_periodic_update(void);
 void iec104_send_phase_currents(cause_of_transmission_t cause);
 void iec104_send_fault_currents(cause_of_transmission_t cause);
@@ -148,18 +152,21 @@ static bool iec104_send(const uint8_t *data, size_t length)
 	if(is_i_frame && !link_active)
 	{
 		CSLOG_WARN("Link is not active, I-frame not queued\r\n");
+		i_frame_dropped = true;
 		return false;
 	}
 
 	if(is_i_frame && (k_counter >= config.k_max))
 	{
 		CSLOG_ERR("Window full, cannot send more I-frames\r\n");
+		i_frame_dropped = true;
 		return false;
 	}
 
 	if(NULL == iec_io.send)
 	{
 		CSLOG_ERR("No transport bound, frame dropped\r\n");
+		i_frame_dropped = i_frame_dropped || is_i_frame;
 		return false;
 	}
 
@@ -168,6 +175,7 @@ static bool iec104_send(const uint8_t *data, size_t length)
 	if(iec_io.send(data, (uint16_t)length) != 0)
 	{
 		CSLOG_ERR("Transport rejected frame (%u bytes)\r\n", (unsigned)length);
+		i_frame_dropped = i_frame_dropped || is_i_frame;
 		return false;
 	}
 
@@ -406,7 +414,7 @@ void iec104_send_general_interrogation_con(iec104_qoi_t qoi, uint8_t is_negative
     iec104_send(pkt.data, 16);
 }
 
-void iec104_send_general_interrogation_term(iec104_qoi_t qoi)
+void iec104_send_general_interrogation_term(iec104_qoi_t qoi, uint8_t is_negative)
 {
     iec104_package_t pkt;
 
@@ -419,7 +427,7 @@ void iec104_send_general_interrogation_term(iec104_qoi_t qoi)
 
     pkt.frame.asdu_header.type_id = C_IC_NA_1; // Interrogation Command
     pkt.frame.asdu_header.cot.cause = COT_ACTIVATION_TERM;
-    pkt.frame.asdu_header.cot.pn_bit = 0;
+    pkt.frame.asdu_header.cot.pn_bit = is_negative;       // 1: sorgulama eksik tamamlandi
     pkt.frame.asdu_header.cot.test_bit = 0;
 
     pkt.frame.asdu_header.originator_address = response_originator_address;
@@ -619,23 +627,30 @@ void iec104_interrogation_send_all_objects()//const power_line_t *lines, uint32_
 
 void iec104_interrogation_handler(const iec104_package_t *pkt)
 {
+    /* Yayim sirasinda hatta cikamayan I-frame olursa sorgulama eksik
+     * tamamlanmistir; ACT_TERM bunu P/N=1 ile bildirir.
+     * TODO: Istasyon/grup1/grup2 yayimi senkron ve tek seferlik; grup3/grup4
+     * gibi devam ettirilebilir (resumable) yayima tasinmali ki pencere veya
+     * tasiyici doldugunda obje kaybedilmesin. */
+    i_frame_dropped = false;
+
     if(pkt->frame.c_ic_na_1_command.qoi == 20)
     {
         iec104_send_general_interrogation_con(QOI_STATION, 0);
         iec104_interrogation_send_all_objects();
-        iec104_send_general_interrogation_term(QOI_STATION);
+        iec104_send_general_interrogation_term(QOI_STATION, i_frame_dropped ? 1U : 0U);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 21)
     {
     	iec104_send_general_interrogation_con(QOI_GROUP_1, 0);
     	iec104_interrogation_send_group1();
-		iec104_send_general_interrogation_term(QOI_GROUP_1);
+		iec104_send_general_interrogation_term(QOI_GROUP_1, i_frame_dropped ? 1U : 0U);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 22)
     {
     	iec104_send_general_interrogation_con(QOI_GROUP_2, 0);
     	iec104_interrogation_send_group2();
-		iec104_send_general_interrogation_term(QOI_GROUP_2);
+		iec104_send_general_interrogation_term(QOI_GROUP_2, i_frame_dropped ? 1U : 0U);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 23)
     {
@@ -1260,6 +1275,7 @@ void iec104_reset(void)
     wait_for_testfr_con = false;
 
     response_originator_address = 0;
+    i_frame_dropped = false;
 
     receive_sn = 0;
     send_sn = 0;

@@ -54,6 +54,9 @@ static uint16_t tx_count;
 /* <0 accepts everything; otherwise the number of frames still accepted. */
 static int transport_budget;
 
+/* When >= 0, the frame that would land at this tx_log index is refused once. */
+static int transport_reject_index;
+
 static iec104_event_t last_event;
 static unsigned int   event_count;
 
@@ -61,6 +64,12 @@ static int fake_send(const uint8_t *data, uint16_t length)
 {
     if (0 == transport_budget)
     {
+        return -1;
+    }
+
+    if ((int)tx_count == transport_reject_index)
+    {
+        transport_reject_index = -1;
         return -1;
     }
 
@@ -291,6 +300,7 @@ static void setup(uint8_t k_max, uint8_t w_max)
     tx_clear();
 
     transport_budget = -1;
+    transport_reject_index = -1;
     last_event       = (iec104_event_t)0;
     event_count      = 0U;
 
@@ -681,7 +691,7 @@ static void test_i_frame_before_startdt_is_dropped(void)
     TEST_CHECK(0U == tx_count, "I-frames before STARTDT are ignored");
 }
 
-static void test_interrogation_with_unsupported_cot_is_rejected(void)
+static void test_incomplete_interrogation_terminates_negatively(void)
 {
     uint8_t frame[16];
 
@@ -689,6 +699,48 @@ static void test_interrogation_with_unsupported_cot_is_rejected(void)
     start_link();
     enable_all_lines();
 
+    /* Refuse one data APDU; the master must not be told the interrogation
+     * completed successfully. */
+    transport_reject_index = 2;
+
+    build_interrogation(frame, 0U, iec104_get_send_sn(), TEST_COMMON_ADDRESS,
+                        QOI_STATION_REQ);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+
+    const int term = find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM);
+
+    TEST_CHECK(term >= 0, "an incomplete interrogation is still terminated");
+    TEST_CHECK((term >= 0) && (1U == frame_asdu_pn(tx_log[term])),
+               "a dropped object makes ACT_TERM negative");
+}
+
+static void test_complete_interrogation_terminates_positively(void)
+{
+    uint8_t frame[16];
+
+    setup(64U, 32U);
+    start_link();
+    enable_all_lines();
+
+    build_interrogation(frame, 0U, iec104_get_send_sn(), TEST_COMMON_ADDRESS,
+                        QOI_STATION_REQ);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+
+    const int term = find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM);
+
+    TEST_CHECK((term >= 0) && (0U == frame_asdu_pn(tx_log[term])),
+               "a complete interrogation terminates positively");
+}
+
+static void test_interrogation_with_unsupported_cot_is_rejected(void)
+{
+    uint8_t frame[16];
+
+    setup(64U, 32U);
+    start_link();
+    enable_all_lines();
     build_interrogation(frame, 0U, iec104_get_send_sn(), TEST_COMMON_ADDRESS,
                         QOI_STATION_REQ);
     frame[8] = COT_DEACTIVATION;
@@ -822,6 +874,8 @@ int main(void)
     test_interrogation_is_confirmed_before_its_data();
     test_common_address_mismatch_is_rejected();
     test_i_frame_before_startdt_is_dropped();
+    test_incomplete_interrogation_terminates_negatively();
+    test_complete_interrogation_terminates_positively();
     test_interrogation_with_unsupported_cot_is_rejected();
     test_interrogation_response_echoes_originator_address();
     test_reset_process_general_reset_is_confirmed();
