@@ -516,6 +516,39 @@ static void test_testfr_is_retried_when_the_transport_refuses(void)
                "TESTFR is retried after the transport recovers");
 }
 
+static void test_testfr_con_timeout_closes_the_link(void)
+{
+    uint8_t frame[16];
+
+    setup(64U, 32U);
+    start_link();
+
+    /* Idle long enough for t3 to expire and a TESTFR to go out. */
+    for (uint16_t tick = 0U; tick <= 25U; tick++)
+    {
+        iec104_tick();
+    }
+    libiec104_poll();
+
+    TEST_CHECK((tx_count >= 1U) && frame_is_u(tx_log[0]) &&
+               (IEC104_TESTFR_ACT == frame_u_func(tx_log[0])),
+               "an idle link is probed with TESTFR");
+
+    /* Unrelated traffic must not count as a TESTFR confirmation. */
+    for (uint16_t tick = 0U; tick <= 16U; tick++)
+    {
+        iec104_tick();
+
+        build_interrogation(frame, iec104_get_receive_sn(), iec104_get_send_sn(),
+                            TEST_COMMON_ADDRESS, QOI_STATION_REQ);
+        iec104_data_received(frame, sizeof(frame));
+        libiec104_poll();
+    }
+
+    TEST_CHECK(IEC104_EVT_REQUEST_SOCKET_CLOSE == last_event,
+               "a missing TESTFR_CON closes the link even while data flows");
+}
+
 static void test_fault_emission_resumes_without_gap_or_repeat(void)
 {
     const uint8_t fault_count = 9U;
@@ -869,6 +902,7 @@ int main(void)
     test_k_window_stops_and_reopens();
     test_stopdt_closes_the_i_frame_gate();
     test_testfr_is_retried_when_the_transport_refuses();
+    test_testfr_con_timeout_closes_the_link();
     test_fault_emission_resumes_without_gap_or_repeat();
     test_split_apdu_is_reassembled();
     test_interrogation_is_confirmed_before_its_data();

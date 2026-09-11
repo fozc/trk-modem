@@ -54,6 +54,10 @@ static uint32_t t1_timer = 0;
 static uint32_t t2_timer = 0;
 static uint32_t t3_timer = 0;
 
+/* TESTFR_ACT gonderiminden bu yana gecen sure. Ayri tutulur: t3 her gelen
+ * kareyle sifirlanir ve CON zaman asimini asla tetiklemezdi. */
+static uint32_t testfr_timer = 0;
+
 static uint32_t periodical_send_interval = 0;
 
 static bool wait_for_ack = false;
@@ -98,6 +102,10 @@ void iec104_tick(void)
 		t2_timer++;
 	}
     t3_timer++;
+
+    if(wait_for_testfr_con){
+        testfr_timer++;
+    }
 
     if(wait_for_ack){
         t1_timer++;
@@ -887,6 +895,7 @@ void iec104_send_test_frame()
     if(iec104_send_raw(test_frame, sizeof(test_frame)))
     {
         wait_for_testfr_con = true;
+        testfr_timer = 0;
     }
 }
 
@@ -927,6 +936,7 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
     case IEC104_TESTFR_CON:
         CSLOG("  TestFR Con received, link is alive.\r\n");
         wait_for_testfr_con = false;
+        testfr_timer = 0;
         t3_timer = 0;
         break;
 
@@ -1276,6 +1286,7 @@ void iec104_reset(void)
 
     response_originator_address = 0;
     i_frame_dropped = false;
+    testfr_timer = 0;
 
     receive_sn = 0;
     send_sn = 0;
@@ -1425,7 +1436,6 @@ void iec104_process_package(void)
                 if(iec104_is_u_format(&package))
                 {
                     /* U-Frame paketleri (Örn: STARTDT_ACT) hat aktifleşmeden önce gelebilen yegane kontrol paketleridir */
-                    wait_for_testfr_con = false;
                     iec104_process_u_frame(&package.frame.apci.u_frame);
                 }
                 else if(iec104_is_s_format(&package))
@@ -1433,7 +1443,6 @@ void iec104_process_package(void)
                     /* Hat aktif değilse S-Frame onay paketlerini görmezden gel ve drop et */
                     if (link_active)
                     {
-                        wait_for_testfr_con = false;
                         iec104_process_s_frame(&package.frame.apci.s_frame);
                     }
                     else
@@ -1446,7 +1455,6 @@ void iec104_process_package(void)
                     /* Standart Gereği Katı Koruma: STARTDT süreci bitmeden gelen I-Frame veri paketleri işlenemez */
                     if (link_active)
                     {
-                        wait_for_testfr_con = false;
                         iec104_process_i_frame(&package.frame.apci.i_frame);
                     }
                     else
@@ -1521,29 +1529,29 @@ void libiec104_poll(void)
         notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
     }
 
-    if (!wait_for_testfr_con)
+    if (wait_for_testfr_con)
+    {
+        /* TESTFR_ACT gonderdik; standart geregi yalnizca TESTFR_CON hatti
+         * canli sayar ve onay t1 suresinde gelmelidir. */
+        if (testfr_timer > config.t1_max)
         {
-            /* Hat bosta (idle) ise TESTFR gonder */
-            if (t3_timer > config.t3_max)
-            {
-                CSLOG_WARN("T3 timer expired, sending TESTFR\r\n");
-                t3_timer = 0;
-                iec104_send_test_frame();
-            }
-        }
-        else
-        {
-            /* TESTFR_ACT gonderdik, simdi SCADA'dan TESTFR_CON bekliyoruz.
-             * Eger t1_max suresinde gelmezse hatti olu kabul et. */
-            if (t3_timer > config.t1_max)
-            {
-                CSLOG_ERR("TESTFR_CON timeout! Connection is dead. Closing socket.\r\n");
-                t3_timer = 0;
+            CSLOG_ERR("TESTFR_CON timeout! Connection is dead. Closing socket.\r\n");
 
-                iec104_reset();
-                notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
-            }
+            iec104_reset();
+            notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
         }
+    }
+    else if (t3_timer > config.t3_max)
+    {
+        /* Hat bosta (idle) ise TESTFR gonder */
+        CSLOG_WARN("T3 timer expired, sending TESTFR\r\n");
+        t3_timer = 0;
+        iec104_send_test_frame();
+    }
+    else
+    {
+        /* Hat bosta degil, bekleyen onay yok: yapilacak bir sey yok. */
+    }
 
 
     if(periodical_send_interval >= config.periodical_send_interval)
