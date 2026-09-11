@@ -79,8 +79,13 @@ static iec104_elog_disc_reason_t map_disc_reason(void)
 
 void iec104_process_socket_closed_cb(void)
 {
-	CCSLOG(XCOLOR_RED, "IEC104 Socket Closed by Remote\r\n");
+	CCSLOG(XCOLOR_RED, "IEC104 Socket Closed\r\n");
 	iec104_elog_disconnected(map_disc_reason());
+
+	/* Uygulama katmanindan once: olay isleyici ariza sureclerini oldururken
+	 * exithandler'lari ACT_TERM gondermeye calisir, hat kapali gorunmeli. */
+	iec104_reset();
+
 	iec104_application_event_handler(IEC104_EVT_SOCKET_CLOSED);
 	tx_reset();
 }
