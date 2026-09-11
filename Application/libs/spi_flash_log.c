@@ -10,8 +10,8 @@
 /* Statik Doğrulamalar (R1 üst sınırı derleme zamanında da tutarlı olmalı)   */
 /* -------------------------------------------------------------------------- */
 
-_Static_assert(LOG_MAX_ENTRY_SIZE == FLASH_PAGE_SIZE, "max entry tam bir sayfa olmali");
-_Static_assert(LOG_SECTOR_SIZE % FLASH_PAGE_SIZE == 0, "sektor, sayfanin tam kati olmali");
+_Static_assert(LOG_MAX_ENTRY_SIZE == LOG_FLASH_PAGE_SIZE, "max entry tam bir sayfa olmali");
+_Static_assert(LOG_SECTOR_SIZE % LOG_FLASH_PAGE_SIZE == 0, "sektor, sayfanin tam kati olmali");
 
 /* Entry içi alan offsetleri (payload_size bağlama göre değiştiği için türetilir):
  *   seq     : [0 .. LOG_SEQ_SIZE)
@@ -63,7 +63,7 @@ static uint32_t crc32_calc(const void *data, size_t len) {
 /**
  * @brief Programlama cagrisini sayfa sinirlarinda boler.
  *
- * NOR page-program komutu sayfa (FLASH_PAGE_SIZE) icinde kalrmak zorundadir;
+ * NOR page-program komutu sayfa (LOG_FLASH_PAGE_SIZE) icinde kalrmak zorundadir;
  * entry 256'nin kati olmak zorunda olmadigindan (R1 kaldirildi), bir entry
  * iki sayfaya tasabilir. Bu yardimci, verilen araligi sayfa sinirinda
  * parcalara ayirip her parcadan ops.program ister.
@@ -74,7 +74,7 @@ static uint32_t crc32_calc(const void *data, size_t len) {
  */
 static int program_split(const log_ctx_t *ctx, uint32_t addr, const uint8_t *buf, uint32_t len) {
     while (len > 0u) {
-        uint32_t page_rem = FLASH_PAGE_SIZE - (addr % FLASH_PAGE_SIZE);
+        uint32_t page_rem = LOG_FLASH_PAGE_SIZE - (addr % LOG_FLASH_PAGE_SIZE);
         uint32_t chunk = (len < page_rem) ? len : page_rem;
         if (ctx->ops.program(addr, buf, chunk) != 0) {
             return -1;
@@ -242,7 +242,7 @@ log_status_t log_init(log_ctx_t *ctx, const log_config_t *cfg) {
 
     uint32_t entry_size = LOG_ENTRY_OVERHEAD + cfg->payload_size;
     /* R1 kuralı: entry hiçbir zaman iki flash sayfası arasında bölünmemeli.
-     * FLASH_PAGE_SIZE, LOG_SECTOR_SIZE'ın böleni olduğundan entry_size sayfaya
+     * LOG_FLASH_PAGE_SIZE, LOG_SECTOR_SIZE'ın böleni olduğundan entry_size sayfaya
      * tam sığıyorsa sektöre de tam sığar. */
     /* Modüler seq karşılaştırmalarının geçerliliği: ring'in toplam kapasitesi
      * yarım uzaydan (LOG_SEQ_HALFSPACE) küçük olmalı — aksi halde açılıştaki

@@ -4,110 +4,108 @@
  *  Created on: Mar 16, 2026
  *      Author: fatih
  *
- * Circular flash-backed event log for IEC 104 fault events.
+ * IEC 104 ariza olaylarinin kalici gunlugu.
  *
- * Layout (6 flash sectors, 24 KB):
- *   - Sector 0  : Superblock primary
- *   - Sector 1  : Superblock backup
- *   - Sector 2-3: Data primary  (2 × 4 KB)
- *   - Sector 4-5: Data backup   (2 × 4 KB)
+ * Depolama spi_flash_log'a birakilmistir (append-only halka, iki asamali
+ * yazim, torn-slot tespiti, ertelenmis erase). Bu modul yalnizca iki sey
+ * ekler: kaydin CRC'sini hesaplamak ve "hangi kayitlar SCADA'ya gonderildi"
+ * durumunu tutmak.
  *
- * Entries are stored as fault_log_t (20 bytes) in a circular ring.
- * write_index always points to the NEXT slot to write (mod CAPACITY).
- * total_events is a monotonic counter that records every event ever written.
+ * Gonderim durumu bitmap degil, iki seq siniridir. Replay yeniden eskiye
+ * gider ve hat acikken gelen yeni kayit aninda gonderilir; bu yuzden
+ * gonderilmemis kayitlar her zaman tek parca bir seq araligi olusturur:
  *
- * "Sent" state is tracked via a bitmap in the superblock.
- * bit = 0 → unsent, bit = 1 → sent.
- * The bitmap is persisted by iec104_event_log_sync(), which should be
- * called when the IEC 104 session closes (at-least-once delivery).
+ *   add(S)              -> aralik bossa low = S; her durumda high = S
+ *   mark_sent(high)     -> high bir geri cekilir (aralik bosalabilir)
  *
- * Every iec104_event_log_add() writes both primary and backup data
- * areas and immediately persists the updated superblock.
+ * Aralik NVRAM'de tutulur (iec104_evtlog_state_t). Kayit basina degil,
+ * yalnizca hat kapaliyken kayit eklendiginde ve replay bitiminde senkronlanir;
+ * nvram_sync() 8 KB'lik bolgeyi yeniden yazar.
  */
 
 #define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_event_log.h"
+
 #include <string.h>
 #include <stdlib.h>
+
+#include "nvram.h"
 #include "crc32.h"
-#include "bsp.h"
 #include "cp56time2a.h"
 #include "shell.h"
+#include "w25qxx.h"
+#include "spi_flash_organization.h"
+#include "spi_flash_log.h"
 
-/* ────────────────────────────────────────────────────────── compile-time checks */
-_Static_assert(sizeof(iec104_evtlog_superblock_t) <= 4096U,
-               "iec104_evtlog_superblock_t exceeds one flash sector");
-_Static_assert(IEC104_EVTLOG_CAPACITY > 0U,
-               "IEC104_EVTLOG_CAPACITY must be > 0");
+/* Kapasite sabitleri (spi_flash_log sabitlerinden turetilmis hali; yalnizca
+ * bu modulun ici icin - bkz. basliktaki NOT). */
+#define IEC104_EVTLOG_ENTRY_SIZE   (LOG_ENTRY_OVERHEAD + sizeof(fault_log_t))
+#define IEC104_EVTLOG_PER_SECTOR   (LOG_SECTOR_SIZE / IEC104_EVTLOG_ENTRY_SIZE)
+#define IEC104_EVTLOG_MAX_ENTRIES  ((IEC104_EVTLOG_SECTOR_COUNT - 1U) * IEC104_EVTLOG_PER_SECTOR)
 
-/* ────────────────────────────────────────────────────────── module-level state */
-static iec104_evtlog_cfg_t        g_cfg         = {0};
-static iec104_evtlog_superblock_t g_sb          = {0};
-static bool                       g_initialized = false;
-static bool                       g_sb_dirty    = false; /* bitmap changed but not yet synced */
+/* ────────────────────────────────────────────────────────── derleme kontrolleri */
+_Static_assert(sizeof(fault_log_t) == 18U,
+               "fault_log_t layout degisti - evtlog kapasitesi ve flash haritasi gecersiz");
+_Static_assert(IEC104_EVTLOG_SECTOR_COUNT >= LOG_MIN_SECTOR_COUNT,
+               "evtlog icin en az LOG_MIN_SECTOR_COUNT sektor gerekir");
+_Static_assert(IEC104_EVTLOG_SECTOR_SIZE == LOG_SECTOR_SIZE,
+               "evtlog sektor boyutu spi_flash_log ile uyusmuyor");
 
-/* ────────────────────────────────────────────────────────── internal helpers */
+/* Seq 16-bit ve 0xFFFF "hic yazilmamis slot" icin ayrilmis. */
+#define EVTLOG_SEQ_INVALID   0xFFFFU
 
-static void flash_read(uint32_t addr, void *buf, uint32_t len)
+/* ────────────────────────────────────────────────────────── modul durumu */
+static log_ctx_t s_log;
+static bool      s_initialized;
+
+/* NVRAM'deki replay durumuna kisayol. */
+#define s_state (nvram_get_iec104_evtlog_state())
+
+/* log_read_last() imleci: replay tek gecisde ilerlesin diye cagrilar arasinda
+ * korunur. Araya bir log_write() girerse imleç gecersizlesir (modul dokumani),
+ * bu yuzden yazim sayaci ile karsilastirilir. */
+static log_page_ctx_t s_cursor;
+static uint32_t       s_cursor_gen;
+static uint32_t       s_write_gen;
+
+/* ────────────────────────────────────────────────────────── w25qxx adaptoru */
+
+/* w25qxx_read_buff void doner: surucu katmani basarisiz SPI okumasini ayirt
+ * edemiyor, bu yuzden adaptor daima basari bildirir (elog.c ile ayni durum).
+ * Okuma hatasi log kutuphanesinde CRC/torn-slot reddi olarak gorunur. */
+static int evtlog_flash_read(uint32_t addr, void *buf, size_t len)
 {
-    g_cfg.io_if.read(addr, buf, len);
+    w25qxx_read_buff(addr, buf, (uint32_t)len);
+    return 0;
 }
 
-static int flash_write(uint32_t addr, const void *buf, uint32_t len)
+/* Erase YAPMAYAN sayfa programlama olmali; w25qxx_write_buff kullanilamaz
+ * (o oku-sil-yaz yapar ve log kutuphanesinin torn-slot garantisini bozar). */
+static int evtlog_flash_program(uint32_t addr, const void *buf, size_t len)
 {
-    return g_cfg.io_if.write(addr, buf, len);
+    return w25qxx_page_write(addr, buf, (uint32_t)len);
 }
 
-static uint32_t sb_calculate_crc(const iec104_evtlog_superblock_t *sb)
+static int evtlog_flash_erase_sector(uint32_t sector_addr)
 {
-    crc32_t crc = crc32_init();
-    crc = crc32_update(crc, sb, sizeof(iec104_evtlog_superblock_t) - sizeof(sb->crc));
-    return crc32_finalize(crc);
+    return w25qxx_erase_sector(sector_addr);
 }
 
-static bool sb_validate(const iec104_evtlog_superblock_t *sb)
+/* ────────────────────────────────────────────────────────── seq yardimcilari */
+
+/* Modüler karsilastirma: a, b'den yeni ise > 0 (halka kapasitesi < 32768). */
+static int16_t seq_diff(uint16_t a, uint16_t b)
 {
-    return (sb->crc == sb_calculate_crc(sb));
+    return (int16_t)((uint16_t)(a - b));
 }
 
-static int sb_write_to_flash(uint32_t addr)
+static uint16_t seq_prev(uint16_t seq)
 {
-    g_sb.crc = sb_calculate_crc(&g_sb);
-    return flash_write(addr, &g_sb, sizeof(g_sb));
+    return (uint16_t)((0U == seq) ? (LOG_SEQ_MODULUS - 2U) : (seq - 1U));
 }
 
-/* Physical flash address of slot n in the primary data area */
-static uint32_t slot_to_addr_primary(uint16_t slot)
-{
-    return g_cfg.data_addr + (uint32_t)slot * (uint32_t)sizeof(fault_log_t);
-}
+/* ────────────────────────────────────────────────────────── kayit CRC'si */
 
-/* Physical flash address of slot n in the backup data area */
-#if IEC104_EVTLOG_BACKUP_ENABLE
-static uint32_t slot_to_addr_backup(uint16_t slot)
-{
-    return g_cfg.data_backup_addr + (uint32_t)slot * (uint32_t)sizeof(fault_log_t);
-}
-#endif
-
-/* ── bitmap helpers ─────────────────────────────────────────────────────── */
-
-static void bitmap_clear_bit(uint16_t slot)   /* mark unsent */
-{
-    g_sb.sent_bitmap[slot / 8u] &= (uint8_t)~(1u << (slot % 8u));
-}
-
-static void bitmap_set_bit(uint16_t slot)     /* mark sent */
-{
-    g_sb.sent_bitmap[slot / 8u] |= (uint8_t)(1u << (slot % 8u));
-}
-
-static bool bitmap_is_sent(uint16_t slot)
-{
-    return (g_sb.sent_bitmap[slot / 8u] & (uint8_t)(1u << (slot % 8u))) != 0u;
-}
-
-/* Calculate CRC for a fault_log_t record (covers all fields except crc itself) */
 static uint32_t record_calc_crc(const fault_log_t *r)
 {
     crc32_t c = crc32_init();
@@ -115,430 +113,430 @@ static uint32_t record_calc_crc(const fault_log_t *r)
     return crc32_finalize(c);
 }
 
-/* Validate a fault_log_t record's own embedded CRC */
-static bool record_crc_ok(const fault_log_t *r)
+/* ────────────────────────────────────────────────────────── unsent araligi */
+
+static void unsent_clear(void)
 {
-    return (r->crc == record_calc_crc(r));
+    s_state->has_unsent = 0U;
+    s_state->unsent_low = 0U;
+    s_state->unsent_high = 0U;
+}
+
+static void unsent_extend(uint16_t seq)
+{
+    if (0U == s_state->has_unsent)
+    {
+        s_state->unsent_low = seq;
+        s_state->has_unsent = 1U;
+    }
+    s_state->unsent_high = seq;
 }
 
 /* ────────────────────────────────────────────────────────── public API */
 
-bool iec104_event_log_init(const iec104_evtlog_cfg_t *cfg)
+bool iec104_event_log_init(void)
 {
-    if (cfg == NULL || cfg->io_if.read == NULL || cfg->io_if.write == NULL)
-    {
-        CSLOG("iec104_event_log: init failed — NULL config or IO interface\r\n");
-        return false;
-    }
-
     iec104_event_log_shell_init();
 
-    g_cfg         = *cfg;
-    g_initialized = false;
-    g_sb_dirty    = false;
+    const log_config_t cfg = {
+        .base_addr    = IEC104_EVTLOG_ADDR,
+        .sector_count = IEC104_EVTLOG_SECTOR_COUNT,
+        .payload_size = sizeof(fault_log_t),
+        .ops = {
+            .read         = evtlog_flash_read,
+            .program      = evtlog_flash_program,
+            .erase_sector = evtlog_flash_erase_sector,
+        },
+    };
 
-    /* ── try primary superblock ─────────────────────────────────────────── */
-    flash_read(g_cfg.superblock_addr, &g_sb, sizeof(g_sb));
+    const log_status_t rc = log_init(&s_log, &cfg);
 
-    if (sb_validate(&g_sb))
+    if (LOG_OK != rc)
     {
-    	// Superblock'taki write_index'in flash kapasitesini asmadigini dogrula.
-    	// Eger indeks gecersizse, sistemi korumak icin sifirla.
-    	if (g_sb.write_index >= IEC104_EVTLOG_CAPACITY)
-    	{
-    		CSLOG("iec104_event_log: invalid write_index detected (%u), resetting to 0\r\n", g_sb.write_index);
-    		g_sb.write_index = 0;
-    		sb_write_to_flash(g_cfg.superblock_addr); // Duzeltilen degeri flash'a geri yaz
-    	}
-        g_initialized = true;
-        CSLOG("iec104_event_log: init OK (primary SB) count=%u total=%lu\r\n",
-              iec104_event_log_get_count(), (unsigned long)g_sb.total_events);
-        return true;
+        CSLOG_ERR("evtlog: log_init basarisiz (%d)\r\n", (int)rc);
+        return false;
     }
 
-    CSLOG("iec104_event_log: primary SB CRC mismatch, trying backup...\r\n");
+    s_initialized = true;
+    s_write_gen   = 0U;
+    s_cursor_gen  = 0U;
+    (void)memset(&s_cursor, 0, sizeof(s_cursor));
 
-#if IEC104_EVTLOG_BACKUP_ENABLE
-    /* ── try backup superblock ──────────────────────────────────────────── */
-    flash_read(g_cfg.superblock_backup_addr, &g_sb, sizeof(g_sb));
-
-    if (sb_validate(&g_sb))
-    {
-    	if (g_sb.write_index >= IEC104_EVTLOG_CAPACITY)
-    	{
-    		CSLOG("iec104_event_log: invalid write_index detected (%u), resetting to 0\r\n", g_sb.write_index);
-    		g_sb.write_index = 0;
-    		sb_write_to_flash(g_cfg.superblock_addr); // Duzeltilen degeri flash'a geri yaz
-    	}
-
-        CSLOG("iec104_event_log: recovered from backup SB\r\n");
-        sb_write_to_flash(g_cfg.superblock_addr); /* restore primary */
-        g_initialized = true;
-        CSLOG("iec104_event_log: init OK (backup SB) count=%u total=%lu\r\n",
-              iec104_event_log_get_count(), (unsigned long)g_sb.total_events);
-        return true;
-    }
-    CSLOG("iec104_event_log: both SBs corrupt — reinitialising\r\n");
-#else
-    CSLOG("iec104_event_log: primary SB corrupt — reinitialising\r\n");
-#endif
-
-    memset(&g_sb, 0, sizeof(g_sb));
-    sb_write_to_flash(g_cfg.superblock_addr);
-#if IEC104_EVTLOG_BACKUP_ENABLE
-    sb_write_to_flash(g_cfg.superblock_backup_addr);
-#endif
-
-    g_initialized = true;
+    CSLOG("evtlog: hazir (kapasite=%u, unsent=%u)\r\n",
+          (unsigned)IEC104_EVTLOG_MAX_ENTRIES,
+          (unsigned)iec104_event_log_get_unsent_count());
 
     return true;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-bool iec104_event_log_add(const fault_log_t *entry)
+bool iec104_event_log_add(const fault_log_t *entry, uint16_t *seq_out)
 {
-    if (!g_initialized || entry == NULL)
+    if (!s_initialized || (NULL == entry))
     {
         return false;
     }
 
-    uint32_t now = bsp_get_tick();
+    /* CRC'yi burada hesaplariz; cagiranin bunu bilmesi beklenmez. */
+    fault_log_t record = *entry;
+    record.crc = record_calc_crc(&record);
 
-    uint16_t slot = g_sb.write_index;
-
-    /* Write to primary data area (and backup if enabled) */
-    int r1 = flash_write(slot_to_addr_primary(slot), entry, sizeof(fault_log_t));
-#if IEC104_EVTLOG_BACKUP_ENABLE
-    int r2 = flash_write(slot_to_addr_backup(slot), entry, sizeof(fault_log_t));
-#else
-    int r2 = 0;
-#endif
-
-    if (r1 != 0 || r2 != 0)
+    if (LOG_OK != log_write(&s_log, &record))
     {
-        CSLOG("iec104_event_log: flash write error (slot %u, r1=%d r2=%d)\r\n",
-              slot, r1, r2);
+        CSLOG_ERR("evtlog: log_write basarisiz\r\n");
         return false;
     }
 
-    /* New entry is unsent */
-    bitmap_clear_bit(slot);
+    s_write_gen++;
 
-    /* Advance write pointer */
-    g_sb.write_index  = (uint16_t)((slot + 1u) % IEC104_EVTLOG_CAPACITY);
-    g_sb.total_events++;
+    const uint16_t seq = seq_prev((uint16_t)log_get_next_seq(&s_log));
 
-    /* Persist superblock after every write */
-    int rs1 = sb_write_to_flash(g_cfg.superblock_addr);
-#if IEC104_EVTLOG_BACKUP_ENABLE
-    int rs2 = sb_write_to_flash(g_cfg.superblock_backup_addr);
-#else
-    int rs2 = 0;
-#endif
-    g_sb_dirty = false;
+    unsent_extend(seq);
 
-    uint32_t latency = bsp_get_tick() - now;
-    CSLOG("iec104_event_log: added entry at slot %u (latency %lu ms)\r\n",
-          slot, (unsigned long)latency);
-
-    if (rs1 != 0 || rs2 != 0)
+    if (NULL != seq_out)
     {
-        CSLOG("iec104_event_log: SB write error after add (slot %u)\r\n", slot);
-        return false;
+        *seq_out = seq;
     }
 
     return true;
 }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-uint16_t iec104_event_log_get_count(void)
-{
-    if (!g_initialized)
-    {
-        return 0u;
-    }
-    uint32_t count = g_sb.total_events;
-    if (count > IEC104_EVTLOG_CAPACITY)
-    {
-        count = IEC104_EVTLOG_CAPACITY;
-    }
-    return (uint16_t)count;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-bool iec104_event_log_read_nth(uint16_t n, fault_log_t *out, uint16_t *slot_out)
-{
-    if (!g_initialized || out == NULL)
-    {
-        return false;
-    }
-
-    uint16_t count = iec104_event_log_get_count();
-    if (n >= count)
-    {
-        return false;
-    }
-
-    /* n=0 → newest entry (slot written most recently) */
-    uint16_t slot = (uint16_t)((g_sb.write_index + IEC104_EVTLOG_CAPACITY - 1u - n)
-                               % IEC104_EVTLOG_CAPACITY);
-
-    /* Read from primary; on CRC failure fall back to backup */
-    fault_log_t tmp;
-    flash_read(slot_to_addr_primary(slot), &tmp, sizeof(tmp));
-
-    if (!record_crc_ok(&tmp))
-    {
-#if IEC104_EVTLOG_BACKUP_ENABLE
-        CSLOG("iec104_event_log: primary slot %u CRC error, trying backup\r\n", slot);
-        flash_read(slot_to_addr_backup(slot), &tmp, sizeof(tmp));
-
-        if (!record_crc_ok(&tmp))
-        {
-            CSLOG("iec104_event_log: backup slot %u CRC error\r\n", slot);
-            return false;
-        }
-#else
-        CSLOG("iec104_event_log: primary slot %u CRC error\r\n", slot);
-        return false;
-#endif
-    }
-
-    *out = tmp;
-    if (slot_out != NULL)
-    {
-        *slot_out = slot;
-    }
-    return true;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────── */
 
 uint16_t iec104_event_log_get_unsent_count(void)
 {
-    if (!g_initialized)
+    if (!s_initialized || (0U == s_state->has_unsent))
     {
-        return 0u;
+        return 0U;
     }
 
-    uint16_t count  = iec104_event_log_get_count();
-    uint16_t unsent = 0u;
+    uint16_t count = (uint16_t)((uint16_t)(s_state->unsent_high - s_state->unsent_low) + 1U);
 
-    for (uint16_t i = 0u; i < count; i++)
+    /* Bozuk NVRAM araligi 65535 uretebilir; replay dongusunun bosuna
+     * donmesini engellemek icin fiziksel kapasiteyle sinirla. */
+    if (count > IEC104_EVTLOG_MAX_ENTRIES)
     {
-        uint16_t slot = (uint16_t)((g_sb.write_index + IEC104_EVTLOG_CAPACITY - 1u - i)
-                                   % IEC104_EVTLOG_CAPACITY);
-        if (!bitmap_is_sent(slot))
-        {
-            unsent++;
-        }
+        count = (uint16_t)IEC104_EVTLOG_MAX_ENTRIES;
     }
-    return unsent;
+
+    return count;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-bool iec104_event_log_read_nth_unsent(uint16_t n, fault_log_t *out, uint16_t *slot_out)
+/* log_read_last() ziyaretcisi: bir kaydi disari tasir. */
+typedef struct
 {
-    if (!g_initialized || out == NULL)
+    fault_log_t *out;
+    uint16_t     seq;
+    bool         valid;
+} evtlog_visit_t;
+
+static void visit_one(const void *payload, uint32_t payload_size, uint32_t seq, void *user_ctx)
+{
+    evtlog_visit_t *v = (evtlog_visit_t *)user_ctx;
+
+    if (payload_size != sizeof(fault_log_t))
+    {
+        return;
+    }
+
+    (void)memcpy(v->out, payload, sizeof(fault_log_t));
+    v->seq   = (uint16_t)seq;
+    v->valid = true;
+}
+
+bool iec104_event_log_read_newest_unsent(fault_log_t *out, uint16_t *seq_out)
+{
+    if (!s_initialized || (NULL == out) || (0U == s_state->has_unsent))
     {
         return false;
     }
 
-    uint16_t count        = iec104_event_log_get_count();
-    uint16_t unsent_found = 0u;
-
-    for (uint16_t i = 0u; i < count; i++)
+    /* Araya yazim girdiyse imleç gecersiz: bastan tara. */
+    if (s_cursor_gen != s_write_gen)
     {
-        uint16_t slot = (uint16_t)((g_sb.write_index + IEC104_EVTLOG_CAPACITY - 1u - i)
-                                   % IEC104_EVTLOG_CAPACITY);
-
-        if (!bitmap_is_sent(slot))
-        {
-            if (unsent_found == n)
-            {
-                return iec104_event_log_read_nth(i, out, slot_out);
-            }
-            unsent_found++;
-        }
+        (void)memset(&s_cursor, 0, sizeof(s_cursor));
+        s_cursor_gen = s_write_gen;
     }
+
+    /* Tarama tavani: NVRAM'deki aralik bozuksa (has_unsent=1 ama sinirlar
+     * sacmaysa) log_read_last'in sonunda has_more=false demesine guvenmek
+     * yerine fiziksel kapasite kadar taranip aralik temizlenir. */
+    uint16_t scanned = 0U;
+
+    while (scanned < (uint16_t)IEC104_EVTLOG_MAX_ENTRIES)
+    {
+        scanned++;
+
+        evtlog_visit_t v = { .out = out, .seq = EVTLOG_SEQ_INVALID, .valid = false };
+
+        if (LOG_OK != log_read_last(&s_log, 1U, visit_one, &v, &s_cursor))
+        {
+            return false;
+        }
+
+        if (!v.valid)
+        {
+            /* Parca bos gelebilir; daha eski kayit yoksa aralik tukendi. */
+            if (!s_cursor.has_more)
+            {
+                unsent_clear();
+                return false;
+            }
+            continue;
+        }
+
+        if (seq_diff(v.seq, s_state->unsent_high) > 0)
+        {
+            continue;   /* araligin ustunde: zaten gonderilmis */
+        }
+
+        if (seq_diff(v.seq, s_state->unsent_low) < 0)
+        {
+            /* Aralik halkadan dusmus: kalan gonderilmemis kayit yok. */
+            unsent_clear();
+            return false;
+        }
+
+        if (NULL != seq_out)
+        {
+            *seq_out = v.seq;
+        }
+        return true;
+    }
+
+    /* Tavan asildi: aralik guvenilmez. */
+    unsent_clear();
     return false;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-void iec104_event_log_mark_sent(uint16_t slot)
+void iec104_event_log_mark_sent(uint16_t seq)
 {
-    if (!g_initialized || slot >= IEC104_EVTLOG_CAPACITY)
+    if (!s_initialized || (0U == s_state->has_unsent))
     {
         return;
     }
-    bitmap_set_bit(slot);
-    g_sb_dirty = true;
-}
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+    /* Yalnizca araligin ust ucu isaretlenebilir; replay hep oradan gonderir. */
+    if (0 != seq_diff(seq, s_state->unsent_high))
+    {
+        return;
+    }
+
+    if (0 == seq_diff(s_state->unsent_high, s_state->unsent_low))
+    {
+        unsent_clear();
+    }
+    else
+    {
+        s_state->unsent_high = seq_prev(s_state->unsent_high);
+    }
+}
 
 int iec104_event_log_sync(void)
 {
-    if (!g_initialized)
+    if (!s_initialized)
     {
         return -1;
     }
 
-    if (!g_sb_dirty)
-    {
-        return 0;
-    }
-
-    int r1 = sb_write_to_flash(g_cfg.superblock_addr);
-#if IEC104_EVTLOG_BACKUP_ENABLE
-    int r2 = sb_write_to_flash(g_cfg.superblock_backup_addr);
-#else
-    int r2 = 0;
-#endif
-    g_sb_dirty = false;
-
-    if (r1 != 0 || r2 != 0)
-    {
-        CSLOG("iec104_event_log: sync error (r1=%d r2=%d)\r\n", r1, r2);
-        return -1;
-    }
-
-    CSLOG("iec104_event_log: synced (unsent=%u)\r\n",
-          iec104_event_log_get_unsent_count());
-    return 0;
+    return nvram_sync(false);
 }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
 
 void iec104_event_log_clear(void)
 {
-    if (!g_initialized)
+    if (!s_initialized)
     {
         return;
     }
 
-    memset(&g_sb, 0, sizeof(g_sb));
-    sb_write_to_flash(g_cfg.superblock_addr);
-#if IEC104_EVTLOG_BACKUP_ENABLE
-    sb_write_to_flash(g_cfg.superblock_backup_addr);
-#endif
-    g_sb_dirty = false;
+    for (uint32_t sector = 0U; sector < IEC104_EVTLOG_SECTOR_COUNT; sector++)
+    {
+        (void)evtlog_flash_erase_sector(IEC104_EVTLOG_ADDR + (sector * LOG_SECTOR_SIZE));
+    }
 
-    CSLOG("iec104_event_log: cleared\r\n");
+    unsent_clear();
+    (void)nvram_sync(false);
+
+    s_initialized = false;
+    (void)iec104_event_log_init();
+
+    CSLOG("evtlog: temizlendi\r\n");
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* ────────────────────────────────────────────────────────── shell */
+
+static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq, void *user_ctx)
+{
+    (void)user_ctx;
+
+    if (payload_size != sizeof(fault_log_t))
+    {
+        return;
+    }
+
+    fault_log_t e;
+    (void)memcpy(&e, payload, sizeof(e));
+
+    const bool sent = (0U == s_state->has_unsent) ||
+                      (seq_diff((uint16_t)seq, s_state->unsent_high) > 0) ||
+                      (seq_diff((uint16_t)seq, s_state->unsent_low) < 0);
+
+    SHELL_LOG("  seq=%5u sent=%u  F%u Ph%u %s  I=%.1fA  T=%ums  P=%s N=%s  %02u-%02u-%04u %02u:%02u:%02u\r\n",
+              (unsigned)seq,
+              sent ? 1U : 0U,
+              (unsigned)(e.info.feeder + 1U),
+              (unsigned)(e.info.phase + 1U),
+              e.info.type ? "P" : "T",
+              (double)fault_log_current_amps(&e),
+              (unsigned)e.fault_duration_ms,
+              e.info.power_status ? "1" : "0",
+              e.info.nominal_current_status ? "0" : "1",
+              (unsigned)e.tm.day,
+              (unsigned)e.tm.month,
+              (unsigned)(e.tm.year + 2000U),
+              (unsigned)e.tm.hour,
+              (unsigned)e.tm.minute,
+              (unsigned)cp56time2a_get_second(&e.tm));
+}
+void iec104_event_log_dump(void)
+{
+    SHELL_LOG("\r\n=== iec104_event_log ==============================================\r\n");
+    SHELL_LOG("  kayit boyutu : %u bayt (entry %u)\r\n",
+              (unsigned)sizeof(fault_log_t), (unsigned)IEC104_EVTLOG_ENTRY_SIZE);
+    SHELL_LOG("  kapasite     : %u  (%u sektor x %u)\r\n",
+              (unsigned)IEC104_EVTLOG_MAX_ENTRIES,
+              (unsigned)IEC104_EVTLOG_SECTOR_COUNT,
+              (unsigned)IEC104_EVTLOG_PER_SECTOR);
+    SHELL_LOG("  next_seq     : %lu\r\n", (unsigned long)log_get_next_seq(&s_log));
+    SHELL_LOG("  unsent       : %u", (unsigned)iec104_event_log_get_unsent_count());
+
+    if (0U != s_state->has_unsent)
+    {
+        SHELL_LOG("  [%u..%u]", (unsigned)s_state->unsent_low, (unsigned)s_state->unsent_high);
+    }
+    SHELL_LOG("\r\n  (yeniden eskiye)\r\n");
+    SHELL_LOG("-------------------------------------------------------------------\r\n");
+
+    log_page_ctx_t page = {0};
+
+    do
+    {
+        (void)log_read_last(&s_log, 16U, visit_dump, NULL, &page);
+    }
+    while (page.has_more && (page.page_count > 0U));
+
+    SHELL_LOG("===================================================================\r\n");
+}
 
 void iec104_event_log_test(uint16_t count)
 {
-    if (!g_initialized || count == 0u)
+    if (!s_initialized || (0U == count))
     {
         return;
     }
 
-    for (uint16_t i = 0u; i < count; i++)
+    for (uint16_t i = 0U; i < count; i++)
     {
-        /* Use the *current* total_events so every call produces globally unique,
-         * deterministic values that are easy to identify in a dump. */
-        uint32_t idx = g_sb.total_events;  /* captured before add() increments it */
+        const uint32_t idx = log_get_next_seq(&s_log);
 
         fault_log_t e;
-        memset(&e, 0, sizeof(e));
+        (void)memset(&e, 0, sizeof(e));
 
-        e.tm                        = cp56time2a_now();
-        e.fault_current             = 100.0f + (float)(idx % 900u) / 10.0f; /* 100.0 … 189.9 A   */
-        e.fault_duration_ms         = (uint16_t)(100u + (idx % 50u) * 20u); /* 100 … 1080 ms     */
-        e.info.feeder               = (uint8_t)(idx % 8u);                  /* feeder 0-7        */
-        e.info.phase                = (uint8_t)(idx % 3u);                  /* phase 0-2         */
-        e.info.type                 = (uint8_t)(idx % 2u);                  /* 0=temp, 1=perm    */
-        e.info.nominal_current_status = (uint8_t)((idx % 3u) == 0u ? 1u : 0u);
-        e.info.power_status         = (uint8_t)(idx % 2u);
-        e.crc                       = record_calc_crc(&e);
+        e.tm                          = cp56time2a_now();
+        fault_log_set_current_amps(&e, 100.0f + (float)(idx % 900U) / 10.0f);
+        e.fault_duration_ms           = (uint16_t)(100U + (idx % 50U) * 20U);
+        e.info.feeder                 = (uint8_t)(idx % 8U);
+        e.info.phase                  = (uint8_t)(idx % 3U);
+        e.info.type                   = (uint8_t)(idx % 2U);
+        e.info.nominal_current_status = (uint8_t)(((idx % 3U) == 0U) ? 1U : 0U);
+        e.info.power_status           = (uint8_t)(idx % 2U);
 
-        if (!iec104_event_log_add(&e))
+        if (!iec104_event_log_add(&e, NULL))
         {
-            SHELL_LOG("iec104_event_log_test: add failed at i=%u\r\n", i);
+            SHELL_LOG("evtlog test: add basarisiz (i=%u)\r\n", (unsigned)i);
             break;
         }
     }
 
-    SHELL_LOG("iec104_event_log_test: added %u entries — total_events=%lu  count=%u  unsent=%u\r\n",
-          count,
-          (unsigned long)g_sb.total_events,
-          iec104_event_log_get_count(),
-          iec104_event_log_get_unsent_count());
+    (void)nvram_sync(false);
+
+    SHELL_LOG("evtlog test: %u kayit eklendi - unsent=%u\r\n",
+              (unsigned)count, (unsigned)iec104_event_log_get_unsent_count());
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
-
-void iec104_event_log_dump(void)
+/* log_read_last ziyaretcisi: gecerli kayitlari sayar (status icin). */
+static void visit_count(const void *payload, uint32_t payload_size, uint32_t seq, void *user_ctx)
 {
-    uint16_t count = iec104_event_log_get_count();
+    (void)payload;
+    (void)seq;
 
-    SHELL_LOG("\r\n=== iec104_event_log ==============================================\r\n");
-    SHELL_LOG("  log size	 : %u bytes\r\n", (unsigned)sizeof(fault_log_t));
-    SHELL_LOG("  capacity    : %u\r\n", (unsigned)IEC104_EVTLOG_CAPACITY);
-    SHELL_LOG("  count       : %u\r\n", count);
-    SHELL_LOG("  total_events: %lu\r\n", (unsigned long)g_sb.total_events);
-    SHELL_LOG("  write_index : %u\r\n", g_sb.write_index);
-    SHELL_LOG("  unsent      : %u\r\n", iec104_event_log_get_unsent_count());
-    SHELL_LOG("  (newest first)\r\n");
-    SHELL_LOG("-------------------------------------------------------------------\r\n");
-
-    for (uint16_t n = 0u; n < count; n++)
+    if (payload_size == sizeof(fault_log_t))
     {
-        fault_log_t e;
-        uint16_t    slot;
-
-        if (!iec104_event_log_read_nth(n, &e, &slot))
-        {
-            SHELL_LOG("  [%3u] slot=%3u  CRC ERROR\r\n", n, slot);
-            continue;
-        }
-
-        SHELL_LOG("  [%3u] slot=%3u sent=%u  F%u Ph%u %s  I=%.1fA  T=%ums  P=%s N=%s  %02u-%02u-%04u %02u:%02u:%02u\r\n",
-              n,
-              slot,
-              bitmap_is_sent(slot) ? 1u : 0u,
-              (unsigned)(e.info.feeder + 1u),
-              (unsigned)(e.info.phase  + 1u),
-              e.info.type ? "P" : "T",
-              e.fault_current / 10.0f,
-              (unsigned)e.fault_duration_ms,
-              e.info.power_status           ? "1"    : "0",
-              e.info.nominal_current_status ? "0" : "1",
-              (unsigned)e.tm.day,
-              (unsigned)e.tm.month,
-              (unsigned)(e.tm.year + 2000u),
-              (unsigned)e.tm.hour,
-              (unsigned)e.tm.minute,
-              (unsigned)cp56time2a_get_second(&e.tm));
+        (*(uint32_t *)user_ctx)++;
     }
-    SHELL_LOG("===================================================================\r\n");
 }
 
-/* ─────────────────────────────────────────────────────────────────────────── */
+/* Ozet durum: kayit dökmeden saglik gorunumu (elog 'info' duzeni). */
+static void evtlog_status(void)
+{
+    if (!s_initialized)
+    {
+        SHELL_LOG("evtlog: hazir degil (init edilmemis)\r\n");
+        return;
+    }
+
+    uint32_t stored = 0U;
+    log_page_ctx_t page = {0};
+
+    do
+    {
+        (void)log_read_last(&s_log, 64U, visit_count, &stored, &page);
+    }
+    while (page.has_more && (page.page_count > 0U));
+
+    SHELL_LOG("\r\n=== iec104evtlog status ==================================\r\n");
+    SHELL_LOG("  durum        : hazir\r\n");
+    SHELL_LOG("  kayit boyutu : %u bayt (entry %u)\r\n",
+              (unsigned)sizeof(fault_log_t), (unsigned)IEC104_EVTLOG_ENTRY_SIZE);
+    SHELL_LOG("  kapasite     : %u  (%u sektor x %u)\r\n",
+              (unsigned)IEC104_EVTLOG_MAX_ENTRIES,
+              (unsigned)IEC104_EVTLOG_SECTOR_COUNT,
+              (unsigned)IEC104_EVTLOG_PER_SECTOR);
+    SHELL_LOG("  next_seq     : %lu\r\n", (unsigned long)log_get_next_seq(&s_log));
+    SHELL_LOG("  kayitli      : %lu\r\n", (unsigned long)stored);
+    SHELL_LOG("  unsent       : %u",
+              (unsigned)iec104_event_log_get_unsent_count());
+
+    if (0U != s_state->has_unsent)
+    {
+        SHELL_LOG("  [%u..%u]",
+                  (unsigned)s_state->unsent_low, (unsigned)s_state->unsent_high);
+    }
+
+    SHELL_LOG("\r\nKullanim: iec104evtlog [status|dump|test <N>|clear]\r\n");
+}
 
 static int shell_iec104evtlog(int argc, char *argv[])
 {
-    if (argc > 1 && strcmp(argv[1], "test") == 0)
+    if ((argc <= 1) || (0 == strcmp(argv[1], "status")))
     {
-        uint16_t cnt = (argc > 2) ? (uint16_t)atoi(argv[2]) : 10u;
-        iec104_event_log_test(cnt);
+        evtlog_status();
     }
-    else if (argc > 1 && strcmp(argv[1], "clear") == 0)
+    else if (0 == strcmp(argv[1], "dump"))
+    {
+        iec104_event_log_dump();
+    }
+    else if (0 == strcmp(argv[1], "test"))
+    {
+        iec104_event_log_test((argc > 2) ? (uint16_t)atoi(argv[2]) : 10U);
+    }
+    else if (0 == strcmp(argv[1], "clear"))
     {
         iec104_event_log_clear();
     }
     else
     {
-        iec104_event_log_dump();
+        SHELL_LOG("Bilinmeyen alt komut: %s\r\n", argv[1]);
+        SHELL_LOG("Kullanim: iec104evtlog [status|dump|test <N>|clear]\r\n");
     }
+
     return 0;
 }
 
@@ -546,8 +544,9 @@ void iec104_event_log_shell_init(void)
 {
     shell_register_command(&(shell_cmd_t){
         .cmd  = "iec104evtlog",
-        .desc = "IEC104 event log: [dump] | test <N> | clear",
+        .desc = "IEC104 olay gunlugu: [status] | dump | test <N> | clear",
         .func = shell_iec104evtlog
     });
 }
 
+/*** end of file ***/

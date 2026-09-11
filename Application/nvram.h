@@ -124,6 +124,10 @@ breaker_t *nvram_get_breaker_rw(void);
 //IEC104 Configuration
 const iec104_config_t *nvram_get_iec104_config(void);
 iec104_config_t *nvram_get_iec104_config_rw(void);
+
+/* IEC104 olay gunlugu replay durumu (gonderilmemis seq araligi). Degisiklik
+ * nvram_sync() ile kalici olur. */
+iec104_evtlog_state_t *nvram_get_iec104_evtlog_state(void);
 bool nvram_is_power_line_in_use(uint32_t line_index);
 void nvram_set_iec104_config(const iec104_config_t *cfg);
 const iec104_line_config_t* nvram_iec104_get_line_config(uint32_t line_index);

@@ -30,13 +30,10 @@
 #include "utils.h"
 #include "w25qxx.h"
 #include "spi_flash_organization.h"
-
-/* The HAL header (stm32u3xx_hal_flash.h) defines FLASH_PAGE_SIZE for the
- * internal flash; the log library needs the SPI chip page size instead. The
- * library header must come after every HAL include so its definition wins
- * inside this module, and nothing here may use the HAL value afterwards. */
-#undef FLASH_PAGE_SIZE
 #include "spi_flash_log.h"
+
+/* Not: log kutuphanesinin sayfa sabiti LOG_FLASH_PAGE_SIZE'dir; HAL'in
+ * FLASH_PAGE_SIZE'i (ic flash, 4 KB) ile ad cakismasi kaldirildi. */
 
 /* ---- compile-time geometry checks ------------------------------------ */
 _Static_assert(sizeof(elog_entry_t) == 24U, "elog payload must stay 24 bytes");

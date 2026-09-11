@@ -1727,7 +1727,7 @@ void handle_get_fault_records_json(void)
                     (unsigned)(n + 1u),
                     (unsigned)yr, (unsigned)mo, (unsigned)dy,
                     (unsigned)hr, (unsigned)mn, (unsigned)sc, (unsigned)ms,
-                    log.fault_current,
+                    (double)fault_log_current_amps(&log),
                     (unsigned)log.fault_duration_ms,
                     (unsigned)log.info.nominal_current_status,
                     (unsigned)log.info.power_status);

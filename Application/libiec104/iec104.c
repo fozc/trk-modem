@@ -1616,6 +1616,130 @@ void iec104_send_M_ME_TF_1(cot_t cot, ioa_3byte_t ioa, float value, qds_t qualit
     iec104_send((uint8_t *)&pkt, type_id_length + 2); // +2 for start char and length byte
 }
 
+/* ---------------------------------------------------------------
+ * Olay gunlugu replay yayimcisi
+ * Tek fault_log_t kaydini, kaydin KENDI CP56Time2a damgasiyla ve
+ * COT_SPONTANEOUS ile canli ariza noktalarina gonderir: olay aninda
+ * gonderilemeyen spontane bildirimin sonradan tekrar gonderilmesi
+ * (store-and-forward, sartname 2.2.4.2). Iki ASDU: M_ME_TF_1 (akim +
+ * sure) ve M_SP_TB_1 (kalici ariza + enerji + nominal akim).
+ *
+ * Donus degeri semantigi (replay kilitlenmemesi icin kritik):
+ *   false - yalnizca tasiyica/gonderme eksikligi (link kapali, k-
+ *           pencere dolu, TX kuyrugu dolu): kayit yeniden denenecek
+ *   true  - kayit islenmis sayilir (gonderildi VEYA icerigi gecersiz
+ *           oldugu icin atlandi); gecersiz kayit icin false donulurse
+ *           read_newest_unsent hep ayni kaydi verir, replay kilitlenir
+ *
+ * Odun: ME ASDU'yu gonderip SP reddedilirse false donulur ve kayit
+ * bastan denenecegi icin master'da ME bir kopya olusur. Kopya, kayiptan
+ * iyidir; k-pencere on kontrolu bunu sadece pencere icin kapatir,
+ * TX kuyrugu icin kapatilamaz.
+ * --------------------------------------------------------------- */
+bool iec104_emit_evtlog_record(const fault_log_t *record)
+{
+    if (NULL == record)
+    {
+        return false;
+    }
+
+    if (!link_active)
+    {
+        return false;
+    }
+
+    if (record->info.feeder >= MAX_POWER_LINE_COUNT)
+    {
+        CSLOG_WARN("evtlog replay: gecersiz fider %u, kayit atlandi\r\n",
+                   (unsigned)record->info.feeder);
+        return true;
+    }
+
+    if (record->info.phase >= PHASE_MAX)
+    {
+        CSLOG_WARN("evtlog replay: gecersiz faz %u, kayit atlandi\r\n",
+                   (unsigned)record->info.phase);
+        return true;
+    }
+
+    const power_line_t *line = breaker_get_power_line_by_idx(record->info.feeder);
+
+    if ((NULL == line) || (0U == line->iec104.in_use))
+    {
+        CSLOG_WARN("evtlog replay: fider %u kullanimda degil, kayit atlandi\r\n",
+                   (unsigned)record->info.feeder);
+        return true;
+    }
+
+    /* Iki ASDU atomik gitmeli: pencere ikisine birden yetmiyorsa hic baslama. */
+    if ((k_counter + 2U) > config.k_max)
+    {
+        return false;
+    }
+
+    const uint8_t phase = record->info.phase;
+
+    /* ASDU 1 - M_ME_TF_1: ariza akimi + ariza suresi (2 obje) */
+    iec104_package_t pkt;
+    const size_t me_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
+                          + (sizeof(m_me_tf_1_t) * 2U);
+
+    memset(&pkt, 0, me_len + 2U);
+
+    pkt.frame.apci.start_char  = IEC104_START_BYTE;
+    pkt.frame.apci.apdu_length = (uint8_t)((sizeof(m_me_tf_1_t) * 2U) + 10U);
+    pkt.frame.apci.i_frame     = make_iframe_control(send_sn, receive_sn);
+    pkt.frame.asdu_header      = make_asdu_header(M_ME_TF_1,
+        (cot_t){.cause = COT_SPONTANEOUS, .pn_bit = 0, .test_bit = 0},
+        config.originator_address, config.common_address, 2U, 0U);
+
+    m_me_tf_1_t *me = (m_me_tf_1_t *)&pkt.data[DATA_START_IDX];
+
+    me[0].ioa       = line->iec104.ariza_akimi[phase];
+    me[0].value     = fault_log_current_amps(record);
+    me[0].quality   = (qds_t){0};
+    me[0].timestamp = record->tm;
+
+    me[1].ioa       = line->iec104.ariza_suresi[phase];
+    me[1].value     = (float)record->fault_duration_ms;
+    me[1].quality   = (qds_t){0};
+    me[1].timestamp = record->tm;
+
+    if (!iec104_send((uint8_t *)&pkt, me_len + 2U))
+    {
+        return false;
+    }
+
+    /* ASDU 2 - M_SP_TB_1: kalici ariza + enerji + nominal akim (3 obje) */
+    const size_t sp_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
+                          + (sizeof(m_sp_tb_1_t) * 3U);
+
+    memset(&pkt, 0, sp_len + 2U);
+
+    pkt.frame.apci.start_char  = IEC104_START_BYTE;
+    pkt.frame.apci.apdu_length = (uint8_t)((sizeof(m_sp_tb_1_t) * 3U) + 10U);
+    pkt.frame.apci.i_frame     = make_iframe_control(send_sn, receive_sn);
+    pkt.frame.asdu_header      = make_asdu_header(M_SP_TB_1,
+        (cot_t){.cause = COT_SPONTANEOUS, .pn_bit = 0, .test_bit = 0},
+        config.originator_address, config.common_address, 3U, 0U);
+
+    m_sp_tb_1_t *sp = (m_sp_tb_1_t *)&pkt.data[DATA_START_IDX];
+
+    sp[0].ioa       = line->iec104.ariza_kalicimi[phase];
+    sp[0].siq       = make_siq(record->info.type, 0U);
+    sp[0].timestamp = record->tm;
+
+    sp[1].ioa       = line->iec104.enerji_varyok[phase];
+    sp[1].siq       = make_siq(record->info.power_status, 0U);
+    sp[1].timestamp = record->tm;
+
+    sp[2].ioa       = line->iec104.nominal_akim_varyok[phase];
+    sp[2].siq       = make_siq(record->info.nominal_current_status, 0U);
+    sp[2].timestamp = record->tm;
+
+    return iec104_send((uint8_t *)&pkt, sp_len + 2U);
+}
+
 void iec104_send_C_SC_NA_1(cot_t cot, ioa_3byte_t ioa, sco_command_state_t scs, qualifier_of_command_t qu, se_bit_t se_bit)
 {
     iec104_package_t pkt;
@@ -2452,7 +2576,7 @@ static bool send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
 
             objects[obj_count].ioa       = ioa;
             objects[obj_count].value     = (field == FAULT_ME_FIELD_ARIZA_AKIMI)
-                                           ? log.fault_current
+                                           ? fault_log_current_amps(&log)
                                            : (float)log.fault_duration_ms;
             objects[obj_count].quality   = (qds_t){0};
             objects[obj_count].timestamp = log.tm;

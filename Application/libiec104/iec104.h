@@ -15,6 +15,7 @@
 #include "iec104_data_types.h"
 #include "cp56time2a.h"
 #include "types.h"
+#include "fault_log.h"
 
 #define SBO_SELECT_TIMEOUT 60 // seconds
 #define PERIODIC_SEND_INTERVAL 60
@@ -90,6 +91,10 @@ void iec104_send_M_ME_TF_1(cot_t cot, ioa_3byte_t ioa, float value, qds_t qualit
 void iec104_send_C_SC_NA_1(cot_t cot, ioa_3byte_t ioa, sco_command_state_t scs, qualifier_of_command_t qu, se_bit_t se_bit);
 void iec104_send_C_DC_NA_1(cot_t cot, ioa_3byte_t ioa, dco_command_state_t dcs, qualifier_of_command_t qu, se_bit_t se_bit);
 void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt);
+
+/* Olay gunlugu replay yayimcisi: tek ariza kaydini kaydin kendi zaman
+ * etiketiyle COT_SPONTANEOUS olarak canli ariza noktalarina gonderir. */
+bool iec104_emit_evtlog_record(const fault_log_t *record);
 
 
 void iec104_interrogation_send_m_sp_tb_1_objects(const ioa_3byte_t *ioas, const siq_t *states);
