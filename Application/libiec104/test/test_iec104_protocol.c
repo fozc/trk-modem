@@ -681,6 +681,31 @@ static void test_i_frame_before_startdt_is_dropped(void)
     TEST_CHECK(0U == tx_count, "I-frames before STARTDT are ignored");
 }
 
+static void test_interrogation_with_unsupported_cot_is_rejected(void)
+{
+    uint8_t frame[16];
+
+    setup(64U, 32U);
+    start_link();
+    enable_all_lines();
+
+    build_interrogation(frame, 0U, iec104_get_send_sn(), TEST_COMMON_ADDRESS,
+                        QOI_STATION_REQ);
+    frame[8] = COT_DEACTIVATION;
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+
+    const int nack = find_asdu(C_IC_NA_1, UkCauseTx);
+
+    TEST_CHECK(nack >= 0, "an unsupported cause of transmission is answered with COT 45");
+    TEST_CHECK((nack >= 0) && (1U == frame_asdu_pn(tx_log[nack])),
+               "the unknown-cause answer is negative");
+    TEST_CHECK(find_asdu(C_IC_NA_1, COT_ACTIVATION_CON) < 0,
+               "a deactivation is not confirmed as an activation");
+    TEST_CHECK(find_asdu(M_ME_TF_1, COT_INTERROGATED_STATION) < 0,
+               "a deactivation emits no interrogated data");
+}
+
 static void test_interrogation_response_echoes_originator_address(void)
 {
     uint8_t frame[16];
@@ -797,6 +822,7 @@ int main(void)
     test_interrogation_is_confirmed_before_its_data();
     test_common_address_mismatch_is_rejected();
     test_i_frame_before_startdt_is_dropped();
+    test_interrogation_with_unsupported_cot_is_rejected();
     test_interrogation_response_echoes_originator_address();
     test_reset_process_general_reset_is_confirmed();
     test_reset_process_with_unknown_qrp_is_rejected();
