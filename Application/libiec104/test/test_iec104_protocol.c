@@ -128,6 +128,11 @@ static uint8_t frame_asdu_cot(const uint8_t *frame)
     return (uint8_t)(frame[8] & 0x3FU);
 }
 
+static uint8_t frame_asdu_pn(const uint8_t *frame)
+{
+    return (uint8_t)((frame[8] >> 6) & 0x01U);
+}
+
 static uint16_t count_i_frames(void)
 {
     uint16_t count = 0U;
@@ -208,6 +213,28 @@ static void build_interrogation(uint8_t *frame, uint16_t send_seq, uint16_t rece
     frame[13] = 0x00U;
     frame[14] = 0x00U;
     frame[15] = qoi;
+}
+
+/* C_RP_NA_1 reset process command, 16 bytes on the wire. */
+static void build_reset_process(uint8_t *frame, uint16_t send_seq, uint16_t receive_seq,
+                                uint16_t common_address, uint32_t ioa, uint8_t qrp)
+{
+    frame[0]  = 0x68U;
+    frame[1]  = 0x0EU;
+    frame[2]  = (uint8_t)((send_seq << 1) & 0xFEU);
+    frame[3]  = (uint8_t)((send_seq >> 7) & 0xFFU);
+    frame[4]  = (uint8_t)((receive_seq << 1) & 0xFEU);
+    frame[5]  = (uint8_t)((receive_seq >> 7) & 0xFFU);
+    frame[6]  = C_RP_NA_1;
+    frame[7]  = 0x01U;                  /* VSQ: one object, SQ = 0 */
+    frame[8]  = COT_ACTIVATION_REQ;
+    frame[9]  = 0x00U;                  /* originator address */
+    frame[10] = (uint8_t)(common_address & 0xFFU);
+    frame[11] = (uint8_t)(common_address >> 8);
+    frame[12] = (uint8_t)(ioa & 0xFFU);
+    frame[13] = (uint8_t)((ioa >> 8) & 0xFFU);
+    frame[14] = (uint8_t)((ioa >> 16) & 0xFFU);
+    frame[15] = qrp;
 }
 
 /* ---------------------------------------------------------------- */
@@ -649,6 +676,77 @@ static void test_i_frame_before_startdt_is_dropped(void)
     TEST_CHECK(0U == tx_count, "I-frames before STARTDT are ignored");
 }
 
+static void test_reset_process_general_reset_is_confirmed(void)
+{
+    uint8_t  frame[16];
+    uint16_t own_ns;
+
+    setup(64U, 32U);
+    start_link();
+
+    own_ns = iec104_get_send_sn();
+
+    build_reset_process(frame, 0U, own_ns, TEST_COMMON_ADDRESS, 0U,
+                        IEC104_QRP_GENERAL_RESET);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+
+    const int con = find_asdu(C_RP_NA_1, COT_ACTIVATION_CON);
+
+    TEST_CHECK(con >= 0, "reset process is confirmed with COT 7");
+    TEST_CHECK((con >= 0) && (0U == frame_asdu_pn(tx_log[con])),
+               "a supported reset qualifier is confirmed positively");
+    TEST_CHECK((con >= 0) && (own_ns == frame_ns(tx_log[con])),
+               "the confirmation carries our own N(S), not the master's");
+    TEST_CHECK(IEC104_EVT_REBOOT_REQUESTED == last_event,
+               "a general reset asks the application to reboot");
+}
+
+static void test_reset_process_with_unknown_qrp_is_rejected(void)
+{
+    uint8_t frame[16];
+
+    setup(64U, 32U);
+    start_link();
+
+    build_reset_process(frame, 0U, iec104_get_send_sn(), TEST_COMMON_ADDRESS, 0U,
+                        IEC104_QRP_NOT_USED);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+
+    const int con = find_asdu(C_RP_NA_1, COT_ACTIVATION_CON);
+
+    TEST_CHECK((con >= 0) && (1U == frame_asdu_pn(tx_log[con])),
+               "an undefined reset qualifier is answered negatively");
+    TEST_CHECK(IEC104_EVT_REBOOT_REQUESTED != last_event,
+               "an undefined reset qualifier triggers no reboot");
+}
+
+static void test_reset_process_with_foreign_ioa_is_rejected(void)
+{
+    uint8_t  frame[16];
+    uint16_t own_ns;
+
+    setup(64U, 32U);
+    start_link();
+
+    own_ns = iec104_get_send_sn();
+
+    build_reset_process(frame, 0U, own_ns, TEST_COMMON_ADDRESS, 12345U,
+                        IEC104_QRP_GENERAL_RESET);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+
+    const int con = find_asdu(C_RP_NA_1, COT_ACTIVATION_CON);
+
+    TEST_CHECK((con >= 0) && (1U == frame_asdu_pn(tx_log[con])),
+               "a reset for a foreign IOA is answered negatively");
+    TEST_CHECK((con >= 0) && (own_ns == frame_ns(tx_log[con])),
+               "the negative confirmation also carries our own N(S)");
+    TEST_CHECK(IEC104_EVT_REBOOT_REQUESTED != last_event,
+               "a reset for a foreign IOA triggers no reboot");
+}
+
 /* ---------------------------------------------------------------- */
 
 int main(void)
@@ -668,6 +766,9 @@ int main(void)
     test_interrogation_is_confirmed_before_its_data();
     test_common_address_mismatch_is_rejected();
     test_i_frame_before_startdt_is_dropped();
+    test_reset_process_general_reset_is_confirmed();
+    test_reset_process_with_unknown_qrp_is_rejected();
+    test_reset_process_with_foreign_ioa_is_rejected();
 
     printf("\r\n--------------------------------\r\n");
     printf("passed: %u   failed: %u\r\n", test_pass, test_fail);

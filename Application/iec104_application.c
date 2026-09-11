@@ -8,6 +8,7 @@
 #include "breaker.h"
 #include "fault_log.h"
 #include "gsm_listener_process.h"
+#include "reboot.h"
 #include "sys/pt-sem.h"
 
 static struct pt_sem g_tx_sem;
@@ -31,6 +32,13 @@ void iec104_application_event_handler(iec104_event_t evt)
         if (!process_is_running(&iec104_send_permanent_faults)) {
             process_start(&iec104_send_permanent_faults, NULL);
         }
+    }
+    else if(evt == IEC104_EVT_REBOOT_REQUESTED)
+    {
+        /* C_RP_NA_1 (reset process, QRP=1) geldi: ACT_CON onayi TX
+         * kuyruguna yazildi; 5 sn gecikme onayin hatta cikmasini
+         * saglar, ardindan fiziksel reset. */
+        reboot_system_delayed(5000U);
     }
     else if(evt == IEC104_EVT_REQUEST_SOCKET_CLOSE)
     {

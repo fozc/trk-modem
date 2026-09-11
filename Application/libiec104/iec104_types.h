@@ -308,14 +308,37 @@ typedef struct {
 
 
 
+/* --------------------------------------------------------------------- */
+/* Qualifier of Reset Process command (QRP) - single information element */
+/* --------------------------------------------------------------------- */
+typedef enum
+{
+    IEC104_QRP_NOT_USED             = 0U,
+    IEC104_QRP_GENERAL_RESET        = 1U, /* full process/device reset  */
+    IEC104_QRP_RESET_PENDING_EVENTS = 2U  /* reset event buffer only    */
+    /* 3..255: reserved / not defined by the standard                  */
+} iec104_qrp_t;
 
+/* --------------------------------------------------------------------- */
+/* Cause of Initialization (COI) - used by M_EI_NA_1 sent after restart  */
+/* --------------------------------------------------------------------- */
+typedef enum
+{
+    IEC104_COI_LOCAL_POWER_ON     = 0U,
+    IEC104_COI_LOCAL_MANUAL_RESET = 1U,
+    IEC104_COI_REMOTE_RESET       = 2U
+    /* 3..31: reserved standard, 32..127: manufacturer-specific         */
+} iec104_coi_t;
 
+typedef struct
+{
+	ioa_3byte_t ioa;    /* Information Object Address (3 byte, LE) */
+	uint8_t     qrp;    /* reset qualifier (iec104_qrp_t degeri;
+	                     * enum yerine uint8_t: wire 1 bayt, enum ise
+	                     * int genisliginde olur ve packed yerlesimi kirar) */
+}__attribute__((packed)) c_rp_na_1_t;  /* Type 105: C_RP_NA_1 - Reset Process Command */
 
-
-
-
-
-
+_Static_assert(sizeof(c_rp_na_1_t) == 4U, "C_RP_NA_1 size is not 4 bytes");
 
 
 typedef struct {
@@ -403,6 +426,7 @@ typedef union
 
 			// Type 100: C_IC_NA_1 - Interrogation Command
 			c_ic_na_1_command_t  c_ic_na_1_command;                      // tek object
+			c_rp_na_1_t   c_rp_na_1;
 		};
 
 	}frame;
