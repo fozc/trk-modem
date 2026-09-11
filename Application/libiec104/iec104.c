@@ -64,6 +64,9 @@ static iec104_config_t config = {0};
 static bool wait_for_testfr_con = false; /* TESTFR_CON paketi bekleniyor mu? */
 static bool link_active = false; /* SCADA ile STARTDT suresci tamamlandi mi? */
 
+/* Islenen son komutun OA'si; onaylar ve sorgulama cevaplari bununla doner. */
+static uint8_t response_originator_address = 0;
+
 void iec104_send_periodic_update(void);
 void iec104_send_phase_currents(cause_of_transmission_t cause);
 void iec104_send_fault_currents(cause_of_transmission_t cause);
@@ -260,14 +263,21 @@ static inline diq_t make_diq(uint8_t value, uint8_t quality)
     };
 }
 
-static inline asdu_header_t make_asdu_header(uint8_t type_id, cot_t cot, uint16_t originator_address, uint16_t common_address,
+static inline asdu_header_t make_asdu_header(uint8_t type_id, cot_t cot, uint16_t own_originator_address, uint16_t common_address,
                                              uint8_t vsq_number_of_objects, uint8_t vsq_sq_bit)
 {
+    /* Komut onaylari ve sorgulama cevaplari, istegi yapan master'in OA'si
+     * ile doner (IEC 60870-5-101 7.2.3: onay dogru master'a yonlenmeli);
+     * kendiliginden gonderimlerde istasyonun kendi OA'si kullanilir. */
+    const uint8_t originator_address = (COT_SPONTANEOUS == cot.cause)
+                                     ? (uint8_t)own_originator_address
+                                     : response_originator_address;
+
     return (asdu_header_t){
         .type_id = type_id,
         .cot = cot,
-        .originator_address = config.originator_address,
-        .common_asdu_address = config.common_address,
+        .originator_address = originator_address,
+        .common_asdu_address = common_address,
         .vsq = {
             .number_of_objects = vsq_number_of_objects, // 1: single object, != 1: multiple objects
             .sq_bit = vsq_sq_bit // 1: Single object, 0: multiple objects, sq=1 ise IOA'lar arsisik tek IOA gonderilir, sq=0 ise her obje için ayri IOA var
@@ -383,7 +393,7 @@ void iec104_send_general_interrogation_con(iec104_qoi_t qoi, uint8_t is_negative
     pkt.frame.asdu_header.cot.pn_bit = is_negative;       // 0=Positive, 1=Negative
     pkt.frame.asdu_header.cot.test_bit = 0;
 
-    pkt.frame.asdu_header.originator_address = config.originator_address;
+    pkt.frame.asdu_header.originator_address = response_originator_address;
     pkt.frame.asdu_header.common_asdu_address = config.common_address;
     pkt.frame.asdu_header.vsq.number_of_objects = 1; // Single object
     pkt.frame.asdu_header.vsq.sq_bit = 0;
@@ -412,7 +422,7 @@ void iec104_send_general_interrogation_term(iec104_qoi_t qoi)
     pkt.frame.asdu_header.cot.pn_bit = 0;
     pkt.frame.asdu_header.cot.test_bit = 0;
 
-    pkt.frame.asdu_header.originator_address = config.originator_address;
+    pkt.frame.asdu_header.originator_address = response_originator_address;
     pkt.frame.asdu_header.common_asdu_address = config.common_address;
     pkt.frame.asdu_header.vsq.number_of_objects = 1; // Single object
     pkt.frame.asdu_header.vsq.sq_bit = 0;
@@ -1144,6 +1154,9 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         return;
     }
 
+    /* Bu noktadan sonraki tum cevaplar (onay, sorgulama verisi) bu komutu
+     * gonderen master'a yonlenmeli. */
+    response_originator_address = package.frame.asdu_header.originator_address;
 
    /*
     * [PAKET BUTUNLUGU]:
@@ -1211,6 +1224,8 @@ void iec104_reset(void)
 	link_active = false;
     wait_for_ack = false;
     wait_for_testfr_con = false;
+
+    response_originator_address = 0;
 
     receive_sn = 0;
     send_sn = 0;

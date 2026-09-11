@@ -133,6 +133,11 @@ static uint8_t frame_asdu_pn(const uint8_t *frame)
     return (uint8_t)((frame[8] >> 6) & 0x01U);
 }
 
+static uint8_t frame_asdu_oa(const uint8_t *frame)
+{
+    return frame[9];
+}
+
 static uint16_t count_i_frames(void)
 {
     uint16_t count = 0U;
@@ -676,6 +681,32 @@ static void test_i_frame_before_startdt_is_dropped(void)
     TEST_CHECK(0U == tx_count, "I-frames before STARTDT are ignored");
 }
 
+static void test_interrogation_response_echoes_originator_address(void)
+{
+    uint8_t frame[16];
+
+    setup(64U, 32U);
+    start_link();
+    enable_all_lines();
+
+    build_interrogation(frame, 0U, iec104_get_send_sn(), TEST_COMMON_ADDRESS,
+                        QOI_STATION_REQ);
+    frame[9] = 7U;                      /* originator address of the master */
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+
+    const int con  = find_asdu(C_IC_NA_1, COT_ACTIVATION_CON);
+    const int term = find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM);
+    const int data = find_asdu(M_ME_TF_1, COT_INTERROGATED_STATION);
+
+    TEST_CHECK((con >= 0) && (7U == frame_asdu_oa(tx_log[con])),
+               "ACT_CON echoes the originator address of the command");
+    TEST_CHECK((term >= 0) && (7U == frame_asdu_oa(tx_log[term])),
+               "ACT_TERM echoes the originator address of the command");
+    TEST_CHECK((data >= 0) && (7U == frame_asdu_oa(tx_log[data])),
+               "interrogated data echoes the originator address of the command");
+}
+
 static void test_reset_process_general_reset_is_confirmed(void)
 {
     uint8_t  frame[16];
@@ -766,6 +797,7 @@ int main(void)
     test_interrogation_is_confirmed_before_its_data();
     test_common_address_mismatch_is_rejected();
     test_i_frame_before_startdt_is_dropped();
+    test_interrogation_response_echoes_originator_address();
     test_reset_process_general_reset_is_confirmed();
     test_reset_process_with_unknown_qrp_is_rejected();
     test_reset_process_with_foreign_ioa_is_rejected();
