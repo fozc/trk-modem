@@ -121,6 +121,7 @@ void Error_Handler(void);
 #define MODBUS_EN_FLT_GPIO_Port GPIOE
 #define PWR_PANIC_Pin LL_GPIO_PIN_15
 #define PWR_PANIC_GPIO_Port GPIOE
+#define PWR_PANIC_EXTI_IRQn EXTI15_IRQn
 #define RF_RESET_Pin LL_GPIO_PIN_10
 #define RF_RESET_GPIO_Port GPIOB
 #define O_GPIO2_Pin LL_GPIO_PIN_12

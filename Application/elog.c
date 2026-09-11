@@ -965,6 +965,11 @@ void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
              info, sizeof(info));
 }
 
+void elog_log_power_panic(void)
+{
+    elog_add(ELOG_PWR_PANIC, ELOG_LEVEL_ERROR, NULL, 0U);
+}
+
 void elog_log_web_login_fail(uint32_t client_ip)
 {
     /* info: client_ip(4) burst_count(2). First failure logs at once, then
