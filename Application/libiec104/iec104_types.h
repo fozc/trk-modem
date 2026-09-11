@@ -221,12 +221,25 @@ typedef struct {
     cp56time2a_t timestamp; // 7-byte zaman damgasi
 }__attribute__((packed)) m_sp_tb_1_t;  // M_SP_TB_1 Type 30 - Single Point Information
 
+// Double Point Information Package
+typedef struct {
+    ioa_3byte_t  ioa;   // Information Object Address
+    diq_t        diq;   // Double Point + Quality
+}__attribute__((packed)) m_dp_na_1_t;  // M_DP_NA_1 Type 3 - Double Point Information
+
 // Double Point Information with Time Tag Package
 typedef struct {
     ioa_3byte_t  ioa;   // Information Object Address
     diq_t        diq;   // Double Point + Quality
     cp56time2a_t timestamp; // 7-byte zaman damgasi
 }__attribute__((packed)) m_dp_tb_1_t;  // M_DP_TB_1 Type 31 - Double Point Information
+
+// Measured Value (Float) Package
+typedef struct {
+    ioa_3byte_t   ioa;       // Information Object Address (3 bytes)
+    float         value;     // IEEE 754 float (4 bytes)
+    qds_t         quality;   // Quality Descriptor (1 byte)
+}__attribute__((packed)) m_me_nc_1_t;  // M_ME_NC_1 Type 13 - Total: 8 bytes
 
 // Measured Value (Float) with Time Tag Package
 typedef struct {
@@ -419,6 +432,8 @@ typedef union
 			uint8_t raw_data[MAX_ASDU_SIZE - 6]; // MAX_ASDU_SIZE - asdu_header, asdu_header ustte tanimli!
 
             m_sp_na_1_t m_sp_na_1; // Type  1: M_SP_NA_1 - Single Point Information
+            m_dp_na_1_t m_dp_na_1; // Type  3: M_DP_NA_1 - Double Point Information
+            m_me_nc_1_t m_me_nc_1; // Type 13: M_ME_NC_1 - Measured Value Float
 			m_dp_tb_1_t m_dp_tb_1; // Type 31: M_DP_TB_1 - Double Point Information with Time Tag
             c_sc_na_1_t c_sc_na_1; // Type 45: C_SC_NA_1 - Single Command
             m_ei_na_1_t m_ei_na_1; // Type 70: M_EI_NA_1 - End of Initialization
