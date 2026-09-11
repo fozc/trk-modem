@@ -24,7 +24,8 @@ static const uint8_t supported_asdu_types[] = {
     C_DC_NA_1, // 46, Double Command
     M_EI_NA_1, // 70, End of Initialization
     C_IC_NA_1, // 100, Interrogation Command
-	C_CS_NA_1 // 103, clock synchronization command
+	C_CS_NA_1, // 103, clock synchronization command
+	C_RP_NA_1 // 105, reset process command
 };
 
 /* Bir SRECV yigini (1024 B) ile bekleyen en buyuk parcali APDU (254 B) ayni
@@ -783,6 +784,75 @@ void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)
     rtc_sync(&new_time);
 }
 
+void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt)
+{
+	if (pkt == NULL) {
+		CSLOG("Invalid packet\r\n");
+		return;
+	}
+	/* IEC 60870-5-101 komut iletim proseduru: onay istegin aynisidir.
+	 * Gelen kare kopyalanir; govde (IOA + QRP) oldugu gibi kalir, APCI
+	 * guncel N(S)/N(R) ile yeniden kurulur ve yalnizca COT=7 ile
+	 * P/N biti sonuca gore set edilir. */
+	iec104_package_t act_con;
+	const uint16_t frame_length = (uint16_t)(pkt->frame.apci.apdu_length + 2); // +2 for start char and length byte
+	const uint32_t ioa = iec104_ioa_3byte_to_uint32(pkt->frame.c_rp_na_1.ioa);
+	const uint32_t conf_ioa =
+	    iec104_ioa_3byte_to_uint32(iec104_config_get_ioa_modem_reset());
+	const uint8_t qrp_value = pkt->frame.c_rp_na_1.qrp;
+
+	memcpy(act_con.data, pkt->data, frame_length);
+
+	/* Onay her durumda kendi sira numaralarimizla gider; master'in kontrol
+	 * alanini oldugu gibi yansitmak N(S)/N(R) desenkronu yaratir. */
+	act_con.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+	act_con.frame.asdu_header.cot.cause = COT_ACTIVATION_CON;
+	act_con.frame.asdu_header.cot.pn_bit = 0;
+	act_con.frame.asdu_header.cot.test_bit = 0;
+
+	CSLOG("Processing C_RP_NA_1 command: IOA %u, QRP %u\r\n",
+	      (unsigned)ioa, (unsigned)qrp_value);
+
+	/* Standart C_RP_NA_1 icin IOA=0 zorunlu kilar; projeye ozel
+	 * konfigure edilebilir IOA de kabul edilir. */
+	if ((0U != ioa) && (ioa != conf_ioa))
+	{
+		CSLOG_WARN("C_RP_NA_1: invalid IOA %u (expected 0 or %u)\r\n",
+		           (unsigned)ioa, (unsigned)conf_ioa);
+		act_con.frame.asdu_header.cot.pn_bit = 1; // Olumsuz onay
+		(void)iec104_send(act_con.data, frame_length);
+		return;
+	}
+
+	switch (qrp_value)
+	{
+		case IEC104_QRP_GENERAL_RESET:
+			CSLOG("C_RP_NA_1: general reset - ACT_CON gonderiliyor, reboot isteniyor\r\n");
+			/* 1) ACT_CON (COT=7) kuyruga yazilir
+			 * 2) uygulama katmani reboot olayini alir ve onay TX
+			 *    kuyrugundan cikip hatta gitmesi icin gecikmeli
+			 *    fiziksel reset tetikler (katmanlama: kutuphane
+			 *    dogrudan NVIC'e dokunmaz) */
+			(void)iec104_send(act_con.data, frame_length);
+			notify_event(IEC104_EVT_REBOOT_REQUESTED);
+			break;
+
+		case IEC104_QRP_RESET_PENDING_EVENTS:
+			CSLOG("C_RP_NA_1: pending event reset - onay gonderiliyor\r\n");
+			/* TODO: Bekleyen olay tamponu temizligi RF olay yolu (TRIP_NOTIFY
+			 * vb.) baglaninca burada yapilacak; simdi yalniz onay. */
+			(void)iec104_send(act_con.data, frame_length);
+			break;
+
+		case IEC104_QRP_NOT_USED:
+		default:
+			/* Tanimsiz QRP: olumsuz onay (P/N=1) */
+			act_con.frame.asdu_header.cot.pn_bit = 1;
+			(void)iec104_send(act_con.data, frame_length);
+			break;
+	}
+}
+
 
 void iec104_send_test_frame()
 {
@@ -1123,6 +1193,10 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
             CSLOG("Received C_CS_NA_1 Clock Synchronization Command\r\n");
             iec104_c_cs_na_1_command_handler(&package);
             break;
+        case C_RP_NA_1: // Reset Process Command
+			CSLOG("Received C_RP_NA_1 Reset Process Command\r\n");
+			iec104_c_rp_na_1_command_handler(&package);
+			break;
 
         default:
             CSLOG("Received ASDU Type: %d (%s - %s)\r\n", package.frame.asdu_header.type_id,

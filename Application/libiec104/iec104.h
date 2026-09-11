@@ -38,6 +38,9 @@ typedef enum
     IEC104_EVT_SEND_PERM_FAULTS = 2,
     IEC104_EVT_SOCKET_CLOSED = 3,
     IEC104_EVT_REQUEST_SOCKET_CLOSE = 4,
+    IEC104_EVT_REBOOT_REQUESTED = 5, /* C_RP_NA_1 general reset onayi
+                                      * kuyruga yazildi; uygulama katmani
+                                      * gecikmeli fiziksel reset tetikler */
 } iec104_event_t;
 
 typedef struct
@@ -86,6 +89,7 @@ void iec104_send_M_DP_TB_1_spontan(ioa_3byte_t ioa, uint8_t value, uint8_t quali
 void iec104_send_M_ME_TF_1(cot_t cot, ioa_3byte_t ioa, float value, qds_t quality);
 void iec104_send_C_SC_NA_1(cot_t cot, ioa_3byte_t ioa, sco_command_state_t scs, qualifier_of_command_t qu, se_bit_t se_bit);
 void iec104_send_C_DC_NA_1(cot_t cot, ioa_3byte_t ioa, dco_command_state_t dcs, qualifier_of_command_t qu, se_bit_t se_bit);
+void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt);
 
 
 void iec104_interrogation_send_m_sp_tb_1_objects(const ioa_3byte_t *ioas, const siq_t *states);
