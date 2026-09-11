@@ -8,132 +8,82 @@
 #ifndef LIBIEC104_IEC104_EVENT_LOG_H_
 #define LIBIEC104_IEC104_EVENT_LOG_H_
 
-#include <spi_flash_organization.h>
 #include <stdint.h>
 #include <stdbool.h>
+
 #include "fault_log.h"
 
 /* ---------------------------------------------------------------------------
- * Capacity calculations
- *   sizeof(fault_log_t) == 20 bytes (7 cp56time2a + 4 float + 2 uint16 +
- *                                    1 bitfield + 1 pad + 4 crc + 1 pad)
- *   Two 4096-byte data sectors → 409 records max
- * --------------------------------------------------------------------------- */
-#define IEC104_EVTLOG_RECORD_SIZE       sizeof(fault_log_t)
-#define IEC104_EVTLOG_CAPACITY          ((uint16_t)(IEC104_EVTLOG_DATA_SIZE / IEC104_EVTLOG_RECORD_SIZE))
-#define IEC104_EVTLOG_BITMAP_BYTES      ((IEC104_EVTLOG_CAPACITY + 7U) / 8U)
-
-/* ---------------------------------------------------------------------------
- * Backup enable/disable
- *   1 → writes are mirrored to the backup data area and backup superblock;
- *       reads fall back to backup on primary CRC failure.
- *   0 → only primary sectors are used (fewer flash writes, less robust).
- * --------------------------------------------------------------------------- */
-#define IEC104_EVTLOG_BACKUP_ENABLE     0
-
-/* ---------------------------------------------------------------------------
- * IO interface — same pattern as fault_log / elog
- * --------------------------------------------------------------------------- */
-typedef struct
-{
-    void (*read)(uint32_t addr, void *buf, uint32_t len);
-    int  (*write)(uint32_t addr, const void *buf, uint32_t len);
-} iec104_evtlog_io_if_t;
-
-typedef struct
-{
-    iec104_evtlog_io_if_t io_if;
-    uint32_t superblock_addr;         /* Primary superblock sector address    */
-    uint32_t superblock_backup_addr;  /* Backup  superblock sector address    */
-    uint32_t data_addr;               /* Primary data area start address      */
-    uint32_t data_backup_addr;        /* Backup  data area start address      */
-} iec104_evtlog_cfg_t;
-
-/* ---------------------------------------------------------------------------
- * Superblock — stored in flash (primary + backup)
- * --------------------------------------------------------------------------- */
-typedef struct
-{
-    uint16_t write_index;                          /* Next slot to write (0..CAPACITY-1)        */
-    uint32_t total_events;                         /* Monotonic total-events-ever counter        */
-    uint8_t  sent_bitmap[IEC104_EVTLOG_BITMAP_BYTES]; /* bit=1 → sent, bit=0 → unsent          */
-    uint32_t crc;
-} iec104_evtlog_superblock_t;
-
-/* ---------------------------------------------------------------------------
- * Public API
+ * Kapasite (hesap iec104_event_log.c icinde, spi_flash_log sabitlerinden):
+ *   entry  = LOG_ENTRY_OVERHEAD(4) + sizeof(fault_log_t)(18) = 22 bayt
+ *   sektor = 4096 / 22 = 186 kayit
+ *   halka head icin bir sektoru bos birakir -> (N-1) * 186
+ *   8 sektor -> 1302 kayit (3 kayit/gun'de ~434 gun; sartname 90 gun ister)
+ *
+ * NOT: bu baslik spi_flash_log.h'i include etmez; kapasite makrolari .c
+ * icinde kalir ve flash log kutuphanesi tuketicilere tasinmaz.
  * --------------------------------------------------------------------------- */
 
 /**
- * Initialise the event log. Must be called once at startup.
- * Loads the superblock from flash (primary → backup → reinit on both corrupt).
+ * Olay gunlugunu acar: flash taramasiyla head'i bulur, replay durumunu
+ * NVRAM'den yukler. Acilista bir kez cagrilir.
  */
-bool iec104_event_log_init(const iec104_evtlog_cfg_t *cfg);
+bool iec104_event_log_init(void);
 
 /**
- * Append a fault_log_t record. Overwrites the oldest entry when full.
- * Marks the new entry as unsent. Writes both primary and backup data sectors
- * and updates the superblock (primary + backup).
+ * Yeni ariza kaydi ekler. Kayit tanimi geregi "gonderilmedi" sayilir;
+ * cagiran hemen gonderebilirse iec104_event_log_mark_sent() ile geri alir.
+ *
+ * @param[out] seq_out Kayda atanan seq (NULL olabilir).
  */
-bool iec104_event_log_add(const fault_log_t *entry);
+bool iec104_event_log_add(const fault_log_t *entry, uint16_t *seq_out);
 
 /**
- * Return the number of valid stored entries (capped at CAPACITY).
- */
-uint16_t iec104_event_log_get_count(void);
-
-/**
- * Read the n-th newest entry (n=0 → newest, n=count-1 → oldest).
- * Optionally returns the physical slot index via *slot_out (may be NULL).
- * Returns false if n is out of range or the entry has a CRC error.
- */
-bool iec104_event_log_read_nth(uint16_t n, fault_log_t *out, uint16_t *slot_out);
-
-/**
- * Return the number of unsent entries.
+ * Gonderilmemis kayit sayisi.
  */
 uint16_t iec104_event_log_get_unsent_count(void);
 
 /**
- * Read the n-th newest *unsent* entry (n=0 → newest unsent).
- * Optionally returns the physical slot index via *slot_out (may be NULL).
- * Returns false if n is out of range or the entry has a CRC error.
+ * Gonderilmemis kayitlarin EN YENISINI okur (sartname 2.2.4.2: yeniden
+ * eskiye gonderim). Her mark_sent sonrasi bir sonraki (daha eski) kaydi verir.
+ * CRC'si bozuk slotlari spi_flash_log atlar; tek bozuk kayit yayimi kilitlemez.
  */
-bool iec104_event_log_read_nth_unsent(uint16_t n, fault_log_t *out, uint16_t *slot_out);
+bool iec104_event_log_read_newest_unsent(fault_log_t *out, uint16_t *seq_out);
 
 /**
- * Mark slot as sent (RAM only — call iec104_event_log_sync() to persist).
+ * Kaydi gonderildi olarak isaretler (yalnizca RAM).
  */
-void iec104_event_log_mark_sent(uint16_t slot);
+void iec104_event_log_mark_sent(uint16_t seq);
 
 /**
- * Persist the superblock to flash (primary + backup).
- * Call this when the IEC104 session closes.
+ * Replay durumunu NVRAM'e yazar. Cagrilmasi gereken yerler: hat kapaliyken
+ * kayit eklendiginde ve replay bittiginde/kesildiginde. Kayit basina
+ * cagrilmaz - nvram_sync() 8 KB'lik bolgeyi yeniden yazar.
  */
 int iec104_event_log_sync(void);
 
 /**
- * Clear all log entries and reset the superblock.
+ * Tum kayitlari siler ve replay durumunu sifirlar (servis/test).
  */
 void iec104_event_log_clear(void);
 
 /**
- * Add count synthetic test records. Values are deterministically derived
- * from the global total_events counter so each run produces unique,
- * easily identifiable entries (feeder, phase, current, duration, type).
+ * Deterministik sentetik kayit ekler (shell testi).
  */
 void iec104_event_log_test(uint16_t count);
 
 /**
- * Print all stored entries to the console (newest first).
+ * Kayitlari konsola doker (yeniden eskiye).
  */
 void iec104_event_log_dump(void);
 
 /**
- * Register the "iec104evtlog" shell command.
- * Subcommands: dump (default) | test <N> | clear
+ * "iec104evtlog" shell komutunu kaydeder:
+ * [status] | dump | test <N> | clear
  */
 void iec104_event_log_shell_init(void);
 
 
 #endif /* LIBIEC104_IEC104_EVENT_LOG_H_ */
+
+/*** end of file ***/

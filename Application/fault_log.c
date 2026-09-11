@@ -517,7 +517,7 @@ static void print_log(int entry_num, const fault_log_t *log)
 			entry_num,
 			log->tm.day, log->tm.month, (uint32_t)(log->tm.year + 2000),
 			log->tm.hour, log->tm.minute, cp56time2a_get_second(&log->tm),
-			log->fault_current / 10.0f,
+			(double)fault_log_current_amps(log),
 			log->fault_duration_ms,
 			log->info.nominal_current_status ? "Below" : "Normal",
 			log->info.power_status ? "On" : "Off");
@@ -833,7 +833,6 @@ bool fault_log_add(float fault_current, uint16_t fault_duration_ms, uint8_t nomi
 	fault_log_t new_log =
 	{
 		.tm = timestamp,
-		.fault_current = fault_current * 10.0,
 		.fault_duration_ms = fault_duration_ms,
 		.info = {
 			.feeder = feeder_id & 0x07,
@@ -843,6 +842,8 @@ bool fault_log_add(float fault_current, uint16_t fault_duration_ms, uint8_t nomi
 			.type = type ? 1 : 0
 		}
 	};
+
+	fault_log_set_current_amps(&new_log, fault_current);
 
 	if(type){
 		return fault_log_add_permanent(feeder_id, phase_id, &new_log);

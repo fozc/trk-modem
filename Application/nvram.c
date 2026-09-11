@@ -1070,6 +1070,11 @@ iec104_config_t *nvram_get_iec104_config_rw(void)
 	return &nvram.iec104_config;
 }
 
+iec104_evtlog_state_t *nvram_get_iec104_evtlog_state(void)
+{
+	return &nvram.iec104_evtlog;
+}
+
 void nvram_set_iec104_config(const iec104_config_t *cfg)
 {
     if (!nvram_change_allowed())

@@ -13,7 +13,9 @@ BUILD   := build
 ASAN_BUILD := $(BUILD)/asan
 
 LIB_DIR := ..
-INCLUDES := -I$(LIB_DIR)
+# spi_flash_log.c bsp.h (bsp_kick_wdt) ceker; o da cslog/xprintf basliklarini
+# icerir - host testleri icin bu yollar da gerekli.
+INCLUDES := -I$(LIB_DIR) -I$(LIB_DIR)/../bsp -I$(LIB_DIR)/../cslog
 
 .PHONY: all run clean asan
 

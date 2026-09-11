@@ -50,6 +50,20 @@ typedef struct
 	uint32_t crc;
 }__attribute__((packed)) fault_log_t;
 
+/* fault_current alani 0.1 A cozunurlukle (x10) saklanir; amper cinsinden
+ * okumanin tek erisim noktasi - olcegi bilen yer yalnizca burasi olsun. */
+static inline float fault_log_current_amps(const fault_log_t *log)
+{
+	return log->fault_current / 10.0f;
+}
+
+/* Yazma tarafiyla simetri: amper cinsinden degeri kayda cevirir. Olcek
+ * sabitleri (x10, /10) yalnizca bu iki inline icinde yasamalidir. */
+static inline void fault_log_set_current_amps(fault_log_t *log, float amps)
+{
+	log->fault_current = amps * 10.0f;
+}
+
 void fault_log_init(void);
 int fault_log_sync(void);
 void fault_log_dump(void);      /* all feeders, via the shell channel */

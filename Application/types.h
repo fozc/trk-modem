@@ -207,7 +207,19 @@ typedef struct
  *  NOT: gelistirme sirasindaki v2/v3 kuyruk eklemeleri (rf_log_level,
  *  iec104_log_level) uretime/saha cihazi olmadigi icin v1'e indirildi;
  *  ilk cikistan sonraki her layout degisikligi bump + migration ister. */
-#define NVRAM_SCHEMA_VERSION  1U
+#define NVRAM_SCHEMA_VERSION  2U
+
+/* IEC104 olay gunlugu replay durumu. Gonderilmemis kayitlar her zaman tek
+ * parca bir seq araligi olusturur: replay yeniden eskiye gider, hat acikken
+ * gelen yeni kayit aninda gonderilir. Bu yuzden bitmap yerine iki sinir
+ * yeterlidir. */
+typedef struct
+{
+    uint16_t unsent_low;    /**< en eski gonderilmemis seq */
+    uint16_t unsent_high;   /**< en yeni gonderilmemis seq */
+    uint8_t  has_unsent;    /**< 0: aralik bos */
+    uint8_t  reserved;
+}iec104_evtlog_state_t;
 
 typedef struct
 {
@@ -228,6 +240,8 @@ typedef struct
     uint8_t rf_log_level;     /**< rf_log_level_t persisted value (v2) */
     uint8_t iec104_log_level; /**< log_lvl_t persisted value (v3) */
 
+    iec104_evtlog_state_t iec104_evtlog; /**< olay gunlugu replay durumu (v2) */
+
     uint32_t crc;
 }nvram_t;
 
@@ -243,8 +257,8 @@ _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
 _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
-_Static_assert(sizeof(nvram_t) == 2460U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
-_Static_assert(offsetof(nvram_t, crc) == 2456U, "nvram_t: crc kuyrugun sonunda (iec104_log_level pad'i doldurdu)");
+_Static_assert(sizeof(nvram_t) == 2468U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
+_Static_assert(offsetof(nvram_t, crc) == 2464U, "nvram_t: crc kuyrugun sonunda");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */

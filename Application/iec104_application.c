@@ -9,9 +9,12 @@
 #include "fault_log.h"
 #include "gsm_listener_process.h"
 #include "reboot.h"
+#include "iec104_replay.h"
 #include "sys/pt-sem.h"
 
-static struct pt_sem g_tx_sem;
+/* Uygulama katmani yayicilarini (GI grup 3/4 + replay) birbirine
+ * serilestiren semafor; iec104_replay.c de kullanir. */
+struct pt_sem iec104_tx_sem;
 
 /* C_RP_NA_1 reset zinciri: once ACT_CON hatta ciksin, sonra soket kapansin. */
 #define IEC104_REBOOT_ACK_FLUSH_MS      3000U
@@ -20,7 +23,7 @@ static struct pt_sem g_tx_sem;
 void iec104_application_init(void)
 {
     /* Semaforu 1 (Binary Mutex olarak) ilklendiriyoruz */
-    PT_SEM_INIT(&g_tx_sem, 1);
+    PT_SEM_INIT(&iec104_tx_sem, 1);
 }
 
 void iec104_application_event_handler(iec104_event_t evt)
@@ -59,8 +62,11 @@ void iec104_application_event_handler(iec104_event_t evt)
         if(process_is_running(&iec104_send_permanent_faults)){
             process_exit(&iec104_send_permanent_faults);
         }
+        if(process_is_running(&iec104_replay_process)){
+            process_exit(&iec104_replay_process);
+        }
 
-        PT_SEM_INIT(&g_tx_sem, 1);
+        PT_SEM_INIT(&iec104_tx_sem, 1);
     }
 }
 
@@ -109,7 +115,7 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
     feeder_id = 0;
     link_lost = false;
 
-    PT_SEM_WAIT(&iec104_send_temporary_faults.pt, &g_tx_sem);
+    PT_SEM_WAIT(&iec104_send_temporary_faults.pt, &iec104_tx_sem);
 
     CSLOG("Starting to send temporary fault data for feeders and phases...\r\n");
     iec104_send_general_interrogation_con(QOI_GROUP_3, 0);
@@ -145,7 +151,9 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
 
     iec104_send_general_interrogation_term(QOI_GROUP_3, link_lost ? 1U : 0U);
 
-    PT_SEM_SIGNAL(&process_pt, &g_tx_sem);
+    PT_SEM_SIGNAL(&process_pt, &iec104_tx_sem);
+    /* GI bitti: birikmis olay varsa replay kendini kaldirir (yoksa no-op). */
+    iec104_replay_start_if_pending();
 
     PROCESS_END();
 }
@@ -172,7 +180,7 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
     feeder_id = 0;
     link_lost = false;
 
-    PT_SEM_WAIT(&iec104_send_permanent_faults.pt, &g_tx_sem);
+    PT_SEM_WAIT(&iec104_send_permanent_faults.pt, &iec104_tx_sem);
 
     CSLOG("Starting to send permanent fault data for feeders and phases...\r\n");
     iec104_send_general_interrogation_con(QOI_GROUP_4, 0);
@@ -208,7 +216,9 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
 
     iec104_send_general_interrogation_term(QOI_GROUP_4, link_lost ? 1U : 0U);
 
-    PT_SEM_SIGNAL(&process_pt, &g_tx_sem);
+    PT_SEM_SIGNAL(&process_pt, &iec104_tx_sem);
+    /* GI bitti: birikmis olay varsa replay kendini kaldirir (yoksa no-op). */
+    iec104_replay_start_if_pending();
 
     PROCESS_END();
 }

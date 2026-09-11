@@ -28,7 +28,9 @@ extern "C" {
 /* Sabitler                                                                  */
 /* -------------------------------------------------------------------------- */
 
-#define FLASH_PAGE_SIZE          256u    /* Çipin sayfa boyutu: program çağrıları buna göre bölünür */
+/* Ad bilincli olarak LOG_ onekli: HAL (stm32u3xx_hal_flash.h) FLASH_PAGE_SIZE
+ * adini ic flash icin (4 KB) kullanir; ayni ad iki anlamda tanimlanmasin. */
+#define LOG_FLASH_PAGE_SIZE     256u    /* Çipin sayfa boyutu: program çağrıları buna göre bölünür */
 #define LOG_SECTOR_SIZE          4096u   /* Çipin erase (sektör) boyutu — şimdilik sabit    */
 #define LOG_MIN_SECTOR_COUNT     2u      /* Dairesel yapı için gereken en az sektör sayısı  */
 #define LOG_MAX_PAYLOAD_SIZE     252u    /* Payload üst sınırı: 4 + 252 = 256 = 1 sayfa */

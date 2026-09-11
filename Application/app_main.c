@@ -282,16 +282,7 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	breaker_init();
 	iec104_process_init();
-	iec104_event_log_init(&(iec104_evtlog_cfg_t){
-		.io_if = {
-			.read = w25qxx_read_buff,
-			.write = w25qxx_write_buff
-		},
-		.superblock_addr = IEC104_EVTLOG_SUPERBLOCK_ADDR,
-		.superblock_backup_addr = IEC104_EVTLOG_SUPERBLOCK_BACKUP_ADDR,
-		.data_addr = IEC104_EVTLOG_DATA_ADDR,
-		.data_backup_addr = IEC104_EVTLOG_DATA_BACKUP_ADDR
-	});
+	iec104_event_log_init();
 
 	gsm_process_contiki_init();
 

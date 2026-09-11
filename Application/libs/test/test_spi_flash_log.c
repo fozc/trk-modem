@@ -25,6 +25,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "spi_flash_log.h"
+#include "bsp.h"
+
+/* spi_flash_log.c uzun taramalarda wdt tekmeleme cagirir; host testinde
+ * bakilacak bir watchdog yok - bos yutucu stub yeterli. */
+void bsp_kick_wdt(void)
+{
+}
 
 static int passed = 0;
 static int failed = 0;
@@ -110,7 +117,7 @@ static int sim_program(uint32_t addr, const void *buf, size_t len)
     if (addr + (uint32_t)len > sim_area_end) {
         sim_out_of_area = true;      /* left the configured log area */
     }
-    if (((addr % FLASH_PAGE_SIZE) + (uint32_t)len) > FLASH_PAGE_SIZE) {
+    if (((addr % LOG_FLASH_PAGE_SIZE) + (uint32_t)len) > LOG_FLASH_PAGE_SIZE) {
         sim_page_crossed = true;     /* real chip would wrap the page */
     }
 
