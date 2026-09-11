@@ -536,7 +536,7 @@ void iec104_interrogation_send_c_sc_na_1_object(ioa_3byte_t ioa, uint8_t state, 
     iec104_send((uint8_t *)&pkt, type_id_length + 2); // +2 for start char and length byte
 }
 
-void iec104_interrogation_send_group1()
+void iec104_interrogation_send_group1(void)
 {
     CSLOG("Sending all objects for interrogation group 1...\r\n");
 
@@ -545,7 +545,7 @@ void iec104_interrogation_send_group1()
     iec104_send_phase_currents(COT_INTERROGATED_GROUP1);
 }
 
-void iec104_interrogation_send_group2()
+void iec104_interrogation_send_group2(void)
 {
     CSLOG("Sending all objects for interrogation group 2...\r\n");
 
@@ -556,14 +556,14 @@ void iec104_interrogation_send_group2()
     //iec104_process_tx_buffer_dump();
 }
 
-void iec104_interrogation_send_group3()
+void iec104_interrogation_send_group3(void)
 {
     CSLOG("Sending all objects for temporary faults [interrogation group 3]...\r\n");
 
     notify_event(IEC104_EVT_SEND_TEMP_FAULTS);
 }
 
-void iec104_interrogation_send_group4()
+void iec104_interrogation_send_group4(void)
 {
 	CSLOG("Sending all objects for temporary faults [interrogation group 4]...\r\n");
 
@@ -571,7 +571,7 @@ void iec104_interrogation_send_group4()
 
 }
 
-void iec104_interrogation_send_all_objects()//const power_line_t *lines, uint32_t count)
+void iec104_interrogation_send_all_objects(void)
 {
 	//Cevaplar COT_INTERROGATED_STATION 20 ile gonderilir, 21 grup sorgulama olur sa duruma bakalim!
     CSLOG("Sending all objects for interrogation...\r\n");
@@ -579,58 +579,10 @@ void iec104_interrogation_send_all_objects()//const power_line_t *lines, uint32_
     iec104_send_fault_currents(COT_INTERROGATED_STATION);
     iec104_send_fault_durations(COT_INTERROGATED_STATION);
     iec104_send_phase_currents(COT_INTERROGATED_STATION);
-    
+
     iec104_send_energy_states(COT_INTERROGATED_STATION);
     iec104_send_nominal_current_states(COT_INTERROGATED_STATION);
     iec104_send_rf_communication_states(COT_INTERROGATED_STATION);
-
-    //iec104_process_tx_buffer_dump();
-
-    return;
-
-    for(uint32_t i = 0; i < MAX_POWER_LINE_COUNT; i++)
-    {
-        //const power_line_t *line = &lines[i];
-        const power_line_t *line = breaker_get_power_line_by_idx(i);
-
-        if(line == NULL) {
-            CSLOG("Line %d is NULL, skipping...\r\n", i);
-            continue;
-        }
-
-        if(!line->iec104.in_use) {
-            CSLOG("Line %d is not in use, skipping...\r\n", i);
-            continue;
-        }
-
-        //TODO: 140226
-
-        // Send Single Point Information
-        siq_t states[3] = {(siq_t){0}, (siq_t){0}, (siq_t){0}};
-
-//        states[0].spi = line->phase[PHASE_R].data.breaker_state;
-//        states[1].spi = line->phase[PHASE_S].data.breaker_state;
-//        states[2].spi = line->phase[PHASE_T].data.breaker_state;
-
-        //iec104_interrogation_send_m_sp_tb_1_objects(line->iec104.m_sp_tb_1_ioa, states);
-
-//        float values[3] = {line->phase[PHASE_R].data.current,
-//                             line->phase[PHASE_S].data.current,
-//                             line->phase[PHASE_T].data.current};
-
-        qds_t qualities[3] = {{0},{0},{0}}; // Quality descriptors for each phase
-                             
-        // Send Measured Value, Normalized Value
-        //iec104_interrogation_send_m_me_tf_1_objects(line->iec104.m_me_tf_1_ioa, values, qualities);
-
-
-
-
-#ifdef C_SC_NA_1_ENABLED
-        // Send Single Command
-        iec104_interrogation_send_c_sc_na_1_object(line->iec104.c_sc_na_1_ioa, line->breaker_state, 0, 0);
-#endif
-    }
 }
 
 void iec104_interrogation_handler(const iec104_package_t *pkt)
@@ -887,7 +839,7 @@ void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt)
 }
 
 
-void iec104_send_test_frame()
+void iec104_send_test_frame(void)
 {
     static const uint8_t test_frame[] = {0x68, 0x04, (IEC104_TESTFR_ACT << 2) | 0x03, 0x00, 0x00, 0x00};
 
@@ -941,8 +893,7 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
         break;
 
     default:
-    	CSLOG_ERR("Unkown U frame function code : 0x%02d \r\n", uframe->function_code);
-    	return;
+    	CSLOG_ERR("Unkown U frame function code : 0x%02X \r\n", uframe->function_code);
         break;
     }
 }
@@ -1821,8 +1772,7 @@ void iec104_send_currents(const breaker_t *breaker)
         }
     }
 }
-#endif
- 
+
 static void send_breaker_states(const ioa_3byte_t *ioas, const siq_t *siqs)
 {
     iec104_package_t pkt;
@@ -1853,7 +1803,6 @@ static void send_breaker_states(const ioa_3byte_t *ioas, const siq_t *siqs)
     iec104_send((uint8_t *)&pkt, type_id_length + 2); // +2 for start char and length byte
 }
 
-#if 0
 void iec104_send_breaker_states(const breaker_t *breaker)
 {
     if(breaker == NULL) {
