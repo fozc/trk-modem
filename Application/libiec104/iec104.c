@@ -1052,6 +1052,26 @@ static uint8_t get_type_id_length(uint8_t TypeId)
 	return ret;
 }
 
+/* Kontrol yonundeki komut ASDU'lari; bunlarin COT'u dogrulanmalidir. */
+static bool is_command_asdu(uint8_t type_id)
+{
+    return (C_SC_NA_1 == type_id) || (C_DC_NA_1 == type_id) ||
+           (C_IC_NA_1 == type_id) || (C_CS_NA_1 == type_id) ||
+           (C_RP_NA_1 == type_id);
+}
+
+/* Bu yigin komutlari yalnizca ACT ile isler; saat senkronu ayrica SPONT
+ * ile de gelebilir. Kalan sebepler (orn. DEACT) desteklenmiyor. */
+static bool is_accepted_command_cot(uint8_t type_id, uint8_t cause)
+{
+    if (COT_ACTIVATION == cause)
+    {
+        return true;
+    }
+
+    return (C_CS_NA_1 == type_id) && (COT_SPONTANEOUS == cause);
+}
+
 void iec104_process_i_frame(const i_format_control_t *iframe)
 {
     if (iframe == NULL) {
@@ -1187,6 +1207,20 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
                    package.frame.apci.apdu_length);
 
         iec104_send_negative_ack(&package, UkTypeId);
+        return;
+    }
+
+    /* Beyan edilen sebep desteklenmiyorsa komut islenmez; aksi halde orn.
+     * DEACT ile gelen bir sorgulama aktivasyon gibi calistirilirdi. */
+    if (is_command_asdu(package.frame.asdu_header.type_id) &&
+        !is_accepted_command_cot(package.frame.asdu_header.type_id,
+                                 package.frame.asdu_header.cot.cause))
+    {
+        CSLOG_WARN("Unsupported COT %d for command type %d\r\n",
+                   package.frame.asdu_header.cot.cause,
+                   package.frame.asdu_header.type_id);
+
+        iec104_send_negative_ack(&package, UkCauseTx);
         return;
     }
 
