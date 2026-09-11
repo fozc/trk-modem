@@ -71,18 +71,14 @@ static bool link_active = false; /* SCADA ile STARTDT suresci tamamlandi mi? */
 /* Islenen son komutun OA'si; onaylar ve sorgulama cevaplari bununla doner. */
 static uint8_t response_originator_address = 0;
 
-/* Son temizlemeden bu yana hatta cikamamis I-frame oldu mu? Sorgulamanin
- * eksik tamamlandigini ACT_TERM'de bildirmek icin kullanilir. */
-static bool i_frame_dropped = false;
-
 void iec104_send_periodic_update(void);
-void iec104_send_phase_currents(cause_of_transmission_t cause);
-void iec104_send_fault_currents(cause_of_transmission_t cause);
-void iec104_send_fault_durations(cause_of_transmission_t cause);
-void iec104_send_fault_types(cause_of_transmission_t cause);
-void iec104_send_energy_states(cause_of_transmission_t cause);
-void iec104_send_nominal_current_states(cause_of_transmission_t cause);
-void iec104_send_rf_communication_states(cause_of_transmission_t cause);
+bool iec104_send_phase_currents(cause_of_transmission_t cause);
+bool iec104_send_fault_currents(cause_of_transmission_t cause);
+bool iec104_send_fault_durations(cause_of_transmission_t cause);
+bool iec104_send_fault_types(cause_of_transmission_t cause);
+bool iec104_send_energy_states(cause_of_transmission_t cause);
+bool iec104_send_nominal_current_states(cause_of_transmission_t cause);
+bool iec104_send_rf_communication_states(cause_of_transmission_t cause);
 /* Feeder+phase filtreli alternatifler (henuz kullanilmiyor) */
 void iec104_send_phase_currents_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
 void iec104_send_fault_currents_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
@@ -160,21 +156,18 @@ static bool iec104_send(const uint8_t *data, size_t length)
 	if(is_i_frame && !link_active)
 	{
 		CSLOG_WARN("Link is not active, I-frame not queued\r\n");
-		i_frame_dropped = true;
 		return false;
 	}
 
 	if(is_i_frame && (k_counter >= config.k_max))
 	{
 		CSLOG_ERR("Window full, cannot send more I-frames\r\n");
-		i_frame_dropped = true;
 		return false;
 	}
 
 	if(NULL == iec_io.send)
 	{
 		CSLOG_ERR("No transport bound, frame dropped\r\n");
-		i_frame_dropped = i_frame_dropped || is_i_frame;
 		return false;
 	}
 
@@ -183,7 +176,6 @@ static bool iec104_send(const uint8_t *data, size_t length)
 	if(iec_io.send(data, (uint16_t)length) != 0)
 	{
 		CSLOG_ERR("Transport rejected frame (%u bytes)\r\n", (unsigned)length);
-		i_frame_dropped = i_frame_dropped || is_i_frame;
 		return false;
 	}
 
@@ -536,24 +528,27 @@ void iec104_interrogation_send_c_sc_na_1_object(ioa_3byte_t ioa, uint8_t state, 
     iec104_send((uint8_t *)&pkt, type_id_length + 2); // +2 for start char and length byte
 }
 
-void iec104_interrogation_send_group1(void)
+/* Kisa devre yapilmaz: bir alan eksik kalsa da kalanlar yayilmalidir. */
+bool iec104_interrogation_send_group1(void)
 {
     CSLOG("Sending all objects for interrogation group 1...\r\n");
 
-    iec104_send_fault_currents(COT_INTERROGATED_GROUP1);
-    iec104_send_fault_durations(COT_INTERROGATED_GROUP1);
-    iec104_send_phase_currents(COT_INTERROGATED_GROUP1);
+    bool complete = iec104_send_fault_currents(COT_INTERROGATED_GROUP1);
+    complete = iec104_send_fault_durations(COT_INTERROGATED_GROUP1) && complete;
+    complete = iec104_send_phase_currents(COT_INTERROGATED_GROUP1) && complete;
+
+    return complete;
 }
 
-void iec104_interrogation_send_group2(void)
+bool iec104_interrogation_send_group2(void)
 {
     CSLOG("Sending all objects for interrogation group 2...\r\n");
 
-    iec104_send_energy_states(COT_INTERROGATED_GROUP2);
-    iec104_send_nominal_current_states(COT_INTERROGATED_GROUP2);
-    iec104_send_rf_communication_states(COT_INTERROGATED_GROUP2);
+    bool complete = iec104_send_energy_states(COT_INTERROGATED_GROUP2);
+    complete = iec104_send_nominal_current_states(COT_INTERROGATED_GROUP2) && complete;
+    complete = iec104_send_rf_communication_states(COT_INTERROGATED_GROUP2) && complete;
 
-    //iec104_process_tx_buffer_dump();
+    return complete;
 }
 
 void iec104_interrogation_send_group3(void)
@@ -571,46 +566,45 @@ void iec104_interrogation_send_group4(void)
 
 }
 
-void iec104_interrogation_send_all_objects(void)
+bool iec104_interrogation_send_all_objects(void)
 {
 	//Cevaplar COT_INTERROGATED_STATION 20 ile gonderilir, 21 grup sorgulama olur sa duruma bakalim!
     CSLOG("Sending all objects for interrogation...\r\n");
 
-    iec104_send_fault_currents(COT_INTERROGATED_STATION);
-    iec104_send_fault_durations(COT_INTERROGATED_STATION);
-    iec104_send_phase_currents(COT_INTERROGATED_STATION);
+    bool complete = iec104_send_fault_currents(COT_INTERROGATED_STATION);
+    complete = iec104_send_fault_durations(COT_INTERROGATED_STATION) && complete;
+    complete = iec104_send_phase_currents(COT_INTERROGATED_STATION) && complete;
 
-    iec104_send_energy_states(COT_INTERROGATED_STATION);
-    iec104_send_nominal_current_states(COT_INTERROGATED_STATION);
-    iec104_send_rf_communication_states(COT_INTERROGATED_STATION);
+    complete = iec104_send_energy_states(COT_INTERROGATED_STATION) && complete;
+    complete = iec104_send_nominal_current_states(COT_INTERROGATED_STATION) && complete;
+    complete = iec104_send_rf_communication_states(COT_INTERROGATED_STATION) && complete;
+
+    return complete;
 }
 
 void iec104_interrogation_handler(const iec104_package_t *pkt)
 {
-    /* Yayim sirasinda hatta cikamayan I-frame olursa sorgulama eksik
-     * tamamlanmistir; ACT_TERM bunu P/N=1 ile bildirir.
+    /* Yayim eksik kalirsa ACT_TERM bunu P/N=1 ile bildirir.
      * TODO: Istasyon/grup1/grup2 yayimi senkron ve tek seferlik; grup3/grup4
      * gibi devam ettirilebilir (resumable) yayima tasinmali ki pencere veya
      * tasiyici doldugunda obje kaybedilmesin. */
-    i_frame_dropped = false;
-
     if(pkt->frame.c_ic_na_1_command.qoi == 20)
     {
         iec104_send_general_interrogation_con(QOI_STATION, 0);
-        iec104_interrogation_send_all_objects();
-        iec104_send_general_interrogation_term(QOI_STATION, i_frame_dropped ? 1U : 0U);
+        const bool complete = iec104_interrogation_send_all_objects();
+        iec104_send_general_interrogation_term(QOI_STATION, complete ? 0U : 1U);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 21)
     {
     	iec104_send_general_interrogation_con(QOI_GROUP_1, 0);
-    	iec104_interrogation_send_group1();
-		iec104_send_general_interrogation_term(QOI_GROUP_1, i_frame_dropped ? 1U : 0U);
+    	const bool complete = iec104_interrogation_send_group1();
+		iec104_send_general_interrogation_term(QOI_GROUP_1, complete ? 0U : 1U);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 22)
     {
     	iec104_send_general_interrogation_con(QOI_GROUP_2, 0);
-    	iec104_interrogation_send_group2();
-		iec104_send_general_interrogation_term(QOI_GROUP_2, i_frame_dropped ? 1U : 0U);
+    	const bool complete = iec104_interrogation_send_group2();
+		iec104_send_general_interrogation_term(QOI_GROUP_2, complete ? 0U : 1U);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 23)
     {
@@ -1236,7 +1230,6 @@ void iec104_reset(void)
     wait_for_testfr_con = false;
 
     response_originator_address = 0;
-    i_frame_dropped = false;
     testfr_timer = 0;
 
     receive_sn = 0;
@@ -1835,7 +1828,7 @@ void iec104_send_breaker_states(const breaker_t *breaker)
 #endif
  
 
-void iec104_send_phase_currents(cause_of_transmission_t cause)
+bool iec104_send_phase_currents(cause_of_transmission_t cause)
 {
     CSLOG("Sending phase currents\r\n");
 
@@ -1844,7 +1837,7 @@ void iec104_send_phase_currents(cause_of_transmission_t cause)
     if (active_powerline_count == 0)
     {
         CSLOG("No active power lines, skipping\r\n");
-        return;
+        return true;
     }
     // Max APDU(255) - 1StartByte - 1LengthByte - 4APCI - 6ASDU header --> 243 byte for objects, payload maks
     // IEC 104 APDU max 253 byte, ASDU header 10 byte
@@ -1910,9 +1903,11 @@ void iec104_send_phase_currents(cause_of_transmission_t cause)
 
         sent += batch;
     }
+
+    return (sent >= obj_count);
 }
 
-void iec104_send_fault_currents(cause_of_transmission_t cause)
+bool iec104_send_fault_currents(cause_of_transmission_t cause)
 {
     CSLOG("Sending fault currents\r\n");
 
@@ -1921,7 +1916,7 @@ void iec104_send_fault_currents(cause_of_transmission_t cause)
     if (active_powerline_count == 0)
     {
         CSLOG("No active power lines, skipping\r\n");
-        return;
+        return true;
     }
 
     // IEC 104 APDU max 253 byte, ASDU header 10 byte
@@ -1987,9 +1982,11 @@ void iec104_send_fault_currents(cause_of_transmission_t cause)
 
         sent += batch;
     }
+
+    return (sent >= obj_count);
 }
 
-void iec104_send_fault_durations(cause_of_transmission_t cause)
+bool iec104_send_fault_durations(cause_of_transmission_t cause)
 {
     CSLOG("Sending fault durations\r\n");
 
@@ -1998,7 +1995,7 @@ void iec104_send_fault_durations(cause_of_transmission_t cause)
     if (active_powerline_count == 0)
     {
         CSLOG("No active power lines, skipping\r\n");
-        return;
+        return true;
     }
 
     // IEC 104 APDU max 253 byte, ASDU header 10 byte
@@ -2064,9 +2061,11 @@ void iec104_send_fault_durations(cause_of_transmission_t cause)
 
         sent += batch;
     }
+
+    return (sent >= obj_count);
 }
 
-void iec104_send_fault_types(cause_of_transmission_t cause)
+bool iec104_send_fault_types(cause_of_transmission_t cause)
 {
     CSLOG("Sending fault types\r\n");
 
@@ -2075,7 +2074,7 @@ void iec104_send_fault_types(cause_of_transmission_t cause)
     if (active_powerline_count == 0)
     {
         CSLOG("No active power lines, skipping\r\n");
-        return;
+        return true;
     }
 
     // IEC 104 APDU max 253 byte, ASDU header 10 byte
@@ -2139,9 +2138,11 @@ void iec104_send_fault_types(cause_of_transmission_t cause)
 
         sent += batch;
     }
+
+    return (sent >= obj_count);
 }
 
-void iec104_send_energy_states(cause_of_transmission_t cause)
+bool iec104_send_energy_states(cause_of_transmission_t cause)
 {
     CSLOG("Sending energy states\r\n");
 
@@ -2150,7 +2151,7 @@ void iec104_send_energy_states(cause_of_transmission_t cause)
     if (active_powerline_count == 0)
     {
         CSLOG("No active power lines, skipping\r\n");
-        return;
+        return true;
     }
 
     // IEC 104 APDU max 253 byte, ASDU header 10 byte
@@ -2214,9 +2215,11 @@ void iec104_send_energy_states(cause_of_transmission_t cause)
 
         sent += batch;
     }
+
+    return (sent >= obj_count);
 }
 
-void iec104_send_nominal_current_states(cause_of_transmission_t cause)
+bool iec104_send_nominal_current_states(cause_of_transmission_t cause)
 {
     CSLOG("Sending nominal current states\r\n");
 
@@ -2225,7 +2228,7 @@ void iec104_send_nominal_current_states(cause_of_transmission_t cause)
     if (active_powerline_count == 0)
     {
         CSLOG("No active power lines, skipping\r\n");
-        return;
+        return true;
     }
 
 /*
@@ -2303,9 +2306,11 @@ void iec104_send_nominal_current_states(cause_of_transmission_t cause)
 
         sent += batch;
     }
+
+    return (sent >= obj_count);
 }
 
-void iec104_send_rf_communication_states(cause_of_transmission_t cause)
+bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
 {
     CSLOG("Sending RF communication states\r\n");
 
@@ -2314,7 +2319,7 @@ void iec104_send_rf_communication_states(cause_of_transmission_t cause)
     if (active_powerline_count == 0)
     {
         CSLOG("No active power lines, skipping\r\n");
-        return;
+        return true;
     }
 
     // IEC 104 APDU max 253 byte, ASDU header 10 byte
@@ -2378,6 +2383,8 @@ void iec104_send_rf_communication_states(cause_of_transmission_t cause)
 
         sent += batch;
     }
+
+    return (sent >= obj_count);
 }
 
 
