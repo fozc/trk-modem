@@ -15,9 +15,8 @@ INCLUDES := -I. -I$(LIB_DIR) -I$(APP_DIR) -I$(APP_DIR)/libs -I$(APP_DIR)/bsp \
             -I$(APP_DIR)/cslog -I$(APP_DIR)/rf -I$(APP_DIR)/gsm \
             -I$(APP_DIR)/libscp -I$(APP_DIR)/power_board -I$(APP_DIR)/bms
 
-# The target build carries no warning flags yet, so libiec104 still trips
-# -Wunused-*. Warnings stay visible here but do not fail the test run.
-LIB_CFLAGS := $(CFLAGS) -Wno-error
+# The library sources build clean under the flags above; keep it that way.
+LIB_CFLAGS := $(CFLAGS)
 
 TEST_SRCS := test_iec104_protocol.c mock_platform.c
 LIB_SRCS  := $(LIB_DIR)/iec104.c \
