@@ -140,6 +140,12 @@ cp56time2a_t cp56time2a_from_rtc(const bsp_rtc_t *rtc_ptr)
     ts.iv_bit       = 0U;
     ts.su_bit       = 0U;
 
+    /* RTC hic kurulmamissa (orn. gun=0) takvimde olmayan bir damga uretilirdi;
+     * alici bunu gecerli sanmasin diye IV biti isaretlenir. */
+    if (!cp56time2a_is_valid(&ts)) {
+        ts.iv_bit = 1U;
+    }
+
     return ts;
 }
 
@@ -182,6 +188,10 @@ cp56time2a_t cp56time2a_make(uint16_t milliseconds, uint8_t minute, uint8_t hour
     ts.year         = year;
     ts.iv_bit       = 0U;
     ts.su_bit       = 0U;
+
+    if (!cp56time2a_is_valid(&ts)) {
+        ts.iv_bit = 1U;
+    }
 
     return ts;
 }
