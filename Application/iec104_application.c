@@ -13,6 +13,10 @@
 
 static struct pt_sem g_tx_sem;
 
+/* C_RP_NA_1 reset zinciri: once ACT_CON hatta ciksin, sonra soket kapansin. */
+#define IEC104_REBOOT_ACK_FLUSH_MS      3000U
+#define IEC104_REBOOT_SOCKET_CLOSE_MS   2000U
+
 void iec104_application_init(void)
 {
     /* Semaforu 1 (Binary Mutex olarak) ilklendiriyoruz */
@@ -36,9 +40,12 @@ void iec104_application_event_handler(iec104_event_t evt)
     else if(evt == IEC104_EVT_REBOOT_REQUESTED)
     {
         /* C_RP_NA_1 (reset process, QRP=1) geldi: ACT_CON onayi TX
-         * kuyruguna yazildi; 5 sn gecikme onayin hatta cikmasini
-         * saglar, ardindan fiziksel reset. */
-        reboot_system_delayed(5000U);
+         * kuyruguna yazildi. Onay hatta ciksin, sonra soket kapansin,
+         * en son fiziksel reset -- master t1 zaman asimi yerine temiz
+         * kapanma gorur. */
+        if (!process_is_running(&iec104_reboot_process)) {
+            process_start(&iec104_reboot_process, NULL);
+        }
     }
     else if(evt == IEC104_EVT_REQUEST_SOCKET_CLOSE)
     {
@@ -55,6 +62,27 @@ void iec104_application_event_handler(iec104_event_t evt)
 
         PT_SEM_INIT(&g_tx_sem, 1);
     }
+}
+
+
+PROCESS(iec104_reboot_process, "iec104_reboot_process");
+PROCESS_THREAD(iec104_reboot_process, ev, data)
+{
+    static struct etimer timer;
+
+    PROCESS_BEGIN();
+
+    etimer_set(&timer, IEC104_REBOOT_ACK_FLUSH_MS);
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+
+    gsm_listener_socket_event_handler(GSM_LISTENER_IEC104, GSM_USER_EVENT_CLOSE_SOCKET);
+
+    etimer_set(&timer, IEC104_REBOOT_SOCKET_CLOSE_MS);
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+
+    reboot_system();
+
+    PROCESS_END();
 }
 
 
