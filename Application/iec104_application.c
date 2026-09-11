@@ -96,7 +96,7 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
     static bool link_lost;
 
     PROCESS_EXITHANDLER({
-        iec104_send_general_interrogation_term(QOI_GROUP_3);
+        iec104_send_general_interrogation_term(QOI_GROUP_3, link_lost ? 1U : 0U);
         CSLOG("Finished sending temporary fault data for all feeders and phases. Exiting process.\r\n");
         CSLOG("%s EXIT \r\n", PROCESS_CURRENT()->name);
 
@@ -143,7 +143,7 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
         }
     }
 
-    iec104_send_general_interrogation_term(QOI_GROUP_3);
+    iec104_send_general_interrogation_term(QOI_GROUP_3, link_lost ? 1U : 0U);
 
     PT_SEM_SIGNAL(&process_pt, &g_tx_sem);
 
@@ -160,7 +160,7 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
     static bool link_lost;
 
     PROCESS_EXITHANDLER({
-        iec104_send_general_interrogation_term(QOI_GROUP_4);
+        iec104_send_general_interrogation_term(QOI_GROUP_4, link_lost ? 1U : 0U);
         CSLOG("Finished sending permanent fault data for all feeders and phases. Exiting process.\r\n");
         CSLOG("%s EXIT \r\n", PROCESS_CURRENT()->name);
     });
@@ -206,7 +206,7 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
         }
     }
 
-    iec104_send_general_interrogation_term(QOI_GROUP_4);
+    iec104_send_general_interrogation_term(QOI_GROUP_4, link_lost ? 1U : 0U);
 
     PT_SEM_SIGNAL(&process_pt, &g_tx_sem);
 

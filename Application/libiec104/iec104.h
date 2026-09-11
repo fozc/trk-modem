@@ -113,7 +113,7 @@ cp56time2a_t iec104_get_last_clock_sync_time(void);
 
 
 void iec104_send_general_interrogation_con(iec104_qoi_t qoi, uint8_t is_negative);
-void iec104_send_general_interrogation_term(iec104_qoi_t qoi);
+void iec104_send_general_interrogation_term(iec104_qoi_t qoi, uint8_t is_negative);
 
 
 bool iec104_is_link_active(void);
