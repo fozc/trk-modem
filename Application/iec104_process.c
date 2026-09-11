@@ -87,31 +87,35 @@ void iec104_process_socket_closed_cb(void)
 
 static void generate_dummy_test_data(void)
 {
+	/* 2026-03-11 12:23:47, Carsamba (dow=3) */
+	const cp56time2a_t timestamp = cp56time2a_make(47000U, 23U, 12U, 11U, 3U, 3U, 26U);
+
 	for(uint32_t line_idx = 0; line_idx < MAX_POWER_LINE_COUNT; line_idx++)
 	{
+		/* Tum fazlar tek yapida toplanip bir kez yazilir: breaker_set_feeder_data()
+		 * yapinin tamamini kopyalar, faz basina yazmak digerlerini bozardi. */
+		feeder_data_t dummy_feeder = {0};
+
 		for(uint8_t phase = 0; phase < PHASE_MAX; phase++)
 		{
-			feeder_data_t dummy_fedeer;
-			dummy_fedeer.phase[phase].ariza_akimi = 0.5 + line_idx*10 + phase;
-			dummy_fedeer.phase[phase].ariza_suresi = 0.5 + line_idx*10 + phase;
-			dummy_fedeer.phase[phase].anlik_akim = 0.5 + line_idx*10 + phase;
-			dummy_fedeer.phase[phase].ariza_kalicimi = 1;
-			dummy_fedeer.phase[phase].enerji_varyok = 0;
-			dummy_fedeer.phase[phase].nominal_akim_varyok = 1;
-			dummy_fedeer.phase[phase].rf_haberlesme_varyok = 0;
+			dummy_feeder.phase[phase].ariza_akimi = 0.5f + (float)(line_idx*10 + phase);
+			dummy_feeder.phase[phase].ariza_suresi = 0.5f + (float)(line_idx*10 + phase);
+			dummy_feeder.phase[phase].anlik_akim = 0.5f + (float)(line_idx*10 + phase);
+			dummy_feeder.phase[phase].ariza_kalicimi = 1;
+			dummy_feeder.phase[phase].enerji_varyok = 0;
+			dummy_feeder.phase[phase].nominal_akim_varyok = 1;
+			dummy_feeder.phase[phase].rf_haberlesme_varyok = 0;
 
-			// Zaman damgaları için geçerli bir tarih oluştur (örneğin, 2026-03-11 12:23:47)
-			cp56time2a_t timestamp = cp56time2a_make(0, 23, line_idx, phase, 4, 3, 26);
-			dummy_fedeer.phase[phase].tm_ariza_akimi = timestamp;
-			dummy_fedeer.phase[phase].tm_ariza_suresi = timestamp;
-			dummy_fedeer.phase[phase].tm_anlik_akim = timestamp;
-			dummy_fedeer.phase[phase].tm_ariza_kalicimi = timestamp;
-			dummy_fedeer.phase[phase].tm_enerji_varyok = timestamp;
-			dummy_fedeer.phase[phase].tm_nominal_akim_varyok = timestamp;
-			dummy_fedeer.phase[phase].tm_rf_haberlesme_varyok = timestamp;
-
-			breaker_set_feeder_data(line_idx, &dummy_fedeer);
+			dummy_feeder.phase[phase].tm_ariza_akimi = timestamp;
+			dummy_feeder.phase[phase].tm_ariza_suresi = timestamp;
+			dummy_feeder.phase[phase].tm_anlik_akim = timestamp;
+			dummy_feeder.phase[phase].tm_ariza_kalicimi = timestamp;
+			dummy_feeder.phase[phase].tm_enerji_varyok = timestamp;
+			dummy_feeder.phase[phase].tm_nominal_akim_varyok = timestamp;
+			dummy_feeder.phase[phase].tm_rf_haberlesme_varyok = timestamp;
 		}
+
+		breaker_set_feeder_data(line_idx, &dummy_feeder);
 	}
 }
 
