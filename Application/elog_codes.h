@@ -50,6 +50,7 @@ typedef enum
 	// Power / battery codes (50..59)
 	ELOG_PWR_ALARM             = 50,  /* info: latch(1) live(1) sys_fault(1) bq0(1) bq1(1) rising(1) */
 	ELOG_BAT_STATE             = 51,  /* info: src(1) event(1) a(1) b(1) soc(1) soh(1) */
+		ELOG_PWR_PANIC             = 52,  /* info: - */
 
 	// Communication codes (60..69)
 
@@ -95,6 +96,7 @@ static inline const char* elog_code_to_string(elog_code_t code)
 		case ELOG_SYSTEM_FW_APPROVED:     return "FW_APPROVED";
 		case ELOG_PWR_ALARM:              return "PWR_ALARM";
 		case ELOG_BAT_STATE:              return "BAT_STATE";
+		case ELOG_PWR_PANIC:              return "PWR_PANIC";
 		case ELOG_WEB_LOGIN_FAIL:         return "WEB_LOGIN_FAIL";
 
 		default: return "UNKNOWN_CODE";

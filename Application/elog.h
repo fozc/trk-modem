@@ -191,6 +191,12 @@ void elog_log_battery_state_change(uint8_t source, uint8_t old_state,
 void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
                                     uint8_t soc, uint8_t soh);
 
+/* ---- ELOG_PWR_PANIC --------------------------------------------------- */
+
+/* info: - (event only; the timestamp carries the moment of detection).
+ * Level: ERROR (system is about to lose power / shut down). */
+void elog_log_power_panic(void);
+
 
 /* ---- ELOG_WEB_LOGIN_FAIL --------------------------------------------- */
 

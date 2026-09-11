@@ -52,6 +52,7 @@
 #include "system_status.h"
 #include "reset_source.h"
 #include "bms_reader.h"
+#include "power_panic.h"
 
 PROCESS(heart_beat_process, "heart-beat");
 PROCESS(rtc_resync_process, "rtc-resync");
@@ -81,6 +82,7 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 	while (1)
 	{
 		bsp_kick_wdt();
+		power_panic_check();
 
 		if(timer_expired(&led_timer))
 		{
