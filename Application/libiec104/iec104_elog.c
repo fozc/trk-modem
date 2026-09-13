@@ -605,9 +605,9 @@ void iec104_elog_shell_init(void)
     shell_register_command(&(shell_cmd_t){
         .cmd = "iec104elog",
         .desc = "IEC104 diagnostic log\r\n"
-                "iec104elog dump [N|raw] - dump entries\r\n"
-                "iec104elog clear       - remove all entries\r\n"
-                "iec104elog info        - ring status",
+                "\tiec104elog dump [N|raw]  - dump entries\r\n"
+                "\tiec104elog clear         - remove all entries\r\n"
+                "\tiec104elog info          - ring status",
         .func = iec104_elog_shell_handler});
 }
 

@@ -265,11 +265,14 @@ void console_logger_init(void)
 
 	shell_register_command(&(shell_cmd_t){.cmd = "cslog",
 		.desc = "Console logger control\r\n"
-		        "cslog <on/1|off/0>",
+		        "\tcslog <on|1|off|0>  - enable/disable console log output",
 		.func = console_logger_shell_cmd_handler});
 
 	shell_register_command(&(shell_cmd_t){.cmd = "log",
-		.desc = "Log seviyeleri: log [gsm|rf|http|iec104|all] [off|on|verbose]",
+		.desc = "Log seviyeleri (modul: gsm|rf|http|iec104)\r\n"
+		        "\tlog                          - gecerli seviyeleri goster\r\n"
+		        "\tlog <modul> <off|on|verbose> - tek modulun seviyesini ayarla\r\n"
+		        "\tlog all <off|on|verbose>     - tum modullerin seviyesini ayarla",
 		.level = SHELL_LVL_USER,
 		.func = console_log_shell_handler});
 }

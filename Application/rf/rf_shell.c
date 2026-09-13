@@ -213,7 +213,11 @@ void rf_shell_init(void)
 {
     shell_register_command(&(shell_cmd_t){
         .cmd = "rf",
-        .desc = "RF hub islemleri (disc/status/inv/log)",
+        .desc = "RF hub islemleri\r\n"
+                "\trf disc                 - kesif kuyruguna test EUI ekle\r\n"
+                "\trf status               - hub ve hat ozet durumu\r\n"
+                "\trf inv                  - envanter push baslat\r\n"
+                "\trf log [off|on|verbose] - RF log seviyesini goster/ayarla",
         .level = SHELL_LVL_USER,
         .func = rf_shell_command
     });

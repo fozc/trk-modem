@@ -642,7 +642,11 @@ void iec104_event_log_shell_init(void)
 {
     shell_register_command(&(shell_cmd_t){
         .cmd  = "iec104evtlog",
-        .desc = "IEC104 olay gunlugu: [status] | dump [ilk_seq son_seq] | test <N> | clear",
+        .desc = "IEC104 olay gunlugu\r\n"
+                "\tiec104evtlog                - durum ozeti (status)\r\n"
+                "\tiec104evtlog dump [ilk son] - kayit araligi dokumu\r\n"
+                "\tiec104evtlog test <N>       - N adet test kaydi ekle\r\n"
+                "\tiec104evtlog clear          - tum kayitlari sil",
         .func = shell_iec104evtlog
     });
 }

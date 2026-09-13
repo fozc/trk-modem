@@ -57,8 +57,9 @@ void rf_uart_bridge_init(void)
 {
     shell_register_command(&(shell_cmd_t){
         .cmd   = "rf-bridge",
-        .desc  = "USART3<->LPUART1 saydam kopru: 'on' ile acilir, "
-                 "reset ile kapanir",
+        .desc  = "USART3<->LPUART1 saydam kopru\r\n"
+                 "\trf-bridge      - kopru durumunu goster\r\n"
+                 "\trf-bridge on   - saydam kopruyu ac (kapatmak icin reset)",
         .level = SHELL_LVL_USER,
         .func  = rf_uart_bridge_shell_handler
     });

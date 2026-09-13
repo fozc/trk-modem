@@ -659,7 +659,11 @@ void gsm_shell_init(void)
 
     shell_register_command(&(shell_cmd_t){
         .cmd   = "gsm",
-        .desc  = "GSM modem commands. Type 'gsm help' for usage.\r\n",
+        .desc  = "GSM modem commands (details: gsm help)\r\n"
+                 "\tgsm at <CMD>              - send raw AT (gsm at AT+CSQ)\r\n"
+                 "\tgsm status                - show GSM modem state\r\n"
+                 "\tgsm log [off|on|verbose]  - set/show GSM log level\r\n"
+                 "\tgsm help                  - show detailed help",
         .level = SHELL_LVL_USER,
         .func  = gsm_shell_cmd_handler
     });
