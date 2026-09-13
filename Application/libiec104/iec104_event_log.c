@@ -34,6 +34,7 @@
 #include "crc32.h"
 #include "cp56time2a.h"
 #include "shell.h"
+#include "utils.h"
 #include "w25qxx.h"
 #include "spi_flash_organization.h"
 #include "spi_flash_log.h"
@@ -363,14 +364,45 @@ void iec104_event_log_clear(void)
 
 /* ────────────────────────────────────────────────────────── shell */
 
+typedef struct
+{
+    uint16_t first_seq;
+    uint16_t last_seq;
+    uint32_t printed_count;
+} evtlog_dump_range_t;
+
+static bool evtlog_parse_seq(const char *text, uint16_t *seq)
+{
+    if ((NULL == text) || (NULL == seq) ||
+        (5U < strlen(text)) || (0 == is_numeric(text)))
+    {
+        return false;
+    }
+
+    const int32_t value = xstrtoi(text);
+
+    if ((0 > value) || (65534 < value))
+    {
+        return false;
+    }
+
+    /* The value is within the valid sequence range. */
+    *seq = (uint16_t)value;
+    return true;
+}
+
 static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq, void *user_ctx)
 {
-    (void)user_ctx;
+    /* The dump caller supplies the range and output count. */
+    evtlog_dump_range_t *range = (evtlog_dump_range_t *)user_ctx;
 
-    if (payload_size != sizeof(fault_log_t))
+    if ((payload_size != sizeof(fault_log_t)) ||
+        (seq < range->first_seq) || (seq > range->last_seq))
     {
         return;
     }
+
+    range->printed_count++;
 
     fault_log_t e;
     (void)memcpy(&e, payload, sizeof(e));
@@ -396,8 +428,15 @@ static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq,
               (unsigned)e.tm.minute,
               (unsigned)cp56time2a_get_second(&e.tm));
 }
-void iec104_event_log_dump(void)
+static void evtlog_dump(uint16_t first_seq, uint16_t last_seq)
 {
+    if (!s_initialized)
+    {
+        SHELL_LOG("evtlog: hazir degil (init edilmemis)\r\n");
+        return;
+    }
+
+    evtlog_dump_range_t range = {first_seq, last_seq, 0U};
     SHELL_LOG("\r\n=== iec104_event_log ==============================================\r\n");
     SHELL_LOG("  kayit boyutu : %u bayt (entry %u)\r\n",
               (unsigned)sizeof(fault_log_t), (unsigned)IEC104_EVTLOG_ENTRY_SIZE);
@@ -415,15 +454,29 @@ void iec104_event_log_dump(void)
     SHELL_LOG("\r\n  (yeniden eskiye)\r\n");
     SHELL_LOG("-------------------------------------------------------------------\r\n");
 
+    SHELL_LOG("  seq araligi  : %u..%u (dahil)\r\n",
+              (unsigned)first_seq, (unsigned)last_seq);
+
     log_page_ctx_t page = {0};
 
     do
     {
-        (void)log_read_last(&s_log, 16U, visit_dump, NULL, &page);
+        if (LOG_OK != log_read_last(&s_log, 16U, visit_dump, &range, &page))
+        {
+            SHELL_LOG("evtlog: okuma basarisiz\r\n");
+            return;
+        }
     }
     while (page.has_more && (page.page_count > 0U));
 
+    SHELL_LOG("  gosterilen   : %lu\r\n",
+              (unsigned long)range.printed_count);
     SHELL_LOG("===================================================================\r\n");
+}
+
+void iec104_event_log_dump(void)
+{
+    evtlog_dump(0U, EVTLOG_SEQ_INVALID - 1U);
 }
 
 void iec104_event_log_test(uint16_t count)
@@ -541,7 +594,7 @@ static void evtlog_status(void)
                   (unsigned)s_state->unsent_low, (unsigned)s_state->unsent_high);
     }
 
-    SHELL_LOG("\r\nKullanim: iec104evtlog [status|dump|test <N>|clear]\r\n");
+    SHELL_LOG("\r\nKullanim: iec104evtlog [status|dump [ilk_seq son_seq]|test <N>|clear]\r\n");
 }
 
 static int shell_iec104evtlog(int argc, char *argv[])
@@ -552,7 +605,21 @@ static int shell_iec104evtlog(int argc, char *argv[])
     }
     else if (0 == strcmp(argv[1], "dump"))
     {
-        iec104_event_log_dump();
+        uint16_t first_seq = 0U;
+        uint16_t last_seq = EVTLOG_SEQ_INVALID - 1U;
+
+        if ((2 != argc) &&
+            ((4 != argc) ||
+             !evtlog_parse_seq(argv[2], &first_seq) ||
+             !evtlog_parse_seq(argv[3], &last_seq) ||
+             (first_seq > last_seq)))
+        {
+            SHELL_LOG("Kullanim: iec104evtlog dump [ilk_seq son_seq]\r\n");
+            SHELL_LOG("0 <= ilk_seq <= son_seq <= 65534; sinirlar dahil\r\n");
+            return 0;
+        }
+
+        evtlog_dump(first_seq, last_seq);
     }
     else if (0 == strcmp(argv[1], "test"))
     {
@@ -565,7 +632,7 @@ static int shell_iec104evtlog(int argc, char *argv[])
     else
     {
         SHELL_LOG("Bilinmeyen alt komut: %s\r\n", argv[1]);
-        SHELL_LOG("Kullanim: iec104evtlog [status|dump|test <N>|clear]\r\n");
+        SHELL_LOG("Kullanim: iec104evtlog [status|dump [ilk_seq son_seq]|test <N>|clear]\r\n");
     }
 
     return 0;
@@ -575,7 +642,7 @@ void iec104_event_log_shell_init(void)
 {
     shell_register_command(&(shell_cmd_t){
         .cmd  = "iec104evtlog",
-        .desc = "IEC104 olay gunlugu: [status] | dump | test <N> | clear",
+        .desc = "IEC104 olay gunlugu: [status] | dump [ilk_seq son_seq] | test <N> | clear",
         .func = shell_iec104evtlog
     });
 }

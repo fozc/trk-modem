@@ -79,7 +79,8 @@ void iec104_event_log_dump(void);
 
 /**
  * "iec104evtlog" shell komutunu kaydeder:
- * [status] | dump | test <N> | clear
+ * [status] | dump [ilk_seq son_seq] | test <N> | clear
+ * Dump sinirlari dahil seq degerleridir: 0 <= ilk_seq <= son_seq <= 65534.
  */
 void iec104_event_log_shell_init(void);
 
