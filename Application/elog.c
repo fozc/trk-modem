@@ -771,7 +771,10 @@ void elog_shell_init(void)
 {
     shell_register_command(&(shell_cmd_t){
         .cmd = "elog",
-        .desc = "Error log management (dump/clear/info)",
+        .desc = "Error log management\r\n"
+                "\telog info          - ring status and counters\r\n"
+                "\telog dump [n|raw]  - last n entries (0=all), raw: hex\r\n"
+                "\telog clear         - remove all entries",
         .level = 0,
         .func = elog_shell_command
     });

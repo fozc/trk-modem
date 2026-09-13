@@ -435,10 +435,10 @@ void xmodem_app_init(void)
 	shell_register_command(&(shell_cmd_t){
 		.cmd   = "xmodem",
 		.desc  = "XMODEM file transfer\r\n"
-		         "xmodem         - show status\r\n"
-		         "xmodem status  - show status\r\n"
-		         "xmodem start   - enter xmodem mode (superuser)\r\n"
-		         "xmodem stop    - exit xmodem mode (superuser)",
+		         "\txmodem         - show status\r\n"
+		         "\txmodem status  - show status\r\n"
+		         "\txmodem start   - enter xmodem mode (superuser)\r\n"
+		         "\txmodem stop    - exit xmodem mode (superuser)",
 		.level = SHELL_LVL_USER,
 		.func  = xmodem_shell_handler
 	});

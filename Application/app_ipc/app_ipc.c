@@ -209,9 +209,9 @@ void app_ipc_init(void)
     shell_register_command(&(shell_cmd_t){
         .cmd   = "boot",
         .desc  = "Boot control\r\n"
-                 "boot staybootloader - reset & stay in bootloader\r\n"
-                 "boot update         - reset & enter update mode\r\n"
-                 "boot status         - show firmware approval status",
+                 "\tboot staybootloader  - reset & stay in bootloader\r\n"
+                 "\tboot update          - reset & enter update mode\r\n"
+                 "\tboot status          - show firmware approval status",
         .level = SHELL_LVL_SUPER_USER,
         .func  = boot_shell_handler
     });

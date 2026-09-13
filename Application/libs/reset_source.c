@@ -194,10 +194,12 @@ static int reset_source_shell_handler(int argc, char *argv[])
 
 void reset_source_shell_init(void)
 {
-    shell_register_command(&(shell_cmd_t){.cmd   = "rstsrc",
-                                          .desc  = "Show the last MCU reset cause\r\n",
-                                          .level = SHELL_LVL_USER,
-                                          .func  = reset_source_shell_handler});
+    shell_register_command(&(shell_cmd_t){
+        .cmd   = "rstsrc",
+        .desc  = "Show the last MCU reset cause\r\n"
+                 "\trstsrc  - print the reset source flag",
+        .level = SHELL_LVL_USER,
+        .func  = reset_source_shell_handler});
 }
 
 /*** end of file ***/

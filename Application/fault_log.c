@@ -770,9 +770,9 @@ void fault_log_init(void)
 	shell_register_command( &(shell_cmd_t){
 		.cmd = "fltlog",
 		.desc = "Fault log management\r\n"
-			"fltlog dump [n]  - dump all feeders or a single feeder\r\n"
-			"fltlog test      - add random test logs\r\n"
-			"fltlog clear     - clear all logs",
+			"\tfltlog dump [n]  - dump all feeders or a single feeder\r\n"
+			"\tfltlog test      - add random test logs\r\n"
+			"\tfltlog clear     - clear all logs",
 		.func = shell_fltlog_dump}
 	);
 }

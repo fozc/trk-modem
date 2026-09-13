@@ -779,63 +779,71 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 	}
 
 	shell_register_command(&(shell_cmd_t){.cmd = "reset",
-										   .desc = "Software reset the MCU",
+										   .desc = "Software reset the MCU\r\n"
+												   "\treset            - restart the MCU immediately",
 										   .level = SHELL_LVL_USER,
 									       .func = shell_reset
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "help",
-										   .desc = "This is a description text string for help command.",
+										   .desc = "List all registered commands\r\n"
+												   "\thelp             - print every command with its usage\r\n"
+												   "\t<cmd> help       - usage of one command (also -h, ?)",
 										   .level = SHELL_LVL_USER,
-									       .func = shell_help
+										   .func = shell_help
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "su",
-										   .desc = "su [password]",
+										   .desc = "Become super user\r\n"
+												   "\tsu <password>    - elevate the session to root",
 										   .level = SHELL_LVL_USER,
-									       .func = shell_su
+										   .func = shell_su
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "whoami",
-										   .desc = "Show active user level.",
+										   .desc = "Show active user level\r\n"
+												   "\twhoami           - print the session level (user/root)",
 										   .level = SHELL_LVL_USER,
-									       .func = shell_whoami
+										   .func = shell_whoami
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "exit",
-										   .desc = "Logout from root.",
+										   .desc = "Logout from root\r\n"
+												   "\texit             - drop the session back to user level",
 										   .level = SHELL_LVL_USER,
-									       .func = shell_exit
+										   .func = shell_exit
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "info",
-										   .desc = "This is a description text string for info command.",
+										   .desc = "Show device info\r\n"
+												   "\tinfo             - print the device run time",
 										   .level = SHELL_LVL_USER,
-									       .func = shell_usrcmd_info
+										   .func = shell_usrcmd_info
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "term",
-										   .desc = "Test terminal extendend ascii characters sets. [127-255]\r\n"
-												   "Usage: term test",
+										   .desc = "Terminal extended ASCII test [127-255]\r\n"
+												   "\tterm test        - print characters 127-255",
 										   .level = SHELL_LVL_SUPER_USER,
 									       .func = shell_terminal_char_set_test
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "ps",
-										   .desc = "View actie process list",
+										   .desc = "View active process list\r\n"
+												   "\tps               - list running processes",
 										   .level = SHELL_LVL_SUPER_USER,
-									       .func = shell_ps
+										   .func = shell_ps
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "exec",
-										   .desc = "Start a process.\r\n"
-										   "\texec [process name]",
+										   .desc = "Start a process\r\n"
+												   "\texec <name>      - start or restart a process by name",
 										   .level = SHELL_LVL_SUPER_USER,
-									       .func = shell_exec
+										   .func = shell_exec
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "kill",
-										   .desc = "Kill a running process.\r\n"
-										   "\tkill [process name]"
-										   "\tkill [all]",
+										   .desc = "Kill a running process\r\n"
+												   "\tkill <name>      - stop a process by name",
 										   .level = SHELL_LVL_SUPER_USER,
-									       .func = shell_kill
+										   .func = shell_kill
 	});
 	shell_register_command(&(shell_cmd_t){.cmd = "killall",
-										   .desc = "Kill all running process\r\n",
+										   .desc = "Kill all running processes\r\n"
+												   "\tkillall          - stop all except wdt and event timer",
 										   .level = SHELL_LVL_SUPER_USER,
-									       .func = shell_killall
+										   .func = shell_killall
 	});
 
 	cmd_spcl_rcvd_event = process_alloc_event();
