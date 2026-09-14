@@ -50,6 +50,12 @@
  *  period the session token is invalidated and re-login is required. */
 #define HTTP_SESSION_TIMEOUT_MS (15UL * 60UL * 1000UL)
 
+/** Brute-force lockout: this many consecutive failed logins locks the login
+ *  endpoint for LOGIN_LOCKOUT_MS. The counter resets on a successful login
+ *  and when the lock expires. RAM-only state: a reboot clears the lock. */
+#define LOGIN_MAX_FAILED_ATTEMPTS (5U)
+#define LOGIN_LOCKOUT_MS          (60UL * 1000UL)
+
 /* ============================================================================
  * MODULE STATE
  * ============================================================================ */
@@ -62,6 +68,9 @@ static struct {
     char username[16];                 /* Logged-in role: "admin" or "user" */
     uint32_t session_token;            /* 0 = no active session */
     uint32_t last_activity_tick;       /* bsp_get_tick() of last authenticated request */
+    uint8_t  login_fail_count;         /* Consecutive failed logins since last reset */
+    bool     login_lock_active;        /* Brute-force lock engaged */
+    uint32_t login_lock_start_tick;    /* bsp_get_tick() when the lock engaged */
 } handler_state;
 
 
@@ -77,6 +86,9 @@ void http_handlers_init(char *tx_buffer_ptr, int tx_buffer_size)
     handler_state.is_authenticated = false;
     handler_state.session_token = 0U;
     handler_state.last_activity_tick = 0U;
+    handler_state.login_fail_count = 0U;
+    handler_state.login_lock_active = false;
+    handler_state.login_lock_start_tick = 0U;
 }
 
 void http_handlers_set_query_string(const char *query_string)
@@ -238,6 +250,65 @@ void handle_get_fw_update(void)
 
 
 /* ============================================================================
+ * LOGIN BRUTE-FORCE LOCKOUT
+ * ============================================================================ */
+
+/**
+ * @brief Check whether the login lockout currently rejects login attempts.
+ *
+ * An engaged lock expires lazily here (no periodic timer): once
+ * LOGIN_LOCKOUT_MS has passed the lock is released and the failure
+ * counter starts fresh.
+ *
+ * @return true while the lock rejects attempts, false otherwise
+ */
+static bool login_lock_is_active(void)
+{
+    if (!handler_state.login_lock_active)
+    {
+        return false;
+    }
+
+    /* Wrap-safe elapsed compare (same idiom as the session timeout). */
+    if ((bsp_get_tick() - handler_state.login_lock_start_tick) <
+        LOGIN_LOCKOUT_MS)
+    {
+        return true;
+    }
+
+    handler_state.login_lock_active = false;
+    handler_state.login_fail_count = 0U;
+    return false;
+}
+
+/**
+ * @brief Register a failed login and engage the lock at the threshold.
+ */
+static void login_lock_register_failure(void)
+{
+    handler_state.login_fail_count++;
+    if ((unsigned int)handler_state.login_fail_count >=
+        LOGIN_MAX_FAILED_ATTEMPTS)
+    {
+        handler_state.login_lock_active = true;
+        handler_state.login_lock_start_tick = bsp_get_tick();
+        handler_state.login_fail_count = 0U;
+        CSLOG_ERR("[HTTP] Login locked for %lu s after %u failed attempts\r\n",
+                  LOGIN_LOCKOUT_MS / 1000UL,
+                  (unsigned int)LOGIN_MAX_FAILED_ATTEMPTS);
+    }
+}
+
+/**
+ * @brief Clear the lockout state after a successful login.
+ */
+static void login_lock_reset(void)
+{
+    handler_state.login_fail_count = 0U;
+    handler_state.login_lock_active = false;
+}
+
+/* ============================================================================
  * POST HANDLERS
  * ============================================================================ */
 
@@ -247,7 +318,18 @@ void handle_get_fw_update(void)
 void handle_post_login(const char *json_body)
 {
     CSLOG("[HTTP] POST /auth/login - Login attempt\r\n");
-    
+
+    /* Brute-force lockout: reject before touching credentials. */
+    if (login_lock_is_active())
+    {
+        CSLOG_ERR("[HTTP] Login rejected - lockout active\r\n");
+        const char *locked_response =
+            "{\"success\":false,\"error\":\"Too many attempts, "
+            "try again later\"}";
+        http_send_json(locked_response, strlen(locked_response));
+        return;
+    }
+
     if (!json_body) {
         http_send_json("{\"success\":false,\"error\":\"No body\"}", 35);
         return;
@@ -314,10 +396,13 @@ void handle_post_login(const char *json_body)
     } else {
         CSLOG_ERR("[HTTP] Login failed - Invalid credentials\r\n");
         elog_log_web_login_fail(gsm_get_web_client_ip());
+        login_lock_register_failure();
     }
-    
+
     /* Send response */
     if (valid) {
+        login_lock_reset();
+
         /* Generate session token */
         uint32_t new_token = bsp_get_tick() ^ 0x5A5A0000UL ^ (uint32_t)(uint8_t)handler_state.username[0];
         if (new_token == 0U) {
