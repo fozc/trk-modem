@@ -730,9 +730,11 @@ void handle_get_syslogs_json(void)
     CSLOG("[HTTP] System Logs - offset=%lu, limit=%lu, available=%lu\r\n",
             offset, limit, available_entries);
     
-    /* Sanitize offset */
-    if (offset >= available_entries) {
-        offset = 0;
+    /* A past-the-end request serves an empty page, never a wrap-around
+     * to the newest records: a client would append them as if they were
+     * unread records (duplicate entries on the UI). */
+    if (offset > available_entries) {
+        offset = available_entries;
     }
     
     /* Calculate actual records to return */
