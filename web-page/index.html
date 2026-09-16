@@ -59,7 +59,12 @@ let s_sessionToken=null,s_role=null,loading=false,curId=null;
 const pageCache={};
 const dirtyPages={};
 const rfFaultCache={};
-let faultFeeder=0,sysLogOffset=0,terminalBusy=false,sessionTimeout=null;
+let faultFeeder=0,terminalBusy=false,sessionTimeout=null;
+/* Sistem gunlugu sayfalama durumu: satirlar bu dizide tutulur, sekme
+ * degisiminde kaybolmaz. sysLogOffset su ana kadar cihazdan okunan kayit
+ * sayisi, sysLogTotal son bilinen toplam kayit (t alani). Sona gelindiginde
+ * dugme "Bastan Yukle" rolune gecer (loadSysLogs). */
+let sysLogLines=[],sysLogOffset=0,sysLogTotal=0;
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
@@ -69,7 +74,7 @@ en:{
 docTitle:'TSB23 Device Configuration',brand:'Device Config',loginTitle:'Device Login',username:'Username',password:'Password',loginBtn:'Login',logout:'Logout',
 hint:'Data is read only when requested',webUi:'Web UI',
 mIec:'IEC 104',mModbus:'Modbus',mRfCfg:'RF Config',mRfMon:'RF Monitor',mBoard:'Board Status',mFaults:'Fault Records',mLogs:'System Logs',mDevice:'Device',mTerm:'Console',mFwUpd:'Firmware Update',
-btnRead:'Read',btnSave:'Save',btnRefresh:'Refresh',btnNext:'Next Records',btnSend:'Send',btnClear:'Clear',
+btnRead:'Read',btnSave:'Save',btnRefresh:'Refresh',btnNext:'Next Records',btnLogRestart:'Start Over',btnSend:'Send',btnClear:'Clear',
 stNotRead:'Not read yet',stLoaded:'Loaded from device',stDirty:'Unsaved changes',
 confirmT:'Confirm',cancel:'Cancel',confirmBtn:'Confirm',required:'Required',range:'Range: ',
 pressRead:'Press <strong>Read</strong> to load current values from the device.',
@@ -114,7 +119,7 @@ tr:{
 docTitle:'TSB23 Cihaz Yapılandırması',brand:'Cihaz Yapılandırma',loginTitle:'Cihaz Girişi',username:'Kullanıcı Adı',password:'Şifre',loginBtn:'Giriş',logout:'Çıkış',
 hint:'Veriler yalnızca istendiğinde okunur',webUi:'Web Arayüzü',
 mIec:'IEC 104',mModbus:'Modbus',mRfCfg:'RF Yapılandırma',mRfMon:'RF İzleme',mBoard:'Pano Durumu',mFaults:'Arıza Kayıtları',mLogs:'Sistem Günlükleri',mDevice:'Cihaz',mTerm:'Konsol',mFwUpd:'Yazılım Güncelleme',
-btnRead:'Oku',btnSave:'Kaydet',btnRefresh:'Yenile',btnNext:'Sonraki Kayıtlar',btnSend:'Gönder',btnClear:'Temizle',
+btnRead:'Oku',btnSave:'Kaydet',btnRefresh:'Yenile',btnNext:'Sonraki Kayıtlar',btnLogRestart:'Baştan Yükle',btnSend:'Gönder',btnClear:'Temizle',
 stNotRead:'Henüz okunmadı',stLoaded:'Cihazdan yüklendi',stDirty:'Kaydedilmemiş değişiklikler',
 confirmT:'Onay',cancel:'İptal',confirmBtn:'Onayla',required:'Zorunlu',range:'Aralık: ',
 pressRead:'Güncel değerleri cihazdan yüklemek için <strong>Oku</strong> düğmesine basın.',
@@ -183,12 +188,10 @@ function setLang(l){
   $('lblHint').textContent=t('hint');$('lblWebUi').textContent=t('webUi');
   buildMenu();
   if(curId){
-    let keepTerm=null,keepLogs=null;
+    let keepTerm=null;
     if(curId==='terminal')keepTerm=$('trmOut')?$('trmOut').innerHTML:null;
-    if(curId==='syslogs'){const c=$('sysLogContent');keepLogs=c?(!c.classList.contains('empty')?c.innerHTML:null):null}
     renderPage(curId,pageCache[curId]);
     if(curId==='terminal'&&keepTerm!==null&&$('trmOut')){$('trmOut').innerHTML=keepTerm;$('trmCmd')?.focus()}
-    if(curId==='syslogs'&&keepLogs!==null&&$('sysLogContent')){const c=$('sysLogContent');c.classList.remove('empty');c.innerHTML=keepLogs}
   }
 }
 
@@ -311,7 +314,7 @@ function renderDevice(d){const x=d||{};let s=pageHead(t('devTitle'),'device',t('
 
 function renderFaults(){let s='<div class="card"><div class="card-head"><div><h3>'+esc(t('mFaults'))+'</h3><div class="sub">'+esc(t('faultsSub'))+'</div></div><div class="card-actions"><button class="btn btn-read btn-small" onclick="loadFaults()">'+esc(t('btnRead'))+'</button></div></div><div class="card-body">'+feederTabs('selectFaultFeeder',faultFeeder)+'<div id="faultContent">'+(rfFaultCache[faultFeeder]?buildFaults(rfFaultCache[faultFeeder]):'<div class="empty">'+esc(t('faultsPress'))+'</div>')+'</div></div></div>';return s}
 function buildFaults(r){const phases=[['L1T','L1P','L1'],['L2T','L2P','L2'],['L3T','L3P','L3']];let h='<div class="grid g3">';const tc=r.tc||[0,0,0],pc=r.pc||[0,0,0];phases.forEach((p,i)=>{h+='<div class="card" style="box-shadow:none;border:1px solid var(--line)"><div class="card-body"><h3 style="font-size:13px;margin-bottom:8px">'+p[2]+'</h3><div class="sub" style="font-weight:700;color:#a86e00;margin-bottom:4px">'+esc(tf('tempTpl',{n:tc[i]}))+'</div>';const tempRecords=r[p[0]]?r[p[0]].split('\n').filter(x=>x.trim()):[];h+=tempRecords.length?tempRecords.map(x=>'<div class="log" style="border-left-color:#d98c00">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='<div class="sub" style="font-weight:700;color:#a33;margin:10px 0 4px">'+esc(tf('permTpl',{n:pc[i]}))+'</div>';const pRec=r[p[1]]?r[p[1]].split('\n').filter(x=>x.trim()):[];h+=pRec.length?pRec.map(x=>'<div class="log" style="border-left-color:#b33">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='</div></div>'});return h+'</div>'}
-function renderLogs(){return '<div class="card"><div class="card-head"><div><h3>'+esc(t('mLogs'))+'</h3><div class="sub">'+esc(t('logsSub'))+'</div></div><div class="card-actions"><button class="btn btn-read btn-small" onclick="loadSysLogs()">'+esc(t('btnNext'))+'</button></div></div><div class="card-body"><div id="sysLogContent" class="empty">'+esc(t('logsPress'))+'</div></div></div>'}
+function renderLogs(){const done=sysLogLines.length>0&&sysLogOffset>=sysLogTotal;const inner=sysLogLines.length?sysLogLines.map(x=>'<div class="log">'+esc(x)+'</div>').join(''):esc(t('logsPress'));return '<div class="card"><div class="card-head"><div><h3>'+esc(t('mLogs'))+'</h3><div class="sub">'+esc(t('logsSub'))+'</div></div><div class="card-actions"><button id="sysLogBtn" class="btn btn-read btn-small" onclick="loadSysLogs()">'+esc(done?t('btnLogRestart'):t('btnNext'))+'</button></div></div><div class="card-body"><div id="sysLogContent"'+(sysLogLines.length?'':' class="empty"')+'>'+inner+'</div></div></div>'}
 function renderTerminal(){return '<div class="terminal"><div class="terminal-out" id="trmOut"></div><div class="terminal-in"><input id="trmCmd" maxlength="64" autocomplete="off" placeholder="'+esc(t('termPh'))+'"><button class="btn btn-read" onclick="trmSend()">'+esc(t('btnSend'))+'</button><button class="btn btn-muted" onclick="trmClr()">'+esc(t('btnClear'))+'</button></div></div>'}
 
 // ---------------- PAGE LOAD / SAVE ----------------
@@ -360,7 +363,7 @@ async function readBoard(){await readPage('board')}
 
 // ---------------- FAULTS / LOGS ----------------
 async function loadFaults(){if(loading)return;try{showLoad();const r=await api('/faults?feeder='+faultFeeder);hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));rfFaultCache[faultFeeder]=r;renderPage('iec-faults');const total=(r.tc||[0,0,0]).reduce((a,b)=>a+b,0)+(r.pc||[0,0,0]).reduce((a,b)=>a+b,0);toast(tf('tFaultsLoaded',{n:faultFeeder+1,m:total}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}}
-async function loadSysLogs(){if(loading)return;try{showLoad();const r=await api('/syslogs?offset='+sysLogOffset+'&limit=30');hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const logs=r.recs?r.recs.split('\n').filter(x=>x.trim()):[];sysLogOffset+=logs.length;const c=$('sysLogContent');if(c){if(c.classList.contains('empty')){c.classList.remove('empty');c.innerHTML=''}c.innerHTML+=logs.map(x=>'<div class="log">'+esc(x)+'</div>').join('')}toast(tf('tLogsLoaded',{n:logs.length}),'ok');if(sysLogOffset>=r.t)sysLogOffset=0}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}}
+async function loadSysLogs(){if(loading)return;const restart=sysLogLines.length>0&&sysLogOffset>=sysLogTotal;if(restart){sysLogLines=[];sysLogOffset=0;const c0=$('sysLogContent');if(c0){c0.classList.add('empty');c0.innerHTML=esc(t('logsPress'))}}try{showLoad();const r=await api('/syslogs?offset='+sysLogOffset+'&limit=30');hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const logs=r.recs?r.recs.split('\n').filter(x=>x.trim()):[];sysLogTotal=Number(r.t)||0;sysLogLines=sysLogLines.concat(logs);sysLogOffset+=logs.length;const c=$('sysLogContent');if(c){c.classList.remove('empty');c.innerHTML=sysLogLines.map(x=>'<div class="log">'+esc(x)+'</div>').join('')}const b=$('sysLogBtn');if(b)b.textContent=(sysLogLines.length>0&&sysLogOffset>=sysLogTotal)?t('btnLogRestart'):t('btnNext');toast(tf('tLogsLoaded',{n:logs.length}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}}
 
 // ---------------- ACTIONS / TERMINAL ----------------
 function rebootDevice(){confirmAction(t('tRebootAsk'),async()=>{try{showLoad();const r=await api('/device/reboot',{method:'POST'});hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));toast(r.message||t('tRebootOk'),'ok')}catch(e){hideLoad();toast(t('tErr')+e.message,'err')}})}

@@ -137,6 +137,16 @@ const rfMonitor = i => ({ success: true, data: { lines: [{
   RSSI: [-70, -71, -72], LQI: [100, 99, 98]
 }]}});
 
+// Deterministic system-log fixture: 100 records in the device's dump format,
+// newest first. /syslogs slices it by offset/limit like the firmware and
+// returns an empty recs for past-the-end offsets (no wrap-around).
+const SYSLOGS_ALL = Array.from({ length: 100 }, (_, i) => {
+  const n = i + 1;
+  const mm = String(Math.floor(n / 60) % 60).padStart(2, '0');
+  const ss = String(n % 60).padStart(2, '0');
+  return `#${n} TS:2026-08-10 10:${mm}:${ss} LVL:${n % 4} CODE:MOCK_EVENT INFO:mock record ${n}`;
+});
+
 // ---------- router ----------
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}`);
@@ -163,7 +173,12 @@ const server = http.createServer(async (req, res) => {
   if (mon && m === 'GET') return send(res, rfMonitor(+mon[1]));
 
   if (p === '/faults'  && m === 'GET') return send(res, faults);
-  if (p === '/syslogs' && m === 'GET') return send(res, { success: true, recs: '2026-08-10 10:00:01 BOOT\n2026-08-10 10:00:05 GSM attached\n2026-08-10 10:01:00 NTP sync', t: 100 });
+  if (p === '/syslogs' && m === 'GET') {
+    const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '30', 10) || 30));
+    const recs = offset >= SYSLOGS_ALL.length ? '' : SYSLOGS_ALL.slice(offset, offset + limit).join('\n');
+    return send(res, { success: true, recs, t: SYSLOGS_ALL.length });
+  }
 
   if (p === '/serial' && m === 'POST') { const b = await readBody(req); let tx = ''; try { tx = JSON.parse(b).tx || ''; } catch {} console.log('  TERM tx:', tx); return send(res, { rx: 'mock> received: ' + tx }); }
   if (p === '/serial' && m === 'GET')  return send(res, { rx: '' });
