@@ -228,7 +228,13 @@ __attribute__ ((noreturn)) void app_main(void)
 	/* Seed the software RTC from the persistent hardware RTC (if valid). */
 	rtc_boot_sync();
 
-	w25qxx_init();
+	/* SPI flash kimligi bilinen parca tablosuyla dogrulanir; basarisizsa
+	 * elog/fw-update gibi flash'a bagli servisler calismaz. */
+	if (w25qxx_init() != W25QXX_RES_OK)
+	{
+		CSLOG_ERR("[APP] SPI flash init FAILED - flash-dependent services "
+		          "(elog, fw update) are unavailable\r\n");
+	}
 	//w25qxx_test();
 
 	/* Resolves the A/B download target; must run before any update path. */

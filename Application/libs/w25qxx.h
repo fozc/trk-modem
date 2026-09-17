@@ -26,13 +26,13 @@ extern "C"{
 #define W25QXX_RES_WEL_NOT_SET     -7
 #define W25QXX_RES_WRITE_FAIL      -8
 
-typedef struct 
+typedef struct
 {
-    uint32_t jedec_id;          // Beklenen JEDEC ID (şu an 0x001540EF)
-    uint32_t size_bytes;        // Flash boyutu (şu an 2MB)
-    uint32_t block_size;        // Block boyutu (şu an 64KB)
-    uint32_t sector_size;       // Sector boyutu (şu an 4KB)
-    uint32_t page_size;         // Page boyutu (şu an 256 bytes)
+    uint32_t jedec_id;          // Beklenen JEDEC ID (bilinen parca listesi w25qxx.c icinde)
+    uint32_t size_bytes;        // Flash boyutu (board parcasi AT25SF321B, 4 MB)
+    uint32_t block_size;        // Block boyutu (64KB)
+    uint32_t sector_size;       // Sector boyutu (4KB)
+    uint32_t page_size;         // Page boyutu (256 bytes)
 } w25qxx_chip_config_t;
 
 #define W25QXX_SIZE        (4096 * 1024) /* Bytes */
