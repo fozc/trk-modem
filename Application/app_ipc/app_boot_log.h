@@ -43,11 +43,13 @@ uint32_t app_boot_log_read_last(boot_log_entry_t *p_entries, uint32_t count);
 uint32_t app_boot_log_count(void);
 
 /**
- * @brief Print the last N entries via CSLOG (shell diagnostic).
+ * @brief Print the last N entries via SHELL_LOG (shell diagnostic).
  *
- * @param[in] count  Number of recent entries to print (0 = all).
+ * @param[in] count  Number of recent entries to print (0 = all, max 32).
+ * @param[in] raw    true  = raw hex table (event/detail/payload bytes),
+ *                   false = decoded one-line description per entry.
  */
-void app_boot_log_dump(uint32_t count);
+void app_boot_log_dump(uint32_t count, bool raw);
 
 /**
  * @brief Register the "bootlog" shell command.
