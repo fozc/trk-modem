@@ -24,6 +24,7 @@
 #include "elog.h"
 #include "iec104_elog.h"
 #include "hardfault_handler.h"
+#include "boot_ipc.h"
 #include "xmodem_process.h"
 #include "modbus_process.h"
 #include "breaker.h"
@@ -53,6 +54,7 @@
 #include "reset_source.h"
 #include "bms_reader.h"
 #include "power_panic.h"
+#include "app_boot_log.h"
 
 PROCESS(heart_beat_process, "heart-beat");
 PROCESS(rtc_resync_process, "rtc-resync");
@@ -228,6 +230,13 @@ __attribute__ ((noreturn)) void app_main(void)
 	/* Seed the software RTC from the persistent hardware RTC (if valid). */
 	rtc_boot_sync();
 
+	/* H-8 trial-liveness: tell the bootloader we actually started, as
+	 * early as possible.  A power cut before this line makes the next
+	 * boot a "did not start" (not counted as a firmware fault); after
+	 * this line the firmware owns its fate.  Must precede every
+	 * long-running init (network, GSM, ...). */
+	rtc_bkpr_write(BOOT_TRIAL_ALIVE_DR, BOOT_TRIAL_ALIVE_MAGIC);
+
 	/* SPI flash kimligi bilinen parca tablosuyla dogrulanir; basarisizsa
 	 * elog/fw-update gibi flash'a bagli servisler calismaz. */
 	if (w25qxx_init() != W25QXX_RES_OK)
@@ -279,6 +288,8 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	CSLOG("sizeof(nvram_t)        = %08d bytes\r\n", sizeof(nvram_t));
 	CSLOG("sizeof(breaker_t)      = 0x%08X bytes\r\n", sizeof(breaker_t));
+
+	app_boot_log_shell_init();   /* bootlog: bootloader kayitlari */
 
 	elog_shell_init();
 	iec104_elog_shell_init();

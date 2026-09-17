@@ -136,6 +136,7 @@ static volatile uint32_t *rtc_bkpr_reg(uint32_t dr)
 		case 3U:  return &TAMP_NS->BKP3R;
 		case 4U:  return &TAMP_NS->BKP4R;
 		case 5U:  return &TAMP_NS->BKP5R;
+		case 6U:  return &TAMP_NS->BKP6R;  /* trial-alive marker (boot_ipc.h) */
 		default:  return NULL;
 	}
 }

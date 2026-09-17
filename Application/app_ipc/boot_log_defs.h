@@ -47,6 +47,7 @@ typedef enum
     BOOT_LOG_FW_APPROVED          = 0x0CU,
     BOOT_LOG_HARDFAULT            = 0x0DU,
     BOOT_LOG_INSTALL_INTERRUPTED  = 0x0EU,
+    BOOT_LOG_TRIAL_NO_START       = 0x0FU,
 } boot_log_event_t;
 
 /* ------------------------------------------------------------------ */
