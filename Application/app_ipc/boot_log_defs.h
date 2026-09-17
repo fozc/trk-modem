@@ -46,6 +46,7 @@ typedef enum
     BOOT_LOG_DOWNGRADE_REJECTED   = 0x0BU,
     BOOT_LOG_FW_APPROVED          = 0x0CU,
     BOOT_LOG_HARDFAULT            = 0x0DU,
+    BOOT_LOG_INSTALL_INTERRUPTED  = 0x0EU,
 } boot_log_event_t;
 
 /* ------------------------------------------------------------------ */
