@@ -3,15 +3,26 @@
  *
  *  Created on: Oct 6, 2022
  *      Author: fatih
+ *
+ * Kept in sync between the modem-application and bootloader repositories
+ * by hand.  Contiki integration (shell_task, process_poll, ps/exec/kill/
+ * killall) is compiled only when SHELL_USER_CONTIKI_PROCESS is defined;
+ * the application provides it as a build define and the bootloader leaves
+ * it undefined and polls shell_process() from its main loop.  Everything
+ * else in this file is identical in both repositories.
  */
 #include "shell.h"
 #include "string.h"
 #include "bsp.h"
+
+#ifdef SHELL_USER_CONTIKI_PROCESS
 #include "contiki.h"
 #include "contiki_process.h"
+#endif
 
-#include "utils.h"
+#ifdef SHELL_TAB_COMPLETION
 #include "shell_complete.h"
+#endif
 
 enum
 {
@@ -48,7 +59,7 @@ static uint8_t session_level = SHELL_LVL_USER;
 static shell_cmd_t cmd_list[SHELL_MAX_CMD_LIST_COUNT] = {0};
 static uint8_t cmd_list_counter = 0;
 
-static uint8_t rx_buff[SHELL_TEXT_MAXLEN + 1]; /* +1: NUL terminator için yer ayır (K15) */
+static uint8_t rx_buff[SHELL_TEXT_MAXLEN + 1]; /* +1: room for the NUL terminator */
 
 static uint32_t rx_idx = 0;
 static uint32_t rx_state = 1;
@@ -58,9 +69,13 @@ static uint8_t rx_ready = 0;
 static uint8_t rx_special_ready = 0;
 static shell_putchar_fn_t shell_putchar_fn = NULL;
 
+#ifdef SHELL_USER_CONTIKI_PROCESS
 PROCESS(shell_task, "shell_task");
 static process_event_t cmd_spcl_rcvd_event; /* A special character received (like up arrow, etc)*/
 static process_event_t cmd_rcvd_event;      /* A line received from UART*/
+#else
+uint8_t shell_process_pool = 0; /* RX -> main-loop hand-off flag (poll-based builds) */
+#endif
 
 uint8_t shell_get_session_level(void)
 {
@@ -82,13 +97,13 @@ void shell_putchr(int chr)
 {
 	if(shell_putchar_fn) {
 		shell_putchar_fn(chr);
-	} 
+	}
 }
 
 static inline void shell_puts(const char *buff)
 {
-	/* Route through the shell writer so redirected consumers (web shell
-	 * capture) also see core messages; default writer is unchanged. */
+	/* Route through the shell writer so redirected consumers also see
+	 * core messages; default writer is unchanged. */
 	while(*buff){
 		shell_putchr(*buff++);
 	}
@@ -336,8 +351,8 @@ void shell_on_command_received(const char *str)
         }
     }
 
-    /* Erken break'te NULL kalan argvp girdilerini ele: gecerli token
-     * sayisina indir. Normal yolda i == argc oldugundan davranis ayni. */
+    /* Trim argc when the packing loop broke early: trailing argvp[]
+     * entries stay NULL and must not reach a command handler. */
     argc = i;
 
     int res = shell_command_executer(argc, &argvp[0]);
@@ -401,18 +416,22 @@ void shell_on_rx_received(int chr)
 				}
 
 				rx_buff[rx_idx] = 0;
-
-				process_poll(&shell_task);
 				rx_special_ready = 1;
 
+#if defined(SHELL_USER_CONTIKI_PROCESS)
+				process_poll(&shell_task);
+#else
+				shell_process_pool = 1;
+#endif
 				esc_seq = 0;
 				break;
 			}
 		}
 		else
 		{
-			/* Backspace satira girmez; yalnizca onceki karakteri siler.
-			 * (Sakla-sonra-geri-al dansi dolu tamponda yanlis siliyordu.) */
+			/* Backspace never enters the line; it only deletes the
+			 * previous character.  (Storing it first made a full
+			 * buffer delete two characters.) */
 			if((chr != SHELL_BACKSPACE_CODE) && (rx_idx < SHELL_TEXT_MAXLEN))
 			{
 				//TODO: start timeouttimer
@@ -427,7 +446,11 @@ void shell_on_rx_received(int chr)
 #ifdef SHELL_TAB_COMPLETION
 				shell_complete_reset();
 #endif
+#if defined(SHELL_USER_CONTIKI_PROCESS)
 				process_poll(&shell_task);
+#else
+				shell_process_pool = 1;
+#endif
 			}
 			else if(chr == SHELL_BACKSPACE_CODE)
 			{
@@ -464,17 +487,6 @@ void shell_process(void)
 		switch(special_chr)
 		{
 		case UP_ARROW:
-//			if(cmd_history_idx > 0)
-//			{
-//				if(cmd_history_user_idx > 0)
-//				{
-//					cmd_history_user_idx--;
-//					cmd_execute_history = 1;
-//
-//					shell_puts((const char *)&shell_history[cmd_history_user_idx].buff);
-//					shell_puts("\n");
-//				}
-//			}
 			{
 				const shell_history_cmd_t *cmd = shell_get_cmd(sh_history, SHELHISTORY_DIR_UP);
 				SHELL_LOG( "SH:-> %s\r\n", cmd ? (const char *)cmd->buff : "");
@@ -482,13 +494,6 @@ void shell_process(void)
 
 			break;
 		case DOWN_ARROW:
-//			if(cmd_history_user_idx < cmd_history_idx)
-//			{
-//				cmd_history_user_idx++;
-//				cmd_execute_history = 1;
-//				shell_puts((const char *)&shell_history[cmd_history_user_idx].buff);
-//				shell_puts("\n");
-//			}
 			{
 				const shell_history_cmd_t *cmd = shell_get_cmd(sh_history, SHELHISTORY_DIR_DOWN);
 				SHELL_LOG( "SH:-> %s\r\n", cmd ? (const char *)cmd->buff : "");
@@ -502,29 +507,15 @@ void shell_process(void)
 	{
 		if((rx_idx == 1 && rx_buff[0] == SHELL_ENTER_CODE))
 		{
-//			if(cmd_execute_history)
-//			{
-//				memcpy(rx_buff, shell_history[cmd_history_idx].buff, shell_history[cmd_history_idx].len);
-//			}
-//			else
-			{
-				shell_puts(prompt_buff);
-				shell_reset_rx();
-				return;
-			}
+			shell_puts(prompt_buff);
+			shell_reset_rx();
+			return;
 		}
 
 		shell_on_command_received((const char *)rx_buff);
-//		if(cmd_execute_history)
-//		{
-//			cmd_execute_history = 0;
-//		}
-//		else
-		{
 #ifdef SHELL_HISTOR
-			shell_history_add(sh_history, rx_buff, rx_idx);
+		shell_history_add(sh_history, rx_buff, rx_idx);
 #endif
-		}
 		shell_reset_rx();
 	}
 }
@@ -607,6 +598,34 @@ static int shell_usrcmd_info(int argc, char *argv[])
     return 0;
 }
 
+static int shell_terminal_char_set_test(int argc, char *argv[])
+{
+	(void)argc;
+
+	if(argc < 2)
+	{
+		SHELL_LOG("Usage: term test\r\n");
+		return -1;
+	}
+
+	if(strcmp(argv[1], "test") == 0)
+	{
+		for(int i = 127; i < 255; i++)
+		{
+			shell_putchr('0' + i / 100);
+			shell_putchr('0' + (i / 100) / 10);
+			shell_putchr('0' + i % 10);
+			shell_putchr('-');
+			shell_putchr(i);
+			shell_puts("\r\n");
+		}
+	}
+
+	return 0;
+}
+
+#if defined(SHELL_USER_CONTIKI_PROCESS)
+
 static int shell_ps(int argc, char *argv[])
 {
 	(void)argv;
@@ -623,9 +642,7 @@ static int shell_ps(int argc, char *argv[])
 	{
 		if(q->state && q->thread != NULL)
 		{
-			//xprintf("Task: %s\r\n", q->name);
 			SHELL_LOG("%02d        %-24.24s\n", ++i, q->name);
-
 		}
 	}
 
@@ -719,33 +736,6 @@ static int shell_kill(int argc, char *argv[])
 	return -1;
 }
 
-
-static int shell_terminal_char_set_test(int argc, char *argv[])
-{
-	(void)argc;
-
-	if(argc < 2)
-	{
-		SHELL_LOG("Usage: term test\r\n");
-		return -1;
-	}
-
-	if(strcmp(argv[1], "test") == 0)
-	{
-		for(int i = 127; i < 255; i++)
-		{
-			shell_putchr('0' + i / 100);
-			shell_putchr('0' + (i / 100) / 10);
-			shell_putchr('0' + i % 10);
-			shell_putchr('-');
-			shell_putchr(i);
-			shell_puts("\r\n");
-		}
-	}
-
-	return 0;
-}
-
 PROCESS_THREAD(shell_task, ev, data)
 {
 	(void)ev;
@@ -761,6 +751,7 @@ PROCESS_THREAD(shell_task, ev, data)
 	PROCESS_END();
 }
 
+#endif /* SHELL_USER_CONTIKI_PROCESS */
 
 void shell_init(const char *prompt, const char *password, shell_putchar_fn_t putchar_fn)
 {
@@ -778,12 +769,15 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 		strncpy(admin_pass, password, sizeof(admin_pass) - 1);
 	}
 
+#ifdef SHELL_CMD_RESET_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "reset",
 										   .desc = "Software reset the MCU\r\n"
 												   "\treset            - restart the MCU immediately",
 										   .level = SHELL_LVL_USER,
 									       .func = shell_reset
 	});
+#endif
+#ifdef SHELL_CMD_HELP_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "help",
 										   .desc = "List all registered commands\r\n"
 												   "\thelp             - print every command with its usage\r\n"
@@ -791,36 +785,48 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 										   .level = SHELL_LVL_USER,
 										   .func = shell_help
 	});
+#endif
+#ifdef SHELL_CMD_SU_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "su",
 										   .desc = "Become super user\r\n"
 												   "\tsu <password>    - elevate the session to root",
 										   .level = SHELL_LVL_USER,
 										   .func = shell_su
 	});
+#endif
+#ifdef SHELL_CMD_WHOAMI_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "whoami",
 										   .desc = "Show active user level\r\n"
 												   "\twhoami           - print the session level (user/root)",
 										   .level = SHELL_LVL_USER,
 										   .func = shell_whoami
 	});
+#endif
+#ifdef SHELL_CMD_EXIT_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "exit",
 										   .desc = "Logout from root\r\n"
 												   "\texit             - drop the session back to user level",
 										   .level = SHELL_LVL_USER,
 										   .func = shell_exit
 	});
+#endif
+#ifdef SHELL_CMD_INFO_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "info",
 										   .desc = "Show device info\r\n"
 												   "\tinfo             - print the device run time",
 										   .level = SHELL_LVL_USER,
 										   .func = shell_usrcmd_info
 	});
+#endif
+#ifdef SHELL_CMD_TERM_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "term",
 										   .desc = "Terminal extended ASCII test [127-255]\r\n"
 												   "\tterm test        - print characters 127-255",
 										   .level = SHELL_LVL_SUPER_USER,
 									       .func = shell_terminal_char_set_test
 	});
+#endif
+#if defined(SHELL_USER_CONTIKI_PROCESS)
 	shell_register_command(&(shell_cmd_t){.cmd = "ps",
 										   .desc = "View active process list\r\n"
 												   "\tps               - list running processes",
@@ -845,11 +851,14 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 										   .level = SHELL_LVL_SUPER_USER,
 										   .func = shell_killall
 	});
+#endif
 
+#if defined(SHELL_USER_CONTIKI_PROCESS)
 	cmd_spcl_rcvd_event = process_alloc_event();
 	cmd_rcvd_event = process_alloc_event();
 
 	process_start(&shell_task, NULL);
+#endif
 
 #ifdef SHELL_HISTORY
 	shell_history_new(&sh_history);
@@ -859,4 +868,3 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 	shell_complete_init(cmd_list, &cmd_list_counter, shell_putchr);
 #endif
 }
-
