@@ -13,9 +13,10 @@
 
 #include "w25qxx.h"
 #include "spi_flash_organization.h"
-#include "console_logger.h"
 #include "utils.h"
+#include "xprintf.h"
 #include "shell.h"
+#include "boot.h"
 
 /* ------------------------------------------------------------------ */
 /*  Local aliases for shared geometry constants                       */
@@ -100,6 +101,124 @@ static void scan_log(uint32_t *p_max_addr, uint32_t *p_count)
 }
 
 /* ------------------------------------------------------------------ */
+/*  Event decoding (meanings taken from the bootloader write sites)   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Stable short name for an event id (boot_log_defs.h order).
+ *
+ * @param[in] event_id  Raw event_id byte of a log entry.
+ *
+ * @return NUL-terminated static string, "UNKNOWN" for undefined ids.
+ */
+static const char *boot_log_event_name(uint8_t event_id)
+{
+    switch (event_id)
+    {
+        case BOOT_LOG_FW_INSTALL_OK:        return "FW_INSTALL_OK";
+        case BOOT_LOG_FW_INSTALL_FAIL:      return "FW_INSTALL_FAIL";
+        case BOOT_LOG_FW_VERIFY_CRC_FAIL:   return "FW_VERIFY_CRC_FAIL";
+        case BOOT_LOG_FW_VERIFY_ECDSA_FAIL: return "FW_VERIFY_ECDSA_FAIL";
+        case BOOT_LOG_BOOT_ERROR:           return "BOOT_ERROR";
+        case BOOT_LOG_RECOVERY_ATTEMPT:     return "RECOVERY_ATTEMPT";
+        case BOOT_LOG_RECOVERY_OK:          return "RECOVERY_OK";
+        case BOOT_LOG_RECOVERY_FAIL:        return "RECOVERY_FAIL";
+        case BOOT_LOG_AUTH_FAIL:            return "AUTH_FAIL";
+        case BOOT_LOG_SYSTEM_RESET:         return "SYSTEM_RESET";
+        case BOOT_LOG_DOWNGRADE_REJECTED:   return "DOWNGRADE_REJECTED";
+        case BOOT_LOG_FW_APPROVED:          return "FW_APPROVED";
+        case BOOT_LOG_HARDFAULT:            return "HARDFAULT";
+        case BOOT_LOG_INSTALL_INTERRUPTED:  return "INSTALL_INTERRUPTED";
+        default:                            return "UNKNOWN";
+    }
+}
+
+/**
+ * @brief One-line human description of an entry (Turkish, ASCII).
+ *
+ * Payload/detail semantics mirror the bootloader write sites:
+ * boot_fw.c (install/verify), boot_main.c (boot error counter, recovery,
+ * interrupted install), boot.c (approval -> backup section), and
+ * hardfault_handler.c (detail = CFSR low byte, payload = stacked PC).
+ * AUTH_FAIL / SYSTEM_RESET / DOWNGRADE_REJECTED are defined but have no
+ * writer today; their detail/payload are shown raw.
+ *
+ * @param[in]  p_e      Entry to describe.
+ * @param[out] buf      Destination buffer.
+ * @param[in]  buf_len  Size of buf.
+ */
+static void boot_log_event_desc(const boot_log_entry_t *p_e,
+                                char *buf, uint32_t buf_len)
+{
+    switch (p_e->event_id)
+    {
+        case BOOT_LOG_FW_INSTALL_OK:
+            (void)xsnprintf(buf, buf_len,
+                            "firmware kurulumu tamamlandi (CRC+imza dogrulandi)");
+            break;
+        case BOOT_LOG_FW_INSTALL_FAIL:
+            (void)xsnprintf(buf, buf_len,
+                            "kurulum basarisiz - tum denemeler tukendi");
+            break;
+        case BOOT_LOG_FW_VERIFY_CRC_FAIL:
+            (void)xsnprintf(buf, buf_len,
+                            "SPI imaj CRC dogrulamasi basarisiz");
+            break;
+        case BOOT_LOG_FW_VERIFY_ECDSA_FAIL:
+            (void)xsnprintf(buf, buf_len,
+                            "SPI imaj ECDSA imza dogrulamasi basarisiz");
+            break;
+        case BOOT_LOG_BOOT_ERROR:
+            (void)xsnprintf(buf, buf_len,
+                            "acilis hatasi (hata sayaci=%u)", p_e->payload);
+            break;
+        case BOOT_LOG_RECOVERY_ATTEMPT:
+            (void)xsnprintf(buf, buf_len,
+                            "kurtarma moduna gecis (hata sayisi=%u)", p_e->payload);
+            break;
+        case BOOT_LOG_RECOVERY_OK:
+            (void)xsnprintf(buf, buf_len, "kurtarma basarili");
+            break;
+        case BOOT_LOG_RECOVERY_FAIL:
+            (void)xsnprintf(buf, buf_len, "kurtarma basarisiz");
+            break;
+        case BOOT_LOG_AUTH_FAIL:
+            (void)xsnprintf(buf, buf_len,
+                            "yetkilendirme reddedildi (dtl=0x%02X pay=0x%04X)",
+                            p_e->detail, p_e->payload);
+            break;
+        case BOOT_LOG_SYSTEM_RESET:
+            (void)xsnprintf(buf, buf_len,
+                            "sistem reseti (dtl=0x%02X pay=0x%04X)",
+                            p_e->detail, p_e->payload);
+            break;
+        case BOOT_LOG_DOWNGRADE_REJECTED:
+            (void)xsnprintf(buf, buf_len,
+                            "surum geriletme reddedildi (dtl=0x%02X pay=0x%04X)",
+                            p_e->detail, p_e->payload);
+            break;
+        case BOOT_LOG_FW_APPROVED:
+            (void)xsnprintf(buf, buf_len, "firmware onaylandi, yedek bolum %c",
+                            (p_e->payload == (uint16_t)BOOT_FW_SECTION_A) ? 'A' : 'B');
+            break;
+        case BOOT_LOG_HARDFAULT:
+            (void)xsnprintf(buf, buf_len,
+                            "hardfault (CFSR_lo=0x%02X PC=0x%04X)",
+                            p_e->detail, p_e->payload);
+            break;
+        case BOOT_LOG_INSTALL_INTERRUPTED:
+            (void)xsnprintf(buf, buf_len,
+                            "yarida kalan kurulum algilandi, devam ediliyor");
+            break;
+        default:
+            (void)xsnprintf(buf, buf_len,
+                            "bilinmeyen olay (dtl=0x%02X pay=0x%04X)",
+                            p_e->detail, p_e->payload);
+            break;
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Public API                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -166,15 +285,13 @@ uint32_t app_boot_log_count(void)
     return total;
 }
 
-void app_boot_log_dump(uint32_t count)
+void app_boot_log_dump(uint32_t count, bool raw)
 {
-    uint32_t write_head = 0U;
-    uint32_t total      = 0U;
-    scan_log(&write_head, &total);
+    uint32_t total = app_boot_log_count();
 
     if (total == 0U)
     {
-        CSLOG("Boot log: empty\r\n");
+        SHELL_LOG("Boot log: empty\r\n");
         return;
     }
 
@@ -189,46 +306,27 @@ void app_boot_log_dump(uint32_t count)
     }
 
     boot_log_entry_t entries[32];
-    uint32_t num = 0U;
+    uint32_t num = app_boot_log_read_last(entries, count);
 
-    /* Read backwards from write head. */
-    uint32_t check_addr = write_head;
+    SHELL_LOG("Boot log: %u entries (showing last %u)\r\n", total, num);
 
-    for (uint32_t idx = 0U; idx < LOG_TOTAL_ENTRIES; idx++)
+    if (raw)
     {
-        if (num >= count)
-        {
-            break;
-        }
-
-        if (check_addr == LOG_BASE_ADDR)
-        {
-            check_addr = LOG_END_ADDR - LOG_ENTRY_SIZE;
-        }
-        else
-        {
-            check_addr -= LOG_ENTRY_SIZE;
-        }
-
-        boot_log_entry_t entry;
-        w25qxx_read_buff(check_addr, &entry, LOG_ENTRY_SIZE);
-
-        if (boot_log_entry_is_valid(&entry))
-        {
-            entries[num] = entry;
-            num++;
-        }
+        SHELL_LOG("  SEQ    TIMESTAMP     EVENT  DTL  PAYLOAD\r\n");
     }
-
-    CSLOG("Boot log: %u entries (showing last %u)\r\n", total, num);
-    CSLOG("  SEQ    TIMESTAMP     EVENT  DTL  PAYLOAD\r\n");
+    else
+    {
+        SHELL_LOG("  SEQ    TIMESTAMP     EVENT                 DESCRIPTION\r\n");
+    }
 
     for (uint32_t idx = 0U; idx < num; idx++)
     {
         const boot_log_entry_t *p_e = &entries[idx];
         uint32_t ts = p_e->timestamp;
 
-        /* Unpack: YY(6) MM(4) DD(5) hh(5) mm(6) ss(6) */
+        /* Unpack: YY(6) MM(4) DD(5) hh(5) mm(6) ss(6). YY is printed as
+         * stored - the writer packs (full_year & 0x3F), no century info
+         * exists in the entry. */
         uint8_t year   = (uint8_t)((ts >> 26U) & 0x3FU);
         uint8_t month  = (uint8_t)((ts >> 22U) & 0x0FU);
         uint8_t day    = (uint8_t)((ts >> 17U) & 0x1FU);
@@ -236,10 +334,23 @@ void app_boot_log_dump(uint32_t count)
         uint8_t minute = (uint8_t)((ts >> 6U)  & 0x3FU);
         uint8_t second = (uint8_t)(ts & 0x3FU);
 
-        CSLOG("  %-5u  %02u/%02u/%02u %02u:%02u:%02u  0x%02X   0x%02X  0x%04X\r\n",
-              p_e->sequence,
-              year, month, day, hour, minute, second,
-              p_e->event_id, p_e->detail, p_e->payload);
+        if (raw)
+        {
+            SHELL_LOG("  %-5u  %02u/%02u/%02u %02u:%02u:%02u  0x%02X   0x%02X  0x%04X\r\n",
+                      p_e->sequence,
+                      year, month, day, hour, minute, second,
+                      p_e->event_id, p_e->detail, p_e->payload);
+        }
+        else
+        {
+            char desc[64];
+            boot_log_event_desc(p_e, desc, (uint32_t)sizeof(desc));
+
+            SHELL_LOG("  %-5u  %02u/%02u/%02u %02u:%02u:%02u  %-20s  %s\r\n",
+                      p_e->sequence,
+                      year, month, day, hour, minute, second,
+                      boot_log_event_name(p_e->event_id), desc);
+        }
     }
 }
 
@@ -251,38 +362,49 @@ static int bootlog_shell_handler(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        CSLOG("Usage: bootlog <status|dump [n]>\r\n");
+        SHELL_LOG("Usage: bootlog <status|dump [raw] [n]>\r\n");
         return -1;
     }
 
     if (strcmp(argv[1], "status") == 0)
     {
         uint32_t total = app_boot_log_count();
-        CSLOG("[BOOTLOG] === Boot Log Status ===\r\n");
-        CSLOG("[BOOTLOG] Flash base : 0x%08X\r\n", LOG_BASE_ADDR);
-        CSLOG("[BOOTLOG] Flash end  : 0x%08X\r\n", LOG_END_ADDR);
-        CSLOG("[BOOTLOG] Sectors    : %u\r\n", LOG_NUM_SECTORS);
-        CSLOG("[BOOTLOG] Entry size : %u bytes\r\n", LOG_ENTRY_SIZE);
-        CSLOG("[BOOTLOG] Capacity   : %u entries\r\n", LOG_TOTAL_ENTRIES);
-        CSLOG("[BOOTLOG] Used       : %u entries\r\n", total);
+        SHELL_LOG("=== Boot Log Status ===\r\n");
+        SHELL_LOG("Flash base : 0x%08X\r\n", LOG_BASE_ADDR);
+        SHELL_LOG("Flash end  : 0x%08X\r\n", LOG_END_ADDR);
+        SHELL_LOG("Sectors    : %u\r\n", LOG_NUM_SECTORS);
+        SHELL_LOG("Entry size : %u bytes\r\n", LOG_ENTRY_SIZE);
+        SHELL_LOG("Capacity   : %u entries\r\n", LOG_TOTAL_ENTRIES);
+        SHELL_LOG("Used       : %u entries\r\n", total);
         return 0;
     }
 
     if (strcmp(argv[1], "dump") == 0)
     {
+        /* bootlog dump [raw] [n] */
+        bool raw = ((argc >= 3) && (strcmp(argv[2], "raw") == 0));
         uint32_t n = 0U;
 
-        if (argc >= 3)
+        if (raw && (argc >= 4))
+        {
+            int val = xstrtoi(argv[3]);
+            n = (val > 0) ? (uint32_t)val : 0U;
+        }
+        else if (!raw && (argc >= 3))
         {
             int val = xstrtoi(argv[2]);
             n = (val > 0) ? (uint32_t)val : 0U;
         }
+        else
+        {
+            /* no count argument */
+        }
 
-        app_boot_log_dump(n);
+        app_boot_log_dump(n, raw);
         return 0;
     }
 
-    CSLOG("Unknown argument: %s\r\n", argv[1]);
+    SHELL_LOG("Unknown argument: %s\r\n", argv[1]);
     return -1;
 }
 
@@ -291,8 +413,9 @@ void app_boot_log_shell_init(void)
     shell_register_command(&(shell_cmd_t){
         .cmd   = "bootlog",
         .desc  = "Boot log diagnostics\r\n"
-                 "\tbootlog status   - show log status & flash info\r\n"
-                 "\tbootlog dump [n] - dump last n entries (default: all)",
+                 "\tbootlog status      - show log status & flash info\r\n"
+                 "\tbootlog dump [n]    - dump last n entries, decoded (default: all)\r\n"
+                 "\tbootlog dump raw [n]- dump last n entries, raw hex values",
         .level = SHELL_LVL_USER,
         .func  = bootlog_shell_handler
     });
