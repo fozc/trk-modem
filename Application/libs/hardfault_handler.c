@@ -7,21 +7,27 @@
  *  Refs:
  *       -Using Cortex-M3/M4/M7 Fault Exceptions (https://www.keil.com/appnotes/files/apnt209.pdf)
  *       -https://wiki.segger.com/Cortex-M_Fault
+ *
+ *  Structure (bootloader repo ab95b31 ile ayni desen):
+ *   - HardFault_Handler is naked and contains BASIC ASSEMBLY ONLY: it
+ *     selects the stacked frame (MSP or PSP per EXC_RETURN bit 2) and
+ *     tail-branches to the C handler.  GCC does not support C code in
+ *     naked functions -- every register access lives in the C handler.
+ *   - HardFault_Handler_C captures the fault status registers through
+ *     the CMSIS SCB accessors (MMFSR/BFSR/UFSR are sub-fields of CFSR,
+ *     no separate bus reads), prints a full dump and halts.
+ *   - ABFSR is Cortex-M7-only; it does not exist on the M33 and the
+ *     old code read AFSR twice under that name -- removed entirely.
+ *   - App-specific: the fault trace is stashed to TAMP backup registers
+ *     FIRST (survives the watchdog reset that follows); app_main
+ *     persists it to elog at the next boot. Release policy is halt and
+ *     let the external watchdog reset the device.
  */
 #include <bsp.h>
 #include "hardfault_handler.h"
 #include "main.h"
 #include "rtc.h"
-
-
-#define SYSHND_CTRL (*(volatile uint32_t *)(0xE000ED24u))  // System Handler Control and State Register
-#define NVIC_MFSR   (*(volatile uint8_t  *)(0xE000ED28u))  // Memory Management Fault Status Register
-#define NVIC_BFSR   (*(volatile uint8_t  *)(0xE000ED29u))  // Bus Fault Status Register
-#define NVIC_UFSR   (*(volatile uint16_t *)(0xE000ED2Au))  // Usage Fault Status Register
-#define NVIC_HFSR   (*(volatile uint32_t *)(0xE000ED2Cu))  // Hard Fault Status Register
-#define NVIC_DFSR   (*(volatile uint16_t *)(0xE000ED30u))  // Debug Fault Status Register
-#define NVIC_BFAR   (*(volatile uint32_t *)(0xE000ED38u))  // Bus Fault Manage Address Register
-#define NVIC_AFSR   (*(volatile uint16_t *)(0xE000ED3Cu))  // Auxiliary Fault Status Register
+#include "console_logger.h"
 
 typedef struct __attribute__((packed))
 {
@@ -52,7 +58,8 @@ typedef union __attribute__((packed))
   {
     uint32_t UnusedBits  : 1;
     uint32_t VECTBL      : 1;      // Indicates hard fault is caused by failed vector fetch
-    uint32_t UnusedBits2 : 27;
+    uint32_t UnusedBits2 : 28;     /* 1+1+28 = 30: FORCED must land on bit 30,
+                                    * DEBUGEVT on bit 31 (HFSR layout) */
     uint32_t FORCED      : 1;      // Indicates hard fault is taken because of bus fault/memory management fault/usage fault
     uint32_t DEBUGEVT    : 1;      // Indicates hard fault is triggered by debug event
   };
@@ -122,31 +129,13 @@ typedef union __attribute__((packed))
 	};
 }UFSR_t;
 
-/* Auxiliary Bus Fault Status Register (ABFSR) */
-typedef union __attribute__((packed))
-{
-	volatile uint32_t ABFSR;
-	struct
-	{
-		uint32_t ITCM        :1; /* Asynchronous fault on ITCM interface */
-		uint32_t DTCM        :1; /* Asynchronous fault on DTCM interface */
-		uint32_t AHBP        :1; /* Asynchronous fault on AHBP interface */
-		uint32_t AXIM        :1; /* Asynchronous fault on AXIM interface */
-		uint32_t EPPB        :4; /* Asynchronous fault on EPPB interface */
-		uint32_t UnusedBits  :3;
-		uint32_t AXIMTYPE    :2; /* Indicates the type of fault on the AXIM interface. */
-		uint32_t UnusedBits2 :19;
-	};
-}ABFSR_t;
-
-
 /* BFAR: Data address for a precise BusFault. This register is updated with the address of a location that
 produced a BusFault. The BFSR shows the reason for the fault. This field is valid only when
 BFSR.BFARVALID is set. */
 static uint32_t bfar = 0;
 
-/* MMFAR: Data address for a MemManage fault. This register is updated with the address of a location
-that produced a MemManage fault. The MMFSR shows the cause of the fault. This field is valid
+/* MMFAR: Data address for a MemManage fault. This register is updated with the address of a location that
+produced a MemManage fault. The MMFSR shows the cause of the fault. This field is valid
 only when MMFSR.MMARVALID is set. */
 static uint32_t mmfar = 0;
 
@@ -157,7 +146,27 @@ static HFSR_t hfsr;
 static DFSR_t dfsr;
 static BFSR_t bfsr;
 static UFSR_t ufsr;
-static ABFSR_t abfsr;
+
+/*
+ * Capture the fault status registers.  Runs in normal C context (first
+ * thing in the handler) -- never in the naked wrapper, where GCC does
+ * not support C code.  MMFSR/BFSR/UFSR are sub-fields of CFSR, so they
+ * are extracted from the value already read instead of re-addressing
+ * the PPB.
+ */
+static void hardfault_capture_status(void)
+{
+	cfsr       = SCB->CFSR;
+	hfsr.HFSR  = SCB->HFSR;
+	dfsr.DFSR  = SCB->DFSR;
+	afsr       = SCB->AFSR;
+	mmfar      = SCB->MMFAR;
+	bfar       = SCB->BFAR;
+
+	mmsfr.MMFSR = (uint8_t)(cfsr & 0xFFU);
+	bfsr.BFSR   = (uint8_t)((cfsr >> 8) & 0xFFU);
+	ufsr.UFSR   = (uint16_t)((cfsr >> 16) & 0xFFFFU);
+}
 
 static void print_stackframe(StackFrame_t *StackFrame, uint32_t lr_val)
 {
@@ -172,15 +181,15 @@ static void print_stackframe(StackFrame_t *StackFrame, uint32_t lr_val)
 	CSLOG_ERR("LR/EXC_RETURN= 0x%08x\r\n", lr_val);
 }
 
-static inline void print_hardfault_status(HFSR_t hfsr)
+static inline void print_hardfault_status(HFSR_t hfsr_val)
 {
-	if(hfsr.VECTBL){
+	if(hfsr_val.VECTBL){
 		CSLOG_ERR( " HFSR: VECTTBL\r\n");
 	}
-	if(hfsr.FORCED){
+	if(hfsr_val.FORCED){
 		CSLOG_ERR( " HFSR: FORCED\r\n");
 	}
-	if(hfsr.DEBUGEVT){
+	if(hfsr_val.DEBUGEVT){
 		CSLOG_ERR( " HFSR: DEBUGEVT\r\n");
 	}
 }
@@ -235,25 +244,10 @@ static void print_usage_fault(UFSR_t usage_fault)
 		CSLOG_ERR("Usage Fault: DIVBYZERO\r\n");
 }
 
-static void print_auxiliary_bus_fault(ABFSR_t abus_fault)
-{
-	if (abus_fault.ITCM)
-		CSLOG_ERR("Auxiliary Bus Fault: ITCM\r\n");
-	if (abus_fault.DTCM)
-		CSLOG_ERR("Auxiliary Bus Fault: DTCM\r\n");
-	if (abus_fault.AHBP)
-		CSLOG_ERR("Auxiliary Bus Fault: AHBP\r\n");
-	if (abus_fault.AXIM)
-		CSLOG_ERR("Auxiliary Bus Fault: AXIM\r\n");
-	if (abus_fault.EPPB)
-		CSLOG_ERR("Auxiliary Bus Fault: EPPB\r\n");
-	if (abus_fault.AXIMTYPE)
-		CSLOG_ERR("Auxiliary Bus Fault: AXIMTYPE val: %02b\r\n", abus_fault.AXIMTYPE);
-}
-
-
 void HardFault_Handler_C(StackFrame_t *StackFrame, uint32_t lr_value)
 {
+	hardfault_capture_status();
+
 	/* Stash the fault trace in TAMP backup registers FIRST: these survive
 	 * the watchdog reset that follows, and app_main persists them to elog
 	 * at the next boot. Plain register writes, safe in fault context. */
@@ -263,14 +257,18 @@ void HardFault_Handler_C(StackFrame_t *StackFrame, uint32_t lr_value)
 	rtc_bkpr_write(HF_BKPR_DR_HFSR, hfsr.HFSR);
 	rtc_bkpr_write(HF_BKPR_DR_MAGIC, HF_BKPR_MAGIC);
 
+	/* Fault output must never be silenced by a disabled console logger
+	 * (the main loop keeps it off during normal operation). */
+	console_logger_set_enabled(true, false);
+
 	print_stackframe(StackFrame, lr_value);
 	CSLOG( " SCB->BFAR  = 0x%08x\r\n", bfar);
 	CSLOG( " SCB->MMFAR = 0x%08x\r\n", mmfar);
 	CSLOG( " SCB->CFSR  = 0x%08x\r\n", cfsr);
-	CSLOG( " SCB->HFSR  = 0x%08x\r\n", hfsr);
-	CSLOG( " SCB->DFSR  = 0x%08x\r\n", dfsr);
+	CSLOG( " SCB->HFSR  = 0x%08x\r\n", hfsr.HFSR);
+	CSLOG( " SCB->DFSR  = 0x%08x\r\n", dfsr.DFSR);
 	CSLOG( " SCB->AFSR  = 0x%08x\r\n", afsr);
-	print_hardfault_status((HFSR_t)hfsr);
+	print_hardfault_status(hfsr);
 	print_memfault(mmsfr);
 	if (cfsr & 0x0080)
 		CSLOG( " MMFAR = 0x%x *\r\n", mmfar);
@@ -279,39 +277,29 @@ void HardFault_Handler_C(StackFrame_t *StackFrame, uint32_t lr_value)
 		CSLOG( " *BFAR = 0x%x *\r\n", bfar);
 
 	print_usage_fault(ufsr);
-	print_auxiliary_bus_fault(abfsr);
 
-	//__ASM volatile("BKPT #01");
-	 while(1);
+	CSLOG_ERR("\r\n*** HardFault: halting - watchdog will reset ***\r\n");
+
+	/* App policy: no direct NVIC_SystemReset here. The external watchdog
+	 * performs the reset, and the stashed trace above reaches elog on the
+	 * next boot (app_main elog_log_boot_events). */
+	while(1);
 }
 
 __attribute__((naked)) void HardFault_Handler(void)
 {
-    cfsr  = SCB->CFSR;           /* Configurable Fault Status Register */
-    hfsr.HFSR  = SCB->HFSR;      /* HardFault Status Register */
-    dfsr.DFSR  = SCB->DFSR;      /* Debug Fault Status Register */
-    bfsr.BFSR  = NVIC_BFSR;      /* Bus Fault Status Register */
-    afsr  = SCB->AFSR;           /* Auxiliary Fault Status Register */
-    ufsr.UFSR  = NVIC_UFSR;      /* Usage Fault Status Register */
-    abfsr.ABFSR = SCB->AFSR; /* Auxiliary Bus Fault Status Register */
-
-    mmfar = SCB->MMFAR; /* MemManage Fault Address Register */
-    bfar  = SCB->BFAR;  /* BusFault Address Register */
-
-//	// Load MSP to R0
-//	// R0 is used to keep first argument during function call
-//	// We used this functionality to copy MSP to StackFrame struct
-//	asm volatile("MRS R0, MSP");
-//
-//	// Jump to HardFault_Handler C function
-//	asm volatile("B HardFault_Handler_");
-
-	asm volatile(
-			"TST    LR, #4 \r\n\t\
-			ITE    EQ      \r\n\t\
-			MRSEQ  R0, MSP \r\n\t\
-			MRSNE  R0, PSP \r\n\t\
-			MOV    R1, LR  \r\n\t\
-			B      HardFault_Handler_C"
-			);
+	/* Basic assembly only -- GCC does not support C code in naked
+	 * functions.  Select the stacked frame per EXC_RETURN bit 2 and
+	 * tail-branch to the C handler, which never returns. */
+	__asm volatile
+	(
+		"tst   lr, #4              \r\n"
+		"ite   eq                  \r\n"
+		"mrseq r0, msp             \r\n"
+		"mrsne r0, psp             \r\n"
+		"mov   r1, lr              \r\n"
+		"b     HardFault_Handler_C \r\n"
+	);
 }
+
+/*** end of file ***/
