@@ -195,13 +195,46 @@ int w25qxx_erase_chip(void)
 	return res;
 }
 
+/* Bilinen SPI flash parcalari (JEDEC ilk 3 bayt + boyut). Init kimlik
+ * kontrolu bu tabloyla yapilir: board parcasi AT25SF321B'dir; eski tek-ID
+ * kontrolu (0x001540EF, W25Q16) karttaki parcayla hic eslesmiyordu.
+ * Bootloader repodaki w25qxx.c ile ayni tablo - tek yerde tutulmali. */
+typedef struct
+{
+	uint8_t  manu;        /* JEDEC byte 0: manufacturer */
+	uint8_t  type;        /* JEDEC byte 1: memory type  */
+	uint8_t  cap;         /* JEDEC byte 2: capacity     */
+	uint32_t size_bytes;
+	const char *name;
+} flash_id_t;
+
+static const flash_id_t s_known_flash[] =
+{
+	{0x1FU, 0x87U, 0x01U, 4UL  << 20, "AT25SF321B 4 MB"}, /* board part */
+	{0xEFU, 0x40U, 0x16U, 4UL  << 20, "W25Q32 4 MB"},
+	{0xEFU, 0x40U, 0x17U, 8UL  << 20, "W25Q64 8 MB"},
+	{0xEFU, 0x40U, 0x18U, 16UL << 20, "W25Q128 16 MB"},
+};
+
 int w25qxx_init(void)
 {
-	int res = 0;
-	const uint32_t jid = 0x001540EF;
+	int res = W25QXX_RES_OK;
 
 	w25qxx_reset();
 	uint32_t read_jid = w25qxx_read_jedecid();
+	const uint8_t *p_id = (const uint8_t *)&read_jid;
+	const flash_id_t *p_part = NULL;
+
+	for (size_t i = 0U; i < (sizeof(s_known_flash) / sizeof(s_known_flash[0])); i++)
+	{
+		if ((s_known_flash[i].manu == p_id[0]) &&
+		    (s_known_flash[i].type == p_id[1]) &&
+		    (s_known_flash[i].cap  == p_id[2]))
+		{
+			p_part = &s_known_flash[i];
+			break;
+		}
+	}
 
 	uint8_t status_1 = w25qxx_read_status();
 	uint8_t status_2 = w25qxx_read_register(CMD_READ_STATUS_REGISTER_2);
@@ -238,11 +271,16 @@ int w25qxx_init(void)
 		}
 	}
 
-	CCSLOG(XCOLOR_RED, "W25 Capacity: %s\r\n", w25q_lookup_capacity(((uint8_t *)&read_jid)[2])->size_str);
-	if(read_jid != jid)
+	if ((p_part != NULL) && (p_part->size_bytes >= W25QXX_SIZE))
 	{
-		CCSLOG(XCOLOR_RED,"Jedec Id Error: 0x%02X-0x%02X-0x%02X-0x%02X\r\n", ((uint8_t *)&read_jid)[0],
-				((uint8_t *)&read_jid)[1], ((uint8_t *)&read_jid)[2], ((uint8_t *)&read_jid)[3]);
+		CSLOG("SPI flash: %s (JEDEC 0x%02X-0x%02X-0x%02X)\r\n",
+		      p_part->name, p_id[0], p_id[1], p_id[2]);
+	}
+	else
+	{
+		CCSLOG(XCOLOR_RED, "Jedec Id Error: 0x%02X-0x%02X-0x%02X (unsupported flash, "
+		      "need >= %u KB from the known list)\r\n",
+		      p_id[0], p_id[1], p_id[2], W25QXX_SIZE / 1024U);
 		res = W25QXX_RES_ERROR;
 	}
 	//w25qxx_erase_chip();
