@@ -3,7 +3,7 @@
    <FileSchema r="0" c="1"/>
    <Version major="13" minor="2" patch="1" build="2558"/>
    <dpi>96</dpi>
-   <WP left="897" right="1248" top="2" bottom="649" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+   <WP left="520" right="928" top="400" bottom="680" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
    <ScanRate>1000</ScanRate>
    <SlaveID>23</SlaveID>
    <Enable>1</Enable>
@@ -14,7 +14,7 @@
    <HexMode>0</HexMode>
    <DisplayAddr>0</DisplayAddr>
    <ColCount>2</ColCount>
-   <RowCount>17</RowCount>
+   <RowCount>9</RowCount>
    <ColumnWidth>
       <CW>1620</CW>
       <CW>1230</CW>
@@ -29,18 +29,10 @@
       <RH>200</RH>
       <RH>200</RH>
       <RH>200</RH>
-      <RH>200</RH>
-      <RH>200</RH>
-      <RH>200</RH>
-      <RH>200</RH>
-      <RH>200</RH>
-      <RH>200</RH>
-      <RH>200</RH>
-            <RH>200</RH>
-</RowHight>
+   </RowHight>
    <ScrollPosV>0</ScrollPosV>
    <ScrollPosH>0</ScrollPosH>
-   <FocusRow>15</FocusRow>
+   <FocusRow>0</FocusRow>
    <FocusCol>2</FocusCol>
    <LogText>
       <Eachread>0</Eachread>
@@ -75,158 +67,143 @@
    </LogExcel>
    <Data>
       <Function>3</Function>
-      <Address>9000</Address>
-      <Quantity>17</Quantity>
+      <Address>9400</Address>
+      <Quantity>9</Quantity>
       <EnronMode>0</EnronMode>
       <Formats>
-         <F f="1" v="30"/>
-         <F f="1" v="14"/>
-         <F f="1" v="17"/>
-         <F f="1" v="1"/>
-         <F f="1" v="8"/>
-         <F f="1" v="2026"/>
-         <F f="17" v="1785604470"/>
-         <F f="16" v="--"/>
-         <F f="1" v="1"/>
-         <F f="2" v="0x5500"/>
-         <F f="0" v="27"/>
-         <F f="1" v="4734"/>
-         <F f="1" v="3259"/>
-         <F f="1" v="3782"/>
-         <F f="17" v="110710"/>
-         <F f="16" v="--"/>
-               <F f="1" v="0"/>
-</Formats>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="17" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+      </Formats>
       <Bytes>
-         <B>30</B>
-         <B>0</B>
-         <B>14</B>
-         <B>0</B>
-         <B>17</B>
-         <B>0</B>
-         <B>1</B>
-         <B>0</B>
-         <B>8</B>
-         <B>0</B>
-         <B>234</B>
-         <B>7</B>
-         <B>110</B>
-         <B>106</B>
-         <B>118</B>
-         <B>41</B>
-         <B>1</B>
          <B>0</B>
          <B>0</B>
-         <B>85</B>
-         <B>27</B>
          <B>0</B>
-         <B>126</B>
-         <B>18</B>
-         <B>187</B>
-         <B>12</B>
-         <B>198</B>
-         <B>14</B>
-         <B>1</B>
          <B>0</B>
-         <B>118</B>
-         <B>176</B>
-               <B>0</B>
          <B>0</B>
-</Bytes>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+      </Bytes>
       <CellData>
          <Cell idx="0">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>RTC sec</Name>
+            <Name>GSM Durum</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="1">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>RTC min</Name>
+            <Name>GSM Sinyal CSQ (0..31)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="2">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>RTC hour</Name>
+            <Name>GSM RAT</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="3">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>RTC day</Name>
+            <Name>Son Hata Kodu</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="4">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>RTC month</Name>
-            <Font used="false"/>
-         </Cell>
-         <Cell idx="5">
-            <Colors/>
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>RTC year</Name>
+            <Name>Son Hata Zamani (Unix)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="6">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>RTC Epoch</Name>
+            <Name>Web Listener Soket</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="7">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>IEC104 Listener Soket</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="8">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Uptime (min)</Name>
+            <Name>Dialer Soket (HES)</Name>
             <Font used="false"/>
          </Cell>
-         <Cell idx="9">
-            <Colors/>
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Reset Source</Name>
-            <Font used="false"/>
-         </Cell>
-         <Cell idx="10">
-            <Colors/>
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>MCU Temp</Name>
-            <Font used="false"/>
-         </Cell>
-         <Cell idx="11">
-            <Colors/>
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>5V (mV)</Name>
-            <Font used="false"/>
-         </Cell>
-         <Cell idx="12">
-            <Colors/>
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>3V3 (mV)</Name>
-            <Font used="false"/>
-         </Cell>
-         <Cell idx="13">
-            <Colors/>
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>3V8 (mV)</Name>
-            <Font used="false"/>
-         </Cell>
-         <Cell idx="14">
-            <Colors/>
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>UpTime (msec)</Name>
-            <Font used="false"/>
-         </Cell>
-               <Cell idx="16">
-            <Colors/>
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>DInput States</Name>
-            <Font used="false"/>
-         </Cell>
-</CellData>
+      </CellData>
       <Scales/>
-      <ValueNames/>
+      <ValueNames>
+         <Names idx="0" enabled="1">
+            <Name value="0" name="Ortak Init"/>
+            <Name value="1" name="Modul Init"/>
+            <Name value="2" name="SIM Hata"/>
+            <Name value="3" name="Normal"/>
+            <Name value="4" name="Guc Kesinti"/>
+            <Name value="5" name="Guc Tasarrufu"/>
+         </Names>
+         <Names idx="1" enabled="1">
+            <Name value="99" name="Bilinmiyor"/>
+         </Names>
+         <Names idx="2" enabled="1">
+            <Name value="0" name="Bilinmiyor"/>
+            <Name value="2" name="2G"/>
+            <Name value="3" name="3G"/>
+            <Name value="4" name="4G"/>
+         </Names>
+         <Names idx="3" enabled="1">
+            <Name value="0" name="Hata Yok"/>
+            <Name value="1" name="Illegal Function"/>
+            <Name value="2" name="Illegal Address"/>
+            <Name value="3" name="Illegal Value"/>
+         </Names>
+         <Names idx="6" enabled="1">
+            <Name value="0" name="Kapali"/>
+            <Name value="1" name="Acik"/>
+            <Name value="2" name="Bekleyen Data"/>
+            <Name value="3" name="Bagli"/>
+            <Name value="4" name="Data Modu"/>
+            <Name value="5" name="Dinliyor"/>
+            <Name value="6" name="Acilamadi"/>
+         </Names>
+         <Names idx="7" enabled="1">
+            <Name value="0" name="Kapali"/>
+            <Name value="1" name="Acik"/>
+            <Name value="2" name="Bekleyen Data"/>
+            <Name value="3" name="Bagli"/>
+            <Name value="4" name="Data Modu"/>
+            <Name value="5" name="Dinliyor"/>
+            <Name value="6" name="Acilamadi"/>
+         </Names>
+         <Names idx="8" enabled="1">
+            <Name value="0" name="Kapali"/>
+            <Name value="1" name="Acik"/>
+            <Name value="2" name="Bekleyen Data"/>
+            <Name value="3" name="Bagli"/>
+            <Name value="4" name="Data Modu"/>
+            <Name value="5" name="Dinliyor"/>
+            <Name value="6" name="Acilamadi"/>
+         </Names>
+      </ValueNames>
       <ChartSeries/>
       <BinNames/>
    </Data>

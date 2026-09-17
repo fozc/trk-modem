@@ -10,6 +10,7 @@
 #include "modbus_system_stats.h"
 #include "modbus_power_stats.h"
 #include "modbus_bms_stats.h"
+#include "modbus_gsm_stats.h"
 #include "breaker.h"
 #include "bsp.h"
 #include "rtc.h"
@@ -461,6 +462,13 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
      * MOS and fault bitfields. Read-only, contiguous and bulk-readable in a
      * single FC03 window. */
     if (modbus_bms_stats_read(reg_addr, p_value)) {
+        return MODBUS_REG_OK;
+    }
+
+    /* GSM-status block (base MODBUS_GSM_STATS_ADDR_BASE == 49400): GSM modem
+     * state/signal/RAT and the last Modbus exception code/time. Read-only,
+     * contiguous and bulk-readable in a single FC03 window. */
+    if (modbus_gsm_stats_read(reg_addr, p_value)) {
         return MODBUS_REG_OK;
     }
 
