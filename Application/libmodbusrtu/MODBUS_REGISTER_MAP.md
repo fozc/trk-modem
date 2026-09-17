@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.4 |
-| Tarih | 2026-09-04 |
+| Dokuman surumu | 1.5 |
+| Tarih | 2026-09-16 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -302,12 +302,100 @@ fault/alarm bitleri. 32 register (49200..49231).
 - Sicaklik/sentinel degerleri icin bkz. PowerBoard sozlesmesi
   (`doc/I2C_SLAVE_ENTEGRASYON_16K.md`).
 
-### 7.3 Toplu Okuma (FC03)
+### 7.3 BMS Telemetri Blogu (49300 / base-0 9300)
+
+Harici BMS modulunden okunan pak olcumleri: pak gerilimi/akimi, SoC/SoH,
+hucresel gerilimler ve sicakliklar, calisma durumu, MOS ve hata kodlari.
+79 register (49300..49378). Kaynak modul: `Application/modbus_bms_stats.c`.
+
+| Mantiksal | Base-0 | Alan | Tip | Birim/Anlam |
+|---:|---:|---|---|---|
+| 49300 | 9300 | valid | UINT16 | 1 = veri gecerli, 0 = hatali |
+| 49301 | 9301 | soh_valid | UINT16 | 1 = SoH gecerli |
+| 49302 | 9302 | total_voltage_x10 | UINT16 | Pak gerilimi x10 (0.1 V) |
+| 49303 | 9303 | current_x10 | INT16 | Pak akimi x10 (0.1 A, +sarj / -desarj) |
+| 49304 | 9304 | soc_x10 | UINT16 | Sarj durumu x10 (%) |
+| 49305 | 9305 | soh_x10 | UINT16 | Pil sagligi x10 (%) |
+| 49306 | 9306 | life_heartbeat | UINT16 | LIFE heartbeat sayaci |
+| 49307 | 9307 | active_cell_count | UINT16 | Hucre adedi |
+| 49308 | 9308 | temp_sensor_count | UINT16 | Sicaklik sensoru adedi |
+| 49309 | 9309 | max_cell_mv | UINT16 | En yuksek hucre gerilimi (mV) |
+| 49310 | 9310 | max_cell_index | UINT16 | En yuksek hucre sirasi |
+| 49311 | 9311 | min_cell_mv | UINT16 | En dusuk hucre gerilimi (mV) |
+| 49312 | 9312 | min_cell_index | UINT16 | En dusuk hucre sirasi |
+| 49313 | 9313 | cell_diff_mv | UINT16 | Hucre gerilim farki (mV) |
+| 49314 | 9314 | max_temp_c | INT16 | En yuksek hucre sicakligi (degC) |
+| 49315 | 9315 | max_temp_index | UINT16 | En sicak sensor sirasi |
+| 49316 | 9316 | min_temp_c | INT16 | En dusuk hucre sicakligi (degC) |
+| 49317 | 9317 | min_temp_index | UINT16 | En soguk sensor sirasi |
+| 49318 | 9318 | temp_diff_c | INT16 | Sicaklik farki (degC) |
+| 49319 | 9319 | work_state | UINT16 | 0=bosta / 1=sarj / 2=desarj |
+| 49320 | 9320 | charger_status | UINT16 | 0=yok / 1=sarj cihazi var |
+| 49321 | 9321 | load_status | UINT16 | 0=yok / 1=yuk var |
+| 49322 | 9322 | remaining_cap_x10 | UINT16 | Kalan kapasite x10 (0.1 Ah) |
+| 49323 | 9323 | cycle_count | UINT16 | Cevrim sayisi |
+| 49324 | 9324 | balance_state | UINT16 | 0=kapali / 1=pasif / 2=aktif |
+| 49325 | 9325 | mos_status_flags | UINT16 | MOS durum bitmask |
+| 49326 | 9326 | average_voltage_mv | UINT16 | Ortalama hucre gerilimi (mV) |
+| 49327 | 9327 | power_w | UINT16 | Guç (W) |
+| 49328 | 9328 | energy_wh | UINT16 | Enerji (Wh) |
+| 49329 | 9329 | mos_temp_c | INT16 | Guç MOS sicakligi (degC) |
+| 49330 | 9330 | ambient_temp_c | INT16 | Ortam sicakligi (degC) |
+| 49331 | 9331 | heating_temp_c | INT16 | Isitma sicakligi (degC) |
+| 49332 | 9332 | heating_current_a | UINT16 | Isitma akimi (A) |
+| 49333 | 9333 | current_limit_state | UINT16 | 1=akim sinirlama aktif / 0=kapali |
+| 49334 | 9334 | current_limit_x10 | INT16 | Akim siniri x10 (0.1 A) |
+| 49335 | 9335 | rtc_year | UINT16 | BMS RTC yili (tam, orn. 2026) |
+| 49336 | 9336 | rtc_month | UINT16 | BMS RTC ay |
+| 49337 | 9337 | rtc_day | UINT16 | BMS RTC gun |
+| 49338 | 9338 | rtc_hour | UINT16 | BMS RTC saat |
+| 49339 | 9339 | rtc_minute | UINT16 | BMS RTC dakika |
+| 49340 | 9340 | rtc_second | UINT16 | BMS RTC saniye |
+| 49341 | 9341 | remaining_charge_min | UINT16 | Kalan sarj suresi (dk) |
+| 49342 | 9342 | dido_status | UINT16 | DI1..8 low byte / DO1..8 high byte |
+| 49343 | 9343 | wake_source_flags | UINT16 | Uyanma kaynagi bitmask |
+| 49344 | 9344 | comm_interface_type | UINT16 | 1 = RS485, 2 = UART |
+| 49345..49360 | 9345..9360 | cell_voltage_mv[1..16] | UINT16 x16 | Hucresel gerilimler (mV) |
+| 49361..49368 | 9361..9368 | temperatures_c[1..8] | INT16 x8 | Sensor sicakliklari (degC) |
+| 49369..49371 | 9369..9371 | balance_position[1..3] | UINT16 x3 | Hucre bazli dengeleme bitmask |
+| 49372..49378 | 9372..9378 | fault_codes[1..7] | UINT16 x7 | BMS hata/alarm kod sozcukleri |
+
+- `valid` (49300) = 0 ise diger alanlar guvenilir kabul edilmez.
+- Isaretli (INT16) alanlar iki-tumleyen olarak yayinlanir (bolum 7.1 ile ayni).
+
+### 7.4 GSM Durumu Blogu (49400 / base-0 9400)
+
+Modem sagligi: GSM durum, sinyal kalitesi (ham AT+CSQ), kusak (RAT), soket
+durumlari ve son Modbus exception kaydi. 9 register (49400..49408). Kaynak
+modul: `Application/modbus_gsm_stats.c`.
+
+| Mantiksal | Base-0 | Alan | Tip | Birim/Anlam |
+|---:|---:|---|---|---|
+| 49400 | 9400 | gsm_state | UINT16 | 0=ortak init 1=modul init 2=SIM hata 3=normal 4=guc kesinti 5=guc tasarrufu |
+| 49401 | 9401 | gsm_signal_csq | UINT16 | Ham AT+CSQ: 0..31, 99 = bilinmiyor |
+| 49402 | 9402 | gsm_rat | UINT16 | 0=bilinmiyor 2=2G 3=3G 4=4G |
+| 49403 | 9403 | mb_last_error_code | UINT16 | Son Modbus exception kodu (bkz. 9.1) |
+| 49404 | 9404 | mb_last_error_time_hi | UINT32 (ABCD) | Son hata zamani (Unix epoch), high word |
+| 49405 | 9405 | mb_last_error_time_lo | UINT32 (ABCD) | Son hata zamani, low word |
+| 49406 | 9406 | socket_state_web | UINT16 | Web listener soket durumu (bkz. asagida) |
+| 49407 | 9407 | socket_state_iec104 | UINT16 | IEC104 listener soket durumu |
+| 49408 | 9408 | socket_state_dialer | UINT16 | HES dialer (musteri) soket durumu |
+
+- `gsm_signal_csq`: CSQ = 0 cok zayif, 31 cok iyi; 99 olculmedi/bilinmiyor.
+- Soket durumlari (`socket_state_t`): 0=kapali, 1=acik, 2=okunmayi bekleyen
+  data var, 3=bagli cihaz var, 4=data gonderim modunda, 5=dinlemede (aktif
+  cihaz yok), 6=acilamadi (hata).
+- `modbus-tools/gsm_stats.mbp` durum/kusak/hata/soket alanlarini "Normal",
+  "2G", "Hata Yok", "Dinliyor" gibi metinlerle gosterir (value-name eslemesi).
+
+### 7.5 Toplu Okuma (FC03)
 
 | Blok | Address (base-0) | Quantity |
 |---|---:|---:|
 | Sistem istatistik | 9000 | 17 |
 | Guc karti telemetri | 9200 | 32 |
+| BMS telemetri | 9300 | 79 |
+| GSM durumu | 9400 | 9 |
 
 > UINT32 (ABCD) alanlari icin master tarafinda "32-bit Unsigned" ve big-endian
 > (ABCD) word order secilmelidir (bolum 4.1).
@@ -394,8 +482,9 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 > 1970 referansli) ve `uint32_t` oldugu icin 2106 yilina kadar gecerlidir
 > (signed 2038 sorunu yasanmaz). Deger 0 ise henuz hata olusmamis demektir.
 
-> Not: Bu alanlar tani/izleme amaclidir; Modbus register haritasinda yer almaz,
-> yalnizca web arabiriminden okunur.
+> Not: `SonHataKodu` / `SonHataZamani` ayrica v1.5'ten beri Modbus tarafinda da
+> okunabilir: iletisim durumu blogu 49403..49405 (bkz. 7.4). Deger anlamlari
+> asagidaki exception kodlari ile aynidir:
 
 ---
 
@@ -418,3 +507,5 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 | 1.1 | 2026-06-15 | Son hata kodu (SonHataKodu) takibi ve web arabirimi eklendi (bkz. 9.1) |
 | 1.2 | 2026-06-15 | Son hata zamani (SonHataZamani, Unix epoch) eklendi; sistem geneli zaman tabani 1970 Unix epoch'a tasindi |
 | 1.3 | 2026-07-14 | Sistem istatistik (49000) ve guc karti telemetri (49200) salt-okunur bloklari eklendi (bkz. 7) |
+| 1.4 | 2026-09-04 | Hat sayisi 7'ye kesinlesti; 40700 ve uzeri desteklenmez (bkz. 5.1.1) |
+| 1.5 | 2026-09-16 | BMS telemetri blogu (49300, dokumante edildi) ve GSM durum blogu (49400: GSM durum/CSQ/RAT, soket durumlari, SonHataKodu/SonHataZamani) eklendi |

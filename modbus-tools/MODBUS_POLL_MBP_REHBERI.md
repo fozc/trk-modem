@@ -221,8 +221,10 @@ Buyuk N icin ilgili bloklari cogalt.
 
 | Dosya | Icerik | Taban (mantiksal / PDU) |
 |---|---|---|
-| `system_stats.mbp` | Sistem istatistikleri (RTC, uptime, gerilim...) | 49000 / 9000 |
+| `system_stats.mbp` | Sistem istatistikleri (RTC, uptime, gerilim, DI) | 49000 / 9000 |
 | `power_stats.mbp` | Guc karti (PowerBoard) telemetrisi | 49200 / 9200 |
+| `bms_stats.mbp` | BMS pak telemetrisi (hucre gerilimleri, sicakliklar, hata kodlari) | 49300 / 9300 |
+| `gsm_stats.mbp` | GSM durumu (durum/CSQ/RAT, soket durumları, SonHata; value-name metinleri ile) | 49400 / 9400 |
 | `Mbpoll1.mbp` | Hat olcum blogu ornegi (Line 1, base 0) | 40000 / 0 |
 | `hat2.mbp` | Hat olcum blogu ornegi | - |
 

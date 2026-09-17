@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ModbusPoll>
+   <FileSchema r="0" c="1"/>
+   <Version major="13" minor="2" patch="1" build="2558"/>
+   <dpi>96</dpi>
+   <WP left="520" right="928" top="400" bottom="680" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+   <ScanRate>1000</ScanRate>
+   <SlaveID>23</SlaveID>
+   <Enable>1</Enable>
+   <StopOnError>0</StopOnError>
+   <OneBased>0</OneBased>
+   <RowsDialog>4</RowsDialog>
+   <HideNames>0</HideNames>
+   <HexMode>0</HexMode>
+   <DisplayAddr>0</DisplayAddr>
+   <ColCount>2</ColCount>
+   <RowCount>9</RowCount>
+   <ColumnWidth>
+      <CW>1620</CW>
+      <CW>1230</CW>
+   </ColumnWidth>
+   <RowHight>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+      <RH>200</RH>
+   </RowHight>
+   <ScrollPosV>0</ScrollPosV>
+   <ScrollPosH>0</ScrollPosH>
+   <FocusRow>0</FocusRow>
+   <FocusCol>2</FocusCol>
+   <LogText>
+      <Eachread>0</Eachread>
+      <Rate>1</Rate>
+      <LogChangedOnly>0</LogChangedOnly>
+      <LogErrors>0</LogErrors>
+      <LogErrorsOnly>0</LogErrorsOnly>
+      <LogAddress>1</LogAddress>
+      <LogDate>0</LogDate>
+      <TDelimiter>0</TDelimiter>
+      <LogMs>1</LogMs>
+      <Delimiter>0</Delimiter>
+      <AutoStart>0</AutoStart>
+      <Flush>0</Flush>
+      <Append>0</Append>
+      <NewLogFileAtMidnight>0</NewLogFileAtMidnight>
+      <InsertHeader>0</InsertHeader>
+      <NameCellsInTopRow>0</NameCellsInTopRow>
+      <PollDefinition>0</PollDefinition>
+      <LogName>Type log name here</LogName>
+      <FileName></FileName>
+   </LogText>
+   <LogExcel>
+      <Eachread>1</Eachread>
+      <Rate>1</Rate>
+      <StopAfter>1000</StopAfter>
+      <LogChangedOnly>0</LogChangedOnly>
+      <InsertHeader>1</InsertHeader>
+      <NameCellsInTopRow>1</NameCellsInTopRow>
+      <PollDefinition>1</PollDefinition>
+      <LogName>Type log name here</LogName>
+   </LogExcel>
+   <Data>
+      <Function>3</Function>
+      <Address>9400</Address>
+      <Quantity>9</Quantity>
+      <EnronMode>0</EnronMode>
+      <Formats>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="17" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+         <F f="1" v="0"/>
+      </Formats>
+      <Bytes>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+         <B>0</B>
+      </Bytes>
+      <CellData>
+         <Cell idx="0">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>GSM Durum</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="1">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>GSM Sinyal CSQ (0..31)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="2">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>GSM RAT</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="3">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Son Hata Kodu</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="4">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Son Hata Zamani (Unix)</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="6">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Web Listener Soket</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="7">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>IEC104 Listener Soket</Name>
+            <Font used="false"/>
+         </Cell>
+         <Cell idx="8">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>Dialer Soket (HES)</Name>
+            <Font used="false"/>
+         </Cell>
+      </CellData>
+      <Scales/>
+      <ValueNames>
+         <Names idx="0" enabled="1">
+            <Name value="0" name="Ortak Init"/>
+            <Name value="1" name="Modul Init"/>
+            <Name value="2" name="SIM Hata"/>
+            <Name value="3" name="Normal"/>
+            <Name value="4" name="Guc Kesinti"/>
+            <Name value="5" name="Guc Tasarrufu"/>
+         </Names>
+         <Names idx="1" enabled="1">
+            <Name value="99" name="Bilinmiyor"/>
+         </Names>
+         <Names idx="2" enabled="1">
+            <Name value="0" name="Bilinmiyor"/>
+            <Name value="2" name="2G"/>
+            <Name value="3" name="3G"/>
+            <Name value="4" name="4G"/>
+         </Names>
+         <Names idx="3" enabled="1">
+            <Name value="0" name="Hata Yok"/>
+            <Name value="1" name="Illegal Function"/>
+            <Name value="2" name="Illegal Address"/>
+            <Name value="3" name="Illegal Value"/>
+         </Names>
+         <Names idx="6" enabled="1">
+            <Name value="0" name="Kapali"/>
+            <Name value="1" name="Acik"/>
+            <Name value="2" name="Bekleyen Data"/>
+            <Name value="3" name="Bagli"/>
+            <Name value="4" name="Data Modu"/>
+            <Name value="5" name="Dinliyor"/>
+            <Name value="6" name="Acilamadi"/>
+         </Names>
+         <Names idx="7" enabled="1">
+            <Name value="0" name="Kapali"/>
+            <Name value="1" name="Acik"/>
+            <Name value="2" name="Bekleyen Data"/>
+            <Name value="3" name="Bagli"/>
+            <Name value="4" name="Data Modu"/>
+            <Name value="5" name="Dinliyor"/>
+            <Name value="6" name="Acilamadi"/>
+         </Names>
+         <Names idx="8" enabled="1">
+            <Name value="0" name="Kapali"/>
+            <Name value="1" name="Acik"/>
+            <Name value="2" name="Bekleyen Data"/>
+            <Name value="3" name="Bagli"/>
+            <Name value="4" name="Data Modu"/>
+            <Name value="5" name="Dinliyor"/>
+            <Name value="6" name="Acilamadi"/>
+         </Names>
+      </ValueNames>
+      <ChartSeries/>
+      <BinNames/>
+   </Data>
+</ModbusPoll>

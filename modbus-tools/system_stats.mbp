@@ -14,7 +14,7 @@
    <HexMode>0</HexMode>
    <DisplayAddr>0</DisplayAddr>
    <ColCount>2</ColCount>
-   <RowCount>16</RowCount>
+   <RowCount>17</RowCount>
    <ColumnWidth>
       <CW>1620</CW>
       <CW>1230</CW>
@@ -36,7 +36,8 @@
       <RH>200</RH>
       <RH>200</RH>
       <RH>200</RH>
-   </RowHight>
+            <RH>200</RH>
+</RowHight>
    <ScrollPosV>0</ScrollPosV>
    <ScrollPosH>0</ScrollPosH>
    <FocusRow>15</FocusRow>
@@ -75,7 +76,7 @@
    <Data>
       <Function>3</Function>
       <Address>9000</Address>
-      <Quantity>16</Quantity>
+      <Quantity>17</Quantity>
       <EnronMode>0</EnronMode>
       <Formats>
          <F f="1" v="30"/>
@@ -94,7 +95,8 @@
          <F f="1" v="3782"/>
          <F f="17" v="110710"/>
          <F f="16" v="--"/>
-      </Formats>
+               <F f="1" v="0"/>
+</Formats>
       <Bytes>
          <B>30</B>
          <B>0</B>
@@ -128,7 +130,9 @@
          <B>0</B>
          <B>118</B>
          <B>176</B>
-      </Bytes>
+               <B>0</B>
+         <B>0</B>
+</Bytes>
       <CellData>
          <Cell idx="0">
             <Colors/>
@@ -214,7 +218,13 @@
             <Name>UpTime (msec)</Name>
             <Font used="false"/>
          </Cell>
-      </CellData>
+               <Cell idx="16">
+            <Colors/>
+            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
+            <Name>DInput States</Name>
+            <Font used="false"/>
+         </Cell>
+</CellData>
       <Scales/>
       <ValueNames/>
       <ChartSeries/>
