@@ -39,6 +39,23 @@ extern "C" {
 #define BOOT_IPC_REQ_STAY_IN_BL 0x02U
 
 /* ------------------------------------------------------------------ */
+/*  Trial-liveness marker (bootloader <-> application contract)       */
+/*                                                                     */
+/*  Shared TAMP backup register (DR6; this application uses DR0-5 for  */
+/*  the RTC magic and the hardfault stash).  The bootloader clears    */
+/*  it when a trial firmware is installed; the application writes     */
+/*  the magic value as early as possible in its boot.  On the next    */
+/*  boot the bootloader counts a boot error only when the marker      */
+/*  shows the application actually started -- a power cut during      */
+/*  boot is not held against the firmware.  Values 1..LIMIT-1 count   */
+/*  consecutive no-start boots; at LIMIT every boot counts, so        */
+/*  recovery is still reached instead of an endless loop.             */
+/* ------------------------------------------------------------------ */
+#define BOOT_TRIAL_ALIVE_DR          6U
+#define BOOT_TRIAL_ALIVE_MAGIC       0x414C4956UL  /* "ALIV" */
+#define BOOT_TRIAL_NO_START_LIMIT    5U
+
+/* ------------------------------------------------------------------ */
 /*  IPC message structure — written to SPI flash by application       */
 /* ------------------------------------------------------------------ */
 typedef struct
