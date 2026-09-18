@@ -1723,6 +1723,8 @@ static struct {
     uint32_t last_chunk_time;   /* Last chunk receive time */
     uint32_t first_chunk_size;  /* Size of first chunk (for chunk_num calculation) */
     uint32_t file_hash;         /* Fletcher-16 of first 64 bytes - file identity for resume detection */
+    uint32_t fw_crc;            /* BL-21: downloaded image app_crc (0 = unbound) */
+    uint32_t fw_size;           /* BL-21: downloaded image app_size (0 = unbound) */
     bool in_progress;
 } fw_state = {0};
 
@@ -1980,6 +1982,8 @@ void handle_fw_start(const char *json_body) {
     fw_state.last_chunk_time  = 0U;
     fw_state.first_chunk_size = 0U;
     fw_state.file_hash        = hash;
+    fw_state.fw_crc           = 0U;
+    fw_state.fw_size          = 0U;
     fw_state.in_progress      = true;
 
     CCSLOG(XCOLOR_GREEN, "[FW] Flash initialized, ready for chunks\r\n");
@@ -2182,7 +2186,20 @@ void handle_fw_finish(const char *json_body) {
     }
     
     fw_state.in_progress = false;
-    
+
+    /* BL-21: capture the image identity actually stored in the download
+     * section so /fw_apply can bind the update request to it.  Unbound
+     * (0/0) on an unreadable header -- the bootloader install path still
+     * ECDSA-verifies whatever it installs. */
+    if (app_ipc_read_download_image_id(&fw_state.fw_crc, &fw_state.fw_size) != 0) {
+        fw_state.fw_crc  = 0U;
+        fw_state.fw_size = 0U;
+        CSLOG_WARN("[FW] Downloaded image header unreadable - apply will be unbound\r\n");
+    } else {
+        CSLOG("[FW] Image bound: crc=0x%08X size=%u\r\n",
+              fw_state.fw_crc, fw_state.fw_size);
+    }
+
     /* Print success summary */
     CCSLOG(XCOLOR_GREEN, "[FW] ========================================\r\n");
     CCSLOG(XCOLOR_GREEN, "[FW] FW TRANSFER COMPLETE - IMAGE VERIFIED\r\n");
@@ -2231,7 +2248,9 @@ void handle_fw_apply(void) {
     CSLOG_WARN("[FW] Requesting bootloader update mode via IPC...\r\n");
 
     elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_START, 0U);
-    int result = app_ipc_request_update(false);
+    /* BL-21: bind to the image captured at transfer completion
+     * (0/0 = unbound fallback). */
+    int result = app_ipc_request_update(fw_state.fw_crc, fw_state.fw_size, false);
 
     if(result != APP_IPC_OK)
     {

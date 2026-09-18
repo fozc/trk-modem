@@ -194,6 +194,8 @@ typedef struct
     uint32_t total_size;      /**< Declared firmware image size in bytes     */
     uint32_t received_bytes;  /**< Flash-committed offset (4 KB-aligned)     */
     uint32_t shared_key;      /**< PSK for auth token derivation             */
+    uint32_t fw_crc;          /**< BL-21: downloaded image app_crc (0=unbound) */
+    uint32_t fw_size;         /**< BL-21: downloaded image app_size (0=unbound)*/
 }__attribute__((packed)) rfwu_nvram_t;
 
 /** NVRAM layout gecerlilik magic'i - "TRKN". */
@@ -250,6 +252,9 @@ typedef struct
  * bump edilir. 2460 = GCC 14.3.rel1 / Cortex-M33 olcumu (Y3.11);
  * v2'de rf_log_level eski kuyruk padding'ine oturdu - boyut ve crc
  * ofseti degismedi (rfwu 2-hizali, 20 bayt; rf_log_level @2454).
+ * BL-21: rfwu oturumuna fw_crc+fw_size (8 bayt) eklendi - kuyruk
+ * kaydi; eski goruntuler length bekcisinden dusup default-reset olur
+ * (uretim oncesi kural, types.h NVRAM_SCHEMA_VERSION notu).
  * CRC goruntunun length-4 bayti uzerinde hesaplanir - layout kaysa
  * eski flash goruntuleri sessizce CRC'den dusup default-reset
  * olurdu; bu bekci kaymayi derleme zamaninda yakalar. */
@@ -257,8 +262,8 @@ _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
 _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
-_Static_assert(sizeof(nvram_t) == 2468U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
-_Static_assert(offsetof(nvram_t, crc) == 2464U, "nvram_t: crc kuyrugun sonunda");
+_Static_assert(sizeof(nvram_t) == 2476U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
+_Static_assert(offsetof(nvram_t, crc) == 2472U, "nvram_t: crc kuyrugun sonunda");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */
