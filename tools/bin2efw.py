@@ -48,9 +48,6 @@ Usage:
   # ECDSA-P256 signing (required)
   python bin2efw.py firmware.bin --sign-key keys/private_key.pem
 
-  # ECDSA-P256 signing + AES-128-CTR encryption (optional)
-  python bin2efw.py firmware.bin --sign-key keys/private_key.pem --encrypt-key keys/aes_key.bin
-
   # version.h + signing
   python bin2efw.py firmware.bin -H ../Application/version.h --sign-key keys/private_key.pem
 
@@ -62,15 +59,20 @@ Usage:
 
 import argparse
 import hashlib
+import os
 import re
 import struct
 import subprocess
 import sys
-import os
 from datetime import datetime
 
 EFW_MAGIC = b'*EFW'             # 0x2A454657 big-endian on wire
-EFW_FILE_VERSION = 0x02
+EFW_FILE_VERSION = 0x01
+
+# v1: signature covers header (with r/s zeroed) + payload.
+# These offsets must match EFW_SIG_R_OFFSET / EFW_SIG_S_OFFSET in efw.h.
+SIG_R_OFFSET = 20
+SIG_S_OFFSET = 68
 
 # Authentication type code (must match efw.h)
 EFW_AUTH_TYPE_ECDSA_P256  = 0x02
@@ -78,7 +80,6 @@ EFW_AUTH_TYPE_ECDSA_P256  = 0x02
 # Encryption type codes (must match efw.h)
 EFW_ENCRYPTION_NONE       = 0x00
 EFW_ENCRYPTION_AES128_CTR = 0x01
-EFW_AES_IV_SIZE           = 16
 
 FILE_TYPE_MAP = {
     1: 0x40,  # Bootloader  (2 << 5)
@@ -116,11 +117,8 @@ _COMMIT_HASH_SIZE = 8
 #   B     : second               (1B)
 #   B     : auth_type            (1B, v2 field)
 #   32s   : signature_s          (32B, v2: ecdsa.s)
-#   Xs    : reserve              (padding to EFW_HEADER_SIZE)
-#   H     : year                 (2B, little-endian)
-#   B     : hour                 (1B)
-#   B     : minute               (1B)
-#   B     : second               (1B)
+#   B     : encryption_type      (1B, 0x00=none, 0x01=AES-128-CTR)
+#   16s   : iv                   (16B, AES initialization vector)
 #   Xs    : reserve              (padding to EFW_HEADER_SIZE)
 
 EFW_HEADER_SIZE = 128
@@ -161,27 +159,6 @@ def efw_crc32(data):
             i <<= 1
         crc &= 0xFFFFFFFF
     return _crc_reflect(crc, 32)
-
-
-# ---------------------------------------------------------------------------
-# AES-128-CTR encryption
-# ---------------------------------------------------------------------------
-
-def fw_aes128_ctr_encrypt(key_path: str, data: bytes):
-    """Encrypt data with AES-128-CTR. Returns (ciphertext, iv)."""
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-
-    with open(key_path, 'rb') as f:
-        aes_key = f.read()
-    if len(aes_key) != 16:
-        print(f"ERROR: AES key must be 16 bytes, got {len(aes_key)}", file=sys.stderr)
-        sys.exit(1)
-
-    iv = os.urandom(EFW_AES_IV_SIZE)
-    cipher = Cipher(algorithms.AES(aes_key), modes.CTR(iv))
-    encryptor = cipher.encryptor()
-    ciphertext = encryptor.update(data) + encryptor.finalize()
-    return ciphertext, iv
 
 
 # ---------------------------------------------------------------------------
@@ -233,12 +210,10 @@ def build_header(device_type, device_model, file_type_byte,
                  commit_hash: str, build_time: datetime,
                  auth_type: int, sig_s: bytes,
                  encryption_type: int = EFW_ENCRYPTION_NONE,
-                 iv: bytes = None):
+                 iv: bytes = b'\x00' * 16):
     assert len(sig_r) == _SIG_R_SIZE
     assert len(sig_s) == _SIG_S_SIZE
-    if iv is None:
-        iv = b'\x00' * EFW_AES_IV_SIZE
-    assert len(iv) == EFW_AES_IV_SIZE
+    assert len(iv) == 16
     hash_bytes = commit_hash.encode('ascii')[:_COMMIT_HASH_SIZE]
     hash_bytes = hash_bytes.ljust(_COMMIT_HASH_SIZE, b'\x00')
     return _HDR_FMT.pack(
@@ -314,7 +289,7 @@ examples:
   %(prog)s firmware.bin --sign-key keys/private_key.pem -t 1 -v 2.1.0.0 --device-type 0x03
 """)
 
-    parser.add_argument('input', nargs='?', default=None,
+    parser.add_argument('input',
                         help='Input binary file')
     parser.add_argument('-o', '--output',
                         help='Output EFW file (default: <input>.efw)')
@@ -333,18 +308,12 @@ examples:
     parser.add_argument('-H', '--version-header',
                         default=None,
                         help='Path to version.h to auto-extract version/device info')
-    parser.add_argument('--sign-key', default=None,
+    parser.add_argument('--sign-key', required=True,
                         help='Path to ECDSA-P256 private key PEM file for signing')
     parser.add_argument('--encrypt-key', default=None,
-                        help='Path to AES-128 raw key file (16 bytes) for CTR encryption')
+                        help='Path to AES-128 key file (16 bytes raw) for encryption')
 
     args = parser.parse_args()
-
-    # --- validate required args for EFW conversion ------------------------
-    if args.input is None:
-        parser.error("the following arguments are required: input")
-    if args.sign_key is None:
-        parser.error("the following arguments are required: --sign-key")
 
     # --- parse version.h if provided --------------------------------------
     if args.version_header:
@@ -408,31 +377,66 @@ examples:
         commit_hash = get_git_short_hash()
         build_time = datetime.now()
 
-    # --- compute CRC, optionally encrypt, then sign ------------------------
+    # --- compute CRC & encrypt & sign ------------------------------------
     app_size = len(app_data)
-    app_crc = efw_crc32(app_data)  # CRC is always over plaintext
+    app_crc = efw_crc32(app_data)
 
-    # Encrypt firmware data if --encrypt-key is provided
+    # Encryption (optional)
     encryption_type = EFW_ENCRYPTION_NONE
-    iv = b'\x00' * EFW_AES_IV_SIZE
-    output_data = app_data
+    iv = b'\x00' * 16
+    payload_data = app_data  # data written after header (plain or encrypted)
 
     if args.encrypt_key:
         if not os.path.isfile(args.encrypt_key):
-            print(f"Error: encrypt key not found: {args.encrypt_key}", file=sys.stderr)
+            print(f"Error: encrypt key not found: {args.encrypt_key}",
+                  file=sys.stderr)
             sys.exit(1)
-        output_data, iv = fw_aes128_ctr_encrypt(args.encrypt_key, app_data)
+        with open(args.encrypt_key, 'rb') as f:
+            aes_key = f.read()
+        if len(aes_key) != 16:
+            print(f"Error: AES key must be exactly 16 bytes, "
+                  f"got {len(aes_key)}", file=sys.stderr)
+            sys.exit(1)
+
+        from cryptography.hazmat.primitives.ciphers import (
+            Cipher, algorithms, modes,
+        )
+        iv = os.urandom(16)
+        cipher = Cipher(algorithms.AES(aes_key), modes.CTR(iv))
+        encryptor = cipher.encryptor()
+        payload_data = encryptor.update(app_data) + encryptor.finalize()
         encryption_type = EFW_ENCRYPTION_AES128_CTR
 
-    # Sign the data that will be stored on SPI flash (ciphertext if encrypted)
+    # ECDSA signs: header(with r/s=0) + payload — v3 combined signature.
     if not os.path.isfile(args.sign_key):
         print(f"Error: sign key not found: {args.sign_key}", file=sys.stderr)
         sys.exit(1)
-    sig_r, sig_s = fw_ecdsa_sign(args.sign_key, output_data)
 
-    # --- build & write ----------------------------------------------------
     file_type_byte = FILE_TYPE_MAP[args.file_type]
 
+    # Build a provisional header with zeroed r/s for signing
+    zero_sig = b'\x00' * 32
+    signing_header = build_header(
+        device_type=args.device_type,
+        device_model=args.device_model,
+        file_type_byte=file_type_byte,
+        major=major, minor=minor, patch=patch, extra=extra,
+        app_size=app_size,
+        app_crc=app_crc,
+        sig_r=zero_sig,
+        sig_s=zero_sig,
+        commit_hash=commit_hash,
+        build_time=build_time,
+        auth_type=EFW_AUTH_TYPE_ECDSA_P256,
+        encryption_type=encryption_type,
+        iv=iv,
+    )
+
+    # Sign: header(r/s=0) + payload
+    to_sign = signing_header + payload_data
+    sig_r, sig_s = fw_ecdsa_sign(args.sign_key, to_sign)
+
+    # --- build final header with real signature & write -----------------
     header = build_header(
         device_type=args.device_type,
         device_model=args.device_model,
@@ -451,22 +455,23 @@ examples:
 
     with open(args.output, 'wb') as f:
         f.write(header)
-        f.write(output_data)
+        f.write(payload_data)
 
     # --- summary ----------------------------------------------------------
-    enc_label = "AES-128-CTR" if encryption_type == EFW_ENCRYPTION_AES128_CTR else "None"
     print(f"EFW created : {args.output}")
     print(f"  File type : {FILE_TYPE_NAMES[args.file_type]} (0x{file_type_byte:02X})")
     print(f"  Version   : {major}.{minor}.{patch}.{extra}")
     print(f"  Device    : type=0x{args.device_type:02X}  model=0x{args.device_model:02X}")
     print(f"  App size  : {app_size} bytes")
-    print(f"  App CRC   : 0x{app_crc:08X} (plaintext)")
+    print(f"  App CRC   : 0x{app_crc:08X}")
     print(f"  Auth      : ECDSA-P256")
+    if encryption_type == EFW_ENCRYPTION_AES128_CTR:
+        print(f"  Encryption: AES-128-CTR")
+        print(f"  IV        : {iv.hex()}")
+    else:
+        print(f"  Encryption: None")
     print(f"  Sig R     : {sig_r.hex()}")
     print(f"  Sig S     : {sig_s.hex()}")
-    print(f"  Encryption: {enc_label}")
-    if encryption_type == EFW_ENCRYPTION_AES128_CTR:
-        print(f"  IV        : {iv.hex()}")
     print(f"  Git hash  : {commit_hash if commit_hash else '(none)'}")
     print(f"  Build time: {build_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  Total     : {HEADER_SIZE + app_size} bytes")
