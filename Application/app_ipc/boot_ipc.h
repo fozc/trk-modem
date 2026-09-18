@@ -41,15 +41,16 @@ extern "C" {
 /* ------------------------------------------------------------------ */
 /*  Trial-liveness marker (bootloader <-> application contract)       */
 /*                                                                     */
-/*  Shared TAMP backup register (DR6; this application uses DR0-5 for  */
+/*  Shared TAMP backup register (DR6; the application uses DR0-5 for  */
 /*  the RTC magic and the hardfault stash).  The bootloader clears    */
 /*  it when a trial firmware is installed; the application writes     */
 /*  the magic value as early as possible in its boot.  On the next    */
 /*  boot the bootloader counts a boot error only when the marker      */
 /*  shows the application actually started -- a power cut during      */
 /*  boot is not held against the firmware.  Values 1..LIMIT-1 count   */
-/*  consecutive no-start boots; at LIMIT every boot counts, so        */
-/*  recovery is still reached instead of an endless loop.             */
+/*  consecutive no-start boots (crash before the marker write, or a   */
+/*  legacy application that never writes it); at LIMIT every boot     */
+/*  counts, so recovery is still reached instead of an endless loop.  */
 /* ------------------------------------------------------------------ */
 #define BOOT_TRIAL_ALIVE_DR          6U
 #define BOOT_TRIAL_ALIVE_MAGIC       0x414C4956UL  /* "ALIV" */
@@ -57,6 +58,22 @@ extern "C" {
 
 /* ------------------------------------------------------------------ */
 /*  IPC message structure — written to SPI flash by application       */
+/*                                                                     */
+/*  Image identity binding (BL-21): expected_fw_crc/expected_fw_size  */
+/*  bind the message to one specific firmware image, identified by    */
+/*  the EFW header's app_crc/app_size pair (plaintext CRC, valid      */
+/*  for encrypted images too).                                        */
+/*    - UPDATE_FW: the bootloader installs from the download section  */
+/*      only if its EFW header matches this identity; a mismatch      */
+/*      means the section holds a stale/partial image and the         */
+/*      install is refused (the running firmware is kept).            */
+/*    - self_test_passed (approval): the approval applies only to     */
+/*      installed_fw with this identity; a stale approval message     */
+/*      cannot approve a different trial image.                       */
+/*    - Unbound messages: the discriminator everywhere is app_crc == 0
+ *      (the application never writes one field without the other);
+ *      size alone is never treated as a binding.  Used by the shell-
+ *      driven "install whatever is in the download section" intent.  */
 /* ------------------------------------------------------------------ */
 typedef struct
 {
@@ -64,8 +81,12 @@ typedef struct
     uint8_t  self_test_passed;  /* 1 = application passed self-test     */
     uint8_t  requested_mode;    /* BOOT_IPC_REQ_xxx                     */
     uint8_t  _reserved[2];
+    uint32_t expected_fw_crc;   /* Bound image app_crc, 0 = unbound     */
+    uint32_t expected_fw_size;  /* Bound image app_size, 0 = unbound    */
     uint32_t crc;               /* CRC32 of all preceding fields        */
 } __attribute__((packed)) boot_ipc_t;
+
+_Static_assert(sizeof(boot_ipc_t) == 20U, "boot_ipc_t layout changed");
 
 #ifdef __cplusplus
 }

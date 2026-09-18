@@ -129,6 +129,9 @@ static const char *boot_log_event_name(uint8_t event_id)
         case BOOT_LOG_FW_APPROVED:          return "FW_APPROVED";
         case BOOT_LOG_HARDFAULT:            return "HARDFAULT";
         case BOOT_LOG_INSTALL_INTERRUPTED:  return "INSTALL_INTERRUPTED";
+        case BOOT_LOG_TRIAL_NO_START:       return "TRIAL_NO_START";
+        case BOOT_LOG_IPC_UPDATE_BIND_FAIL: return "IPC_UPDATE_BIND_FAIL";
+        case BOOT_LOG_IPC_APPROVE_BIND_FAIL: return "IPC_APPROVE_BIND_FAIL";
         default:                            return "UNKNOWN";
     }
 }
@@ -209,6 +212,20 @@ static void boot_log_event_desc(const boot_log_entry_t *p_e,
         case BOOT_LOG_INSTALL_INTERRUPTED:
             (void)xsnprintf(buf, buf_len,
                             "yarida kalan kurulum algilandi, devam ediliyor");
+            break;
+        case BOOT_LOG_TRIAL_NO_START:
+            (void)xsnprintf(buf, buf_len,
+                            "trial acilista baslamadi (bolumge=%u)", p_e->payload);
+            break;
+        case BOOT_LOG_IPC_UPDATE_BIND_FAIL:
+            (void)xsnprintf(buf, buf_len,
+                            "update IPC baglamasi uyusmadi - kurulum reddedildi (beklenen CRC lo=0x%04X)",
+                            p_e->payload);
+            break;
+        case BOOT_LOG_IPC_APPROVE_BIND_FAIL:
+            (void)xsnprintf(buf, buf_len,
+                            "onay IPC baglamasi uyusmadi - onay yok sayildi (beklenen CRC lo=0x%04X)",
+                            p_e->payload);
             break;
         default:
             (void)xsnprintf(buf, buf_len,

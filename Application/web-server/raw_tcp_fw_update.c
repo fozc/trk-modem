@@ -197,6 +197,8 @@ static void session_persist(uint32_t received_bytes)
     upd.total_size     = p_cur->total_size;
     upd.received_bytes = received_bytes;
     upd.shared_key     = p_cur->shared_key;
+    upd.fw_crc         = p_cur->fw_crc;
+    upd.fw_size        = p_cur->fw_size;
 
     nvram_set_rfwu(&upd);
 }
@@ -212,6 +214,8 @@ static void session_clear(void)
     upd.total_size     = 0U;
     upd.received_bytes = 0U;
     upd.shared_key     = p_cur->shared_key;
+    upd.fw_crc         = 0U;
+    upd.fw_size        = 0U;
 
     nvram_set_rfwu(&upd);
     s.session_active = false;
@@ -264,6 +268,8 @@ static void handle_cmd_hello(void)
         upd.total_size     = total_size;
         upd.received_bytes = 0U;
         upd.shared_key     = shared_key;
+        upd.fw_crc         = 0U;
+        upd.fw_size        = 0U;
         nvram_set_rfwu(&upd);
 
         CCSLOG(XCOLOR_CYAN, "[RFWU] New transfer, size=%lu\r\n", total_size);
@@ -374,8 +380,29 @@ static void handle_cmd_finish(void)
         return;
     }
 
-    /* Mark complete in NVRAM */
-    session_persist(total_size);
+    /* Mark complete in NVRAM and bind the session to the downloaded
+     * image identity (BL-21) in a single write.  Unbound (0/0) on an
+     * unreadable header -- the bootloader install path still
+     * ECDSA-verifies whatever it installs. */
+    {
+        rfwu_nvram_t upd = *nvram_get_rfwu();
+        uint32_t fw_crc  = 0U;
+        uint32_t fw_size = 0U;
+
+        upd.magic          = RFWU_SESSION_MAGIC;
+        upd.received_bytes = total_size;
+
+        if (app_ipc_read_download_image_id(&fw_crc, &fw_size) == 0) {
+            upd.fw_crc  = fw_crc;
+            upd.fw_size = fw_size;
+            CCSLOG(XCOLOR_GREEN, "[RFWU] Image bound: crc=0x%08lX size=%lu\r\n",
+                   (unsigned long)fw_crc, (unsigned long)fw_size);
+        } else {
+            CCSLOG(XCOLOR_YELLOW, "[RFWU] Image header unreadable - update will be unbound\r\n");
+        }
+
+        nvram_set_rfwu(&upd);
+    }
     s.session_active = false;
 
     elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_OK, total_size);
@@ -416,9 +443,13 @@ static void handle_cmd_reboot(void)
     /* Without this the bootloader boots straight back into the running
      * application and the downloaded image is never installed. */
     if (transfer_is_complete()) {
+        /* BL-21: bind the request to the identity recorded at transfer
+         * completion (0/0 = unbound fallback). */
+        const rfwu_nvram_t *p_nv = nvram_get_rfwu();
+
         elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_START, 0U);
 
-        if (app_ipc_request_update(false) != APP_IPC_OK) {
+        if (app_ipc_request_update(p_nv->fw_crc, p_nv->fw_size, false) != APP_IPC_OK) {
             CCSLOG(XCOLOR_RED, "[RFWU] IPC update request failed\r\n");
             send_nack(RFWU_ERR_FLASH, s.write_head);
             return;

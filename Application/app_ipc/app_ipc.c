@@ -10,6 +10,7 @@
 
 #include "app_ipc.h"
 #include "boot_ipc.h"
+#include "boot.h"
 #include "w25qxx.h"
 #include "crc32.h"
 #include <string.h>
@@ -22,6 +23,47 @@
 /* ------------------------------------------------------------------ */
 /*  Internal helpers                                                  */
 /* ------------------------------------------------------------------ */
+
+/* EFW header field offsets / magic (must match bootloader libefw
+ * efw_raw_fields_t layout: magic big-endian "*EFW", size/crc LE32). */
+#define EFW_HDR_SIZE_OFFSET 12U
+#define EFW_HDR_CRC_OFFSET  16U
+#define EFW_HDR_MIN_READ    20U
+
+static uint32_t read_u32_le(const uint8_t *p)
+{
+    return (uint32_t)p[0]
+         | ((uint32_t)p[1] << 8U)
+         | ((uint32_t)p[2] << 16U)
+         | ((uint32_t)p[3] << 24U);
+}
+
+int app_ipc_read_download_image_id(uint32_t *p_crc, uint32_t *p_size)
+{
+    uint8_t header[EFW_HDR_MIN_READ];
+
+    if ((p_crc == NULL) || (p_size == NULL))
+    {
+        return -1;
+    }
+
+    w25qxx_read_buff(boot_get_download_address(), header, sizeof(header));
+
+    if (memcmp(header, "*EFW", 4U) != 0)
+    {
+        return -1;
+    }
+
+    *p_size = read_u32_le(&header[EFW_HDR_SIZE_OFFSET]);
+    *p_crc  = read_u32_le(&header[EFW_HDR_CRC_OFFSET]);
+
+    if ((*p_size == 0U) || (*p_crc == 0U))
+    {
+        return -1;
+    }
+
+    return 0;
+}
 
 /**
  * @brief Calculate CRC32 over the IPC message (all fields except crc).
@@ -69,14 +111,18 @@ static int app_ipc_write(const boot_ipc_t *p_msg)
  *
  * @param[in] self_test_passed  1 = firmware approved, 0 = no approval.
  * @param[in] requested_mode   BOOT_IPC_REQ_xxx code.
+ * @param[in] expected_crc     Bound image app_crc (BL-21), 0 = unbound.
+ * @param[in] expected_size    Bound image app_size (BL-21), 0 = unbound.
  * @param[in] do_reset          true = perform NVIC_SystemReset after write.
  * @return APP_IPC_OK on success (when do_reset is false).
  *         Does not return when do_reset is true and write succeeds.
  *         Negative error code on failure.
  */
-static int app_ipc_send_and_reset(uint8_t self_test_passed,
-                                  uint8_t requested_mode,
-                                  bool    do_reset)
+static int app_ipc_send_and_reset(uint8_t  self_test_passed,
+                                  uint8_t  requested_mode,
+                                  uint32_t expected_crc,
+                                  uint32_t expected_size,
+                                  bool     do_reset)
 {
     boot_ipc_t msg;
     (void)memset(&msg, 0, sizeof(msg));
@@ -84,6 +130,8 @@ static int app_ipc_send_and_reset(uint8_t self_test_passed,
     msg.magic            = BOOT_IPC_MAGIC;
     msg.self_test_passed = self_test_passed;
     msg.requested_mode   = requested_mode;
+    msg.expected_fw_crc  = expected_crc;
+    msg.expected_fw_size = expected_size;
     msg.crc              = app_ipc_calc_crc(&msg);
 
     int ret = app_ipc_write(&msg);
@@ -137,25 +185,39 @@ int app_ipc_approve_firmware(bool do_reset)
         return APP_IPC_OK_ALREADY_APPROVED; /* Already approved -- skip write. */
     }
 
+    /* BL-21: bind the approval to the installed image identity read from
+     * the superblock, so a stale message cannot approve a different
+     * trial firmware.  Unbound (0/0) fallback when the identity is not
+     * available. */
+    uint32_t expected_crc  = 0U;
+    uint32_t expected_size = 0U;
+    const fw_info_t *p_installed = boot_get_installed_fw_info();
+
+    if ((p_installed != NULL) && (p_installed->size != 0U) && (p_installed->fw_crc != 0U))
+    {
+        expected_crc  = p_installed->fw_crc;
+        expected_size = p_installed->size;
+    }
+
     /* Log before the send: with do_reset the IPC call never returns. */
     elog_log_fw_approved();
-    return app_ipc_send_and_reset(1U, BOOT_IPC_REQ_NONE, do_reset);
+    return app_ipc_send_and_reset(1U, BOOT_IPC_REQ_NONE, expected_crc, expected_size, do_reset);
 }
 
-int app_ipc_request_update(bool do_reset)
+int app_ipc_request_update(uint32_t expected_crc, uint32_t expected_size, bool do_reset)
 {
     /* Do NOT send self_test_passed here.  Approval + mode-change in
      * a single IPC message causes the bootloader to flip backup_section
      * before processing UPDATE_FW, which makes it install from the
      * wrong (old) firmware section. */
-    return app_ipc_send_and_reset(0U, BOOT_IPC_REQ_UPDATE_FW, do_reset);
+    return app_ipc_send_and_reset(0U, BOOT_IPC_REQ_UPDATE_FW, expected_crc, expected_size, do_reset);
 }
 
 int app_ipc_request_stay_in_bootloader(bool do_reset)
 {
     /* Same rationale as app_ipc_request_update — never piggyback
      * approval onto a mode-change request. */
-    return app_ipc_send_and_reset(0U, BOOT_IPC_REQ_STAY_IN_BL, do_reset);
+    return app_ipc_send_and_reset(0U, BOOT_IPC_REQ_STAY_IN_BL, 0U, 0U, do_reset);
 }
 
 /* ------------------------------------------------------------------ */
@@ -185,7 +247,9 @@ static int boot_shell_handler(int argc, char *argv[])
     {
         CSLOG("[BOOT] Requesting firmware update...\r\n");
         elog_log_fw_update(ELOG_FW_SRC_BOOT_CMD, ELOG_FW_RESULT_START, 0U);
-        int ret = app_ipc_request_update(true);
+        /* Deliberately unbound (0/0): the operator's intent is "install
+         * whatever is in the download section" (BL-21 legacy semantics). */
+        int ret = app_ipc_request_update(0U, 0U, true);
         if (ret != APP_IPC_OK)
         {
             CSLOG_ERR("[BOOT] IPC write failed! err=%d\r\n", ret);

@@ -61,9 +61,10 @@ bool app_ipc_is_firmware_approved(void);
  * If the firmware is already approved, returns APP_IPC_OK immediately
  * without writing to flash or resetting.
  *
- * Writes an IPC message with self_test_passed = 1 to the IPC sector.
- * On the next boot the bootloader will approve the active firmware,
- * back it up, and clear error counters.
+ * Writes an IPC message with self_test_passed = 1, bound to the
+ * installed image identity (BL-21), to the IPC sector.  On the next
+ * boot the bootloader will approve the active firmware only if the
+ * binding matches, then back it up and clear error counters.
  *
  * @param[in] do_reset  true = perform NVIC_SystemReset after write,
  *                      false = return after write.
@@ -75,13 +76,34 @@ bool app_ipc_is_firmware_approved(void);
 int app_ipc_approve_firmware(bool do_reset);
 
 /**
+ * @brief Read the image identity (app_crc / app_size) from the EFW
+ *        header stored in the SPI download section.
+ *
+ * Used by the download flows to bind their update request to the image
+ * they actually transferred (BL-21 freshness binding).  Field offsets
+ * match the bootloader's EFW header layout.
+ *
+ * @param[out] p_crc   App CRC32 from the header (plaintext CRC).
+ * @param[out] p_size  App size from the header.
+ *
+ * @return 0 on success, -1 when the header is missing/invalid.
+ */
+int app_ipc_read_download_image_id(uint32_t *p_crc, uint32_t *p_size);
+
+/**
  * @brief Request a firmware update.
  *
- * Writes an IPC message with self_test_passed = 1 and
- * requested_mode = BOOT_IPC_REQ_UPDATE_FW.  The bootloader will
- * approve the current firmware (if not already approved) and enter
+ * Writes an IPC message with self_test_passed = 0 and
+ * requested_mode = BOOT_IPC_REQ_UPDATE_FW.  The bootloader will enter
  * UPDATE_FW mode.
  *
+ * BL-21 binding: when expected_crc/expected_size are non-zero, the
+ * bootloader installs from the download section only if its EFW header
+ * carries this identity; a mismatch (stale/partial image) is refused
+ * and the running firmware is kept.  0/0 = unbound, legacy semantics.
+ *
+ * @param[in] expected_crc  Bound image app_crc, 0 = unbound.
+ * @param[in] expected_size Bound image app_size, 0 = unbound.
  * @param[in] do_reset  true = perform NVIC_SystemReset after write,
  *                      false = return after write.
  *
@@ -89,15 +111,14 @@ int app_ipc_approve_firmware(bool do_reset);
  *         Does not return when do_reset is true and write succeeds.
  *         Negative error code on flash write failure.
  */
-int app_ipc_request_update(bool do_reset);
+int app_ipc_request_update(uint32_t expected_crc, uint32_t expected_size, bool do_reset);
 
 /**
  * @brief Request to stay in bootloader.
  *
- * Writes an IPC message with self_test_passed = 1 and
- * requested_mode = BOOT_IPC_REQ_STAY_IN_BL.  The bootloader will
- * approve the current firmware (if not already approved) and stay
- * in shell mode.
+ * Writes an IPC message with self_test_passed = 0 and
+ * requested_mode = BOOT_IPC_REQ_STAY_IN_BL.  The bootloader will stay
+ * in shell/XMODEM mode.
  *
  * @param[in] do_reset  true = perform NVIC_SystemReset after write,
  *                      false = return after write.

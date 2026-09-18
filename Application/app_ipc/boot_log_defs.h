@@ -48,6 +48,8 @@ typedef enum
     BOOT_LOG_HARDFAULT            = 0x0DU,
     BOOT_LOG_INSTALL_INTERRUPTED  = 0x0EU,
     BOOT_LOG_TRIAL_NO_START       = 0x0FU,
+    BOOT_LOG_IPC_UPDATE_BIND_FAIL = 0x10U,
+    BOOT_LOG_IPC_APPROVE_BIND_FAIL = 0x11U,
 } boot_log_event_t;
 
 /* ------------------------------------------------------------------ */

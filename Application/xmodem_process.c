@@ -321,14 +321,32 @@ PROCESS_THREAD(xmodem_watchdog_process, ev, data)
 		{
 			if (s_download_success)
 			{
-				CSLOG("Firmware download successful. Requesting update & reset...\r\n");
+				/* BL-21: bind the update request to the image identity
+				 * actually stored in the download section.  If the header
+				 * cannot be read the transfer was garbage -- do not ask
+				 * the bootloader to install it.
+				 * Contiki protothread: must be static -- the 2 s flush
+				 * wait below yields and clobbers plain stack locals. */
+				static uint32_t fw_crc = 0U;
+				static uint32_t fw_size = 0U;
+
+				if (app_ipc_read_download_image_id(&fw_crc, &fw_size) != 0)
+				{
+					CSLOG_ERR("Downloaded image header invalid - not requesting update.\r\n");
+					elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_FAIL, 0U);
+					xmodem_stop_mode();
+					continue;
+				}
+
+				CSLOG("Firmware download successful (crc=0x%08lX, size=%lu). Requesting update & reset...\r\n",
+				      (unsigned long)fw_crc, (unsigned long)fw_size);
 				elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_OK,
 					   s_total_bytes_received);
 				/* Small delay for log to flush */
 				etimer_set(&timer, CLOCK_SECOND * 2);
 				PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
 				elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_START, 0U);
-				app_ipc_request_update(true);
+				app_ipc_request_update(fw_crc, fw_size, true);
 			}
 			else
 			{
