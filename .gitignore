@@ -75,6 +75,7 @@ dkms.conf
 doc/*
 !doc/PowerBoard_I2C_Protocol.md
 !doc/belge_yazim_rehberi.md
+!doc/HW_TEST_VE_DEBUG_REHBERI.md
 
 # simulator derleme ciktilari
 tools/rf-hub-sim/rf_hub_sim.exe
