@@ -21,6 +21,12 @@ extern RTC_HandleTypeDef hrtc;
  * domain reset, which is exactly the "is the calendar trustworthy?" semantic. */
 #define RTC_HW_VALID_MAGIC  (0x32F2U)
 
+/* En eski kabul edilebilir kaynak zamani (Unix epoch saniyesi). Bu tabanin
+ * altindaki degerler (modem default tarihi, hatali master saati) rtc_sync
+ * tarafindan reddedilir; boylece yeni board'ta cop bir saat kabul edilip
+ * valid marker yazilmasi, yani cihazin "kurulmus" duruma gecmesi engellenir. */
+#define RTC_EPOCH_MIN  (1767225600UL) /* 2026-01-01 00:00:00 UTC */
+
 _Static_assert(sizeof(rtc_t) == sizeof(bsp_rtc_t),
     "rtc_t and bsp_rtc_t size mismatch");
 
@@ -90,8 +96,8 @@ void rtc_print_now(void)
 /*  Internal helpers                                                  */
 /* ------------------------------------------------------------------ */
 
-/* Update the epoch counter (Unix seconds since 1970) from a calendar time. */
-static void rtc_update_epoch(const rtc_t *dt)
+/* Convert a software-RTC calendar time to Unix epoch seconds. */
+static time32_t rtc_to_epoch(const rtc_t *dt)
 {
 	datetime_t edt = {0};
 
@@ -102,7 +108,13 @@ static void rtc_update_epoch(const rtc_t *dt)
 	edt.time.minute = dt->minute;
 	edt.time.second = dt->second;
 
-	bsp_set_epoch_time(dt_conv_to_epoch(&edt));
+	return dt_conv_to_epoch(&edt);
+}
+
+/* Update the epoch counter (Unix seconds since 1970) from a calendar time. */
+static void rtc_update_epoch(const rtc_t *dt)
+{
+	bsp_set_epoch_time(rtc_to_epoch(dt));
 }
 
 /* Copy a calendar time into the software RTC (calendar + milliseconds). */
@@ -253,6 +265,15 @@ static bool rtc_is_valid(const rtc_t *dt)
 	return (dt->day <= max_day);
 }
 
+/* Kaynak zamani kabul penceresinde mi? RTC_EPOCH_MIN altindaki bir deger
+ * rtc_is_valid gibi aralik kontrollerinden gecse de makul degildir: modem
+ * default tarihi veya hatali master saati bu yolla elenir. Boot sirasindaki
+ * hw->sw kopyalama (rtc_resync_sw_from_hw) bilincli olarak buradan gecmez. */
+static bool rtc_is_recent(const rtc_t *dt)
+{
+	return (rtc_to_epoch(dt) >= RTC_EPOCH_MIN);
+}
+
 void rtc_sync(const rtc_t *dt)
 {
 	if ((dt == NULL) || !rtc_is_valid(dt))
@@ -264,7 +285,17 @@ void rtc_sync(const rtc_t *dt)
 		            dt ? (unsigned)dt->year : 0U,
 		            dt ? (unsigned)dt->hour : 0U,
 		            dt ? (unsigned)dt->minute : 0U,
-		            dt ? (unsigned)dt->second : 0U);
+			dt ? (unsigned)dt->second : 0U);
+		return;
+	}
+
+	if (!rtc_is_recent(dt))
+	{
+		CSLOG_WARN("RTC sync reddedildi: cok eski zaman (taban 2026-01-01)"
+			" %02u.%02u.%02u %02u:%02u:%02u\r\n",
+			(unsigned)dt->day, (unsigned)dt->month, (unsigned)dt->year,
+			(unsigned)dt->hour, (unsigned)dt->minute,
+			(unsigned)dt->second);
 		return;
 	}
 
