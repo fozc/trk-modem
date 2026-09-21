@@ -332,9 +332,11 @@ PROCESS_THREAD(xmodem_watchdog_process, ev, data)
 
 				if (app_ipc_read_download_image_id(&fw_crc, &fw_size) != 0)
 				{
-					CSLOG_ERR("Downloaded image header invalid - not requesting update.\r\n");
 					elog_log_fw_update(ELOG_FW_SRC_XMODEM, ELOG_FW_RESULT_FAIL, 0U);
+					/* Log AFTER stop_mode: the console is disabled during
+					 * xmodem mode, so logging before it swallows the line. */
 					xmodem_stop_mode();
+					CSLOG_ERR("Downloaded image header invalid - not requesting update.\r\n");
 					continue;
 				}
 
