@@ -11,6 +11,7 @@
 #include "app_ipc.h"
 #include "boot_ipc.h"
 #include "boot.h"
+#include "efw.h"
 #include "w25qxx.h"
 #include "crc32.h"
 #include <string.h>
@@ -24,43 +25,34 @@
 /*  Internal helpers                                                  */
 /* ------------------------------------------------------------------ */
 
-/* EFW header field offsets / magic (must match bootloader libefw
- * efw_raw_fields_t layout: magic big-endian "*EFW", size/crc LE32). */
-#define EFW_HDR_SIZE_OFFSET 12U
-#define EFW_HDR_CRC_OFFSET  16U
-#define EFW_HDR_MIN_READ    20U
-
-static uint32_t read_u32_le(const uint8_t *p)
-{
-    return (uint32_t)p[0]
-         | ((uint32_t)p[1] << 8U)
-         | ((uint32_t)p[2] << 16U)
-         | ((uint32_t)p[3] << 24U);
-}
-
 int app_ipc_read_download_image_id(uint32_t *p_crc, uint32_t *p_size)
 {
-    uint8_t header[EFW_HDR_MIN_READ];
+    uint8_t header[EFW_HEADER_SIZE];
+    efw_t fw;
 
     if ((p_crc == NULL) || (p_size == NULL))
     {
         return -1;
     }
 
+    /* Full v2 gate via the shared parser (byte-parity with the
+     * bootloader): magic, file version and compression codec.  A v1 or
+     * garbage header is rejected here so no update request is sent for
+     * a package the bootloader would refuse anyway. */
     w25qxx_read_buff(boot_get_download_address(), header, sizeof(header));
 
-    if (memcmp(header, "*EFW", 4U) != 0)
+    if (efw_parse(header, &fw) != 0)
     {
         return -1;
     }
 
-    *p_size = read_u32_le(&header[EFW_HDR_SIZE_OFFSET]);
-    *p_crc  = read_u32_le(&header[EFW_HDR_CRC_OFFSET]);
-
-    if ((*p_size == 0U) || (*p_crc == 0U))
+    if ((fw.app_size == 0U) || (fw.app_crc == 0U))
     {
         return -1;
     }
+
+    *p_size = fw.app_size;
+    *p_crc  = fw.app_crc;
 
     return 0;
 }
@@ -228,7 +220,7 @@ static int boot_shell_handler(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        CSLOG("Usage: boot <staybootloader|update|status>\r\n");
+        CSLOG("Usage: boot <stay|update|status>\r\n");
         return -1;
     }
 
@@ -273,9 +265,9 @@ void app_ipc_init(void)
     shell_register_command(&(shell_cmd_t){
         .cmd   = "boot",
         .desc  = "Boot control\r\n"
-                 "\tboot staybootloader  - reset & stay in bootloader\r\n"
-                 "\tboot update          - reset & enter update mode\r\n"
-                 "\tboot status          - show firmware approval status",
+                 "\tboot stay           - reset & stay in bootloader\r\n"
+                 "\tboot update         - reset & enter update mode\r\n"
+                 "\tboot status         - show firmware approval status",
         .level = SHELL_LVL_SUPER_USER,
         .func  = boot_shell_handler
     });

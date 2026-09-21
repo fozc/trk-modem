@@ -132,6 +132,8 @@ static const char *boot_log_event_name(uint8_t event_id)
         case BOOT_LOG_TRIAL_NO_START:       return "TRIAL_NO_START";
         case BOOT_LOG_IPC_UPDATE_BIND_FAIL: return "IPC_UPDATE_BIND_FAIL";
         case BOOT_LOG_IPC_APPROVE_BIND_FAIL: return "IPC_APPROVE_BIND_FAIL";
+        case BOOT_LOG_FW_VERIFY_REJECT:    return "FW_VERIFY_REJECT";
+        case BOOT_LOG_FW_DECODE_FAIL:      return "FW_DECODE_FAIL";
         default:                            return "UNKNOWN";
     }
 }
@@ -226,6 +228,16 @@ static void boot_log_event_desc(const boot_log_entry_t *p_e,
             (void)xsnprintf(buf, buf_len,
                             "onay IPC baglamasi uyusmadi - onay yok sayildi (beklenen CRC lo=0x%04X)",
                             p_e->payload);
+            break;
+        case BOOT_LOG_FW_VERIFY_REJECT:
+            (void)xsnprintf(buf, buf_len,
+                            "v2 paket dogrulamada reddedildi (neden=%u)",
+                            p_e->detail);
+            break;
+        case BOOT_LOG_FW_DECODE_FAIL:
+            (void)xsnprintf(buf, buf_len,
+                            "cozme/on-kontrol basarisiz (neden=%u)",
+                            p_e->detail);
             break;
         default:
             (void)xsnprintf(buf, buf_len,
