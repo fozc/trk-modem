@@ -50,12 +50,22 @@ typedef enum
     BOOT_LOG_TRIAL_NO_START       = 0x0FU,
     BOOT_LOG_IPC_UPDATE_BIND_FAIL = 0x10U,
     BOOT_LOG_IPC_APPROVE_BIND_FAIL = 0x11U,
-    BOOT_LOG_FW_VERIFY_REJECT    = 0x12U,  /* v2 package rejected at verify:
+    BOOT_LOG_FW_VERIFY_REJECT    = 0x12U,  /* v2 package rejected:
                                               detail: 1=NONE size mismatch,
                                               2=stored_size out of bounds,
-                                              3=codec needs LZMA install path */
+                                              5=reserved byte nonzero,
+                                              6=NONE carries props,
+                                              7=LZMA profile outside contract,
+                                              20..26=RX session aborts
+                                              (20=bad header, 21=app bounds,
+                                              22=stored bounds, 23=outside
+                                              slot, 24=erase fail,
+                                              25=write fail, 26=extra packet) */
     BOOT_LOG_FW_DECODE_FAIL      = 0x13U,  /* preflight/install decode failed:
-                                              detail: lzma_emb_result code */
+                                              detail 1..3 mirror fw_stream
+                                              results (decode/length/sink),
+                                              4=vector, 5=CRC mismatch,
+                                              6=image smaller than vector */
 } boot_log_event_t;
 
 /* ------------------------------------------------------------------ */
