@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bin2efw.py - Convert a binary file to EFW firmware format.
+bin2efw.py - Convert a binary file to EFW firmware format (v2).
 
 EFW Header (128 bytes, packed):
   magic            : uint32  (big-endian, 0x2A454657 = "*EFW")
@@ -9,8 +9,8 @@ EFW Header (128 bytes, packed):
   device_type      : uint8
   device_model     : uint8
   app_version      : 4 x uint8 (major, minor, patch, extra)  [efw_version_t]
-  app_size         : uint32  (little-endian)
-  app_crc          : uint32  (little-endian, CRC-32 of app data)
+  app_size         : uint32  (little-endian, RAW/expanded firmware size)
+  app_crc          : uint32  (little-endian, CRC-32 of RAW app data)
   signature_r      : 32 bytes (ECDSA-P256 signature R component)
   short_commit_hash: 8 bytes  (git short hash, ASCII, zero-padded)
   day              : uint8
@@ -21,6 +21,19 @@ EFW Header (128 bytes, packed):
   second           : uint8
   auth_type        : uint8   (0x02 = ECDSA-P256)
   signature_s      : 32 bytes (ECDSA-P256 signature S component)
+  encryption_type  : uint8   (0x00=none, 0x01=AES-128-CTR)
+  iv               : 16 bytes (AES initialization vector)
+  compression_type : uint8   (offset 117; 0x00=NONE, 0x01=LZMA1)
+  stored_size      : uint32  (offset 118, LE; payload bytes stored after header)
+  lzma_props       : 5 bytes (offset 122; props byte + dict_size LE32)
+  reserved         : 1 byte  (offset 127; zero in v2)
+
+v2 payload semantics:
+  - NONE      : stored payload == raw app data (stored_size == app_size).
+  - LZMA1     : stored payload == LZMA1(raw) or AES-128-CTR(key, iv, LZMA1(raw)).
+  - Signature covers header(r/s=0) + STORED payload (as written to SPI).
+  - app_size/app_crc always describe the RAW (expanded) firmware; the
+    expanded CRC is checked on device during preflight/install, not at RX.
 
 -H / --version-header ile kullanım:
   version.h dosyasındaki aşağıdaki #define'lar otomatik parse edilir:
@@ -48,8 +61,8 @@ Usage:
   # ECDSA-P256 signing (required)
   python bin2efw.py firmware.bin --sign-key keys/private_key.pem
 
-  # version.h + signing
-  python bin2efw.py firmware.bin -H ../Application/version.h --sign-key keys/private_key.pem
+  # version.h + signing + LZMA compression
+  python bin2efw.py firmware.bin -H ../Application/version.h --sign-key keys/private_key.pem --compress
 
   # Bootloader, v2.1.0.0, device-type=3
   python bin2efw.py firmware.bin --sign-key keys/private_key.pem -t 1 -v 2.1.0.0 --device-type 0x03
@@ -59,6 +72,7 @@ Usage:
 
 import argparse
 import hashlib
+import lzma
 import os
 import re
 import struct
@@ -67,12 +81,17 @@ import sys
 from datetime import datetime
 
 EFW_MAGIC = b'*EFW'             # 0x2A454657 big-endian on wire
-EFW_FILE_VERSION = 0x01
+EFW_FILE_VERSION = 0x02
 
-# v1: signature covers header (with r/s zeroed) + payload.
+# v2: signature covers header (with r/s zeroed) + STORED payload.
 # These offsets must match EFW_SIG_R_OFFSET / EFW_SIG_S_OFFSET in efw.h.
 SIG_R_OFFSET = 20
 SIG_S_OFFSET = 68
+
+# v2 payload fields (must match efw.h offsets; reserve area of v1)
+COMPRESSION_TYPE_OFFSET = 117
+STORED_SIZE_OFFSET      = 118
+LZMA_PROPS_OFFSET       = 122
 
 # Authentication type code (must match efw.h)
 EFW_AUTH_TYPE_ECDSA_P256  = 0x02
@@ -80,6 +99,17 @@ EFW_AUTH_TYPE_ECDSA_P256  = 0x02
 # Encryption type codes (must match efw.h)
 EFW_ENCRYPTION_NONE       = 0x00
 EFW_ENCRYPTION_AES128_CTR = 0x01
+
+# Compression type codes (must match efw.h)
+EFW_COMPRESSION_NONE = 0x00
+EFW_COMPRESSION_LZMA1 = 0x01
+
+# LZMA profile - MUST match the device decoder compile settings
+# (LZMA_EMB_DICT_SIZE=4096, LZMA_EMB_MAX_LC=1, LZMA_EMB_MAX_LP=1).
+LZMA_DICT_SIZE = 4096
+LZMA_LC = 1
+LZMA_LP = 1
+LZMA_PB = 1
 
 FILE_TYPE_MAP = {
     1: 0x40,  # Bootloader  (2 << 5)
@@ -105,9 +135,9 @@ _COMMIT_HASH_SIZE = 8
 #   B     : device_type          (1B)
 #   B     : device_model         (1B)
 #   BBBB  : major, minor, patch, extra  (efw_version_t, 4B)
-#   I     : app_size             (4B, little-endian)
-#   I     : app_crc              (4B, little-endian)
-#   32s   : signature_r          (32B, v1: hmac, v2: ecdsa.r)
+#   I     : app_size             (4B, little-endian, RAW size)
+#   I     : app_crc              (4B, little-endian, RAW CRC)
+#   32s   : signature_r          (32B)
 #   8s    : short_commit_hash    (8B)
 #   B     : day                  (1B)
 #   B     : month                (1B)
@@ -115,16 +145,19 @@ _COMMIT_HASH_SIZE = 8
 #   B     : hour                 (1B)
 #   B     : minute               (1B)
 #   B     : second               (1B)
-#   B     : auth_type            (1B, v2 field)
-#   32s   : signature_s          (32B, v2: ecdsa.s)
+#   B     : auth_type            (1B)
+#   32s   : signature_s          (32B)
 #   B     : encryption_type      (1B, 0x00=none, 0x01=AES-128-CTR)
 #   16s   : iv                   (16B, AES initialization vector)
-#   Xs    : reserve              (padding to EFW_HEADER_SIZE)
+#   B     : compression_type     (1B, offset 117; 0x00=none, 0x01=LZMA1)
+#   I     : stored_size          (4B, LE, offset 118)
+#   5s    : lzma_props           (5B, offset 122)
+#   B     : reserved             (1B, offset 127; zero)
 
 EFW_HEADER_SIZE = 128
-_RAW_FIELDS_FMT = struct.Struct('<4sBBBBBBBBII32s8sBBHBBBB32sB16s')
-_RESERVE_SIZE   = EFW_HEADER_SIZE - _RAW_FIELDS_FMT.size
-_HDR_FMT = struct.Struct(f'<4sBBBBBBBBII32s8sBBHBBBB32sB16s{_RESERVE_SIZE}s')
+_V1_FIELDS_FMT = struct.Struct('<4sBBBBBBBBII32s8sBBHBBBB32sB16s')
+assert _V1_FIELDS_FMT.size == COMPRESSION_TYPE_OFFSET
+_HDR_FMT = struct.Struct('<4sBBBBBBBBII32s8sBBHBBBB32sB16sBI5sB')
 
 HEADER_SIZE = _HDR_FMT.size
 assert HEADER_SIZE == EFW_HEADER_SIZE, \
@@ -188,6 +221,59 @@ def fw_ecdsa_sign(private_key_path: str, data: bytes):
 
 
 # ---------------------------------------------------------------------------
+# LZMA1 profile helpers (compress-then-encrypt pipeline)
+# ---------------------------------------------------------------------------
+
+def lzma1_compress(data: bytes):
+    """Compress with the fixed device profile. Returns (props5, stream).
+
+    The streaming compressor writes the .lzma (ALONE) header with unknown
+    uncompressed size -> the stream ALWAYS ends with an end marker, which the
+    device decoder requires for its finish() size check.
+    """
+    comp = lzma.LZMACompressor(format=lzma.FORMAT_ALONE, filters=[{
+        'id': lzma.FILTER_LZMA1,
+        'preset': 9,
+        'dict_size': LZMA_DICT_SIZE,
+        'lc': LZMA_LC,
+        'lp': LZMA_LP,
+        'pb': LZMA_PB,
+    }])
+    blob = comp.compress(data) + comp.flush()
+    if len(blob) < 13:
+        raise RuntimeError("LZMA encoder produced no output")
+    props = blob[:5]
+    stream = blob[13:]
+
+    # Profile contract proof: props byte is (pb*5+lp)*9+lc, dict_size LE32.
+    pb = props[0] // 45
+    lp = (props[0] % 45) // 9
+    lc = props[0] % 9
+    dict_size = struct.unpack('<I', props[1:5])[0]
+    if (lc, lp, pb) != (LZMA_LC, LZMA_LP, LZMA_PB) or dict_size != LZMA_DICT_SIZE:
+        raise RuntimeError(
+            f"LZMA props outside device profile: lc={lc} lp={lp} pb={pb} "
+            f"dict={dict_size} (need {LZMA_LC}/{LZMA_LP}/{LZMA_PB}/{LZMA_DICT_SIZE})")
+    # Unknown-size encoding (0xFFFF...) guarantees the end marker is present.
+    if blob[5:13] != b'\xff' * 8:
+        raise RuntimeError("LZMA encoder wrote a known size - end marker not guaranteed")
+    return props, stream
+
+
+def lzma1_expand(props: bytes, raw_size: int, stream: bytes) -> bytes:
+    """Expand a v2 LZMA1 stream back to raw bytes (self-verification).
+
+    Decodes with the encoder's own framing (unknown size + end marker),
+    which is exactly the byte layout produced by lzma1_compress().
+    """
+    alone = props + b'\xff' * 8 + stream
+    out = lzma.decompress(alone, format=lzma.FORMAT_ALONE)
+    if len(out) != raw_size:
+        raise RuntimeError(f"LZMA expand size mismatch: {len(out)} != {raw_size}")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Header builder
 # ---------------------------------------------------------------------------
 
@@ -210,10 +296,14 @@ def build_header(device_type, device_model, file_type_byte,
                  commit_hash: str, build_time: datetime,
                  auth_type: int, sig_s: bytes,
                  encryption_type: int = EFW_ENCRYPTION_NONE,
-                 iv: bytes = b'\x00' * 16):
+                 iv: bytes = b'\x00' * 16,
+                 compression_type: int = EFW_COMPRESSION_NONE,
+                 stored_size: int = 0,
+                 lzma_props: bytes = b'\x00' * 5):
     assert len(sig_r) == _SIG_R_SIZE
     assert len(sig_s) == _SIG_S_SIZE
     assert len(iv) == 16
+    assert len(lzma_props) == 5
     hash_bytes = commit_hash.encode('ascii')[:_COMMIT_HASH_SIZE]
     hash_bytes = hash_bytes.ljust(_COMMIT_HASH_SIZE, b'\x00')
     return _HDR_FMT.pack(
@@ -230,7 +320,10 @@ def build_header(device_type, device_model, file_type_byte,
         sig_s,
         encryption_type,
         iv,
-        b'\x00' * _RESERVE_SIZE,
+        compression_type,
+        stored_size,
+        lzma_props,
+        0,
     )
 
 
@@ -310,6 +403,10 @@ examples:
                         help='Path to version.h to auto-extract version/device info')
     parser.add_argument('--sign-key', required=True,
                         help='Path to ECDSA-P256 private key PEM file for signing')
+    parser.add_argument('--compress', action='store_true',
+                        help='Compress payload with LZMA1 (device profile: '
+                             'dict=4096, lc=1, lp=1, pb=1). Falls back to '
+                             'uncompressed storage if compression is not beneficial.')
     parser.add_argument('--encrypt-key', default=None,
                         help='Path to AES-128 key file (16 bytes raw) for encryption')
 
@@ -377,14 +474,30 @@ examples:
         commit_hash = get_git_short_hash()
         build_time = datetime.now()
 
-    # --- compute CRC & encrypt & sign ------------------------------------
+    # --- compute CRC & compress & encrypt & sign -------------------------
     app_size = len(app_data)
     app_crc = efw_crc32(app_data)
 
-    # Encryption (optional)
+    # Pipeline order is fixed: compress FIRST, then encrypt. Encrypted data
+    # does not compress, so the reverse order would waste the transfer gain.
+    compression_type = EFW_COMPRESSION_NONE
+    lzma_props = b'\x00' * 5
+    stage_data = app_data          # after compression (plain compressed)
+
+    if args.compress:
+        lzma_props, stream = lzma1_compress(app_data)
+        if len(stream) < app_size:
+            compression_type = EFW_COMPRESSION_LZMA1
+            stage_data = stream
+        else:
+            print(f"Warning: compression not beneficial "
+                  f"(stored would be {len(stream)} >= raw {app_size}) - "
+                  f"storing uncompressed (NONE)")
+
+    # Encryption (optional) - applied to the (possibly compressed) payload
     encryption_type = EFW_ENCRYPTION_NONE
     iv = b'\x00' * 16
-    payload_data = app_data  # data written after header (plain or encrypted)
+    payload_data = stage_data      # data written after header (as stored)
 
     if args.encrypt_key:
         if not os.path.isfile(args.encrypt_key):
@@ -404,10 +517,13 @@ examples:
         iv = os.urandom(16)
         cipher = Cipher(algorithms.AES(aes_key), modes.CTR(iv))
         encryptor = cipher.encryptor()
-        payload_data = encryptor.update(app_data) + encryptor.finalize()
+        payload_data = encryptor.update(stage_data) + encryptor.finalize()
         encryption_type = EFW_ENCRYPTION_AES128_CTR
 
-    # ECDSA signs: header(with r/s=0) + payload — v3 combined signature.
+    stored_size = len(payload_data)
+
+    # ECDSA signs: header(with r/s=0) + STORED payload - the exact bytes the
+    # device re-reads from SPI flash before accepting the package.
     if not os.path.isfile(args.sign_key):
         print(f"Error: sign key not found: {args.sign_key}", file=sys.stderr)
         sys.exit(1)
@@ -430,9 +546,12 @@ examples:
         auth_type=EFW_AUTH_TYPE_ECDSA_P256,
         encryption_type=encryption_type,
         iv=iv,
+        compression_type=compression_type,
+        stored_size=stored_size,
+        lzma_props=lzma_props,
     )
 
-    # Sign: header(r/s=0) + payload
+    # Sign: header(r/s=0) + stored payload
     to_sign = signing_header + payload_data
     sig_r, sig_s = fw_ecdsa_sign(args.sign_key, to_sign)
 
@@ -451,22 +570,68 @@ examples:
         sig_s=sig_s,
         encryption_type=encryption_type,
         iv=iv,
+        compression_type=compression_type,
+        stored_size=stored_size,
+        lzma_props=lzma_props,
     )
 
     with open(args.output, 'wb') as f:
         f.write(header)
         f.write(payload_data)
 
+    # --- self-verification: raw byte equality + signature ----------------
+    check_data = payload_data
+    if encryption_type == EFW_ENCRYPTION_AES128_CTR:
+        from cryptography.hazmat.primitives.ciphers import (
+            Cipher, algorithms, modes,
+        )
+        with open(args.encrypt_key, 'rb') as f:
+            aes_key = f.read()
+        dec = Cipher(algorithms.AES(aes_key), modes.CTR(iv)).decryptor()
+        check_data = dec.update(payload_data) + dec.finalize()
+    if compression_type == EFW_COMPRESSION_LZMA1:
+        check_data = lzma1_expand(lzma_props, app_size, check_data)
+    if check_data != app_data:
+        print("Error: self-verification FAILED - expanded payload does not "
+              "match raw input; output file is invalid", file=sys.stderr)
+        sys.exit(1)
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec, utils
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+    with open(args.sign_key, 'rb') as f:
+        private_key = load_pem_private_key(f.read(), password=None)
+    try:
+        # Device stores raw r||s (uECC format); cryptography verify() needs DER.
+        der_sig = utils.encode_dss_signature(
+            int.from_bytes(sig_r, 'big'), int.from_bytes(sig_s, 'big'))
+        private_key.public_key().verify(
+            der_sig, to_sign, ec.ECDSA(hashes.SHA256()))
+    except Exception:
+        print("Error: self-verification FAILED - signature does not verify; "
+              "output file is invalid", file=sys.stderr)
+        sys.exit(1)
+
     # --- summary ----------------------------------------------------------
     print(f"EFW created : {args.output}")
+    print(f"  Format    : v{EFW_FILE_VERSION}")
     print(f"  File type : {FILE_TYPE_NAMES[args.file_type]} (0x{file_type_byte:02X})")
     print(f"  Version   : {major}.{minor}.{patch}.{extra}")
     print(f"  Device    : type=0x{args.device_type:02X}  model=0x{args.device_model:02X}")
-    print(f"  App size  : {app_size} bytes")
-    print(f"  App CRC   : 0x{app_crc:08X}")
+    print(f"  Raw size  : {app_size} bytes")
+    print(f"  App CRC   : 0x{app_crc:08X} (raw)")
     print(f"  Auth      : ECDSA-P256")
+    if compression_type == EFW_COMPRESSION_LZMA1:
+        print(f"  Codec     : LZMA1 (dict={LZMA_DICT_SIZE}, lc={LZMA_LC}, "
+              f"lp={LZMA_LP}, pb={LZMA_PB})")
+        print(f"  Stored    : {stored_size} bytes "
+              f"(ratio {stored_size / app_size:.3f}, "
+              f"{100.0 * stored_size / app_size:.1f}% of raw)")
+    else:
+        print(f"  Codec     : None")
+        print(f"  Stored    : {stored_size} bytes")
     if encryption_type == EFW_ENCRYPTION_AES128_CTR:
-        print(f"  Encryption: AES-128-CTR")
+        print(f"  Encryption: AES-128-CTR (applied after compression)")
         print(f"  IV        : {iv.hex()}")
     else:
         print(f"  Encryption: None")
@@ -474,7 +639,8 @@ examples:
     print(f"  Sig S     : {sig_s.hex()}")
     print(f"  Git hash  : {commit_hash if commit_hash else '(none)'}")
     print(f"  Build time: {build_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  Total     : {HEADER_SIZE + app_size} bytes")
+    print(f"  Total     : {HEADER_SIZE + stored_size} bytes")
+    print(f"  Self-check: PASSED (raw byte equality + ECDSA verify)")
 
 
 if __name__ == '__main__':

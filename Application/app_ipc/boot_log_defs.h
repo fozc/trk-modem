@@ -50,6 +50,12 @@ typedef enum
     BOOT_LOG_TRIAL_NO_START       = 0x0FU,
     BOOT_LOG_IPC_UPDATE_BIND_FAIL = 0x10U,
     BOOT_LOG_IPC_APPROVE_BIND_FAIL = 0x11U,
+    BOOT_LOG_FW_VERIFY_REJECT    = 0x12U,  /* v2 package rejected at verify:
+                                              detail: 1=NONE size mismatch,
+                                              2=stored_size out of bounds,
+                                              3=codec needs LZMA install path */
+    BOOT_LOG_FW_DECODE_FAIL      = 0x13U,  /* preflight/install decode failed:
+                                              detail: lzma_emb_result code */
 } boot_log_event_t;
 
 /* ------------------------------------------------------------------ */
