@@ -493,6 +493,10 @@ examples:
             print(f"Warning: compression not beneficial "
                   f"(stored would be {len(stream)} >= raw {app_size}) - "
                   f"storing uncompressed (NONE)")
+            # Canonical NONE carries no props: reset what the encoder
+            # produced, otherwise the header violates the format contract
+            # (device-side verify rejects props on a NONE payload).
+            lzma_props = b'\x00' * 5
 
     # Encryption (optional) - applied to the (possibly compressed) payload
     encryption_type = EFW_ENCRYPTION_NONE
@@ -575,7 +579,11 @@ examples:
         lzma_props=lzma_props,
     )
 
-    with open(args.output, 'wb') as f:
+    # Atomic publish (review): write to a temp name and replace only after
+    # the self-checks pass, so an interrupted/failed run can never leave an
+    # invalid package under the FINAL name.
+    tmp_output = args.output + '.tmp'
+    with open(tmp_output, 'wb') as f:
         f.write(header)
         f.write(payload_data)
 
@@ -594,6 +602,7 @@ examples:
     if check_data != app_data:
         print("Error: self-verification FAILED - expanded payload does not "
               "match raw input; output file is invalid", file=sys.stderr)
+        os.remove(tmp_output)
         sys.exit(1)
 
     from cryptography.hazmat.primitives import hashes
@@ -610,7 +619,10 @@ examples:
     except Exception:
         print("Error: self-verification FAILED - signature does not verify; "
               "output file is invalid", file=sys.stderr)
+        os.remove(tmp_output)
         sys.exit(1)
+
+    os.replace(tmp_output, args.output)
 
     # --- summary ----------------------------------------------------------
     print(f"EFW created : {args.output}")
