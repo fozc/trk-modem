@@ -37,7 +37,12 @@ typedef enum
     BOOT_LOG_FW_INSTALL_FAIL      = 0x02U,
     BOOT_LOG_FW_VERIFY_CRC_FAIL   = 0x03U,
     BOOT_LOG_FW_VERIFY_ECDSA_FAIL = 0x04U,
-    BOOT_LOG_BOOT_ERROR           = 0x05U,
+    BOOT_LOG_BOOT_ERROR           = 0x05U,  /* trial boot error:
+                                              detail: 0=started, no approve
+                                              (alive marker seen),
+                                              1=never-started limit reached,
+                                              2=BL-side validation failure
+                                              (CRC/vectors) */
     BOOT_LOG_RECOVERY_ATTEMPT     = 0x06U,
     BOOT_LOG_RECOVERY_OK          = 0x07U,
     BOOT_LOG_RECOVERY_FAIL        = 0x08U,
@@ -66,6 +71,10 @@ typedef enum
                                               results (decode/length/sink),
                                               4=vector, 5=CRC mismatch,
                                               6=image smaller than vector */
+    BOOT_LOG_IPC_ERASE_FAIL      = 0x14U,  /* install-success path: the IPC
+                                              sector erase failed; a stale
+                                              approval message may auto-approve
+                                              the next trial firmware (L6-01) */
 } boot_log_event_t;
 
 /* ------------------------------------------------------------------ */
