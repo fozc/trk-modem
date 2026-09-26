@@ -79,7 +79,8 @@
 #define PWR_PANIC_BSP_GPIO       GPIO_E
 #define PWR_PANIC_BSP_PIN        PIN_15
 /* PA7 fiziksel olarak RF_IO1 hattidir; PE15 panik sinyalinin aynasi
- * (mirror) olarak surulur. RF tarafi bu pini baska amacla kullanmamalidir. */
+ * (mirror) olarak surulur (donanim kullanimi 2026-09-26'da onaylandi).
+ * RF tarafi bu pini baska amacla kullanmamalidir. */
 #define PWR_PANIC_MIRROR_GPIO    GPIO_A
 #define PWR_PANIC_MIRROR_PIN     PIN_7
 
