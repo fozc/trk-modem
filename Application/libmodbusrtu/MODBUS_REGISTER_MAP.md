@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.5 |
-| Tarih | 2026-09-16 |
+| Dokuman surumu | 1.6 |
+| Tarih | 2026-09-25 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -21,10 +21,12 @@ baska bir master) bu verileri **Read Holding Registers (FC03)** ile okur.
 
 - Veri okuma: `0x03` (Read Holding Registers)
 - Komut yazma: `0x06` (Write Single Register) - sadece ozel kontrol register'lari
-- Adresleme: her enerji hatti icin **bitisik** ve **sabit** bir register blogu
+- Adresleme: her fider (feeder) icin **bitisik** ve **sabit** bir register blogu
 
-Cihaz en fazla **8 enerji hatti** (Line 1..8) destekler. Her hat icin uc faz
-bilgisi tutulur: **R (L1), S (L2), T (L3)**.
+Cihaz en fazla **7 fider** (Fider 1..7) destekler. Her fider icin uc faz
+bilgisi tutulur: **L1, L2, L3**. Faz isimlendirilmesi IEC104 tarafi ile
+aynidir (L1/L2/L3); onceki surumlerde kullanilan R/S/T gostermi ile
+eslesme: **L1 = R, L2 = S, L3 = T**.
 
 ---
 
@@ -102,90 +104,324 @@ Zaman bilgisi **standart Unix epoch** (1 Ocak 1970 00:00:00 UTC referansli),
 
 ---
 
-## 5. Register Haritasi (Hat Basina Blok)
+## 5. Register Haritasi (Fider Basina Blok)
 
-Her enerji hatti icin register blogu, hat taban adresinden itibaren
-**bitisik** yerlesir. Boylece bir master, bir hattin tum verisini **tek
-okuma penceresinde** alabilir.
+Her fider icin register blogu, fider taban adresinden itibaren **bitisik**
+yerlesir. Boylece bir master, bir fiderin tum verisini **tek okuma
+penceresinde** alabilir.
 
-### 5.1 Hat Taban Adresleri
+### 5.1 Fider Taban Adresleri
 
 ```
-Hat taban adresi (mantiksal) = 40000 + (hat_index * 100)
-Hat taban adresi (base-0)    = hat_index * 100
+Fider taban adresi (mantiksal) = 40000 + (fider_index * 100)
+Fider taban adresi (base-0)    = fider_index * 100
 ```
 
-| Hat | hat_index | Taban (mantiksal) | Taban (base-0) |
+| Fider | fider_index | Taban (mantiksal) | Taban (base-0) |
 |---|---|---|---|
-| Line 1 | 0 | 40000 | 0 |
-| Line 2 | 1 | 40100 | 100 |
-| Line 3 | 2 | 40200 | 200 |
-| Line 4 | 3 | 40300 | 300 |
-| Line 5 | 4 | 40400 | 400 |
-| Line 6 | 5 | 40500 | 500 |
-| Line 7 | 6 | 40600 | 600 |
+| Fider 1 | 0 | 40000 | 0 |
+| Fider 2 | 1 | 40100 | 100 |
+| Fider 3 | 2 | 40200 | 200 |
+| Fider 4 | 3 | 40300 | 300 |
+| Fider 5 | 4 | 40400 | 400 |
+| Fider 6 | 5 | 40500 | 500 |
+| Fider 7 | 6 | 40600 | 600 |
 
-### 5.1.1 Hat Adres Araliklari (Canli Veri Blogu)
+### 5.1.1 Fider Adres Araliklari (Canli Veri Blogu)
 
-Her hattin canli veri blogu 27 register'dir (offset 0..26). Asagidaki tablo, her
-hat icin tek pencerede okunacak adres araligini ve okuma parametrelerini verir.
+Her fiderin canli veri blogu 27 register'dir (offset 0..26). Asagidaki tablo,
+her fider icin tek pencerede okunacak adres araligini ve okuma parametrelerini
+verir.
 
-| Hat | Canli blok (mantiksal) | Canli blok (base-0) | FC03 okuma (base-0) |
+| Fider | Canli blok (mantiksal) | Canli blok (base-0) | FC03 okuma (base-0) |
 |---|---|---|---|
-| Line 1 | 40000 .. 40026 | 0 .. 26 | Address 0,   Quantity 27 |
-| Line 2 | 40100 .. 40126 | 100 .. 126 | Address 100, Quantity 27 |
-| Line 3 | 40200 .. 40226 | 200 .. 226 | Address 200, Quantity 27 |
-| Line 4 | 40300 .. 40326 | 300 .. 326 | Address 300, Quantity 27 |
-| Line 5 | 40400 .. 40426 | 400 .. 426 | Address 400, Quantity 27 |
-| Line 6 | 40500 .. 40526 | 500 .. 526 | Address 500, Quantity 27 |
-| Line 7 | 40600 .. 40626 | 600 .. 626 | Address 600, Quantity 27 |
+| Fider 1 | 40000 .. 40026 | 0 .. 26 | Address 0,   Quantity 27 |
+| Fider 2 | 40100 .. 40126 | 100 .. 126 | Address 100, Quantity 27 |
+| Fider 3 | 40200 .. 40226 | 200 .. 226 | Address 200, Quantity 27 |
+| Fider 4 | 40300 .. 40326 | 300 .. 326 | Address 300, Quantity 27 |
+| Fider 5 | 40400 .. 40426 | 400 .. 426 | Address 400, Quantity 27 |
+| Fider 6 | 40500 .. 40526 | 500 .. 526 | Address 500, Quantity 27 |
+| Fider 7 | 40600 .. 40626 | 600 .. 626 | Address 600, Quantity 27 |
 
-> **Aktif olmayan hatlar:** Cihaz 7 hat destekler (v1.4'te kesinlesti)
-> ancak sahada hepsi aktif olmayabilir. Aktif olmayan bir hattin register
+> **Aktif olmayan fiderler:** Cihaz 7 fider destekler (v1.4'te kesinlesti)
+> ancak sahada hepsi aktif olmayabilir. Aktif olmayan bir fiderin register
 > araligi icin cihazin davranisi: tum register'lar 0 doner (boylece master
 > sabit pencereyle hatasiz okur ve "veri yok" durumunu degerden anlar).
-> 40700 ve uzeri (8. hat) **desteklenmez** - master bu araligi okursa
+> 40700 ve uzeri (8. fider) **desteklenmez** - master bu araligi okursa
 > exception 02 (ILLEGAL DATA ADDRESS) alir.
 
-> **Offset 27..99 araligi:** Her hat blogunda canli veriden sonra gelen bu aralik
-> ileride ariza kayit (fault-log) bloklari icin **rezerve** edilmistir; bu surumde
-> okunmasi tavsiye edilmez.
+> **Offset 27..99 araligi:** Her fider blogunda canli veriden sonra gelen bu
+> aralik ileride ariza kayit (fault-log) bloklari icin **rezerve** edilmistir;
+> bu surumde okunmasi tavsiye edilmez.
 
 ### 5.2 Blok Icerigi (taban adresinden offset)
 
-Asagidaki tablo Line 1 (taban 40000 / base-0 0) icin gosterilmistir. Diger
-hatlar icin tablodaki adreslere hat taban adresini ekleyin.
+Asagidaki tablo Fider 1 (taban 40000 / base-0 0) icin gosterilmistir. Diger
+fiderler icin tablodaki adreslere fider taban adresini ekleyin. Kayit
+(register) duzeyinde tum alt adreslerin tek tek listelendigi dizin icin
+bkz. 5.3.
 
 | Offset | Mantiksal | Base-0 | Alan | Faz | Tip | Birim/Anlam |
 |---:|---:|---:|---|:---:|---|---|
-| 0  | 40000 | 0  | ariza_akimi | R | FLOAT32 | Ariza akimi (A) |
-| 2  | 40002 | 2  | ariza_akimi | S | FLOAT32 | Ariza akimi (A) |
-| 4  | 40004 | 4  | ariza_akimi | T | FLOAT32 | Ariza akimi (A) |
-| 6  | 40006 | 6  | anlik_akim | R | FLOAT32 | Anlik akim (A) |
-| 8  | 40008 | 8  | anlik_akim | S | FLOAT32 | Anlik akim (A) |
-| 10 | 40010 | 10 | anlik_akim | T | FLOAT32 | Anlik akim (A) |
-| 12 | 40012 | 12 | ariza_suresi | R | UINT16 | Ariza suresi (ms) |
-| 13 | 40013 | 13 | ariza_suresi | S | UINT16 | Ariza suresi (ms) |
-| 14 | 40014 | 14 | ariza_suresi | T | UINT16 | Ariza suresi (ms) |
-| 15 | 40015 | 15 | ariza_kalicimi | R | UINT16 | 0/1 (bkz. 5.3) |
-| 16 | 40016 | 16 | ariza_kalicimi | S | UINT16 | 0/1 |
-| 17 | 40017 | 17 | ariza_kalicimi | T | UINT16 | 0/1 |
-| 18 | 40018 | 18 | enerji_varyok | R | UINT16 | 0/1 |
-| 19 | 40019 | 19 | enerji_varyok | S | UINT16 | 0/1 |
-| 20 | 40020 | 20 | enerji_varyok | T | UINT16 | 0/1 |
-| 21 | 40021 | 21 | nominal_akim_varyok | R | UINT16 | 0/1 |
-| 22 | 40022 | 22 | nominal_akim_varyok | S | UINT16 | 0/1 |
-| 23 | 40023 | 23 | nominal_akim_varyok | T | UINT16 | 0/1 |
-| 24 | 40024 | 24 | rf_haberlesme_varyok | R | UINT16 | 0/1 |
-| 25 | 40025 | 25 | rf_haberlesme_varyok | S | UINT16 | 0/1 |
-| 26 | 40026 | 26 | rf_haberlesme_varyok | T | UINT16 | 0/1 |
+| 0  | 40000 | 0  | ariza_akimi | L1 | FLOAT32 | Ariza akimi (A) |
+| 2  | 40002 | 2  | ariza_akimi | L2 | FLOAT32 | Ariza akimi (A) |
+| 4  | 40004 | 4  | ariza_akimi | L3 | FLOAT32 | Ariza akimi (A) |
+| 6  | 40006 | 6  | anlik_akim | L1 | FLOAT32 | Anlik akim (A) |
+| 8  | 40008 | 8  | anlik_akim | L2 | FLOAT32 | Anlik akim (A) |
+| 10 | 40010 | 10 | anlik_akim | L3 | FLOAT32 | Anlik akim (A) |
+| 12 | 40012 | 12 | ariza_suresi | L1 | UINT16 | Ariza suresi (ms) |
+| 13 | 40013 | 13 | ariza_suresi | L2 | UINT16 | Ariza suresi (ms) |
+| 14 | 40014 | 14 | ariza_suresi | L3 | UINT16 | Ariza suresi (ms) |
+| 15 | 40015 | 15 | ariza_kalicimi | L1 | UINT16 | 0/1 (bkz. 5.4) |
+| 16 | 40016 | 16 | ariza_kalicimi | L2 | UINT16 | 0/1 |
+| 17 | 40017 | 17 | ariza_kalicimi | L3 | UINT16 | 0/1 |
+| 18 | 40018 | 18 | enerji_varyok | L1 | UINT16 | 0/1 |
+| 19 | 40019 | 19 | enerji_varyok | L2 | UINT16 | 0/1 |
+| 20 | 40020 | 20 | enerji_varyok | L3 | UINT16 | 0/1 |
+| 21 | 40021 | 21 | nominal_akim_varyok | L1 | UINT16 | 0/1 |
+| 22 | 40022 | 22 | nominal_akim_varyok | L2 | UINT16 | 0/1 |
+| 23 | 40023 | 23 | nominal_akim_varyok | L3 | UINT16 | 0/1 |
+| 24 | 40024 | 24 | rf_haberlesme_varyok | L1 | UINT16 | 0/1 |
+| 25 | 40025 | 25 | rf_haberlesme_varyok | L2 | UINT16 | 0/1 |
+| 26 | 40026 | 26 | rf_haberlesme_varyok | L3 | UINT16 | 0/1 |
 
 - **Canli veri blogu**: offset 0..26 (toplam **27 register**), bitisik.
-- FLOAT32 degerler cift adrese hizalanmistir (offset 0,2,4,6,8,10).
+- FLOAT32 degerler cift adrese hizalanmistir (offset 0,2,4,6,8,10); her
+  FLOAT32 alan iki register kaplar (yuksek kelime once, bkz. 4.1).
 - Offset 27..99 araligi ileride kullanim icin **rezerve** (arz/ariza kayit
   bloklari) edilmistir; bu surumde tanimsizdir.
 
-### 5.3 Durum Register Anlamlari
+### 5.3 Tam Alt Adres Dizini (Tum Fiderler, Kayit Bazinda)
+
+Asagida 7 fiderin canli veri blogundaki **tum register'lar** tek tek
+listelenmistir. FLOAT32 alanlarin yuksek/dusuk kelime register'lari ayri
+satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
+
+#### Fider 1 (taban 40000 / base-0 0)
+
+| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
+|---:|---:|---|:---:|:---:|---|
+| 40000 | 0 | ariza_akimi | L1 | yuksek | FLOAT32 |
+| 40001 | 1 | ariza_akimi | L1 | dusuk | FLOAT32 |
+| 40002 | 2 | ariza_akimi | L2 | yuksek | FLOAT32 |
+| 40003 | 3 | ariza_akimi | L2 | dusuk | FLOAT32 |
+| 40004 | 4 | ariza_akimi | L3 | yuksek | FLOAT32 |
+| 40005 | 5 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40006 | 6 | anlik_akim | L1 | yuksek | FLOAT32 |
+| 40007 | 7 | anlik_akim | L1 | dusuk | FLOAT32 |
+| 40008 | 8 | anlik_akim | L2 | yuksek | FLOAT32 |
+| 40009 | 9 | anlik_akim | L2 | dusuk | FLOAT32 |
+| 40010 | 10 | anlik_akim | L3 | yuksek | FLOAT32 |
+| 40011 | 11 | anlik_akim | L3 | dusuk | FLOAT32 |
+| 40012 | 12 | ariza_suresi | L1 | - | UINT16 |
+| 40013 | 13 | ariza_suresi | L2 | - | UINT16 |
+| 40014 | 14 | ariza_suresi | L3 | - | UINT16 |
+| 40015 | 15 | ariza_kalicimi | L1 | - | UINT16 |
+| 40016 | 16 | ariza_kalicimi | L2 | - | UINT16 |
+| 40017 | 17 | ariza_kalicimi | L3 | - | UINT16 |
+| 40018 | 18 | enerji_varyok | L1 | - | UINT16 |
+| 40019 | 19 | enerji_varyok | L2 | - | UINT16 |
+| 40020 | 20 | enerji_varyok | L3 | - | UINT16 |
+| 40021 | 21 | nominal_akim_varyok | L1 | - | UINT16 |
+| 40022 | 22 | nominal_akim_varyok | L2 | - | UINT16 |
+| 40023 | 23 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40024 | 24 | rf_haberlesme_varyok | L1 | - | UINT16 |
+| 40025 | 25 | rf_haberlesme_varyok | L2 | - | UINT16 |
+| 40026 | 26 | rf_haberlesme_varyok | L3 | - | UINT16 |
+
+#### Fider 2 (taban 40100 / base-0 100)
+
+| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
+|---:|---:|---|:---:|:---:|---|
+| 40100 | 100 | ariza_akimi | L1 | yuksek | FLOAT32 |
+| 40101 | 101 | ariza_akimi | L1 | dusuk | FLOAT32 |
+| 40102 | 102 | ariza_akimi | L2 | yuksek | FLOAT32 |
+| 40103 | 103 | ariza_akimi | L2 | dusuk | FLOAT32 |
+| 40104 | 104 | ariza_akimi | L3 | yuksek | FLOAT32 |
+| 40105 | 105 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40106 | 106 | anlik_akim | L1 | yuksek | FLOAT32 |
+| 40107 | 107 | anlik_akim | L1 | dusuk | FLOAT32 |
+| 40108 | 108 | anlik_akim | L2 | yuksek | FLOAT32 |
+| 40109 | 109 | anlik_akim | L2 | dusuk | FLOAT32 |
+| 40110 | 110 | anlik_akim | L3 | yuksek | FLOAT32 |
+| 40111 | 111 | anlik_akim | L3 | dusuk | FLOAT32 |
+| 40112 | 112 | ariza_suresi | L1 | - | UINT16 |
+| 40113 | 113 | ariza_suresi | L2 | - | UINT16 |
+| 40114 | 114 | ariza_suresi | L3 | - | UINT16 |
+| 40115 | 115 | ariza_kalicimi | L1 | - | UINT16 |
+| 40116 | 116 | ariza_kalicimi | L2 | - | UINT16 |
+| 40117 | 117 | ariza_kalicimi | L3 | - | UINT16 |
+| 40118 | 118 | enerji_varyok | L1 | - | UINT16 |
+| 40119 | 119 | enerji_varyok | L2 | - | UINT16 |
+| 40120 | 120 | enerji_varyok | L3 | - | UINT16 |
+| 40121 | 121 | nominal_akim_varyok | L1 | - | UINT16 |
+| 40122 | 122 | nominal_akim_varyok | L2 | - | UINT16 |
+| 40123 | 123 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40124 | 124 | rf_haberlesme_varyok | L1 | - | UINT16 |
+| 40125 | 125 | rf_haberlesme_varyok | L2 | - | UINT16 |
+| 40126 | 126 | rf_haberlesme_varyok | L3 | - | UINT16 |
+
+#### Fider 3 (taban 40200 / base-0 200)
+
+| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
+|---:|---:|---|:---:|:---:|---|
+| 40200 | 200 | ariza_akimi | L1 | yuksek | FLOAT32 |
+| 40201 | 201 | ariza_akimi | L1 | dusuk | FLOAT32 |
+| 40202 | 202 | ariza_akimi | L2 | yuksek | FLOAT32 |
+| 40203 | 203 | ariza_akimi | L2 | dusuk | FLOAT32 |
+| 40204 | 204 | ariza_akimi | L3 | yuksek | FLOAT32 |
+| 40205 | 205 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40206 | 206 | anlik_akim | L1 | yuksek | FLOAT32 |
+| 40207 | 207 | anlik_akim | L1 | dusuk | FLOAT32 |
+| 40208 | 208 | anlik_akim | L2 | yuksek | FLOAT32 |
+| 40209 | 209 | anlik_akim | L2 | dusuk | FLOAT32 |
+| 40210 | 210 | anlik_akim | L3 | yuksek | FLOAT32 |
+| 40211 | 211 | anlik_akim | L3 | dusuk | FLOAT32 |
+| 40212 | 212 | ariza_suresi | L1 | - | UINT16 |
+| 40213 | 213 | ariza_suresi | L2 | - | UINT16 |
+| 40214 | 214 | ariza_suresi | L3 | - | UINT16 |
+| 40215 | 215 | ariza_kalicimi | L1 | - | UINT16 |
+| 40216 | 216 | ariza_kalicimi | L2 | - | UINT16 |
+| 40217 | 217 | ariza_kalicimi | L3 | - | UINT16 |
+| 40218 | 218 | enerji_varyok | L1 | - | UINT16 |
+| 40219 | 219 | enerji_varyok | L2 | - | UINT16 |
+| 40220 | 220 | enerji_varyok | L3 | - | UINT16 |
+| 40221 | 221 | nominal_akim_varyok | L1 | - | UINT16 |
+| 40222 | 222 | nominal_akim_varyok | L2 | - | UINT16 |
+| 40223 | 223 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40224 | 224 | rf_haberlesme_varyok | L1 | - | UINT16 |
+| 40225 | 225 | rf_haberlesme_varyok | L2 | - | UINT16 |
+| 40226 | 226 | rf_haberlesme_varyok | L3 | - | UINT16 |
+
+#### Fider 4 (taban 40300 / base-0 300)
+
+| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
+|---:|---:|---|:---:|:---:|---|
+| 40300 | 300 | ariza_akimi | L1 | yuksek | FLOAT32 |
+| 40301 | 301 | ariza_akimi | L1 | dusuk | FLOAT32 |
+| 40302 | 302 | ariza_akimi | L2 | yuksek | FLOAT32 |
+| 40303 | 303 | ariza_akimi | L2 | dusuk | FLOAT32 |
+| 40304 | 304 | ariza_akimi | L3 | yuksek | FLOAT32 |
+| 40305 | 305 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40306 | 306 | anlik_akim | L1 | yuksek | FLOAT32 |
+| 40307 | 307 | anlik_akim | L1 | dusuk | FLOAT32 |
+| 40308 | 308 | anlik_akim | L2 | yuksek | FLOAT32 |
+| 40309 | 309 | anlik_akim | L2 | dusuk | FLOAT32 |
+| 40310 | 310 | anlik_akim | L3 | yuksek | FLOAT32 |
+| 40311 | 311 | anlik_akim | L3 | dusuk | FLOAT32 |
+| 40312 | 312 | ariza_suresi | L1 | - | UINT16 |
+| 40313 | 313 | ariza_suresi | L2 | - | UINT16 |
+| 40314 | 314 | ariza_suresi | L3 | - | UINT16 |
+| 40315 | 315 | ariza_kalicimi | L1 | - | UINT16 |
+| 40316 | 316 | ariza_kalicimi | L2 | - | UINT16 |
+| 40317 | 317 | ariza_kalicimi | L3 | - | UINT16 |
+| 40318 | 318 | enerji_varyok | L1 | - | UINT16 |
+| 40319 | 319 | enerji_varyok | L2 | - | UINT16 |
+| 40320 | 320 | enerji_varyok | L3 | - | UINT16 |
+| 40321 | 321 | nominal_akim_varyok | L1 | - | UINT16 |
+| 40322 | 322 | nominal_akim_varyok | L2 | - | UINT16 |
+| 40323 | 323 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40324 | 324 | rf_haberlesme_varyok | L1 | - | UINT16 |
+| 40325 | 325 | rf_haberlesme_varyok | L2 | - | UINT16 |
+| 40326 | 326 | rf_haberlesme_varyok | L3 | - | UINT16 |
+
+#### Fider 5 (taban 40400 / base-0 400)
+
+| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
+|---:|---:|---|:---:|:---:|---|
+| 40400 | 400 | ariza_akimi | L1 | yuksek | FLOAT32 |
+| 40401 | 401 | ariza_akimi | L1 | dusuk | FLOAT32 |
+| 40402 | 402 | ariza_akimi | L2 | yuksek | FLOAT32 |
+| 40403 | 403 | ariza_akimi | L2 | dusuk | FLOAT32 |
+| 40404 | 404 | ariza_akimi | L3 | yuksek | FLOAT32 |
+| 40405 | 405 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40406 | 406 | anlik_akim | L1 | yuksek | FLOAT32 |
+| 40407 | 407 | anlik_akim | L1 | dusuk | FLOAT32 |
+| 40408 | 408 | anlik_akim | L2 | yuksek | FLOAT32 |
+| 40409 | 409 | anlik_akim | L2 | dusuk | FLOAT32 |
+| 40410 | 410 | anlik_akim | L3 | yuksek | FLOAT32 |
+| 40411 | 411 | anlik_akim | L3 | dusuk | FLOAT32 |
+| 40412 | 412 | ariza_suresi | L1 | - | UINT16 |
+| 40413 | 413 | ariza_suresi | L2 | - | UINT16 |
+| 40414 | 414 | ariza_suresi | L3 | - | UINT16 |
+| 40415 | 415 | ariza_kalicimi | L1 | - | UINT16 |
+| 40416 | 416 | ariza_kalicimi | L2 | - | UINT16 |
+| 40417 | 417 | ariza_kalicimi | L3 | - | UINT16 |
+| 40418 | 418 | enerji_varyok | L1 | - | UINT16 |
+| 40419 | 419 | enerji_varyok | L2 | - | UINT16 |
+| 40420 | 420 | enerji_varyok | L3 | - | UINT16 |
+| 40421 | 421 | nominal_akim_varyok | L1 | - | UINT16 |
+| 40422 | 422 | nominal_akim_varyok | L2 | - | UINT16 |
+| 40423 | 423 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40424 | 424 | rf_haberlesme_varyok | L1 | - | UINT16 |
+| 40425 | 425 | rf_haberlesme_varyok | L2 | - | UINT16 |
+| 40426 | 426 | rf_haberlesme_varyok | L3 | - | UINT16 |
+
+#### Fider 6 (taban 40500 / base-0 500)
+
+| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
+|---:|---:|---|:---:|:---:|---|
+| 40500 | 500 | ariza_akimi | L1 | yuksek | FLOAT32 |
+| 40501 | 501 | ariza_akimi | L1 | dusuk | FLOAT32 |
+| 40502 | 502 | ariza_akimi | L2 | yuksek | FLOAT32 |
+| 40503 | 503 | ariza_akimi | L2 | dusuk | FLOAT32 |
+| 40504 | 504 | ariza_akimi | L3 | yuksek | FLOAT32 |
+| 40505 | 505 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40506 | 506 | anlik_akim | L1 | yuksek | FLOAT32 |
+| 40507 | 507 | anlik_akim | L1 | dusuk | FLOAT32 |
+| 40508 | 508 | anlik_akim | L2 | yuksek | FLOAT32 |
+| 40509 | 509 | anlik_akim | L2 | dusuk | FLOAT32 |
+| 40510 | 510 | anlik_akim | L3 | yuksek | FLOAT32 |
+| 40511 | 511 | anlik_akim | L3 | dusuk | FLOAT32 |
+| 40512 | 512 | ariza_suresi | L1 | - | UINT16 |
+| 40513 | 513 | ariza_suresi | L2 | - | UINT16 |
+| 40514 | 514 | ariza_suresi | L3 | - | UINT16 |
+| 40515 | 515 | ariza_kalicimi | L1 | - | UINT16 |
+| 40516 | 516 | ariza_kalicimi | L2 | - | UINT16 |
+| 40517 | 517 | ariza_kalicimi | L3 | - | UINT16 |
+| 40518 | 518 | enerji_varyok | L1 | - | UINT16 |
+| 40519 | 519 | enerji_varyok | L2 | - | UINT16 |
+| 40520 | 520 | enerji_varyok | L3 | - | UINT16 |
+| 40521 | 521 | nominal_akim_varyok | L1 | - | UINT16 |
+| 40522 | 522 | nominal_akim_varyok | L2 | - | UINT16 |
+| 40523 | 523 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40524 | 524 | rf_haberlesme_varyok | L1 | - | UINT16 |
+| 40525 | 525 | rf_haberlesme_varyok | L2 | - | UINT16 |
+| 40526 | 526 | rf_haberlesme_varyok | L3 | - | UINT16 |
+
+#### Fider 7 (taban 40600 / base-0 600)
+
+| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
+|---:|---:|---|:---:|:---:|---|
+| 40600 | 600 | ariza_akimi | L1 | yuksek | FLOAT32 |
+| 40601 | 601 | ariza_akimi | L1 | dusuk | FLOAT32 |
+| 40602 | 602 | ariza_akimi | L2 | yuksek | FLOAT32 |
+| 40603 | 603 | ariza_akimi | L2 | dusuk | FLOAT32 |
+| 40604 | 604 | ariza_akimi | L3 | yuksek | FLOAT32 |
+| 40605 | 605 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40606 | 606 | anlik_akim | L1 | yuksek | FLOAT32 |
+| 40607 | 607 | anlik_akim | L1 | dusuk | FLOAT32 |
+| 40608 | 608 | anlik_akim | L2 | yuksek | FLOAT32 |
+| 40609 | 609 | anlik_akim | L2 | dusuk | FLOAT32 |
+| 40610 | 610 | anlik_akim | L3 | yuksek | FLOAT32 |
+| 40611 | 611 | anlik_akim | L3 | dusuk | FLOAT32 |
+| 40612 | 612 | ariza_suresi | L1 | - | UINT16 |
+| 40613 | 613 | ariza_suresi | L2 | - | UINT16 |
+| 40614 | 614 | ariza_suresi | L3 | - | UINT16 |
+| 40615 | 615 | ariza_kalicimi | L1 | - | UINT16 |
+| 40616 | 616 | ariza_kalicimi | L2 | - | UINT16 |
+| 40617 | 617 | ariza_kalicimi | L3 | - | UINT16 |
+| 40618 | 618 | enerji_varyok | L1 | - | UINT16 |
+| 40619 | 619 | enerji_varyok | L2 | - | UINT16 |
+| 40620 | 620 | enerji_varyok | L3 | - | UINT16 |
+| 40621 | 621 | nominal_akim_varyok | L1 | - | UINT16 |
+| 40622 | 622 | nominal_akim_varyok | L2 | - | UINT16 |
+| 40623 | 623 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40624 | 624 | rf_haberlesme_varyok | L1 | - | UINT16 |
+| 40625 | 625 | rf_haberlesme_varyok | L2 | - | UINT16 |
+| 40626 | 626 | rf_haberlesme_varyok | L3 | - | UINT16 |
+
+### 5.4 Durum Register Anlamlari
 
 Durum register'lari 0/1 mantiksal degerdir:
 
@@ -203,7 +439,7 @@ Durum register'lari 0/1 mantiksal degerdir:
 
 ## 6. Ozel Kontrol Register'lari
 
-Bu register'lar hat bloklarindan bagimsizdir.
+Bu register'lar fider bloklarindan bagimsizdir.
 
 | Mantiksal | Base-0 | Islev | Erisim | Aciklama |
 |---:|---:|---|---|---|
@@ -275,9 +511,9 @@ fault/alarm bitleri. 32 register (49200..49231).
 | 49212 | 9212 | vdc_mv | UINT16 | DC gerilimi (mV) |
 | 49213 | 9213 | ichg_ma | UINT16 | Sarj akimi (mA) |
 | 49214 | 9214 | ibat_ma | INT16 | Batarya akimi (mA, +sarj / -desarj) |
-| 49215 | 9215 | ibus_ma | UINT16 | Bus akimi (mA) |
+| 49215 | 9215 | ibus_ma | INT16 | Bus akimi (mA, isaretli) |
 | 49216 | 9216 | board_temp_c | INT16 | Kart NTC sicakligi (°C) |
-| 49217 | 9217 | batt_temp_x10 | INT16 | Batarya NTC x10 (°C, 255 = 25.5°C) |
+| 49217 | 9217 | batt_temp_x10 | INT16 | Batarya NTC x10 (°C, -9990 = olcum yok) |
 | 49218 | 9218 | batt_ts | UINT16 | JEITA bolge (0..4) |
 | 49219 | 9219 | chg_stat | UINT16 | Sarj fazi (0..7) |
 | 49220 | 9220 | chg_phase | UINT16 | Sarj fazi (ayna) |
@@ -293,14 +529,18 @@ fault/alarm bitleri. 32 register (49200..49231).
 | 49230 | 9230 | bq_vac2_mv | UINT16 | BQ VAC2 = PV giris (mV) |
 | 49231 | 9231 | bq_tdie_c | INT16 | BQ die sicakligi (°C) |
 
-- **Isaretli (INT16) alanlar:** `ibat_ma`, `board_temp_c`, `batt_temp_x10`,
-  `bq_tdie_c` - iki-tumleyen (two's complement) olarak yayinlanir; master taraf
-  signed 16-bit olarak okumalidir.
+- **Isaretli (INT16) alanlar:** `ibat_ma`, `ibus_ma`, `board_temp_c`,
+  `batt_temp_x10`, `bq_tdie_c` - iki-tumleyen (two's complement) olarak
+  yayinlanir; master taraf signed 16-bit olarak okumalidir.
+- `soc_x10` (49209) kaynakta isaretli bir alandir; negatif degerler yayinda
+  0 olarak kirpilir (negatif SoC gorulmez).
 - `valid` (49200) = 0 ise checksum eslesmedi; alanlar yine de decode edilir ama
   guvenilir kabul edilmez.
+- `batt_temp_x10` (49217) olcum yok durumunda -9990 sentinel degeri doner
+  (PowerBoard sozlesmesi, `doc/PowerBoard_I2C_Protocol.md` 0x24 BATT_TEMP).
 - `*_x10` alanlari 10 ile olceklidir (100.0% -> 1000).
 - Sicaklik/sentinel degerleri icin bkz. PowerBoard sozlesmesi
-  (`doc/I2C_SLAVE_ENTEGRASYON_16K.md`).
+  (`doc/PowerBoard_I2C_Protocol.md`).
 
 ### 7.3 BMS Telemetri Blogu (49300 / base-0 9300)
 
@@ -355,10 +595,40 @@ hucresel gerilimler ve sicakliklar, calisma durumu, MOS ve hata kodlari.
 | 49342 | 9342 | dido_status | UINT16 | DI1..8 low byte / DO1..8 high byte |
 | 49343 | 9343 | wake_source_flags | UINT16 | Uyanma kaynagi bitmask |
 | 49344 | 9344 | comm_interface_type | UINT16 | 1 = RS485, 2 = UART |
-| 49345..49360 | 9345..9360 | cell_voltage_mv[1..16] | UINT16 x16 | Hucresel gerilimler (mV) |
-| 49361..49368 | 9361..9368 | temperatures_c[1..8] | INT16 x8 | Sensor sicakliklari (degC) |
-| 49369..49371 | 9369..9371 | balance_position[1..3] | UINT16 x3 | Hucre bazli dengeleme bitmask |
-| 49372..49378 | 9372..9378 | fault_codes[1..7] | UINT16 x7 | BMS hata/alarm kod sozcukleri |
+| 49345 | 9345 | cell_voltage_mv[1] | UINT16 | 1. hucre gerilimi (mV) |
+| 49346 | 9346 | cell_voltage_mv[2] | UINT16 | 2. hucre gerilimi (mV) |
+| 49347 | 9347 | cell_voltage_mv[3] | UINT16 | 3. hucre gerilimi (mV) |
+| 49348 | 9348 | cell_voltage_mv[4] | UINT16 | 4. hucre gerilimi (mV) |
+| 49349 | 9349 | cell_voltage_mv[5] | UINT16 | 5. hucre gerilimi (mV) |
+| 49350 | 9350 | cell_voltage_mv[6] | UINT16 | 6. hucre gerilimi (mV) |
+| 49351 | 9351 | cell_voltage_mv[7] | UINT16 | 7. hucre gerilimi (mV) |
+| 49352 | 9352 | cell_voltage_mv[8] | UINT16 | 8. hucre gerilimi (mV) |
+| 49353 | 9353 | cell_voltage_mv[9] | UINT16 | 9. hucre gerilimi (mV) |
+| 49354 | 9354 | cell_voltage_mv[10] | UINT16 | 10. hucre gerilimi (mV) |
+| 49355 | 9355 | cell_voltage_mv[11] | UINT16 | 11. hucre gerilimi (mV) |
+| 49356 | 9356 | cell_voltage_mv[12] | UINT16 | 12. hucre gerilimi (mV) |
+| 49357 | 9357 | cell_voltage_mv[13] | UINT16 | 13. hucre gerilimi (mV) |
+| 49358 | 9358 | cell_voltage_mv[14] | UINT16 | 14. hucre gerilimi (mV) |
+| 49359 | 9359 | cell_voltage_mv[15] | UINT16 | 15. hucre gerilimi (mV) |
+| 49360 | 9360 | cell_voltage_mv[16] | UINT16 | 16. hucre gerilimi (mV) |
+| 49361 | 9361 | temperatures_c[1] | INT16 | 1. sensor sicakligi (degC) |
+| 49362 | 9362 | temperatures_c[2] | INT16 | 2. sensor sicakligi (degC) |
+| 49363 | 9363 | temperatures_c[3] | INT16 | 3. sensor sicakligi (degC) |
+| 49364 | 9364 | temperatures_c[4] | INT16 | 4. sensor sicakligi (degC) |
+| 49365 | 9365 | temperatures_c[5] | INT16 | 5. sensor sicakligi (degC) |
+| 49366 | 9366 | temperatures_c[6] | INT16 | 6. sensor sicakligi (degC) |
+| 49367 | 9367 | temperatures_c[7] | INT16 | 7. sensor sicakligi (degC) |
+| 49368 | 9368 | temperatures_c[8] | INT16 | 8. sensor sicakligi (degC) |
+| 49369 | 9369 | balance_position[1] | UINT16 | Hucre bazli dengeleme bitmask (kelime 1) |
+| 49370 | 9370 | balance_position[2] | UINT16 | Hucre bazli dengeleme bitmask (kelime 2) |
+| 49371 | 9371 | balance_position[3] | UINT16 | Hucre bazli dengeleme bitmask (kelime 3) |
+| 49372 | 9372 | fault_codes[1] | UINT16 | BMS hata/alarm kod sozcugu 1 |
+| 49373 | 9373 | fault_codes[2] | UINT16 | BMS hata/alarm kod sozcugu 2 |
+| 49374 | 9374 | fault_codes[3] | UINT16 | BMS hata/alarm kod sozcugu 3 |
+| 49375 | 9375 | fault_codes[4] | UINT16 | BMS hata/alarm kod sozcugu 4 |
+| 49376 | 9376 | fault_codes[5] | UINT16 | BMS hata/alarm kod sozcugu 5 |
+| 49377 | 9377 | fault_codes[6] | UINT16 | BMS hata/alarm kod sozcugu 6 |
+| 49378 | 9378 | fault_codes[7] | UINT16 | BMS hata/alarm kod sozcugu 7 |
 
 - `valid` (49300) = 0 ise diger alanlar guvenilir kabul edilmez.
 - Isaretli (INT16) alanlar iki-tumleyen olarak yayinlanir (bolum 7.1 ile ayni).
@@ -404,9 +674,9 @@ modul: `Application/modbus_gsm_stats.c`.
 
 ## 8. Okuma Ornekleri
 
-### 8.1 Bir Hattin Tum Verisini Okuma (FC03)
+### 8.1 Bir Fiderin Tum Verisini Okuma (FC03)
 
-Line 1'in tum canli verisini tek pencerede okumak icin:
+Fider 1'in tum canli verisini tek pencerede okumak icin:
 
 | Alan | Deger |
 |---|---|
@@ -415,11 +685,11 @@ Line 1'in tum canli verisini tek pencerede okumak icin:
 | Address (base-0) | 0 |
 | Quantity | 27 |
 
-Line 2 icin Address = 100, Quantity = 27; Line 3 icin Address = 200; ...
+Fider 2 icin Address = 100, Quantity = 27; Fider 3 icin Address = 200; ...
 
 ### 8.2 Sadece Anlik Akimlari Okuma
 
-Line 1 anlik akim (R/S/T) icin:
+Fider 1 anlik akim (L1/L2/L3) icin:
 
 | Alan | Deger |
 |---|---|
@@ -427,7 +697,7 @@ Line 1 anlik akim (R/S/T) icin:
 | Address (base-0) | 6 |
 | Quantity | 6 |
 
-Donen 6 register, 3 adet FLOAT32 (R, S, T) olarak yorumlanir.
+Donen 6 register, 3 adet FLOAT32 (L1, L2, L3) olarak yorumlanir.
 
 ### 8.3 ModbusPoll Ayar Ozeti
 
@@ -509,3 +779,4 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 | 1.3 | 2026-07-14 | Sistem istatistik (49000) ve guc karti telemetri (49200) salt-okunur bloklari eklendi (bkz. 7) |
 | 1.4 | 2026-09-04 | Hat sayisi 7'ye kesinlesti; 40700 ve uzeri desteklenmez (bkz. 5.1.1) |
 | 1.5 | 2026-09-16 | BMS telemetri blogu (49300, dokumante edildi) ve GSM durum blogu (49400: GSM durum/CSQ/RAT, soket durumlari, SonHataKodu/SonHataZamani) eklendi |
+| 1.6 | 2026-09-25 | Isimlendirme IEC104 tarafi ile uyumlu hale getirildi (hat/Line -> fider, R/S/T -> L1/L2/L3); 5.3'te tum fiderlerin tum alt adresleri kayit bazinda tek tek listelendi; BMS dizi alanlari (cell_voltage_mv, temperatures_c, balance_position, fault_codes) tek tek acildi; ibus_ma UINT16 -> INT16 duzeltildi; batt_temp_x10 sentinel degeri -9990 olarak duzeltildi; bolum 1'deki eski "8 hat" ifadesi 7 fider olarak duzeltildi; PowerBoard dokuman referansi guncellendi (I2C_SLAVE_ENTEGRASYON_16K.md -> PowerBoard_I2C_Protocol.md) |
