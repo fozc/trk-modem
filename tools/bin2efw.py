@@ -559,6 +559,11 @@ examples:
     to_sign = signing_header + payload_data
     sig_r, sig_s = fw_ecdsa_sign(args.sign_key, to_sign)
 
+    # Diagnosis aid: the device hashes exactly these bytes before ECDSA;
+    # on a verify failure it prints its computed digest -- comparing the
+    # two separates SPI read/write corruption from a compute error.
+    print(f"  Signed-data sha256: {hashlib.sha256(to_sign).hexdigest()}")
+
     # --- build final header with real signature & write -----------------
     header = build_header(
         device_type=args.device_type,
@@ -579,10 +584,11 @@ examples:
         lzma_props=lzma_props,
     )
 
-    # Atomic publish (review): write to a temp name and replace only after
-    # the self-checks pass, so an interrupted/failed run can never leave an
-    # invalid package under the FINAL name.
-    tmp_output = args.output + '.tmp'
+    # Atomic publish (review): write to a unique temp name and replace
+    # only after the self-checks pass, so an interrupted/failed run can
+    # never leave an invalid package under the FINAL name.  A fixed
+    # ".tmp" would collide between concurrent producers (N-review).
+    tmp_output = f'{args.output}.tmp{os.getpid()}'
     with open(tmp_output, 'wb') as f:
         f.write(header)
         f.write(payload_data)
