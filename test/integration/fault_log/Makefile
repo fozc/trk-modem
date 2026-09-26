@@ -8,6 +8,7 @@ include ../../make/common.mk
 
 CC      := gcc
 CFLAGS  := -std=c11 -Wall -Wextra -Werror -Wshadow -O1 -g \
+           $(TARGET_ABI_FLAGS) \
            -DNO_CONSOLE_LOG -DNO_SHELL_LOG
 BUILD   := build
 
@@ -56,7 +57,7 @@ $(BUILD)/cp56time2a.o: $(APP_DIR)/libiec104/cp56time2a.c | $(BUILD)
 	$(CC) $(LIB_CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(TARGET): $(TEST_OBJS) $(LIB_OBJS)
-	$(CC) $(TEST_OBJS) $(LIB_OBJS) -o $@
+	$(CC) $(TARGET_ABI_FLAGS) $(TEST_OBJS) $(LIB_OBJS) -o $@
 
 run: $(TARGET)
 	@./$(TARGET)

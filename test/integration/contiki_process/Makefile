@@ -3,10 +3,10 @@ CXX = g++
 
 include ../../make/common.mk
 
-ifeq ($(OS),Windows_NT)
-TARGET_EXEC ?= contiki.exe
+ifeq ($(HOST_WINDOWS),1)
+TARGET_EXEC ?= contiki_host.exe
 else
-TARGET_EXEC ?= contiki
+TARGET_EXEC ?= contiki_host
 endif
 
 CONTIKI_DIR ?= ../../../contiki-kernel
