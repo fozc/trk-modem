@@ -76,7 +76,7 @@ static void test_fit_matches_snprintf(void)
         case 3:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 0xbeefu); break;
         case 4:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 5u); break;
         case 5:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 'Z'); break;
-        case 6:  ref_len = snprintf(ref, sizeof(ref), fmts[i]); break;
+        case 6:  ref_len = snprintf(ref, sizeof(ref), "%%"); break;
         case 7:  ref_len = snprintf(ref, sizeof(ref), fmts[i], "ab"); break;
         case 8:  ref_len = snprintf(ref, sizeof(ref), fmts[i], "ab"); break;
         case 9:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 0x1234ul); break;

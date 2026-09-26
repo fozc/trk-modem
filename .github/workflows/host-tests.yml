@@ -28,6 +28,8 @@ jobs:
 
       - name: Install test tools
         run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gcc-multilib
           gem install ceedling --version 1.0.1 --no-document
           pipx install gcovr
 

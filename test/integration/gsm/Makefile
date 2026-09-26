@@ -11,10 +11,12 @@
 include ../../make/common.mk
 
 CC := gcc
-CFLAGS := -std=c11 -Wall -Wextra -Werror -Wshadow -Wconversion -O2 -g
+CFLAGS := -std=c11 -Wall -Wextra -Werror -Wshadow -Wconversion -O2 -g \
+          $(TARGET_ABI_FLAGS)
 # Uretim .c dosyalarini include eden testler: legacy kod -Wconversion
 # altinda derlenmediginden bu hedeflerde sade flag seti kullanilir.
-CFLAGS_PROD := -std=c11 -Wall -O2 -g -DNO_CONSOLE_LOG
+CFLAGS_PROD := -std=c11 -Wall -O2 -g -DNO_CONSOLE_LOG \
+               $(TARGET_ABI_FLAGS)
 BUILD_DIR := build
 
 # Kernel + uygulama include yollari (uretim dosyalarini include edenler)
