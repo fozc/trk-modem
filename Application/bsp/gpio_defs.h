@@ -75,6 +75,14 @@
 #define RF_IO2_BSP_GPIO          GPIO_A
 #define RF_IO2_BSP_PIN           PIN_6
 
+/* --- Power panic (PE15, EXTI15: LOW = panik, HIGH = normal) --- */
+#define PWR_PANIC_BSP_GPIO       GPIO_E
+#define PWR_PANIC_BSP_PIN        PIN_15
+/* PA7 fiziksel olarak RF_IO1 hattidir; PE15 panik sinyalinin aynasi
+ * (mirror) olarak surulur. RF tarafi bu pini baska amacla kullanmamalidir. */
+#define PWR_PANIC_MIRROR_GPIO    GPIO_A
+#define PWR_PANIC_MIRROR_PIN     PIN_7
+
 /* --- RS-485 Modbus --- */
 #define MODBUS_OE_BSP_GPIO       GPIO_A
 #define MODBUS_OE_BSP_PIN        PIN_15
