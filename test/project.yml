@@ -1,0 +1,117 @@
+---
+:project:
+  :which_ceedling: gem
+  :ceedling_version: 1.0.1
+  :use_mocks: TRUE
+  :use_test_preprocessor: :none
+  :use_deep_preprocessor: :none
+  :use_backtrace: :simple
+  :use_decorators: :auto
+  :build_root: build/ceedling
+  :test_file_prefix: test_
+  :default_tasks:
+    - test:all
+  :test_threads: 1
+  :compile_threads: 1
+  :release_build: FALSE
+
+:test_build:
+  :use_assembly: FALSE
+
+:plugins:
+  :load_paths: []
+  :enabled:
+    - report_tests_pretty_stdout
+    - report_tests_log_factory
+    - gcov
+
+:report_tests_log_factory:
+  :reports:
+    - junit
+
+:extension:
+  :executable: .out
+
+:paths:
+  :test:
+    - +:unit/**
+  :source:
+    - ../Application/**
+  :include:
+    - ../Application/**
+    - ../contiki-kernel/**
+  :support:
+    - support
+  :libraries: []
+
+:files:
+  :test: []
+  :source: []
+
+:defines:
+  :test:
+    - UNIT_TEST
+    - NO_CONSOLE_LOG
+    - NO_SHELL_LOG
+  :release: []
+  :use_test_definition: FALSE
+
+:flags:
+  :test:
+    :compile:
+      '*':
+        - -std=c11
+        - -pedantic
+        - -Wall
+        - -Wextra
+        - -Werror
+        - -Wshadow
+        - -Wconversion
+        - -Wdouble-promotion
+        - -Wformat=2
+
+:cmock:
+  :plugins:
+    - :ignore
+    - :callback
+  :verbosity: 2
+  :when_no_prototypes: :error
+  :mock_prefix: mock_
+  :mock_suffix: ''
+  :strippables:
+    - '(?:__attribute__\s*\([ (]*.*?[ )]*\)+)'
+  :attributes:
+    - __ramfunc
+    - __irq
+    - __fiq
+    - register
+    - extern
+  :treat_externs: :exclude
+  :treat_inlines: :exclude
+  :memcmp_if_unknown: true
+  :when_ptr: :compare_data
+  :enforce_strict_ordering: true
+  :fail_on_unexpected_calls: true
+  :callback_include_count: true
+
+:unity:
+  :defines: []
+
+:gcov:
+  :summaries: TRUE
+  :report_task: FALSE
+  :utilities:
+    - gcovr
+  :reports:
+    - HtmlDetailed
+    - Cobertura
+
+:environment: []
+
+:libraries:
+  :placement: :end
+  :flag: "-l${1}"
+  :path_flag: "-L ${1}"
+  :system: []
+  :test: []
+  :release: []

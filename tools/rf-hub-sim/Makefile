@@ -9,6 +9,9 @@ CC       := gcc
 CFLAGS   := -std=c11 -Wall -Wextra -Wshadow -Wconversion -O2 -g
 LIBSCP   := ../../Application/libscp
 BUILD    := build
+TEST_SRC := ../../test/integration/rf_hub_sim/selftest.c
+
+include ../../test/make/common.mk
 
 INCLUDES := -I. -I$(LIBSCP)
 
@@ -25,7 +28,7 @@ hub_selftest.exe: $(TEST_OBJ) $(SCP_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
 $(BUILD):
-	mkdir -p $(BUILD)
+	$(MKDIR_P) $(BUILD)
 
 $(BUILD)/main.o: main.c hub.h serial_win.h | $(BUILD)
 	$(CC) $(CFLAGS) $(INCLUDES) -c main.c -o $@
@@ -36,8 +39,8 @@ $(BUILD)/hub.o: hub.c hub.h | $(BUILD)
 $(BUILD)/serial_win.o: serial_win.c serial_win.h | $(BUILD)
 	$(CC) $(CFLAGS) $(INCLUDES) -c serial_win.c -o $@
 
-$(BUILD)/selftest.o: selftest.c hub.h | $(BUILD)
-	$(CC) $(CFLAGS) $(INCLUDES) -c selftest.c -o $@
+$(BUILD)/selftest.o: $(TEST_SRC) hub.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INCLUDES) -c $(TEST_SRC) -o $@
 
 $(BUILD)/scp.o: $(LIBSCP)/scp.c $(LIBSCP)/scp.h | $(BUILD)
 	$(CC) $(CFLAGS) -I$(LIBSCP) -c $< -o $@
@@ -49,6 +52,6 @@ test: hub_selftest.exe
 	./hub_selftest.exe
 
 clean:
-	rm -rf $(BUILD) rf_hub_sim.exe hub_selftest.exe
+	$(RM_RF) $(BUILD) rf_hub_sim.exe hub_selftest.exe
 
 .PHONY: all test clean

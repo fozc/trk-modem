@@ -15,7 +15,7 @@ MinGW gcc ile (git-bash icinde):
 ```
 cd tools/rf-hub-sim
 make            # rf_hub_sim.exe  (canli UART modu)
-make test       # hub_selftest.exe - seri port gerekmez, 72 test
+make test       # hub_selftest.exe - seri port gerekmez, 74 test
 ```
 
 ## Kablolama

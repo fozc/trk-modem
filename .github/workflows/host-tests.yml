@@ -1,0 +1,48 @@
+name: Host tests
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Ceedling and integration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+
+      - name: Install test tools
+        run: |
+          gem install ceedling --version 1.0.1 --no-document
+          pipx install gcovr
+
+      - name: Run all host tests
+        run: ruby test/run_all.rb all
+
+      - name: Generate unit-test coverage
+        run: ruby test/run_all.rb coverage
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: host-test-reports
+          if-no-files-found: error
+          path: |
+            test/build/ceedling/artifacts/test/*.xml
+            test/build/ceedling/artifacts/gcov/**
