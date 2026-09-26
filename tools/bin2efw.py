@@ -638,7 +638,8 @@ examples:
               f"lp={LZMA_LP}, pb={LZMA_PB})")
         print(f"  Stored    : {stored_size} bytes "
               f"(ratio {stored_size / app_size:.3f}, "
-              f"{100.0 * stored_size / app_size:.1f}% of raw)")
+              f"{100.0 * stored_size / app_size:.1f}% of raw, "
+              f"saved {100.0 * (app_size - stored_size) / app_size:.1f}%)")
     else:
         print(f"  Codec     : None")
         print(f"  Stored    : {stored_size} bytes")
