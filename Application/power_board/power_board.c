@@ -410,7 +410,8 @@ void power_board_persist_request(const power_board_telemetry_t *p_t,
     (void)p_t;
     /* Stub: NVM not wired yet. The call site is preserved so a future task
      * only fills this in. Logs the request for visibility. */
-    CSLOG_WARN_NODT("[PWRB] PERSIST req seq=%u %s%s (stub - NVM yok)\r\n",
+    CSLOG_WARN_NODT("[PWRB] PERSIST req seq=%u %s%s alindi - kayit EDILMIYOR "
+                    "(NVM henuz bagli degil)\r\n",
                     (unsigned)seq, alarm ? "ALARM " : "",
                     checkpoint ? "CKPT" : "");
     /* TODO(NVM): persist p_t->soc_x10 / total_mwh / equiv_hours / gross_mah. */
@@ -423,7 +424,8 @@ void power_board_persist_lastgasp(const power_board_lastgasp_t *p_g)
         return;
     }
     /* Stub: NVM not wired yet. */
-    CSLOG_WARN_NODT("[PWRB] LASTGASP persist reason=0x%02X soc=%u%% vbat=%u mV (stub)\r\n",
+    CSLOG_WARN_NODT("[PWRB] LASTGASP persist reason=0x%02X soc=%u%% vbat=%u mV "
+                    "alindi - kayit EDILMIYOR (NVM henuz bagli degil)\r\n",
                     (unsigned)p_g->reason, (unsigned)p_g->soc_pct,
                     (unsigned)p_g->vbat_mv);
     /* TODO(NVM): persist the last-gasp snapshot immediately. */

@@ -274,9 +274,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	boot_log_installed_fw();
 
 #ifndef DEBUG
-	CSLOG("\r\nRunning in Release Mode\r\n");
-	CSLOG("\r\n\tRunning in Release Mode\r\n");
-	CSLOG("\r\n\t\tRunning in Release Mode\r\n");
+	CSLOG_WARN("Running in Release Mode\r\n");
 #endif
 
 	CSLOG("sizeof(nvram_t)        = %d bytes\r\n", sizeof(nvram_t));
