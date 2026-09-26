@@ -2930,7 +2930,8 @@ uint32_t gsm_engine_send_query(uint8_t query)
 
 	if(query >= ATQUERY_LIST_LEN)
 	{
-		CSLOG_ERR("_GSM_ ATQUERY_LIST_LEN !!!\r\n");
+		CSLOG_ERR("GSM: gecersiz AT sorgu indeksi %u (gecerli aralik: 0..%u)\r\n",
+		          (unsigned)query, (unsigned)(ATQUERY_LIST_LEN - 1U));
 		return 0;
 	}
 
