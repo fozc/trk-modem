@@ -202,14 +202,38 @@ void SysTick_Handler(void)
 void EXTI15_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI15_IRQn 0 */
+  /* PE15 -> PA7 (RF_IO1 hatti) panik aynasi: her EXTI15 kesmesinde (iki
+   * kenar da) PE15 giris seviyesi okunur ve PA7 cikisi LL ile dogrudan
+   * ayni seviyeye surulur - bsp/gpio katmani atlanir cunku panik
+   * gostergesinin gecikmesi kesme gecikmesi kadar kisa olmali.
+   * LOW = panik -> LOW, HIGH = normal -> HIGH. */
+  if (LL_GPIO_IsInputPinSet(PWR_PANIC_GPIO_Port, PWR_PANIC_Pin) != 0U)
+  {
+    LL_GPIO_SetOutputPin(RF_IO1_GPIO_Port, RF_IO1_Pin);
+  }
+  else
+  {
+    LL_GPIO_ResetOutputPin(RF_IO1_GPIO_Port, RF_IO1_Pin);
+  }
 
-  /* USER CODE END EXTI15_IRQn 0 */
+  /* LL sablonu rising+falling tetikleme icin yalnizca yukselen kenar
+   * bayragini (RPR1) siler. Dusen kenar (panik) bayragi (FPR1) burada
+   * silinip islenmezse EXTI15 pending kalir ve kesme sonsuz tetiklenir. */
   if (LL_EXTI_IsActiveFallingFlag_0_31(LL_EXTI_LINE_15) != RESET)
   {
     LL_EXTI_ClearFallingFlag_0_31(LL_EXTI_LINE_15);
-    /* USER CODE BEGIN LL_EXTI_LINE_15 */
     void power_panic_isr_handler(void);
     power_panic_isr_handler();
+  }
+  /* USER CODE END EXTI15_IRQn 0 */
+
+  if (LL_EXTI_IsActiveRisingFlag_0_31(LL_EXTI_LINE_15) != RESET)
+  {
+    LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_15);
+    /* USER CODE BEGIN LL_EXTI_LINE_15 */
+    /* Yukselen kenar (toparlanma): sadece pending bayragi silinir; PA7
+     * aynasi USER CODE EXTI15_IRQn 0 blogunda zaten guncellendi, panik
+     * bayragi icin handler cagrisina gerek yok. */
     /* USER CODE END LL_EXTI_LINE_15 */
   }
   /* USER CODE BEGIN EXTI15_IRQn 1 */

@@ -223,6 +223,8 @@ static void elog_log_boot_events(void)
 
 __attribute__ ((noreturn)) void app_main(void)
 {
+	power_panic_init();
+
 	stack_monitor_init();
 	bsp_init();
 	led_driver_init();
@@ -248,6 +250,10 @@ __attribute__ ((noreturn)) void app_main(void)
 
 	/* Resolves the A/B download target; must run before any update path. */
 	boot_init();
+
+	/* Panic bayragini ilklendir ve PA7 aynasini PE15'in anlik seviyesine
+	 * esitle (EXTI15, main() icindeki MX_GPIO_Init'te zaten acik). */
+
 
 	/* elog must be up before any module that logs to it (nvram recovery,
 	 * power board, ...). */
