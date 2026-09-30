@@ -35,6 +35,7 @@
 :paths:
   :test:
     - +:unit/**
+    - +:efw/**
   :source:
     - ../Application/**
   :include:

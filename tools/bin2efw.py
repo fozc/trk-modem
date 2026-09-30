@@ -23,7 +23,7 @@ EFW Header (128 bytes, packed):
   signature_s      : 32 bytes (ECDSA-P256 signature S component)
   encryption_type  : uint8   (0x00=none, 0x01=AES-128-CTR)
   iv               : 16 bytes (AES initialization vector)
-  compression_type : uint8   (offset 117; 0x00=NONE, 0x01=LZMA1)
+  compression_type : uint8   (offset 117; 0x00=NONE, 0x01=LZMA1, 0x02=LZMA1_ARMTHUMB)
   stored_size      : uint32  (offset 118, LE; payload bytes stored after header)
   lzma_props       : 5 bytes (offset 122; props byte + dict_size LE32)
   reserved         : 1 byte  (offset 127; zero in v2)
@@ -224,6 +224,33 @@ def fw_ecdsa_sign(private_key_path: str, data: bytes):
 # LZMA1 profile helpers (compress-then-encrypt pipeline)
 # ---------------------------------------------------------------------------
 
+def thumb_filters():
+    """EFW codec 2: whole-file Thumb BCJ, PC=0, fixed device LZMA profile."""
+    return [dict(id=lzma.FILTER_ARMTHUMB, start_offset=0),
+            dict(id=lzma.FILTER_LZMA1, preset=9, dict_size=LZMA_DICT_SIZE,
+                 lc=LZMA_LC, lp=LZMA_LP, pb=LZMA_PB)]
+
+
+EFW_COMPRESSION_LZMA1_ARMTHUMB = 0x02
+
+
+def thumb_compress(data: bytes):
+    props = bytes([(LZMA_PB * 5 + LZMA_LP) * 9 + LZMA_LC]) + struct.pack('<I', LZMA_DICT_SIZE)
+    comp = lzma.LZMACompressor(format=lzma.FORMAT_RAW, filters=thumb_filters())
+    return props, comp.compress(data) + comp.flush()
+
+
+def thumb_expand(props: bytes, raw_size: int, stream: bytes) -> bytes:
+    expected = bytes([(LZMA_PB * 5 + LZMA_LP) * 9 + LZMA_LC]) + struct.pack('<I', LZMA_DICT_SIZE)
+    if props != expected:
+        raise ValueError('Thumb LZMA props outside device profile')
+    dec = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=thumb_filters())
+    out = dec.decompress(stream)
+    if not dec.eof or dec.unused_data or len(out) != raw_size:
+        raise ValueError('Thumb stream must end with marker and exact input/output sizes')
+    return out
+
+
 def lzma1_compress(data: bytes):
     """Compress with the fixed device profile. Returns (props5, stream).
 
@@ -407,10 +434,14 @@ examples:
                         help='Compress payload with LZMA1 (device profile: '
                              'dict=4096, lc=1, lp=1, pb=1). Falls back to '
                              'uncompressed storage if compression is not beneficial.')
+    parser.add_argument('--thumb', action='store_true',
+                        help='Use ARM Thumb BCJ before LZMA1 (requires --compress; newer bootloader required)')
     parser.add_argument('--encrypt-key', default=None,
                         help='Path to AES-128 key file (16 bytes raw) for encryption')
 
     args = parser.parse_args()
+    if args.thumb and not args.compress:
+        parser.error('--thumb requires --compress')
 
     # --- parse version.h if provided --------------------------------------
     if args.version_header:
@@ -485,9 +516,9 @@ examples:
     stage_data = app_data          # after compression (plain compressed)
 
     if args.compress:
-        lzma_props, stream = lzma1_compress(app_data)
+        lzma_props, stream = thumb_compress(app_data) if args.thumb else lzma1_compress(app_data)
         if len(stream) < app_size:
-            compression_type = EFW_COMPRESSION_LZMA1
+            compression_type = EFW_COMPRESSION_LZMA1_ARMTHUMB if args.thumb else EFW_COMPRESSION_LZMA1
             stage_data = stream
         else:
             print(f"Warning: compression not beneficial "
@@ -605,6 +636,8 @@ examples:
         check_data = dec.update(payload_data) + dec.finalize()
     if compression_type == EFW_COMPRESSION_LZMA1:
         check_data = lzma1_expand(lzma_props, app_size, check_data)
+    elif compression_type == EFW_COMPRESSION_LZMA1_ARMTHUMB:
+        check_data = thumb_expand(lzma_props, app_size, check_data)
     if check_data != app_data:
         print("Error: self-verification FAILED - expanded payload does not "
               "match raw input; output file is invalid", file=sys.stderr)
@@ -639,8 +672,9 @@ examples:
     print(f"  Raw size  : {app_size} bytes")
     print(f"  App CRC   : 0x{app_crc:08X} (raw)")
     print(f"  Auth      : ECDSA-P256")
-    if compression_type == EFW_COMPRESSION_LZMA1:
-        print(f"  Codec     : LZMA1 (dict={LZMA_DICT_SIZE}, lc={LZMA_LC}, "
+    if compression_type in (EFW_COMPRESSION_LZMA1, EFW_COMPRESSION_LZMA1_ARMTHUMB):
+        codec_name = 'LZMA1_ARMTHUMB (PC=0)' if compression_type == EFW_COMPRESSION_LZMA1_ARMTHUMB else 'LZMA1'
+        print(f"  Codec     : {codec_name} (dict={LZMA_DICT_SIZE}, lc={LZMA_LC}, "
               f"lp={LZMA_LP}, pb={LZMA_PB})")
         print(f"  Stored    : {stored_size} bytes "
               f"(ratio {stored_size / app_size:.3f}, "

@@ -40,7 +40,6 @@ typedef struct __attribute__((packed))
 typedef struct __attribute__((packed))
 {
 	efw_raw_fields_t fields;
-	uint8_t reserve[EFW_HEADER_SIZE - sizeof(efw_raw_fields_t)];
 }efw_raw_header_t;
 
 _Static_assert(sizeof(efw_raw_header_t) == EFW_HEADER_SIZE,
@@ -80,7 +79,8 @@ int efw_parse(const void *data, efw_t *out)
 	}
 
 	uint8_t comp = hdr->fields.compression_type;
-	if ((comp != EFW_COMPRESSION_NONE) && (comp != EFW_COMPRESSION_LZMA1))
+	if ((comp != EFW_COMPRESSION_NONE) && (comp != EFW_COMPRESSION_LZMA1) &&
+	    (comp != EFW_COMPRESSION_LZMA1_ARMTHUMB))
 	{
 		return -1;
 	}

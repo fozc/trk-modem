@@ -42,6 +42,7 @@
 /* Compression type codes (v2) */
 #define EFW_COMPRESSION_NONE         0x00U
 #define EFW_COMPRESSION_LZMA1        0x01U
+#define EFW_COMPRESSION_LZMA1_ARMTHUMB 0x02U /* file-relative PC=0 */
 
 /* AES-128 IV size in bytes */
 #define EFW_AES_IV_SIZE  16U
