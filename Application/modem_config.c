@@ -334,12 +334,19 @@ void modem_config_set_simcard_phone_number(const phone_number_t* phone_number)
 
 void modem_config_set_imei(const char* imei)
 {
-	if(imei) {
-		size_t copy_len = strnlen(imei, sizeof(modem_config->imei) - 1U);
+    if (NULL != imei)
+    {
+        const size_t copy_limit = sizeof(modem_config->imei) - 1U;
+        size_t copy_len = 0U;
 
-		memcpy(modem_config->imei, imei, copy_len);
-		modem_config->imei[copy_len] = '\0';
-	}
+        while ((copy_len < copy_limit) && ('\0' != imei[copy_len]))
+        {
+            copy_len++;
+        }
+
+        memcpy(modem_config->imei, imei, copy_len);
+        modem_config->imei[copy_len] = '\0';
+    }
 }
 
 const char* modem_config_get_imei(void)

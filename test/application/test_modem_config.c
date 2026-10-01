@@ -272,4 +272,32 @@ void test_modem_config_session_callbacks_increment_with_unsigned_wrap(void)
     TEST_ASSERT_EQUAL_UINT32(0U, stored_config.iec_session_counter);
 }
 
+void test_modem_config_imei_accepts_bounded_unterminated_input(void)
+{
+    /* Deliberately omit NUL: the source has exactly the permitted length. */
+    char input[sizeof(stored_config.imei) - 1U];
+
+    memset(input, '7', sizeof(input));
+    modem_config_set_web_session_counter(123U);
+    modem_config_set_iec_session_counter(456U);
+    modem_config_set_imei(input);
+
+    TEST_ASSERT_EQUAL_MEMORY(input, stored_config.imei, sizeof(input));
+    TEST_ASSERT_EQUAL_UINT8(0U,
+        stored_config.imei[sizeof(stored_config.imei) - 1U]);
+    TEST_ASSERT_EQUAL_UINT32(123U,
+                             modem_config_get_web_session_counter());
+    TEST_ASSERT_EQUAL_UINT32(456U,
+                             modem_config_get_iec_session_counter());
+}
+
+void test_modem_config_imei_shorter_and_empty_inputs_replace_old_value(void)
+{
+    modem_config_set_imei("123456789012345");
+    modem_config_set_imei("42");
+    TEST_ASSERT_EQUAL_STRING("42", modem_config_get_imei());
+    modem_config_set_imei("");
+    TEST_ASSERT_EQUAL_STRING("", modem_config_get_imei());
+}
+
 /*** end of file ***/
