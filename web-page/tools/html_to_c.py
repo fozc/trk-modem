@@ -19,6 +19,7 @@ import os
 import sys
 import gzip
 import importlib.util
+import io
 
 # Try to import brotli (optional, better compression)
 try:
@@ -66,6 +67,19 @@ def escape_string_for_c(text):
     
     return ''.join(result)
 
+def write_if_changed(path, content):
+    """Write UTF-8 with LF only when the output bytes have changed."""
+    data = content.encode('utf-8')
+    if os.path.exists(path):
+        with open(path, 'rb') as current:
+            if current.read() == data:
+                print(f"Unchanged {path}")
+                return
+    with open(path, 'wb') as output:
+        output.write(data)
+    print(f"Generated {path}")
+
+
 def write_c_array(html_content, output_name, output_dir, source_html_file, compression_type=None):
     """Convert HTML file to C array with html_resource_t structure
     
@@ -88,7 +102,7 @@ def write_c_array(html_content, output_name, output_dir, source_html_file, compr
     is_compressed = compression_type is not None
     
     # Generate C file
-    with open(output_c, 'w', encoding='utf-8') as f:
+    with io.StringIO(newline='\n') as f:
         f.write(f'/* {array_name}.c - embedded {os.path.basename(source_html_file)} */\n')
         f.write(f'#include "{array_name}.h"\n\n')
         
@@ -140,9 +154,10 @@ def write_c_array(html_content, output_name, output_dir, source_html_file, compr
         f.write(f'const html_resource_t* {function_name}(void) {{\n')
         f.write(f'    return &{array_name}_resource;\n')
         f.write('}\n')
+        write_if_changed(output_c, f.getvalue())
     
     # Generate H file
-    with open(output_h, 'w', encoding='utf-8') as f:
+    with io.StringIO(newline='\n') as f:
         f.write(f'/* {array_name}.h - embedded {os.path.basename(source_html_file)} header */\n')
         f.write(f'#ifndef {guard_name}\n')
         f.write(f'#define {guard_name}\n\n')
@@ -154,9 +169,9 @@ def write_c_array(html_content, output_name, output_dir, source_html_file, compr
         f.write(' */\n')
         f.write(f'const html_resource_t* {function_name}(void);\n\n')
         f.write(f'#endif /* {guard_name} */\n')
+        write_if_changed(output_h, f.getvalue())
     
-    print(f"Generated {output_c} ({len(html_content)} bytes)")
-    print(f"Generated {output_h}")
+    print(f"Embedded payload: {len(html_content)} bytes")
 
 if __name__ == '__main__':
     import argparse
@@ -169,7 +184,7 @@ if __name__ == '__main__':
     parser.add_argument("--brotli", "-b", action="store_true", help="Brotli compress HTML (better than gzip)")
     parser.add_argument("--version", "-V", default=None,
                         help="Replace {{WEB_VERSION}} placeholders with this string. "
-                             "'auto' uses the current date/time (YYYY-MM-DD HH:MM).")
+                             "Default uses VERSION only; 'auto' explicitly adds today's date.")
     args = parser.parse_args()
 
     # Check for conflicting options
@@ -221,20 +236,21 @@ if __name__ == '__main__':
 
     # Inject the web UI version before minify/compress.
     # Source of truth: web-page/VERSION (the web UI's own version, bumped
-    # by hand with UI changes). The build date is appended automatically
-    # so stale pages on a device are immediately recognizable.
-    from datetime import datetime
-    build_date = datetime.now().strftime('%Y-%m-%d')
+    # by hand with UI changes). Dates are opt-in to keep builds reproducible.
     version_file = os.path.join(project_root, 'VERSION')
     web_ver = ''
     if os.path.exists(version_file):
         with open(version_file, 'r', encoding='utf-8') as vf:
             web_ver = vf.read().strip()
 
-    if args.version and args.version != 'auto':
+    if args.version == 'auto':
+        from datetime import datetime
+        build_date = datetime.now().strftime('%Y-%m-%d')
+        ver = ('v%s %s' % (web_ver, build_date)) if web_ver else build_date
+    elif args.version:
         ver = args.version
     else:
-        ver = ('v%s %s' % (web_ver, build_date)) if web_ver else build_date
+        ver = ('v%s' % web_ver) if web_ver else 'unknown'
 
     html_content = html_content.replace('{{WEB_VERSION}}', ver)
     print(f"Version stamp: {ver}")
@@ -269,7 +285,8 @@ if __name__ == '__main__':
         compression_type = 'br'
     elif args.gzip:
         pre_compress_size = len(html_content)
-        html_content = gzip.compress(html_content.encode('utf-8'), compresslevel=9)
+        html_content = gzip.compress(html_content.encode('utf-8'),
+                                     compresslevel=9, mtime=0)
         compressed_size = len(html_content)
         reduction = ((pre_compress_size - compressed_size) / pre_compress_size) * 100
         print(f"Gzipped: {compressed_size} bytes ({reduction:.1f}% reduction)")
