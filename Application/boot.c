@@ -55,25 +55,19 @@ static void cache_installed_fw(const boot_superblock_t *p_sb)
     s_installed_fw.short_commit_hash[7] = 0U;
     s_installed_fw_valid = true;
 
-    /* Superblock formatu bu header kopyasindan baska bir yoldan gelistir:
-     * farkliysa iki repo arasindaki boot.h kopyasi asenkron kalmis demektir. */
-    if (p_sb->sb_format != BOOTLOADER_SUPERBLOCK_FORMAT)
-    {
-        CSLOG_WARN("BOOT: superblock format 0x%02X != expected 0x%02X "
-                   "(boot.h copy out of sync with bootloader?)\r\n",
-                   p_sb->sb_format, (unsigned)BOOTLOADER_SUPERBLOCK_FORMAT);
-    }
+
 }
 
 /**
  * @brief Validate a superblock read from SPI flash.
  *
  * @param[in] p_sb  Pointer to the superblock data.
- * @return true if magic and CRC are valid.
+ * @return true if magic, format and CRC are valid.
  */
 static bool is_superblock_valid(const boot_superblock_t *p_sb)
 {
-    if (p_sb->magic != BOOTLOADER_SUPERBLOCK_MAGIC)
+    if (p_sb->magic != BOOTLOADER_SUPERBLOCK_MAGIC ||
+        p_sb->sb_format != BOOTLOADER_SUPERBLOCK_FORMAT)
     {
         return false;
     }

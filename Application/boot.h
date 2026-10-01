@@ -15,6 +15,7 @@
 
 #include <spi_flash_organization.h>
 #include <stdint.h>
+#include "efw.h"
 #include <stdbool.h>
 
 #define BOOTLOADER_SUPERBLOCK_MAGIC  0xB007000B
@@ -24,7 +25,7 @@
  * This copy is synchronized by hand between the two repositories; the
  * format byte lets drift be detected at run time (see boot.c).
  */
-#define BOOTLOADER_SUPERBLOCK_FORMAT 0x02U
+#define BOOTLOADER_SUPERBLOCK_FORMAT 0x01U
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -74,12 +75,15 @@ typedef struct
     uint8_t   _reserved;
     fw_info_t installed_fw;
     fw_info_t backup_fw;
+    efw_identity_t installed_identity;
+    efw_identity_t backup_identity;
     uint32_t  crc;
 } __attribute__((packed)) boot_superblock_t;
 
 _Static_assert(sizeof(fw_version_t) == 4U, "fw_version_t size mismatch");
 _Static_assert(sizeof(fw_info_t) == 32U, "fw_info_t size mismatch");
-_Static_assert(sizeof(boot_superblock_t) == 80U, "boot_superblock_t size mismatch");
+_Static_assert(sizeof(boot_superblock_t) == 336U, "boot_superblock_t size mismatch");
+_Static_assert(offsetof(boot_superblock_t, crc) == 332U, "superblock CRC offset");
 
 /* ------------------------------------------------------------------ */
 /*  Public API                                                        */
