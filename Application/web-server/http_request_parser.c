@@ -45,11 +45,14 @@ static bool validate_path(const char *path) {
         return false;
     }
     
-    /* Length check (bounded). strnlen caps the scan at HTTP_MAX_PATH_LEN + 1,
-     * so even if the request-line parser's NUL-termination invariant were
-     * broken there is no over-read; a path with no terminator within the
-     * limit is treated as too long. */
-    size_t len = strnlen(path, (size_t)HTTP_MAX_PATH_LEN + 1U);
+    /* Bound the length scan using only C11 operations. A path with no
+     * terminator within the limit is treated as too long. */
+    const size_t scan_limit = (size_t)HTTP_MAX_PATH_LEN + 1U;
+    size_t len = 0U;
+    while ((len < scan_limit) && ('\0' != path[len]))
+    {
+        len++;
+    }
     if (len > HTTP_MAX_PATH_LEN) {
         CSLOG_ERR("[HTTP] ERROR: Path too long (max: %d)\r\n", HTTP_MAX_PATH_LEN);
         return false;
