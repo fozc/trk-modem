@@ -11,8 +11,10 @@
  * edilir; boylece tablo/ofset/tanim kaymalari ve bicim gerilemeleri
  * yakalanir.
  *
- * Kullanim: make run  (test/integration/web_server altinda)
+ * Kullanim: ceedling test:test_rf_json_golden_scenario
  */
+
+#include "unity.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -22,25 +24,12 @@
 #include "rf_config.h"
 #include "rf_discovery.h"
 #include "xprintf.h"
-#include "mock_nvram.h"
+#include "rf_nvram_fake.h"
 
-static unsigned int test_pass = 0U;
-static unsigned int test_fail = 0U;
+TEST_SOURCE_FILE("rf_nvram_fake.c")
 
-#define TEST_CHECK(cond, name)                                        \
-    do                                                                \
-    {                                                                 \
-        if ((cond) != 0)                                              \
-        {                                                             \
-            test_pass++;                                              \
-            printf("PASS: %s\r\n", (name));                            \
-        }                                                             \
-        else                                                          \
-        {                                                             \
-            test_fail++;                                              \
-            printf("FAIL: %s  (%s:%d)\r\n", (name), __FILE__, __LINE__); \
-        }                                                             \
-    } while (0)
+#define TEST_CHECK(condition, message) \
+    TEST_ASSERT_TRUE_MESSAGE((condition), (message))
 
 static const uint8_t EUI_R[RF_EUI64_LEN] =
 {
@@ -95,7 +84,7 @@ static void setup_state(void)
 {
     rf_feeder_t f;
 
-    mock_nvram_reset();
+    rf_nvram_fake_reset();
     rf_store_init();
 
     for (int i = 0; i < MAX_POWER_LINE_COUNT; i++)
@@ -132,16 +121,18 @@ static void build_expected(char *out, int sz)
 
     for (int i = 0; i < 7; i++)
     {
-        (void)xsnprintf(f_nom[i], (unsigned int)sizeof(f_nom[i]), "%.1f", 100.0f + (float)i);
-        (void)xsnprintf(f_ia[i], (unsigned int)sizeof(f_ia[i]), "%.1f", 150.0f + (float)i);
+        (void)xsnprintf(f_nom[i], (unsigned int)sizeof(f_nom[i]), "%.1f",
+            (double)(100.0f + (float)i));
+        (void)xsnprintf(f_ia[i], (unsigned int)sizeof(f_ia[i]), "%.1f",
+            (double)(150.0f + (float)i));
     }
 
-    (void)xsnprintf(f_didt, (unsigned int)sizeof(f_didt), "%.1f", 1000.5f);
-    (void)xsnprintf(f_brk, (unsigned int)sizeof(f_brk), "%.1f", 2.25f);
-    (void)xsnprintf(f_is, (unsigned int)sizeof(f_is), "%.3f", 0.300f);
-    (void)xsnprintf(f_inm, (unsigned int)sizeof(f_inm), "%.2f", 5.0f);
-    (void)xsnprintf(f_clpm, (unsigned int)sizeof(f_clpm), "%.2f", 2.0f);
-    (void)xsnprintf(f_vt, (unsigned int)sizeof(f_vt), "%.2f", 32.0f);
+    (void)xsnprintf(f_didt, (unsigned int)sizeof(f_didt), "%.1f", 1000.5);
+    (void)xsnprintf(f_brk, (unsigned int)sizeof(f_brk), "%.1f", 2.25);
+    (void)xsnprintf(f_is, (unsigned int)sizeof(f_is), "%.3f", 0.300);
+    (void)xsnprintf(f_inm, (unsigned int)sizeof(f_inm), "%.2f", 5.0);
+    (void)xsnprintf(f_clpm, (unsigned int)sizeof(f_clpm), "%.2f", 2.0);
+    (void)xsnprintf(f_vt, (unsigned int)sizeof(f_vt), "%.2f", 32.0);
 
     (void)xsnprintf(out, (unsigned int)sz,
         "{\"inUse\":[true,true,false,false,false,false,false],"
@@ -183,7 +174,7 @@ static void build_expected(char *out, int sz)
         f_vt, f_vt, f_vt, f_vt, f_vt, f_vt, f_vt);
 }
 
-int main(void)
+void test_rf_json_golden_output_scenario(void)
 {
     static char actual[8192];
     static char expected[8192];
@@ -213,9 +204,14 @@ int main(void)
                (unsigned long)k, &actual[k], &expected[k]);
     }
 
-    printf("\r\n==== rf_json host tests: %u pass / %u fail ====\r\n",
-           test_pass, test_fail);
-    return (test_fail == 0U) ? 0 : 1;
+}
+
+void setUp(void)
+{
+}
+
+void tearDown(void)
+{
 }
 
 /*** end of file ***/

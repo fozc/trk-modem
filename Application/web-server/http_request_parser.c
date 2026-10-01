@@ -5,7 +5,12 @@
 
 #define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_request_parser.h"
+#if defined(UNIT_TEST)
+#define CSLOG_NODT(...) ((void)0)
+#define CSLOG_ERR(...)  ((void)0)
+#else
 #include "console_logger.h"
+#endif
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
@@ -118,7 +123,8 @@ int http_parse_request_line(char *request_line,
                             char **path,
                             char **query_string)
 {
-    if (!request_line || !method || !path || !query_string) {
+    if (!request_line || (line_length <= 0) || !method || !path ||
+        !query_string) {
         return -1;
     }
 
@@ -128,13 +134,15 @@ int http_parse_request_line(char *request_line,
     *query_string = NULL;
 
     /* Find first space (after method) */
-    char *first_space = strchr(request_line, ' ');
+    char *first_space = memchr(request_line, ' ', (size_t)line_length);
     if (!first_space) {
         return -1;  /* Invalid format */
     }
 
     /* Find second space (after path) */
-    char *second_space = strchr(first_space + 1, ' ');
+    size_t first_offset = (size_t)(first_space - request_line);
+    size_t remaining = (size_t)line_length - first_offset - 1U;
+    char *second_space = memchr(first_space + 1, ' ', remaining);
     if (!second_space) {
         return -1;  /* Invalid format */
     }
@@ -196,7 +204,11 @@ int http_parse_content_length(const char *headers_start, int headers_length)
             /* Parse integer */
             int content_length = 0;
             while (value_start < line_end && *value_start >= '0' && *value_start <= '9') {
-                content_length = content_length * 10 + (*value_start - '0');
+                int digit = *value_start - '0';
+                if (content_length > ((MAX_CONTENT_LENGTH - digit) / 10)) {
+                    return -1;
+                }
+                content_length = (content_length * 10) + digit;
                 value_start++;
             }
             
@@ -336,6 +348,10 @@ bool http_string_starts_with_ignore_case(const char *string, const char *prefix)
     }
 
     while (*prefix) {
+        if (*string == '\0') {
+            return false;
+        }
+
         char s = *string;
         char p = *prefix;
 
@@ -371,7 +387,8 @@ bool http_get_query_param(const char *query_string,
     value_out[0] = '\0';
 
     /* Calculate key length */
-    int key_len = strlen(key);
+    size_t key_len = strlen(key);
+    size_t output_size = (size_t)value_max_len;
     const char *pos = query_string;
 
     /* Search for "key=" in query string */
@@ -388,12 +405,12 @@ bool http_get_query_param(const char *query_string,
             }
 
             /* Copy value to output buffer */
-            int value_len = value_end - value_start;
-            if (value_len >= value_max_len) {
-                value_len = value_max_len - 1;  /* Truncate if too long */
+            size_t value_len = (size_t)(value_end - value_start);
+            if (value_len >= output_size) {
+                value_len = output_size - 1U;  /* Truncate if too long */
             }
 
-            strncpy(value_out, value_start, value_len);
+            memcpy(value_out, value_start, value_len);
             value_out[value_len] = '\0';
 
             return true;

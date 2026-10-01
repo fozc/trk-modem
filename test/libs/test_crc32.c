@@ -15,6 +15,8 @@
 
 #include "crc32.h"
 
+#define CRC_TEST_DATA_SIZE 256U
+
 void setUp(void)
 {
 }
@@ -57,6 +59,46 @@ void test_crc32_empty_input_keeps_initial_state(void)
     crc = crc32_update(crc, NULL, 0U);
 
     TEST_ASSERT_EQUAL_HEX32(0U, (uint32_t)crc32_finalize(crc));
+}
+
+void test_crc32_binary_vector_matches_known_value(void)
+{
+    static const uint8_t input[] = {
+        0x00U, 0x01U, 0x02U, 0x03U, 0x7FU, 0x80U, 0xFEU, 0xFFU
+    };
+    crc32_t crc = crc32_init();
+
+    crc = crc32_update(crc, input, sizeof(input));
+
+    TEST_ASSERT_EQUAL_HEX32(0xBC6987F2U,
+                            (uint32_t)crc32_finalize(crc));
+}
+
+void test_crc32_bytewise_update_matches_full_buffer(void)
+{
+    uint8_t input[CRC_TEST_DATA_SIZE];
+    crc32_t bytewise = crc32_init();
+    crc32_t complete = crc32_init();
+
+    for (size_t index = 0U; index < sizeof(input); index++)
+    {
+        input[index] = (uint8_t)index;
+        bytewise = crc32_update(bytewise, &input[index], 1U);
+    }
+    complete = crc32_update(complete, input, sizeof(input));
+
+    TEST_ASSERT_EQUAL_HEX32((uint32_t)crc32_finalize(complete),
+                            (uint32_t)crc32_finalize(bytewise));
+}
+
+void test_crc32_reflect_handles_boundary_widths(void)
+{
+    TEST_ASSERT_EQUAL_HEX32(0x00000001U,
+                            (uint32_t)crc32_reflect(1U, 1U));
+    TEST_ASSERT_EQUAL_HEX32(0x00000080U,
+                            (uint32_t)crc32_reflect(1U, 8U));
+    TEST_ASSERT_EQUAL_HEX32(0xE6A2C480U,
+                            (uint32_t)crc32_reflect(0x01234567U, 32U));
 }
 
 /*** end of file ***/

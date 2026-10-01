@@ -158,6 +158,25 @@ static void relay_rearm_timer(void)
     }
 }
 
+#ifdef UNIT_TEST
+void relay_test_apply_commands(void)
+{
+    for (uint8_t ch = 0U; ch < (uint8_t)RELAY_CH_COUNT; ch++)
+    {
+        relay_apply_cmd(ch);
+    }
+
+    relay_service_peaks();
+    relay_rearm_timer();
+}
+
+void relay_test_service_timer(void)
+{
+    relay_service_peaks();
+    relay_rearm_timer();
+}
+#endif
+
 /* ======================================================================
  *  Contiki process
  * ====================================================================== */

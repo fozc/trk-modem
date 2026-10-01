@@ -16,7 +16,7 @@ void time_service_tick(void);
 uint32_t time_get_elapsed(uint32_t start_time);
 bool time_has_elapsed(uint32_t start_time, uint32_t duration);
 
-#ifdef TEST
+#if defined(TEST) || defined(UNIT_TEST)
 void time_service_reset(void);
 void time_service_set_ticks(uint32_t ticks);
 #endif

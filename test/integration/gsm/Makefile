@@ -1,12 +1,10 @@
 # Makefile for gsm module host-based testing
 #
 # Usage:
-#   make                - build ring_buff test binary
-#   make run            - build and run ring_buff tests
-#   make run_all        - ring_buff + cold boot ladder + restart loop + hang
+#   make run_all        - cold boot ladder + restart loop + hang
 #   make clean          - remove build artifacts
 #
-# Host GCC build for GSM recovery and ring-buffer scenarios.
+# Host GCC build for GSM recovery scenarios requiring a custom process host.
 
 include ../../make/common.mk
 
@@ -29,35 +27,12 @@ KERNEL_SRC := ../../../contiki-kernel/sys/process.c \
               ../../../contiki-kernel/sys/timer.c \
               ../../../contiki-kernel/sys/clock.c
 
-SRC := $(APP_DIR)/gsm/ring_buff.c
-TEST_SRC := test_ring_buff.c
-
-SRC_OBJ := $(BUILD_DIR)/ring_buff.o
-TEST_OBJ := $(BUILD_DIR)/test_ring_buff.o
-
-TARGET := $(BUILD_DIR)/test_ring_buff
 TARGET_LADDER := $(BUILD_DIR)/test_coldboot_ladder
 TARGET_LOOP := $(BUILD_DIR)/test_restart_loop
-TARGET_WTD := $(BUILD_DIR)/test_wtd_liveness
-
-.PHONY: all run clean run_all run_coldboot run_coldboot_hang run_restart_loop run_wtd_liveness
-
-all: $(TARGET)
-
-$(TARGET): $(SRC_OBJ) $(TEST_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^
+.PHONY: clean run_all run_coldboot run_coldboot_hang run_restart_loop
 
 $(BUILD_DIR):
 	$(MKDIR_P) $(BUILD_DIR)
-
-$(SRC_OBJ): $(SRC) $(APP_DIR)/gsm/ring_buff.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(TEST_OBJ): $(TEST_SRC) $(APP_DIR)/gsm/ring_buff.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -I$(APP_DIR)/gsm -c $< -o $@
-
-run: $(TARGET)
-	./$(TARGET)
 
 # --- Kurtarma merdiveni karar testleri (gsm_init.c include edilir) ---
 
@@ -80,15 +55,7 @@ $(TARGET_LOOP): test_restart_loop.c $(APP_DIR)/gsm_process_contiki.c | $(BUILD_D
 run_restart_loop: $(TARGET_LOOP)
 	./$(TARGET_LOOP)
 
-# --- Stuck-FREE liveness (gsm_wtd.c include edilir) -----------------
-
-$(TARGET_WTD): test_wtd_liveness.c $(APP_DIR)/gsm/gsm_wtd.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS_PROD) $(INC) -o $@ $<
-
-run_wtd_liveness: $(TARGET_WTD)
-	./$(TARGET_WTD)
-
-run_all: run run_coldboot run_coldboot_hang run_restart_loop run_wtd_liveness
+run_all: run_coldboot run_coldboot_hang run_restart_loop
 	@echo "=== tum gsm host testleri bitti ==="
 
 clean:

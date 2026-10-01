@@ -11,6 +11,8 @@
  *   - the production patterns (%u32 AT parsing, %S fits, %s32) are
  *     unaffected
  */
+#include "unity.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -20,8 +22,6 @@
 /* XSCANF_ENABLE_TESTS Makefile'den -D ile gelir (gomulu test paketi acilir) */
 #include "xscanf.h"
 
-static int passed = 0;
-static int failed = 0;
 
 /* printf'in donus tipi beklenen imzayla uyusmadigi icin va_list koprusu */
 static void print_shim(const char *fmt, ...)
@@ -33,18 +33,12 @@ static void print_shim(const char *fmt, ...)
     va_end(ap);
 }
 
-static void check(bool cond, const char *name)
+static void check(bool condition, const char *message)
 {
-    if (cond) {
-        printf("PASS: %s\n", name);
-        passed++;
-    } else {
-        printf("FAIL: %s\n", name);
-        failed++;
-    }
+    TEST_ASSERT_TRUE_MESSAGE(condition, message);
 }
 
-static void test_bare_s_rejected(void)
+void test_bare_s_rejected(void)
 {
     int32_t v = 7;
     int ret = xscanf("12", 2, "%s", &v);
@@ -53,7 +47,7 @@ static void test_bare_s_rejected(void)
           "bare %s is rejected loudly");
 }
 
-static void test_s32_regression(void)
+void test_s32_regression(void)
 {
     int32_t v = 0;
     int ret = xscanf("-42", 3, "%s32", &v);
@@ -62,7 +56,7 @@ static void test_s32_regression(void)
           "%s32 still parses a signed 32-bit value");
 }
 
-static void test_S_fits(void)
+void test_S_fits(void)
 {
     char buf[8] = {0};
     int ret = xscanf("hello", 5, "%7S", buf);
@@ -72,7 +66,7 @@ static void test_S_fits(void)
           "%S fit: assigned, no error");
 }
 
-static void test_S_truncation_reported(void)
+void test_S_truncation_reported(void)
 {
     char buf[4] = {0};
     int ret = xscanf("hello", 5, "%3S", buf);
@@ -82,7 +76,7 @@ static void test_S_truncation_reported(void)
           "%S truncation: assigned and counted, but reported");
 }
 
-static void test_u32_at_parse_regression(void)
+void test_u32_at_parse_regression(void)
 {
     uint32_t a = 0, b = 0, c = 0, d = 0;
     int ret = xscanf(",1,22,333,4444", 14, ",%u32,%u32,%u32,%u32", &a, &b, &c, &d);
@@ -92,18 +86,19 @@ static void test_u32_at_parse_regression(void)
           "AT-style %u32 battery still parses");
 }
 
-int main(void)
+void test_xscanf_embedded_scenario(void)
 {
     int embedded_failed = xscanf_run_all_tests(print_shim);
+
     check(embedded_failed == 0, "embedded xscanf suite passes");
-
-    test_bare_s_rejected();
-    test_s32_regression();
-    test_S_fits();
-    test_S_truncation_reported();
-    test_u32_at_parse_regression();
-
-    printf("\n--------------------------------\npassed: %d   failed: %d\n",
-           passed, failed);
-    return (failed == 0) ? 0 : 1;
 }
+
+void setUp(void)
+{
+}
+
+void tearDown(void)
+{
+}
+
+/*** end of file ***/

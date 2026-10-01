@@ -34,10 +34,18 @@
 
 :paths:
   :test:
-    - +:unit/**
+    - +:application/**
     - +:efw/**
+    - +:gsm/**
+    - +:iec104/**
+    - +:libs/**
+    - +:power_board/**
+    - +:rf/**
+    - +:scp/**
+    - +:web_server/**
   :source:
     - ../Application/**
+    - support_sources/**
   :include:
     - ../Application/**
     - ../contiki-kernel/**
@@ -52,6 +60,7 @@
 :defines:
   :test:
     - UNIT_TEST
+    - XSCANF_ENABLE_TESTS
     - NO_CONSOLE_LOG
     - NO_SHELL_LOG
   :release: []
@@ -70,6 +79,16 @@
         - -Wconversion
         - -Wdouble-promotion
         - -Wformat=2
+      test_xsnprintf_format_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-float-conversion
+      test_xscanf_format_scenario:
+        - -Wno-sign-conversion
+      test_rf_json_golden_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-float-conversion
 
 :cmock:
   :plugins:
@@ -106,6 +125,16 @@
   :reports:
     - HtmlDetailed
     - Cobertura
+  :gcovr:
+    :report_root: ".."
+
+:tools:
+  :gcov_gcovr_report:
+    :executable: python
+    :arguments:
+      - -m
+      - gcovr
+      - ${1}
 
 :environment: []
 

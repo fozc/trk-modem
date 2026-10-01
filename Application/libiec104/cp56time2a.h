@@ -116,7 +116,8 @@ cp56time2a_t cp56time2a_now(void);
 /**
  * @brief  Convert a BSP RTC time to CP56Time2a format.
  * @param  rtc_ptr  Pointer to BSP RTC time (must not be NULL).
- * @return CP56Time2a timestamp.
+ * @return CP56Time2a timestamp. Invalid input returns a zeroed timestamp with
+ *         iv_bit=1.
  * @note   Encodes second and millisec into the combined milliseconds field:
  *         milliseconds = rtc_ptr->second * 1000 + rtc_ptr->millisec
  */
@@ -139,7 +140,8 @@ bsp_rtc_t cp56time2a_to_rtc(const cp56time2a_t *ts_ptr);
  * @param  dow           Day of week (1=Mon..7=Sun, 0=not used).
  * @param  month         Month (1-12).
  * @param  year          Year offset from 2000 (0-99).
- * @return CP56Time2a timestamp with iv_bit=0, su_bit=0.
+ * @return CP56Time2a timestamp with iv_bit=0 and su_bit=0. Invalid input
+ *         returns a zeroed timestamp with iv_bit=1.
  */
 cp56time2a_t cp56time2a_make(uint16_t milliseconds, uint8_t minute, uint8_t hour,
                              uint8_t day, uint8_t dow, uint8_t month, uint8_t year);

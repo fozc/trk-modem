@@ -21,8 +21,10 @@
 /* ISR uretici baglaminda kullanilir: 32-bit atomikler lock-free
  * olmali (GCC 14.3.rel1 / Cortex-M33: LDREX/STREX dongusu, kutuphane
  * cagrisi yok - cortex-m-atomic-isr.instructions.md 10. madde). */
+#if !defined(UNIT_TEST)
 _Static_assert(__atomic_always_lock_free(4, 0),
                "ring indices must be lock-free in ISR context");
+#endif
 
 static inline bool is_power_of_two(uint32_t x)
 {

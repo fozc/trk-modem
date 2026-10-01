@@ -12,11 +12,8 @@ INTEGRATION_SUITES = [
   ["libiec104", "libiec104", [[MAKE, "run"]]],
   ["libs", "libs", [[MAKE, "run"]]],
   ["nvram", "nvram", [[MAKE, "run"]]],
-  ["power_board", "power_board", [[MAKE, "run"]]],
-  ["rf", "rf", [[MAKE, "run"], [MAKE, "-f", "Makefile.scp", "run"]]],
   ["rf_hub_sim", "rf_hub_sim", [[MAKE, "run"]]],
-  ["web_navigation", "web_navigation", [[MAKE, "run"]]],
-  ["web_server", "web_server", [[MAKE, "run"]]]
+  ["web_navigation", "web_navigation", [[MAKE, "run"]]]
 ].freeze
 
 def run_command(label, directory, command)
@@ -52,10 +49,6 @@ def clean_all
     next if cleaned[directory]
 
     results << run_command("#{name} clean", directory, [MAKE, "clean"])
-    if commands.any? { |command| command.include?("Makefile.scp") }
-      results << run_command("#{name} scp clean", directory,
-                             [MAKE, "-f", "Makefile.scp", "clean"])
-    end
     cleaned[directory] = true
   end
 
@@ -74,7 +67,8 @@ when "unit"
 when "integration"
   results << run_integration
 when "coverage"
-  results << run_unit("gcov:all")
+  results << run_unit("clobber")
+  results << run_unit("gcov:all") if results.all?
 when "clean"
   results << clean_all
 else

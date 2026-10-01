@@ -82,7 +82,8 @@ void system_status_update(void)
     g_system_status.battery_soh_x10     = telemetry.soh_x10;
     g_system_status.charge_state    = telemetry.chg_stat;  // 0: Idle, 1: Charging, 2: Discharging
 
-    g_system_status.gsm_signal = gsm_info_get_signal_quality();
+    g_system_status.gsm_signal =
+        (int8_t)gsm_info_get_signal_quality();
     g_system_status.gsm_rat = get_network_generation();
 
 

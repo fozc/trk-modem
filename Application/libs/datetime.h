@@ -16,15 +16,15 @@ extern "C" {
 
 //#define ENABLE_64BIT_TIME
 
-#define DAYS_FROM_0001_TO_UNIX_EPOCH   719561
-#define DAYS_FROM_UNIX_EPOCH_TO_2025   20089
+#define DAYS_FROM_0001_TO_UNIX_EPOCH   719561U
+#define DAYS_FROM_UNIX_EPOCH_TO_2025   20089U
 #define DAYS_FROM_0001_TO_2025         (DAYS_FROM_0001_TO_UNIX_EPOCH + DAYS_FROM_UNIX_EPOCH_TO_2025)
 
-#define ONE_MIN_SECONDS   (60)
+#define ONE_MIN_SECONDS   (60U)
 #define ONE_HOUR_SECONDS  (ONE_MIN_SECONDS*ONE_MIN_SECONDS)
-#define ONE_DAY_SECONDS   (24*ONE_HOUR_SECONDS)
-#define ONE_MONTH_SECONDS (30*ONE_DAY_SECONDS)
-#define ONE_YEAR_SECONDS  (12*ONE_MONTH_SECONDS)
+#define ONE_DAY_SECONDS   (24U*ONE_HOUR_SECONDS)
+#define ONE_MONTH_SECONDS (30U*ONE_DAY_SECONDS)
+#define ONE_YEAR_SECONDS  (12U*ONE_MONTH_SECONDS)
 
 #define SECONDS_FROM_1970_TO_2025  1735689600UL
 
@@ -79,6 +79,8 @@ uint32_t dt_conv_to_unix(const datetime_t *date);   /* datetime -> seconds since
 void       dt_conv_to_str(datetime_t dt, char *buff);
 void       dt_conv_time_to_str(datetime_t dt, char *buff);
 datetime_t dt_conv_from_elapsed(uint32_t sec);
+uint8_t dt_compute_day_of_week(uint16_t year, uint8_t month, uint8_t day);
+int dt_compare_date_time(const datetime_t *date1, const datetime_t *date2);
 
 int dt_init(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second, datetime_t *dt);
 

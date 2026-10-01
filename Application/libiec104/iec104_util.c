@@ -8,7 +8,9 @@
 
 uint32_t iec104_ioa_3byte_to_uint32(ioa_3byte_t ioa)
 {
-    return (ioa.ioa_low | (ioa.ioa_mid << 8) | (ioa.ioa_high << 16));
+    return (uint32_t)ioa.ioa_low |
+           ((uint32_t)ioa.ioa_mid << 8U) |
+           ((uint32_t)ioa.ioa_high << 16U);
 }
 
 ioa_3byte_t iec104_make_ioa_3byte(uint32_t ioa)

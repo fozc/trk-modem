@@ -9,23 +9,16 @@
  *   - when nothing is truncated the return equals the full logical
  *     length and matches C snprintf byte for byte
  */
+#include "unity.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
 #include "xprintf.h"
 
-static int passed = 0;
-static int failed = 0;
-
-static void check(bool cond, const char *name)
+static void check(bool condition, const char *message)
 {
-    if (cond) {
-        printf("PASS: %s\n", name);
-        passed++;
-    } else {
-        printf("FAIL: %s\n", name);
-        failed++;
-    }
+    TEST_ASSERT_TRUE_MESSAGE(condition, message);
 }
 
 /* Canary-guarded buffer: catches any write outside [buf, buf+len). */
@@ -55,7 +48,7 @@ static bool guards_intact(const canvas_t *c)
     return true;
 }
 
-static void test_fit_matches_snprintf(void)
+void test_fit_matches_snprintf(void)
 {
     static const char *fmts[] = {
         "%d", "%u", "%s", "%x", "%02X", "%c", "%%",
@@ -70,18 +63,19 @@ static void test_fit_matches_snprintf(void)
         unsigned int got_len;
 
         switch (i) { /* one representative argument set per format */
-        case 0:  ref_len = snprintf(ref, sizeof(ref), fmts[i], -1234); break;
-        case 1:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 70000u); break;
-        case 2:  ref_len = snprintf(ref, sizeof(ref), fmts[i], "troika"); break;
-        case 3:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 0xbeefu); break;
-        case 4:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 5u); break;
-        case 5:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 'Z'); break;
+        case 0:  ref_len = snprintf(ref, sizeof(ref), "%d", -1234); break;
+        case 1:  ref_len = snprintf(ref, sizeof(ref), "%u", 70000U); break;
+        case 2:  ref_len = snprintf(ref, sizeof(ref), "%s", "troika"); break;
+        case 3:  ref_len = snprintf(ref, sizeof(ref), "%x", 0xbeefU); break;
+        case 4:  ref_len = snprintf(ref, sizeof(ref), "%02X", 5U); break;
+        case 5:  ref_len = snprintf(ref, sizeof(ref), "%c", 'Z'); break;
         case 6:  ref_len = snprintf(ref, sizeof(ref), "%%"); break;
-        case 7:  ref_len = snprintf(ref, sizeof(ref), fmts[i], "ab"); break;
-        case 8:  ref_len = snprintf(ref, sizeof(ref), fmts[i], "ab"); break;
-        case 9:  ref_len = snprintf(ref, sizeof(ref), fmts[i], 0x1234ul); break;
-        case 10: ref_len = snprintf(ref, sizeof(ref), fmts[i], "abcdef"); break;
-        default: ref_len = snprintf(ref, sizeof(ref), fmts[i], "a", 7, "b"); break;
+        case 7:  ref_len = snprintf(ref, sizeof(ref), "%5s|", "ab"); break;
+        case 8:  ref_len = snprintf(ref, sizeof(ref), "%-5s|", "ab"); break;
+        case 9:  ref_len = snprintf(ref, sizeof(ref), "%08lX", 0x1234UL); break;
+        case 10: ref_len = snprintf(ref, sizeof(ref), "%.2s", "abcdef"); break;
+        default: ref_len = snprintf(ref, sizeof(ref), "%s-%d-%s",
+                                    "a", 7, "b"); break;
         }
 
         switch (i) {
@@ -109,7 +103,7 @@ static void test_fit_matches_snprintf(void)
     check(all_ok, "fits: output and return match C snprintf");
 }
 
-static void test_exact_fit(void)
+void test_exact_fit(void)
 {
     canvas_t c;
     canvas_init(&c);
@@ -122,7 +116,7 @@ static void test_exact_fit(void)
     check(guards_intact(&c), "exact fit: guards intact");
 }
 
-static void test_truncation_clamps_return(void)
+void test_truncation_clamps_return(void)
 {
     canvas_t c;
     canvas_init(&c);
@@ -136,7 +130,7 @@ static void test_truncation_clamps_return(void)
     check(guards_intact(&c), "truncation: no write outside buffer");
 }
 
-static void test_len_zero(void)
+void test_len_zero(void)
 {
     canvas_t c;
     canvas_init(&c);
@@ -146,7 +140,7 @@ static void test_len_zero(void)
     check((c.buf[0] == 0x55) && guards_intact(&c), "len=0: nothing written");
 }
 
-static void test_len_one(void)
+void test_len_one(void)
 {
     canvas_t c;
     canvas_init(&c);
@@ -157,7 +151,7 @@ static void test_len_one(void)
     check(guards_intact(&c), "len=1: guards intact");
 }
 
-static void test_number_truncation(void)
+void test_number_truncation(void)
 {
     canvas_t c;
     canvas_init(&c);
@@ -172,7 +166,7 @@ static void test_number_truncation(void)
  * A long %s in the middle used to push pos past the buffer so that the
  * next size - pos underflowed; with the clamp pos must pin at size-1 and
  * every later append degrade to a safe no-op. */
-static void test_accumulation_idiom(void)
+void test_accumulation_idiom(void)
 {
     char acc[16];
     unsigned int pos = 0U;
@@ -198,7 +192,7 @@ static void test_accumulation_idiom(void)
     check(ok, "accumulation idiom: pos never passes the buffer, stays terminated");
 }
 
-static void test_null_string(void)
+void test_null_string(void)
 {
     canvas_t c;
     canvas_init(&c);
@@ -209,7 +203,7 @@ static void test_null_string(void)
     check(guards_intact(&c), "NULL %s: guards intact");
 }
 
-static void test_empty_format(void)
+void test_empty_format(void)
 {
     canvas_t c;
     canvas_init(&c);
@@ -219,7 +213,7 @@ static void test_empty_format(void)
     check(guards_intact(&c), "empty format: guards intact");
 }
 
-static void test_interleaved_calls(void)
+void test_interleaved_calls(void)
 {
     canvas_t a;
     canvas_t b;
@@ -236,7 +230,7 @@ static void test_interleaved_calls(void)
     check(guards_intact(&a) && guards_intact(&b), "interleaved calls: guards intact");
 }
 
-static void test_float_fit(void)
+void test_float_fit(void)
 {
     char ref[64];
     char got[64];
@@ -250,7 +244,7 @@ static void test_float_fit(void)
 /* E-notation worst case: sign(1) + digit(1) + '.'(1) + prec digits +
  * 'e'(1) + exp-sign(1) + exp(2) + NUL(1) = prec + 8 bytes. prec=24 fills
  * the 32-byte canvas exactly; the guard must reject prec >= 25 with "OV". */
-static void test_float_e_notation_boundaries(void)
+void test_float_e_notation_boundaries(void)
 {
     canvas_t c;
     char ref[48];
@@ -276,7 +270,7 @@ static void test_float_e_notation_boundaries(void)
     check(guards_intact(&c), "e-notation prec=26: guards intact");
 }
 
-static void test_width_pad_truncation(void)
+void test_width_pad_truncation(void)
 {
     canvas_t c;
     canvas_init(&c);
@@ -287,23 +281,12 @@ static void test_width_pad_truncation(void)
     check(guards_intact(&c), "width pad truncation: guards intact");
 }
 
-int main(void)
+void setUp(void)
 {
-    test_fit_matches_snprintf();
-    test_exact_fit();
-    test_truncation_clamps_return();
-    test_len_zero();
-    test_len_one();
-    test_number_truncation();
-    test_accumulation_idiom();
-    test_null_string();
-    test_empty_format();
-    test_interleaved_calls();
-    test_float_fit();
-    test_float_e_notation_boundaries();
-    test_width_pad_truncation();
-
-    printf("\n--------------------------------\npassed: %d   failed: %d\n",
-           passed, failed);
-    return (failed == 0) ? 0 : 1;
 }
+
+void tearDown(void)
+{
+}
+
+/*** end of file ***/

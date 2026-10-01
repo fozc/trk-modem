@@ -147,14 +147,32 @@ typedef enum
 	#define CSLOG_WARN(a...) CCSLOG(XCOLOR_YELLOW, a)
 
 #else
-	#define CSLOG_NODT(a...)
-	#define CCSLOG_NODT(color, a...)
-	#define CSLOG(a...)
-	#define CCSLOG(color, a...)
-	#define CSLOG_ERR(a...)
-	#define CSLOG_WARN(a...)
-	#define CSLOG_ERR_NODT(a...)
-	#define CSLOG_WARN_NODT(a...)
+	#ifndef CSLOG_NODT
+		#define CSLOG_NODT(...) \
+			do { if (false) { xprintf(__VA_ARGS__); } } while (0)
+	#endif
+	#ifndef CCSLOG_NODT
+		#define CCSLOG_NODT(color, ...) \
+			do { if (false) { xcprintf((color), __VA_ARGS__); } } while (0)
+	#endif
+	#ifndef CSLOG
+		#define CSLOG(...) CSLOG_NODT(__VA_ARGS__)
+	#endif
+	#ifndef CCSLOG
+		#define CCSLOG(color, ...) CCSLOG_NODT((color), __VA_ARGS__)
+	#endif
+	#ifndef CSLOG_ERR
+		#define CSLOG_ERR(...) CSLOG_NODT(__VA_ARGS__)
+	#endif
+	#ifndef CSLOG_WARN
+		#define CSLOG_WARN(...) CSLOG_NODT(__VA_ARGS__)
+	#endif
+	#ifndef CSLOG_ERR_NODT
+		#define CSLOG_ERR_NODT(...) CSLOG_NODT(__VA_ARGS__)
+	#endif
+	#ifndef CSLOG_WARN_NODT
+		#define CSLOG_WARN_NODT(...) CSLOG_NODT(__VA_ARGS__)
+	#endif
 #endif
 
 #endif /* CONSOLE_LOGGER_CONFIG_H_ */
