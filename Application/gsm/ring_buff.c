@@ -45,6 +45,10 @@ static inline bool rbuff_is_valid(const rbuff_t *p_rb)
     return (p_rb != NULL) && (p_rb->buff != NULL) && (p_rb->buff_size != 0U);
 }
 
+/* Index loads may be wider than uint32_t on LP64 hosts. The casts below
+ * are safe: initialization stores zero and every index update is masked
+ * by buff_size - 1U, so indices stay within the uint32_t buffer size. */
+
 /* ------------------------------------------------------------------ */
 /*  Init / Clear                                                       */
 /* ------------------------------------------------------------------ */
@@ -71,7 +75,8 @@ void rbuff_clear(rbuff_t *p_rb)
         return;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_acquire);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_acquire);
     atomic_store_explicit(&p_rb->tail, h, memory_order_release);
 }
 
@@ -86,8 +91,10 @@ uint32_t rbuff_available_for_write(rbuff_t *p_rb)
         return 0U;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_relaxed);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_acquire);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_relaxed);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_acquire);
 
     return (t - h - 1U) & mask(p_rb);
 }
@@ -99,7 +106,8 @@ uint32_t rbuff_write_byte(rbuff_t *p_rb, uint8_t c)
         return 1U; /* Not written */
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_relaxed);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_relaxed);
     uint32_t next_h = (h + 1U) & mask(p_rb);
 
     /* Full check: load tail with acquire to see latest consumer progress */
@@ -135,7 +143,8 @@ uint32_t rbuff_write_buff(rbuff_t *p_rb, const void *p_data, uint32_t len)
         return 1U;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_relaxed);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_relaxed);
     uint32_t first_chunk = p_rb->buff_size - h;
 
     if (first_chunk > len)
@@ -170,8 +179,10 @@ bool rbuff_get_write_block(rbuff_t *p_rb, uint8_t **pp_data, uint32_t *p_len)
         return false;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_relaxed);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_acquire);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_relaxed);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_acquire);
 
     /* The -1 reserve is built into the free-space formula: the block can
      * never reach the tail, so wrapping head to 0 stays unambiguous. */
@@ -199,8 +210,10 @@ uint32_t rbuff_advance(rbuff_t *p_rb, uint32_t len)
         return 0U;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_relaxed);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_acquire);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_relaxed);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_acquire);
 
     uint32_t free_space = (t - h - 1U) & mask(p_rb);
     if (len > free_space)
@@ -224,8 +237,10 @@ uint32_t rbuff_available(rbuff_t *p_rb)
         return 0U;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_acquire);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_acquire);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
     return (h - t) & mask(p_rb);
 }
@@ -237,8 +252,10 @@ bool rbuff_peek(rbuff_t *p_rb, uint8_t *p_out)
         return false;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_acquire);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_acquire);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
     if (h == t)
     {
@@ -256,8 +273,10 @@ uint32_t rbuff_peek_buff(rbuff_t *p_rb, uint32_t skip, void *p_out, uint32_t len
         return 0U;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_acquire);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_acquire);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
     uint32_t avail = (h - t) & mask(p_rb);
     if (skip >= avail)
@@ -293,8 +312,10 @@ bool rbuff_read_safe(rbuff_t *p_rb, uint8_t *p_out)
         return false;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_acquire);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_acquire);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
     if (h == t)
     {
@@ -322,7 +343,8 @@ uint32_t rbuff_read_buff(rbuff_t *p_rb, void *p_out, uint32_t len)
 
     uint32_t to_read = (len > avail) ? avail : len;
 
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
     uint32_t first_chunk = p_rb->buff_size - t;
 
     if (first_chunk > to_read)
@@ -357,8 +379,10 @@ bool rbuff_get_read_block(rbuff_t *p_rb, uint8_t **pp_data, uint32_t *p_len)
         return false;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_acquire);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_acquire);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
     uint32_t avail = (h - t) & mask(p_rb);
     if (avail == 0U)
@@ -384,8 +408,10 @@ uint32_t rbuff_skip(rbuff_t *p_rb, uint32_t len)
         return 0U;
     }
 
-    uint32_t h = atomic_load_explicit(&p_rb->head, memory_order_acquire);
-    uint32_t t = atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
+    uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_acquire);
+    uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
     uint32_t avail = (h - t) & mask(p_rb);
     if (len > avail)
