@@ -9,7 +9,6 @@ INTEGRATION_SUITES = [
   ["contiki_process", "contiki_process", [[MAKE, "run"]]],
   ["fault_log", "fault_log", [[MAKE, "run"]]],
   ["gsm", "gsm", [[MAKE, "run_all"]]],
-  ["libiec104", "libiec104", [[MAKE, "run"]]],
   ["libs", "libs", [[MAKE, "run"]]],
   ["nvram", "nvram", [[MAKE, "run"]]],
   ["rf_hub_sim", "rf_hub_sim", [[MAKE, "run"]]],

@@ -1,6 +1,6 @@
 /**********************************************************************
  *
- * Filename:    mock_platform.c
+ * Filename:    iec104_platform_fake.c
  *
  * Description: Host-test doubles for the platform services libiec104
  *              reaches into. iec104.c includes breaker.h, fault_log.h,
@@ -11,7 +11,7 @@
  *
  **********************************************************************/
 
-#include "mock_platform.h"
+#include "iec104_platform_fake.h"
 
 #include <string.h>
 
@@ -124,7 +124,7 @@ void mock_fault_log_fill(uint8_t feeder_id, uint8_t phase_id,
         entry->info.phase                   = phase_id & 0x03U;
         entry->info.nominal_current_status  = (uint8_t)(n & 0x01U);
         entry->info.power_status            = (uint8_t)((n + 1U) & 0x01U);
-        entry->info.type                    = (uint8_t)type;
+        entry->info.type                    = (uint8_t)type & 1U;
     }
 }
 
@@ -170,9 +170,26 @@ bool fault_log_read_nth(uint8_t feeder_id, uint8_t phase_id, fault_log_type_t ty
 /* rtc / bsp                                                         */
 /* ---------------------------------------------------------------- */
 
+static uint32_t rtc_sync_count;
+static rtc_t rtc_last_sync;
+
+uint32_t mock_rtc_sync_count(void)
+{
+    return rtc_sync_count;
+}
+
+rtc_t mock_rtc_last_sync(void)
+{
+    return rtc_last_sync;
+}
+
 void rtc_sync(const rtc_t *dt)
 {
-    (void)dt;
+    if (NULL != dt)
+    {
+        rtc_last_sync = *dt;
+        rtc_sync_count++;
+    }
 }
 
 void rtc_print_now(void)
@@ -227,6 +244,8 @@ unsigned int xcprintf(const char *color, const char *fmt, ...)
 
 void mock_platform_reset(void)
 {
+    rtc_sync_count = 0U;
+    (void)memset(&rtc_last_sync, 0, sizeof(rtc_last_sync));
     (void)memset(&mock_breaker, 0, sizeof(mock_breaker));
     (void)memset(&mock_iec104_config, 0, sizeof(mock_iec104_config));
     (void)memset(mock_fault_count, 0, sizeof(mock_fault_count));

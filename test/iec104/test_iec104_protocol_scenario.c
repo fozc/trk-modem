@@ -1,5 +1,5 @@
 /*
- * test_iec104_protocol.c
+ * test_iec104_protocol_scenario.c
  *
  * Host tests for the libiec104 protocol core, driven through a loopback
  * transport: every APDU the stack emits is captured in tx_log[] and can be
@@ -10,35 +10,33 @@
  * accounting, the k window, the STOPDT gate and the resumable fault
  * emission are exercised.
  *
- * Usage: make run   (test/integration/libiec104)
+ * Usage: ceedling test:test_iec104_protocol_scenario
  */
 
-#include <stdio.h>
+#include "unity.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "iec104.h"
 #include "iec104_types.h"
-#include "mock_platform.h"
+#include "iec104_platform_fake.h"
 
-static unsigned int test_pass = 0U;
-static unsigned int test_fail = 0U;
+#define TEST_CHECK(condition, message) \
+    TEST_ASSERT_TRUE_MESSAGE((condition), (message))
 
-#define TEST_CHECK(cond, name)                                           \
-    do                                                                   \
-    {                                                                    \
-        if ((cond) != 0)                                                 \
-        {                                                                \
-            test_pass++;                                                 \
-            printf("PASS: %s\r\n", (name));                              \
-        }                                                                \
-        else                                                             \
-        {                                                                \
-            test_fail++;                                                 \
-            printf("FAIL: %s  (%s:%d)\r\n", (name), __FILE__, __LINE__); \
-        }                                                                \
-    } while (0)
+TEST_SOURCE_FILE("iec104_platform_fake.c")
+TEST_SOURCE_FILE("iec104_config.c")
+TEST_SOURCE_FILE("iec104_util.c")
+TEST_SOURCE_FILE("cp56time2a.c")
+
+void setUp(void)
+{
+}
+
+void tearDown(void)
+{
+}
 
 /* ---------------------------------------------------------------- */
 /* Loopback transport                                                */
@@ -77,6 +75,10 @@ static int fake_send(const uint8_t *data, uint16_t length)
     {
         return -1;
     }
+
+    TEST_ASSERT_TRUE(length >= 6U);
+    TEST_ASSERT_EQUAL_HEX8(0x68U, data[0]);
+    TEST_ASSERT_EQUAL_UINT16(length, (uint16_t)((uint16_t)data[1] + 2U));
 
     (void)memcpy(tx_log[tx_count], data, length);
     tx_log_len[tx_count] = length;
@@ -119,7 +121,8 @@ static bool frame_is_i(const uint8_t *frame)
 
 static uint16_t frame_ns(const uint8_t *frame)
 {
-    return (uint16_t)((((uint16_t)frame[3] << 7) | ((uint16_t)frame[2] >> 1)) & 0x7FFFU);
+    return (uint16_t)((((uint32_t)frame[3] << 7U) |
+                       ((uint32_t)frame[2] >> 1U)) & 0x7FFFU);
 }
 
 static uint8_t frame_u_func(const uint8_t *frame)
@@ -338,7 +341,7 @@ static void enable_all_lines(void)
 /* Tests                                                             */
 /* ---------------------------------------------------------------- */
 
-static void test_startdt_brings_link_up(void)
+void test_startdt_brings_link_up(void)
 {
     setup(12U, 8U);
 
@@ -358,7 +361,7 @@ static void test_startdt_brings_link_up(void)
     TEST_CHECK(0U == frame_ns(tx_log[1]), "end-of-init carries N(S) = 0");
 }
 
-static void test_send_sequence_increments_by_one(void)
+void test_send_sequence_increments_by_one(void)
 {
     uint8_t frame[16];
 
@@ -401,7 +404,7 @@ static void test_send_sequence_increments_by_one(void)
     TEST_CHECK(iec104_get_send_sn() == expected, "send_sn matches the last emitted N(S) + 1");
 }
 
-static void test_rejected_frame_does_not_advance_counters(void)
+void test_rejected_frame_does_not_advance_counters(void)
 {
     uint8_t frame[16];
 
@@ -422,7 +425,7 @@ static void test_rejected_frame_does_not_advance_counters(void)
     TEST_CHECK(iec104_get_k() == k_before, "k_counter unchanged on transport rejection");
 }
 
-static void test_k_window_stops_and_reopens(void)
+void test_k_window_stops_and_reopens(void)
 {
     uint8_t frame[16];
     const uint8_t k_max = 4U;
@@ -454,7 +457,7 @@ static void test_k_window_stops_and_reopens(void)
     TEST_CHECK(emitted > 0U, "the first burst was not empty");
 }
 
-static void test_stopdt_closes_the_i_frame_gate(void)
+void test_stopdt_closes_the_i_frame_gate(void)
 {
     uint8_t frame[16];
 
@@ -487,7 +490,7 @@ static void test_stopdt_closes_the_i_frame_gate(void)
     TEST_CHECK(0U == count_i_frames(), "fault emitter stays silent after STOPDT");
 }
 
-static void test_testfr_is_retried_when_the_transport_refuses(void)
+void test_testfr_is_retried_when_the_transport_refuses(void)
 {
     setup(64U, 32U);
     start_link();
@@ -516,7 +519,7 @@ static void test_testfr_is_retried_when_the_transport_refuses(void)
                "TESTFR is retried after the transport recovers");
 }
 
-static void test_testfr_con_timeout_closes_the_link(void)
+void test_testfr_con_timeout_closes_the_link(void)
 {
     uint8_t frame[16];
 
@@ -549,7 +552,7 @@ static void test_testfr_con_timeout_closes_the_link(void)
                "a missing TESTFR_CON closes the link even while data flows");
 }
 
-static void test_fault_emission_resumes_without_gap_or_repeat(void)
+void test_fault_emission_resumes_without_gap_or_repeat(void)
 {
     const uint8_t fault_count = 9U;
 
@@ -628,7 +631,7 @@ static void test_fault_emission_resumes_without_gap_or_repeat(void)
                "every fault object is emitted exactly once");
 }
 
-static void test_split_apdu_is_reassembled(void)
+void test_split_apdu_is_reassembled(void)
 {
     uint8_t frame[16];
 
@@ -651,7 +654,7 @@ static void test_split_apdu_is_reassembled(void)
                "reassembled interrogation is confirmed");
 }
 
-static void test_interrogation_is_confirmed_before_its_data(void)
+void test_interrogation_is_confirmed_before_its_data(void)
 {
     uint8_t frame[16];
 
@@ -694,7 +697,7 @@ static void test_interrogation_is_confirmed_before_its_data(void)
     TEST_CHECK(data_between, "interrogated data stays between ACT_CON and ACT_TERM");
 }
 
-static void test_common_address_mismatch_is_rejected(void)
+void test_common_address_mismatch_is_rejected(void)
 {
     uint8_t frame[16];
 
@@ -711,7 +714,7 @@ static void test_common_address_mismatch_is_rejected(void)
                "unknown common address is answered negatively");
 }
 
-static void test_i_frame_before_startdt_is_dropped(void)
+void test_i_frame_before_startdt_is_dropped(void)
 {
     uint8_t frame[16];
 
@@ -724,7 +727,7 @@ static void test_i_frame_before_startdt_is_dropped(void)
     TEST_CHECK(0U == tx_count, "I-frames before STARTDT are ignored");
 }
 
-static void test_incomplete_interrogation_terminates_negatively(void)
+void test_incomplete_interrogation_terminates_negatively(void)
 {
     uint8_t frame[16];
 
@@ -748,7 +751,7 @@ static void test_incomplete_interrogation_terminates_negatively(void)
                "a dropped object makes ACT_TERM negative");
 }
 
-static void test_complete_interrogation_terminates_positively(void)
+void test_complete_interrogation_terminates_positively(void)
 {
     uint8_t frame[16];
 
@@ -767,7 +770,7 @@ static void test_complete_interrogation_terminates_positively(void)
                "a complete interrogation terminates positively");
 }
 
-static void test_interrogation_with_unsupported_cot_is_rejected(void)
+void test_interrogation_with_unsupported_cot_is_rejected(void)
 {
     uint8_t frame[16];
 
@@ -791,7 +794,7 @@ static void test_interrogation_with_unsupported_cot_is_rejected(void)
                "a deactivation emits no interrogated data");
 }
 
-static void test_interrogation_response_echoes_originator_address(void)
+void test_interrogation_response_echoes_originator_address(void)
 {
     uint8_t frame[16];
 
@@ -817,7 +820,7 @@ static void test_interrogation_response_echoes_originator_address(void)
                "interrogated data echoes the originator address of the command");
 }
 
-static void test_reset_process_general_reset_is_confirmed(void)
+void test_reset_process_general_reset_is_confirmed(void)
 {
     uint8_t  frame[16];
     uint16_t own_ns;
@@ -843,7 +846,7 @@ static void test_reset_process_general_reset_is_confirmed(void)
                "a general reset asks the application to reboot");
 }
 
-static void test_reset_process_with_unknown_qrp_is_rejected(void)
+void test_reset_process_with_unknown_qrp_is_rejected(void)
 {
     uint8_t frame[16];
 
@@ -863,7 +866,7 @@ static void test_reset_process_with_unknown_qrp_is_rejected(void)
                "an undefined reset qualifier triggers no reboot");
 }
 
-static void test_reset_process_with_foreign_ioa_is_rejected(void)
+void test_reset_process_with_foreign_ioa_is_rejected(void)
 {
     uint8_t  frame[16];
     uint16_t own_ns;
@@ -890,36 +893,636 @@ static void test_reset_process_with_foreign_ioa_is_rejected(void)
 
 /* ---------------------------------------------------------------- */
 
-int main(void)
+void test_interrogation_reassembles_at_every_tcp_split_boundary(void)
 {
-    (void)setvbuf(stdout, NULL, _IONBF, 0);
+    uint8_t frame[16];
 
-    printf("\r\n=== libiec104 protocol tests ===\r\n\r\n");
+    for (uint16_t split = 1U; split < (uint16_t)sizeof(frame); split++)
+    {
+        setup(64U, 32U);
+        start_link();
+        build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS,
+                            QOI_STATION_REQ);
 
-    test_startdt_brings_link_up();
-    test_send_sequence_increments_by_one();
-    test_rejected_frame_does_not_advance_counters();
-    test_k_window_stops_and_reopens();
-    test_stopdt_closes_the_i_frame_gate();
-    test_testfr_is_retried_when_the_transport_refuses();
-    test_testfr_con_timeout_closes_the_link();
-    test_fault_emission_resumes_without_gap_or_repeat();
-    test_split_apdu_is_reassembled();
-    test_interrogation_is_confirmed_before_its_data();
-    test_common_address_mismatch_is_rejected();
-    test_i_frame_before_startdt_is_dropped();
-    test_incomplete_interrogation_terminates_negatively();
-    test_complete_interrogation_terminates_positively();
-    test_interrogation_with_unsupported_cot_is_rejected();
-    test_interrogation_response_echoes_originator_address();
-    test_reset_process_general_reset_is_confirmed();
-    test_reset_process_with_unknown_qrp_is_rejected();
-    test_reset_process_with_foreign_ioa_is_rejected();
+        iec104_data_received(frame, split);
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16_MESSAGE(0U, tx_count,
+                                         "partial APDU must not respond");
 
-    printf("\r\n--------------------------------\r\n");
-    printf("passed: %u   failed: %u\r\n", test_pass, test_fail);
+        iec104_data_received(&frame[split],
+                            (uint16_t)(sizeof(frame) - split));
+        libiec104_poll();
+        TEST_ASSERT_TRUE(find_asdu(C_IC_NA_1, COT_ACTIVATION_CON) >= 0);
+        TEST_ASSERT_TRUE(find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM) >= 0);
+    }
+}
 
-    return (0U == test_fail) ? 0 : 1;
+void test_interrogation_reassembles_one_byte_at_a_time(void)
+{
+    uint8_t frame[16];
+
+    setup(64U, 32U);
+    start_link();
+    build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS,
+                        QOI_STATION_REQ);
+
+    for (size_t index = 0U; index < sizeof(frame); index++)
+    {
+        iec104_data_received(&frame[index], 1U);
+        libiec104_poll();
+        if ((index + 1U) < sizeof(frame))
+        {
+            TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+        }
+    }
+
+    TEST_ASSERT_TRUE(find_asdu(C_IC_NA_1, COT_ACTIVATION_CON) >= 0);
+    TEST_ASSERT_TRUE(find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM) >= 0);
+}
+
+void test_startdt_reassembles_one_byte_at_a_time(void)
+{
+    const uint8_t frame[6] = {0x68U, 0x04U, 0x07U, 0U, 0U, 0U};
+
+    setup(64U, 32U);
+    for (size_t index = 0U; index < sizeof(frame); index++)
+    {
+        iec104_data_received(&frame[index], 1U);
+        libiec104_poll();
+        if ((index + 1U) < sizeof(frame))
+        {
+            TEST_ASSERT_FALSE(iec104_is_link_active());
+            TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+        }
+    }
+
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    TEST_ASSERT_TRUE(tx_count >= 2U);
+    TEST_ASSERT_TRUE(frame_is_u(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(IEC104_STARTDT_CON, frame_u_func(tx_log[0]));
+}
+
+static uint16_t frame_nr(const uint8_t *frame)
+{
+    return (uint16_t)(((uint32_t)frame[5] << 7U) |
+                      ((uint32_t)frame[4] >> 1U));
+}
+
+static void advance_ticks(uint16_t ticks)
+{
+    for (uint16_t index = 0U; index < ticks; index++)
+    {
+        iec104_tick();
+    }
+    libiec104_poll();
+}
+
+static void send_pending_reset(uint16_t ns, uint16_t nr)
+{
+    uint8_t frame[16];
+    build_reset_process(frame, ns, nr, TEST_COMMON_ADDRESS, 0U,
+                        IEC104_QRP_RESET_PENDING_EVENTS);
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+}
+
+void test_duplicate_ack_keeps_outstanding_window_unchanged(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_k());
+    feed_s_frame(1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_k());
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_acksn());
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
+void test_partial_ack_releases_only_confirmed_frames(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    send_pending_reset(1U, 1U);
+    TEST_ASSERT_EQUAL_UINT16(2U, iec104_get_k());
+    feed_s_frame(2U);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_k());
+    TEST_ASSERT_EQUAL_UINT16(2U, iec104_get_acksn());
+    feed_s_frame(3U);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_k());
+    TEST_ASSERT_EQUAL_UINT16(3U, iec104_get_acksn());
+}
+
+void test_old_ack_does_not_move_window_backwards(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    feed_s_frame(2U);
+    send_pending_reset(1U, 2U);
+    feed_s_frame(1U);
+    TEST_ASSERT_EQUAL_UINT16(2U, iec104_get_acksn());
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_k());
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
+void test_ack_for_unsent_frame_closes_and_resets_link(void)
+{
+    setup(64U, 32U);
+    start_link();
+    feed_s_frame(2U);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_receive_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_k());
+}
+
+void test_out_of_order_i_frame_closes_without_executing_command(void)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    build_reset_process(frame, 1U, 1U, TEST_COMMON_ADDRESS, 0U,
+                        IEC104_QRP_GENERAL_RESET);
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_invalid_piggyback_ack_prevents_reset_command_execution(void)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    build_reset_process(frame, 0U, 2U, TEST_COMMON_ADDRESS, 0U,
+                        IEC104_QRP_GENERAL_RESET);
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_receive_sequence_wraps_from_32767_to_zero(void)
+{
+    setup(64U, 32U);
+    start_link();
+    iec_set_receive_sn(32766U);
+    send_pending_reset(32766U, 1U);
+    TEST_ASSERT_EQUAL_UINT16(32767U, iec104_get_receive_sn());
+    TEST_ASSERT_EQUAL_UINT16(32767U, frame_nr(tx_log[0]));
+    send_pending_reset(32767U, 1U);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_receive_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, frame_nr(tx_log[1]));
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
+void test_t1_closes_only_after_ack_deadline(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    advance_ticks(15U);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    advance_ticks(1U);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+}
+
+void test_partial_ack_restarts_t1_for_remaining_frames(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    send_pending_reset(1U, 1U);
+    advance_ticks(14U);
+    feed_s_frame(2U);
+    advance_ticks(2U);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_k());
+    advance_ticks(14U);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+}
+
+void test_testfr_confirmation_cancels_pending_timeout(void)
+{
+    setup(64U, 32U);
+    start_link();
+    advance_ticks(20U);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    advance_ticks(1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_ACT, frame_u_func(tx_log[0]));
+    feed_u_frame(IEC104_TESTFR_CON);
+    advance_ticks(16U);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+}
+
+void test_testfr_act_before_startdt_confirms_without_opening_link(void)
+{
+    const uint8_t expected[6] = {0x68U, 4U, 0x83U, 0U, 0U, 0U};
+    setup(64U, 32U);
+    feed_u_frame(IEC104_TESTFR_ACT);
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_MEMORY(expected, tx_log[0], sizeof(expected));
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_send_sn());
+}
+
+void test_unknown_u_function_has_no_state_or_transport_effect(void)
+{
+    setup(64U, 32U);
+    feed_u_frame(0U);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_EQUAL_UINT(0U, event_count);
+}
+
+void test_invalid_apdu_lengths_resynchronize_to_next_start_byte(void)
+{
+    const uint8_t lengths[] = {0U, 1U, 2U, 3U, 254U, 255U};
+    for (size_t index = 0U; index < sizeof(lengths); index++)
+    {
+        uint8_t data[12] = {0x68U, 0U, 0U, 0U, 0U, 0U,
+                           0x68U, 4U, 0x43U, 0U, 0U, 0U};
+        setup(64U, 32U);
+        data[1] = lengths[index];
+        iec104_data_received(data, (uint16_t)sizeof(data));
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_CON,
+                               frame_u_func(tx_log[0]));
+        TEST_ASSERT_FALSE(iec104_is_link_active());
+    }
+}
+
+void test_noise_prefix_and_coalesced_test_frames_are_processed(void)
+{
+    const uint8_t data[15] = {0x00U, 0xFFU, 0x67U,
+        0x68U, 4U, 0x43U, 0U, 0U, 0U,
+        0x68U, 4U, 0x43U, 0U, 0U, 0U};
+    setup(64U, 32U);
+    iec104_data_received(data, (uint16_t)sizeof(data));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_CON, frame_u_func(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_CON, frame_u_func(tx_log[1]));
+}
+
+void test_partial_tail_survives_after_complete_frame(void)
+{
+    const uint8_t first[9] = {0x68U, 4U, 0x43U, 0U, 0U, 0U,
+                             0x68U, 4U, 0x43U};
+    const uint8_t tail[3] = {0U, 0U, 0U};
+    setup(64U, 32U);
+    iec104_data_received(first, (uint16_t)sizeof(first));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    iec104_data_received(tail, (uint16_t)sizeof(tail));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_CON, frame_u_func(tx_log[1]));
+}
+
+void test_null_and_empty_input_preserve_pending_partial_frame(void)
+{
+    const uint8_t frame[6] = {0x68U, 4U, 0x43U, 0U, 0U, 0U};
+    setup(64U, 32U);
+    iec104_data_received(frame, 3U);
+    libiec104_poll();
+    iec104_data_received(NULL, 3U);
+    iec104_data_received(frame, 0U);
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    iec104_data_received(&frame[3], 3U);
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+}
+
+void test_unknown_asdu_returns_negative_type_response_with_own_sequences(void)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS,
+                        QOI_STATION_REQ);
+    frame[6] = 0xFEU;
+    frame[9] = 0x37U;
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(16U, tx_log_len[0]);
+    TEST_ASSERT_EQUAL_UINT8(0xFEU, frame_asdu_type(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(UkTypeId, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(0x37U, frame_asdu_oa(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT16(1U, frame_ns(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT16(1U, frame_nr(tx_log[0]));
+    TEST_ASSERT_EQUAL_MEMORY(&frame[10], &tx_log[0][10], 6U);
+}
+
+void test_truncated_reset_command_is_rejected_without_reboot(void)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    build_reset_process(frame, 0U, 1U, TEST_COMMON_ADDRESS, 0U,
+                        IEC104_QRP_GENERAL_RESET);
+    frame[1] = 13U;
+    iec104_data_received(frame, 15U);
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(UkTypeId, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_NOT_EQUAL(IEC104_EVT_REBOOT_REQUESTED, last_event);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
+/* Receive-only data does not generate an I-frame response or piggyback ACK. */
+static void send_initialization(uint16_t send_seq)
+{
+    uint8_t frame[16];
+    build_reset_process(frame, send_seq, 1U, TEST_COMMON_ADDRESS, 0U, 0U);
+    frame[6] = M_EI_NA_1;
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+}
+
+void test_receive_window_sends_exact_s_ack_at_threshold(void)
+{
+    const uint8_t expected[6] = {0x68U, 4U, 1U, 0U, 4U, 0U};
+    setup(64U, 2U);
+    start_link();
+    send_initialization(0U);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_w());
+    send_initialization(1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_MEMORY(expected, tx_log[0], sizeof(expected));
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_w());
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_send_sn());
+}
+
+void test_t2_sends_ack_at_deadline_and_clears_pending_count(void)
+{
+    const uint8_t expected[6] = {0x68U, 4U, 1U, 0U, 2U, 0U};
+    setup(64U, 32U);
+    start_link();
+    send_initialization(0U);
+    advance_ticks(9U);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_w());
+    advance_ticks(1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_MEMORY(expected, tx_log[0], sizeof(expected));
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_w());
+    advance_ticks(1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+}
+
+void test_rejected_s_ack_keeps_pending_count_until_transport_recovers(void)
+{
+    setup(64U, 1U);
+    start_link();
+    transport_budget = 0;
+    send_initialization(0U);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_w());
+    transport_budget = -1;
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(1U, frame_nr(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(1U, tx_log[0][2]);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_w());
+}
+
+/* Wire fixture: 2026-10-01 23:57:58.987, Thursday, valid CP56Time2a. */
+static void build_clock_command(uint8_t *frame)
+{
+    const uint8_t timestamp[7] = {0x6BU, 0xE6U, 57U, 23U,
+                                 0x81U, 10U, 26U};
+    build_reset_process(frame, 0U, 1U, TEST_COMMON_ADDRESS, 0U, 0U);
+    frame[1] = 20U;
+    frame[6] = C_CS_NA_1;
+    frame[9] = 0x37U;
+    (void)memcpy(&frame[15], timestamp, sizeof(timestamp));
+}
+
+void test_clock_command_confirms_wire_fields_and_updates_all_rtc_fields(void)
+{
+    uint8_t frame[22];
+    setup(64U, 32U);
+    start_link();
+    build_clock_command(frame);
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(22U, tx_log_len[0]);
+    TEST_ASSERT_EQUAL_UINT8(C_CS_NA_1, frame_asdu_type(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(0x37U, frame_asdu_oa(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT16(1U, frame_ns(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT16(1U, frame_nr(tx_log[0]));
+    TEST_ASSERT_EQUAL_MEMORY(&frame[10], &tx_log[0][10], 12U);
+    TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
+    const rtc_t actual = mock_rtc_last_sync();
+    TEST_ASSERT_EQUAL_UINT16(987U, actual.millisec);
+    TEST_ASSERT_EQUAL_UINT8(58U, actual.second);
+    TEST_ASSERT_EQUAL_UINT8(57U, actual.minute);
+    TEST_ASSERT_EQUAL_UINT8(23U, actual.hour);
+    TEST_ASSERT_EQUAL_UINT8(1U, actual.day);
+    TEST_ASSERT_EQUAL_UINT8(10U, actual.month);
+    TEST_ASSERT_EQUAL_UINT8(26U, actual.year);
+    const cp56time2a_t saved = iec104_get_last_clock_sync_time();
+    TEST_ASSERT_EQUAL_MEMORY(&frame[15], &saved, 7U);
+}
+
+void test_clock_command_invalid_bit_rejects_without_changing_rtc(void)
+{
+    uint8_t frame[22];
+    setup(64U, 32U);
+    start_link();
+    build_clock_command(frame);
+    frame[17] |= 0x80U;
+    const cp56time2a_t previous = iec104_get_last_clock_sync_time();
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+    const cp56time2a_t actual = iec104_get_last_clock_sync_time();
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &actual, sizeof(actual));
+}
+
+void test_clock_command_missing_timestamp_byte_is_rejected(void)
+{
+    uint8_t frame[22];
+    setup(64U, 32U);
+    start_link();
+    build_clock_command(frame);
+    frame[1] = 19U;
+    iec104_data_received(frame, 21U);
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(UkTypeId, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+}
+
+void test_clock_command_unsupported_cot_does_not_update_rtc(void)
+{
+    uint8_t frame[22];
+    setup(64U, 32U);
+    start_link();
+    build_clock_command(frame);
+    frame[8] = COT_DEACTIVATION;
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(UkCauseTx, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+}
+
+void test_clock_command_reassembles_at_every_tcp_split_boundary(void)
+{
+    uint8_t frame[22];
+    for (uint16_t split = 1U; split < sizeof(frame); split++)
+    {
+        setup(64U, 32U);
+        start_link();
+        build_clock_command(frame);
+        iec104_data_received(frame, split);
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+        TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+        iec104_data_received(&frame[split],
+                             (uint16_t)(sizeof(frame) - split));
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[0]));
+        TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
+    }
+}
+
+void test_send_and_ack_sequences_complete_full_15_bit_cycle(void)
+{
+    setup(64U, 32U);
+    start_link();
+    for (uint32_t index = 0U; index < 32768U; index++)
+    {
+        const uint16_t receive_seq = (uint16_t)(index & 0x7FFFU);
+        const uint16_t send_seq = (uint16_t)((index + 1U) & 0x7FFFU);
+        const uint16_t next_seq = (uint16_t)((index + 2U) & 0x7FFFU);
+        /* Only occupied entries are read; avoid clearing the whole log. */
+        tx_count = 0U;
+        send_pending_reset(receive_seq, send_seq);
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT16(send_seq, frame_ns(tx_log[0]));
+        TEST_ASSERT_EQUAL_UINT16(next_seq, iec104_get_send_sn());
+        TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_k());
+        feed_s_frame(next_seq);
+        TEST_ASSERT_EQUAL_UINT16(next_seq, iec104_get_acksn());
+        TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_k());
+        TEST_ASSERT_TRUE(iec104_is_link_active());
+    }
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_receive_sn());
+}
+
+void test_maximum_apdu_and_following_frame_are_processed_separately(void)
+{
+    uint8_t data[261] = {0U};
+    const uint8_t test_frame[6] = {0x68U, 4U, 0x43U, 0U, 0U, 0U};
+    setup(64U, 32U);
+    start_link();
+    build_interrogation(data, 0U, 1U, TEST_COMMON_ADDRESS, QOI_STATION_REQ);
+    data[1] = 253U;
+    data[6] = 0xFEU;
+    (void)memcpy(&data[255], test_frame, sizeof(test_frame));
+    iec104_data_received(data, (uint16_t)sizeof(data));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(255U, tx_log_len[0]);
+    TEST_ASSERT_EQUAL_UINT8(UkTypeId, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_MEMORY(&data[10], &tx_log[0][10], 245U);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_CON, frame_u_func(tx_log[1]));
+}
+
+void test_oversized_tcp_chunk_is_dropped_and_next_frame_recovers(void)
+{
+    /* Current receive capacity is 1280 bytes; exercise one byte beyond it. */
+    const uint8_t oversized[1281] = {0U};
+    const uint8_t frame[6] = {0x68U, 4U, 0x43U, 0U, 0U, 0U};
+    setup(64U, 32U);
+    iec104_data_received(frame, 3U);
+    libiec104_poll();
+    iec104_data_received(oversized, (uint16_t)sizeof(oversized));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_CON, frame_u_func(tx_log[0]));
+}
+
+void test_buffer_overflow_discards_stale_partial_and_accepts_new_chunk(void)
+{
+    uint8_t chunk[1280] = {0U};
+    const uint8_t frame[6] = {0x68U, 4U, 0x43U, 0U, 0U, 0U};
+    setup(64U, 32U);
+    iec104_data_received(frame, 3U);
+    libiec104_poll();
+    (void)memcpy(chunk, frame, sizeof(frame));
+    iec104_data_received(chunk, (uint16_t)sizeof(chunk));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_CON, frame_u_func(tx_log[0]));
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+}
+
+void test_reset_discards_partial_apdu_and_allows_fresh_startdt(void)
+{
+    const uint8_t frame[6] = {0x68U, 4U, 0x43U, 0U, 0U, 0U};
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    iec104_data_received(frame, 3U);
+    libiec104_poll();
+    iec104_reset();
+    tx_clear();
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_receive_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_k());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_w());
+    start_link();
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_clock_command_spontaneous_cot_is_accepted(void)
+{
+    uint8_t frame[22];
+    setup(64U, 32U);
+    start_link();
+    build_clock_command(frame);
+    frame[8] = COT_SPONTANEOUS;
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
 }
 
 /*** end of file ***/

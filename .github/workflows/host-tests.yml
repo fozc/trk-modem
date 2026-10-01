@@ -16,6 +16,9 @@ jobs:
     name: Ceedling and integration tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Check out repository
@@ -27,24 +30,45 @@ jobs:
           ruby-version: '3.4'
 
       - name: Install test tools
+        id: test_tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends gcc-multilib
+          sudo apt-get install --yes --no-install-recommends gcc-multilib python3-venv
           gem install ceedling --version 1.0.1 --no-document
-          pipx install gcovr
+          python3 -m venv "$RUNNER_TEMP/host-test-tools"
+          "$RUNNER_TEMP/host-test-tools/bin/python" -m pip install gcovr
+          "$RUNNER_TEMP/host-test-tools/bin/python" -m gcovr --version
+          echo "$RUNNER_TEMP/host-test-tools/bin" >> "$GITHUB_PATH"
 
       - name: Run all host tests
-        run: ruby test/run_all.rb all
+        run: |
+          mkdir -p test/build/ci-logs
+          ruby test/run_all.rb all 2>&1 | tee test/build/ci-logs/host-tests.log
+          test -s test/build/ceedling/artifacts/test/junit_tests_report.xml
+
+      # Coverage starts with clobber, which removes the normal test artifacts.
+      - name: Preserve unit-test reports
+        if: ${{ !cancelled() && hashFiles('test/build/ceedling/artifacts/test/*.xml') != '' }}
+        run: |
+          mkdir -p test/build/reports/test
+          cp test/build/ceedling/artifacts/test/*.xml test/build/reports/test/
 
       - name: Generate unit-test coverage
-        run: ruby test/run_all.rb coverage
+        if: ${{ !cancelled() && steps.test_tools.outcome == 'success' }}
+        run: |
+          mkdir -p test/build/ci-logs
+          python -m gcovr --version
+          ruby test/run_all.rb coverage 2>&1 | tee test/build/ci-logs/coverage.log
+          test -s test/build/ceedling/artifacts/gcov/gcovr/GcovCoverageCobertura.xml
+          test -s test/build/ceedling/artifacts/gcov/gcovr/GcovCoverageResults.html
 
       - name: Upload test reports
-        if: always()
+        if: ${{ !cancelled() && hashFiles('test/build/ci-logs/*.log') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: host-test-reports
           if-no-files-found: error
           path: |
-            test/build/ceedling/artifacts/test/*.xml
+            test/build/reports/test/*.xml
             test/build/ceedling/artifacts/gcov/**
+            test/build/ci-logs/*.log

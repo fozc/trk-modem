@@ -1,7 +1,7 @@
 # Test Altyapısı
 
-**Sürüm:** 1.6
-**Tarih:** 2026-09-29
+**Sürüm:** 1.9
+**Tarih:** 2026-10-01
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
@@ -92,6 +92,7 @@ eklenmemelidir.
 | `libs/crc32` | `libs/test_crc32.c` | Standart ve ikili kontrol değerleri, bayt bayt/parçalı hesaplama ve bit yansıtma sınırları |
 | `libefw/efw_crc` | `efw/test_efw_crc.c` | Firmware CRC tel değeri, boş girdi, ikili veri, parçalı hesaplama ve bit yansıtma sınırları |
 | `libiec104/iec104_util` | `iec104/test_iec104_util.c` | 24 bit IOA sınırları, üst bitlerin atılması, bayt sırası ve eşitlik |
+| `libiec104/iec104` | `iec104/test_iec104_protocol_scenario.c` | STARTDT/STOPDT, gönderim penceresi, TESTFR, taşıma reddi, sorgulama, reset ve tüm TCP bölünme noktaları |
 | `gsm/ring_buff` | `gsm/test_ring_buff.c` | FIFO, tek yuva, tam kapasite, sarma, kısmi okuma, peek, clear, blok ve sıfır kopya erişim |
 | `gsm/gsm_wtd` | `gsm/test_gsm_wtd_liveness_scenario.c` | Sessizlik eşiği, iki aşamalı yeniden başlatma, hard reset, ping ile toparlanma ve busy durumu |
 | `web-server/http_request_parser` | `web_server/test_http_request_parser.c` | Eksik/bozuk istekler, uzunluk sınırları, sayısal taşma, GET/POST, sorgu, gövde ve kötü yol reddi |
@@ -114,6 +115,69 @@ eklenmemelidir.
 | `rf/rf_config` | `rf/test_rf_config_scenario.c` | Varsayılan ayarlar, kalıcı kayıt, çalışma modu ve kanal sınırı senaryoları |
 | `web-server/rf_json` | `web_server/test_rf_json_golden_scenario.c` | RF ayarlarının tam golden JSON çıktısı ve tampon uzunluğu |
 
+IEC104 protokol senaryoları gerçek `iec104.c`, `iec104_config.c`,
+`iec104_util.c` ve `cp56time2a.c` kaynaklarını birlikte derler. Taşıma
+işlevi ve platform çağrıları sabit boyutlu test yardımcılarıyla sağlanır.
+Mevcut protokol kaynağındaki daraltma ve bit alanı atamaları nedeniyle
+yalnız `test_iec104_protocol_scenario` derlemesinde `-Wconversion` ve
+`-Wsign-conversion` kapatılır. Diğer uyarı denetimleri açık kalır.
+
+### IEC104 protokol senaryoları
+
+**Amaç:** SCADA tarafından gelen baytların doğru işlenmesini ve cihazın
+ürettiği APDU (uygulama protokol veri birimi) yanıtlarını doğrular.
+
+**Kullanım yeri:** `iec104/test_iec104_protocol_scenario.c` dosyasında 54
+senaryo bulunur. Her senaryo bağımsız başlangıç durumuyla çalışır.
+
+| Alan | Kontrol edilen durumlar |
+|---|---|
+| Bağlantı | STARTDT, STOPDT, bağlantı açılmadan gelen veri, TESTFR yanıtı ve yeniden açılış |
+| TCP veri akışı | Her bölünme noktası, tek tek gelen baytlar, birleşik çerçeveler, araya giren ilgisiz baytlar ve eksik kuyruk |
+| Boyut sınırları | Geçersiz APDU uzunluğu, 253 bayt APDU sınırı, fazla büyük TCP verisi ve dolan tamponun toparlanması |
+| ACK (alındı onayı) | Tekrarlanan, eski, kısmi ve henüz gönderilmemiş çerçeveyi onaylayan ACK; komut içindeki hatalı ACK |
+| Sıra numarası | Beklenen sıra dışındaki giriş, alma sayacının taşması ve gönderme/ACK sayaçlarının 32.768 adımlık tam döngüsü |
+| Pencere ve süre | k gönderme sınırı, w alma sınırı, t1/t2/t3 eşikleri, kısmi ACK sonrası süre ve taşıma hatasından sonra yeniden deneme |
+| Interrogation (genel sorgu) | Onay-veri-bitiş sırası, olumlu/olumsuz bitiş, adres ve COT (gönderim nedeni) kontrolü |
+| Reset komutu | Genel reset, bekleyen olayları temizleme, bilinmeyen QRP (reset türü), yanlış IOA (bilgi nesnesi adresi) ve eksik komut |
+| Saat eşitleme | Yanıt baytları, originator address (isteği gönderen adres), milisaniye dahil RTC (gerçek zaman saati) alanları, invalid (geçersiz) biti ve eksik zaman damgası |
+| Arıza verisi | Taşıma kesilince kaldığı yerden devam etme; atlanan veya yinelenen kayıt olmaması |
+
+Başarılı gönderimlerin tamamında başlangıç baytı, en küçük çerçeve boyutu ve
+uzunluk alanının gerçek bayt sayısıyla eşleşmesi kontrol edilir. İlgili
+senaryolarda yanıtın sıra numarası, COT, P/N (olumlu/olumsuz onay), adres,
+veri alanları ve sayaçların son değeri de kontrol edilir.
+
+Yalnız protokol senaryoları `test/` dizininden şu komutla çalıştırılmalıdır:
+
+```text
+ceedling test:test_iec104_protocol_scenario
+```
+
+**Kapsam sınırı:** Bu testler host üzerinde çalışır. Gerçek SCADA ile ağ
+üzerinden birlikte çalışma, cihaz zamanlaması ve standart uygunluk testi
+ayrıca yapılmalıdır. Saat komutu işleyicisi şu anda yalnız invalid bitini
+kontrol eder; takvim alanlarını tam doğrulamaz. CP56Time2a birim testleri
+doğrulama işlevini sınar, ancak komut işleyicisi bu işlevi çağırmaz.
+Bu açık nokta protokol paketinin tamamlanmış olduğu şeklinde
+yorumlanmamalıdır.
+
+2026-10-01 tarihli temiz `gcov:all` koşusunda 268 Ceedling testi geçmiştir;
+başarısız veya atlanan test yoktur. Aynı değişikliklerle 7 integration paketi
+de geçmiştir. Coverage değerleri dosya bazındadır; protokolün tüm
+işlevlerinin kapsandığı anlamına gelmez.
+
+| Kaynak | Satır kapsamı | Dal kapsamı |
+|---|---|---|
+| `iec104.c` | %70,00 | %71,95 |
+| `cp56time2a.c` | %98,27 | %92,31 |
+| `iec104_util.c` | %100,00 | %100,00 |
+| `iec104_config.c` | %13,82 | %9,38 |
+
+Yapılandırma erişimlerinin çoğu bu protokol senaryolarında kullanılmaz.
+`iec104_config.c` için ayrıca ayar sınırları ve kalıcı kayıt davranışını
+kapsayan birim testleri eklenmelidir.
+
 ## Integration olarak kalan testler
 
 | Paket | Neden Ceedling dışında çalışıyor |
@@ -121,7 +185,6 @@ eklenmemelidir.
 | `contiki_process` | Gerçek Contiki sürecinin belirlenen süre boyunca çalışmasını doğrular |
 | `fault_log` | Çift flash kopyası, kesilen yazma ve yeniden açılış senaryolarını birlikte yürütür |
 | `gsm` | Kasıtlı timeout ve gerçek Contiki süreç yeniden başlatma akışını kullanır |
-| `libiec104` | Protokol çekirdeğinin çok adımlı bağlantı ve taşıma akışını birlikte yürütür |
 | `libs` | SPI flash halka kaydını yüzlerce yazma ve yeniden açılış adımıyla doğrular |
 | `nvram` | Çift NVRAM görüntüsünü, yazma arızalarını ve yeniden açılışı birlikte doğrular |
 | `rf_hub_sim` | Ayrı RF hub simülatörünü kendi çalıştırılabilir dosyasıyla sınar |
@@ -132,6 +195,21 @@ eklenmemelidir.
 Başarılı koşuda merkezi komut sıfır durum koduyla biter. Ceedling JUnit XML
 çıktısı `test/build/ceedling/artifacts/test/` altında oluşturulur. Coverage
 çıktıları `test/build/ceedling/artifacts/gcov/` altında oluşturulur.
+
+GitHub Actions iş akışı normal JUnit raporunu coverage temizliğinden önce
+`test/build/reports/test/` altında saklar. `gcovr`, Ceedling'in kullandığı
+Python ortamına kurulur. Host testleri başarısız olsa da coverage adımı,
+araç kurulumu başarılıysa ve koşu iptal edilmediyse çalışır.
+
+`host-test-reports` artifact (indirilebilir çıktı paketi), saklanan JUnit
+raporunu, üretilen coverage dosyalarını ve `test/build/ci-logs/` altındaki
+`host-tests.log` ile `coverage.log` dosyalarını içerir. Derleme rapor
+oluşturamadan durursa paket mevcut logları içerir. Başarılı test ve coverage
+adımlarında beklenen raporların boş olmadığı ayrıca kontrol edilir.
+
+`No files were found` mesajı görülürse ilk hata, `Run all host tests` veya
+`Generate unit-test coverage` adımında aranmalıdır. Bu mesaj tek başına
+testin neden başarısız olduğunu açıklamaz.
 
 ## Sık hatalar
 
@@ -153,3 +231,6 @@ Başarılı koşuda merkezi komut sıfır durum koduyla biter. Ceedling JUnit XM
 | 2026-09-28 | 1.4 | Time service ve power panic testleri |
 | 2026-09-28 | 1.5 | Modül bazlı dizin yapısı ve xprintf/xscanf/RF SCP Ceedling senaryoları |
 | 2026-09-29 | 1.6 | RF config, RF JSON ve GSM watchdog host senaryolarının Ceedling altyapısına taşınması |
+| 2026-10-01 | 1.7 | IEC104 protokol senaryolarının Ceedling'e taşınması ve TCP parçalanma sınır testleri |
+| 2026-10-01 | 1.8 | IEC104 ACK, sıra numarası döngüsü, zamanlayıcı, alıcı tamponu ve saat komutu senaryolarının genişletilmesi |
+| 2026-10-01 | 1.9 | Actions Python ortamının eşitlenmesi, JUnit raporunun coverage temizliğinden korunması ve CI loglarının saklanması |

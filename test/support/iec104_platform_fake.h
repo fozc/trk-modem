@@ -1,22 +1,23 @@
 /**********************************************************************
  *
- * Filename:    mock_platform.h
+ * Filename:    iec104_platform_fake.h
  *
  * Description: Host-test doubles for the platform services libiec104
  *              reaches into (breaker, fault_log, rtc, nvram, logging).
  *
  * Notes:       Only the seeding helpers the protocol tests need are
- *              exposed; everything else is internal to mock_platform.c.
+ *              exposed; other services remain internal to the fake.
  *
  **********************************************************************/
 
-#ifndef MOCK_PLATFORM_H
-#define MOCK_PLATFORM_H
+#ifndef IEC104_PLATFORM_FAKE_H
+#define IEC104_PLATFORM_FAKE_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
 #include "fault_log.h"
+#include "rtc.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,6 +25,9 @@ extern "C" {
 
 /* Every mock back to its power-on state. */
 void mock_platform_reset(void);
+
+uint32_t mock_rtc_sync_count(void);
+rtc_t mock_rtc_last_sync(void);
 
 /* Marks power line 'feeder_id' as in use so the emitters walk it. */
 void mock_breaker_set_line_in_use(uint8_t feeder_id, bool in_use);
@@ -38,6 +42,6 @@ void mock_fault_log_fill(uint8_t feeder_id, uint8_t phase_id,
 }
 #endif
 
-#endif /* MOCK_PLATFORM_H */
+#endif /* IEC104_PLATFORM_FAKE_H */
 
 /*** end of file ***/
