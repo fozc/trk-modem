@@ -85,6 +85,10 @@
         - -Wno-float-conversion
       test_xscanf_format_scenario:
         - -Wno-sign-conversion
+      # Legacy protocol source has implicit narrow/bit-field assignments.
+      test_iec104_protocol_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
       test_rf_json_golden_scenario:
         - -Wno-conversion
         - -Wno-sign-conversion
