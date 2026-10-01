@@ -9,24 +9,26 @@
 #define EFW_H_
 
 #include <stdint.h>
+#include <stddef.h>
 
-#define EFW_LIB_VERSION 0x02
-#define EFW_HEADER_SIZE 128
+#define EFW_LIB_VERSION 0x01
+#define EFW_BASE_HEADER_SIZE 128U
+#define EFW_HEADER_SIZE 256U
 
 /* EFW file version identifier */
-#define EFW_FILE_VERSION     0x02U  /* v2: compressed payload, stored_size field */
+#define EFW_FILE_VERSION     0x01U
 
-/* Signature field offsets in the packed EFW header (efw_raw_fields_t).
+/* Signature field offsets in the packed EFW base header (efw_base_header_t).
  * Used to zero the r/s fields before hashing the header as part of
  * the combined signature.  Must match bin2efw.py. */
-#define EFW_SIG_R_OFFSET  20U
-#define EFW_SIG_S_OFFSET  68U
+#define EFW_SIG_R_OFFSET  64U
+#define EFW_SIG_S_OFFSET  96U
 
-/* v2 payload field offsets in the packed header (v1 reserve area).
+/* Payload field offsets in the packed base header.
  * Must match bin2efw.py. */
-#define EFW_COMPRESSION_TYPE_OFFSET 117U
-#define EFW_STORED_SIZE_OFFSET      118U
-#define EFW_LZMA_PROPS_OFFSET       122U
+#define EFW_COMPRESSION_TYPE_OFFSET 41U
+#define EFW_STORED_SIZE_OFFSET      20U
+#define EFW_LZMA_PROPS_OFFSET       42U
 #define EFW_LZMA_PROPS_SIZE         5U
 
 /* Authentication type code */
@@ -39,7 +41,7 @@
 #define EFW_ENCRYPTION_NONE          0x00U
 #define EFW_ENCRYPTION_AES128_CTR    0x01U
 
-/* Compression type codes (v2) */
+/* Compression type codes */
 #define EFW_COMPRESSION_NONE         0x00U
 #define EFW_COMPRESSION_LZMA1        0x01U
 #define EFW_COMPRESSION_LZMA1_ARMTHUMB 0x02U /* file-relative PC=0 */
@@ -59,6 +61,75 @@ typedef struct __packed
 	uint8_t patch;
 	uint8_t extra;
 }efw_version_t;
+
+/* Wire integers are little-endian; ECDSA r/s are big-endian. */
+typedef struct __packed
+{
+    uint8_t magic[4];
+    uint8_t format_version;
+    uint8_t auth_type;
+    uint16_t key_id;
+    uint8_t device_type;
+    uint8_t device_model;
+    uint8_t file_type;
+    uint8_t reserved0;
+    uint32_t load_address;
+    uint32_t app_size;
+    efw_version_t app_version;
+    uint8_t app_sha256[32];
+    uint8_t reserved1[8];
+    uint8_t signature_r[32];
+    uint8_t signature_s[32];
+} efw_identity_t;
+
+typedef struct __packed
+{
+    uint8_t magic[4];
+    uint8_t file_version;
+    uint8_t file_type;
+    uint8_t device_type;
+    uint8_t device_model;
+    efw_version_t app_version;
+    uint32_t app_size;
+    uint32_t app_crc;
+    uint32_t stored_size;
+    uint8_t short_commit_hash[8];
+    uint8_t day;
+    uint8_t month;
+    uint16_t year;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    uint8_t auth_type;
+    uint8_t encryption_type;
+    uint8_t compression_type;
+    uint8_t lzma_props[5];
+    uint8_t reserved;
+    uint8_t iv[16];
+    uint8_t signature_r[32];
+    uint8_t signature_s[32];
+} efw_base_header_t;
+
+typedef struct __packed
+{
+    efw_base_header_t base;
+    efw_identity_t identity;
+} efw_header_t;
+
+#define EFW_IDENTITY_DOMAIN "TROIKA-FW-ID-V1"
+#define EFW_PACKAGE_DOMAIN "TROIKA-EFW-V1"
+#define EFW_IDENTITY_SIGNED_SIZE 64U
+_Static_assert(sizeof(efw_identity_t) == 128U, "Identity size");
+_Static_assert(sizeof(efw_base_header_t) == 128U, "Base header size");
+_Static_assert(sizeof(efw_header_t) == 256U, "Header size");
+_Static_assert(offsetof(efw_identity_t, signature_r) == 64U, "Identity R");
+_Static_assert(offsetof(efw_identity_t, signature_s) == 96U, "Identity S");
+_Static_assert(offsetof(efw_identity_t, app_sha256) == 24U, "Identity hash");
+_Static_assert(offsetof(efw_base_header_t, signature_r) == EFW_SIG_R_OFFSET, "R");
+_Static_assert(offsetof(efw_base_header_t, signature_s) == EFW_SIG_S_OFFSET, "S");
+_Static_assert(offsetof(efw_base_header_t, compression_type) == EFW_COMPRESSION_TYPE_OFFSET, "Codec");
+_Static_assert(offsetof(efw_base_header_t, stored_size) == EFW_STORED_SIZE_OFFSET, "Stored");
+_Static_assert(offsetof(efw_base_header_t, lzma_props) == EFW_LZMA_PROPS_OFFSET, "Props");
 
 typedef struct
 {
@@ -89,15 +160,19 @@ typedef struct
 	uint8_t encryption_type;
 	uint8_t iv[EFW_AES_IV_SIZE];
 
-	/* v2 payload description:
+	/* Payload description:
 	 * app_size/app_crc always describe the RAW (expanded) firmware;
 	 * stored_size is the byte count kept in SPI after the header. */
 	uint8_t  compression_type;
 	uint32_t stored_size;
 	uint8_t  lzma_props[EFW_LZMA_PROPS_SIZE];
+    efw_identity_t identity;
 } efw_t;
 
-int efw_parse(const void *data, efw_t *out);
+/* Base-only parsing is a receive bound gate, never authentication. */
+int efw_parse_base(const void *data, size_t len, efw_t *out);
+int efw_parse(const void *data, size_t len, efw_t *out);
+int efw_identity_valid(const efw_identity_t *identity);
 uint32_t efw_get_header_size(void);
 int efw_is_newer_than(const efw_t *fw, uint8_t major, uint8_t minor, uint8_t patch, uint8_t extra);
 

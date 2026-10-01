@@ -41,7 +41,7 @@ int app_ipc_read_download_image_id(uint32_t *p_crc, uint32_t *p_size)
      * a package the bootloader would refuse anyway. */
     w25qxx_read_buff(boot_get_download_address(), header, sizeof(header));
 
-    if (efw_parse(header, &fw) != 0)
+    if (efw_parse(header, sizeof(header), &fw) != 0)
     {
         return -1;
     }

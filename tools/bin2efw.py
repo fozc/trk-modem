@@ -1,73 +1,12 @@
 #!/usr/bin/env python3
 """
-bin2efw.py - Convert a binary file to EFW firmware format (v2).
+bin2efw.py - Convert a binary file to EFW firmware format.
 
-EFW Header (128 bytes, packed):
-  magic            : uint32  (big-endian, 0x2A454657 = "*EFW")
-  efw_file_version : uint8   (0x02)
-  file_type        : uint8
-  device_type      : uint8
-  device_model     : uint8
-  app_version      : 4 x uint8 (major, minor, patch, extra)  [efw_version_t]
-  app_size         : uint32  (little-endian, RAW/expanded firmware size)
-  app_crc          : uint32  (little-endian, CRC-32 of RAW app data)
-  signature_r      : 32 bytes (ECDSA-P256 signature R component)
-  short_commit_hash: 8 bytes  (git short hash, ASCII, zero-padded)
-  day              : uint8
-  month            : uint8
-  year             : uint16  (little-endian)
-  hour             : uint8
-  minute           : uint8
-  second           : uint8
-  auth_type        : uint8   (0x02 = ECDSA-P256)
-  signature_s      : 32 bytes (ECDSA-P256 signature S component)
-  encryption_type  : uint8   (0x00=none, 0x01=AES-128-CTR)
-  iv               : 16 bytes (AES initialization vector)
-  compression_type : uint8   (offset 117; 0x00=NONE, 0x01=LZMA1, 0x02=LZMA1_ARMTHUMB)
-  stored_size      : uint32  (offset 118, LE; payload bytes stored after header)
-  lzma_props       : 5 bytes (offset 122; props byte + dict_size LE32)
-  reserved         : 1 byte  (offset 127; zero in v2)
-
-v2 payload semantics:
-  - NONE      : stored payload == raw app data (stored_size == app_size).
-  - LZMA1     : stored payload == LZMA1(raw) or AES-128-CTR(key, iv, LZMA1(raw)).
-  - Signature covers header(r/s=0) + STORED payload (as written to SPI).
-  - app_size/app_crc always describe the RAW (expanded) firmware; the
-    expanded CRC is checked on device during preflight/install, not at RX.
-
--H / --version-header ile kullanım:
-  version.h dosyasındaki aşağıdaki #define'lar otomatik parse edilir:
-    DEVICE_TYPE      -> --device-type
-    DEVICE_MODEL     -> --device-model
-    APP_TYPE         -> --file-type (-t)
-    VERSION_MAJOR    -> version major
-    VERSION_MINOR    -> version minor
-    VERSION_PATCH    -> version patch
-    VERSION_EXTRA    -> version extra
-
-  Örnek version.h içeriği:
-    #define DEVICE_TYPE      (100)
-    #define DEVICE_MODEL     (1)
-    #define APP_TYPE         (1)
-    #define VERSION_MAJOR    (1)
-    #define VERSION_MINOR    (2)
-    #define VERSION_PATCH    (0)
-    #define VERSION_EXTRA    (0)
-
-  Komut satırından açıkça verilen değerler (-v, -t, --device-type, --device-model)
-  her zaman version.h'den okunan değerlerin önüne geçer.
-
-Usage:
-  # ECDSA-P256 signing (required)
-  python bin2efw.py firmware.bin --sign-key keys/private_key.pem
-
-  # version.h + signing + LZMA compression
-  python bin2efw.py firmware.bin -H ../Application/version.h --sign-key keys/private_key.pem --compress
-
-  # Bootloader, v2.1.0.0, device-type=3
-  python bin2efw.py firmware.bin --sign-key keys/private_key.pem -t 1 -v 2.1.0.0 --device-type 0x03
-
-
+EFW format 1 (new development format; no legacy compatibility):
+  128-byte base header, 128-byte signed raw application identity, stored payload.
+  See Application/libefw/efw.h for wire structures and offsets.
+  Package signature r/s are adjacent at 64/96; identity signature at 192/224.
+  Both signatures use separate domain labels including the terminal NUL.
 """
 
 import argparse
@@ -81,17 +20,17 @@ import sys
 from datetime import datetime
 
 EFW_MAGIC = b'*EFW'             # 0x2A454657 big-endian on wire
-EFW_FILE_VERSION = 0x02
+EFW_FILE_VERSION = 0x01
 
-# v2: signature covers header (with r/s zeroed) + STORED payload.
+# Package signature covers domain + header (own r/s zeroed) + payload.
 # These offsets must match EFW_SIG_R_OFFSET / EFW_SIG_S_OFFSET in efw.h.
-SIG_R_OFFSET = 20
-SIG_S_OFFSET = 68
+SIG_R_OFFSET = 64
+SIG_S_OFFSET = 96
 
-# v2 payload fields (must match efw.h offsets; reserve area of v1)
-COMPRESSION_TYPE_OFFSET = 117
-STORED_SIZE_OFFSET      = 118
-LZMA_PROPS_OFFSET       = 122
+# Payload fields (must match efw.h offsets)
+COMPRESSION_TYPE_OFFSET = 41
+STORED_SIZE_OFFSET      = 20
+LZMA_PROPS_OFFSET       = 42
 
 # Authentication type code (must match efw.h)
 EFW_AUTH_TYPE_ECDSA_P256  = 0x02
@@ -128,40 +67,17 @@ _SIG_R_SIZE    = 32
 _SIG_S_SIZE    = 32
 _COMMIT_HASH_SIZE = 8
 
-# Packed header format — mirrors C struct __packed efw_raw_fields_t
-#   4s    : magic                (4B, raw bytes "*EFW")
-#   B     : efw_file_version     (1B)
-#   B     : file_type            (1B)
-#   B     : device_type          (1B)
-#   B     : device_model         (1B)
-#   BBBB  : major, minor, patch, extra  (efw_version_t, 4B)
-#   I     : app_size             (4B, little-endian, RAW size)
-#   I     : app_crc              (4B, little-endian, RAW CRC)
-#   32s   : signature_r          (32B)
-#   8s    : short_commit_hash    (8B)
-#   B     : day                  (1B)
-#   B     : month                (1B)
-#   H     : year                 (2B, little-endian)
-#   B     : hour                 (1B)
-#   B     : minute               (1B)
-#   B     : second               (1B)
-#   B     : auth_type            (1B)
-#   32s   : signature_s          (32B)
-#   B     : encryption_type      (1B, 0x00=none, 0x01=AES-128-CTR)
-#   16s   : iv                   (16B, AES initialization vector)
-#   B     : compression_type     (1B, offset 117; 0x00=none, 0x01=LZMA1)
-#   I     : stored_size          (4B, LE, offset 118)
-#   5s    : lzma_props           (5B, offset 122)
-#   B     : reserved             (1B, offset 127; zero)
+# Wire formats match efw_base_header_t and efw_identity_t.
+EFW_BASE_HEADER_SIZE = 128
+EFW_HEADER_SIZE = 256
+PACKAGE_DOMAIN = b'TROIKA-EFW-V1\x00'
+IDENTITY_DOMAIN = b'TROIKA-FW-ID-V1\x00'
+APPLICATION_ADDRESS = 0x08014000
+_HDR_FMT = struct.Struct('<4sBBBBBBBBIII8sBBHBBBBBB5sB16s32s32s')
+_ID_FMT = struct.Struct('<4sBBHBBBBIIBBBB32s8s32s32s')
+assert _HDR_FMT.size == 128 and _ID_FMT.size == 128
+HEADER_SIZE = EFW_HEADER_SIZE
 
-EFW_HEADER_SIZE = 128
-_V1_FIELDS_FMT = struct.Struct('<4sBBBBBBBBII32s8sBBHBBBB32sB16s')
-assert _V1_FIELDS_FMT.size == COMPRESSION_TYPE_OFFSET
-_HDR_FMT = struct.Struct('<4sBBBBBBBBII32s8sBBHBBBB32sB16sBI5sB')
-
-HEADER_SIZE = _HDR_FMT.size
-assert HEADER_SIZE == EFW_HEADER_SIZE, \
-    f"Header size mismatch: expected {EFW_HEADER_SIZE}, got {HEADER_SIZE}"
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +204,7 @@ def lzma1_compress(data: bytes):
 
 
 def lzma1_expand(props: bytes, raw_size: int, stream: bytes) -> bytes:
-    """Expand a v2 LZMA1 stream back to raw bytes (self-verification).
+    """Expand an EFW LZMA1 stream back to raw bytes (self-verification).
 
     Decodes with the encoder's own framing (unknown size + end marker),
     which is exactly the byte layout produced by lzma1_compress().
@@ -334,24 +250,21 @@ def build_header(device_type, device_model, file_type_byte,
     hash_bytes = commit_hash.encode('ascii')[:_COMMIT_HASH_SIZE]
     hash_bytes = hash_bytes.ljust(_COMMIT_HASH_SIZE, b'\x00')
     return _HDR_FMT.pack(
-        EFW_MAGIC,
-        EFW_FILE_VERSION, file_type_byte, device_type, device_model,
-        major, minor, patch, extra,
-        app_size,
-        app_crc,
-        sig_r,
-        hash_bytes,
-        build_time.day, build_time.month, build_time.year,
-        build_time.hour, build_time.minute, build_time.second,
-        auth_type,
-        sig_s,
-        encryption_type,
-        iv,
-        compression_type,
-        stored_size,
-        lzma_props,
-        0,
+        EFW_MAGIC, EFW_FILE_VERSION, file_type_byte, device_type, device_model,
+        major, minor, patch, extra, app_size, app_crc, stored_size,
+        hash_bytes, build_time.day, build_time.month, build_time.year,
+        build_time.hour, build_time.minute, build_time.second, auth_type,
+        encryption_type, compression_type, lzma_props, 0, iv, sig_r, sig_s,
     )
+
+
+def build_identity(sign_key, raw, device_type, device_model, file_type, version):
+    body = _ID_FMT.pack(b'FWID', 1, EFW_AUTH_TYPE_ECDSA_P256, 0,
+        device_type, device_model, file_type, 0, APPLICATION_ADDRESS, len(raw),
+        *version, hashlib.sha256(raw).digest(), bytes(8), bytes(32), bytes(32))
+    r, s = fw_ecdsa_sign(sign_key, IDENTITY_DOMAIN + body[:64])
+    return body[:64] + r + s
+
 
 
 # ---------------------------------------------------------------------------
@@ -586,8 +499,11 @@ examples:
         lzma_props=lzma_props,
     )
 
-    # Sign: header(r/s=0) + stored payload
-    to_sign = signing_header + payload_data
+    identity = build_identity(args.sign_key, app_data, args.device_type,
+                              args.device_model, file_type_byte,
+                              (major, minor, patch, extra))
+    # Package signature binds the independent identity to the stored payload.
+    to_sign = PACKAGE_DOMAIN + signing_header + identity + payload_data
     sig_r, sig_s = fw_ecdsa_sign(args.sign_key, to_sign)
 
     # Diagnosis aid: the device hashes exactly these bytes before ECDSA;
@@ -614,6 +530,8 @@ examples:
         stored_size=stored_size,
         lzma_props=lzma_props,
     )
+
+    header += identity
 
     # Atomic publish (review): write to a unique temp name and replace
     # only after the self-checks pass, so an interrupted/failed run can
@@ -655,6 +573,13 @@ examples:
             int.from_bytes(sig_r, 'big'), int.from_bytes(sig_s, 'big'))
         private_key.public_key().verify(
             der_sig, to_sign, ec.ECDSA(hashes.SHA256()))
+        identity_sig = utils.encode_dss_signature(
+            int.from_bytes(identity[64:96], 'big'),
+            int.from_bytes(identity[96:128], 'big'))
+        private_key.public_key().verify(identity_sig,
+            IDENTITY_DOMAIN + identity[:64], ec.ECDSA(hashes.SHA256()))
+        if identity[24:56] != hashlib.sha256(check_data).digest():
+            raise ValueError('Application identity hash mismatch')
     except Exception:
         print("Error: self-verification FAILED - signature does not verify; "
               "output file is invalid", file=sys.stderr)
