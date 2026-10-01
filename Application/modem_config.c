@@ -325,8 +325,10 @@ void modem_config_set_simcard_phone_number(const phone_number_t* phone_number)
 			copy_len = sizeof(phone_number->number) - 1U;
 		}
 
+		memset(modem_config->phone_num, 0,
+		       sizeof(modem_config->phone_num));
 		memcpy(modem_config->phone_num, phone_number->number, copy_len);
-		modem_config->phone_num[sizeof(modem_config->phone_num) - 1U] = '\0';
+		modem_config->phone_num[copy_len] = '\0';
 	}
 }
 

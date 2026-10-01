@@ -56,17 +56,17 @@ typedef struct
 
 
 #ifndef   DISABLE_SHELL_LOG
-	#define SHELL_LOG(a...) \
+	#define SHELL_LOG(...) \
 		do{ \
-			xfprintf(shell_putchr, a); \
+			xfprintf(shell_putchr, __VA_ARGS__); \
 		}while(0)
-	#define SHELL_CLOG(color, a...) \
+	#define SHELL_CLOG(color, ...) \
 			do{ \
-			xfprintf(shell_putchr, a); \
+				xfprintf(shell_putchr, __VA_ARGS__); \
 			}while(0)
 #else
-	#define SHELL_LOG(a...)
-	#define SHELL_CLOG(color, a...)
+	#define SHELL_LOG(...)
+	#define SHELL_CLOG(color, ...)
 #endif
 
 void shell_init(const char *prompt, const char *password, shell_putchar_fn_t putchar_fn);

@@ -33,6 +33,14 @@
 
 #include "ring_buf.h"
 
+#if defined(__arm__) || defined(__thumb__)
+_Static_assert(__atomic_always_lock_free(sizeof(RingBufCtr), 0),
+               "RingBuf counters must be lock-free");
+#else
+_Static_assert(ATOMIC_SHORT_LOCK_FREE == 2,
+               "RingBuf counters must be lock-free");
+#endif
+
 //............................................................................
 void RingBuf_ctor(RingBuf * const me,
                   RingBufElement sto[], RingBufCtr sto_len) {
@@ -86,7 +94,8 @@ RingBufCtr RingBuf_num_free(RingBuf * const me) {
         return (RingBufCtr)(tail - head - 1U);
     }
     else {
-        return (RingBufCtr)(me->end + tail - head - 1U);
+        return (RingBufCtr)((uint32_t)me->end + (uint32_t)tail -
+                            (uint32_t)head - 1U);
     }
 }
 

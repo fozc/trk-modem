@@ -10,33 +10,21 @@
  * (The request/response state machine now lives in rf_comm.c, which is
  * exercised on target; it depends on Contiki/HAL and is not built here.)
  *
- * Usage: make -f Makefile.scp run  (test/integration/rf)
+ * Usage: ceedling test:test_rf_scp_codec_scenario
  */
+
+#include "unity.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "cobs.h"
 #include "scp.h"
 #include "rf_scp.h"
 
-static unsigned int test_pass = 0U;
-static unsigned int test_fail = 0U;
-
-#define TEST_CHECK(cond, name)                                          \
-    do                                                                  \
-    {                                                                   \
-        if ((cond) != 0)                                                \
-        {                                                               \
-            test_pass++;                                                \
-            printf("PASS: %s\r\n", (name));                             \
-        }                                                               \
-        else                                                           \
-        {                                                               \
-            test_fail++;                                                \
-            printf("FAIL: %s  (%s:%d)\r\n", (name), __FILE__, __LINE__); \
-        }                                                               \
-    } while (0)
+#define TEST_CHECK(condition, message) \
+    TEST_ASSERT_TRUE_MESSAGE((condition), (message))
 
 static void build_status_ack(scp_packet_t *pkt, uint8_t seq)
 {
@@ -58,7 +46,7 @@ static void build_status_ack(scp_packet_t *pkt, uint8_t seq)
     pkt->data[22] = 0x01U;
 }
 
-static void test_build_request(void)
+void test_build_request(void)
 {
     scp_packet_t req;
 
@@ -78,7 +66,7 @@ static void test_build_request(void)
                "build_request GET_STATUS rejects body");
 }
 
-static void test_build_time_sync(void)
+void test_build_time_sync(void)
 {
     scp_packet_t req;
     const uint8_t cp56[RF_SCP_TIME_SYNC_BODY_LEN] =
@@ -105,7 +93,7 @@ static void test_build_time_sync(void)
                "build_request no step1 for TIME_SYNC");
 }
 
-static void test_build_ping_reply(void)
+void test_build_ping_reply(void)
 {
     scp_packet_t ping;
     scp_packet_t ack;
@@ -128,7 +116,7 @@ static void test_build_ping_reply(void)
                "broadcast PING gets no reply");
 }
 
-static void test_decode_status(void)
+void test_decode_status(void)
 {
     scp_packet_t    pkt;
     rf_hub_status_t st;
@@ -151,17 +139,12 @@ static void test_decode_status(void)
                "decode_status rejects NULL");
 }
 
-int main(void)
+void setUp(void)
 {
-    printf("=== rf_scp codec host tests ===\r\n");
+}
 
-    test_build_request();
-    test_build_time_sync();
-    test_build_ping_reply();
-    test_decode_status();
-
-    printf("\r\n=== %u passed, %u failed ===\r\n", test_pass, test_fail);
-    return (0U == test_fail) ? 0 : 1;
+void tearDown(void)
+{
 }
 
 /*** end of file ***/

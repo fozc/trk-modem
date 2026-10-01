@@ -1,0 +1,43 @@
+/*
+ * rf_nvram_fake.c
+ *
+ *  Created on: Sep 29, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Shared NVRAM fake for RF Ceedling scenarios.
+ */
+
+#include "rf_nvram_fake.h"
+
+#include <string.h>
+
+#include "types.h"
+
+static breaker_t fake_breaker;
+static int sync_count;
+
+breaker_t *nvram_get_breaker_rw(void)
+{
+    return &fake_breaker;
+}
+
+int nvram_sync(bool crc_no_check)
+{
+    (void)crc_no_check;
+    sync_count++;
+    return 0;
+}
+
+int rf_nvram_fake_sync_count(void)
+{
+    return sync_count;
+}
+
+void rf_nvram_fake_reset(void)
+{
+    (void)memset(&fake_breaker, 0, sizeof(fake_breaker));
+    sync_count = 0;
+}
+
+/*** end of file ***/

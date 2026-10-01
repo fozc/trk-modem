@@ -7,39 +7,42 @@
 #include "debouncer.h"
 
 
-int debouncer(debouncer_t * db, uint8_t pin_state)
+int debouncer(debouncer_t *db, uint8_t pin_state)
 {
-	uint32_t output    = db->stable_state;
+	uint8_t output = db->stable_state;
 
-	if(pin_state == 0) //Low
+	if (0U == pin_state)
 	{
-		if(db->integrator > 0)
+		if (db->integrator > 0U)
 		{
 			db->integrator--;
 		}
 	}
 	else
 	{
-		db->integrator++;
-	}
-
-	if(db->integrator == 0)
-	{
-		output = 0; /* input state is LOW */
-	}
-	else
-	{
-		if(db->integrator >= db->debounce_time)
+		if (db->integrator < UINT8_MAX)
 		{
-			db->integrator = db->debounce_time;
-			output = 1; /* input state is HIGH */
+			db->integrator++;
 		}
 	}
 
-	if(output != db->stable_state)
+	if (0U == db->integrator)
+	{
+		output = 0U;
+	}
+	else
+	{
+		if (db->integrator >= db->debounce_time)
+		{
+			db->integrator = db->debounce_time;
+			output = 1U;
+		}
+	}
+
+	if (output != db->stable_state)
 	{
 		db->stable_state = output;
-		db->flag = 1;
+		db->flag = 1U;
 
 		return 1;
 	}

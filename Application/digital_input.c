@@ -107,20 +107,6 @@ static void seed_debouncers(debouncer_t *p_db,
 }
 
 /**
- * @brief Sample and debounce a pin array.
- */
-static void sample_pins(debouncer_t *p_db,
-                        const din_pin_map_t *p_map,
-                        uint8_t count)
-{
-    for (uint8_t i = 0U; i < count; i++)
-    {
-        uint8_t raw = gpio_read_pin(p_map[i].port, p_map[i].pin);
-        (void)debouncer(&p_db[i], raw);
-    }
-}
-
-/**
  * @brief Execute the USER_RESET_SW action selected by press duration.
  *
  * @param[in] held_ticks  Debounced press duration in Contiki ticks.
@@ -167,6 +153,65 @@ static void user_reset_dispatch(clock_time_t held_ticks)
     }
 }
 
+/**
+ * @brief Read and debounce every input once.
+ */
+static void sample_inputs(void)
+{
+    for (uint8_t i = 0U; i < (uint8_t)DIN_CH_COUNT; i++)
+    {
+        uint8_t raw = gpio_read_pin(s_din_map[i].port,
+                                    s_din_map[i].pin);
+        if (debouncer(&s_din_db[i], raw) != 0)
+        {
+            uint8_t active = (s_din_db[i].stable_state == 0U) ? 1U : 0U;
+            CSLOG("[DIN] CH%u -> %u\r\n",
+                  (unsigned)(i + 1U), (unsigned)active);
+        }
+    }
+
+    for (uint8_t i = 0U; i < (uint8_t)DIP_SW_COUNT; i++)
+    {
+        uint8_t raw = gpio_read_pin(s_dip_map[i].port,
+                                    s_dip_map[i].pin);
+        if (debouncer(&s_dip_db[i], raw) != 0)
+        {
+            uint8_t on = (s_dip_db[i].stable_state == 0U) ? 1U : 0U;
+            CSLOG("[DIP] SW%u -> %s\r\n", (unsigned)(i + 1U),
+                  (on != 0U) ? "ON" : "OFF");
+        }
+    }
+
+    {
+        uint8_t raw = gpio_read_pin(s_btn_map.port, s_btn_map.pin);
+        if (debouncer(&s_btn_db, raw) != 0)
+        {
+            if (s_btn_db.stable_state == 0U)
+            {
+                s_btn_press_start = clock_time();
+            }
+            else
+            {
+                clock_time_t held =
+                    (clock_time_t)(clock_time() - s_btn_press_start);
+                user_reset_dispatch(held);
+            }
+        }
+    }
+}
+
+#ifdef UNIT_TEST
+void digital_input_test_dispatch_user_reset(uint32_t held_ticks)
+{
+    user_reset_dispatch((clock_time_t)held_ticks);
+}
+
+void digital_input_test_sample(void)
+{
+    sample_inputs();
+}
+#endif
+
 /* ======================================================================
  *  Contiki process
  * ====================================================================== */
@@ -188,55 +233,7 @@ PROCESS_THREAD(digital_input_process, ev, data)
     {
         PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
         etimer_restart(&timer);
-
-        /* Sample DIN channels and log state changes. */
-        for (uint8_t i = 0U; i < (uint8_t)DIN_CH_COUNT; i++)
-        {
-            uint8_t raw = gpio_read_pin(s_din_map[i].port,
-                                        s_din_map[i].pin);
-            if (debouncer(&s_din_db[i], raw) != 0)
-            {
-                /* Active-LOW: stable 0 = active. */
-                uint8_t active = (s_din_db[i].stable_state == 0U)
-                               ? 1U : 0U;
-                CSLOG("[DIN] CH%u -> %u\r\n",
-                      (unsigned)(i + 1U), (unsigned)active);
-            }
-        }
-
-        /* Sample DIP switches and log state changes. */
-        for (uint8_t i = 0U; i < (uint8_t)DIP_SW_COUNT; i++)
-        {
-            uint8_t raw = gpio_read_pin(s_dip_map[i].port,
-                                        s_dip_map[i].pin);
-            if (debouncer(&s_dip_db[i], raw) != 0)
-            {
-                uint8_t on = (s_dip_db[i].stable_state == 0U)
-                           ? 1U : 0U;
-                CSLOG("[DIP] SW%u -> %s\r\n",
-                      (unsigned)(i + 1U),
-                      (on != 0U) ? "ON" : "OFF");
-            }
-        }
-
-        /* Sample the user reset button and act on its press duration. */
-        {
-            uint8_t raw = gpio_read_pin(s_btn_map.port, s_btn_map.pin);
-            if (debouncer(&s_btn_db, raw) != 0)
-            {
-                /* Active-LOW: stable 0 = pressed. */
-                if (s_btn_db.stable_state == 0U)
-                {
-                    s_btn_press_start = clock_time();
-                }
-                else
-                {
-                    clock_time_t held =
-                        (clock_time_t)(clock_time() - s_btn_press_start);
-                    user_reset_dispatch(held);
-                }
-            }
-        }
+        sample_inputs();
     }
 
     PROCESS_END();

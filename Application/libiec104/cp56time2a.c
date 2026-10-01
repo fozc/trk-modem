@@ -39,6 +39,36 @@ static bool is_leap_year(uint8_t year)
            (full_year % 400U == 0U);
 }
 
+static bool are_fields_valid(uint16_t milliseconds, uint8_t minute,
+                             uint8_t hour, uint8_t day, uint8_t dow,
+                             uint8_t month, uint8_t year)
+{
+    if ((milliseconds > CP56TIME2A_MS_MAX) ||
+        (minute > CP56TIME2A_MINUTE_MAX) ||
+        (hour > CP56TIME2A_HOUR_MAX) ||
+        (dow > CP56TIME2A_DOW_MAX) ||
+        (month < CP56TIME2A_MONTH_MIN) ||
+        (month > CP56TIME2A_MONTH_MAX) ||
+        (year > CP56TIME2A_YEAR_MAX)) {
+        return false;
+    }
+
+    if ((day < CP56TIME2A_DAY_MIN) ||
+        (day > cp56time2a_days_in_month(month, year))) {
+        return false;
+    }
+
+    return true;
+}
+
+static cp56time2a_t make_invalid_timestamp(void)
+{
+    cp56time2a_t timestamp = {0};
+
+    timestamp.iv_bit = 1U;
+    return timestamp;
+}
+
 /* ================================================================== */
 /*  Millisecond field extraction / encoding helpers                   */
 /* ================================================================== */
@@ -123,30 +153,22 @@ uint32_t cp56time2a_to_total_ms(const cp56time2a_t *ts_ptr)
 
 cp56time2a_t cp56time2a_from_rtc(const bsp_rtc_t *rtc_ptr)
 {
-    cp56time2a_t ts = {0};
+    uint16_t milliseconds;
 
     if (rtc_ptr == NULL) {
-        ts.iv_bit = 1U;
-        return ts;
+        return make_invalid_timestamp();
     }
 
-    ts.milliseconds = cp56time2a_encode_ms(rtc_ptr->second, rtc_ptr->millisec);
-    ts.minute       = rtc_ptr->minute;
-    ts.hour         = rtc_ptr->hour;
-    ts.day          = rtc_ptr->day;
-    ts.month        = rtc_ptr->month;
-    ts.year         = rtc_ptr->year;
-    ts.dow          = cp56time2a_calc_dow(rtc_ptr->day, rtc_ptr->month, rtc_ptr->year);
-    ts.iv_bit       = 0U;
-    ts.su_bit       = 0U;
-
-    /* RTC hic kurulmamissa (orn. gun=0) takvimde olmayan bir damga uretilirdi;
-     * alici bunu gecerli sanmasin diye IV biti isaretlenir. */
-    if (!cp56time2a_is_valid(&ts)) {
-        ts.iv_bit = 1U;
+    if ((rtc_ptr->second >= 60U) || (rtc_ptr->millisec >= 1000U)) {
+        return make_invalid_timestamp();
     }
 
-    return ts;
+    milliseconds = cp56time2a_encode_ms(rtc_ptr->second,
+                                         rtc_ptr->millisec);
+    return cp56time2a_make(
+        milliseconds, rtc_ptr->minute, rtc_ptr->hour, rtc_ptr->day,
+        cp56time2a_calc_dow(rtc_ptr->day, rtc_ptr->month, rtc_ptr->year),
+        rtc_ptr->month, rtc_ptr->year);
 }
 
 bsp_rtc_t cp56time2a_to_rtc(const cp56time2a_t *ts_ptr)
@@ -179,19 +201,20 @@ cp56time2a_t cp56time2a_make(uint16_t milliseconds, uint8_t minute, uint8_t hour
 {
     cp56time2a_t ts = {0};
 
+    if (!are_fields_valid(milliseconds, minute, hour, day, dow, month,
+                          year)) {
+        return make_invalid_timestamp();
+    }
+
     ts.milliseconds = milliseconds;
-    ts.minute       = minute;
-    ts.hour         = hour;
-    ts.day          = day;
-    ts.dow          = dow;
-    ts.month        = month;
-    ts.year         = year;
+    ts.minute       = minute & 0x3FU;
+    ts.hour         = hour & 0x1FU;
+    ts.day          = day & 0x1FU;
+    ts.dow          = dow & 0x07U;
+    ts.month        = month & 0x0FU;
+    ts.year         = year & 0x7FU;
     ts.iv_bit       = 0U;
     ts.su_bit       = 0U;
-
-    if (!cp56time2a_is_valid(&ts)) {
-        ts.iv_bit = 1U;
-    }
 
     return ts;
 }

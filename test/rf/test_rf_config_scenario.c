@@ -7,8 +7,10 @@
  * RF config modulu host testleri: 96B blok codec (default / CRC / RMW,
  * spec R2 Ek-A + R2-ek3/ek4) + RAM store/staging + EUI-64 yardimcilari.
  *
- * Kullanim: make run  (test/integration/rf altinda)
+ * Kullanim: ceedling test:test_rf_config_scenario
  */
+
+#include "unity.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -17,25 +19,12 @@
 #include <stdint.h>
 #include "rf_config.h"
 #include "rf_types.h"
-#include "mock_nvram.h"
+#include "rf_nvram_fake.h"
 
-static unsigned int test_pass = 0U;
-static unsigned int test_fail = 0U;
+TEST_SOURCE_FILE("rf_nvram_fake.c")
 
-#define TEST_CHECK(cond, name)                                        \
-    do                                                                \
-    {                                                                 \
-        if ((cond) != 0)                                              \
-        {                                                             \
-            test_pass++;                                              \
-            printf("PASS: %s\r\n", (name));                            \
-        }                                                             \
-        else                                                          \
-        {                                                             \
-            test_fail++;                                              \
-            printf("FAIL: %s  (%s:%d)\r\n", (name), __FILE__, __LINE__); \
-        }                                                             \
-    } while (0)
+#define TEST_CHECK(condition, message) \
+    TEST_ASSERT_TRUE_MESSAGE((condition), (message))
 
 static bool floats_close(float a, float b)
 {
@@ -62,7 +51,7 @@ static uint16_t ref_crc16_ccitt_false(const uint8_t *data, size_t len)
 }
 
 /* CRC-16/CCITT-FALSE check value: "123456789" -> 0x29B1. */
-static void test_crc16_check_value(void)
+void test_crc16_check_value(void)
 {
     TEST_CHECK(ref_crc16_ccitt_false((const uint8_t *)"123456789", 9U) == 0x29B1U,
                "ref CRC-16/CCITT-FALSE check value 0x29B1");
@@ -98,7 +87,7 @@ static void fill_example_ram(rf_feeder_config_t *ram)
     ram->vtrip_target = 36.0f;
 }
 
-static void test_layout(void)
+void test_layout(void)
 {
     /* 1) Yapi boyutu ve ofsetler (spec R2 Ek-A) - _Static_assert ayrica korur */
     TEST_CHECK(sizeof(rf_feeder_config_t) == 96U, "struct size == 96");
@@ -115,7 +104,7 @@ static void test_layout(void)
     TEST_CHECK(sizeof(rf_feeder_t) == 121U, "rf_feeder_t size == 121");
 }
 
-static void test_defaults(void)
+void test_defaults(void)
 {
     const rf_feeder_config_t *d = rf_config_default_block_get();
 
@@ -157,7 +146,7 @@ static void test_defaults(void)
     }
 }
 
-static void test_for_write_rmw(void)
+void test_for_write_rmw(void)
 {
     rf_feeder_config_t ram_blk;
     rf_feeder_config_t dev_blk;
@@ -215,7 +204,7 @@ static void test_for_write_rmw(void)
     TEST_CHECK(rf_config_for_write(&ram_blk, &dev_blk, NULL) == false, "for_write NULL out reddi");
 }
 
-static void test_writable_crc(void)
+void test_writable_crc(void)
 {
     rf_feeder_config_t blk;
     const rf_feeder_config_t *d = rf_config_default_block_get();
@@ -241,13 +230,13 @@ static void test_writable_crc(void)
                "cfg_crc maskeli degisimden etkilenmez");
 }
 
-static void test_store_and_staging(void)
+void test_store_and_staging(void)
 {
     const rf_feeder_t *ro = NULL;
     rf_feeder_t *rw = NULL;
     rf_feeder_t probe;
 
-    mock_nvram_reset();
+    rf_nvram_fake_reset();
 
     /* Init: NVRAM aynasindan yukleme. */
     rf_store_init();
@@ -261,7 +250,7 @@ static void test_store_and_staging(void)
     probe.config.fider_id = 2U;
     TEST_CHECK(rf_store_set(FEEDER_1, &probe) == true, "store set OK");
     TEST_CHECK(rf_store_sync() == 0, "store sync OK");
-    TEST_CHECK(mock_nvram_sync_count() == 1, "nvram_sync bir kez cagrildi");
+    TEST_CHECK(rf_nvram_fake_sync_count() == 1, "nvram_sync bir kez cagrildi");
     TEST_CHECK(nvram_get_breaker_rw()->line[FEEDER_1].rf.config.fider_id == 2U,
                "NVRAM aynasina yazildi");
 
@@ -294,7 +283,7 @@ static void test_store_and_staging(void)
                "store set sinir disi reddi");
 }
 
-static void test_eui64(void)
+void test_eui64(void)
 {
     uint8_t eui[RF_EUI64_LEN];
     char hex[RF_EUI64_HEX_LEN];
@@ -318,19 +307,13 @@ static void test_eui64(void)
     TEST_CHECK(rf_eui64_is_zero(eui) == false, "tek set bit = atanmis");
 }
 
-int main(void)
+void setUp(void)
 {
-    test_crc16_check_value();
-    test_layout();
-    test_defaults();
-    test_for_write_rmw();
-    test_writable_crc();
-    test_store_and_staging();
-    test_eui64();
+    rf_nvram_fake_reset();
+}
 
-    printf("\r\n==== rf_config host tests: %u pass / %u fail ====\r\n",
-           test_pass, test_fail);
-    return (test_fail == 0U) ? 0 : 1;
+void tearDown(void)
+{
 }
 
 /*** end of file ***/

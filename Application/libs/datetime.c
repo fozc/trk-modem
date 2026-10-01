@@ -7,36 +7,34 @@
 #include "datetime.h"
 #include "xprintf.h"
 
- //Days
- static const char days[8][10] =
- {
-    "",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday"
- };
-  
- //Months
- static const char months[13][10] =
- {
-    "",
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December"
- };
+#include <stdbool.h>
+#include <stddef.h>
+
+static bool is_leap_year(uint16_t year)
+{
+    return (((year % 4U) == 0U) && ((year % 100U) != 0U)) ||
+           ((year % 400U) == 0U);
+}
+
+static uint8_t days_in_month(uint16_t year, uint8_t month)
+{
+    static const uint8_t month_days[12] = {
+        31U, 28U, 31U, 30U, 31U, 30U,
+        31U, 31U, 30U, 31U, 30U, 31U
+    };
+    uint8_t days;
+
+    if ((month < 1U) || (month > 12U)) {
+        return 0U;
+    }
+
+    days = month_days[month - 1U];
+    if ((2U == month) && is_leap_year(year)) {
+        days = 29U;
+    }
+
+    return days;
+}
 
 void dt_conv_to_str(datetime_t dt, char *buff)
 {
@@ -52,22 +50,22 @@ void dt_conv_time_to_str(datetime_t dt, char *buff)
 datetime_t dt_conv_from_elapsed(uint32_t sec)
 {
 	datetime_t dt;
-	dt.date.year = sec / ONE_YEAR_SECONDS;
-	sec -= dt.date.year * ONE_YEAR_SECONDS;
+	dt.date.year = (uint16_t)(sec / ONE_YEAR_SECONDS);
+    sec -= (uint32_t)dt.date.year * ONE_YEAR_SECONDS;
 
-	dt.date.month = sec / ONE_MONTH_SECONDS;
-	sec -= dt.date.month * ONE_MONTH_SECONDS;
+	dt.date.month = (uint8_t)(sec / ONE_MONTH_SECONDS);
+    sec -= (uint32_t)dt.date.month * ONE_MONTH_SECONDS;
 
-	dt.date.day = sec / ONE_DAY_SECONDS;
-	sec -= dt.date.day * ONE_DAY_SECONDS;
+	dt.date.day = (uint8_t)(sec / ONE_DAY_SECONDS);
+    sec -= (uint32_t)dt.date.day * ONE_DAY_SECONDS;
 
-	dt.time.hour = sec / ONE_HOUR_SECONDS;
-	sec -= dt.time.hour * ONE_HOUR_SECONDS;
+	dt.time.hour = (uint8_t)(sec / ONE_HOUR_SECONDS);
+    sec -= (uint32_t)dt.time.hour * ONE_HOUR_SECONDS;
 
-	dt.time.minute = sec / ONE_MIN_SECONDS;
-	sec -= dt.time.minute * ONE_MIN_SECONDS;
+	dt.time.minute = (uint8_t)(sec / ONE_MIN_SECONDS);
+    sec -= (uint32_t)dt.time.minute * ONE_MIN_SECONDS;
 
-	dt.time.second = sec;
+	dt.time.second = (uint8_t)sec;
 
 	return dt;
 }
@@ -91,16 +89,18 @@ uint8_t dt_compute_day_of_week(uint16_t y, uint8_t m, uint8_t d)
    k = y % 100;
 
    //Compute H using Zeller's congruence
-   h = d + (26 * (m + 1) / 10) + k + (k / 4) + (5 * j) + (j / 4);
+   h = (uint32_t)d + (26U * ((uint32_t)m + 1U) / 10U) + k +
+       (k / 4U) + (5U * j) + (j / 4U);
 
    //Return the day of the week
-   return ((h + 5) % 7) + 1;
+   return (uint8_t)(((h + 5U) % 7U) + 1U);
 }
 
 int dt_init(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second, datetime_t *dt)
 {
-    if((year < 2025) || (month < 1) || (month > 12) || (day < 1) || (day > 31) ||
-       (hour > 23) || (minute > 59) || (second > 59))
+    if ((NULL == dt) || (year < 2025U) ||
+        (day < 1U) || (day > days_in_month(year, month)) ||
+        (hour > 23U) || (minute > 59U) || (second > 59U))
     {
         return -1;
     }
@@ -197,12 +197,12 @@ void dt_conv_from_epoch(time32_t t, datetime_t *dt)
     dt->time.milli = 0;
 
     //Retrieve hours, minutes and seconds
-    dt->time.second = t % 60;
-    t /= 60;
-    dt->time.minute = t % 60;
-    t /= 60;
-    dt->time.hour = t % 24;
-    t /= 24;
+    dt->time.second = (uint8_t)(t % 60U);
+    t /= 60U;
+    dt->time.minute = (uint8_t)(t % 60U);
+    t /= 60U;
+    dt->time.hour = (uint8_t)(t % 24U);
+    t /= 24U;
 
     //Convert Unix time (1970-based seconds) to date
     a = (uint32_t) ((4 * t + 102032) / 146097 + 15);
@@ -225,12 +225,13 @@ void dt_conv_from_epoch(time32_t t, datetime_t *dt)
     }
 
     //Retrieve year, month and day
-    dt->date.year = c;
-    dt->date.month = e;
-    dt->date.day = f;
+    dt->date.year = (uint16_t)c;
+    dt->date.month = (uint8_t)e;
+    dt->date.day = (uint8_t)f;
 
     //Calculate day of week
-    dt->time.day_of_week = dt_compute_day_of_week(c, e, f);
+    dt->time.day_of_week = dt_compute_day_of_week(
+        (uint16_t)c, (uint8_t)e, (uint8_t)f);
 }
  
 time32_t dt_conv_to_epoch(const datetime_t *date)
@@ -255,15 +256,17 @@ time32_t dt_conv_to_epoch(const datetime_t *date)
    }
 
    //Convert years to days
-   t = (365 * y) + (y / 4) - (y / 100) + (y / 400);
+   t = (365U * y) + (y / 4U) - (y / 100U) + (y / 400U);
    //Convert months to days
-   t += (30 * m) + (3 * (m + 1) / 5) + d;
+   t += (30U * m) + (3U * (m + 1U) / 5U) + d;
    //Unix time starts on January 1st, 1970
    t -= DAYS_FROM_0001_TO_UNIX_EPOCH;
    //Convert days to seconds
-   t *= 86400;
+   t *= 86400U;
    //Add hours, minutes and seconds
-   t += (3600 * date->time.hour) + (60 * date->time.minute) + date->time.second;
+   t += (3600U * (uint32_t)date->time.hour) +
+        (60U * (uint32_t)date->time.minute) +
+        (uint32_t)date->time.second;
 
    //Return Unix time
    return t;
