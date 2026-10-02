@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   test:
-    name: Ceedling and integration tests
+    name: Ceedling and integration tests (Linux 32-bit)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -38,7 +38,33 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/host-test-tools"
           "$RUNNER_TEMP/host-test-tools/bin/python" -m pip install gcovr
           "$RUNNER_TEMP/host-test-tools/bin/python" -m gcovr --version
+          # All Ceedling and Make compiler/linker calls use this gcc wrapper.
+          cat > "$RUNNER_TEMP/host-test-tools/bin/gcc" <<'SH'
+          #!/usr/bin/env bash
+          exec /usr/bin/gcc -m32 "$@"
+          SH
+          chmod +x "$RUNNER_TEMP/host-test-tools/bin/gcc"
           echo "$RUNNER_TEMP/host-test-tools/bin" >> "$GITHUB_PATH"
+
+      - name: Verify 32-bit host ABI
+        id: host_abi
+        run: |
+          cat > "$RUNNER_TEMP/host-abi.c" <<'C'
+          #include <stdint.h>
+          #include <stdatomic.h>
+          _Static_assert(sizeof(void *) == 4U, "Require 32-bit pointers");
+          _Static_assert(sizeof(long) == 4U, "Require 32-bit long");
+          _Static_assert(sizeof(atomic_uint_fast32_t) == 4U,
+                         "Require 32-bit atomic indices");
+          int main(void)
+          {
+              return 0;
+          }
+          C
+          gcc -std=c11 -Wall -Wextra -Werror "$RUNNER_TEMP/host-abi.c" -o "$RUNNER_TEMP/host-abi"
+          readelf -h "$RUNNER_TEMP/host-abi"
+          readelf -h "$RUNNER_TEMP/host-abi" | grep -q 'Class:.*ELF32'
+          "$RUNNER_TEMP/host-abi"
 
       - name: Run all host tests
         run: |
@@ -54,7 +80,7 @@ jobs:
           cp test/build/ceedling/artifacts/test/*.xml test/build/reports/test/
 
       - name: Generate unit-test coverage
-        if: ${{ !cancelled() && steps.test_tools.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.test_tools.outcome == 'success' && steps.host_abi.outcome == 'success' }}
         run: |
           mkdir -p test/build/ci-logs
           python -m gcovr --version

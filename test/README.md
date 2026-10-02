@@ -1,7 +1,7 @@
 # Test Altyapısı
 
-**Sürüm:** 1.9
-**Tarih:** 2026-10-01
+**Sürüm:** 1.10
+**Tarih:** 2026-10-02
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
@@ -201,6 +201,19 @@ GitHub Actions iş akışı normal JUnit raporunu coverage temizliğinden önce
 Python ortamına kurulur. Host testleri başarısız olsa da coverage adımı,
 araç kurulumu başarılıysa ve koşu iptal edilmediyse çalışır.
 
+Linux CI (sürekli entegrasyon) koşusunda bütün `gcc` çağrıları `-m32` ile
+çalışır. Bu seçim Ceedling birim testlerini, coverage derlemesini ve
+Make ile çalışan C integration paketlerini kapsar. Derleme ve link
+(bağlama) aynı 32 bit hedefi kullanır. Node.js web testi C derlemesi içermez.
+
+Runner ve GCC programı 64 bit olabilir; test programları 32 bit üretilir.
+`gcc-multilib` gerekli 32 bit geliştirme kütüphanelerini sağlar. Testlerden
+önce `Verify 32-bit host ABI` adımı pointer, `long` ve atomik indeks
+boyutlarının 4 bayt olduğunu kontrol eder. Üretilen programın ELF32 türünde
+olduğu doğrulanır ve program çalıştırılır. Bu kontrol geçmezse host test
+koşusu başlatılmaz. Host ABI (veri türleri ve çağrı düzeni) seçimi MCU
+zamanlamasının veya donanım davranışının doğrulandığı anlamına gelmez.
+
 `host-test-reports` artifact (indirilebilir çıktı paketi), saklanan JUnit
 raporunu, üretilen coverage dosyalarını ve `test/build/ci-logs/` altındaki
 `host-tests.log` ile `coverage.log` dosyalarını içerir. Derleme rapor
@@ -234,3 +247,4 @@ testin neden başarısız olduğunu açıklamaz.
 | 2026-10-01 | 1.7 | IEC104 protokol senaryolarının Ceedling'e taşınması ve TCP parçalanma sınır testleri |
 | 2026-10-01 | 1.8 | IEC104 ACK, sıra numarası döngüsü, zamanlayıcı, alıcı tamponu ve saat komutu senaryolarının genişletilmesi |
 | 2026-10-01 | 1.9 | Actions Python ortamının eşitlenmesi, JUnit raporunun coverage temizliğinden korunması ve CI loglarının saklanması |
+| 2026-10-02 | 1.10 | Linux host testlerinin 32 bit derlenmesi ve çalıştırma öncesi ABI kontrolü |

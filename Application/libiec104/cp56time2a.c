@@ -142,8 +142,8 @@ uint32_t cp56time2a_to_total_ms(const cp56time2a_t *ts_ptr)
     if (ts_ptr == NULL) {
         return 0U;
     }
-    return (uint32_t)ts_ptr->hour * 3600000UL +
-           (uint32_t)ts_ptr->minute * 60000UL +
+    return (uint32_t)ts_ptr->hour * UINT32_C(3600000) +
+           (uint32_t)ts_ptr->minute * UINT32_C(60000) +
            (uint32_t)ts_ptr->milliseconds;
 }
 
@@ -280,7 +280,7 @@ int32_t cp56time2a_diff_ms(const cp56time2a_t *t1_ptr, const cp56time2a_t *t2_pt
 
     /* day_diff * 86400000 can overflow int32 for large day ranges.
      * This is accurate for ~24 day range (INT32_MAX / 86400000 ≈ 24.8). */
-    return day_diff * 86400000L + (ms1 - ms2);
+    return day_diff * INT32_C(86400000) + (ms1 - ms2);
 }
 
 /* ================================================================== */
