@@ -270,4 +270,24 @@ void test_cp56time2a_invalid_and_zero_helpers_are_null_safe(void)
     TEST_ASSERT_FALSE(cp56time2a_is_zero(&timestamp));
 }
 
+void test_cp56time2a_diff_reaches_signed_32_bit_limits(void)
+{
+    const cp56time2a_t start =
+        cp56time2a_make(0U, 0U, 0U, 1U, 4U, 10U, 26U);
+    const cp56time2a_t positive_limit =
+        cp56time2a_make(23647U, 31U, 20U, 25U, 7U, 10U, 26U);
+    const cp56time2a_t negative_limit =
+        cp56time2a_make(23648U, 31U, 20U, 25U, 7U, 10U, 26U);
+
+    TEST_ASSERT_TRUE(cp56time2a_is_valid(&start));
+    TEST_ASSERT_TRUE(cp56time2a_is_valid(&positive_limit));
+    TEST_ASSERT_TRUE(cp56time2a_is_valid(&negative_limit));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX,
+        cp56time2a_diff_ms(&positive_limit, &start));
+    TEST_ASSERT_EQUAL_INT32(-INT32_MAX,
+        cp56time2a_diff_ms(&start, &positive_limit));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN,
+        cp56time2a_diff_ms(&start, &negative_limit));
+}
+
 /*** end of file ***/
