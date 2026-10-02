@@ -11,7 +11,7 @@
 #define APP_TYPE                (2)
 #define VERSION_MAJOR           (1)
 #define VERSION_MINOR           (0)
-#define VERSION_PATCH           (0)
+#define VERSION_PATCH           (1)
 #define VERSION_EXTRA           (0)
 #define APP_VERSION             ((VERSION_EXTRA << 24) | (VERSION_PATCH << 16) | \
                                 (VERSION_MINOR << 8) | (VERSION_MAJOR))
