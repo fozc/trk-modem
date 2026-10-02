@@ -72,10 +72,10 @@ typedef enum
                                               4=vector, 5=CRC mismatch,
                                               6=image smaller than vector,
                                               7=SHA-256 mismatch */
-    BOOT_LOG_IPC_ERASE_FAIL      = 0x14U,  /* install-success path: the IPC
-                                              sector erase failed; a stale
-                                              approval message may auto-approve
-                                              the next trial firmware (L6-01) */
+    BOOT_LOG_IPC_ERASE_FAIL      = 0x14U,  /* pre-install IPC clear gate:
+                                              detail 0=erase failure,
+                                              1=erased-message readback failure;
+                                              no MCU erase starts */
 } boot_log_event_t;
 
 /* ------------------------------------------------------------------ */
