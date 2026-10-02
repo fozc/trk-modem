@@ -247,27 +247,50 @@ void test_float_fit(void)
 void test_float_e_notation_boundaries(void)
 {
     canvas_t c;
-    char ref[48];
     unsigned int ret;
 
+    /* An exact integral fixture isolates capacity from float rounding. */
     canvas_init(&c);
-    ret = xsnprintf(c.buf, BUF_N, "%.24e", -1.5);
-    (void)snprintf(ref, sizeof(ref), "%.24e", -1.5);
-    check((ret == 31U) && (strcmp(c.buf, ref) == 0),
-          "e-notation prec=24: full output fits the canvas exactly");
+    ret = xsnprintf(c.buf, BUF_N, "%.24e", -1.0);
+    TEST_ASSERT_EQUAL_UINT32(31U, ret);
+    TEST_ASSERT_EQUAL_STRING("-1.000000000000000000000000e+00", c.buf);
     check(guards_intact(&c), "e-notation prec=24: guards intact");
 
     canvas_init(&c);
-    ret = xsnprintf(c.buf, BUF_N, "%.25e", -1.5);
-    check((ret == 3U) && (strcmp(c.buf, "-OV") == 0),
-          "e-notation prec=25: rejected with -OV");
+    ret = xsnprintf(c.buf, BUF_N, "%.25e", -1.0);
+    TEST_ASSERT_EQUAL_UINT32(3U, ret);
+    TEST_ASSERT_EQUAL_STRING("-OV", c.buf);
     check(guards_intact(&c), "e-notation prec=25: guards intact");
 
     canvas_init(&c);
-    ret = xsnprintf(c.buf, BUF_N, "%.26e", -1.5);
-    check((ret == 3U) && (strcmp(c.buf, "-OV") == 0),
-          "e-notation prec=26: rejected with -OV");
+    ret = xsnprintf(c.buf, BUF_N, "%.26e", -1.0);
+    TEST_ASSERT_EQUAL_UINT32(3U, ret);
+    TEST_ASSERT_EQUAL_STRING("-OV", c.buf);
     check(guards_intact(&c), "e-notation prec=26: guards intact");
+}
+
+void test_float_e_notation_value_and_exponent(void)
+{
+    canvas_t c;
+    unsigned int ret;
+
+    canvas_init(&c);
+    ret = xsnprintf(c.buf, BUF_N, "%.6e", -1.5);
+    TEST_ASSERT_EQUAL_UINT32(13U, ret);
+    TEST_ASSERT_EQUAL_STRING("-1.500000e+00", c.buf);
+    check(guards_intact(&c), "e-notation: guards intact");
+
+    canvas_init(&c);
+    ret = xsnprintf(c.buf, BUF_N, "%.6E", 150.0);
+    TEST_ASSERT_EQUAL_UINT32(12U, ret);
+    TEST_ASSERT_EQUAL_STRING("1.500000E+02", c.buf);
+    check(guards_intact(&c), "E-notation positive exponent: guards intact");
+
+    canvas_init(&c);
+    ret = xsnprintf(c.buf, BUF_N, "%.6e", 0.015);
+    TEST_ASSERT_EQUAL_UINT32(12U, ret);
+    TEST_ASSERT_EQUAL_STRING("1.500000e-02", c.buf);
+    check(guards_intact(&c), "e-notation negative exponent: guards intact");
 }
 
 void test_width_pad_truncation(void)
