@@ -1,6 +1,6 @@
 # Derleyici uyarıları değerlendirmesi ve düzeltme sırası
 
-**Sürüm:** 1.3
+**Sürüm:** 1.8
 **Tarih:** 2026-10-03
 **İnceleme tabanı:** `ad40b75`
 **Durum:** Kullanıcı kararıyla düşük riskli düzeltmeler uygulandı. Contiki kernel kapsam dışıdır; davranış ve veri modeli incelemesi isteyen işler ertelenmiştir. İlk düzeltmeler bölüm 10’da, yeniden değerlendirme bölüm 11’de, onaylanan JSON/Modbus düzeltmelerinin güncel sonucu bölüm 12’dedir.
@@ -565,3 +565,388 @@ Kod ve repodaki testler iki commit ile kaydedilmiştir:
 - `6a0caa0`: çıktı formatları ve kullanılmayan bildirimler.
 - `f8a8032`: JSON config sınırları, GSM/SCADA IP düzeltmeleri,
   reset nedeni register çıktısı, web uyumu ve davranış testleri.
+
+
+## 13. Etkinleşen uyarılar ve HTTP uzunluk düzeltmesi
+
+### Amaç ve kanıt
+
+Kullanıcı Release için `-Wextra`, `-Wconversion`, `-Wdouble-promotion`
+seçeneklerini etkinleştirdi. `-Wconversion` komutta iki kez bulunur;
+`-Wshadow`, `-Wformat=2`, `-Werror` henüz görülmedi. Kullanıcının
+`.cproject` ve language settings değişikliklerine müdahale edilmedi.
+
+Baştan derlemede 1298 uyarı görüldü; 902 tanesi `http_handlers.c`
+içindeydi. Çok sayıda tanı aynı `int pos` ile unsigned `xsnprintf()`
+uzunluğu arasındaki dönüşümden doğar. Bunlar 1298 ayrı bug değildir.
+
+`http_server.h` varsayılan tamponu 8192 byte olarak tanımlar;
+`http_server.c` bu pozitif kapasiteyi handler başlangıcına verir.
+`xsnprintf()` sıfır kapasitede yazmaz, diğer durumda dönüşünü kapasite
+eksi 1 ile sınırlar. Böylece her eklemeden sonra konum kalan kapasiteyi
+geçmez. Mevcut sözleşme bu dönüşüm uyarılarından buffer overflow
+(tampon taşması) sonucu çıkarmayı desteklemez.
+
+### Yapılan değişiklik ve davranış sınırı
+
+Device/board/syslogs/IEC104/Modbus/discovery/RF monitor/fault records ve
+firmware version/status handler'larının tampon konumu unsigned yapıldı.
+Formatter imzası `unsigned int` olduğu için bu yerel tip kullanıldı.
+Tampon kapasitesi mevcut pozitif int sınırından bir kez dönüştürülür;
+gönderimde konum int'e açık dönüştürülür. Konum kapasiteden küçük kaldığı
+için bu sınırdaki dönüşüm kayıpsızdır. Log formatları tipe uyarlandı.
+
+Alan değerleri, JSON formatı, kayıt sırası, protokol, NVRAM ve HTTP API
+imzaları değiştirilmedi. Shell yakalama, RF config builder ve firmware
+upload uzunluklarının farklı sözleşmeleri bu toplu değişikliğe katılmadı.
+Bu düzeltme tip sözleşmesini açık yapar; önceden kanıtlanmış bir taşmayı
+kapatıyor olarak sunulmaz. Tampon dolduğunda yanıtın kırpılması mevcut
+davranıştır; bu çalışma kırpılmış JSON'u kullanılabilir hâle getirmez.
+
+### Doğrulama
+
+- Ceedling: **340/340 geçti**. `test_xsnprintf_format_scenario.c` içinde
+  1/2/32/8192 byte kapasitelerde 500 ardışık ekleme, metin prefix'i,
+  NUL sonlandırma, gönderimde int uzunluğu ve canary (koruma baytı)
+  denetlendi. Gerçek formatter kullanılır.
+- Mevcut web_auth entegrasyon paketi geçti. Gerçek version/status
+  handler gövdeleri kaynaktan çıkarılır; gerçek `xprintf.c` ile derlenir.
+  1/2/8/32/128/8192 byte kapasitelerde beklenen yanıt prefix'i ve uzunluğu,
+  koruma baytları, inactive/active/ready durumları ve UINT32_MAX
+  değerleri kontrol edilir. Diğer sekiz handler'ın çıktısı bu testte
+  uçtan uca doğrulanmış sayılmaz; bunların değişikliği aynı uzunluk
+  invariant'ına (korunan sınıra) dayanır.
+- Önceki HEAD sürümünün gerçek version/status handler gövdeleri de
+  aynı yanıt oracle’ı (beklenen çıktı) ve kapasite senaryolarıyla geçti.
+  Yerel kanıt: `test/build/web_auth/http-lengths-baseline.log`.
+- Baştan Release derlemesi geçti: toplam **487**, HTTP **91** uyarı kaldı.
+  Kalan uyarılar bastırılmadı. Bunlar sonraki kaynak akışı incelemesidir.
+- Fiziksel cihaz testi yapılmadı; pozitif kapasite sözleşmesi korundu.
+
+Kanıtlar `test/build/production-audit-2026-10-03/` altında
+`enabled-warnings-release.log`, `http-lengths-full-release.log`,
+`http-lengths-ceedling.log`; handler sonuçları
+`test/build/web_auth/web-auth-integration-repro.log` içindedir.
+
+
+## 14. 04.10.2026 dönüşüm uyarıları ve veri türü kuralı
+
+### Amaç ve yapılan değişiklik
+
+İlk HTTP düzeltmesinden sonra kalan 487 uyarıdan aynı sözleşme
+uyuşmazlıklarını üreten iki grup düzeltildi:
+
+- IEC104/Modbus HTTP okuma/yazma ve JSON setter fider döngüleri yalnız
+  0..6 kimlikleri kullanır. `uint32_t` isteyen config API'lerine uyumlu
+  fider kimliği kullanıldı. Döngü sınırı ve yazılan alanlar korunur.
+- Özel `gsm_at_response_ready()` yardımcısı callback'lerin mevcut
+  `int32_t` yanıt sözleşmesiyle eşleştirildi. Yardımcı yalnız 0 veya
+  küçük, negatif olmayan sabit GSM kodları döndürür. Aktif unsigned
+  query sonucu sınırında açık dönüşüm vardır; public (dışa açık) API
+  korunur. Kapalı SMS bloğu değiştirilmez.
+- HTTP tampon konumları/boyutları kullanıcı kararıyla `size_t` oldu.
+  `xsnprintf()` ve mevcut log formatter sınırında `unsigned int`
+  dönüşümü, gönderimde int dönüşümü pozitif int kapasitesine dayanır.
+  Formatter kapasiteyi sınırladığı için biriken konum int sınırını aşmaz.
+  IPv4 octet değerleri maske sonrası 0..255'tir; `uint8_t` kullanılır,
+  `%u` argümanları formatter sınırında unsigned olarak verilir.
+
+Bu maddeler önceden kanıtlanmış veri kaybı bug'ları olarak sunulmaz.
+Gerekçe: sözleşmeyi doğru tipte ifade etmek ve aynı güvenli işlemdeki
+tekrarlayan uyarıları gidermek. Sınırsız girişlerin daraltılması aynı
+şekilde otomatik cast eklenerek düzeltilmemelidir.
+
+### Repo kuralı
+
+AGENTS.md ve CLAUDE.md'ye aynı politika eklendi: tamsayı verileri
+`stdint.h` sabit genişlikli tipleri; boyut/uzunluk/indeks `size_t`;
+pointer farkı `ptrdiff_t`; mantıksal durum `bool` kullanır. Metin `char`,
+ölçüm `float`/`double`, durum kodu enum olarak kalabilir. Standart
+kütüphane/HAL/mevcut API imzaları sınır istisnasıdır. Toplu tip değişimi
+ve kanıtsız cast yasaktır.
+
+### Doğrulama ve sınırlar
+
+Baştan ARM Release derlemesi başarılıdır. Toplam uyarı **487 → 385**,
+HTTP **91 → 42**, GSM **165 → 117** oldu. Kalanlar bastırılmadı.
+Contiki kernel ve vendor kaynakları değiştirilmedi; `#if 0` blokları
+korundu. Kullanıcının `.cproject` ayarları korunur.
+
+Ceedling'e üç gerçek GSM yardımcı senaryosu eklendi: NONE/OK/ERROR/timeout
+sonuçları; OK ve ERROR altında NO CARRIER; NO SIM altında hata kodu ve
+normal moddan SIM error moda geçiş. Sonuç fake'i testte sırayla kuyruk
+oluşturan mock yerine o anki sonuca dönen stub kullanır.
+
+HTTP source handler/gerçek formatter entegrasyon paketi, `size_t`
+uyarlamasından sonra yeniden geçti. Fiziksel cihaz testi yapılmadı.
+
+Kanıtlar `test/build/production-audit-2026-10-03/` içinde
+`conversion-followup-full-release.log`, `conversion-followup-ceedling.log`,
+`conversion-followup-integration.log` dosyalarıdır. Dizin tarihi önceki
+çalışmanın tarihidir; bu devam incelemesi 04.10.2026 tarihinde yapılmıştır.
+
+
+## 15. 04.10.2026 varsayılan adresler, metin ve AT komut uzunlukları
+
+### Kanıt ve yapılan değişiklik
+
+- NVRAM varsayılan hesabı yedi fider ve üç faz kullanır. En büyük Modbus
+  adresi 40626'dır; 16 bit sınırı aşılmaz. Hesap uint32_t olarak yapılır,
+  kalıcı uint16_t alana dönüşüm bu kanıtlanan sınırda açık yazılır.
+  `_Static_assert` fider sayısı ve en büyük adresi derleme sırasında
+  korur. Mevcut varsayılan değerler, şema ve layout değişmez.
+- `str_substr()` çağrıları GSM parser yolunda erişilebilirdir. Pozitif
+  arama indeksinden sonra boyut hesabı size_t yapılır; negatif arama
+  sonucu aynı şekilde reddedilir. Başlangıç/bitiş delimiter (ayırıcı)
+  yoksa, kapasite yetmezse, boş içerik varsa eski dönüş ve tampon
+  davranışı korunur. `str_end_withs()` strlen sonucunu size_t tutar.
+- `ipv4_to_str()` octet değerini 0xFF maskeler. Ondalık karakterler
+  48..57 aralığındadır; uint8_t dönüşümü kayıpsızdır. Mevcut üç haneli,
+  sıfırla tamamlanan IPv4 metni değiştirilmez.
+- Login parser'da strchr ile bulunan son konum başlangıçtan önce olamaz.
+  Pointer farkı size_t yapılır; mevcut credential dizi sınırı korunur.
+  IPv4 octet'leri 0..255'tir. Sabit HTTP yanıt metinleri int sınırından
+  çok küçüktür; int gönderim API'sine açık dönüşüm bu kanıta dayanır.
+- `gsm_engine_send_query()` komut uzunluğunu uint8_t içinde tutuyordu.
+  Her formatter sonucu aynı dar alana ekleniyordu. Uzunluk size_t oldu;
+  mevcut 128 byte sınır kontrolünden sonra uint16_t AT motoru parametresine
+  kayıpsız dönüşür. Komut metni, retry ve timeout değerleri korunur.
+  Uzun APN xsnprintf ile kırpıldıktan sonra mevcut kontrol tarafından
+  reddedilir. Diğer xsprintf kullanan dalların bütün girişleri için
+  buffer güvenliği kanıtlanmış sayılmaz; bu değişiklik yeni bir genel
+  buffer koruması eklemez.
+
+Kapalı SMS bloğunda önceki tur eklenen üç cast geri alındı. İncelenen
+C dosyalarının `#if 0` blokları HEAD ile aynı içeriktedir. Çalışma akışı
+olmayan my_itoa/dec_to_str yardımcılarına yalnız cast eklenmedi.
+
+### Doğrulama
+
+- **349/349 Ceedling testi geçti.** GSM paketinde gerçek üretim parser
+  yardımcıları için kapasite sınırı, boş içerik, eksik delimiter, devam
+  pointer'ı ve canary testleri vardır. IPv4 için bütün 256 octet değeri
+  kontrol edilir. Normal E0/APN AT komut byte'ları, uzunluk, retry ve
+  timeout gerçek query fonksiyonundan mock taşıma servisine kadar
+  doğrulanır. 160 karakterlik APN gönderilmeden reddedilir ve busy
+  durumu bırakılır.
+- **NVRAM entegrasyonu 433 kontrol geçti, sıfır hata.** Gerçek fabrika
+  başlangıç koduyla yedi fiderin 21 Modbus ve 21 IEC104 nokta adresi
+  beklenen haritayla karşılaştırılır. Packed (sıkıştırılmış) üyeler
+  hizasız pointer alınmadan değer olarak okunur.
+- HTTP auth ve gerçek handler/formatter entegrasyon paketi geçti.
+- Baştan ARM Release derlemesi geçti. Toplam uyarı **385 → 249**,
+  GSM **117 → 20**, HTTP **42 → 28**, GSM utils **21 → 12**,
+  NVRAM **16 → 0** oldu. Uyarılar bastırılmadı.
+
+Kanıtlar aynı test/build dizinindeki `conversion-defaults-ceedling.log`,
+`conversion-defaults-nvram.log`, `conversion-defaults-http.log`,
+`conversion-defaults-full-release.log`, `conversion-at-command-tests.log`
+dosyalarındadır. Fiziksel cihaz testi ve commit yapılmadı.
+
+### Kalan işler
+
+IEC104 bit alanları (61 tanı), flash driver adres byte'ları (25), kalan
+HTTP/shell/FW sınırları (28) ve GSM parser daraltmaları (20) açık kalır.
+Ayrıca diğer modüllerde uyarılar vardır. Bit alanına atılan değerlerin
+üretici/tüketici sınırları ve mevcut kodlama kuralları doğrulanmalıdır;
+maskeler yalnız uyarı kaybolsun diye eklenmemelidir. Contiki ve vendor
+kaynakları mevcut kullanıcı kapsamı dışında tutulur.
+
+
+## 16. 04.10.2026 IEC104 ve SPI flash kodlaması
+
+### Amaç ve kullanım yeri
+
+IEC104 paketleri ve SPI flash komutları oluşturulurken görülen daraltma
+uyarılarını, mevcut byte ve bit kodlamasını koruyarak gidermek.
+Bu devam çalışması `Application/libiec104/iec104.c` ve
+`Application/libs/w25qxx.c` dosyalarını kapsar.
+
+### Kanıt ve yapılan değişiklik
+
+- IEC104 control (kontrol) alanındaki sıra numarası 15 bittir.
+  VSQ nesne sayısı 7 bit, SQ ve P/N bayrakları 1 bit, cause alanı
+  6 bittir. Önceki unsigned bit-field (bit alanı) atamaları yalnız
+  ilgili düşük bitleri saklıyordu. Aynı davranış açık maskelerle yazıldı.
+  Örnek: P/N girdisi 2 için 0, 3 ve 255 için 1 kodlanmaya devam eder.
+  Boolean dönüşüm eklenmedi; sıra numarası yönetimi değiştirilmedi.
+- Telemetri fider döngüsü config API ile aynı uint32_t türünü kullanır.
+  Faz ve arıza kayıt indeksleri mevcut sınırları içinde uint8_t tutulur.
+  Batch (toplu gönderim) hesabı mevcut `(253 - 10) / sizeof(object)`
+  sınırını kullanır; hesaplanan APDU uzunluğu en fazla 253 byte'tır.
+  Başlatma APDU'sunun byte uzunluğu ayrıca static assert ile korunur.
+- SIQ/DIQ kalite bayraklarının maske sonucu 0 veya 1'dir. En yüksek
+  bayraktaki gereksiz ara uint8_t dönüşümü kaldırıldı. Paket kodlaması
+  aynı kaldı; bütün kalite bayraklarının gönderilen byte'ı test edilir.
+- SPI driver, 24 bit adresi high/middle/low sırasıyla üç uint8_t
+  parametreye gönderiyordu. Her byte artık 0xFF ile ayrılır; komut ve
+  adres byte sırası korunur. Okuma, fast read, byte/page program,
+  verify ve üç erase komutu gerçek driver ile test edilir.
+- Flash kimlik byte'ları unsigned türde birleştirilir. JEDEC sonucunun
+  en yüksek byte'ı önce int olarak sola kaydırılıyordu; bu byte'ın yüksek
+  biti set olduğunda C dilinde signed kaydırma tanımlı değildir.
+  uint32_t kaydırma bu riski giderir. Sahada gözlenmiş bir arıza iddiası
+  değildir; mevcut byte sırası ve kimlik değeri korunur.
+- Kapasite tablosunda bilinmeyen kimlik için kullanılan static compound
+  literal host C11 derleyicisinde kabul edilmedi. Aynı statik ömürlü,
+  sıfır kapasiteli sonuç normal static const nesne olarak yazıldı.
+  Driver'ın dışa açık API'si değiştirilmedi.
+- Flash tanılama sayfasının indeksleri size_t oldu. Test pattern (test
+  deseni) 0..255 değerlerinin byte'a dönüşümü sayfa boyutu static assert'i
+  ile korunur. Flash layout ve NVRAM şeması değiştirilmedi.
+
+Bu uyarıların çoğu mevcut dar alan kodlamasının açık yazılmasıyla kapanır;
+her uyarı ayrı bir lojik hata anlamına gelmez. Maske bir giriş doğrulama
+mekanizması olarak sunulmaz; geçersiz girişlerin mevcut davranışı korunur.
+
+### Doğrulama
+
+| Kontrol | Sonuç |
+|---|---|
+| Baştan ARM Release derlemesi | Başarılı; toplam **249 → 163** uyarı |
+| `libiec104/iec104.c` | **61 → 0** uyarı |
+| `libs/w25qxx.c` | **25 → 0** uyarı |
+| Tam Ceedling paketi | **361/361 geçti**, sıfır hata/atlanmış test |
+| Yeni SPI testleri | **10 senaryo**; gerçek driver, mock SPI/BSP |
+| Yeni IEC104 testleri | P/N düşük bit davranışı; SIQ/DIQ bayrak byte'ları |
+| Mevcut IEC104 senaryoları | Tam 15 bit sıra döngüsü, receive wrap, batch arıza gönderimi ve paket sınırları geçti |
+| `#if 0` içerikleri | Değiştirilen üretim modüllerinde HEAD ile aynı |
+
+IEC104 Ceedling paketinin `-Wno-conversion` ve `-Wno-sign-conversion`
+istisnaları kaldırıldı. IEC104 ve yeni SPI testleri mevcut sıkı host
+seçenekleriyle, `-Werror` dahil geçer. Yeni bir uyarı bastırma eklenmedi.
+`test/support/main.h` yalnız host derlemesindeki NOP shim'idir (uyarlayıcı);
+MCU gecikmesini veya fiziksel flash zamanlamasını modellemez.
+
+Kanıtlar `test/build/production-audit-2026-10-03/` dizinindeki
+`wire-encoding-full-release.log` ve `wire-encoding-ceedling.log`
+dosyalarındadır. Birim testleri mevcut Ceedling dizinlerine eklenmiştir.
+Fiziksel cihaz/SCADA kabul testi ve commit yapılmadı.
+
+### Kalan işler
+
+Derlemede **149 Application**, **8 Contiki**, **5 vendor**, **1 Core**
+uyarısı kalır. En büyük Application grupları HTTP handler (28), GSM
+engine (20), fault log (16) ve GSM utils (12) dosyalarındadır. Diğerleri
+formatter/scanner, UART/BSP, log ve uygulama adaptörlerindedir.
+Contiki ve vendor kullanıcı kapsamı dışında kalır. Release uyarı ailesi
+henüz tüm zorunlu seçenekleri içermez; proje warning-free sayılmaz.
+Girişe bağlı uzunluk ve parser daraltmaları için sınır ve hata sözleşmesi
+kanıtlanmalıdır; yalnız cast eklenerek kapatılmamalıdır.
+
+
+## 17. 04.10.2026 kalan 163 uyarının kaynak incelemesi
+
+### Amaç ve kapsam
+
+Bölüm 16 sonrasında kalan tanıların kaynak sözleşmelerini kontrol etmek,
+uygulama kaynaklarındaki uyarıları kapatmak ve korunan kaynakları açıkça
+ayırmak. Uyarı bastırma veya toplu API değişikliği yapılmadı.
+
+### Kanıt ve yapılan değişiklik
+
+| Grup | Kaynaktaki sınır ve sonuç |
+|---|---|
+| UART/GPIO | ST LL flag fonksiyonları 0/1 döndürür. Mevcut int/uint8_t API sınırında açık dönüşüm kullanılır. Port okumasının düşük 16 biti önceki uint16_t dönüşümüyle aynı tutulur. Register ayarı değiştirilmez. |
+| BSP tarih ve IEC104/fault bit alanları | Maskeler mevcut unsigned bit-field genişliğiyle aynıdır. RTC snapshot, bayrak anlamı ve kalıcı kayıt layout'u değişmez. |
+| BMS/Modbus | CRC uzunluğunda mevcut minimum frame kontrolü, Modbus farkında mevcut register aralığı vardır. Pozitif ve küçük sonuçlar mevcut uint16_t API sınırında dönüştürülür. |
+| Ring indeksleri | IEC104 TX slot ve fault log modulo sonuçları mevcut slot/kayıt sayısından küçüktür; byte alana kayıpsız dönüşür. Kuyruk ve kayıt sırası korunur. |
+| GSM/AT uzunlukları | AT motorunun response tamponu 1280 byte'tır. URC ayırıcıları ve SRECV son satır hesabı bu tampon içindedir. Pozitif indeksler ve mevcut minimum uzunluk kontrollerinden sonra uint16_t dönüşüm yapılır. HTTP gönderim ara tamponu 1500 byte'tır. |
+| HTTP/shell/log uzunlukları | Formatter dönüşü kapasiteyle sınırlıdır. Boyut ve konumlar uygun unsigned/size_t türünde tutulur; int gönderim API'sine dönüşüm pozitif kapasite sınırına dayanır. Sabit reboot yanıtı int sınırının çok altındadır. Shell prefix en fazla 63 karakterdir; oturum/ISR tasarımı değiştirilmez. |
+| GSM durum kodları | Response enum ve TX direction sabitleri mevcut byte alana sığar. Dışa açık API imzaları korunur. Callback sonucu nonnegative GSM durum kodudur. |
+| Float/hex metni | Mevcut integer → float hesap ve ASCII karakter dönüşümleri açık yazıldı. Hex nibble değerleri 0..15, rakam karakterleri 48..57 aralığındadır. Float ölçüm hesabı değiştirilmedi. |
+
+### Gerçek sınır sorunları
+
+- Trace/dialer `#SI` callback'leri iki signed ayırıcı indeksini daraltıp
+  ters yönde sayıyordu. Ayırıcı sırası kontrol edilmeden hesaplanan
+  negatif uzunluk büyük unsigned değere dönüşebilirdi. Mevcut `xscanf`
+  altyapısı yeniden kullanıldı; yeni bir parser kurulmadı. Dört sayaç
+  önce uint32_t olarak okunur. Mevcut uint16_t ACK alanına sığmayan
+  değer `GSM_ERROR` olur; ACK sıfıra sarmaz. Listener ve SI-all yollarına
+  da aynı dar alan kontrolü eklendi. SI-all mevcut cache temizleme
+  davranışını korur; geçersiz cevap cache'i valid olarak işaretlemez.
+- `+CCED` ayırıcıları eksik olduğunda pointer/uzunluk hesabı geçersiz
+  olabiliyordu. Dört alan mevcut scanner ile yerel değişkenlere okunur;
+  parse ve uint16_t aralık kontrolleri geçmeden cell bilgisi yazılmaz.
+  Geçerli MCC/MNC decimal, LAC/cell hex kodlaması korunur. Bozuk yanıtta
+  `GSM_ERROR` döner. Sahada oluşmuş bir arıza iddiası değildir.
+- Formatter signed minimum değerinin büyüklüğünü `0 - v` ile signed
+  türde hesaplıyordu. INT64_MIN için bu C dilinde overflow'dur (taşma).
+  Büyüklük unsigned çıkarma ile hesaplanır; normal metin değişmez.
+  Negatif dinamik width için de signed negation kaldırıldı.
+- HTTP header 256 byte stack tamponuna sınırsız `xsprintf` ile yazılıyordu.
+  Mevcut bounded `xsnprintf` kullanıldı. Header tamamlanmadıysa sabit,
+  geçerli 500 yanıtı gönderilir ve çağıranın body verisi gönderilmez.
+  int uzunluk API'sine sığmayan HTML resource da body okunmadan reddedilir.
+  Mevcut gömülü sayfalar bu sınırların çok altındadır.
+
+`my_itoa`/`dec_to_str` algoritmaları değiştirilmedi; yalnız 0..9 rakamının
+ASCII byte'a dönüşümü açık yazıldı. Repoda aktif çağrıları bulunmadı.
+Bu çalışma bu eski yardımcıların genel tampon sözleşmesini kanıtlamaz.
+Benzer şekilde bütün sınırsız xsprintf çağrılarının güvenliği tamamlanmış
+sayılmaz; bölüm 15'teki AT komut tamponu sınırı geçerlidir.
+
+MinGW host math macro'ları double classification (sayı sınıflandırması)
+sırasında float daraltma uyarısı üretiyordu. Repo GCC toolchain'inde
+`__builtin_isnan`/`__builtin_isinf` kullanılarak double değer doğrudan
+sınıflandırılır. NaN/INF/normal değer format testleri geçti. ChaN kaynak
+lisansı korunur; formatter ve scanner testlerindeki eski conversion
+istisnaları kaldırıldı. GSM monolitik host testinin önceki istisnaları
+bu değişiklikte genişletilmedi.
+
+### Doğrulama
+
+| Kontrol | Sonuç |
+|---|---|
+| Baştan ARM Release `main-build` | Başarılı; **163 → 14** uyarı, sıfır error |
+| Application kaynakları | **149 → 0** uyarı; mevcut Release seçenekleri altında |
+| Tam Ceedling paketi | **377/377 geçti**, sıfır hata/atlanmış test |
+| Tam entegrasyon | **9/9 paket geçti** |
+| Yeni GSM senaryoları | 6 test: ACK 0/65535/65536, büyük sayaç, bozuk/eksik alan, valid cache ve cell alanlarının korunması |
+| Yeni formatter senaryoları | 2 test: INT32_MIN/INT64_MIN metni; negatif/pozitif dinamik width |
+| Yeni HTTP response senaryoları | 4 test: normal header/body byte eşitliği, uzun header reddi, gzip payload ve oversized resource reddi |
+| Yeni application utils senaryoları | 4 test: float kesinlik sınırının üstünde integer, float yolları, tam 32 bit hex ve bütün 256 byte için encode/decode/canary |
+| Korunan kod | Değiştirilen bütün Application dosyalarındaki `#if 0` blokları HEAD ile aynı |
+
+SI-all overflow testinde önceki cache'in korunacağı varsayımı yanlıştı.
+Kaynak her SI-all sorgusunda cache'i temizler; test bu mevcut sözleşmeyle
+uyumlu düzeltildi. Hata eski cache'i valid saymaz; ACK state korunur.
+Test varsayımı için üretim cache akışı değiştirilmedi.
+
+Kanıtlar `test/build/production-audit-2026-10-03/` altında
+`remaining-full-release.log`, `remaining-ceedling.log`,
+`remaining-integration.log`, `remaining-formatter-tests.log` ve
+`remaining-parser-tests.log` dosyalarındadır. Birim testleri Ceedling
+altındadır; mevcut entegrasyon paketi korunmuştur. Fiziksel cihaz testi,
+firmware yükleme veya commit yapılmadı. Release'te henüz bütün zorunlu
+uyarı seçenekleri etkin değildir; bu sonuç o seçeneklere ilişkin genel
+warning-free belgesi değildir.
+
+### Kullanıcı kararıyla kapsam dışındaki 14 uyarı
+
+- **8 Contiki:** Kullanıcı tarafından açıkça kapsam dışında bırakıldı.
+- **5 ST vendor:** RTC BCD (1), UART FIFO sayısı (2), release assert'i
+  silinince kullanılmayan RCC parametresi (1), ADC sıcaklık macro'sundaki
+  signed/unsigned sabit (1). Üretim driver dosyaları değiştirilmedi.
+- **1 Core:** `Core/Src/syscalls.c:74` içinde `__io_getchar()` int sonucunun
+  char'a atanması. Dosyada USER CODE marker'ları yoktur. AGENTS.md'nin
+  CubeMX kuralı korunur; kullanıcı bu kaynağı da kapsam dışında bıraktı.
+
+**Kullanıcı kararı (04.10.2026):** “ST/CubeMX kaynaklarını koru; 14 uyarı
+kapsam dışında kalsın.” Son altı kaynak için önerilen düzeltmeler
+uygulanmadı. Contiki, ST driver ve Core dosyaları değiştirilmedi.
+Kapsam içindeki uygulama uyarıları kapanmıştır; tam build log'unda bu
+14 tanı görünmeye devam eder. Bu altı ST/Core tanısı sahada arıza
+oluştuğunun kanıtı değildir.
+
+
+### Commit kaydı
+
+Bölüm 13–17'deki uygulama düzeltmeleri, Ceedling ve entegrasyon testleri,
+veri türü kuralları `bf7ac1a` commit'inde kaydedilmiştir. CubeIDE Release
+uyarı seçenekleri `5db75b8` commit'indedir. Önceki bölümlerdeki
+“commit yapılmadı” ifadeleri ilgili inceleme anının durumunu anlatır.
+Son ARM Release log'unda `-Wshadow` etkindir; `-Wformat=2` ve `-Werror`
+etkin değildir. Application için sıfır uyarı sonucu mevcut seçenekler
+altında geçerlidir; kullanıcı kararıyla kapsam dışındaki 14 tanı korunur.
