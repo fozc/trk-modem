@@ -1,4 +1,7 @@
-/* fw_update_html.h - embedded fw_update.html header */
+/* fw_update_html.h - embedded fw_update.html header
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ */
 #ifndef FW_UPDATE_HTML_H
 #define FW_UPDATE_HTML_H
 

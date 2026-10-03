@@ -2,7 +2,8 @@
  * modbus_system_stats.c
  *
  *  Created on: 11 Tem 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "modbus_system_stats.h"
 #include "bsp.h"
@@ -40,7 +41,7 @@ typedef struct {
 	uint16_t rtc_year;       /* rtc time, year               */
 	uint16_t rtc_unix[2];    /* rtc time, unix timestamp     */
 	uint16_t uptime_sec;     /* uptime, seconds              */
-	uint16_t reset_reason;   /* reset source, raw CSR bits   */
+	uint16_t reset_reason;   /* decoded reset-cause bitmask  */
 	uint16_t mcu_temp;       /* die temperature, celsius     */
 	uint16_t v5v;            /* 5V rail, millivolts          */
 	uint16_t v3v3;           /* 3V3 rail, millivolts         */
@@ -121,10 +122,10 @@ bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value)
 			*value = sys_stats_low_word(rtc_get_unix_epoch());
 			return true;
 		case SYS_REG(reset_reason):
-			*value = reset_source_get_raw();
+			*value = (uint16_t)reset_source_get_flags();
 			return true;
 		case SYS_REG(mcu_temp):
-			*value = adc_get_mcu_temp_c();
+			*value = (uint16_t)adc_get_mcu_temp_c();
 			return true;
 		case SYS_REG(v5v):
 			*value = adc_get_voltage_mv(ADC_CH_5V);

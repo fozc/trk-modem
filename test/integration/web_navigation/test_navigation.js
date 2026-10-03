@@ -139,7 +139,7 @@ async function checkPage(html, label) {
         'iec-Port': 2404, 'iec-PeriodicSend': 60, 'iec-T0': 30,
         'iec-T1': 30, 'iec-T2': 30, 'iec-T3': 30, 'iec-K': 64,
         'iec-W': 32, 'iec-OriginatorAddr': 1, 'iec-CommonAddr': 1,
-        'iec-SBOTimeout': 30000, 'iec-AkuUyarisi': 10000,
+        'iec-SBOTimeout': 30, 'iec-AkuUyarisi': 10000,
         'iec-ModemReset': 10001, 'mod-CihazID': 1, 'mod-BaudRate': 115200
     };
     for (const [id, value] of Object.entries(configFields)) {
@@ -147,6 +147,29 @@ async function checkPage(html, label) {
         input.type = 'number';
         input.value = String(value);
     }
+    const sbo = document.getElementById('iec-SBO');
+    sbo.type = 'checkbox';
+    sbo.checked = true;
+    document.getElementById('iec-OriginatorAddr').value = '0';
+    document.getElementById('iec-CommonAddr').value = '300';
+    assert.equal(run("validatePage('iec104')"), true);
+    document.getElementById('iec-OriginatorAddr').value = '256';
+    assert.equal(run("validatePage('iec104')"), false);
+    document.getElementById('iec-OriginatorAddr').value = '255';
+    document.getElementById('iec-CommonAddr').value = '65535';
+    assert.equal(run("validatePage('iec104')"), true);
+    document.getElementById('iec-CommonAddr').value = '65536';
+    assert.equal(run("validatePage('iec104')"), false);
+    document.getElementById('iec-CommonAddr').value = '300';
+    document.getElementById('iec-SBOTimeout').value = '301';
+    assert.equal(run("validatePage('iec104')"), false);
+    sbo.checked = false;
+    document.getElementById('iec-SBOTimeout').value = '65535';
+    assert.equal(run("validatePage('iec104')"), true);
+    document.getElementById('iec-SBOTimeout').value = '65536';
+    assert.equal(run("validatePage('iec104')"), false);
+    sbo.checked = true;
+    document.getElementById('iec-SBOTimeout').value = '30';
     context.fetch = async (url, options) => {
         request = {url, data: JSON.parse(options.body)};
         return {ok: true, status: 200, json: async () => ({success: true})};

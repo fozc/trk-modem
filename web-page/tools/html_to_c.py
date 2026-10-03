@@ -103,7 +103,9 @@ def write_c_array(html_content, output_name, output_dir, source_html_file, compr
     
     # Generate C file
     with io.StringIO(newline='\n') as f:
-        f.write(f'/* {array_name}.c - embedded {os.path.basename(source_html_file)} */\n')
+        f.write(f'/* {array_name}.c - embedded {os.path.basename(source_html_file)}\n')
+        f.write(' *      Author: Fatih Ozcan\n')
+        f.write(' *              fatihozcan@gmail.com\n */\n')
         f.write(f'#include "{array_name}.h"\n\n')
         
         # Always use uint8_t for data array (works for both text and binary)
@@ -158,7 +160,9 @@ def write_c_array(html_content, output_name, output_dir, source_html_file, compr
     
     # Generate H file
     with io.StringIO(newline='\n') as f:
-        f.write(f'/* {array_name}.h - embedded {os.path.basename(source_html_file)} header */\n')
+        f.write(f'/* {array_name}.h - embedded {os.path.basename(source_html_file)} header\n')
+        f.write(' *      Author: Fatih Ozcan\n')
+        f.write(' *              fatihozcan@gmail.com\n */\n')
         f.write(f'#ifndef {guard_name}\n')
         f.write(f'#define {guard_name}\n\n')
         f.write('#include "html_resources.h"\n\n')

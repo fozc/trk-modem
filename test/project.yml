@@ -90,10 +90,30 @@
       test_iec104_protocol_scenario:
         - -Wno-conversion
         - -Wno-sign-conversion
+      # LTO drops unrelated callbacks from the monolithic legacy GSM unit.
+      test_gsm_response_scenario:
+        - -Wno-sign-compare
+        - -Wno-pedantic
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-function
+        - -Wno-array-parameter
+        - -flto
+        - -O2
+      # Legacy JSON module; range regressions use its public API.
+      test_json_config_bounds:
+        - -Wno-array-parameter
+        - -Wno-conversion
+        - -Wno-sign-conversion
       test_rf_json_golden_scenario:
         - -Wno-conversion
         - -Wno-sign-conversion
         - -Wno-float-conversion
+
+    :link:
+      test_gsm_response_scenario:
+        - -flto
+        - -O2
 
 :cmock:
   :plugins:

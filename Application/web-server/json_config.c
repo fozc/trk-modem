@@ -2,7 +2,8 @@
  * json_config.c
  *
  *  Created on: 31 Eki 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #define CSLOG_MODULE LOG_MOD_HTTP
@@ -204,7 +205,8 @@ static bool parse_string(const char **str, char *dest, size_t max_len) {
     
     /* Warn if string was truncated */
     if (truncated) {
-        CSLOG_WARN("[JSON] WARNING: String truncated at %zu bytes (max: %zu)\r\n", i, max_len - 1);
+        CSLOG_WARN("[JSON] WARNING: String truncated at %lu bytes (max: %lu)\r\n",
+                   (unsigned long)i, (unsigned long)(max_len - 1U));
     }
     
     *str = s;
@@ -242,7 +244,7 @@ static bool parse_uint16(const char **str, uint16_t *value) {
     
     /* Range check for uint16_t */
     if (temp > 65535) {
-        CSLOG_ERR( "[JSON] ERROR: Value %u exceeds uint16_t max (65535)\r\n", temp);
+        CSLOG_ERR( "[JSON] ERROR: Value %lu exceeds uint16_t max (65535)\r\n", temp);
         return false;
     }
     
@@ -257,7 +259,7 @@ static bool parse_uint8(const char **str, uint8_t *value) {
     
     /* Range check for uint8_t */
     if (temp > 255) {
-        CSLOG_ERR( "[JSON] ERROR: Value %u exceeds uint8_t max (255)\r\n", temp);
+        CSLOG_ERR( "[JSON] ERROR: Value %lu exceeds uint8_t max (255)\r\n", temp);
         return false;
     }
     
@@ -307,36 +309,6 @@ static bool parse_int32(const char **str, int32_t *value) {
     }
     
     *str = s;
-    return true;
-}
-
-/* Signed Parse 16-bit integer value with range validation */
-static bool parse_int16(const char **str, int16_t *value) {
-    int32_t temp;
-    if (!parse_int32(str, &temp)) return false;
-    
-    /* Range check for int16_t */
-    if (temp < -32768 || temp > 32767) {
-        CSLOG_ERR( "[JSON] ERROR: Value %d exceeds int16_t range (-32768 to 32767)\r\n", temp);
-        return false;
-    }
-    
-    *value = (int16_t)temp;
-    return true;
-}
-
-/* Signed Parse 8-bit integer value with range validation */
-static bool parse_int8(const char **str, int8_t *value) {
-    int32_t temp;
-    if (!parse_int32(str, &temp)) return false;
-    
-    /* Range check for int8_t */
-    if (temp < -128 || temp > 127) {
-        CSLOG_ERR( "[JSON] ERROR: Value %d exceeds int8_t range (-128 to 127)\r\n", temp);
-        return false;
-    }
-    
-    *value = (int8_t)temp;
     return true;
 }
 
@@ -411,7 +383,8 @@ static bool validate_ip_address(const char *ip) {
     
     size_t len = strlen(ip);
     if (len < 7 || len > 15) {  /* Min: "0.0.0.0", Max: "255.255.255.255" */
-        CSLOG_ERR( "[VALIDATION] ERROR: Invalid IP length: %zu\r\n", len);
+        CSLOG_ERR( "[VALIDATION] ERROR: Invalid IP length: %lu\r\n",
+                   (unsigned long)len);
         return false;
     }
     
@@ -460,15 +433,6 @@ static bool validate_port(uint16_t port) {
         return false;
     }
     /* port is uint16_t, so max is automatically 65535 */
-    return true;
-}
-
-/* Validate zone ID (6-bit value: 0-63) */
-static bool validate_zone_id(uint8_t zone_id) {
-    if (zone_id > 63) {
-        CSLOG_ERR( "[VALIDATION] ERROR: Invalid zone_id: %u (max: 63)\r\n", zone_id);
-        return false;
-    }
     return true;
 }
 
@@ -525,7 +489,7 @@ static bool validate_iec_windows(const jiec_config_t *config) {
 }
 
 /* Validate IEC104 common address (1-65535) */
-static bool validate_common_address(uint8_t common_address) {
+static bool validate_common_address(uint16_t common_address) {
     if (common_address == 0) {
         CSLOG_ERR( "[VALIDATION] ERROR: Common address cannot be 0\r\n");
         return false;
@@ -560,7 +524,7 @@ static bool validate_rf_frequency(uint32_t freq_hz) {
 static bool validate_rf_float(float value, float min, float max, const char *name) {
     if ((value < min) || (value > max)) {
         CSLOG_ERR( "[VALIDATION] ERROR: %s %.3f out of range [%.3f, %.3f]\r\n",
-               name, value, min, max);
+               name, (double)value, (double)min, (double)max);
         return false;
     }
     return true;
@@ -568,7 +532,7 @@ static bool validate_rf_float(float value, float min, float max, const char *nam
 
 static bool validate_rf_uint(uint32_t value, uint32_t min, uint32_t max, const char *name) {
     if ((value < min) || (value > max)) {
-        CSLOG_ERR( "[VALIDATION] ERROR: %s %u out of range [%u, %u]\r\n",
+        CSLOG_ERR( "[VALIDATION] ERROR: %s %lu out of range [%lu, %lu]\r\n",
                name, value, min, max);
         return false;
     }
@@ -660,16 +624,6 @@ static bool expect_array_start(const char **str) {
     return true;
 }
 
-/* Check array end */
-static bool is_array_end(const char **str) {
-    const char *s = skip_whitespace(*str);
-    if (*s == ']') {
-        *str = s + 1;
-        return true;
-    }
-    return false;
-}
-
 /* Check object start */
 static bool expect_object_start(const char **str) {
     const char *s = skip_whitespace(*str);
@@ -720,23 +674,6 @@ static bool parse_uint32_array(const char **str, uint32_t *arr, int max_count) {
     const char *s = skip_whitespace(*str);
     while (*s != ']' && count < max_count) {
         if (!parse_uint32(str, &arr[count])) return false;
-        count++;
-        skip_comma(str);
-        s = skip_whitespace(*str);
-    }
-    
-    /* Drain any elements beyond max_count and consume the closing bracket */
-    return skip_array_remainder(str);
-}
-
-/* Parse array of int32 values */
-static bool parse_int32_array(const char **str, int32_t *arr, int max_count) {
-    if (!expect_array_start(str)) return false;
-    
-    int count = 0;
-    const char *s = skip_whitespace(*str);
-    while (*s != ']' && count < max_count) {
-        if (!parse_int32(str, &arr[count])) return false;
         count++;
         skip_comma(str);
         s = skip_whitespace(*str);
@@ -1038,12 +975,12 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
         }
         else if (match_key(str, "OriginatorAddr"))
         {
-            if (!parse_uint16(str, &iec->originator_address))
+            if (!parse_uint8(str, &iec->originator_address))
             	return false;
         }
         else if (match_key(str, "CommonAddr"))
         {
-            if (!parse_uint8(str, &iec->common_address))
+            if (!parse_uint16(str, &iec->common_address))
             	return false;
         }
         else if (match_key(str, "SBO"))
@@ -1089,6 +1026,11 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
     }
     if (!validate_common_address(iec->common_address)) {
     	CSLOG_ERR( "[JSON] ERROR: Common address validation failed\r\n");
+        return false;
+    }
+    if (UINT16_MAX < iec->sbo_timeout)
+    {
+        CSLOG_ERR("[JSON] ERROR: SBO timeout exceeds storage range\r\n");
         return false;
     }
     if (iec->sbo_active) {
@@ -1163,6 +1105,54 @@ static bool parse_modbus_line_config(const char **str, jmodbus_line_config_t *ha
     return true;
 }
 
+/* Validate addresses before any 32-bit JSON value is stored in 16 bits. */
+static bool validate_modbus_addresses(const jmodbus_configs_t *config)
+{
+    if ((UINT16_MAX < config->addr_aku_uyarisi) ||
+        (UINT16_MAX < config->addr_modem_reset))
+    {
+        return false;
+    }
+
+    const uint32_t *addresses[] =
+    {
+        config->line.addr_r_ariza_akimi,
+        config->line.addr_s_ariza_akimi,
+        config->line.addr_t_ariza_akimi,
+        config->line.addr_r_ariza_suresi,
+        config->line.addr_s_ariza_suresi,
+        config->line.addr_t_ariza_suresi,
+        config->line.addr_r_ariza_turu,
+        config->line.addr_s_ariza_turu,
+        config->line.addr_t_ariza_turu,
+        config->line.addr_r_anlik_akim,
+        config->line.addr_s_anlik_akim,
+        config->line.addr_t_anlik_akim,
+        config->line.addr_r_enerji_varyok,
+        config->line.addr_s_enerji_varyok,
+        config->line.addr_t_enerji_varyok,
+        config->line.addr_r_nominal_akim_varyok,
+        config->line.addr_s_nominal_akim_varyok,
+        config->line.addr_t_nominal_akim_varyok,
+        config->line.addr_r_rfhab_varyok,
+        config->line.addr_s_rfhab_varyok,
+        config->line.addr_t_rfhab_varyok
+    };
+
+    for (size_t field = 0U;
+         field < (sizeof(addresses) / sizeof(addresses[0])); field++)
+    {
+        for (size_t line = 0U; line < MAX_ARRAYS; line++)
+        {
+            if (UINT16_MAX < addresses[field][line])
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /* Modbus Config parse et */
 static bool parse_modbus_config_internal(const char **str, jmodbus_configs_t *modbus) {
     if (!expect_object_start(str)) return false;
@@ -1179,6 +1169,11 @@ static bool parse_modbus_config_internal(const char **str, jmodbus_configs_t *mo
             if (!skip_unknown_key_value(str)) return false;
         }
         skip_comma(str);
+    }
+    if (!validate_modbus_addresses(modbus))
+    {
+        CSLOG_ERR("[JSON] ERROR: Modbus address exceeds storage range\r\n");
+        return false;
     }
     if (!validate_modbus_device_id(modbus->device_addr)) {
         CSLOG_ERR( "[JSON] ERROR: Modbus device ID validation failed\r\n");
@@ -1736,7 +1731,7 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
             const float ia = configs[i]->config.ia_threshold;
             if (ia < (nom * 1.2f) - 0.001f) {
                 CSLOG_ERR( "[VALIDATION] ERROR: Line %d: Ia_Threshold %.2f < 1.2 x Nominal (%.2f)\r\n",
-                         i + 1, ia, nom);
+                         i + 1, (double)ia, (double)nom);
                 return false;
             }
         }
@@ -1803,10 +1798,10 @@ int parse_device_config(const char *json_str, modem_config_t *config) {
     CSLOG("[JSON]   SimKartAPNSifresi: %s\r\n", config->apn.user_pass);
     CSLOG("[JSON]   NtpServer: %s\r\n", config->ntp_server);
     CSLOG("[JSON]   NtpServerPortu: %u\r\n", config->ntp_server_port);
-    CSLOG("[JSON]   Time: %u\r\n", config->time);
-    CSLOG("[JSON]   TimeZone: %d\r\n", config->time_zone);
-    CSLOG("[JSON]   PeriyodikModemResetPeriyodu: %u\r\n", config->periodic_modem_reset_period);
-    CSLOG("[JSON]   DevreyeAlinmaZamani: %u\r\n", config->commissioning_time);
+    CSLOG("[JSON]   Time: %lu\r\n", config->time);
+    CSLOG("[JSON]   TimeZone: %ld\r\n", config->time_zone);
+    CSLOG("[JSON]   PeriyodikModemResetPeriyodu: %lu\r\n", config->periodic_modem_reset_period);
+    CSLOG("[JSON]   DevreyeAlinmaZamani: %lu\r\n", config->commissioning_time);
     
     return 1;
 }
@@ -1825,7 +1820,7 @@ int parse_iec_config(const char *json_str, jiec_config_t *iec) {
         return 0;
     }
     CSLOG("[JSON] IEC config parsed successfully\r\n");
-    CSLOG("[JSON]   PeriyodikGonderimZamani: %u\r\n", iec->periodical_send_interval );
+    CSLOG("[JSON]   PeriyodikGonderimZamani: %lu\r\n", iec->periodical_send_interval );
     CSLOG("[JSON]   ScadaIPAdresi: %s\r\n", iec->scada_ip_address);
     CSLOG("[JSON]   ScadaPort: %u\r\n", iec->scada_port);
     CSLOG("[JSON]   T0TimeoutSuresi: %u\r\n", iec->t0_timeout);
@@ -1837,9 +1832,9 @@ int parse_iec_config(const char *json_str, jiec_config_t *iec) {
     CSLOG("[JSON]   OriginatorAdresi: %u\r\n", iec->originator_address);
     CSLOG("[JSON]   CommonAdres: %u\r\n", iec->common_address);
     CSLOG("[JSON]   SBO: %s\r\n", iec->sbo_active ? "true" : "false");
-    CSLOG("[JSON]   SBOTimeout: %u\r\n", iec->sbo_timeout);
-    CSLOG("[JSON]   AkuUyarisi: %u\r\n", iec->ioa_aku_uyarisi);
-    CSLOG("[JSON]   ModemReset: %u\r\n", iec->ioa_modem_reset);
+    CSLOG("[JSON]   SBOTimeout: %lu\r\n", iec->sbo_timeout);
+    CSLOG("[JSON]   AkuUyarisi: %lu\r\n", iec->ioa_aku_uyarisi);
+    CSLOG("[JSON]   ModemReset: %lu\r\n", iec->ioa_modem_reset);
     
     /* Hat bilgilerini de yazdır */
     CSLOG_NODT("[JSON]   Hatlar.inUse: [");
@@ -1851,147 +1846,147 @@ int parse_iec_config(const char *json_str, jiec_config_t *iec) {
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaAkimi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_ariza_akimi[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_r_ariza_akimi[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaAkimi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_ariza_akimi[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_s_ariza_akimi[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaAkimi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_ariza_akimi[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_t_ariza_akimi[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaSuresi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_ariza_suresi[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_r_ariza_suresi[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaSuresi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_ariza_suresi[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_s_ariza_suresi[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaSuresi: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_ariza_suresi[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_t_ariza_suresi[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaTuru: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_ariza_turu[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_r_ariza_turu[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaTuru: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_ariza_turu[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_s_ariza_turu[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaTuru: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_ariza_turu[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_t_ariza_turu[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_R_AnlikAkim: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_anlik_akim[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_r_anlik_akim[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_S_AnlikAkim: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_anlik_akim[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_s_anlik_akim[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_T_AnlikAkim: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_anlik_akim[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_t_anlik_akim[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_R_EnerjiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_enerji_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_r_enerji_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_S_EnerjiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_enerji_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_s_enerji_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_T_EnerjiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_enerji_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_t_enerji_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_R_NominalAkimVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_nominal_akim_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_r_nominal_akim_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_S_NominalAkimVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_nominal_akim_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_s_nominal_akim_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_T_NominalAkimVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_nominal_akim_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_t_nominal_akim_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_R_RfhabVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_r_rfhab_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_r_rfhab_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_S_RfhabVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_s_rfhab_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_s_rfhab_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_T_RfhabVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%u", iec->line.ioa_t_rfhab_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_t_rfhab_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
@@ -2018,7 +2013,7 @@ int parse_modbus_config(const char *json_str, jmodbus_configs_t *modbus) {
     CSLOG("[JSON] Modbus config parsed successfully\r\n");
     CSLOG("[JSON]   CihazAddr: %u\r\n", modbus->device_addr);
     CSLOG("[JSON]   SonHataKodu: %u\r\n", modbus->last_error_code);
-    CSLOG("[JSON]   BaudRate: %u\r\n", modbus->baud_rate);
+    CSLOG("[JSON]   BaudRate: %lu\r\n", modbus->baud_rate);
     return 1;
 }
 
@@ -2101,7 +2096,7 @@ int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf) {
             CSLOG("[JSON]     EUI-64: [%s, %s, %s]\r\n",
                     rf->r_eui64[i], rf->s_eui64[i], rf->t_eui64[i]);
             CSLOG("[JSON]     CalismaModu: %u\r\n", rf->mode[i]);
-            CSLOG("[JSON]     SistemNominalAkimi: %.1f\r\n", rf->sistem_nominal_akimi[i]);
+            CSLOG("[JSON]     SistemNominalAkimi: %.1f\r\n", (double)rf->sistem_nominal_akimi[i]);
         }
     }
     return 1;
@@ -2135,6 +2130,11 @@ int set_iec_config(const jiec_config_t *config)
     	return -1;
     }
 
+    if (UINT16_MAX < config->sbo_timeout)
+    {
+        return -1;
+    }
+
     // Create local config struct from current NVRAM state
     iec104_config_t config_to_write = {0};
     const iec104_config_t *current_config = iec104_config_get();
@@ -2146,22 +2146,23 @@ int set_iec_config(const jiec_config_t *config)
     // Parse IP string to uint32_t (manual parsing, no sscanf)
     uint32_t ip = 0;
     const char *p = config->scada_ip_address;
-    int octets[4] = {0, 0, 0, 0};
+    uint32_t octets[4] = {0U, 0U, 0U, 0U};
     int octet_idx = 0;
-    int num = 0;
+    uint32_t num = 0U;
     
     while (*p && octet_idx < 4) {
         if (*p >= '0' && *p <= '9') {
-            num = num * 10 + (*p - '0');
+            num = num * 10U + (uint32_t)(*p - '0');
         } else if (*p == '.') {
             octets[octet_idx++] = num;
-            num = 0;
+            num = 0U;
         }
         p++;
     }
     if (octet_idx == 3) {  // Last octet without trailing dot
         octets[octet_idx] = num;
-        ip = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+        ip = (octets[0] << 24U) | (octets[1] << 16U) |
+             (octets[2] << 8U) | octets[3];
     }
     config_to_write.scada_ip_address = ip;
     config_to_write.scada_port = config->scada_port;
@@ -2172,7 +2173,7 @@ int set_iec_config(const jiec_config_t *config)
     config_to_write.t3_max = config->t3_timeout;
     config_to_write.k_max = config->k_max;
     config_to_write.w_max = config->w_max;
-    config_to_write.sbo_execute_timeout = config->sbo_timeout;
+    config_to_write.sbo_execute_timeout = (uint16_t)config->sbo_timeout;
     config_to_write.is_sbo_active = config->sbo_active ? 1 : 0;
     config_to_write.originator_address = config->originator_address;
     config_to_write.common_address = config->common_address;
@@ -2240,6 +2241,11 @@ int set_modbus_config(const jmodbus_configs_t *config)
     	return -1;
     }
 
+    if (!validate_modbus_addresses(config))
+    {
+        return -1;
+    }
+
     // Create local config struct from current NVRAM state
     modbus_configs_t config_to_write = {0};
 
@@ -2270,27 +2276,27 @@ int set_modbus_config(const jmodbus_configs_t *config)
 		}
 
 		line.in_use = true;
-		line.ariza_akimi[PHASE_L1] = config->line.addr_r_ariza_akimi[i];
-		line.ariza_akimi[PHASE_L2] = config->line.addr_s_ariza_akimi[i];
-		line.ariza_akimi[PHASE_L3] = config->line.addr_t_ariza_akimi[i];
-		line.ariza_suresi[PHASE_L1] = config->line.addr_r_ariza_suresi[i];
-		line.ariza_suresi[PHASE_L2] = config->line.addr_s_ariza_suresi[i];
-		line.ariza_suresi[PHASE_L3] = config->line.addr_t_ariza_suresi[i];
-		line.ariza_kalicimi[PHASE_L1] = config->line.addr_r_ariza_turu[i];
-		line.ariza_kalicimi[PHASE_L2] = config->line.addr_s_ariza_turu[i];
-		line.ariza_kalicimi[PHASE_L3] = config->line.addr_t_ariza_turu[i];
-		line.anlik_akim[PHASE_L1] = config->line.addr_r_anlik_akim[i];
-		line.anlik_akim[PHASE_L2] = config->line.addr_s_anlik_akim[i];
-		line.anlik_akim[PHASE_L3] = config->line.addr_t_anlik_akim[i];
-		line.enerji_varyok[PHASE_L1] = config->line.addr_r_enerji_varyok[i];
-		line.enerji_varyok[PHASE_L2] = config->line.addr_s_enerji_varyok[i];
-		line.enerji_varyok[PHASE_L3] = config->line.addr_t_enerji_varyok[i];
-		line.nominal_akim_varyok[PHASE_L1] = config->line.addr_r_nominal_akim_varyok[i];
-		line.nominal_akim_varyok[PHASE_L2] = config->line.addr_s_nominal_akim_varyok[i];
-		line.nominal_akim_varyok[PHASE_L3] = config->line.addr_t_nominal_akim_varyok[i];
-		line.rf_haberlesme_varyok[PHASE_L1] = config->line.addr_r_rfhab_varyok[i];
-		line.rf_haberlesme_varyok[PHASE_L2] = config->line.addr_s_rfhab_varyok[i];
-		line.rf_haberlesme_varyok[PHASE_L3] = config->line.addr_t_rfhab_varyok[i];
+		line.ariza_akimi[PHASE_L1] = (uint16_t)config->line.addr_r_ariza_akimi[i];
+		line.ariza_akimi[PHASE_L2] = (uint16_t)config->line.addr_s_ariza_akimi[i];
+		line.ariza_akimi[PHASE_L3] = (uint16_t)config->line.addr_t_ariza_akimi[i];
+		line.ariza_suresi[PHASE_L1] = (uint16_t)config->line.addr_r_ariza_suresi[i];
+		line.ariza_suresi[PHASE_L2] = (uint16_t)config->line.addr_s_ariza_suresi[i];
+		line.ariza_suresi[PHASE_L3] = (uint16_t)config->line.addr_t_ariza_suresi[i];
+		line.ariza_kalicimi[PHASE_L1] = (uint16_t)config->line.addr_r_ariza_turu[i];
+		line.ariza_kalicimi[PHASE_L2] = (uint16_t)config->line.addr_s_ariza_turu[i];
+		line.ariza_kalicimi[PHASE_L3] = (uint16_t)config->line.addr_t_ariza_turu[i];
+		line.anlik_akim[PHASE_L1] = (uint16_t)config->line.addr_r_anlik_akim[i];
+		line.anlik_akim[PHASE_L2] = (uint16_t)config->line.addr_s_anlik_akim[i];
+		line.anlik_akim[PHASE_L3] = (uint16_t)config->line.addr_t_anlik_akim[i];
+		line.enerji_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_enerji_varyok[i];
+		line.enerji_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_enerji_varyok[i];
+		line.enerji_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_enerji_varyok[i];
+		line.nominal_akim_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_nominal_akim_varyok[i];
+		line.nominal_akim_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_nominal_akim_varyok[i];
+		line.nominal_akim_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_nominal_akim_varyok[i];
+		line.rf_haberlesme_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_rfhab_varyok[i];
+		line.rf_haberlesme_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_rfhab_varyok[i];
+		line.rf_haberlesme_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_rfhab_varyok[i];
 
 		modbus_set_line_config(i, &line);
     }

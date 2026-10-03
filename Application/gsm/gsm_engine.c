@@ -2,7 +2,8 @@
  * gsm_engine.c
  *
  *  Created on: 20 Mar 2018
- *      Author: fozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 /*
@@ -202,7 +203,7 @@ uint8_t gsm_get_module_model(void)
 void gsm_reset_web_session_info(void)
 {
 	LOG(_GSM_, "Reset Web Session Info\r\n");
-	LOG(_GSM_, "Prev IP: [%lu.%lu.%lu.%lu] Total Rx: [%d]\r\n",
+	LOG(_GSM_, "Prev IP: [%u.%u.%u.%u] Total Rx: [%lu]\r\n",
 		gsm_info.web_session.ip.a,
 		gsm_info.web_session.ip.b,
 		gsm_info.web_session.ip.c,
@@ -216,7 +217,7 @@ void gsm_reset_web_session_info(void)
 void gsm_reset_iec104_session_info(void)
 {
 	LOG(_GSM_, "IEC104 Remote Session Info\r\n");
-	LOG(_GSM_, "Prev IP: [%lu.%lu.%lu.%lu] Total Rx: [%d]\r\n",
+	LOG(_GSM_, "Prev IP: [%u.%u.%u.%u] Total Rx: [%lu]\r\n",
 		gsm_info.iec104_session.ip.a,
 		gsm_info.iec104_session.ip.b,
 		gsm_info.iec104_session.ip.c,
@@ -232,9 +233,9 @@ uint32_t gsm_get_web_client_ip(void)
 	return gsm_info.web_session.ip.ip;
 }
 
-void gsm_get_rxtx_counters(uint32_t *tx, uint32_t *rx)
+void gsm_get_rxtx_counters(uint32_t *tx_count, uint32_t *rx_count)
 {
-	gsm_info_get_rxtx_counters(tx, rx);
+	gsm_info_get_rxtx_counters(tx_count, rx_count);
 }
 
 void gsm_set_dialer_socket_state(uint8_t state)
@@ -554,6 +555,8 @@ uint32_t gsm_get_tx_direction()
 
 uint32_t gsm_send_to_socket(const void *buff, uint16_t length, uint32_t socket, bool tx_close_socket_after_tx, bool crypto)
 {
+    (void)crypto;
+
 	if(gsm.tx_flag || length > 1500 || length == 0){
 		return 1;
 	}
@@ -907,8 +910,10 @@ int32_t gsm_ss_listener_cb(void)
 			{
 				if(!gsm_info.web_session.ip.ip)
 				{
-					ipv4_to_int((const char *)ip_buff, &gsm_info.web_session.ip.ip);
-					LOG(_GSM_, "Web client IP: %lu.%lu.%lu.%lu",
+					uint32_t client_ip = gsm_info.web_session.ip.ip;
+					ipv4_to_int((const char *)ip_buff, &client_ip);
+					gsm_info.web_session.ip.ip = client_ip;
+					LOG(_GSM_, "Web client IP: %u.%u.%u.%u",
 						gsm_info.web_session.ip.a,
 						gsm_info.web_session.ip.b,
 						gsm_info.web_session.ip.c,
@@ -988,8 +993,10 @@ int32_t gsm_ss_iec104_listener_cb(void)
 			{
 				if(!gsm_info.iec104_session.ip.ip)
 				{
-					ipv4_to_int((const char *)ip_buff, &gsm_info.iec104_session.ip.ip);
-					LOG(_GSM_, "IEC104 client IP: %lu.%lu.%lu.%lu",
+					uint32_t client_ip = gsm_info.iec104_session.ip.ip;
+					ipv4_to_int((const char *)ip_buff, &client_ip);
+					gsm_info.iec104_session.ip.ip = client_ip;
+					LOG(_GSM_, "IEC104 client IP: %u.%u.%u.%u",
 						gsm_info.iec104_session.ip.a,
 						gsm_info.iec104_session.ip.b,
 						gsm_info.iec104_session.ip.c,
@@ -1224,8 +1231,10 @@ int32_t gsm_ss_trace_cb(void)
 			{
 				if(!gsm_info.trace_session.ip.ip)
 				{
-					ipv4_to_int((const char *)ip_buff, &gsm_info.trace_session.ip.ip);
-					LOG(_GSM_, "Trace client IP: %lu.%lu.%lu.%lu",
+					uint32_t client_ip = gsm_info.trace_session.ip.ip;
+					ipv4_to_int((const char *)ip_buff, &client_ip);
+					gsm_info.trace_session.ip.ip = client_ip;
+					LOG(_GSM_, "Trace client IP: %u.%u.%u.%u",
 						gsm_info.trace_session.ip.a,
 						gsm_info.trace_session.ip.b,
 						gsm_info.trace_session.ip.c,
@@ -1351,7 +1360,7 @@ int32_t gsm_ntp_cb(void)
 						dt.hour = (uint8_t)hour_adj;
 					}
 
-					LOG(_GSM_, "NTP: %02d/%02d/%02d %02d:%02d:%02d (tz=%d)",
+					LOG(_GSM_, "NTP: %02d/%02d/%02d %02d:%02d:%02d (tz=%ld)",
 						dt.day, dt.month, dt.year, dt.hour, dt.minute, dt.second, tz);
 
 					/* Single entry point: updates software RTC, hardware RTC and
@@ -1975,7 +1984,6 @@ int32_t gsm_httprcv_cb(void)
 			{
 				/* Format-> \r\n<<<........n byte data........\r\nOK\r\n */
 				uint16_t length = (ok_ptr - 1 - hash_ptr - 2);
-				uint16_t index  = (hash_ptr - (char *)rx.buff + 3);
 				//gsm_http_receive_data(&rx.buff[index], length);
 				//flash_add_gsm_rx_counter(length);
 				gsm_info.rx_counter += length;
@@ -2085,9 +2093,9 @@ int32_t gsm_listener_si_cb(void)
 				gsm.listener[GSM_LISTENER_WEB].ack_waiting   = (uint16_t)f4;
 				/* SI tum alanlari sifir ise soket kapanmis olabilir (veri gonderimi oncesi kontrol) */
 				gsm.listener[GSM_LISTENER_WEB].si_all_zero   = ((f1 == 0U) && (f2 == 0U) && (f3 == 0U) && (f4 == 0U)) ? 1U : 0U;
-				LOG(_GSM_, "Listener TCP ACK: %d, DATA: %d, all_zero: %d", gsm.listener[GSM_LISTENER_WEB].ack_waiting, f3, gsm.listener[GSM_LISTENER_WEB].si_all_zero);
+				LOG(_GSM_, "Listener TCP ACK: %d, DATA: %lu, all_zero: %d", gsm.listener[GSM_LISTENER_WEB].ack_waiting, f3, gsm.listener[GSM_LISTENER_WEB].si_all_zero);
 				if(f3 > 0U) {
-					LOG(_GSM_, "Listener DATA WAITING: %d", f3);
+					LOG(_GSM_, "Listener DATA WAITING: %lu", f3);
 					gsm_listener_set_rx_available(GSM_LISTENER_WEB, 1);
 				}
 
@@ -2128,9 +2136,9 @@ int32_t gsm_iec104_listener_si_cb(void)
 				gsm.listener[GSM_LISTENER_IEC104].ack_waiting  = (uint16_t)f4;
 				/* SI tum alanlari sifir ise soket kapanmis olabilir (veri gonderimi oncesi kontrol) */
 				gsm.listener[GSM_LISTENER_IEC104].si_all_zero  = ((f1 == 0U) && (f2 == 0U) && (f3 == 0U) && (f4 == 0U)) ? 1U : 0U;
-				LOG(_GSM_, "IEC104 Listener TCP ACK: %d, DATA: %d, all_zero: %d", gsm.listener[GSM_LISTENER_IEC104].ack_waiting, f3, gsm.listener[GSM_LISTENER_IEC104].si_all_zero);
+				LOG(_GSM_, "IEC104 Listener TCP ACK: %d, DATA: %lu, all_zero: %d", gsm.listener[GSM_LISTENER_IEC104].ack_waiting, f3, gsm.listener[GSM_LISTENER_IEC104].si_all_zero);
 				if(f3 > 0U) {
-					LOG(_GSM_, "IEC104 Listener DATA WAITING: %d", f3);
+					LOG(_GSM_, "IEC104 Listener DATA WAITING: %lu", f3);
 					gsm_listener_set_rx_available(GSM_LISTENER_IEC104, 1);
 				}
 
@@ -2176,9 +2184,9 @@ int32_t gsm_listener_all_si_cb(void)
 				if(res == 2)
 				{
 					gsm.listener[GSM_LISTENER_WEB].ack_waiting = (uint16_t)ack_waiting;
-					LOG(_GSM_, "Listener TCP ACK: %d, DATA: %d", gsm.listener[GSM_LISTENER_WEB].ack_waiting, data_waiting);
+					LOG(_GSM_, "Listener TCP ACK: %d, DATA: %lu", gsm.listener[GSM_LISTENER_WEB].ack_waiting, data_waiting);
 					if(data_waiting){
-						LOG(_GSM_, "Listener DATA WAITING: %d", data_waiting);
+						LOG(_GSM_, "Listener DATA WAITING: %lu", data_waiting);
 						gsm_listener_set_rx_available(GSM_LISTENER_WEB, 1);
 					}
 
@@ -2200,9 +2208,9 @@ int32_t gsm_listener_all_si_cb(void)
 				if(res == 2)
 				{
 					gsm.listener[GSM_LISTENER_IEC104].ack_waiting = (uint16_t)ack_waiting;
-					LOG(_GSM_, "IEC104 Listener TCP ACK: %d, DATA: %d", gsm.listener[GSM_LISTENER_IEC104].ack_waiting, data_waiting);
+					LOG(_GSM_, "IEC104 Listener TCP ACK: %d, DATA: %lu", gsm.listener[GSM_LISTENER_IEC104].ack_waiting, data_waiting);
 					if(data_waiting){
-						LOG(_GSM_, "IEC104 Listener DATA WAITING: %d", data_waiting);
+						LOG(_GSM_, "IEC104 Listener DATA WAITING: %lu", data_waiting);
 						gsm_listener_set_rx_available(GSM_LISTENER_IEC104, 1);
 					}
 
@@ -2297,7 +2305,7 @@ static int32_t gsm_si_all_cb(void)
 
 			if(conn_id == 1 || conn_id == 2)
 			{
-				CSLOG("SI[%u] sent:%u rcv:%u buf:%u ack:%u\r\n",
+				CSLOG("SI[%u] sent:%lu rcv:%lu buf:%lu ack:%lu\r\n",
 						conn_id, sent, received, buff_in, ack_waiting);
 			}
 
@@ -2609,7 +2617,7 @@ int32_t gsm_CIMI_cb(void)
 			 */
 			char imsi[17] = {}; /* mcc + mnc + msin = 15 hane */
 			char *ptr = str_substr((char *)rx.buff, imsi, "\r\n", "\r\n\r\n", 16);
-			if(ptr > 0)
+			if(NULL != ptr)
 			{
 				imsi[15] = 0;
 				gsm_info_set_imsi(imsi);
@@ -2659,7 +2667,7 @@ int32_t gsm_CGSN_cb(void)
 		{
 			char imei[17] = {};
 			char *ptr = str_substr((char *)rx.buff, imei, "\r\n", "\r\n\r\n", 16);
-			if(ptr > 0)
+			if(NULL != ptr)
 			{
 				imei[15] = 0;
 				memcpy(gsm_info.imei, imei, 16);
@@ -2686,7 +2694,7 @@ int32_t gsm_CGMM_cb(void)
 		{
 			char model[17] = {};
 			char *ptr = str_substr((char *)rx.buff, model, "\r\n", "\r\n\r\n", 16);
-			if(ptr > 0)
+			if(NULL != ptr)
 			{
 				model[15] = 0;
 				LOG(_GSM_, "Module Name: %s", model);
@@ -2718,11 +2726,11 @@ int32_t gsm_MONI_cb(void)
 		{
 			uint8_t temp[8] = {};
 			char *ptr = str_substr((char *)rx.buff, (char *)temp, "LAC:", " ", 6);
-			if(ptr > 0)
+			if(NULL != ptr)
 			{
 				str_to_int(temp, str_len((const char *)temp, 6), &gsm_info.cell_info.location_area_code, 1, 1);
 				ptr = str_substr(ptr, (char *)temp, "Id:", " ", 6);
-				if(ptr > 0)
+				if(NULL != ptr)
 				{
 					str_to_int(temp, str_len((const char *)temp, 6), &gsm_info.cell_info.cell_id, 1, 1);
 				}
@@ -2747,7 +2755,7 @@ int32_t gsm_CEER_cb(void)
 		{
 			char temp[16] = {0};
 			char *ptr = str_substr((char *)rx.buff, temp, "#CEER:", "\r\n", sizeof(temp)-1);
-			if(ptr > 0)
+			if(NULL != ptr)
 			{
 				LOG(_GSM_, "Call End Reason: %s", temp);
 			}
@@ -2835,7 +2843,7 @@ int32_t gsm_CCID_cb(void)
 		{
 			char current_ccid[21] = {0};
 			char *ptr = str_substr((char *)rx.buff, current_ccid, "+CCID: ", "\r\n", 20);
-			if(ptr > 0)
+			if(NULL != ptr)
 			{
 				const char *prev_iccid = gsm_info_get_iccid();
 				if((prev_iccid[0] != '\0') && (memcmp(prev_iccid, current_ccid, 19) != 0))
@@ -2937,7 +2945,6 @@ uint32_t gsm_engine_send_query(uint8_t query)
 
 	uint32_t timeout = 2000U;
 	ip_addr_t ip = {0};
-	const apn_t *apn = NULL;
 	const char * char_ptr = NULL;
 	const char *char_ptr2 = NULL;
 	url_t url = {};

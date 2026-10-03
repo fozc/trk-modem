@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.6 |
-| Tarih | 2026-09-25 |
+| Dokuman surumu | 1.7 |
+| Tarih | 2026-10-03 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -473,7 +473,7 @@ ve dijital inputlar. 17 register (49000..49016).
 | 49006 | 9006 | rtc_unix | UINT32 (ABCD) | Unix epoch, high word |
 | 49007 | 9007 | rtc_unix | UINT32 (ABCD) | Unix epoch, low word |
 | 49008 | 9008 | uptime | UINT16 | Calisma suresi (dakika) |
-| 49009 | 9009 | reset_reason | UINT16 | Reset kaynak CSR bitleri |
+| 49009 | 9009 | reset_reason | UINT16 | Reset nedeni bitmask (reset_source_flag_t) |
 | 49010 | 9010 | mcu_temp | UINT16 | MCU die sicakligi (°C) |
 | 49011 | 9011 | v5v | UINT16 | 5V ray (mV) |
 | 49012 | 9012 | v3v3 | UINT16 | 3V3 ray (mV) |
@@ -485,8 +485,28 @@ ve dijital inputlar. 17 register (49000..49016).
 - `rtc_unix` (49006-49007) standart Unix epoch'tur (bolum 4.2).
 - `uptime` (49008) **dakika** cinsindendir; tam deger icin `uptime_raw`
   (49014-49015, **ms**, UINT32 ABCD) kullanilir.
-- `reset_reason` MCU reset kaynak CSR bitleridir (ham); bit anlamlari MCU'ya
-  ozgudur.
+- `reset_reason` (49009) mevcut `reset_source_flag_t` bitmask değerini
+  taşır. Ham CSR değeri değildir. Register adresi ve genişliği aynıdır.
+  SCADA/RTU bu register’ı aşağıdaki maskelere göre yorumlamalıdır.
+  Birden fazla neden varsa maskeler bitwise OR ile birleştirilir.
+  `0x0000`, bilinen bir reset nedeni bildirilmediğini gösterir.
+
+| Maske | Değer | Reset nedeni |
+|---|---|---|
+| `0x0001` | 1 | Power-on (güç açılması) |
+| `0x0002` | 2 | Brownout (besleme düşmesi) |
+| `0x0004` | 4 | Harici NRST pini |
+| `0x0008` | 8 | Software reset (yazılımdan reset) |
+| `0x0010` | 16 | IWDG timeout |
+| `0x0020` | 32 | WWDG timeout |
+| `0x0040` | 64 | Low-power reset |
+| `0x0080` | 128 | Option-byte reset |
+| `0x0100` | 256 | Firewall reset |
+
+Örnek: `0x0018` değeri software reset ve IWDG nedenlerinin birlikte
+bildirildiğini gösterir. Hangi nedenlerin bildirilebildiği MCU’nun
+reset bilgisine ve mevcut `reset_source` decoder’ına bağlıdır.
+
 
 ### 7.2 Guc Karti (PowerBoard) Telemetri Blogu (49200 / base-0 9200)
 
@@ -780,3 +800,5 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 | 1.4 | 2026-09-04 | Hat sayisi 7'ye kesinlesti; 40700 ve uzeri desteklenmez (bkz. 5.1.1) |
 | 1.5 | 2026-09-16 | BMS telemetri blogu (49300, dokumante edildi) ve GSM durum blogu (49400: GSM durum/CSQ/RAT, soket durumlari, SonHataKodu/SonHataZamani) eklendi |
 | 1.6 | 2026-09-25 | Isimlendirme IEC104 tarafi ile uyumlu hale getirildi (hat/Line -> fider, R/S/T -> L1/L2/L3); 5.3'te tum fiderlerin tum alt adresleri kayit bazinda tek tek listelendi; BMS dizi alanlari (cell_voltage_mv, temperatures_c, balance_position, fault_codes) tek tek acildi; ibus_ma UINT16 -> INT16 duzeltildi; batt_temp_x10 sentinel degeri -9990 olarak duzeltildi; bolum 1'deki eski "8 hat" ifadesi 7 fider olarak duzeltildi; PowerBoard dokuman referansi guncellendi (I2C_SLAVE_ENTEGRASYON_16K.md -> PowerBoard_I2C_Protocol.md) |
+
+| 1.7 | 2026-10-03 | 49009 reset_reason ham CSR yerine mevcut reset_source_flag_t bitmask anlamına geçirildi; adresler ve register genişlikleri korundu. |
