@@ -232,6 +232,8 @@ bilinçli ertelediği işler tamamlanmış sayılmamıştır.
 | RFWU kimlik doğrulaması | **V2 UYGULANDI** | `raw_tcp_fw_update.c/.h`: tek kullanımlık challenge nonce, HMAC doğrulaması, boyut/resume kimliği bağlama ve timeout vardır. RNG yoksa challenge reddedilir. Web RFWU istemcisi v2'ye uyarlanmıştır. Cihaz başı anahtar bu turda kullanıcı kararıyla ertelenmiştir. |
 | Lifetime kalıcılığı | **İSTENEN KAPSAM TAMAM** | `modem_config_lifetime_tick()` 25 saatte bir sync dener; `periodic_reset.c` periyodik reset öncesi sync yapar. Lifetime mevcut NVRAM alanında kalır; ayrı flash alanına taşınmamıştır. Her reset yolunun flush yaptığı iddia edilmez; `reboot_system()` TODO'su durur. |
 | Format ve normal derleme uyarıları | **DÜZELTİLDİ / SINIRLI KAPSAM** | Çıktı tipleri, unsigned sabitler, kullanılmayan aktif bildirimler ve xscanf başlangıç değeri düzeltildi. Contiki kernel kapsam dışıdır. Ayrıntılı ilk envanter ve sonuçlar `DERLEYICI_UYARILARI_DEGERLENDIRME_2026-10-03.md` içindedir. Bütün sıkı dönüşüm uyarıları kapanmış sayılmaz. |
+| HTTP uzunluk tipleri | **DÜZELTİLDİ / SINIRLI KAPSAM** | JSON üreten 10 handler boyut/konum için size_t kullanır; gönderim API’si korunur. Baştan etkin uyarılı Release derlemesinde toplam 1298 → 487, HTTP 902 → 28. Son devam derlemesinde toplam 249 uyarı kaldı. Kanıt ve sınırlar uyarı değerlendirmesi bölüm 13–15’tedir. |
+| Varsayılan adres ve GSM dönüşümleri | **DÜZELTİLDİ / SINIRLI KAPSAM** | NVRAM adres hesap sınırı derleme zamanı kontrolüyle korunur; bütün varsayılan nokta adresleri test edilir. GSM metin uzunluğu ve AT komut uzunluğu tipleri uyumludur; normal komut ve uzun APN reddi Ceedling’de doğrulanır. Kalan bit alanı/parser uyarıları kapatılmış sayılmaz. |
 | JSON alan genişlikleri | **DÜZELTİLDİ** | CommonAddr 16 bit, OriginatorAddr 8 bit; SBO saklama sınırı; Modbus 21 alan ve global adreslerin 16 bit sınırı parser/setter'da doğrulanır. Web aynı sınırlara uyarlanmıştır. |
 | SCADA/GSM IP hesapları | **DÜZELTİLDİ** | SCADA IP unsigned hesaplanır. GSM listener IP'si packed alana pointer verilmeden yerel değişken üzerinden yazılır. GSM cevap senaryoları Ceedling'e eklenmiştir. |
 | Modbus reset nedeni | **DÜZELTİLDİ** | Register 49009 mevcut reset nedeni bitmask API'sini kullanır. Register adresi ve 16 bit boyutu korunur. Harita v1.7'de maskeler açıklanmıştır; negatif sıcaklık word kodlaması regression testiyle korunur. |
@@ -250,9 +252,9 @@ soru iletilmiştir; henüz cevap alınmamıştır. Bu kapsam genişletilmemişti
 
 | Kontrol | Sonuç ve sınır |
 |---|---|
-| Son tam Ceedling çalışması | **339/339 geçti**; `test/build/production-audit-2026-10-03/all-address-categories.log` |
+| Son tam Ceedling çalışması | **377/377 geçti**; `test/build/production-audit-2026-10-03/remaining-ceedling.log` |
 | Son tam entegrasyon çalışması | **9/9 paket geçti**; `iec-modbus-save-tests.log`; sonrasında eklenen bütün-alan web senaryoları kaynak ve gömülü HTML üzerinde ayrıca geçti |
-| ARM Release | **Derlendi**; son web açıklaması güncellemesi dahil `modbus-register-hints-release.log`. Bu sonuç tam zorunlu uyarı ailesi altında warning-free sonucu değildir. |
+| ARM Release | **Derlendi**; son dönüşüm düzeltmeleri dahil baştan `remaining-full-release.log`. Bu sonuç tam zorunlu uyarı ailesi altında warning-free sonucu değildir. |
 | JSON/config testleri | `test/web_server/test_json_config_bounds.c`, **22 senaryo**: gerçek parser/setter; limitler, kısmi kayıt, bütün alanların çakışması, geçersiz girdide kayıt çağrısının olmaması |
 | Modbus register testleri | `test/application/test_modbus_system_stats.c`: gerçek register okuma, bitmask ve signed sıcaklık kodlaması |
 | GSM cevap testleri | `test/gsm/test_gsm_response_scenario.c`: gerçek callback/parser; marker ve listener IP senaryoları |
@@ -285,11 +287,32 @@ mevcut entegrasyon paketlerine eklenmiştir.
 - CI halen host testlerini çalıştırır; ARM CI derlemesi, release notları,
   anahtar yedekleme süreci ve fiziksel kabul testi ayrı işlerdir.
 
-**Sıradaki öneri:** ARM derlemesindeki kalan uyarı seçeneklerini ve gerçek
-uyarıları değerlendirmek. `-Wall` zaten vardır. Eksik seçenekler önce
-kontrol amaçlı ölçülmeli; gerçek sorun ile güvenli daraltma ayrılmalıdır.
-Build seçeneklerini değiştirme kararı kanıt ve öneri sunulduktan sonra
-verilmelidir. Uyarı seçenekleri bu rapor güncellemesinde değiştirilmemiştir.
+**04.10.2026 devamı:** Fider indeksleri ve özel GSM yardımcı yanıt tipi
+uyumlu hâle getirildi. Veri türü kuralı AGENTS.md/CLAUDE.md içinde
+netleştirildi. Bu değişiklikler `bf7ac1a` commit'inde kaydedilmiştir.
+
+**04.10.2026 IEC104/SPI devamı:** IEC104 çekirdeğindeki 61 ve SPI flash
+driver içindeki 25 uyarı kapandı. Sıra numarası, bit alanları ve SPI adres
+byte sırası korundu. Ceedling'e 10 SPI ve iki IEC104 senaryosu eklendi;
+toplam 361 test geçti. IEC104 testindeki dönüşüm uyarısı istisnaları
+kaldırıldı. Ayrıntı ve sınırlar derleyici raporunun bölüm 16'sındadır.
+Bu değişiklikler `bf7ac1a` commit'inde kaydedilmiştir.
+
+**04.10.2026 kalan uyarılar devamı:** Application kaynaklarında mevcut
+Release seçenekleri altında **149 → 0** uyarı kaldı. GSM bozuk yanıt ve
+ACK daraltmaları mevcut scanner ile kontrol edilir. Formatter signed
+minimum hesabı düzeltildi; HTTP header bounded formatter kullanır ve
+sığmayan header için body göndermez. **377/377 Ceedling, 9/9 entegrasyon**
+geçti. Ayrıntı derleyici raporunun bölüm 17'sindedir. Değişiklikler `bf7ac1a` commit'inde
+kaydedilmiştir.
+
+**Kalan 14 tanı:** 8 Contiki kullanıcı kararıyla kapsam dışı; 5 ST driver
+ve 1 CubeMX syscalls kaynağı da kullanıcı kararıyla kapsam dışıdır.
+ST/CubeMX kaynakları korunmuştur. Kapsam içindeki uyarılar kapanmıştır. Uyarı bastırma
+uygulanmadı. Son Release derleme komutlarında `-Wshadow` etkindir.
+`-Wformat=2` ve `-Werror` etkin görünmediğinden bütün zorunlu seçenekler
+altında warning-free sonucu
+iddia edilmez. Fiziksel cihaz kabul testi yapılmadı.
 
 ### 9.4 Commit durumu
 
@@ -298,5 +321,9 @@ RNG/BSP, RFWU/lifetime ve ilk uyarı/JSON düzeltmeleri commit'lenmiştir:
 IEC104/Modbus adres kontrolü, arıza tabanlarının korunması, web hata
 görünümü, canlı register aralığı ve ek testler `1102a17` commit'inde
 kaydedilmiştir. Bu rapor ve adres rehberi ayrı doküman commit'ine dahildir.
+
+HTTP uzunlukları, GSM parser sınırları, IEC104/SPI kodlama düzeltmeleri,
+ek Ceedling/entegrasyon testleri ve veri türü kuralları `bf7ac1a`
+commit'inde kaydedilmiştir. CubeIDE uyarı ayarları `5db75b8` commit'indedir.
 
 /*** end of report ***/
