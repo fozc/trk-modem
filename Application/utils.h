@@ -2,11 +2,14 @@
  * utils.h
  *
  *  Created on: 29 Agu 2022
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef UTILS_H_
 #define UTILS_H_
+
+#include "libs/datetime.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -33,11 +36,6 @@
 //	timee_t time;
 //}datetime_t;
 
-#define ONE_MIN_SECONDS   (60)
-#define ONE_HOUR_SECONDS  (ONE_MIN_SECONDS*ONE_MIN_SECONDS)
-#define ONE_DAY_SECONDS   (24*ONE_HOUR_SECONDS)
-#define ONE_MONTH_SECONDS (30*ONE_DAY_SECONDS)
-#define ONE_YEAR_SECONDS  (12*ONE_MONTH_SECONDS)
 
 #define ARRAY_SIZE(x) (sizeof((x)) / sizeof((x)[0]))
 

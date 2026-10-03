@@ -1,6 +1,9 @@
 /**
  * @file http_response.c
  * @brief HTTP response building and sending implementation
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #define CSLOG_MODULE LOG_MOD_HTTP
@@ -178,7 +181,7 @@ void http_send_html_resource(const html_resource_t *resource)
             "HTTP/1.1 200 OK\r\n"
             "Content-Type: text/html; charset=utf-8\r\n"
             "Content-Encoding: %s\r\n"
-            "Content-Length: %d\r\n"
+            "Content-Length: %lu\r\n"
             "Connection: keep-alive\r\n"
             "Server: EmbeddedHTTP/1.0\r\n"
             "\r\n",
@@ -189,7 +192,7 @@ void http_send_html_resource(const html_resource_t *resource)
         /* Print response for debugging */
         CSLOG("\r\n=== HTTP RESPONSE (%s) ===\r\n", encoding);
         CSLOG("%s", header_buffer);
-        CSLOG("[Body: %d bytes compressed]\r\n", resource->length);
+        CSLOG("[Body: %lu bytes compressed]\r\n", resource->length);
         CSLOG("=== END RESPONSE ===\r\n\r\n");
 
         /* Send headers and compressed body */

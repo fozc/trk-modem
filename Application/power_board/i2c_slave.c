@@ -2,7 +2,8 @@
  * i2c_slave.c
  *
  *  Created on: 5 Tem 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "i2c_slave.h"
 #include "main.h"
@@ -36,6 +37,8 @@ static volatile i2c_slave_stats_t s_stats;
  */
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
 {
+    (void)AddrMatchCode;
+
     if (hi2c->Instance == I2C3)
     {
         /* Her yeni adres eslesmesinde durum makinesini resetle.

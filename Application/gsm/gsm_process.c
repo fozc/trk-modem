@@ -2,7 +2,8 @@
  * gsm_process.c
  *
  *  Created on: 2 Nis 2018
- *      Author: fozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #define CSLOG_MODULE LOG_MOD_GSM
@@ -40,6 +41,8 @@ void gsm_internet_connection_faild_cd(void);
 
 void gsm_URC_callback(uint8_t *msg, uint16_t len)
 {
+    (void)len;
+
 	if(msg == NULL) { return; }
 
 	char *ptr = strstr((char *)msg, "SRING: 1");

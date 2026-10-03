@@ -2,7 +2,8 @@
  * hardfault_handler.c
  *
  *  Created on: Sep 20, 2022
- *      Author: fatih.ozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  *  Refs:
  *       -Using Cortex-M3/M4/M7 Fault Exceptions (https://www.keil.com/appnotes/files/apnt209.pdf)
@@ -262,19 +263,19 @@ void HardFault_Handler_C(StackFrame_t *StackFrame, uint32_t lr_value)
 	console_logger_set_enabled(true, false);
 
 	print_stackframe(StackFrame, lr_value);
-	CSLOG( " SCB->BFAR  = 0x%08x\r\n", bfar);
-	CSLOG( " SCB->MMFAR = 0x%08x\r\n", mmfar);
-	CSLOG( " SCB->CFSR  = 0x%08x\r\n", cfsr);
-	CSLOG( " SCB->HFSR  = 0x%08x\r\n", hfsr.HFSR);
-	CSLOG( " SCB->DFSR  = 0x%08x\r\n", dfsr.DFSR);
-	CSLOG( " SCB->AFSR  = 0x%08x\r\n", afsr);
+	CSLOG( " SCB->BFAR  = 0x%08lx\r\n", bfar);
+	CSLOG( " SCB->MMFAR = 0x%08lx\r\n", mmfar);
+	CSLOG( " SCB->CFSR  = 0x%08lx\r\n", cfsr);
+	CSLOG( " SCB->HFSR  = 0x%08lx\r\n", hfsr.HFSR);
+	CSLOG( " SCB->DFSR  = 0x%08lx\r\n", dfsr.DFSR);
+	CSLOG( " SCB->AFSR  = 0x%08lx\r\n", afsr);
 	print_hardfault_status(hfsr);
 	print_memfault(mmsfr);
 	if (cfsr & 0x0080)
-		CSLOG( " MMFAR = 0x%x *\r\n", mmfar);
+		CSLOG( " MMFAR = 0x%lx *\r\n", mmfar);
 	print_bus_fault(bfsr);
 	if (cfsr & 0x8000)
-		CSLOG( " *BFAR = 0x%x *\r\n", bfar);
+		CSLOG( " *BFAR = 0x%lx *\r\n", bfar);
 
 	print_usage_fault(ufsr);
 

@@ -2,8 +2,9 @@
  * @file    bms.c
  * @brief   BMS Modbus RTU Frame Parser & CRC Engine Implementation
  *
- *  Created on: 1 Ağu 2026
- *      Author: fatih
+ *  Created on: Aug 1, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "bms.h"
 
@@ -72,7 +73,6 @@ bms_status_t BMS_ParseFullMapResponse(bms_data_t *p_bms, const uint8_t *p_frame,
 
     /* Support frames with or without Slave Address Header (51 03 FE) */
     uint16_t data_start_offset = 0U;
-    uint16_t payload_len = 0U;
 
     if ((length >= BMS_FULL_MAP_FRAME_LEN) && (p_frame[0] == BMS_SLAVE_RESP_ADDR) && (p_frame[1] == 0x03U))
     {
@@ -84,13 +84,11 @@ bms_status_t BMS_ParseFullMapResponse(bms_data_t *p_bms, const uint8_t *p_frame,
             return BMS_ERROR_CRC_MISMATCH;
         }
         data_start_offset = 3U; /* Header offset: ADDR (1) + CMD (1) + LEN (1) */
-        payload_len = (uint16_t)p_frame[2];
     }
     else if (length >= BMS_FULL_MAP_PAYLOAD_LEN)
     {
         /* Raw payload stripped header case */
         data_start_offset = 0U;
-        payload_len = length - 2U; /* Exclude trailing CRC */
     }
     else
     {

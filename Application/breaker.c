@@ -2,7 +2,8 @@
  * breaker.c
  *
  *  Created on: 15 Agu 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include <stdio.h>
 #include <string.h>
@@ -44,17 +45,17 @@ static void breaker_shell_dump_line(uint32_t line_index)
           "Field", "L1", "L2", "L3");
 
     SHELL_LOG("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "ariza_akimi (A)",
-          p_feeder->phase[PHASE_L1].ariza_akimi,
-          p_feeder->phase[PHASE_L2].ariza_akimi,
-          p_feeder->phase[PHASE_L3].ariza_akimi);
+          (double)p_feeder->phase[PHASE_L1].ariza_akimi,
+          (double)p_feeder->phase[PHASE_L2].ariza_akimi,
+          (double)p_feeder->phase[PHASE_L3].ariza_akimi);
     SHELL_LOG("[BREAKER] %-22s | %10.3f | %10.3f | %10.3f\r\n", "anlik_akim (A)",
-          p_feeder->phase[PHASE_L1].anlik_akim,
-          p_feeder->phase[PHASE_L2].anlik_akim,
-          p_feeder->phase[PHASE_L3].anlik_akim);
+          (double)p_feeder->phase[PHASE_L1].anlik_akim,
+          (double)p_feeder->phase[PHASE_L2].anlik_akim,
+          (double)p_feeder->phase[PHASE_L3].anlik_akim);
     SHELL_LOG("[BREAKER] %-22s | %10.0f | %10.0f | %10.0f\r\n", "ariza_suresi (ms)",
-          p_feeder->phase[PHASE_L1].ariza_suresi,
-          p_feeder->phase[PHASE_L2].ariza_suresi,
-          p_feeder->phase[PHASE_L3].ariza_suresi);
+          (double)p_feeder->phase[PHASE_L1].ariza_suresi,
+          (double)p_feeder->phase[PHASE_L2].ariza_suresi,
+          (double)p_feeder->phase[PHASE_L3].ariza_suresi);
     SHELL_LOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "ariza_kalicimi",
           (unsigned)p_feeder->phase[PHASE_L1].ariza_kalicimi,
           (unsigned)p_feeder->phase[PHASE_L2].ariza_kalicimi,

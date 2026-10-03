@@ -1,9 +1,12 @@
-﻿/*
+/*
  * gsm_init.c
  *
  * GSM modem initialization state machine.
  * Handles the full init sequence: AT command setup, SIM check, network
  * registration, GPRS activation, and listener socket opening.
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #define CSLOG_MODULE LOG_MOD_GSM
@@ -535,7 +538,7 @@ static void gsm_init_step_check_voice_sms_network(void)
 			gsm_init_next_step();
 			gsm.gsm_network_timer = gsm_get_tick();
 			s_connection_time = gsm_get_tick() - s_connection_time;
-			LOG(_GSM_, "Sebekeye %d saniyede baglandi.", s_connection_time / 1000);
+			LOG(_GSM_, "Sebekeye %lu saniyede baglandi.", s_connection_time / 1000);
 			break;
 		case GSM_NETWORK_ONLY_EMERGENCY: /* fallthrough */
 		case GSM_NETWORK_SEARCHING:
@@ -973,7 +976,7 @@ static void gsm_init_step_open_listener_socket(void)
 		case GSM_SOCKET_ERROR_ALREADY_OPEN:
 		case GSM_ERROR:
 		case GSM_TIMEOUT:
-			LOG_TRACE(_GSM_, "ERR: Listener Socket: %d", res);
+			LOG_TRACE(_GSM_, "ERR: Listener Socket: %lu", res);
 			LOG_TRACE(_GSM_, "Listener Soket acilamadi !");
 			gsm_set_delay(1500);
 			/* fallthrough */
@@ -1008,14 +1011,14 @@ static void gsm_init_step_open_iec104_listener(void)
 			gsm_set_socket_state(IEC104_LISTENER_SOCKET, SOCKET_LISTENING);
 			led_driver_set_iec104_mode(LED_LISTENER_LISTENING);
 			gsm_set_delay(50);
-			LOG_TRACE(_GSM_, "IEC104 Listener Socket Acildi...", res);
+			LOG_TRACE(_GSM_, "IEC104 Listener Socket Acildi...");
 			gsm.listener[GSM_LISTENER_IEC104].socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
 			gsm_set_tx_state(GSM_TX_READY);
 			break;
 		case GSM_SOCKET_ERROR_ALREADY_OPEN:
 		case GSM_ERROR:
 		case GSM_TIMEOUT:
-			LOG_TRACE(_GSM_, "ERR: IEC104 Listener Socket: %d", res);
+			LOG_TRACE(_GSM_, "ERR: IEC104 Listener Socket: %lu", res);
 			LOG_TRACE(_GSM_, "IEC104 Listener Soket acilamadi !");
 			gsm_set_delay(1500);
 			/* fallthrough */

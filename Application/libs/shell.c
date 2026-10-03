@@ -2,7 +2,8 @@
  * shell.c
  *
  *  Created on: Oct 6, 2022
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Kept in sync between the modem-application and bootloader repositories
  * by hand.  Contiki integration (shell_task, process_poll, ps/exec/kill/
@@ -593,7 +594,7 @@ static int shell_usrcmd_info(int argc, char *argv[])
 	SHELL_LOG( "[---- ----]\r\n");
 	SHELL_LOG( " ***\r\n");
 	SHELL_LOG( " ***\r\n");
-	SHELL_LOG( "Run Time: %u sec\r\n", bsp_get_run_time() / 1000);
+	SHELL_LOG( "Run Time: %lu sec\r\n", bsp_get_run_time() / 1000);
 
     return 0;
 }

@@ -8,6 +8,9 @@
  *     can never push pos past the end or underflow size - pos
  *   - when nothing is truncated the return equals the full logical
  *     length and matches C snprintf byte for byte
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "unity.h"
 
@@ -302,6 +305,15 @@ void test_width_pad_truncation(void)
     check((ret == 5U) && (c.buf[5U] == '\0') && (strncmp(c.buf, "     ", 5U) == 0),
           "width pad truncation: clamped and terminated");
     check(guards_intact(&c), "width pad truncation: guards intact");
+}
+
+void test_long_integer_formats_used_by_arm_logs(void)
+{
+    char buffer[48];
+
+    (void)xsnprintf(buffer, sizeof(buffer), "%lu %ld %08lX",
+                   4294967295UL, -2147483647L, 0x1234ABUL);
+    TEST_ASSERT_EQUAL_STRING("4294967295 -2147483647 001234AB", buffer);
 }
 
 void setUp(void)

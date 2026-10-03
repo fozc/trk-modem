@@ -1,3 +1,11 @@
+/**
+ * @file iec104_application.c
+ * @brief Embedded module implementation.
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ */
+
 #define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_application.h"
 #include "iec104.h"
@@ -83,6 +91,9 @@ void iec104_application_event_handler(iec104_event_t evt)
 PROCESS(iec104_reboot_process, "iec104_reboot_process");
 PROCESS_THREAD(iec104_reboot_process, ev, data)
 {
+    (void)data;
+    (void)ev;
+
     static struct etimer timer;
 
     PROCESS_BEGIN();
@@ -104,6 +115,8 @@ PROCESS_THREAD(iec104_reboot_process, ev, data)
 PROCESS(iec104_send_temporary_faults, "iec104_send_temporary_faults");
 PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
 {
+    (void)data;
+
     static struct etimer timer;
     static uint8_t feeder_id;
     static phase_id_t phase_id;
@@ -168,6 +181,8 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
 PROCESS(iec104_send_permanent_faults, "iec104_send_permanent_faults");
 PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
 {
+    (void)data;
+
     static struct etimer timer;
     static uint8_t feeder_id;
     static phase_id_t phase_id;

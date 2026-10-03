@@ -2,7 +2,8 @@
  * at_engine2.c
  *
  *  Created on: Apr 11, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #define CSLOG_MODULE LOG_MOD_GSM
 #include "at_engine2.h"
@@ -111,11 +112,6 @@ void at_engine_send_with_dma(const uint8_t *p_data, uint16_t len)
 	}
 }
 
-static void send_at_command(const uint8_t *p_cmd, uint16_t cmd_len)
-{
-	uart_send_buffer(UART_1, p_cmd, (int)cmd_len);
-}
-
 void at_engine_init(void)
 {
 	if (!rbuff_init(&rx_ringbuf, rx_buffer, AT_ENGINE_RX_BUFFER_SIZE))
@@ -140,6 +136,8 @@ static bool at_engine_send_cmd(const uint8_t *p_cmd, uint16_t cmd_len,
 	const uint8_t *p_expected, uint8_t expected_len,
 	uint8_t retry_count, uint32_t timeout)
 {
+    (void)is_data_mode;
+
 	if(at_engine_is_busy())
 	{
 		return false;

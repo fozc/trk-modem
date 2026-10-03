@@ -2,7 +2,8 @@
  * utils.c
  *
  *  Created on: 29 Ağu 2022
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "utils.h"
 #include <string.h>
@@ -269,7 +270,7 @@ void hex_dump(const void* data, size_t num_bytes)
     	else
     		line_len = num_bytes;
 
-        xprintf("%08x | ", offset);
+        xprintf("%08lx | ", offset);
         for (size_t i = 0; i < line_len; i++)
         {
         	xprintf("%02x ", buffer[i]);

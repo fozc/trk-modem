@@ -2,7 +2,8 @@
  * gsm_shell.c
  *
  *  Created on: Jan 24, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_shell.h"
@@ -60,6 +61,8 @@ static void print_help(const char *arg);
 PROCESS(gsm_shell_send, "gsm_shell_send");
 PROCESS_THREAD(gsm_shell_send, ev, data)
 {
+    (void)ev;
+
     (void)data;
     static struct etimer timer;
 
@@ -228,17 +231,6 @@ static const char *net_reg_str(gsm_net_reg_state_t s)
     }
 }
 
-static const char *rat_str(uint8_t rat)
-{
-    switch (rat)
-    {
-        case 2:  return "2G";
-        case 3:  return "3G";
-        case 4:  return "4G";
-        default: return "-";
-    }
-}
-
 static const char *main_state_str(uint8_t s)
 {
     switch (s)
@@ -324,17 +316,17 @@ static void fmt_duration(uint32_t ms, char *buf, size_t buf_size)
 
     if (hr > 0U)
     {
-        xsnprintf(buf, (int)buf_size, "%luh%02lum%02lus",
+        xsnprintf(buf, (unsigned int)buf_size, "%luh%02lum%02lus",
                   (unsigned long)hr, (unsigned long)min, (unsigned long)sec);
     }
     else if (min > 0U)
     {
-        xsnprintf(buf, (int)buf_size, "%lum%02lus",
+        xsnprintf(buf, (unsigned int)buf_size, "%lum%02lus",
                   (unsigned long)min, (unsigned long)sec);
     }
     else
     {
-        xsnprintf(buf, (int)buf_size, "%lus", (unsigned long)sec);
+        xsnprintf(buf, (unsigned int)buf_size, "%lus", (unsigned long)sec);
     }
 }
 

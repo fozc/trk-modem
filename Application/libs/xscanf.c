@@ -1,5 +1,8 @@
 /*-----------------------------------------------------------------------*/
-/* xscanf - Lightweight Safe Scanner for Embedded Systems                */
+/* xscanf - Lightweight Safe Scanner for Embedded Systems                *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ */
 /*-----------------------------------------------------------------------*/
 /* Copyright (c) 2024                                                     */
 /* Implementation file                                                   */
@@ -545,7 +548,7 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                 case 'X': {
                     /* Hexadecimal - max 8 hex digits, user width capped */
                     int eff_width = EFF_WIDTH(width, HEX_MAX_DIGITS);
-                    uint32_t val;
+                    uint32_t val = 0U;
                     s = parse_hex(s, end, &val, eff_width, &err);
                     if (err == XSCANF_OK && !skip) {
                         uint32_t *out = va_arg(args, uint32_t*);

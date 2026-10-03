@@ -2,7 +2,8 @@
  * fault_log.c
  *
  *  Created on: Feb 21, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include <spi_flash_organization.h>
 #include <stddef.h>
@@ -513,7 +514,7 @@ static int fault_log_load_feeder(uint8_t feeder_id)
 
 static void print_log(int entry_num, const fault_log_t *log)
 {
-	SHELL_CLOG(XCOLOR_CYAN, "  [%2d] %02u-%02u-%04u %02u:%02u:%02u  I=%.1fA  T=%ums  Nominal=%s  Power=%s\r\n",
+	SHELL_CLOG(XCOLOR_CYAN, "  [%2d] %02u-%02u-%04lu %02u:%02u:%02u  I=%.1fA  T=%ums  Nominal=%s  Power=%s\r\n",
 			entry_num,
 			log->tm.day, log->tm.month, (uint32_t)(log->tm.year + 2000),
 			log->tm.hour, log->tm.minute, cp56time2a_get_second(&log->tm),
@@ -540,7 +541,7 @@ static void fault_log_dump_feeder(uint8_t feeder)
 		uint32_t total_temp = fh->total_temporary_faults[phase];
 		uint32_t temp_count = total_temp > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_temp;
 
-		SHELL_LOG("  Phase %d — TEMPORARY FAULTS (total: %u, showing: %u, newest first):\r\n",
+		SHELL_LOG("  Phase %d — TEMPORARY FAULTS (total: %lu, showing: %lu, newest first):\r\n",
 				phase + 1, total_temp, temp_count);
 
 		if(temp_count == 0)
@@ -560,7 +561,7 @@ static void fault_log_dump_feeder(uint8_t feeder)
 		uint32_t total_perm_flt = fh->total_permanent_faults[phase];
 		uint32_t perm_flt_count = total_perm_flt > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_perm_flt;
 
-		SHELL_LOG("  Phase %d — PERMANENT FAULTS (total: %u, showing: %u, newest first):\r\n",
+		SHELL_LOG("  Phase %d — PERMANENT FAULTS (total: %lu, showing: %lu, newest first):\r\n",
 				phase + 1, total_perm_flt, perm_flt_count);
 
 		if(perm_flt_count == 0)

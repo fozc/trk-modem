@@ -11,6 +11,9 @@
  *
  * Bilinen davranis farki (kasitli duzeltme): HatKopukHatBosta float alani
  * eski kodda %u ile basilirdi; artik %.1f ile basilir.
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #include "rf_json.h"
@@ -138,7 +141,7 @@ static unsigned int rfj_emit(char *buf, unsigned int sz, unsigned int pos,
 
             default:
                 pos += xsnprintf(&buf[pos], (sz - pos),
-                                 "%s%u", (i > 0) ? "," : "", v);
+                                 "%s%lu", (i > 0) ? "," : "", v);
                 break;
         }
     }
