@@ -142,4 +142,27 @@ void test_fallback_null_output_does_not_read_hardware_or_accumulate(void)
     TEST_ASSERT_EQUAL_UINT32(0U, read_count);
 }
 
+
+
+void test_secure_rng_returns_hardware_word_and_rejects_null(void)
+{
+    uint32_t value = 0U;
+    TEST_ASSERT_FALSE(bsp_random_secure_word(NULL));
+    TEST_ASSERT_TRUE(bsp_random_secure_word(&value));
+    TEST_ASSERT_EQUAL_UINT32(next_word, value);
+    TEST_ASSERT_EQUAL_UINT32(1U, read_count);
+}
+
+void test_secure_rng_error_does_not_use_availability_fallback(void)
+{
+    uint32_t value = 99U;
+    uint32_t before = bsp_get_random_accumulator();
+    read_status = HAL_ERROR;
+    TEST_ASSERT_FALSE(bsp_random_secure_word(&value));
+    TEST_ASSERT_EQUAL_UINT32(0U, value);
+    TEST_ASSERT_EQUAL_UINT32(before, bsp_get_random_accumulator());
+    TEST_ASSERT_TRUE(bsp_random_word(&value));
+    TEST_ASSERT_NOT_EQUAL(0U, value);
+}
+
 /*** end of file ***/

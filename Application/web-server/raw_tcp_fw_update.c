@@ -1,6 +1,9 @@
 /*
  * raw_tcp_fw_update.c
  *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
  * RFWU — Raw Firmware Update Protocol over TCP port 80.
  *
  * Parser state machine:
@@ -20,6 +23,10 @@
 #include "efw_crc.h"
 #include "elog.h"
 #include "app_ipc.h"
+#include "bsp.h"
+#include "bsp_random.h"
+#include "hmac_sha256.h"
+#include "rfwu_product_key.h"
 
 #include <string.h>
 #include <stddef.h>
@@ -43,6 +50,9 @@ static struct {
     rfwu_header_t hdr;          /* decoded header of the current packet  */
 
     /* Transfer state */
+    uint8_t  nonce[RFWU_NONCE_SIZE];
+    uint32_t nonce_tick;
+    bool     nonce_valid;
     bool     authenticated;     /* HELLO auth passed on this connection  */
     bool     session_active;
     uint32_t write_head;        /* next byte offset expected from client */
@@ -51,6 +61,36 @@ static struct {
     const rfwu_fw_ops_t *p_ops;
     int (*p_send)(const void *p_data, int len);
 } s;
+
+#define RFWU_AUTH_TIMEOUT_MS 60000U
+#define RFWU_AUTH_FAILURE_LIMIT 5U
+
+static const uint8_t product_key[RFWU_KEY_SIZE] = RFWU_PRODUCT_KEY_BYTES;
+static uint8_t auth_failures;
+static bool auth_locked;
+static uint32_t auth_lock_tick;
+
+/* Failure counters survive disconnect; cleared only at boot or success. */
+static bool auth_is_locked(void)
+{
+    if (auth_locked &&
+        (RFWU_AUTH_TIMEOUT_MS <= (uint32_t)(bsp_get_tick() - auth_lock_tick)))
+    {
+        auth_locked = false;
+        auth_failures = 0U;
+    }
+    return auth_locked;
+}
+
+static void auth_record_failure(void)
+{
+    auth_failures++;
+    if (RFWU_AUTH_FAILURE_LIMIT <= auth_failures)
+    {
+        auth_locked = true;
+        auth_lock_tick = bsp_get_tick();
+    }
+}
 
 /* ── CRC-32 helper ──────────────────────────────────────────────── */
 
@@ -224,31 +264,82 @@ static void session_clear(void)
 
 /* ── Command handlers ───────────────────────────────────────────── */
 
-static void handle_cmd_hello(void)
+static void handle_cmd_challenge(void)
 {
-    /* Payload must be exactly: total_size(4) + file_hash(4) + auth_token(4) */
-    if (s.hdr.data_len != 12U) {
-        send_nack(RFWU_ERR_CRC, 0U);
-        return;
-    }
-
-    const uint8_t *p = &s.buf[RFWU_HEADER_SIZE];
-    uint32_t total_size  = read_u32_le(p);
-    uint32_t file_hash   = read_u32_le(p + 4U);
-    uint32_t auth_token  = read_u32_le(p + 8U);
-
-    /* Auth: token = CRC32(shared_key_bytes) XOR total_size */
-    const rfwu_nvram_t *p_nv = nvram_get_rfwu();
-    uint32_t shared_key = (p_nv->shared_key != 0U) ? p_nv->shared_key
-                                                    : RFWU_DEFAULT_SHARED_KEY;
-    uint32_t expected_token = crc32_calc((const uint8_t *)&shared_key, 4U) ^ total_size;
-
-    if (auth_token != expected_token) {
-        CCSLOG(XCOLOR_RED, "[RFWU] Auth failed\r\n");
-        elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_AUTH_FAIL, total_size);
+    s.nonce_valid = false;
+    s.authenticated = false;
+    s.session_active = false;
+    s.write_head = 0U;
+    if ((0U != s.hdr.data_len) || auth_is_locked())
+    {
         send_nack(RFWU_ERR_AUTH, 0U);
         return;
     }
+    for (size_t index = 0U; RFWU_NONCE_SIZE > index; index += 4U)
+    {
+        uint32_t word = 0U;
+        if (!bsp_random_secure_word(&word))
+        {
+            CSLOG_WARN("[RFWU] Hardware RNG unavailable\r\n");
+            send_nack(RFWU_ERR_RNG, 0U);
+            return;
+        }
+        s.nonce[index] = (uint8_t)word;
+        s.nonce[index + 1U] = (uint8_t)(word >> 8U);
+        s.nonce[index + 2U] = (uint8_t)(word >> 16U);
+        s.nonce[index + 3U] = (uint8_t)(word >> 24U);
+    }
+    s.nonce_tick = bsp_get_tick();
+    s.nonce_valid = true;
+    send_response((uint8_t)RFWU_RESP_CHALLENGE, s.nonce,
+                  (uint8_t)RFWU_NONCE_SIZE);
+}
+
+static void handle_cmd_hello(void)
+{
+    bool had_nonce = s.nonce_valid;
+    s.nonce_valid = false;
+    if (auth_is_locked())
+    {
+        send_nack(RFWU_ERR_AUTH, 0U);
+        return;
+    }
+    if ((RFWU_HELLO_SIZE != s.hdr.data_len) || !had_nonce ||
+        (RFWU_AUTH_TIMEOUT_MS <= (uint32_t)(bsp_get_tick() - s.nonce_tick)))
+    {
+        auth_record_failure();
+        send_nack(RFWU_ERR_AUTH, 0U);
+        return;
+    }
+
+    /* Bind v2 authentication to nonce, size and resume identity. */
+    uint8_t message[5U + RFWU_NONCE_SIZE + 8U];
+    uint8_t tag[32];
+    uint32_t difference = 0U;
+    const uint8_t *payload = &s.buf[RFWU_HEADER_SIZE];
+    uint32_t total_size = read_u32_le(payload);
+    uint32_t file_hash = read_u32_le(payload + 4U);
+    const rfwu_nvram_t *p_nv = nvram_get_rfwu();
+
+    (void)memcpy(message, "RFWU2", 5U);
+    (void)memcpy(message + 5U, s.nonce, RFWU_NONCE_SIZE);
+    (void)memcpy(message + 5U + RFWU_NONCE_SIZE, payload, 8U);
+    hmac_sha256(tag, product_key, sizeof(product_key), message,
+                sizeof(message));
+    for (size_t index = 0U; RFWU_TAG_SIZE > index; index++)
+    {
+        difference |= (uint32_t)(tag[index] ^ payload[8U + index]);
+    }
+    if (0U != difference)
+    {
+        auth_record_failure();
+        elog_log_fw_update(ELOG_FW_SRC_RFWU, ELOG_FW_RESULT_AUTH_FAIL,
+                           total_size);
+        send_nack(RFWU_ERR_AUTH, 0U);
+        return;
+    }
+    auth_failures = 0U;
+    auth_locked = false;
 
     /* Resume check: same file if magic + size + hash all match */
     uint32_t resume_offset = 0U;
@@ -267,7 +358,7 @@ static void handle_cmd_hello(void)
         upd.file_hash      = file_hash;
         upd.total_size     = total_size;
         upd.received_bytes = 0U;
-        upd.shared_key     = shared_key;
+        upd.shared_key     = p_nv->shared_key; /* Legacy layout only. */
         upd.fw_crc         = 0U;
         upd.fw_size        = 0U;
         nvram_set_rfwu(&upd);
@@ -512,6 +603,7 @@ static void process_packet(void)
     }
 
     switch ((rfwu_cmd_t)s.hdr.cmd) {
+        case RFWU_CMD_CHALLENGE: handle_cmd_challenge(); break;
         case RFWU_CMD_HELLO:  handle_cmd_hello();  break;
         case RFWU_CMD_DATA:   handle_cmd_data();   break;
         case RFWU_CMD_FINISH: handle_cmd_finish(); break;
@@ -568,6 +660,9 @@ void rfwu_init(int (*p_send)(const void *p_data, int len))
 {
     (void)memset(&s, 0, sizeof(s));
     s.p_send = p_send;
+    auth_failures = 0U;
+    auth_locked = false;
+    auth_lock_tick = 0U;
     reset_parser();
 }
 
@@ -611,6 +706,8 @@ void rfwu_on_receive(const uint8_t *p_data, int len)
 void rfwu_on_disconnect(void)
 {
     /* Reset parser; NVRAM session is preserved for resume on next connection */
+    s.nonce_valid = false;
+    (void)memset(s.nonce, 0, sizeof(s.nonce));
     reset_parser();
     s.session_active = false;
     s.authenticated  = false;

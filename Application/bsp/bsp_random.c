@@ -60,6 +60,11 @@ static bool read_hardware_word(uint32_t *value)
     return true;
 }
 
+bool bsp_random_secure_word(uint32_t *value)
+{
+    return read_hardware_word(value);
+}
+
 void bsp_random_fallback_seed(uint32_t tick, uint32_t tx, uint32_t rx)
 {
     fallback_state += random_accumulator + tick;

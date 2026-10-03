@@ -1,6 +1,9 @@
 /*
  * raw_tcp_fw_update.h
  *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
  * RFWU: Raw Firmware Update Protocol over TCP port 80.
  *
  * Packet layout (all multi-byte fields little-endian):
@@ -14,7 +17,8 @@
  *   [12+data_len..15+data_len]  crc32       CRC-32 of header + data
  *
  * CMD_DATA payload:     offset(4 LE) + firmware_bytes(1..1024)
- * CMD_HELLO payload:    total_size(4 LE) + file_hash(4 LE) + auth_token(4 LE)
+ * CMD_HELLO payload:    total_size(4 LE) + file_hash(4 LE) + HMAC tag(16)
+ * CMD_CHALLENGE reply:  nonce(16), used once on the same connection
  * RESP_STATUS payload:  active(1) + write_head(4 LE) + nv_total(4 LE)
  *                       + nv_received(4 LE) + nv_hash(4 LE)  [17 bytes total]
  */
@@ -51,8 +55,10 @@ extern "C" {
 /* Marks a valid session in NVRAM */
 #define RFWU_SESSION_MAGIC   0xFEEDFACEU
 
-/* Default shared key — change in production */
-#define RFWU_DEFAULT_SHARED_KEY 0x534D4152U  /* "SMAR" */
+#define RFWU_KEY_SIZE          16U
+#define RFWU_NONCE_SIZE        16U
+#define RFWU_TAG_SIZE          16U
+#define RFWU_HELLO_SIZE        (8U + RFWU_TAG_SIZE)
 
 /* ── Command / response codes ───────────────────────────────────── */
 
@@ -64,17 +70,20 @@ typedef enum {
     RFWU_CMD_QUERY  = 0x04U,   /**< Query current session state     */
     RFWU_CMD_REBOOT = 0x05U,   /**< Request device reboot           */
     RFWU_CMD_ABORT  = 0x06U,   /**< Abort transfer, clear session   */
+    RFWU_CMD_CHALLENGE = 0x07U, /**< Request nonce for v2 auth      */
 } rfwu_cmd_t;
 
 /** Responses sent by the MCU to the client */
 typedef enum {
     RFWU_RESP_ACK    = 0x81U,  /**< Command accepted                */
     RFWU_RESP_NACK   = 0x82U,  /**< Command rejected (with reason)  */
+    RFWU_RESP_CHALLENGE = 0x84U, /**< Hardware-generated nonce    */
     RFWU_RESP_STATUS = 0x83U,  /**< Reply to CMD_QUERY              */
 } rfwu_resp_t;
 
 /** Error codes carried in NACK.data[0] */
 typedef enum {
+    RFWU_ERR_RNG           = 0x08U, /**< Hardware RNG unavailable    */
     RFWU_ERR_AUTH          = 0x01U, /**< Auth token mismatch         */
     RFWU_ERR_CRC           = 0x02U, /**< Packet CRC mismatch         */
     RFWU_ERR_GAP           = 0x03U, /**< Offset gap (not expected)   */

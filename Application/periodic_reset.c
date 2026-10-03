@@ -2,7 +2,7 @@
  * periodic_reset.c
  *
  *  Created on: Apr 27, 2026
- *      Author: Fatih Özcan
+ *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
  * Periodic system reset scheduler.
@@ -52,6 +52,10 @@ void periodic_reset_tick(void)
         CCSLOG(XCOLOR_RED,
                "[PeriodicReset] Period elapsed (%lu s) — resetting device.\r\n",
                s_period_s);
+        if (0 != modem_config_sync())
+        {
+            CSLOG_ERR("[PeriodicReset] NVRAM sync failed; resetting\r\n");
+        }
         bsp_system_reset();
     }
 }

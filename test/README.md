@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.13
+**Sürüm:** 1.16
 **Tarih:** 2026-10-03
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -187,7 +187,8 @@ kapsayan birim testleri eklenmelidir.
 | `fault_log` | Çift flash kopyası, kesilen yazma ve yeniden açılış senaryolarını birlikte yürütür |
 | `gsm` | Kasıtlı timeout ve gerçek Contiki süreç yeniden başlatma akışını kullanır |
 | `libs` | SPI flash halka kaydını yüzlerce yazma ve yeniden açılış adımıyla doğrular |
-| `nvram` | Çift NVRAM görüntüsünü, yazma arızalarını ve yeniden açılışı birlikte doğrular |
+| `nvram` | Çift NVRAM görüntüsünü, yazma arızalarını, ömür sayacının kayıt sınırını ve yeniden açılışı birlikte doğrular |
+| `rfwu_auth` | Gerçek RFWU v2 parser/SHA/HMAC ve PC yardımcılarıyla yetki kapıları, replay ret, resume ve transferi doğrular |
 | `rf_hub_sim` | Ayrı RF hub simülatörünü kendi çalıştırılabilir dosyasıyla sınar |
 | `web_auth` | Üretim fonksiyonlarını donanım ve taşıma test doubles ile izole ederek sınar |
 | `web_navigation` | Kaynak ve gömülü web içeriğini Node.js üzerinde karşılaştırır |
@@ -283,6 +284,38 @@ testin neden başarısız olduğunu açıklamaz.
 - `gcovr` bulunamazsa normal test koşusu kullanılabilir; yalnız coverage
   komutu etkilenir.
 
+## RFWU ve ömür sayacı bulgu testleri
+
+`make -C test/integration/rfwu_auth run` gerçek RFWU v2 parser, CRC,
+SHA-256 ve HMAC modüllerini host üzerinde derler. 25 kontrol nonce tek
+kullanım/süre dolumunu, yanlış MAC ve v1 reddini, reconnect/kilit,
+RNG hatasını, resume ve PC transfer/force restart/QUERY yardımcılarını sınar.
+Kripto kontrolleri RFC 4231 ve Python hashlib/hmac ile karşılaştırılır.
+Host testleri public fixture anahtarı kullanır; ürün anahtarını okumaz.
+
+Python 3 ve shared library destekleyen host derleyicisi gerekir. Test,
+GUI başlatmadan PC aracının gerçek protokol fonksiyonlarını ve worker
+sınıflarını AST üzerinden yükler. ctypes library'sinin ABI'si Python ile
+aynı seçilir; x86 üzerinde bu paket CI gcc -m32 wrapper'ını Python 64 bit
+ise -m64 ile geçersiz kılar. Bu paket NVRAM/hedef pointer layout'u sınamaz;
+NVRAM ve diğer 32 bit host paketleri ayrı çalışmaya devam eder. Linux CI
+çalıştırması bu yerel Windows oturumunda yapılmamıştır.
+
+`test/libs/test_hmac_sha256.c` Ceedling altında standart ve incremental
+HMAC/SHA vektörlerini doğrular. `test/bsp/test_bsp_random.c` hardware-only
+API'nin HAL hatasında fallback vermediğini ve mevcut web fallback API'sinin
+korunduğunu doğrular. Cihaz RNG/flash/bootloader testi ayrıca yapılmalıdır.
+
+`test/application/test_modem_config.c` ömür güncellemesinin otomatik sync
+yapmadığını doğrular. `integration/nvram/test_nvram_sync.c` gerçek NVRAM
+çekirdeğiyle kaydedilmemiş artışın kaybını, kaydedilmiş değerin korunmasını
+ve yazma hatasında önceki sağlam değerin yüklenmesini doğrular.
+
+Lifetime mevcut NVRAM alanında kalır. Modem config testleri 90.000 saniyelik
+adımda tek kayıt çağrısını ve başarısız kayıtta sonraki 25 saate kadar tekrar
+olmamasını doğrular. Periodic reset testleri sync çağrısının resetten önce
+olduğunu ve sync hatasının reseti engellemediğini doğrular.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Etkilenen bölüm |
@@ -301,3 +334,7 @@ testin neden başarısız olduğunu açıklamaz.
 | 2026-10-03 | 1.11 | Token testleri, 16 kalıcı web oturum güvenliği kontrolü ve merkezi web_auth paketi |
 | 2026-10-03 | 1.12 | RNG birikimi, genel GSM sayaçlarıyla fallback, main tarafından başlatılmış RNG kullanımı ve kalıcı hata yolu testleri |
 | 2026-10-03 | 1.13 | Ayrı bsp_random modülü, 9 CMock testi ve web token sorumluluğunun ayrılması |
+
+| 2026-10-03 | 1.14 | RFWU kimlik doğrulama karakterizasyonu ve ömür sayacı kayıt/reset sınırı testleri |
+| 2026-10-03 | 1.15 | 25 saatlik lifetime kaydı ve periyodik reset öncesi sync hata/sıra kontrolleri |
+| 2026-10-03 | 1.16 | RFWU v2 ret/resume/PC ve kripto vektör kontrolleri, secure RNG ve Python ABI uyumu |

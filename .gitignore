@@ -84,3 +84,7 @@ tools/rf-hub-sim/build/
 
 # Central host-test artifacts
 test/integration/**/build_scp/
+
+# Private common RFWU product key and generated header
+/keys/rfwu_key.bin
+/Application/rfwu_product_key.h

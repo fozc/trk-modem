@@ -1,4 +1,7 @@
 /*
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
  * Host tests for the two-slot NVRAM core (doc/nvram.md).
  *
  * Contract under test:
@@ -375,8 +378,35 @@ static void test_retry_reuses_sequence(void)
     check(images_equal(), "T17: slots consistent");
 }
 
+/* Lifetime is part of the existing image, not separate storage. */
+static void test_lifetime_persistence_boundary(void)
+{
+    boot_virgin();
+    nvram_get_modem_config_rw()->lifetime = 120U;
+    check(0 == nvram_sync(false), "lifetime: baseline sync OK");
+
+    nvram_get_modem_config_rw()->lifetime = 150U;
+    reboot();
+    check(120U == nvram_get_modem_config()->lifetime,
+          "lifetime: unsaved increment lost after reload");
+
+    nvram_get_modem_config_rw()->lifetime = 180U;
+    check(0 == nvram_sync(false), "lifetime: updated sync OK");
+    reboot();
+    check(180U == nvram_get_modem_config()->lifetime,
+          "lifetime: saved increment survives reload");
+
+    nvram_get_modem_config_rw()->lifetime = 200U;
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_AFTER_ERASE);
+    check(0 != nvram_sync(false), "lifetime: failed save reported");
+    reboot();
+    check(180U == nvram_get_modem_config()->lifetime,
+          "lifetime: previous saved value survives failed save");
+}
+
 int main(void)
 {
+    test_lifetime_persistence_boundary();
     test_normal_flow();
     test_recovery_only_a();
     test_recovery_only_b();

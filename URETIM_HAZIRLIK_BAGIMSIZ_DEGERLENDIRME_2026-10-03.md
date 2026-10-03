@@ -2,7 +2,7 @@
 
 | Belge künyesi | Değer |
 |---|---|
-| Sürüm | 1.4 |
+| Sürüm | 1.7 |
 | Tarih | 03.10.2026 |
 | İncelenen commit (kod sürümü) | `a57686279eb913801a766e53f471e4b4c18abfd5` |
 | Uygulama sürümü | 1.0.1 |
@@ -76,12 +76,12 @@ Bu çıktılar `test/build/` altında yereldir; sürüm kabul kanıtı olarak ku
 | Arıza olay üreticisi yok | **Doğrulandı** | `Application/iec104_replay.c:189` tanımı var; Application/Core taramasında `iec104_report_fault_event` çağrısı bulunmadı |
 | IP'den parola ve tahmin edilebilir token | **Doğrulandı; kritik güvenlik engeli** | `Application/web-server/http_handlers.c:375-377,407-415`; başarılı giriş için deneme kilidini aşmak gerekmez |
 | RFWU ortak default ve replay riski | **Doğrulandı** | `Application/web-server/raw_tcp_fw_update.h:55`; `.c:240-246,270`; CRC32(key) XOR boyut, nonce yok. CRC32 bir kimlik doğrulama MAC'i değildir |
-| RFWU REBOOT/QUERY/ABORT kapıları | **Kaynak düzeyinde doğrulandı** | `.c:416,436,468` authenticated kontrolü var; negatif uçtan uca saldırı testi yapılmadı |
+| RFWU REBOOT/QUERY/ABORT kapıları | **Host üzerinde doğrulandı** | HELLO öncesinde reddedilir; disconnect yetkiyi siler. Replay HELLO tekrar yetki verir; reboot callback ve ABORT kabul edilir. Gerçek ağ/cihaz testi yapılmadı; bkz. 6.8 |
 | Web admin kapıları | **Kaynak düzeyinde doğrulandı** | `Application/web-server/http_server.c:109-121,258-263`; POST `/serial` dahil admin kapısından geçiyor |
 | BMS kapalı ama RX açık | **Doğrulandı** | `Application/app_main.c:331-332`; UART5 ISR `Core/Src/stm32u3xx_it.c:447-456`; BMS RX buffer'ı dolar ama reader süreci başlatılmıyor |
 | PowerBoard NVM stub | **Doğrulandı** | `Application/power_board/power_board.c:407-432,707`; kayıt isteği/lastgasp kalıcı saklanmıyor. Her reset sonrası gerçek SoC'nin kesin %100 olduğunu bu depo tek başına kanıtlamaz; PowerBoard firmware'i de gerekir |
 | SBO kapalı / eksik | **Doğrulandı; ürün kapsamına bağlı** | C_SC_NA_1_ENABLED derleme tanımlarında yok; `Application/breaker.c:167-213` altında initialized ve IOA eşleme eksikleri. Desteklenen özellik listesinden çıkarılması ürün kararıdır |
-| Lifetime ve reset flush | **Doğrulandı** | `Application/app_main.c:100`; `modem_config_set_lifetime` yalnız RAM alanını değiştiriyor; `.c:15` sync ayrı. `Application/reboot.c:18` TODO; periodic reset yolu da flush yapmıyor |
+| Lifetime ve reset flush | **Kısmen doğrulandı; RAM-only ifadesi düzeltilmiştir** | Sayaç NVRAM RAM görüntüsündedir; başarılı herhangi bir sync ile saklanır. Düzenli kayıt ve normal reset öncesi kayıt yoktur. Gerçek NVRAM host testi son kayıttan sonraki süre kaybını gösterir; bkz. 6.9 |
 | ARM uyarı bayrakları hiç yok | **İfade yanlış; esas uyumsuzluk doğru** | `.cproject` içinde açık seçenek bulunmaması varsayılanı kanıtlamaz. `Release/Application/subdir.mk` ve gerçek komutlar `-Wall` içeriyor. Diğer zorunlu bayraklar yok; 34 uyarı ve 38 strict başarısız dosya ölçüldü |
 | CI yalnız host derliyor | **Workflow kapsamında doğrulandı** | `.github/workflows/host-tests.yml` ARM derlemiyor. Uzak son CI koşusu sorgulanmadı; workflow varlığı PASS kanıtı sayılmadı |
 | İmaj tek makinede üretilebilir | **Kanıt yetersiz; süreç riski açık** | Bu makinede anahtarlarla paket üretildi. Anahtarların git dışında olması doğrudur; başka makinede yedek/erişim bulunmadığı buradan çıkarılamaz. Kurtarma ve yetkili yeniden üretim prosedürü kabul kanıtı ister |
@@ -280,6 +280,143 @@ Dosya başlıklarında `Author: Fatih Ozcan` ve alt satırda
 `fatihozcan@gmail.com` kullanılması kuralı AGENTS.md dosyasına eklenmiştir.
 Bu çalışmada yeni veya düzenlenen C başlıkları bu biçime getirilmiştir.
 
+### 6.8 RFWU kimlik doğrulaması: kanıtlanan açık (1.5)
+
+**İnceleme tabanı:** `622f050`. Üretim kodu değiştirilmeden gerçek
+`raw_tcp_fw_update.c` ve `efw_crc.c` host shared library olarak derlenmiştir.
+TCP gönderimi, flash callback, NVRAM, IPC ve log bağımlılıkları test double
+ile karşılanmıştır. Paket CRC biçimi mevcut PC istemcisiyle aynıdır:
+`zlib.crc32(data) XOR 0xFFFFFFFF`.
+
+`test/integration/rfwu_auth/run_tests.py` içindeki 9 kontrol geçmiştir.
+Bu sonuç açığın kapandığı anlamına gelmez; üç kontrol mevcut açık davranışı
+bilerek doğrular. Standart dışı bir test anahtarıyla şu sonuçlar alınmıştır:
+
+- Yanlış token ve bozuk paket CRC reddedilir; HELLO öncesi DATA ve
+  QUERY/REBOOT/ABORT kapıları çalışır. TCP parçalanması desteklenir.
+- Disconnect yetkiyi siler. Aynı HELLO paketi, aynı sequence ile yeniden
+  gönderilince kabul edilir; sonrasında reboot callback çağrılır.
+- File hash değiştirilse de eski token kabul edilir.
+- Ele geçirilen HELLO alanlarından `yeni_token = eski_token XOR eski_boyut
+  XOR yeni_boyut` hesaplanır. Anahtar kullanılmadan farklı boyut/hash ile
+  HELLO kabul edilir; DATA yazma callback ve ABORT çalışır.
+
+Sadece default anahtarı değiştirmek veya sequence kontrolü eklemek bu
+formüldeki açığı kapatmaz. Ağdan ele geçirme için RFWU trafiğine erişim
+ön koşuldur; default anahtar kullanılan cihazda kaynak/istemci bilgisi
+geçerli token hesaplamak için yeterlidir. Web login kapısı RFWU yolunda
+yer almaz (`web_server.c:64-77`). Firmware paketinin ECDSA imzası ayrı
+bir korumadır; parser tarafından kabul edilen reboot, ABORT veya staging
+alanına veri yazma işlemlerini yetkilendirmez. Keyfi firmware çalıştırma
+bu testte gösterilmemiştir; bootloader/cihaz kurulumu sınanmamıştır.
+
+Kullanıcının sonraki maddeye geçme yönlendirmesiyle protokol düzeltmesi
+beklemededir. Açık kapanmış sayılmamalıdır. Çözüm cihaz ve PC aracında
+birlikte uygulanmalıdır; mevcut CRC tabanlı doğrulama korunarak güvenli
+kimlik doğrulama sağlandığı iddia edilmemelidir.
+
+### 6.9 Ömür sayacı ve kayıt/reset zinciri: kapsam düzeltmesi (1.5)
+
+**Amaç:** Önceki RAM-only iddiasını güncel altyapıyla karşılaştırmak ve
+son kayıttan sonra hangi verinin kaybolduğunu belirlemek.
+
+`app_main.c:97-100` sayacı saniyelik timer ile artırır.
+`modem_config.c:13,230-238` ayrı bir config kopyası kullanmaz; getter ve
+setter doğrudan NVRAM'in RAM görüntüsüne erişir (`nvram.c:1030-1038`).
+`modem_config_sync()` mevcut `nvram_sync(false)` işlevini çağırır.
+Bu nedenle başarılı bir config, event log, RFWU veya başka NVRAM kaydı
+ömür değerini de saklar. Ömür alanı ve çift kopyalı kayıt altyapısı zaten
+vardır; yeni NVRAM alanı, schema değişikliği veya ortak flash_store
+katmanı bu bulguyu düzeltmek için gerekli değildir.
+
+**Gerçek sorun:** Garantili bir düzenli kayıt yoktur. `reboot_system()`
+ve `bsp_system_reset()` kayıt yapmadan reset verir. Factory reset yolu
+ise defaults kaydının başarılı olmasını bekler; bütün reset yolları için
+"kayıt yok" ifadesi doğru değildir. Son başarılı kayıttan sonra artan
+sayaç reset/güç kesilmesinde kaybolabilir. Uzun süre kayıt yapılmıyorsa
+kaybın süre sınırı yoktur; sayaç her reset sırasında mutlaka sıfırlanmaz.
+
+**Doğrulama:** Gerçek modem_config modülünün yeni Ceedling kontrolü,
+sayaç setter'ının NVRAM RAM görüntüsünü değiştirdiğini ve otomatik sync
+yapmadığını kanıtlar. Gerçek NVRAM çekirdeğinin host senaryosu 120 saniye
+kayıtlı değer üzerinde çalışır: kaydedilmeyen 150 değeri yeniden yüklemede
+120'ye döner; kaydedilen 180 değeri korunur; A yazması silme sonrası
+kesilirse son sağlam 180 değeri B'den geri yüklenir.
+
+**Önerilen sade çözüm:** Mevcut ana process içinde saatlik
+`nvram_sync(false)` ve kontrollü normal resetlerden önce bir kayıt
+çağrısı kullanılmalıdır. Yeni process, NVRAM layout veya depolama katmanı
+kurulmamalıdır. ISR, hardfault ve watchdog kurtarmasına bloklayıcı flash
+kaydı eklenmemelidir. Kayıt hatası görünür biçimde loglanmalı; sonraki
+normal periyotta yeniden denenmelidir. Saatlik başarılı kayıt varsa
+ani güç kaybında son kayıt sonrası yaklaşık bir saatlik süre kaybı
+kabul edilir; flash hatasında bu sınır garanti edilmez. Kayıt sıklığı ve
+normal reset sırasında kayıt hatasına verilecek davranış kullanıcı
+kararı beklemektedir. Bu oturumda firmware akışı değiştirilmemiştir.
+
+**Güncel test sonucu:** Merkezi koşuda 294 Ceedling testi ve 9 integration
+paketi geçmiştir. NVRAM paketi 103 kontrol, RFWU paketi 9 kontrol içerir.
+Log: `test/build/production-audit-2026-10-03/rfwu-lifetime-host.log`.
+Cihazda güç kesme/reset ve ARM derleme bu kaynak incelemesinde yapılmamıştır.
+
+### 6.10 Kullanıcı kararı: mevcut NVRAM'de 25 saatlik lifetime kaydı (1.6)
+
+Kullanıcı lifetime'ın mevcut NVRAM alanında kalmasını seçmiştir. Ayrı flash
+sektörü, veri taşıma, NVRAM schema veya layout değişikliği yapılmamıştır.
+Mevcut değer korunur. 6.9 bölümündeki saatlik kayıt önerisinin yerine
+25 saatlik aralık uygulanmıştır.
+
+Ana process'in mevcut saniyelik lifetime adımı `modem_config_lifetime_tick()`
+çağırır. Bu işlev sayacı artırır; 90.000 saniyelik sayaç adımında
+`modem_config_sync()` çağırır. Kayıt başarısızsa log verir ve sonraki
+25 saatlik aralığa kadar yeniden kayıt istemez. Yeni process/zamanlayıcı
+oluşturulmamıştır; sayımın mevcut heartbeat zamanlamasına bağımlılığı
+korunmuştur. ISR veya fault kurtarma yoluna flash işlemi eklenmemiştir.
+
+`periodic_reset_tick()` reset vermeden önce aynı sync işlevini çağırır.
+Kayıt başarısızsa log verilir, reset sürer. Diğer normal reset yolları
+bu kullanıcı kararının kapsamı dışında kalmıştır. Periyodik resetler
+ve diğer NVRAM sync çağrıları toplam yazma sıklığını artırabilir;
+25 saat bütün flash yazmaları için bir hız sınırı değildir. Yeni
+kayıt mekanizması kurulmadığından config ve lifetime aynı CRC/görüntünün
+parçası olarak kalır. Mevcut çift kopyalı kayıt korumaları korunur.
+
+Kalıcı Ceedling testleri 25 saat sınırını, hatada saniyelik retry
+olmamasını, sonraki aralıkta yeniden denemeyi ve periyodik resetten önce
+sync sırasını doğrular. Kayıt hatasında resetin devamı da sınanmıştır.
+Merkezi koşuda 297 Ceedling testi ve 9 integration paketi geçmiştir.
+ARM Release derlemesi ve paket içerik/ECDSA öz denetimi başarılıdır.
+Önceden var olan uyarılar warning-free üretim şartını karşılamamaktadır.
+Cihaza yükleme veya cihaz üzerinde güç kesme testi yapılmamıştır.
+
+Loglar: `test/build/production-audit-2026-10-03/lifetime-25h-host.log`
+ve `lifetime-25h-release.log`. RFWU planı ayrı belgede değerlendirilmiştir:
+`RFWU_GUVENLIK_PLANI_DEGERLENDIRME_2026-10-03.md`. Bu değerlendirme RFWU
+protokol değişikliği uygulaması değildir.
+
+### 6.11 RFWU v2 uygulaması ve review (1.7)
+
+Kullanıcının ortak ürün anahtarı ve sade RFWU düzeltmesi yönlendirmesiyle
+challenge-response uygulanmıştır. 16 bayt donanım RNG nonce'u tek kullanımlık
+ve aynı bağlantıda 60 saniye geçerlidir. HELLO, "RFWU2" domain'i ile nonce,
+size ve mevcut file hash üzerinde HMAC-SHA256'nin ilk 16 baytını taşır.
+Eski CRC/XOR HELLO reddedilir. Beş hatalı denemeden sonra 60 saniye kilit
+TCP kopuşunda korunur. NVRAM schema/layout değiştirilmemiştir.
+
+Ortak key/header Git dışında tutulur. PC aracı aynı anahtarı yerel dosyadan
+alabilir; transfer, force restart, QUERY ve ABORT girişleri yeni challenge
+kullanır. Web sayfası ayrı admin HTTP yolunda kaldığından değişiklik gerekmez.
+HTTP login availability fallback'i korunur; RFWU challenge hardware-only
+BSP random API'sini kullanır. Ayrıntı ve ortak anahtar/aktif TCP müdahale
+sınırları `RFWU_GUVENLIK_DUZELTME_PLANI_2026-10.md` 0.3 sürümündedir.
+
+302 Ceedling testi, 9 integration paketi ve ARM Release/paket öz denetimi
+geçmiştir. Gerçek parser, SHA/HMAC ve PC yardımcılarıyla 25 RFWU kontrolü
+geçmiştir. İncelemede gerçek BSP tick API adı, GUI yetki bayrağı ve host
+ctypes ABI uyumu düzeltilmiştir. Bu sonuç bootloader/cihaz kabulü değildir.
+Genel üretime hazır kararı diğer açıklar ve gerçek cihaz testleri nedeniyle
+henüz verilmemiştir. Kaynak değişiklikleri kullanıcı onayıyla commit kapsamına alınmıştır.
+
 ## 7. Değişiklik geçmişi
 
 | Tarih | Sürüm | Etkilenen bölüm |
@@ -289,3 +426,6 @@ Bu çalışmada yeni veya düzenlenen C başlıkları bu biçime getirilmiştir.
 | 2026-10-03 | 1.2 | HAL seed kurtarmasına erişim, RNG hatasında oturum/rol korunması, sade akış ve kanıt/basitlik kuralları |
 | 2026-10-03 | 1.3 | Kullanıcı onaylı RNG birikimi ve genel GSM sayaçlarıyla fallback; başlangıç, testler ve güvenlik sınırları |
 | 2026-10-03 | 1.4 | Ayrı BSP random modülü, modül CMock testleri ve yazar başlığı kuralı |
+| 2026-10-03 | 1.5 | RFWU replay/token türetme host kanıtı; ömür sayacının kayıt sınırı, rapor düzeltmesi ve kalıcı testler |
+| 2026-10-03 | 1.6 | Lifetime mevcut NVRAM’de korunarak 25 saatlik kayıt ve periyodik reset öncesi sync; test/build sonuçları ve RFWU plan incelemesi |
+| 2026-10-03 | 1.7 | RFWU v2, ortak anahtar, PC uyumu, secure RNG ve review/test/build sonuçları |
