@@ -1,6 +1,9 @@
 /*
  * test_iec104_protocol_scenario.c
  *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
  * Host tests for the libiec104 protocol core, driven through a loopback
  * transport: every APDU the stack emits is captured in tx_log[] and can be
  * inspected byte by byte, while the SCADA side is simulated by feeding
@@ -19,6 +22,8 @@
 #include <stdint.h>
 
 #include "iec104.h"
+#include "iec104_config.h"
+#include "iec104_util.h"
 #include "iec104_types.h"
 #include "iec104_platform_fake.h"
 
@@ -1523,6 +1528,31 @@ void test_clock_command_spontaneous_cot_is_accepted(void)
     TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
     TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[0]));
     TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
+}
+
+
+
+void test_fault_ioa_getters_match_reserved_window_boundaries(void)
+{
+    for (uint32_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
+    {
+        iec104_line_config_t line = {0};
+        line.temporary_fault = iec104_make_ioa_3byte(100000U + feeder * 1000U);
+        line.permanent_fault = iec104_make_ioa_3byte(200000U + feeder * 1000U);
+        TEST_ASSERT_TRUE(iec104_set_line_config(feeder, &line));
+        TEST_ASSERT_EQUAL_UINT32(100000U + feeder * 1180U,
+            iec104_ioa_3byte_to_uint32(
+                iec104_get_feeder_temporary_fault_ariza_akimi_ioa(
+                    feeder, 0U, 0U)));
+        TEST_ASSERT_EQUAL_UINT32(100179U + feeder * 1180U,
+            iec104_ioa_3byte_to_uint32(
+                iec104_get_feeder_temporary_fault_nominal_akim_varyok_ioa(
+                    feeder, 2U, 14U)));
+        TEST_ASSERT_EQUAL_UINT32(200179U + feeder * 1180U,
+            iec104_ioa_3byte_to_uint32(
+                iec104_get_feeder_permanent_fault_nominal_akim_varyok_ioa(
+                    feeder, 2U, 14U)));
+    }
 }
 
 /*** end of file ***/

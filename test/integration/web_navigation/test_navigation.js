@@ -147,6 +147,8 @@ async function checkPage(html, label) {
         input.type = 'number';
         input.value = String(value);
     }
+    assert.match(run("renderIec104({Hatlar:{}})"), /data-key="TemporaryFaultBase"/);
+    assert.match(run("renderIec104({Hatlar:{}})"), /data-key="PermanentFaultBase"/);
     const sbo = document.getElementById('iec-SBO');
     sbo.type = 'checkbox';
     sbo.checked = true;
@@ -179,6 +181,148 @@ async function checkPage(html, label) {
         await run(`savePage('${page}')`);
         assert.equal(request.url, '/config/' + page);
         assert.deepEqual(JSON.parse(run(`JSON.stringify(pageCache['${page}'])`)), request.data);
+    }
+    const ioaError = 'IOA overlap: Hatlar.IOA_R_ArizaAkimi[1] (feeder 2) and Hatlar.TemporaryFaultBase[0] (feeder 1)';
+    const iecCache = run('JSON.stringify(pageCache.iec104)');
+    context.fetch = async () => ({ok: false, status: 400, text: async () => ioaError});
+    await run("savePage('iec104')");
+    assert.ok(notices.some(item => item.className === 'toast err' && item.textContent.includes(ioaError)));
+    assert.equal(run('JSON.stringify(pageCache.iec104)'), iecCache);
+    assert.equal(run('loading'), false);
+    // Real Save path: a collision must mark both fields and make no POST.
+    const originalQuery = document.querySelector;
+    const originalQueryAll = document.querySelectorAll;
+    for (const page of ['iec104', 'modbus']) {
+        const prefix = page === 'iec104' ? 'iec' : 'mod';
+        const makeField = (key, index, value, label) => {
+            const input = element(), error = element(), hint = element();
+            input.type = 'number'; input.value = String(value);
+            input.dataset = {id: prefix, key, i: String(index)};
+            input.closest = () => ({querySelector: selector => selector === '.err' ? error : selector === '.register-info' ? hint : {textContent: label}});
+            input.error = error; input.hint = hint;
+            return input;
+        };
+        const keyPrefix = page === 'iec104' ? 'IOA' : 'ADDR';
+        const a = makeField(keyPrefix + '_R_ArizaAkimi', 0, 100, 'Fault current');
+        const b = makeField(keyPrefix + '_S_ArizaAkimi', 0, 100, 'Fault current');
+        const c = makeField(keyPrefix + '_R_ArizaAkimi', 1, 200, 'Fault current');
+        const active = [element(), element()];
+        active.forEach((input, index) => {
+            input.type = 'checkbox'; input.checked = true;
+            input.dataset = {id: prefix, key: 'inUse', i: String(index)};
+        });
+        const fields = [a, b, c];
+        let fault;
+        if (page === 'iec104') {
+            fault = makeField('TemporaryFaultBase', 0, 100000, 'Temporary fault');
+            fields.push(fault);
+        }
+        document.querySelectorAll = selector => {
+            if (!selector.includes('[data-id="' + prefix + '"]')) return originalQueryAll(selector);
+            const index = selector.match(/data-i="(\d+)"/);
+            return (selector.includes(':not') ? fields : [...active, ...fields])
+                .filter(input => !index || input.dataset.i === index[1]);
+        };
+        document.querySelector = selector => {
+            const index = selector.match(/data-i="(\d+)"/);
+            const key = selector.match(/data-key="([^"]+)"/);
+            return [...active, ...fields].find(input => index && key && input.dataset.i === index[1] && input.dataset.key === key[1]) || null;
+        };
+        run(`pageCache['${page}'] = {};`);
+        let posts = 0;
+        context.fetch = async () => { posts++; return {ok: true, status: 200, json: async () => ({success: true})}; };
+        await run(`savePage('${page}')`);
+        assert.equal(posts, 0, page + ' duplicate address must block POST');
+        assert.equal(a.classList.contains('invalid'), true);
+        assert.equal(b.classList.contains('invalid'), true);
+        assert.ok(a.error.textContent.includes('L2'));
+        assert.ok(b.error.textContent.includes('L1'));
+        const rendered = run(page === 'iec104' ? 'renderIec104({Hatlar:{}})' : 'renderModbus({Hat:{}})');
+        const allKeys = [...new Set([...rendered.matchAll(/data-id="(?:iec|mod)" data-key="([^"]+)" data-i="0"/g)]
+            .map(match => match[1]).filter(key => key !== 'inUse'))];
+        assert.equal(allKeys.length, page === 'iec104' ? 23 : 21);
+        const originalKey = b.dataset.key;
+        // Every actual rendered address field must collide across categories.
+        a.value = '1000';
+        for (const key of allKeys) {
+            b.dataset.key = key;
+            b.value = '1000';
+            await run(`savePage('${page}')`);
+            assert.equal(posts, 0, page + ': ' + key + ' must block POST');
+            assert.equal(a.classList.contains('invalid'), true, key);
+            assert.equal(b.classList.contains('invalid'), true, key);
+            // Also exercise each field on another feeder.
+            b.dataset.i = '1';
+            b.value = /FaultBase$/.test(key) ? '820' : '1000';
+            await run(`savePage('${page}')`);
+            assert.equal(posts, 0, page + ': cross-feeder ' + key);
+            assert.equal(b.classList.contains('invalid'), true, key);
+            b.dataset.i = '0';
+        }
+        b.dataset.key = originalKey;
+        a.value = '100';
+        b.value = '102';
+        if (page === 'modbus') {
+            assert.ok(rendered.includes('oninput="updateModbusRegisterHint(this)"'));
+            for (const key of allKeys) {
+                context.hintField = a;
+                a.dataset.key = key;
+                a.value = '40001';
+                run('updateModbusRegisterHint(hintField)');
+                const isFloat = /_(ArizaAkimi|AnlikAkim)$/.test(key);
+                assert.equal(a.hint.textContent, isFloat ?
+                    'FLOAT32 · 2 register · 40001–40002' :
+                    'UINT16 · 1 register · 40001', key);
+                assert.ok(run(`feederField('mod', '${key}', 0, 'Address', 40001)`)
+                    .includes(a.hint.textContent), 'initial hint: ' + key);
+            }
+            a.dataset.key = keyPrefix + '_R_ArizaAkimi';
+            a.value = '40003';
+            run('updateModbusRegisterHint(hintField)');
+            assert.equal(a.hint.textContent, 'FLOAT32 · 2 register · 40003–40004');
+            a.value = '';
+            run('updateModbusRegisterHint(hintField)');
+            assert.equal(a.hint.textContent, 'FLOAT32 · 2 register · —');
+            a.value = '40001'; b.value = '40002';
+            await run("savePage('modbus')");
+            assert.equal(posts, 0, '40001/40002 overlap must block POST');
+            assert.ok(a.error.textContent.includes('40002'));
+            assert.ok(a.error.textContent.includes('L2'));
+            assert.ok(b.error.textContent.includes('40002'));
+            assert.ok(b.error.textContent.includes('L1'));
+            a.value = '100';
+            b.value = '101';
+            await run("savePage('modbus')");
+            assert.equal(posts, 0, 'FLOAT32 low word overlap must block POST');
+            b.value = '102';
+        }
+        c.value = '100';
+        await run(`savePage('${page}')`);
+        assert.equal(posts, 0, 'cross-feeder duplicate must block POST');
+        active[1].checked = false;
+        await run(`savePage('${page}')`);
+        assert.equal(posts, 1, 'inactive feeder must not block POST');
+        active[1].checked = true;
+        c.value = '200';
+        if (page === 'iec104') {
+            a.value = '100179';
+            await run("savePage('iec104')");
+            assert.equal(posts, 1, 'fault window collision must block POST');
+            a.value = '100';
+            context.fetch = async () => { posts++; return {ok: false, status: 400, text: async () => ioaError}; };
+            await run("savePage('iec104')");
+            assert.equal(c.classList.contains('invalid'), true);
+            assert.equal(fault.classList.contains('invalid'), true);
+            assert.ok(!c.error.textContent.includes('Hatlar.'));
+            assert.ok(c.error.textContent.length > 0);
+        } else {
+            a.value = '65535';
+            await run("savePage('modbus')");
+            assert.equal(posts, 1, 'FLOAT32 range overflow must block POST');
+            a.value = '100';
+        }
+        document.querySelector = originalQuery;
+        document.querySelectorAll = originalQueryAll;
     }
     console.log('PASS:', label, '- navigation, faults, languages, all config saves, device cache/failure');
 

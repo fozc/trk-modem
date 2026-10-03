@@ -22,6 +22,7 @@
 
 #include "nvram.h"
 #include "crc32.h"
+#include "iec104_util.h"
 #include "mock_platform.h"
 
 static int passed = 0;
@@ -404,8 +405,35 @@ static void test_lifetime_persistence_boundary(void)
           "lifetime: previous saved value survives failed save");
 }
 
+/* Factory IOA ranges must stay disjoint when all lines are enabled. */
+static void test_iec_default_address_regions(void)
+{
+    boot_virgin();
+    const breaker_t *breaker = nvram_get_breaker();
+    for (uint32_t i = 0U; i < MAX_POWER_LINE_COUNT; i++)
+    {
+        const iec104_line_config_t *line = &breaker->line[i].iec104;
+        uint32_t temp = iec104_ioa_3byte_to_uint32(line->temporary_fault);
+        uint32_t perm = iec104_ioa_3byte_to_uint32(line->permanent_fault);
+        check(temp == (100000U + (i * 1000U)),
+              "IEC default: temporary base has its own region");
+        check(perm == (200000U + (i * 1000U)),
+              "IEC default: permanent base has its own region");
+        check(0U == line->in_use, "IEC default: line remains disabled");
+        check((temp + (i * 180U) + 179U) < 200000U,
+              "IEC default: temporary window does not reach permanent region");
+        if ((i + 1U) < MAX_POWER_LINE_COUNT)
+        {
+            check((temp + (i * 180U) + 179U) <
+                  (100000U + ((i + 1U) * 1180U)),
+                  "IEC default: adjacent temporary windows do not overlap");
+        }
+    }
+}
+
 int main(void)
 {
+    test_iec_default_address_regions();
     test_lifetime_persistence_boundary();
     test_normal_flow();
     test_recovery_only_a();

@@ -24,6 +24,8 @@
 typedef struct
  {
     bool in_use[MAX_LINE_COUNT];                // Hat kullaniliyor mu
+    uint32_t temporary_fault_base[MAX_LINE_COUNT];
+    uint32_t permanent_fault_base[MAX_LINE_COUNT];
 
     uint32_t ioa_r_ariza_akimi[MAX_LINE_COUNT];     
     uint32_t ioa_s_ariza_akimi[MAX_LINE_COUNT];    
@@ -201,6 +203,8 @@ typedef struct {
 /* Partial Parser Functions - Alt bölümleri parse et */
 int parse_device_config(const char *json_str, modem_config_t *config);
 
+/* Last synchronous IEC parse/set address error; empty on other errors. */
+const char *json_config_get_iec_address_error(void);
 int parse_iec_config(const char *json_str, jiec_config_t *iec);
 int parse_modbus_config(const char *json_str, jmodbus_configs_t *modbus);
 int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf);
