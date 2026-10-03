@@ -6,7 +6,8 @@ Protocol summary (raw_tcp_fw_update.h):
   Packet = header(12) + data(0..1028) + crc32(4)
   Header: magic(4 LE) + cmd(1) + flags(1) + data_len(2 LE) + seq(4 LE)
   Magic : 0x55574652  ("RFWU" on wire, LE)
-  CRC-32: standard zlib/Ethernet polynomial over header+data
+  CRC-32: reflected CRC-32 without final XOR, matching efw_crc.
+  Auth v2: challenge(16), HMAC-SHA256 tag(16), common product key(16).
 
   Auth gating: the MCU rejects QUERY / REBOOT / ABORT with ERR_AUTH
   until a successful HELLO has been sent on the same TCP connection.
@@ -15,11 +16,16 @@ Protocol summary (raw_tcp_fw_update.h):
 
 Usage:
   python fw_update_tcp.py
+
+Author: Fatih Ozcan
+        fatihozcan@gmail.com
 """
 
 import tkinter as tk
 from tkinter import ttk, filedialog, scrolledtext
 import os
+import hashlib
+import hmac
 import queue
 import socket
 import struct
@@ -38,10 +44,12 @@ CMD_FINISH  = 0x03
 CMD_QUERY   = 0x04
 CMD_REBOOT  = 0x05
 CMD_ABORT   = 0x06
+CMD_CHALLENGE = 0x07
 
 RESP_ACK    = 0x81
 RESP_NACK   = 0x82
 RESP_STATUS = 0x83
+RESP_CHALLENGE = 0x84
 
 NACK_ERRORS = {
     0x01: "Auth failed",
@@ -51,6 +59,7 @@ NACK_ERRORS = {
     0x05: "Flash write error",
     0x06: "No active session",
     0x07: "Size mismatch",
+    0x08: "Hardware RNG unavailable",
 }
 
 SOCKET_TIMEOUT = 30.0  # seconds per operation
@@ -95,26 +104,34 @@ def recv_packet(sock: socket.socket) -> tuple:
     return cmd, data
 
 
-def parse_key(key_str: str) -> int:
-    """
-    Accept:
-      "SMAR"       — 4 ASCII chars  → big-endian uint32 = 0x534D4152
-      "0x534D4152" — hex literal    → uint32
-      "1397049682" — decimal        → uint32
-    The 4-char ASCII interpretation matches the MCU default (0x534D4152 = "SMAR").
-    """
-    s = key_str.strip()
-    if s.lower().startswith("0x"):
-        return int(s, 16) & 0xFFFFFFFF
-    if len(s) == 4:
-        return struct.unpack(">I", s.encode("ascii"))[0]
-    return int(s) & 0xFFFFFFFF
+def default_product_key() -> str:
+    path = os.path.join(os.path.dirname(__file__), "..", "keys", "rfwu_key.bin")
+    try:
+        with open(path, "rb") as source:
+            key = source.read()
+        return key.hex() if len(key) == 16 else ""
+    except OSError:
+        return ""
 
 
-def compute_auth_token(shared_key: int, total_size: int) -> int:
-    """auth_token = CRC32(shared_key_LE_bytes) XOR total_size"""
-    key_bytes = struct.pack("<I", shared_key)
-    return (_crc32(key_bytes) ^ total_size) & 0xFFFFFFFF
+def parse_key(key_str: str) -> bytes:
+    value = key_str.strip()
+    if value.lower().startswith("0x"):
+        value = value[2:]
+    if len(value) != 32:
+        raise ValueError("Key must contain 32 hexadecimal characters (16 bytes)")
+    key = bytes.fromhex(value)
+    if not any(key):
+        raise ValueError("Key must not be all zero")
+    return key
+
+
+def compute_auth_token(shared_key: bytes, nonce: bytes,
+                       total_size: int, file_hash: int) -> bytes:
+    if len(shared_key) != 16 or len(nonce) != 16:
+        raise ValueError("RFWU v2 requires a 16-byte key and nonce")
+    message = b"RFWU2" + nonce + struct.pack("<II", total_size, file_hash)
+    return hmac.new(shared_key, message, hashlib.sha256).digest()[:16]
 
 
 def compute_file_hash(fw_data: bytes) -> int:
@@ -122,21 +139,36 @@ def compute_file_hash(fw_data: bytes) -> int:
     return _crc32(fw_data[:min(1024, len(fw_data))]) & 0xFFFFFFFF
 
 
-def build_hello_payload(fw_data: bytes, shared_key: int) -> bytes:
-    """HELLO payload: total_size(4 LE) + file_hash(4 LE) + auth_token(4 LE)."""
+def build_hello_payload(fw_data: bytes, shared_key: bytes, nonce: bytes) -> bytes:
     total_size = len(fw_data)
-    file_hash  = compute_file_hash(fw_data)
-    auth_token = compute_auth_token(shared_key, total_size)
-    return struct.pack("<III", total_size, file_hash, auth_token)
+    file_hash = compute_file_hash(fw_data)
+    tag = compute_auth_token(shared_key, nonce, total_size, file_hash)
+    return struct.pack("<II", total_size, file_hash) + tag
 
 
-# ── Background workers ───────────────────────────────────────────────
+def request_hello_payload(transact, fw_data: bytes, shared_key: bytes) -> bytes:
+    cmd, nonce = transact(CMD_CHALLENGE)
+    if cmd != RESP_CHALLENGE or len(nonce) != 16:
+        if cmd == RESP_NACK and nonce:
+            reason = NACK_ERRORS.get(nonce[0], "Unknown error")
+            raise ValueError(f"Challenge rejected: {reason}")
+        raise ValueError("Device does not support RFWU v2 challenge")
+    return build_hello_payload(fw_data, shared_key, nonce)
+
+
+def authenticate_socket(sock, fw_data: bytes, shared_key: bytes) -> tuple:
+    def transact(cmd, data=b""):
+        sock.sendall(build_packet(cmd, data))
+        return recv_packet(sock)
+    payload = request_hello_payload(transact, fw_data, shared_key)
+    return transact(CMD_HELLO, payload)
+
 
 class TransferWorker:
     """Runs in a background thread; communicates with the GUI via a Queue."""
 
     def __init__(self, sock: socket.socket, fw_data: bytes,
-                 shared_key: int, q: queue.Queue,
+                 shared_key: bytes, q: queue.Queue,
                  force_restart: bool = False) -> None:
         self._sock          = sock
         self.fw_data        = fw_data
@@ -162,9 +194,10 @@ class TransferWorker:
     _CMD_NAMES = {
         CMD_HELLO: "HELLO", CMD_DATA: "DATA", CMD_FINISH: "FINISH",
         CMD_QUERY: "QUERY", CMD_REBOOT: "REBOOT", CMD_ABORT: "ABORT",
+        CMD_CHALLENGE: "CHALLENGE",
     }
     _RESP_NAMES = {
-        RESP_ACK: "ACK", RESP_NACK: "NACK", RESP_STATUS: "STATUS",
+        RESP_ACK: "ACK", RESP_NACK: "NACK", RESP_STATUS: "STATUS", RESP_CHALLENGE: "CHALLENGE",
     }
 
     def _transact(self, cmd: int, data: bytes = b"", seq: int = 0) -> tuple:
@@ -190,25 +223,28 @@ class TransferWorker:
     def _do_transfer(self) -> None:
         total_size    = len(self.fw_data)
         file_hash     = compute_file_hash(self.fw_data)
-        auth_token    = compute_auth_token(self.shared_key, total_size)
-        hello_payload = build_hello_payload(self.fw_data, self.shared_key)
 
         # ── Optional force restart ────────────────────────────────────
         if self._force_restart:
             # The MCU rejects ABORT with ERR_AUTH until a HELLO succeeds
             # on this connection — authenticate first, then clear.
             self._log("TX  HELLO  (force restart: authenticate for ABORT)")
-            self._transact(CMD_HELLO, hello_payload)
+            hello_payload = request_hello_payload(
+                self._transact, self.fw_data, self.shared_key)
+            restart_cmd, restart_data = self._transact(CMD_HELLO, hello_payload)
+            if restart_cmd != RESP_ACK:
+                raise ValueError("Authentication failed before force restart")
             self._log("TX  ABORT  (force restart — clearing MCU session)")
             resp_cmd, _resp_data = self._transact(CMD_ABORT)
             if resp_cmd == RESP_NACK:
                 self._log("RX  NACK  (no session to clear — continuing)")
 
         # ── HELLO ───────────────────────────────────────────────────
+        hello_payload = request_hello_payload(
+            self._transact, self.fw_data, self.shared_key)
         self.q.put(("phase", "HELLO"))
         self._log(
-            f"TX  HELLO  total={total_size:,}  hash=0x{file_hash:08X}  "
-            f"token=0x{auth_token:08X}")
+            f"TX  HELLO  total={total_size:,}  hash=0x{file_hash:08X}")
         resp_cmd, resp_data = self._transact(CMD_HELLO, hello_payload)
 
         if resp_cmd == RESP_NACK:
@@ -325,7 +361,7 @@ class StatusWorker(_OneShot):
     """
 
     def __init__(self, sock: socket.socket, q: queue.Queue,
-                 fw_data: bytes | None, shared_key: int,
+                 fw_data: bytes | None, shared_key: bytes,
                  authenticate: bool) -> None:
         super().__init__(sock, q)
         self.fw_data      = fw_data
@@ -340,9 +376,9 @@ class StatusWorker(_OneShot):
                 self.q.put(("log",
                             "TX  HELLO  (authenticate for QUERY — resets "
                             "device progress if a different file is loaded)"))
-                resp_cmd, resp_data = self._transact(
-                    CMD_HELLO,
-                    build_hello_payload(self.fw_data, self.shared_key))
+                payload = request_hello_payload(
+                    self._transact, self.fw_data, self.shared_key)
+                resp_cmd, resp_data = self._transact(CMD_HELLO, payload)
                 if resp_cmd == RESP_NACK:
                     code = resp_data[0] if resp_data else 0
                     self.q.put(("error",
@@ -510,12 +546,12 @@ class App(tk.Tk):
         self._port_entry.grid(row=0, column=3, padx=(4, 12))
 
         ttk.Label(cf, text="Key:").grid(row=0, column=4, sticky="e")
-        self._key_var = tk.StringVar(value="SMAR")
-        self._key_entry = ttk.Entry(cf, textvariable=self._key_var, width=14)
+        self._key_var = tk.StringVar(value=default_product_key())
+        self._key_entry = ttk.Entry(cf, textvariable=self._key_var, width=34, show="*")
         self._key_entry.grid(row=0, column=5, padx=(4, 12))
         self._create_tooltip(self._key_entry,
-            "4 ASCII chars (e.g. SMAR), hex (0x534D4152), or decimal.\n"
-            "Must match RFWU shared_key stored in device NVRAM.")
+            "32 hexadecimal characters for the common product key.\n"
+            "Loaded from keys/rfwu_key.bin when available.")
 
         self._btn_connect = ttk.Button(cf, text="Connect", command=self._connect_tcp)
         self._btn_connect.grid(row=0, column=6, padx=(0, 6))
@@ -911,6 +947,8 @@ class App(tk.Tk):
         self._btn_reboot.configure(state="disabled")
         self._reset_stats()
         self._set_transferring(True)
+        # A new CHALLENGE revokes the prior device authentication.
+        self._authenticated = False
         self._worker = TransferWorker(self._sock, self._fw_data, key, self._q,
                                       self._force_restart_var.get())
         self._worker_thread = threading.Thread(target=self._worker.run, daemon=True)
@@ -958,9 +996,8 @@ class App(tk.Tk):
                     return
                 _, _, key = self._get_params()
                 self._log("TX  HELLO  (authenticate for ABORT)")
-                self._sock.sendall(build_packet(
-                    CMD_HELLO, build_hello_payload(self._fw_data, key)))
-                resp_cmd, resp_data = recv_packet(self._sock)
+                resp_cmd, resp_data = authenticate_socket(
+                    self._sock, self._fw_data, key)
                 if resp_cmd == RESP_NACK:
                     code = resp_data[0] if resp_data else 0
                     self._log("ERROR: Authentication failed "

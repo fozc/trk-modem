@@ -21,6 +21,7 @@
 static modem_config_t stored_config;
 static bool last_sync_force;
 static uint32_t sync_count;
+static int sync_result;
 
 static modem_config_t *get_config_rw_callback(int call_count)
 {
@@ -39,7 +40,7 @@ static int sync_callback(bool force, int call_count)
     (void)call_count;
     last_sync_force = force;
     sync_count++;
-    return 37;
+    return sync_result;
 }
 
 void setUp(void)
@@ -47,6 +48,7 @@ void setUp(void)
     memset(&stored_config, 0, sizeof(stored_config));
     last_sync_force = true;
     sync_count = 0U;
+    sync_result = 37;
     nvram_get_modem_config_rw_StubWithCallback(get_config_rw_callback);
     nvram_get_modem_config_StubWithCallback(get_config_callback);
     nvram_sync_StubWithCallback(sync_callback);
@@ -301,3 +303,45 @@ void test_modem_config_imei_shorter_and_empty_inputs_replace_old_value(void)
 }
 
 /*** end of file ***/
+
+void test_lifetime_update_changes_nvram_ram_without_automatic_sync(void)
+{
+    stored_config.lifetime = 120U;
+    modem_config_set_lifetime(modem_config_get_lifetime() + 1U);
+    TEST_ASSERT_EQUAL_UINT32(121U, stored_config.lifetime);
+    TEST_ASSERT_EQUAL_UINT32(0U, sync_count);
+}
+
+void test_lifetime_saves_only_at_25_hour_boundary(void)
+{
+    sync_result = 0;
+    for (uint32_t second = 0U; 89999U > second; second++)
+    {
+        modem_config_lifetime_tick();
+    }
+    TEST_ASSERT_EQUAL_UINT32(89999U, stored_config.lifetime);
+    TEST_ASSERT_EQUAL_UINT32(0U, sync_count);
+    modem_config_lifetime_tick();
+    TEST_ASSERT_EQUAL_UINT32(90000U, stored_config.lifetime);
+    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
+    TEST_ASSERT_FALSE(last_sync_force);
+}
+
+void test_lifetime_failed_save_does_not_retry_each_second(void)
+{
+    sync_result = -1;
+    for (uint32_t second = 0U; 90000U > second; second++)
+    {
+        modem_config_lifetime_tick();
+    }
+    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
+    for (uint32_t second = 0U; 89999U > second; second++)
+    {
+        modem_config_lifetime_tick();
+    }
+    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
+    sync_result = 0;
+    modem_config_lifetime_tick();
+    TEST_ASSERT_EQUAL_UINT32(2U, sync_count);
+    TEST_ASSERT_EQUAL_UINT32(180000U, stored_config.lifetime);
+}

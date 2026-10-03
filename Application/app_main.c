@@ -2,7 +2,7 @@
  * app_main.c
  *
  *  Created on: Sep 16, 2025
- *      Author: Fatih Özcan
+ *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  */
 #include "app_main.h"
@@ -97,7 +97,7 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 		if(timer_expired(&life_time_timer)){
 			timer_reset(&life_time_timer);
 			//nvram_lifetime_increment(1);
-			modem_config_set_lifetime(modem_config_get_lifetime() + 1);
+			modem_config_lifetime_tick();
 
 		}
 

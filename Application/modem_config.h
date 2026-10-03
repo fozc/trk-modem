@@ -2,7 +2,8 @@
  * config_manager.h
  *
  *  Created on: Feb 1, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef MODEM_CONFIG_H_
@@ -74,6 +75,8 @@ void modem_config_set_production_date(uint32_t date);
 // lifetime
 uint32_t modem_config_get_lifetime(void);
 void modem_config_set_lifetime(uint32_t lifetime);
+/** Main context, once per second; saves the existing image every 25h. */
+void modem_config_lifetime_tick(void);
 
 // periodic_modem_reset_period (Read-Write)
 uint32_t modem_config_get_reset_period(void);

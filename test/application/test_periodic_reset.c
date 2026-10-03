@@ -31,6 +31,8 @@ static clock_time_t captured_interval;
 static uint32_t timer_set_count;
 static uint32_t timer_expired_count;
 static uint32_t system_reset_count;
+static uint32_t sync_count;
+static int sync_result;
 
 static uint32_t get_period_callback(int call_count)
 {
@@ -55,7 +57,15 @@ int timer_expired(struct timer *timer)
 static void system_reset_callback(int call_count)
 {
     (void)call_count;
+    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
     system_reset_count++;
+}
+
+static int sync_callback(int call_count)
+{
+    (void)call_count;
+    sync_count++;
+    return sync_result;
 }
 
 void setUp(void)
@@ -66,6 +76,9 @@ void setUp(void)
     timer_set_count = 0U;
     timer_expired_count = 0U;
     system_reset_count = 0U;
+    sync_count = 0U;
+    sync_result = 0;
+    modem_config_sync_StubWithCallback(sync_callback);
     modem_config_get_reset_period_StubWithCallback(get_period_callback);
     bsp_system_reset_StubWithCallback(system_reset_callback);
 
@@ -168,3 +181,13 @@ void test_periodic_reset_can_be_disabled_and_reenabled(void)
 }
 
 /*** end of file ***/
+
+void test_periodic_reset_save_failure_still_requests_reset(void)
+{
+    fake_period_s = 1U;
+    fake_expired = 1;
+    sync_result = -1;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
+    TEST_ASSERT_EQUAL_UINT32(1U, system_reset_count);
+}

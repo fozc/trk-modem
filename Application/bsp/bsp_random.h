@@ -19,6 +19,8 @@ extern "C" {
 
 /** Read RNG or availability fallback. Main context; NULL returns false. */
 bool bsp_random_word(uint32_t *value);
+/** Hardware RNG only; fails without generating availability fallback. */
+bool bsp_random_secure_word(uint32_t *value);
 /** Sum of accepted RNG words and the fixed non-secret startup value. */
 uint32_t bsp_get_random_accumulator(void);
 /** Mix tick and existing TX/RX counters once before fallback generation. */

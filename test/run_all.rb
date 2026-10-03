@@ -11,6 +11,7 @@ INTEGRATION_SUITES = [
   ["gsm", "gsm", [[MAKE, "run_all"]]],
   ["libs", "libs", [[MAKE, "run"]]],
   ["nvram", "nvram", [[MAKE, "run"]]],
+  ["rfwu_auth", "rfwu_auth", [[MAKE, "run"]]],
   ["rf_hub_sim", "rf_hub_sim", [[MAKE, "run"]]],
   ["web_auth", "web_auth", [[MAKE, "run"]]],
   ["web_navigation", "web_navigation", [[MAKE, "run"]]]

@@ -2,7 +2,8 @@
  * config_manager.c
  *
  *  Created on: Feb 1, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include <string.h>
 #include "modem_config.h"
@@ -11,6 +12,11 @@
 #include "periodic_reset.h"
 
 #define modem_config (nvram_get_modem_config_rw())
+
+#define LIFETIME_SYNC_INTERVAL_SECONDS (25U * 60U * 60U)
+
+/* Main process only; reset each boot and after each save attempt. */
+static uint32_t lifetime_sync_seconds;
 
 int modem_config_sync(void)
 {
@@ -236,6 +242,21 @@ uint32_t modem_config_get_lifetime(void)
 void modem_config_set_lifetime(uint32_t lifetime)
 {
 	modem_config->lifetime = lifetime;
+}
+
+/* Called once per lifetime second by the main process. */
+void modem_config_lifetime_tick(void)
+{
+    modem_config_set_lifetime(modem_config_get_lifetime() + 1U);
+    lifetime_sync_seconds++;
+    if (LIFETIME_SYNC_INTERVAL_SECONDS <= lifetime_sync_seconds)
+    {
+        lifetime_sync_seconds = 0U;
+        if (0 != modem_config_sync())
+        {
+            CSLOG_ERR("[Lifetime] NVRAM sync failed; next attempt in 25h\r\n");
+        }
+    }
 }
 
 // periodic_modem_reset_period (Read-Write)
