@@ -2,7 +2,7 @@
 
 | Belge künyesi | Değer |
 |---|---|
-| Sürüm | 1.2 |
+| Sürüm | 1.4 |
 | Tarih | 03.10.2026 |
 | İncelenen commit (kod sürümü) | `a57686279eb913801a766e53f471e4b4c18abfd5` |
 | Uygulama sürümü | 1.0.1 |
@@ -176,7 +176,7 @@ Kabul sırası önerisi: önce P0 işlev ve kimlik modeli; ardından kapsam/kal�
 - Kullanıcı CubeMX üzerinden RNG (rastgele sayı üreticisi) ve clock error detection (saat hatası algılama) özelliğini etkinleştirmiştir. Oluşan HAL ve proje değişiklikleri korunmuştur.
 - `#if 0` ile kapatılmış kodlar korunmalıdır. Kullanıcı açıkça kaldırılmasını istemedikçe silinmemelidir. Kaldırılan GSM HTTP bloğu geri alınmış ve bu kural `AGENTS.md` dosyasına eklenmiştir.
 
-### 6.2 Doğrulanan sorunlar ve düzeltmeler
+### 6.2 B seçeneğinin ilk uygulaması (1.1–1.2)
 
 Eski oturum tokeninin tick değeri ve kullanıcı adından türetilmesi gerçek bir sorundur; gerçek giriş ve token doğrulama fonksiyonlarıyla host ortamında yeniden üretildi. Mevcut IP parolasıyla giriş davranışı korunmuştur. Yeni token donanım RNG kaynağından dört adet 32 bit değer alır ve 32 hex karakterle taşınır. RNG okuması başarısızsa, saat veya seed (başlangıç değeri) hatası varsa ya da üretilen değer bütünüyle sıfırsa giriş HTTP 503 ile reddedilir; tahmin edilebilir bir yedek token üretilmez. Başarısız yeni giriş denemesinde mevcut token, rol ve son etkinlik zamanı korunur; bu davranış 1.2 güncellemesinde kullanıcı onayıyla değiştirilmiştir.
 
@@ -198,7 +198,7 @@ Aktif oturum tokeni, HTTP yanıt gövdesi ve IEC ayarlarının tam JSON gövdesi
 
 Test ve derleme kayıtları yerel `test/build/production-audit-2026-10-03/` klasöründedir. Yeni token testleri kaynak ağacında `test/web_server/test_http_session_token.c` dosyasındadır. 16 izole kontrolün kalıcı kaynağı `test/integration/web_auth/run_tests.py` dosyasına taşınmış ve merkezi test çalıştırıcısına eklenmiştir. Taşıma sonrasında tam merkezi koşuda 284 Ceedling testi ve yeni web_auth dahil 8 integration paketi geçmiştir. Üretilen çıktılar `test/build/web_auth/` altındadır; tam cihaz testi yerine geçmez.
 
-### 6.4 RNG hata yolunun sadeleştirilmesi
+### 6.4 RNG hata yolunun önceki uygulaması (1.2)
 
 **Kaynak kanıtı:** Depoda kullanılan `Drivers/STM32U3xx_HAL_Driver/Src/stm32u3xx_hal_rng.c` dosyasında `HAL_RNG_GenerateRandomNumber()` mevcut seed hatasını kontrol edip `RNG_RecoverSeedError()` çağırır. Önceki BSP ön kontrolü seed hata bayrağında bu çağrıya ulaşmadan dönüyordu. Ön kontrolde yalnız clock hatası denetimi bırakılmıştır. HAL okuması sonrası seed ve clock bayraklarının denetimi korunmuştur; hata işaretli veri token üretiminde kullanılmaz.
 
@@ -210,16 +210,82 @@ Kaynaklara dayalı hata sıklığı verisi bulunmadığından RNG arızası içi
 
 ### 6.5 Kalan riskler ve önerilen sıra
 
-B seçeneği token tahmin edilebilirliğini giderir; IP tabanlı admin parolası hâlâ tahmin edilebilirdir. HTTP ve URL sorgusunda token taşınması da korunmuştur; taşıma güvenliği ve tarayıcı/ara katman kayıtları ayrı değerlendirilmelidir. Bu nedenle kimlik modeli kabul kapısı bütünüyle kapanmamıştır.
+Normal RNG yolu token tahmin edilebilirliğini giderir; 6.6 bölümündeki fallback bu güvenceyi sağlamaz. IP tabanlı admin parolası hâlâ tahmin edilebilirdir. HTTP ve URL sorgusunda token taşınması da korunmuştur; taşıma güvenliği ve tarayıcı/ara katman kayıtları ayrı değerlendirilmelidir. Bu nedenle kimlik modeli kabul kapısı bütünüyle kapanmamıştır.
 
 Bir sonraki kaynak incelemesinde RFWU kimlik doğrulamasının replay (aynı isteğin tekrar kullanılması) riskinin gerçek çağrı zincirinde doğrulanması önerilir. Protokol davranışı değiştirilecekse seçenekler kullanıcıya sunulmalıdır. Ardından kalıcılık ve ISR/shell bulguları sırasıyla ele alınmalıdır. Üretime hazır kararı için bu açık konuların ve gerçek cihaz kabul testlerinin tamamlanması gereklidir.
+
+### 6.6 RNG kullanılamadığında bağlantı sürekliliği (1.3)
+
+**Kullanıcı kararı:** RNG hatasında web girişinin devam etmesi için daha
+zayıf bir fallback kabul edilmiştir. Bu bölüm 6.2–6.4 bölümlerindeki
+HTTP 503 davranışının yerine geçen güncel uygulamayı açıklar.
+
+Başarılı `bsp_random_word()` okumaları RAM'deki 32 bit birikime eklenir.
+Birikim başlangıçta bilgisayarda bir kez rastgele seçilen sabit değerden
+başlar; bu değer firmware'de bulunur ve gizli anahtar değildir. Toplama
+unsigned olarak modulo 2^32 sarar. Hatalı okumalar birikime eklenmez.
+Her üretilen HAL dahili değeri değil, BSP tarafından kabul edilen okumalar
+biriktirilir.
+
+Donanım RNG ile token üretimi tamamlanamazsa birikim, `bsp_get_tick()` ve
+mevcut `gsm_get_rxtx_counters()` sonuçları RAM'de ilerleyen fallback durumuna
+karıştırılır. Bu sayaçlar genel GSM RX/TX byte toplamlarıdır; ayrıca web
+sayacı eklenmemiştir. xorshift32 ile 32 hex karakterlik token oluşturulur.
+Doğru parola kontrolü ve mevcut oturum süresi/kilit kuralları geçerlidir.
+Başarılı fallback girişi de yeni rol/token yayımlar ve önceki tokeni
+geçersiz kılar. Fallback kullanımı loglanır; token ve birikim loglanmaz.
+
+Kullanıcı yönlendirmesiyle HAL başlatması main içindeki mevcut
+`MX_RNG_Init()` akışında bırakılmıştır. BSP içinde ikinci başlatma yoktur;
+main tarafından hazırlanmış RNG handle doğrudan kullanılır. Core dosyalarında
+bu uygulamaya ait değişiklik kalmamıştır. NVRAM alanı veya vendor sürücü
+değişikliği yapılmamıştır; `#if 0` blokları korunmuştur.
+
+**Kapsam sınırı:** Fallback kriptografik bir üretici değildir. 32 hex
+karakter, 128 bit güvenlik gücü olarak değerlendirilmemelidir. Tick ve GSM
+sayaçları gizli rastgele kaynaklar değildir. RAM birikimi/durumu reset ile
+başlangıca döner; aynı girdilerle ayrı açılışlarda aynı token oluşabilir.
+Bu değişiklik, RNG hatasının girişe etkisini azaltır; ağ/modem, güç veya
+sistem saati arızalarında erişim garantisi sağlamaz. Mevcut RNG init,
+sistem saati ve HAL MSP saat yapılandırması fatal hata yolları değiştirilmemiştir. Donanım arızası olasılığına sayısal değer verilmemiştir.
+
+**Doğrulama:** 16 token Ceedling testi ve 18 kalıcı izole host kontrolü
+geçmiştir. Tam host koşusunda 288 Ceedling testi ve 8 integration paketi
+geçmiştir. Son kullanıcı yönlendirmesiyle HAL başlatması main içinde bırakıldıktan
+sonra 18 kontrol ve Release derlemesi yeniden doğrulanmıştır; paket içerik/imza öz denetimi başarılıdır.
+Gerçek cihaz üzerinde RNG okuma hatası ve fallback girişi henüz denenmemiştir.
+Bu kaynak değişiklikleri kullanıcı kararıyla BSP random modülü commitinde kaydedilir.
+
+### 6.7 Ayrı BSP random modülü (1.4)
+
+RNG okuması, kabul edilen değerlerin RAM birikimi, fallback karıştırma ve
+xorshift32 durumu `Application/bsp/bsp_random.c/.h` modülüne taşınmıştır.
+HAL başlatması main içinde kalır. Modül GSM veya HTTP'ye bağımlı değildir;
+fallback girişleri tick/TX/RX parametreleri olarak web katmanından verilir.
+Web katmanı yalnız 32 hex karaktere biçimlendirme, token doğrulaması ve
+oturum yönetimini yapar. 6.6 bölümündeki güvenlik sınırları korunmuştur.
+
+Yeni modülün 9 Ceedling testi gerçek kaynak dosyasını CMock HAL ile derler.
+Web token modülünün 12 Ceedling testi korunmuştur; 19 kalıcı izole host
+kontrolü çalıştırılmıştır. Token üreticisi doğrudan `bsp_random_word()`
+çağırır; random işlev sağlayıcısı parametresi kaldırılmıştır. RNG/fallback
+seçimi BSP içinde yapılır. Fallback geçişinde bir kez cslog bildirimi
+verilir; sağlıklı okumadan sonra yeni hata olursa bildirim tekrar verilir.
+Güncel tam koşuda 293 Ceedling testi ve 8 integration paketi geçmiştir. ARM Release derlemesi yeni `bsp_random.c` dosyasını derleyip
+bağlamıştır; paket içerik/imza öz denetimi başarılıdır. CubeIDE yeni kaynağı
+BSP dizininden keşfeder; yerel generated Release kaynak/nesne listeleri
+derleme doğrulaması için güncellenmiştir. Cihaz testi yapılmamıştır.
+
+Dosya başlıklarında `Author: Fatih Ozcan` ve alt satırda
+`fatihozcan@gmail.com` kullanılması kuralı AGENTS.md dosyasına eklenmiştir.
+Bu çalışmada yeni veya düzenlenen C başlıkları bu biçime getirilmiştir.
 
 ## 7. Değişiklik geçmişi
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
 | 2026-10-03 | 1.0 | İlk bağımsız değerlendirme; kaynak doğrulaması, host testleri, ARM derleme ve paket ölçümleri |
-
 | 2026-10-03 | 1.1 | B seçeneği, RNG kaynaklı token, hassas log düzeltmeleri, kullanıcı kararları ve ek doğrulama sonuçları |
-
 | 2026-10-03 | 1.2 | HAL seed kurtarmasına erişim, RNG hatasında oturum/rol korunması, sade akış ve kanıt/basitlik kuralları |
+| 2026-10-03 | 1.3 | Kullanıcı onaylı RNG birikimi ve genel GSM sayaçlarıyla fallback; başlangıç, testler ve güvenlik sınırları |
+| 2026-10-03 | 1.4 | Ayrı BSP random modülü, modül CMock testleri ve yazar başlığı kuralı |

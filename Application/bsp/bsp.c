@@ -2,7 +2,8 @@
  * bsp.c
  *
  *  Created on: Sep 16, 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "bsp.h"
 #include "main.h"
@@ -15,7 +16,6 @@
 
 #include <stdbool.h>
 
-extern RNG_HandleTypeDef hrng;
 
 static const char *banner =  "\r\n+=================TROIKA======================+\r\n";
 
@@ -314,38 +314,4 @@ void gsm_signal_led_apply(gsm_signal_tech_t  tech,
             led_driver_set_gsm_mode(LED_GSM_OFF);
             break;
     }
-}
-
-
-
-
-/** Hardware entropy is consumed only by the cooperative main context. */
-bool bsp_random_word(uint32_t *value)
-{
-    uint32_t word = 0U;
-
-    if (NULL == value)
-    {
-        return false;
-    }
-    *value = 0U;
-    if ((RESET != __HAL_RNG_GET_FLAG(&hrng, RNG_FLAG_CECS)) ||
-        (RESET != __HAL_RNG_GET_IT(&hrng, RNG_IT_CEI)))
-    {
-        return false;
-    }
-    /* Let HAL recover a current seed error before reading entropy. */
-    if (HAL_OK != HAL_RNG_GenerateRandomNumber(&hrng, &word))
-    {
-        return false;
-    }
-    if ((RESET != __HAL_RNG_GET_FLAG(&hrng, RNG_FLAG_CECS)) ||
-        (RESET != __HAL_RNG_GET_FLAG(&hrng, RNG_FLAG_SECS)) ||
-        (RESET != __HAL_RNG_GET_IT(&hrng, RNG_IT_CEI)) ||
-        (RESET != __HAL_RNG_GET_IT(&hrng, RNG_IT_SEI)))
-    {
-        return false;
-    }
-    *value = word;
-    return true;
 }
