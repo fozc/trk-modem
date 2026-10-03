@@ -536,7 +536,7 @@ static void fault_log_dump_feeder(uint8_t feeder)
 
 	SHELL_LOG("\r\n=== Feeder %d ===\r\n", feeder + 1);
 
-	for(int phase = 0; phase < PHASE_MAX; phase++)
+	for(uint32_t phase = 0U; phase < PHASE_MAX; phase++)
 	{
 		uint32_t total_temp = fh->total_temporary_faults[phase];
 		uint32_t temp_count = total_temp > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_temp;
@@ -583,7 +583,7 @@ static void fault_log_dump_feeder(uint8_t feeder)
 
 void fault_log_dump(void)
 {
-	for(int feeder = 0; feeder < MAX_POWER_LINE_COUNT; feeder++)
+	for(uint32_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
 	{
 		bsp_kick_wdt();
 		fault_log_dump_feeder((uint8_t)feeder);
@@ -604,14 +604,15 @@ static void test_fault_log_add_random(void)
 	 *     temporary  →  0 / 0
 	 *     permanent  →  1 / 1
 	 */
-	for(int feeder = 0; feeder < MAX_POWER_LINE_COUNT; feeder++)
+	for(uint32_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
 	{
-		for(int phase = 0; phase < PHASE_MAX; phase++)
+		for(uint32_t phase = 0U; phase < PHASE_MAX; phase++)
 		{
 			/* 5 temporary */
-			for(int i = 0; i < 5; i++)
+			for(uint32_t i = 0U; i < 5U; i++)
 			{
-				float    fault_current     = (feeder + 1) * 100.0f + (phase + 1) * 10.0f + (i + 1) * 1.0f;
+				float    fault_current     = (float)(feeder + 1U) * 100.0f
+                    + (float)(phase + 1U) * 10.0f + (float)(i + 1U) * 1.0f;
 				uint16_t fault_duration_ms = (uint16_t)((feeder + 1) * 1000U + (phase + 1) * 100U + (i + 1) * 10U);
 
 				fault_log_add(fault_current, fault_duration_ms,
@@ -620,9 +621,10 @@ static void test_fault_log_add_random(void)
 			}
 
 			/* 5 permanent */
-			for(int i = 0; i < 5; i++)
+			for(uint32_t i = 0U; i < 5U; i++)
 			{
-				float    fault_current     = (feeder + 1) * 100.0f + (phase + 1) * 10.0f + (i + 1) * 1.0f;
+				float    fault_current     = (float)(feeder + 1U) * 100.0f
+                    + (float)(phase + 1U) * 10.0f + (float)(i + 1U) * 1.0f;
 				uint16_t fault_duration_ms = (uint16_t)((feeder + 1) * 1000U + (phase + 1) * 100U + (i + 1) * 10U);
 
 				fault_log_add(fault_current, fault_duration_ms,
@@ -659,7 +661,7 @@ void fault_log_clear(void)
 {
 	bool all_ok = true;
 
-	for(int feeder = 0; feeder < MAX_POWER_LINE_COUNT; feeder++)
+	for(uint32_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
 	{
 		/* Once guncel gecerli goruntuyu yukle: clear'in sequence tabani
 		 * flash'taki en taze kopyadan gelsin. Bekleyen flush basarisizsa
@@ -756,7 +758,7 @@ void fault_log_init(void)
 
 	/* Her feeder'i yukle: gecerli kopyayi sec, bozuk ikizi onar; bakir
 	 * flash'ta default bos goruntu hemen yazilir (load_feeder icinde). */
-	for(int feeder = 0; feeder < MAX_POWER_LINE_COUNT; feeder++)
+	for(uint32_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
 	{
 		g_current_feeder = -1; /* force reload */
 
@@ -796,7 +798,7 @@ static bool fault_log_add_temporary(uint8_t feeder_id, uint8_t phase_id, const f
 	fault_log_t *slot = &g_feeder_log.temporary_fault_log[phase_id][idx];
 	*slot = *log;
 	slot->crc = calculate_crc(slot, sizeof(fault_log_t));
-	g_feeder_log.temporary_fault_log_index[phase_id] = (idx + 1u) % FAULT_LOG_COUNT;
+	g_feeder_log.temporary_fault_log_index[phase_id] = (uint8_t)((idx + 1U) % FAULT_LOG_COUNT);
 	g_feeder_log.total_temporary_faults[phase_id]++;
 
 	return true;
@@ -820,7 +822,7 @@ static bool fault_log_add_permanent(uint8_t feeder_id, uint8_t phase_id, const f
 	fault_log_t *slot = &g_feeder_log.permanent_fault_log[phase_id][idx];
 	*slot = *log;
 	slot->crc = calculate_crc(slot, sizeof(fault_log_t));
-	g_feeder_log.permanent_fault_log_index[phase_id] = (idx + 1u) % FAULT_LOG_COUNT;
+	g_feeder_log.permanent_fault_log_index[phase_id] = (uint8_t)((idx + 1U) % FAULT_LOG_COUNT);
 	g_feeder_log.total_permanent_faults[phase_id]++;
 
 	return true;
@@ -836,8 +838,8 @@ bool fault_log_add(float fault_current, uint16_t fault_duration_ms, uint8_t nomi
 		.tm = timestamp,
 		.fault_duration_ms = fault_duration_ms,
 		.info = {
-			.feeder = feeder_id & 0x07,
-			.phase = phase_id & 0x03,
+			.feeder = feeder_id & 0x07U,
+			.phase = phase_id & 0x03U,
 			.nominal_current_status = nominal_current_status ? 1 : 0,
 			.power_status = power_status ? 1 : 0,
 			.type = type ? 1 : 0

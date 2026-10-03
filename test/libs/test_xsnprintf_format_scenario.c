@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include "xprintf.h"
 
 static void check(bool condition, const char *message)
@@ -316,6 +317,39 @@ void test_long_integer_formats_used_by_arm_logs(void)
     TEST_ASSERT_EQUAL_STRING("4294967295 -2147483647 001234AB", buffer);
 }
 
+void test_http_sized_accumulation_preserves_prefix_and_guards(void)
+{
+    static char guarded[8194];
+    static const unsigned int capacities[] = {1U, 2U, 32U, 8192U};
+    static const char fragment[] = "4294967295,65535,-32768;";
+    const unsigned int fragment_len = (unsigned int)(sizeof(fragment) - 1U);
+
+    for (size_t i = 0U; i < sizeof(capacities) / sizeof(capacities[0]); i++)
+    {
+        const unsigned int capacity = capacities[i];
+        unsigned int pos = 0U;
+        char *buffer = &guarded[1];
+        memset(guarded, 0x55, sizeof(guarded));
+        guarded[0] = (char)0x2A;
+        guarded[capacity + 1U] = (char)0x2A;
+
+        for (unsigned int field = 0U; field < 500U; field++)
+        {
+            pos += xsnprintf(buffer + pos, capacity - pos, "%s", fragment);
+            TEST_ASSERT_LESS_THAN_UINT32(capacity, pos);
+            TEST_ASSERT_EQUAL_INT((int)pos, (int)strlen(buffer));
+        }
+        TEST_ASSERT_EQUAL_UINT32(capacity - 1U, pos);
+        TEST_ASSERT_EQUAL_CHAR('\0', buffer[pos]);
+        TEST_ASSERT_EQUAL_CHAR((char)0x2A, guarded[0]);
+        TEST_ASSERT_EQUAL_CHAR((char)0x2A, guarded[capacity + 1U]);
+        for (unsigned int j = 0U; j < pos; j++)
+        {
+            TEST_ASSERT_EQUAL_CHAR(fragment[j % fragment_len], buffer[j]);
+        }
+    }
+}
+
 void setUp(void)
 {
 }
@@ -325,3 +359,21 @@ void tearDown(void)
 }
 
 /*** end of file ***/
+
+void test_minimum_signed_values_do_not_overflow_negation(void)
+{
+    char buffer[64];
+    (void)xsnprintf(buffer, sizeof(buffer), "%d", INT32_MIN);
+    TEST_ASSERT_EQUAL_STRING("-2147483648", buffer);
+    (void)xsnprintf(buffer, sizeof(buffer), "%lld", (long long)INT64_MIN);
+    TEST_ASSERT_EQUAL_STRING("-9223372036854775808", buffer);
+}
+
+void test_negative_dynamic_width_retains_left_padding_contract(void)
+{
+    char buffer[16];
+    (void)xsnprintf(buffer, sizeof(buffer), "%*d", -6, 123);
+    TEST_ASSERT_EQUAL_STRING("123   ", buffer);
+    (void)xsnprintf(buffer, sizeof(buffer), "%*d", 6, 123);
+    TEST_ASSERT_EQUAL_STRING("   123", buffer);
+}

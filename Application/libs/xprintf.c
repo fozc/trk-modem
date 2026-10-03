@@ -95,7 +95,7 @@ static void ftoa (
 	const char *er = 0;
 
 
-	if (isnan(val)) {			/* Not a number? */
+	if (__builtin_isnan(val)) {			/* Not a number? */
 		er = "NaN";
 	} else {
 		if (prec < 0) prec = 6;	/* Default precision (6 fractional digits) */
@@ -104,7 +104,7 @@ static void ftoa (
 		} else {
 			sign = '+';
 		}
-		if (isinf(val)) {		/* Infinite? */
+		if (__builtin_isinf(val)) {		/* Infinite? */
 			er = "INF";
 		} else {
 			if (fmt == 'f') {	/* Decimal notation? */
@@ -129,9 +129,9 @@ static void ftoa (
 			if (sign == '-') *buf++ = sign;	/* Add a - if negative value */
 			do {				/* Put decimal number */
 				w = i10x(m);				/* Snip the highest digit d */
-				d = val / w; val -= d * w;
+				d = (int)(val / w); val -= d * w;
 				if (m == -1) *buf++ = XF_DPC;	/* Insert a decimal separarot if get into fractional part */
-				*buf++ = '0' + d;			/* Put the digit */
+				*buf++ = (char)('0' + d);			/* Put the digit */
 			} while (--m >= -prec);			/* Output all digits specified by prec */
 			if (fmt != 'f') {	/* Put exponent if needed */
 				*buf++ = fmt;
@@ -140,8 +140,8 @@ static void ftoa (
 				} else {
 					*buf++ = '+';
 				}
-				*buf++ = '0' + e / 10;
-				*buf++ = '0' + e % 10;
+				*buf++ = (char)('0' + e / 10);
+				*buf++ = (char)('0' + e % 10);
 			}
 		}
 	}
@@ -181,7 +181,7 @@ void xfputc (			/* Put a character to the specified device */
 		 * This is the single choke point that keeps the %s/%d/padding
 		 * sub-loops from writing past the caller's buffer. */
 		if (strptr_end == 0 || strptr < strptr_end) {
-			*strptr++ = chr;	/* Write a character to the memory */
+			*strptr++ = (char)chr;	/* Write a character to the memory */
 		}
 	}
 }
@@ -249,7 +249,8 @@ unsigned int xvfprintf (
 )
 {
 	unsigned int count = 0;
-	unsigned int r, i, j, w, f;
+	unsigned int r, i, w, f;
+	size_t j;
 	int n, prec;
 	char str[SZB_OUTPUT], c, d, *p, pad;
 #if XF_USE_LLI
@@ -284,12 +285,15 @@ unsigned int xvfprintf (
 		if (c == '*') {				/* Minimum width from an argument */
 			n = va_arg(arp, int);
 			if (n < 0) {			/* Flag: left justified */
-				n = 0 - n; f = 2;
+				w = 0U - (unsigned int)n; f = 2;
 			}
-			w = n; c = *fmt++;
+			if (n >= 0) {
+				w = (unsigned int)n;
+			}
+			c = *fmt++;
 		} else {
 			while (c >= '0' && c <= '9') {	/* Minimum width */
-				w = w * 10 + c - '0';
+				w = w * 10U + (unsigned int)(c - '0');
 				c = *fmt++;
 			}
 		}
@@ -334,7 +338,7 @@ unsigned int xvfprintf (
 			p = va_arg(arp, char*);		/* Get a pointer argument */
 			if (!p) p = "";				/* Null ptr generates a null string */
 			j = strlen(p);
-			if (prec >= 0 && j > (unsigned int)prec) j = prec;	/* Limited length of string body */
+			if (prec >= 0 && j > (unsigned int)prec) j = (unsigned int)prec;	/* Limited length of string body */
 			for ( ; !(f & 2) && j < w; j++){
 				xfputc(func, pad);	/* Left pads */
 				count++;
@@ -392,12 +396,15 @@ unsigned int xvfprintf (
 		}
 #endif
 		if (c == 'd' && v < 0) {	/* Negative value? */
-			v = 0 - v; f |= 1;
+			uv = 0ULL - (unsigned long long)v; f |= 1;
 		}
-		i = 0; uv = v;
+		else {
+			uv = (unsigned long long)v;
+		}
+		i = 0;
 		do {	/* Make an integer number string */
 			d = (char)(uv % r); uv /= r;
-			if (d > 9) d += (c == 'x') ? 0x27 : 0x07;
+			if (d > 9) d = (char)(d + ((c == 'x') ? 0x27 : 0x07));
 			str[i++] = d + '0';
 		} while (uv != 0 && i < sizeof str);
 		if (f & 1) str[i++] = '-';					/* Sign */

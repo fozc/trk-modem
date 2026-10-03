@@ -2431,7 +2431,7 @@ int set_iec_config(const jiec_config_t *config)
     iec104_config_set(&config_to_write);
 
     // Write line config fields
-    for(int i = 0; i < MAX_ARRAYS; i++)
+    for(uint32_t i = 0U; i < MAX_ARRAYS; i++)
     {
         const iec104_line_config_t *current_line = iec104_get_line_config(i);
         iec104_line_config_t line = {0};
@@ -2522,7 +2522,7 @@ int set_modbus_config(const jmodbus_configs_t *config)
     modbus_config_set(&config_to_write);
 
     // Write line config fields
-    for(int i = 0; i < MAX_ARRAYS; i++)
+    for(uint32_t i = 0U; i < MAX_ARRAYS; i++)
     {
 		modbus_line_config_t line = {0};
 

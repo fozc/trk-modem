@@ -513,12 +513,12 @@ static void gsm_init_step_check_voice_sms_network(void)
 
 	if (gsm.prev_creg != res && res == GSM_NETWORK_DENIED)
 	{
-		gsm.prev_creg = res;
+		gsm.prev_creg = (uint8_t)res;
 		gsm.gsm_network_timer = gsm_get_tick();
 	}
 	if (gsm.prev_creg == 0U)
 	{
-		gsm.prev_creg = res;
+		gsm.prev_creg = (uint8_t)res;
 	}
 
 	switch (res)

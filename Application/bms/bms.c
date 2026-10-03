@@ -77,7 +77,7 @@ bms_status_t BMS_ParseFullMapResponse(bms_data_t *p_bms, const uint8_t *p_frame,
     if ((length >= BMS_FULL_MAP_FRAME_LEN) && (p_frame[0] == BMS_SLAVE_RESP_ADDR) && (p_frame[1] == 0x03U))
     {
         /* Full Frame with Header: Verify CRC */
-        uint16_t calc_crc = BMS_CalculateCRC16(p_frame, length - 2U);
+        uint16_t calc_crc = BMS_CalculateCRC16(p_frame, (uint16_t)(length - 2U));
         uint16_t recv_crc = (uint16_t)p_frame[length - 2U] | ((uint16_t)p_frame[length - 1U] << 8U);
 
         if (calc_crc != recv_crc) {
@@ -225,7 +225,7 @@ bms_status_t BMS_ParseSOHResponse(bms_data_t *p_bms, const uint8_t *p_frame, uin
     }
 
     /* CRC Check */
-    uint16_t calc_crc = BMS_CalculateCRC16(p_frame, length - 2U);
+    uint16_t calc_crc = BMS_CalculateCRC16(p_frame, (uint16_t)(length - 2U));
     uint16_t recv_crc = (uint16_t)p_frame[length - 2U] | ((uint16_t)p_frame[length - 1U] << 8U);
 
     if (calc_crc != recv_crc) {

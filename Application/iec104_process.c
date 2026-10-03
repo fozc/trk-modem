@@ -148,7 +148,7 @@ static int iec104_send(const uint8_t *data, uint16_t len)
     }
 
     /* Current slot full - advance to next slot */
-    uint8_t next = (tx.write_idx + 1) % IEC104_TX_SLOT_COUNT;
+    uint8_t next = (uint8_t)((tx.write_idx + 1U) % IEC104_TX_SLOT_COUNT);
 
     if (tx.slot[next].len > 0) {
         CCSLOG(XCOLOR_RED, "IEC104 TX: all slots full! write=%d read=%d pending=%d\r\n",
@@ -203,7 +203,7 @@ static void iec104_tx_process(void)
         }
 
         if (tx.read_idx != tx.write_idx) {
-            tx.read_idx = (tx.read_idx + 1) % IEC104_TX_SLOT_COUNT;
+            tx.read_idx = (uint8_t)((tx.read_idx + 1U) % IEC104_TX_SLOT_COUNT);
         }
     }
 }
@@ -308,7 +308,7 @@ static int read_ariza_kalicimi(uint32_t line_index, uint8_t phase, siq_t *value,
 		return -1;
 	}
 
-	value->spi = feeder->phase[phase].ariza_kalicimi;
+	value->spi = feeder->phase[phase].ariza_kalicimi & 0x01U;
 	value->invalid = 0; //TODO: Quality bilgisini ekle
 	*timestamp = feeder->phase[phase].tm_ariza_kalicimi;
 	return 0;
@@ -328,7 +328,7 @@ static int read_enerji_varyok(uint32_t line_index, uint8_t phase, siq_t *value, 
 		return -1;
 	}
 
-	value->spi = feeder->phase[phase].enerji_varyok;
+	value->spi = feeder->phase[phase].enerji_varyok & 0x01U;
 	value->invalid = 0; //TODO: Quality bilgisini ekle
 	*timestamp = feeder->phase[phase].tm_enerji_varyok;
 	
@@ -350,7 +350,7 @@ static int read_nominal_akim_varyok(uint32_t line_index, uint8_t phase, siq_t *v
 		return -1;
 	}
 
-	value->spi = feeder->phase[phase].nominal_akim_varyok;
+	value->spi = feeder->phase[phase].nominal_akim_varyok & 0x01U;
 	value->invalid = 0; //TODO: Quality bilgisini ekle
 	*timestamp = feeder->phase[phase].tm_nominal_akim_varyok;
 	return 0;
@@ -370,7 +370,7 @@ static int read_rf_haberlesme_varyok(uint32_t line_index, uint8_t phase, siq_t *
 		return -1;
 	}
 
-	value->spi = feeder->phase[phase].rf_haberlesme_varyok;
+	value->spi = feeder->phase[phase].rf_haberlesme_varyok & 0x01U;
 	value->invalid = 0; //TODO: Quality bilgisini ekle
 	*timestamp = feeder->phase[phase].tm_rf_haberlesme_varyok;
 	return 0;

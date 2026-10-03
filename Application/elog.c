@@ -410,10 +410,10 @@ const char *elog_info_to_text(const elog_entry_t *entry)
         {
             uint32_t flags = elog_rd_be32(&info[0]);
             char causes[48];
-            int  pos = 0;
+            size_t pos = 0U;
 
             causes[0] = '\0';
-            for (uint32_t bit = 1U; (bit != 0U) && (pos < (int)sizeof(causes) - 6); bit <<= 1)
+            for (uint32_t bit = 1U; (bit != 0U) && (pos < sizeof(causes) - 6U); bit <<= 1)
             {
                 if ((flags & bit) != 0U)
                 {
@@ -430,7 +430,7 @@ const char *elog_info_to_text(const elog_entry_t *entry)
                         case 0x80U: name = "OBL";  break;
                         default:    name = "?";    break;
                     }
-                    pos += xsnprintf(&causes[pos], (size_t)(sizeof(causes) - pos),
+                    pos += xsnprintf(&causes[pos], (unsigned int)(sizeof(causes) - pos),
                                      "%s%s", (pos > 0) ? "|" : "", name);
                 }
             }
@@ -634,9 +634,9 @@ static void elog_print_entry(uint32_t seq, const elog_entry_t *entry)
 
     if (elog_dump_raw)
     {
-        int pos = 0;
-        for (uint8_t j = 0; j < sizeof(entry->info) && pos < (int)sizeof(info_str) - 3; j++) {
-            pos += xsnprintf(info_str + pos, sizeof(info_str) - pos, "%02X ", entry->info[j]);
+        size_t pos = 0U;
+        for (uint8_t j = 0; j < sizeof(entry->info) && pos < sizeof(info_str) - 3U; j++) {
+            pos += xsnprintf(info_str + pos, (unsigned int)(sizeof(info_str) - pos), "%02X ", entry->info[j]);
         }
         if (pos > 0) info_str[pos - 1] = '\0'; /* Remove trailing space */
         info_out = info_str;

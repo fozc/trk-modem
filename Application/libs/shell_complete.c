@@ -4,7 +4,8 @@
  * Tab completion module for shell
  *
  *  Created on: Dec 26, 2024
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "shell_complete.h"
 
@@ -24,7 +25,7 @@ static struct {
     char saved_prefix[64];                  /* Original prefix for cycling */
     shell_putchar_fn_t putchar_fn;          /* Output function from shell.c */
     int matched_count;                      /* Number of matched commands */
-    int saved_prefix_length;                /* Length of saved prefix */
+    size_t saved_prefix_length;                /* Length of saved prefix */
     int current_match_index;                /* Current index in cycle mode (-1 = not cycling) */
 } tab_ctx;
 
@@ -44,7 +45,7 @@ static void output_char(int ch)
  * @brief Clear characters from terminal line
  * @param char_count Number of characters to clear
  */
-static void terminal_clear_chars(int char_count)
+static void terminal_clear_chars(uint32_t char_count)
 {
 #ifdef USE_VT100_SEQUENCES
     /* VT100: Move cursor left N chars, then erase to end of line */
@@ -54,9 +55,9 @@ static void terminal_clear_chars(int char_count)
         output_char('\x1B');
         output_char('[');
         /* Output number as ASCII digits */
-        if (char_count >= 100) output_char('0' + (char_count / 100));
-        if (char_count >= 10)  output_char('0' + (char_count / 10) % 10);
-        output_char('0' + (char_count % 10));
+        if (char_count >= 100) output_char((int)('0' + (char_count / 100)));
+        if (char_count >= 10)  output_char((int)('0' + (char_count / 10) % 10));
+        output_char((int)('0' + (char_count % 10)));
         output_char('D');
         /* Erase to end of line */
         output_char('\x1B');
@@ -98,7 +99,7 @@ static void buffer_write_and_echo(const char *str, uint8_t *buffer, uint32_t *bu
  * @param prefix Prefix string to match
  * @param prefix_length Length of prefix
  */
-static void find_matching_commands(const char *prefix, int prefix_length)
+static void find_matching_commands(const char *prefix, size_t prefix_length)
 {
     tab_ctx.matched_count = 0;
     
@@ -145,7 +146,7 @@ void shell_tab_complete(uint8_t *input_buffer, uint32_t *input_length, uint32_t 
 
     /* Extract current input as prefix (stop at first space) */
     char current_prefix[64];
-    int current_prefix_length = 0;
+    size_t current_prefix_length = 0U;
     
     for (uint32_t i = 0; i < *input_length && i < sizeof(current_prefix) - 1; i++)
     {
