@@ -8,6 +8,7 @@
  */
 #include "unity.h"
 #include "json_config.h"
+#include "iec104_util.h"
 #include "mock_iec104_config.h"
 #include "mock_modbus_config.h"
 #include "mock_modbus_process.h"
@@ -17,9 +18,12 @@
 #include <stdio.h>
 
 TEST_SOURCE_FILE("iec104_util.c")
+TEST_SOURCE_FILE("xprintf.c")
 
 static jiec_config_t iec;
 static iec104_config_t saved_iec;
+static iec104_line_config_t current_lines[MAX_ARRAYS];
+static iec104_line_config_t saved_line;
 static modbus_configs_t saved_modbus;
 static modbus_line_config_t saved_modbus_line;
 
@@ -49,6 +53,8 @@ static bool capture_modbus_line(uint32_t line_index,
 
 void setUp(void)
 {
+    memset(current_lines, 0, sizeof(current_lines));
+    memset(&saved_line, 0, sizeof(saved_line));
     memset(&iec, 0, sizeof(iec));
     memset(&saved_iec, 0, sizeof(saved_iec));
     memset(&saved_modbus, 0, sizeof(saved_modbus));
@@ -63,6 +69,9 @@ void setUp(void)
     iec.k_max = 12U;
     iec.w_max = 8U;
     iec.common_address = 1U;
+    iec.ioa_aku_uyarisi = 10000U;
+    iec.ioa_modem_reset = 10001U;
+    iec104_get_line_config_IgnoreAndReturn(NULL);
 }
 
 void tearDown(void)
@@ -225,10 +234,10 @@ void test_modbus_valid_boundary_values_reach_storage_unchanged(void)
     config.addr_aku_uyarisi = 65535U;
     config.addr_modem_reset = 0U;
     config.line.in_use[0] = true;
-    config.line.addr_r_ariza_akimi[0] = 65535U;
-    config.line.addr_s_ariza_akimi[0] = 65534U;
-    config.line.addr_t_ariza_akimi[0] = 65533U;
-    config.line.addr_t_rfhab_varyok[0] = 65535U;
+    config.line.addr_r_ariza_akimi[0] = 65533U;
+    config.line.addr_s_ariza_akimi[0] = 65531U;
+    config.line.addr_t_ariza_akimi[0] = 65529U;
+    config.line.addr_t_rfhab_varyok[0] = 65528U;
     modbus_config_get_IgnoreAndReturn(NULL);
     modbus_config_set_Stub(capture_modbus);
     modbus_set_line_config_Stub(capture_modbus_line);
@@ -238,11 +247,283 @@ void test_modbus_valid_boundary_values_reach_storage_unchanged(void)
     TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
     TEST_ASSERT_EQUAL_UINT16(65535U, saved_modbus.addr_aku_uyarisi);
     TEST_ASSERT_EQUAL_UINT16(0U, saved_modbus.addr_modem_reset);
-    TEST_ASSERT_EQUAL_UINT16(65535U, saved_modbus_line.ariza_akimi[PHASE_L1]);
-    TEST_ASSERT_EQUAL_UINT16(65534U, saved_modbus_line.ariza_akimi[PHASE_L2]);
-    TEST_ASSERT_EQUAL_UINT16(65533U, saved_modbus_line.ariza_akimi[PHASE_L3]);
-    TEST_ASSERT_EQUAL_UINT16(65535U,
+    TEST_ASSERT_EQUAL_UINT16(65533U, saved_modbus_line.ariza_akimi[PHASE_L1]);
+    TEST_ASSERT_EQUAL_UINT16(65531U, saved_modbus_line.ariza_akimi[PHASE_L2]);
+    TEST_ASSERT_EQUAL_UINT16(65529U, saved_modbus_line.ariza_akimi[PHASE_L3]);
+    TEST_ASSERT_EQUAL_UINT16(65528U,
                             saved_modbus_line.rf_haberlesme_varyok[PHASE_L3]);
+}
+
+static const iec104_line_config_t *read_line(uint32_t index, int calls)
+{
+    (void)calls;
+    return &current_lines[index];
+}
+
+static bool capture_line(uint32_t index, const iec104_line_config_t *line,
+                         int calls)
+{
+    (void)calls;
+    if (0U == index)
+    {
+        saved_line = *line;
+    }
+    return true;
+}
+
+static void enable_valid_lines(void)
+{
+    uint32_t *points[] =
+    {
+        iec.line.ioa_r_ariza_akimi,
+        iec.line.ioa_s_ariza_akimi,
+        iec.line.ioa_t_ariza_akimi,
+        iec.line.ioa_r_ariza_suresi,
+        iec.line.ioa_s_ariza_suresi,
+        iec.line.ioa_t_ariza_suresi,
+        iec.line.ioa_r_ariza_turu,
+        iec.line.ioa_s_ariza_turu,
+        iec.line.ioa_t_ariza_turu,
+        iec.line.ioa_r_anlik_akim,
+        iec.line.ioa_s_anlik_akim,
+        iec.line.ioa_t_anlik_akim,
+        iec.line.ioa_r_enerji_varyok,
+        iec.line.ioa_s_enerji_varyok,
+        iec.line.ioa_t_enerji_varyok,
+        iec.line.ioa_r_nominal_akim_varyok,
+        iec.line.ioa_s_nominal_akim_varyok,
+        iec.line.ioa_t_nominal_akim_varyok,
+        iec.line.ioa_r_rfhab_varyok,
+        iec.line.ioa_s_rfhab_varyok,
+        iec.line.ioa_t_rfhab_varyok
+    };
+    for (size_t i = 0U; i < MAX_ARRAYS; i++)
+    {
+        iec.line.in_use[i] = true;
+        for (size_t j = 0U; j < (sizeof(points) / sizeof(points[0])); j++)
+        {
+            points[j][i] = 1000U + ((uint32_t)i * 100U) + (uint32_t)j;
+        }
+        iec.line.temporary_fault_base[i] = 100000U + ((uint32_t)i * 1000U);
+        iec.line.permanent_fault_base[i] = 200000U + ((uint32_t)i * 1000U);
+        current_lines[i].temporary_fault =
+            iec104_make_ioa_3byte(100000U + ((uint32_t)i * 1000U));
+        current_lines[i].permanent_fault =
+            iec104_make_ioa_3byte(200000U + ((uint32_t)i * 1000U));
+    }
+    iec104_get_line_config_StopIgnore();
+    iec104_get_line_config_Stub(read_line);
+}
+
+void test_iec_rejects_duplicate_global_and_point_addresses(void)
+{
+    iec.ioa_modem_reset = iec.ioa_aku_uyarisi;
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{}", &iec));
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    TEST_ASSERT_NOT_NULL(strstr(json_config_get_iec_address_error(),
+                                "AkuUyarisi"));
+    TEST_ASSERT_NOT_NULL(strstr(json_config_get_iec_address_error(),
+                                "ModemReset"));
+    iec.ioa_modem_reset = 10001U;
+    enable_valid_lines();
+    iec.line.ioa_r_ariza_akimi[1] = iec.line.ioa_r_ariza_akimi[0];
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{}", &iec));
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+}
+
+void test_iec_rejects_point_inside_fault_range_including_last_address(void)
+{
+    enable_valid_lines();
+    iec.line.ioa_r_ariza_akimi[1] = 100179U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    TEST_ASSERT_NOT_NULL(strstr(json_config_get_iec_address_error(),
+                                "Hatlar.IOA_R_ArizaAkimi[1]"));
+    TEST_ASSERT_NOT_NULL(strstr(json_config_get_iec_address_error(),
+                                "Hatlar.TemporaryFaultBase[0]"));
+    iec.line.ioa_r_ariza_akimi[1] = 100180U;
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{}", &iec));
+}
+
+void test_iec_rejects_overlapping_fault_ranges(void)
+{
+    enable_valid_lines();
+    iec.line.permanent_fault_base[0] = 100179U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    iec.line.permanent_fault_base[0] = 100180U;
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{}", &iec));
+    iec.line.temporary_fault_base[1] = 99820U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+}
+
+void test_iec_rejects_zero_and_ioa_overflow_before_writing(void)
+{
+    iec.ioa_aku_uyarisi = 0U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    iec.ioa_aku_uyarisi = 0x1000000U;
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{}", &iec));
+    iec.ioa_aku_uyarisi = 0xFFFFFFU;
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{}", &iec));
+    enable_valid_lines();
+    iec.line.temporary_fault_base[6] = 0xFFFF00U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    iec.line.temporary_fault_base[6] = 0U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+}
+
+void test_iec_all_point_fields_check_range_and_uniqueness(void)
+{
+    enable_valid_lines();
+    uint32_t *points[] =
+    {
+        iec.line.ioa_r_ariza_akimi,
+        iec.line.ioa_s_ariza_akimi,
+        iec.line.ioa_t_ariza_akimi,
+        iec.line.ioa_r_ariza_suresi,
+        iec.line.ioa_s_ariza_suresi,
+        iec.line.ioa_t_ariza_suresi,
+        iec.line.ioa_r_ariza_turu,
+        iec.line.ioa_s_ariza_turu,
+        iec.line.ioa_t_ariza_turu,
+        iec.line.ioa_r_anlik_akim,
+        iec.line.ioa_s_anlik_akim,
+        iec.line.ioa_t_anlik_akim,
+        iec.line.ioa_r_enerji_varyok,
+        iec.line.ioa_s_enerji_varyok,
+        iec.line.ioa_t_enerji_varyok,
+        iec.line.ioa_r_nominal_akim_varyok,
+        iec.line.ioa_s_nominal_akim_varyok,
+        iec.line.ioa_t_nominal_akim_varyok,
+        iec.line.ioa_r_rfhab_varyok,
+        iec.line.ioa_s_rfhab_varyok,
+        iec.line.ioa_t_rfhab_varyok
+    };
+    for (size_t j = 0U; j < (sizeof(points) / sizeof(points[0])); j++)
+    {
+        uint32_t original = points[j][6];
+        points[j][6] = 0U;
+        TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+        points[j][6] = 0x1000000U;
+        TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+        points[j][6] = iec.ioa_aku_uyarisi;
+        TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+        points[j][6] = original;
+    }
+}
+
+void test_iec_partial_save_preserves_fault_bases_and_inactive_settings(void)
+{
+    enable_valid_lines();
+    iec.line.in_use[0] = false;
+    current_lines[0].ariza_akimi[0] = iec104_make_ioa_3byte(1234U);
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{\"Port\":2405}", &iec));
+    iec104_config_get_IgnoreAndReturn(NULL);
+    iec104_config_set_Stub(capture_iec);
+    iec104_set_line_config_Stub(capture_line);
+    iec104_config_sync_ExpectAndReturn(0);
+    TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
+    TEST_ASSERT_FALSE(saved_line.in_use);
+    TEST_ASSERT_EQUAL_MEMORY(&current_lines[0].temporary_fault,
+                            &saved_line.temporary_fault, sizeof(ioa_3byte_t));
+    TEST_ASSERT_EQUAL_MEMORY(&current_lines[0].permanent_fault,
+                            &saved_line.permanent_fault, sizeof(ioa_3byte_t));
+    TEST_ASSERT_EQUAL_MEMORY(&current_lines[0].ariza_akimi[0],
+                            &saved_line.ariza_akimi[0], sizeof(ioa_3byte_t));
+    iec.line.in_use[0] = true;
+    iec104_config_sync_ExpectAndReturn(0);
+    TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
+    TEST_ASSERT_TRUE(saved_line.in_use);
+    TEST_ASSERT_EQUAL_MEMORY(&current_lines[0].temporary_fault,
+                            &saved_line.temporary_fault, sizeof(ioa_3byte_t));
+    TEST_ASSERT_EQUAL_UINT32(1000U,
+        iec104_ioa_3byte_to_uint32(saved_line.ariza_akimi[0]));
+}
+
+void test_iec_fault_bases_can_be_repaired_without_factory_reset(void)
+{
+    enable_valid_lines();
+    iec.line.temporary_fault_base[0] = 1100U;
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{}", &iec));
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config(
+        "{\"Hatlar\":{\"TemporaryFaultBase\":[100000],"
+        "\"PermanentFaultBase\":[200000]}}", &iec));
+    iec104_config_get_IgnoreAndReturn(NULL);
+    iec104_config_set_Stub(capture_iec);
+    iec104_set_line_config_Stub(capture_line);
+    iec104_config_sync_ExpectAndReturn(0);
+    TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
+    TEST_ASSERT_EQUAL_UINT32(100000U,
+        iec104_ioa_3byte_to_uint32(saved_line.temporary_fault));
+    TEST_ASSERT_EQUAL_STRING("", json_config_get_iec_address_error());
+    iec.line.in_use[0] = false;
+    iec.line.temporary_fault_base[0] = 0x1000000U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+}
+
+void test_modbus_rejects_duplicate_and_overlapping_active_addresses(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 1U;
+    config.baud_rate = 9600U;
+    config.line.in_use[0] = true;
+    config.line.in_use[1] = true;
+    config.line.addr_r_ariza_akimi[0] = 100U;
+    config.line.addr_s_ariza_akimi[0] = 100U;
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    config.line.addr_s_ariza_akimi[0] = 101U;
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    config.line.addr_s_ariza_akimi[0] = 102U;
+    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config("{}", &config));
+    config.line.addr_r_anlik_akim[1] = 103U;
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    config.line.in_use[1] = false;
+    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config("{}", &config));
+    config.addr_aku_uyarisi = 101U;
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    config.addr_aku_uyarisi = 0U;
+    config.line.addr_r_ariza_akimi[0] = 65535U;
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+}
+
+void test_all_modbus_address_categories_reject_cross_feeder_duplicates(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 1U;
+    config.baud_rate = 9600U;
+    config.line.in_use[0] = true;
+    config.line.in_use[1] = true;
+    config.line.addr_r_ariza_akimi[0] = 100U;
+    uint32_t *addresses[] =
+    {
+        config.line.addr_r_ariza_akimi,
+        config.line.addr_s_ariza_akimi,
+        config.line.addr_t_ariza_akimi,
+        config.line.addr_r_ariza_suresi,
+        config.line.addr_s_ariza_suresi,
+        config.line.addr_t_ariza_suresi,
+        config.line.addr_r_ariza_turu,
+        config.line.addr_s_ariza_turu,
+        config.line.addr_t_ariza_turu,
+        config.line.addr_r_anlik_akim,
+        config.line.addr_s_anlik_akim,
+        config.line.addr_t_anlik_akim,
+        config.line.addr_r_enerji_varyok,
+        config.line.addr_s_enerji_varyok,
+        config.line.addr_t_enerji_varyok,
+        config.line.addr_r_nominal_akim_varyok,
+        config.line.addr_s_nominal_akim_varyok,
+        config.line.addr_t_nominal_akim_varyok,
+        config.line.addr_r_rfhab_varyok,
+        config.line.addr_s_rfhab_varyok,
+        config.line.addr_t_rfhab_varyok
+    };
+    for (size_t field = 0U;
+         field < (sizeof(addresses) / sizeof(addresses[0])); field++)
+    {
+        addresses[field][1] = 100U;
+        TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+        TEST_ASSERT_EQUAL_INT(0, parse_modbus_config("{}", &config));
+        addresses[field][1] = 0U;
+    }
 }
 
 /*** end of file ***/

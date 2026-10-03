@@ -51,18 +51,25 @@ const summarize = b => {
 const now = () => Math.floor(Date.now() / 1000);
 
 const iecKeys = ['IOA_R_ArizaAkimi','IOA_S_ArizaAkimi','IOA_T_ArizaAkimi','IOA_R_ArizaSuresi','IOA_S_ArizaSuresi','IOA_T_ArizaSuresi','IOA_R_ArizaTuru','IOA_S_ArizaTuru','IOA_T_ArizaTuru','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_NominalAkimVarYok','IOA_S_NominalAkimVarYok','IOA_T_NominalAkimVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok'];
-const iecHat = { inUse: arr8(i => i < 4 ? 1 : 0) };
-iecKeys.forEach((k, j) => { iecHat[k] = arr8(i => 100 + j * 10 + i); });
+const iecHat = {
+  inUse: arr8(i => i < 4 ? 1 : 0),
+  TemporaryFaultBase: arr8(i => 100000 + i * 1000),
+  PermanentFaultBase: arr8(i => 200000 + i * 1000)
+};
+iecKeys.forEach((k, j) => { iecHat[k] = arr8(i => 1000 + i * 100 + Math.floor(j / 3) * 10 + j % 3); });
 
 const iec104 = { success: true, data: {
   Port: 2404, PeriodicSend: 10, T0: 30, T1: 30, T2: 30, T3: 30, K: 64, W: 32,
   OriginatorAddr: 1, CommonAddr: 1, SBOTimeout: 30, SBO: true,
-  AkuUyarisi: 100, ModemReset: 101, Hatlar: iecHat
+  AkuUyarisi: 10000, ModemReset: 10001, Hatlar: iecHat
 }};
 
 const modKeys = iecKeys.map(k => k.replace('IOA_', 'ADDR_'));
 const modHat = { inUse: arr8(i => i < 4 ? 1 : 0) };
-modKeys.forEach((k, j) => { modHat[k] = arr8(i => 100 + j * 10 + i); });
+modKeys.forEach((k, j) => {
+  const words = /_(ArizaAkimi|AnlikAkim)$/.test(k) ? 2 : 1;
+  modHat[k] = arr8(i => 40000 + i * 100 + Math.floor(j / 3) * 10 + (j % 3) * words);
+});
 
 const modbus = { success: true, data: {
   CihazID: 1, BaudRate: 9600, SonHataKodu: 0, SonHataZamani: now(), Hat: modHat

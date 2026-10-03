@@ -851,6 +851,24 @@ void handle_get_iec_config_json(void)
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"TemporaryFaultBase\":[");
+    for (int i = 0; i < MAX_ARRAYS; i++) {
+        const iec104_line_config_t *line = iec104_get_line_config(i);
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s",
+            line ? iec104_ioa_3byte_to_uint32(line->temporary_fault) : 0U,
+            (i < MAX_ARRAYS - 1) ? "," : "");
+    }
+    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"PermanentFaultBase\":[");
+    for (int i = 0; i < MAX_ARRAYS; i++) {
+        const iec104_line_config_t *line = iec104_get_line_config(i);
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s",
+            line ? iec104_ioa_3byte_to_uint32(line->permanent_fault) : 0U,
+            (i < MAX_ARRAYS - 1) ? "," : "");
+    }
+    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_ArizaAkimi\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
@@ -1059,6 +1077,13 @@ void handle_post_iec_config_json(const char *json_body)
     // Convert line configs
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
+        if (NULL != line)
+        {
+            config.line.temporary_fault_base[i] =
+                iec104_ioa_3byte_to_uint32(line->temporary_fault);
+            config.line.permanent_fault_base[i] =
+                iec104_ioa_3byte_to_uint32(line->permanent_fault);
+        }
         if (line && line->in_use) {
             config.line.in_use[i] = true;
             config.line.ioa_r_ariza_akimi[i] = iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L1]);
@@ -1089,7 +1114,9 @@ void handle_post_iec_config_json(const char *json_body)
     
     if (!parse_iec_config(json_body, &config)) {
     	CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");
-        http_send_error(400, "JSON parse error");
+        const char *error = json_config_get_iec_address_error();
+        http_send_error(400, ('\0' != error[0]) ? error :
+                        "Invalid IEC configuration");
         return;
     }
     

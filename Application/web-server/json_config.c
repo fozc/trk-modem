@@ -853,6 +853,12 @@ static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
     while (!is_object_end(str)) {
         if (match_key(str, "inUse")) {
             if (!parse_bool_array(str, hat->in_use, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "TemporaryFaultBase")) {
+            if (!parse_uint32_array(str, hat->temporary_fault_base,
+                                    MAX_ARRAYS)) return false;
+        } else if (match_key(str, "PermanentFaultBase")) {
+            if (!parse_uint32_array(str, hat->permanent_fault_base,
+                                    MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_ArizaAkimi")) {
             if (!parse_uint32_array(str, hat->ioa_r_ariza_akimi, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_ArizaAkimi")) {
@@ -902,6 +908,197 @@ static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
         skip_comma(str);
     }
     CSLOG("[JSON]   IEC Hatlar parsed successfully\r\n");
+    return true;
+}
+
+static char iec_address_error[192];
+static const char * const iec_address_keys[] =
+{
+    "IOA_R_ArizaAkimi",
+    "IOA_S_ArizaAkimi",
+    "IOA_T_ArizaAkimi",
+    "IOA_R_ArizaSuresi",
+    "IOA_S_ArizaSuresi",
+    "IOA_T_ArizaSuresi",
+    "IOA_R_ArizaTuru",
+    "IOA_S_ArizaTuru",
+    "IOA_T_ArizaTuru",
+    "IOA_R_AnlikAkim",
+    "IOA_S_AnlikAkim",
+    "IOA_T_AnlikAkim",
+    "IOA_R_EnerjiVarYok",
+    "IOA_S_EnerjiVarYok",
+    "IOA_T_EnerjiVarYok",
+    "IOA_R_NominalAkimVarYok",
+    "IOA_S_NominalAkimVarYok",
+    "IOA_T_NominalAkimVarYok",
+    "IOA_R_RfhabVarYok",
+    "IOA_S_RfhabVarYok",
+    "IOA_T_RfhabVarYok",
+    "TemporaryFaultBase",
+    "PermanentFaultBase"
+};
+
+const char *json_config_get_iec_address_error(void)
+{
+    return iec_address_error;
+}
+
+static void format_iec_address_field(char *text, uint16_t field_id)
+{
+    if (2U > field_id)
+    {
+        (void)xsnprintf(text, 64U, "%s",
+            (0U == field_id) ? "AkuUyarisi" : "ModemReset");
+    }
+    else
+    {
+        const uint32_t index = (uint32_t)field_id - 2U;
+        (void)xsnprintf(text, 64U, "Hatlar.%s[%lu] (feeder %lu)",
+            iec_address_keys[index % 23U],
+            (unsigned long)(index / 23U),
+            (unsigned long)((index / 23U) + 1U));
+    }
+}
+
+/* Points are one-address ranges; fault records use contiguous ranges. */
+typedef struct
+{
+    uint32_t first;
+    uint16_t length;
+    uint16_t field_id;
+} iec_ioa_range_t;
+
+static bool add_iec_ioa_range(iec_ioa_range_t *ranges, size_t *count,
+                              uint32_t first, uint16_t length,
+                              uint16_t field_id)
+{
+    char field[64];
+    format_iec_address_field(field, field_id);
+    const uint32_t max_ioa = 0xFFFFFFU;
+
+    if ((0U == first) || (max_ioa < first) ||
+        (0U == length) || ((max_ioa - first) < (length - 1U)))
+    {
+        (void)xsnprintf(iec_address_error, sizeof(iec_address_error),
+            "Invalid IOA range: %s (%lu..%lu)", field,
+            (unsigned long)first, (unsigned long)(first + length - 1U));
+        CSLOG_ERR("[JSON] Invalid IEC IOA range: %lu + %lu\r\n",
+                  (unsigned long)first, (unsigned long)length);
+        return false;
+    }
+
+    const uint32_t last = first + length - 1U;
+    for (size_t i = 0U; i < *count; i++)
+    {
+        const uint32_t previous_last = ranges[i].first +
+            (uint32_t)ranges[i].length - 1U;
+        if ((first <= previous_last) && (ranges[i].first <= last))
+        {
+            char previous[64];
+            format_iec_address_field(previous, ranges[i].field_id);
+            (void)xsnprintf(iec_address_error, sizeof(iec_address_error),
+                "IOA overlap: %s and %s", field, previous);
+            CSLOG_ERR("[JSON] Overlapping IEC IOA ranges: %lu/%lu\r\n",
+                      (unsigned long)first,
+                      (unsigned long)ranges[i].first);
+            return false;
+        }
+    }
+    ranges[*count].first = first;
+    ranges[*count].length = length;
+    ranges[*count].field_id = field_id;
+    (*count)++;
+    return true;
+}
+
+static bool validate_iec_addresses(const jiec_config_t *config)
+{
+    iec_address_error[0] = '\0';
+    const uint32_t *points[] =
+    {
+        config->line.ioa_r_ariza_akimi,
+        config->line.ioa_s_ariza_akimi,
+        config->line.ioa_t_ariza_akimi,
+        config->line.ioa_r_ariza_suresi,
+        config->line.ioa_s_ariza_suresi,
+        config->line.ioa_t_ariza_suresi,
+        config->line.ioa_r_ariza_turu,
+        config->line.ioa_s_ariza_turu,
+        config->line.ioa_t_ariza_turu,
+        config->line.ioa_r_anlik_akim,
+        config->line.ioa_s_anlik_akim,
+        config->line.ioa_t_anlik_akim,
+        config->line.ioa_r_enerji_varyok,
+        config->line.ioa_s_enerji_varyok,
+        config->line.ioa_t_enerji_varyok,
+        config->line.ioa_r_nominal_akim_varyok,
+        config->line.ioa_s_nominal_akim_varyok,
+        config->line.ioa_t_nominal_akim_varyok,
+        config->line.ioa_r_rfhab_varyok,
+        config->line.ioa_s_rfhab_varyok,
+        config->line.ioa_t_rfhab_varyok
+    };
+    iec_ioa_range_t ranges[2U + (MAX_ARRAYS *
+        ((sizeof(points) / sizeof(points[0])) + 2U))];
+    size_t count = 0U;
+
+    if (!add_iec_ioa_range(ranges, &count, config->ioa_aku_uyarisi, 1U, 0U) ||
+        !add_iec_ioa_range(ranges, &count, config->ioa_modem_reset, 1U, 1U))
+    {
+        return false;
+    }
+    for (size_t line = 0U; line < MAX_ARRAYS; line++)
+    {
+        const uint16_t line_id = (uint16_t)(2U + (line * 23U));
+        const uint32_t bases[] =
+        {
+            config->line.temporary_fault_base[line],
+            config->line.permanent_fault_base[line]
+        };
+        for (size_t base = 0U; base < 2U; base++)
+        {
+            if ((0xFFFFFFU < bases[base]) ||
+                (config->line.in_use[line] && (0U == bases[base])))
+            {
+                char field[64];
+                format_iec_address_field(field,
+                    (uint16_t)(line_id + 21U + base));
+                (void)xsnprintf(iec_address_error, sizeof(iec_address_error),
+                               "Invalid IOA base: %s", field);
+                return false;
+            }
+        }
+        if (!config->line.in_use[line])
+        {
+            continue;
+        }
+        for (size_t field = 0U;
+             field < (sizeof(points) / sizeof(points[0])); field++)
+        {
+            if (!add_iec_ioa_range(ranges, &count, points[field][line], 1U,
+                    (uint16_t)(line_id + field)))
+            {
+                return false;
+            }
+        }
+        const uint16_t temp_length = TEMPORARY_FAULT_COUNT *
+            TEMPORARY_FAULT_FIELDS_PER_RECORD * PHASE_MAX;
+        const uint16_t perm_length = PERMANENT_FAULT_COUNT *
+            PERMANENT_FAULT_FIELDS_PER_RECORD * PHASE_MAX;
+        const uint32_t temp_base = config->line.temporary_fault_base[line];
+        const uint32_t perm_base = config->line.permanent_fault_base[line];
+        /* Match the existing getter's additional feeder offset exactly. */
+        if (!add_iec_ioa_range(ranges, &count,
+                temp_base + ((uint32_t)line * temp_length), temp_length,
+                (uint16_t)(line_id + 21U)) ||
+            !add_iec_ioa_range(ranges, &count,
+                perm_base + ((uint32_t)line * perm_length), perm_length,
+                (uint16_t)(line_id + 22U)))
+        {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1016,6 +1213,10 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
         skip_comma(str);
     }
 
+    if (!validate_iec_addresses(iec))
+    {
+        return false;
+    }
     if (!validate_iec_timeouts(iec)) {
     	CSLOG_ERR( "[JSON] ERROR: IEC timeout validation failed\r\n");
         return false;
@@ -1139,6 +1340,11 @@ static bool validate_modbus_addresses(const jmodbus_configs_t *config)
         config->line.addr_t_rfhab_varyok
     };
 
+    if ((0U != config->addr_aku_uyarisi) &&
+        (config->addr_aku_uyarisi == config->addr_modem_reset))
+    {
+        return false;
+    }
     for (size_t field = 0U;
          field < (sizeof(addresses) / sizeof(addresses[0])); field++)
     {
@@ -1147,6 +1353,41 @@ static bool validate_modbus_addresses(const jmodbus_configs_t *config)
             if (UINT16_MAX < addresses[field][line])
             {
                 return false;
+            }
+            const uint32_t first = addresses[field][line];
+            if (!config->line.in_use[line] || (0U == first))
+            {
+                continue;
+            }
+            /* Fault/current measurements are FLOAT32, all others one word. */
+            const uint32_t length = ((field < 3U) ||
+                ((9U <= field) && (field < 12U))) ? 2U : 1U;
+            const uint32_t last = first + length - 1U;
+            if ((UINT16_MAX < last) ||
+                ((first <= config->addr_aku_uyarisi) &&
+                 (config->addr_aku_uyarisi <= last)) ||
+                ((first <= config->addr_modem_reset) &&
+                 (config->addr_modem_reset <= last)))
+            {
+                return false;
+            }
+            for (size_t previous = 0U;
+                 previous < ((field * MAX_ARRAYS) + line); previous++)
+            {
+                const size_t prev_field = previous / MAX_ARRAYS;
+                const size_t prev_line = previous % MAX_ARRAYS;
+                const uint32_t prev_first = addresses[prev_field][prev_line];
+                if (!config->line.in_use[prev_line] || (0U == prev_first))
+                {
+                    continue;
+                }
+                const uint32_t prev_length = ((prev_field < 3U) ||
+                    ((9U <= prev_field) && (prev_field < 12U))) ? 2U : 1U;
+                if ((first <= (prev_first + prev_length - 1U)) &&
+                    (prev_first <= last))
+                {
+                    return false;
+                }
             }
         }
     }
@@ -1807,6 +2048,7 @@ int parse_device_config(const char *json_str, modem_config_t *config) {
 }
 
 int parse_iec_config(const char *json_str, jiec_config_t *iec) {
+    iec_address_error[0] = '\0';
     if (!json_str || !iec) {
         CSLOG_ERR( "[JSON] ERROR: parse_iec_config - null parameters\r\n");
         return 0;
@@ -2135,6 +2377,11 @@ int set_iec_config(const jiec_config_t *config)
         return -1;
     }
 
+    if (!validate_iec_addresses(config))
+    {
+        return -1;
+    }
+
     // Create local config struct from current NVRAM state
     iec104_config_t config_to_write = {0};
     const iec104_config_t *current_config = iec104_config_get();
@@ -2186,7 +2433,17 @@ int set_iec_config(const jiec_config_t *config)
     // Write line config fields
     for(int i = 0; i < MAX_ARRAYS; i++)
     {
-    	iec104_line_config_t line = {0};
+        const iec104_line_config_t *current_line = iec104_get_line_config(i);
+        iec104_line_config_t line = {0};
+        if (NULL != current_line)
+        {
+            line = *current_line;
+        }
+        line.in_use = config->line.in_use[i];
+        line.temporary_fault = iec104_make_ioa_3byte(
+            config->line.temporary_fault_base[i]);
+        line.permanent_fault = iec104_make_ioa_3byte(
+            config->line.permanent_fault_base[i]);
 
     	if(!config->line.in_use[i])
 		{

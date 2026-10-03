@@ -12,7 +12,7 @@ html,body{height:100%;overflow:hidden}body{font-family:-apple-system,BlinkMacSys
 .app{display:flex;height:100vh}.sidebar{width:228px;flex:0 0 228px;background:var(--nav);color:#fff;display:flex;flex-direction:column;overflow-y:auto}.brand{padding:19px 18px;background:var(--nav2);font-size:17px;font-weight:700;letter-spacing:.2px}.menu{padding:10px 8px;flex:1}.mi{padding:11px 13px;margin:3px 0;border-radius:7px;cursor:pointer;color:#dbe7f2;font-weight:500;border-left:3px solid transparent;transition:.15s}.mi:hover{background:rgba(255,255,255,.07);color:#fff}.mi.a{background:rgba(53,145,210,.22);border-left-color:#75b9e8;color:#fff}.logout{padding:10px;border-top:1px solid rgba(255,255,255,.09)}
 .main{min-width:0;flex:1;display:flex;flex-direction:column}.header{height:66px;flex:0 0 66px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;gap:12px}.header h1{font-size:20px;color:#173b5f;font-weight:650}.header .hint{font-size:12px;color:var(--muted)}.content{flex:1;overflow-y:auto;padding:18px 22px 28px}
 .hdr-right{display:flex;align-items:center;gap:14px;min-width:0}.lang-switch{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:0 0 auto}.lang-switch button{border:0;background:transparent;color:var(--muted);font-size:10px;font-weight:700;padding:5px 10px;cursor:pointer;letter-spacing:.5px}.lang-switch button.active{background:var(--blue);color:#fff}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}.card-head{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.card-head h3{font-size:14px;color:#1c527d;font-weight:650}.card-head .sub{font-size:11px;color:var(--muted)}.card-body{padding:15px}.card-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.page-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}.card-head{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.card-head h3{font-size:14px;color:#1c527d;font-weight:650}.card-head .sub{font-size:11px;color:var(--muted)}.register-info{font-size:11px;color:var(--muted);margin-top:4px}.card-body{padding:15px}.card-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.page-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 .grid{display:grid;gap:12px}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}.gt{gap:8px}.field{min-width:0}.field label{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#4b5563;margin:0 0 5px}.fld-hint{font-size:9px;font-weight:600;color:#8b96a3;background:#eef2f6;padding:1px 6px;border-radius:10px;letter-spacing:.3px;white-space:nowrap}.field input{width:100%;height:34px;padding:7px 9px;border:1px solid #cfd6de;border-radius:6px;background:#fff;color:#1f2937;font:inherit;outline:none}.field select{width:100%;height:34px;padding:0 9px;border:1px solid #cfd6de;border-radius:6px;background:#fff;color:#1f2937;font:inherit;outline:none;cursor:pointer}.field input:focus{border-color:#5a9dcc;box-shadow:0 0 0 2px rgba(23,105,170,.1)}.field input:disabled{background:#f1f3f5;color:#6b7280}.field input.dirty{border-color:#e0a100;background:#fffaf0;box-shadow:0 0 0 2px rgba(224,161,0,.08)}.field input.invalid{border-color:var(--red);background:var(--red2)}.dirty-dot{width:6px;height:6px;border-radius:50%;background:#e0a100;display:inline-block}.err{min-height:14px;margin-top:3px;color:var(--red);font-size:10px}.readonly{background:#f6f7f9!important}
 .check{display:flex;align-items:center;gap:7px;min-height:34px;font-size:12px;color:#374151;font-weight:600}.check input{width:16px;height:16px}.dirty-row{background:#fffaf0!important}.dirty-cell{box-shadow:inset 0 0 0 1px #e0a100;background:#fffaf0!important}
 .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:7px}.table{width:100%;border-collapse:collapse;min-width:850px}.table th{background:#f1f5f9;color:#40566b;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.35px;padding:8px 7px;border-bottom:1px solid #dfe5ea;position:sticky;top:0;z-index:1}.table td{padding:6px 7px;border-bottom:1px solid #edf0f2;vertical-align:middle}.table tr:last-child td{border-bottom:0}.table input[type=number]{width:100%;min-width:72px;height:30px;padding:5px 6px;border:1px solid #cfd6de;border-radius:5px;font:inherit}.table input[type=number]:focus{outline:none;border-color:#5a9dcc}.table input.dirty{border-color:#e0a100;background:#fffaf0}.table input.invalid{border-color:var(--red);background:var(--red2)}
@@ -87,7 +87,7 @@ tLeaveDirty:'There are unsaved changes on this page. Leave and discard them?',tR
 tFeedRead:'Feeder {n} read successfully',tFaultsLoaded:'Feeder {n}: {m} fault records loaded',tLogsLoaded:'Loaded {n} system logs',tDiscovery:'Discovery refreshed ({n} devices)',
 tRefreshErr:'Refresh error: ',tNoData:'No data',tTargetNotFound:'Target field not found',tEuiAssigned:'EUI-64 assigned to Feeder {n} phase {ph}',
 iecTitle:'IEC104 Configuration',iecSub:'IEC 60870-5-104 communication configuration',genSettings:'General Settings',iecGenSub:'IEC 60870-5-104 communication parameters',
-fPort:'Port',fPeriodic:'Periodic Send (s)',fOrigAddr:'Originator Address',fCommonAddr:'Common Address',fSboTo:'SBO Timeout (s)',fSboEn:'SBO Enable',fAkuIOA:'Battery Warning IOA',fResetIOA:'Modem Reboot IOA',
+fTempBase:'Temporary Fault Base IOA',fPermBase:'Permanent Fault Base IOA',faultAddressNote:'Each fault base uses 180 addresses, with feeder index (0..6) × 180 added. See the IEC104 address guide.',errAddressConflict:'Address overlaps with {field}',errRegisterConflict:'Register {address} is also used by {field}',errAddressRange:'Address range exceeds {max}',fPort:'Port',fPeriodic:'Periodic Send (s)',fOrigAddr:'Originator Address',fCommonAddr:'Common Address',fSboTo:'SBO Timeout (s)',fSboEn:'SBO Enable',fAkuIOA:'Battery Warning IOA',fResetIOA:'Modem Reboot IOA',
 feeders:'Feeders',iecFeedSub:'Select a feeder to edit its IOA addresses',
 catAkim:'Fault Current',catSure:'Fault Duration',catTuru:'Fault Type',catAnlik:'Load Current',catEnerji:'Energy Present',catNominal:'Nominal Current',catRf:'RF Comm Status',
 modTitle:'Modbus Configuration',modSub:'Modbus RTU configuration',modGenSub:'Modbus RTU parameters',fDevId:'Device ID',fBaud:'Baud Rate',fLastErr:'Last Error Code',fLastErrT:'Last Error Time',modFeedSub:'Select a feeder to edit its register addresses',
@@ -132,7 +132,7 @@ tLeaveDirty:'Bu sayfada kaydedilmemiş değişiklikler var. Ayrılıp yok sayıl
 tFeedRead:'Fider {n} okundu',tFaultsLoaded:'Fider {n}: {m} arıza kaydı yüklendi',tLogsLoaded:'{n} sistem günlüğü yüklendi',tDiscovery:'Keşif yenilendi ({n} cihaz)',
 tRefreshErr:'Yenileme hatası: ',tNoData:'Veri yok',tTargetNotFound:'Hedef alan bulunamadı',tEuiAssigned:'EUI-64, Fider {n} {ph} fazına atandı',
 iecTitle:'IEC104 Yapılandırması',iecSub:'IEC 60870-5-104 haberleşme yapılandırması',genSettings:'Genel Ayarlar',iecGenSub:'IEC 60870-5-104 haberleşme parametreleri',
-fPort:'Port',fPeriodic:'Periyodik Gönderim (s)',fOrigAddr:'Gönderici Adresi (Originator)',fCommonAddr:'Ortak Adres (CA)',fSboTo:'SBO Zaman Aşımı (s)',fSboEn:'SBO Etkin',fAkuIOA:'Akü Uyarısı IOA',fResetIOA:'Modem Yeniden Başlatma IOA',
+fTempBase:'Geçici Arıza Taban IOA',fPermBase:'Kalıcı Arıza Taban IOA',faultAddressNote:'Her arıza tabanı 180 adres kullanır; fider indeksi (0..6) × 180 eklenir. IEC104 adres rehberine bakınız.',errAddressConflict:'{field} ile adres çakışıyor',errRegisterConflict:'{address} register adresi {field} ile ortak kullanılıyor',errAddressRange:'Adres aralığı {max} sınırını aşıyor',fPort:'Port',fPeriodic:'Periyodik Gönderim (s)',fOrigAddr:'Gönderici Adresi (Originator)',fCommonAddr:'Ortak Adres (CA)',fSboTo:'SBO Zaman Aşımı (s)',fSboEn:'SBO Etkin',fAkuIOA:'Akü Uyarısı IOA',fResetIOA:'Modem Yeniden Başlatma IOA',
 feeders:'Fiderler',iecFeedSub:'Düzenlenecek fiderin IOA adreslerini seçin',
 catAkim:'Arıza Akımı',catSure:'Arıza Süresi',catTuru:'Arıza Tipi',catAnlik:'Anlık Akım',catEnerji:'Enerji Var/Yok',catNominal:'Nominal Akım Var/Yok',catRf:'RF Haberleşme Durumu',
 modTitle:'Modbus Yapılandırması',modSub:'Modbus RTU yapılandırması',modGenSub:'Modbus RTU parametreleri',fDevId:'Cihaz Adresi (ID)',fBaud:'Baud Hızı',fLastErr:'Son Hata Kodu',fLastErrT:'Son Hata Zamanı',modFeedSub:'Düzenlenecek fiderin register adreslerini seçin',
@@ -203,7 +203,7 @@ const api=async(url,opt={})=>{
   try{
     const r=await fetch(url,{...opt,signal:ctrl.signal});clearTimeout(tid);
     if(r.status===401&&!skipAuthCheck){s_sessionToken=null;s_role=null;buildMenu();showLoginModal();toast(t('tAuthReq'),'info');throw new Error(t('tAuthReq'))}
-    if(!r.ok)throw new Error('HTTP '+r.status);
+    if(!r.ok){const message=r.status===400?await r.text():'';throw new Error(message||'HTTP '+r.status)}
     return await r.json();
   }catch(e){clearTimeout(tid);if(!skipAuthCheck&&e.name!=='Error'&&!!s_sessionToken)toast(t('tConnErr'),'err');throw e}
 };
@@ -226,7 +226,18 @@ const markOriginals=root=>root.querySelectorAll('[data-dirty]').forEach(el=>{el.
 const numField=(id,label,v,min,max,ro=false,unit='',stp='')=>{const rng=(!ro&&min!=null&&max!=null)?`<span class="fld-hint">${min}–${max}${unit?' '+esc(unit):''}</span>`:(!ro&&unit?`<span class="fld-hint">${esc(unit)}</span>`:'');return `<div class="field"><label>${esc(label)}${rng}${!ro?'<span class="dirty-dot" style="display:none"></span>':''}</label><input id="${id}" data-dirty="1" type="number" value="${v??''}" min="${min??''}" max="${max??''}"${stp?` step="${stp}"`:''} ${ro?'disabled class="readonly"':''}><div class="err" id="err-${id}"></div></div>`};
 const textField=(id,label,v,max,ro=false)=>{const rng=(!ro&&max!=null&&max!=='')?`<span class="fld-hint">max ${max}</span>`:'';return `<div class="field"><label>${esc(label)}${rng}${!ro?'<span class="dirty-dot" style="display:none"></span>':''}</label><input id="${id}" data-dirty="1" type="text" value="${esc(v??'')}" maxlength="${max??''}" ${ro?'disabled class="readonly"':''}><div class="err" id="err-${id}"></div></div>`};
 const checkField=(id,label,v)=>`<div class="field"><label>&nbsp;</label><label class="check"><input id="${id}" data-dirty="1" type="checkbox" ${v?'checked':''}><span>${esc(label)}</span><span class="dirty-dot" style="display:none"></span></label></div>`;
-const feederField=(prefix,key,i,label,v,min=1,max=65535)=>`<div class="field"><label>${esc(label)}</label><input type="number" data-id="${prefix}" data-key="${key}" data-i="${i}" data-dirty="1" value="${v??0}" min="${min}" max="${max}"><div class="err"></div></div>`;
+const modbusRegisterCount=key=>/_(ArizaAkimi|AnlikAkim)$/.test(key)?2:1;
+const modbusRegisterInfo=(key,value)=>{
+  const count=modbusRegisterCount(key),first=Number(value);
+  const range=value!==''&&Number.isInteger(first)&&first>0?
+    (count===2?first+'–'+(first+1):String(first)):'—';
+  return (count===2?'FLOAT32':'UINT16')+' · '+count+' register · '+range;
+};
+const updateModbusRegisterHint=el=>{
+  const hint=el.closest('.field').querySelector('.register-info');
+  if(hint)hint.textContent=modbusRegisterInfo(el.dataset.key,el.value);
+};
+const feederField=(prefix,key,i,label,v,min=1,max=65535)=>`<div class="field"><label>${esc(label)}</label><input type="number" data-id="${prefix}" data-key="${key}" data-i="${i}" data-dirty="1" value="${v??0}" min="${min}" max="${max}"${prefix==='mod'?' oninput="updateModbusRegisterHint(this)"':''}>${prefix==='mod'?'<div class="sub register-info">'+modbusRegisterInfo(key,v??0)+'</div>':''}<div class="err"></div></div>`;
 const feederCheck=(prefix,i,label,checked)=>`<div class="field"><label class="check"><input type="checkbox" data-id="${prefix}" data-key="inUse" data-i="${i}" data-dirty="1" ${checked?'checked':''}><span>${esc(label)}</span></label></div>`;
 const selectField=(id,label,value,opts)=>{const all=(opts.map(String).includes(String(value))?opts:[value,...opts]);return `<div class="field"><label>${esc(label)}</label><select id="${id}" data-dirty="1">${all.map(o=>`<option value="${o}" ${String(o)===String(value)?'selected':''}>${o}</option>`).join('')}</select><div class="err" id="err-${id}"></div></div>`};
 const selectFieldL=(id,label,value,opts)=>{if(!opts.map(o=>String(o[0])).includes(String(value)))opts=[[value,String(value)],...opts];return `<div class="field"><label>${esc(label)}</label><select id="${id}" data-dirty="1">${opts.map(o=>`<option value="${o[0]}" ${String(o[0])===String(value)?'selected':''}>${esc(o[1])}</option>`).join('')}</select><div class="err" id="err-${id}"></div></div>`};
@@ -256,7 +267,7 @@ function renderIec104(d){
   s+=feederTabs('selectIecTab');
   const cats=[['ArizaAkimi','catAkim'],['ArizaSuresi','catSure'],['ArizaTuru','catTuru'],['AnlikAkim','catAnlik'],['EnerjiVarYok','catEnerji'],['NominalAkimVarYok','catNominal'],['RfhabVarYok','catRf']];
   const phs=[['R','L1'],['S','L2'],['T','L3']];
-  for(let i=0;i<FEEDER_COUNT;i++){s+=paneOpen('iec',i)+feederCheck('iec',i,t('useFeeder'),h.inUse?.[i])+'<div class="grid g3 gt" style="margin-top:8px;align-items:start">';phs.forEach(p=>{s+='<div><div class="phase-head">'+esc(t('phase'))+p[1]+'</div><div class="grid" style="gap:8px">';cats.forEach(c=>s+=feederField('iec','IOA_'+p[0]+'_'+c[0],i,t(c[1]),h['IOA_'+p[0]+'_'+c[0]]?.[i],1,16777215));s+='</div></div>'});s+='</div></div>'}
+  for(let i=0;i<FEEDER_COUNT;i++){s+=paneOpen('iec',i)+feederCheck('iec',i,t('useFeeder'),h.inUse?.[i])+'<div class="grid g2">'+feederField('iec','TemporaryFaultBase',i,t('fTempBase'),h.TemporaryFaultBase?.[i],1,16777215)+feederField('iec','PermanentFaultBase',i,t('fPermBase'),h.PermanentFaultBase?.[i],1,16777215)+'</div><p>'+esc(t('faultAddressNote'))+'</p><div class="grid g3 gt" style="margin-top:8px;align-items:start">';phs.forEach(p=>{s+='<div><div class="phase-head">'+esc(t('phase'))+p[1]+'</div><div class="grid" style="gap:8px">';cats.forEach(c=>s+=feederField('iec','IOA_'+p[0]+'_'+c[0],i,t(c[1]),h['IOA_'+p[0]+'_'+c[0]]?.[i],1,16777215));s+='</div></div>'});s+='</div></div>'}
   s+='</div></div></div>';return s;
 }
 
@@ -319,8 +330,74 @@ function renderTerminal(){return '<div class="terminal"><div class="terminal-out
 
 // ---------------- PAGE LOAD / SAVE ----------------
 const readPage=async(page)=>{if(loading)return;try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;pageCache[page]=d;renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}};
-const savePage=async(page)=>{if(loading)return;if(!pageCache[page]){toast(t('tReadFirst'),'err');return}if(!validatePage(page))return;const d=extractPage(page);try{showLoad();const r=await api('/config/'+page,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});hideLoad();if(r.success===false)throw new Error(r.error||t('tSaveFailed'));pageCache[page]={...pageCache[page],...d};markOriginals($('body'));clearDirty(page);toast(t('tSaveOk'),'ok')}catch(e){hideLoad();toast(t('tSaveErr')+e.message,'err')}};
-const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',30,255],['iec-T1',30,255],['iec-T2',30,255],['iec-T3',30,255],['iec-K',64,255],['iec-W',32,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false;for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="mod"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="mod"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,65535))ok=false})}}else if(page==='rf'){const rfInt=[['HatID',0,7],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',2.4,240],['ArtimliAkimEsigi',250,2500],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
+const savePage=async(page)=>{if(loading)return;if(!pageCache[page]){toast(t('tReadFirst'),'err');return}if(!validatePage(page))return;const d=extractPage(page);try{showLoad();const r=await api('/config/'+page,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});hideLoad();if(r.success===false)throw new Error(r.error||t('tSaveFailed'));pageCache[page]={...pageCache[page],...d};markOriginals($('body'));clearDirty(page);toast(t('tSaveOk'),'ok')}catch(e){hideLoad();if(page==='iec104'&&markIecServerErrors(e.message))toast(t('tFixVal'),'err');else toast(t('tSaveErr')+e.message,'err')}};
+const addressError=(el,message)=>{
+  el.classList.add('invalid');
+  const err=el.closest?.('.field')?.querySelector('.err')||$('err-'+el.id);
+  if(err)err.textContent=message;
+};
+const addressLabel=el=>{
+  const label=el.closest?.('.field')?.querySelector('label')?.textContent||el.dataset.key||el.id;
+  if(el.dataset.i===undefined)return label;
+  const phase={R:'L1',S:'L2',T:'L3'}[el.dataset.key?.split('_')[1]];
+  return feederLbl(Number(el.dataset.i))+' '+(phase?phase+' ':'')+label;
+};
+const validateAddresses=page=>{
+  const iec=page==='iec104',prefix=iec?'iec':'mod',max=iec?16777215:65535,ranges=[];
+  let ok=true,firstInvalid=null;
+  document.querySelectorAll('[data-id="'+prefix+'"]:not([data-key="inUse"])').forEach(el=>{
+    el.classList.remove('invalid');
+    const err=el.closest?.('.field')?.querySelector('.err');if(err)err.textContent='';
+  });
+  const check=(el,index=0)=>{
+    const value=Number(el.value),key=el.dataset.key||'';
+    const fault=iec&&(key==='TemporaryFaultBase'||key==='PermanentFaultBase');
+    const length=fault?180:(iec?1:modbusRegisterCount(key));
+    const first=value+(fault?index*180:0),last=first+length-1;
+    if(el.value===''||!Number.isInteger(value)||value<1||last>max){
+      addressError(el,tf('errAddressRange',{max}));ok=false;firstInvalid??=el;return;
+    }
+    for(const previous of ranges){
+      if(first<=previous.last&&previous.first<=last){
+        const message=iec?'errAddressConflict':'errRegisterConflict';
+        const address=Math.max(first,previous.first);
+        addressError(el,tf(message,{address,field:addressLabel(previous.el)}));
+        addressError(previous.el,tf(message,{address,field:addressLabel(el)}));
+        ok=false;firstInvalid??=previous.el;
+      }
+    }
+    ranges.push({first,last,el});
+  };
+  if(iec){check($('iec-AkuUyarisi'));check($('iec-ModemReset'))}
+  for(let i=0;i<FEEDER_COUNT;i++){
+    const cb=document.querySelector('[data-id="'+prefix+'"][data-key="inUse"][data-i="'+i+'"]');
+    if(cb&&!cb.checked)continue;
+    document.querySelectorAll('[data-id="'+prefix+'"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(el=>check(el,i));
+  }
+  if(firstInvalid?.dataset.i!==undefined){
+    (iec?selectIecTab:selectModTab)(Number(firstInvalid.dataset.i));
+    firstInvalid.focus();
+  }
+  return ok;
+};
+const markIecServerErrors=message=>{
+  const fields=[];
+  for(const match of message.matchAll(/Hatlar\.([A-Za-z0-9_]+)\[(\d+)\]/g)){
+    const el=document.querySelector('[data-id="iec"][data-key="'+match[1]+'"][data-i="'+match[2]+'"]');
+    if(el)fields.push(el);
+  }
+  for(const key of ['AkuUyarisi','ModemReset']){
+    if(message.includes(key)){const el=$('iec-'+key);if(el)fields.push(el)}
+  }
+  if(!fields.length)return false;
+  fields.forEach(el=>addressError(el,fields.length>1?
+    tf('errAddressConflict',{field:addressLabel(fields.find(other=>other!==el))}):
+    tf('errAddressRange',{max:16777215})));
+  const first=fields.find(el=>el.dataset.i!==undefined);
+  if(first){selectIecTab(Number(first.dataset.i));first.focus()}
+  return true;
+};
+const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',30,255],['iec-T1',30,255],['iec-T2',30,255],['iec-T3',30,255],['iec-K',64,255],['iec-W',32,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false;for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="mod"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="mod"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,65535))ok=false})}if(!validateAddresses(page))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,7],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',2.4,240],['ArtimliAkimEsigi',250,2500],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
   for(let i=0;i<FEEDER_COUNT;i++){const cb=$('rf-inUse-'+i);const inUse=!cb||cb.checked;
     ['R_DEVICEID','S_DEVICEID','T_DEVICEID'].forEach(k=>{const el=$('rf-'+k+'-'+i);if(!el)return;const v=(el.value||'').trim();const err=$('err-rf-'+k+'-'+i);el.classList.remove('invalid');if(err)err.textContent='';if(v==='')return;
       if(!euiRe.test(v)){el.classList.add('invalid');if(err)err.textContent=t('errHex');ok=false}
@@ -335,9 +412,9 @@ const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],
     const nom=parseFloat($('rf-SistemNominalAkimi-'+i)?.value),ia=parseFloat($('rf-SetEdilebilirActirmaEsikAkimi-'+i)?.value);
     if(Number.isFinite(nom)&&Number.isFinite(ia)&&ia<nom*1.2){const el=$('rf-SetEdilebilirActirmaEsikAkimi-'+i),err=$('err-rf-SetEdilebilirActirmaEsikAkimi-'+i);el.classList.add('invalid');if(err)err.textContent=tf('errIaMin',{v:(nom*1.2).toFixed(1)});ok=false}
   }}else if(page==='device'){[['dev-WebArayuzuPortu',1,65535],['dev-SimKartPin',0,9999],['dev-NtpServerPortu',1,65535],['dev-TimeZone',-12,14],['dev-PeriyodikModemResetPeriyodu',0,720],['dev-WebIlkVeriZamanAsimi',0,3600],['dev-WebBostaKalmaZamanAsimi',0,3600],['dev-IEC104IlkVeriZamanAsimi',0,3600],['dev-IEC104BostaKalmaZamanAsimi',0,3600]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false})}if(!ok)toast(t('tFixVal'),'err');return ok};
-const validationEl=(el,min,max)=>{el.classList.remove('invalid');const n=Number(el.value);if(el.value===''||!Number.isFinite(n)||n<min||n>max){el.classList.add('invalid');return false}return true};
+const validationEl=(el,min,max)=>{el.classList.remove('invalid');const err=el.closest?.('.field')?.querySelector('.err');if(err)err.textContent='';const n=Number(el.value);if(el.value===''||!Number.isInteger(n)||n<min||n>max){addressError(el,t('range')+min+' .. '+max);return false}return true};
 
-function extractPage(page){if(page==='iec104'){const d={};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','IOA_R_ArizaAkimi','IOA_S_ArizaAkimi','IOA_T_ArizaAkimi','IOA_R_ArizaSuresi','IOA_S_ArizaSuresi','IOA_T_ArizaSuresi','IOA_R_ArizaTuru','IOA_S_ArizaTuru','IOA_T_ArizaTuru','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_NominalAkimVarYok','IOA_S_NominalAkimVarYok','IOA_T_NominalAkimVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
+function extractPage(page){if(page==='iec104'){const d={};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','TemporaryFaultBase','PermanentFaultBase','IOA_R_ArizaAkimi','IOA_S_ArizaAkimi','IOA_T_ArizaAkimi','IOA_R_ArizaSuresi','IOA_S_ArizaSuresi','IOA_T_ArizaSuresi','IOA_R_ArizaTuru','IOA_S_ArizaTuru','IOA_T_ArizaTuru','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_NominalAkimVarYok','IOA_S_NominalAkimVarYok','IOA_T_NominalAkimVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
   if(page==='modbus'){const d={CihazID:getInt('mod-CihazID'),BaudRate:getInt('mod-BaudRate')},h={};const keys=['inUse','ADDR_R_ArizaAkimi','ADDR_S_ArizaAkimi','ADDR_T_ArizaAkimi','ADDR_R_ArizaSuresi','ADDR_S_ArizaSuresi','ADDR_T_ArizaSuresi','ADDR_R_ArizaTuru','ADDR_S_ArizaTuru','ADDR_T_ArizaTuru','ADDR_R_AnlikAkim','ADDR_S_AnlikAkim','ADDR_T_AnlikAkim','ADDR_R_EnerjiVarYok','ADDR_S_EnerjiVarYok','ADDR_T_EnerjiVarYok','ADDR_R_NominalAkimVarYok','ADDR_S_NominalAkimVarYok','ADDR_T_NominalAkimVarYok','ADDR_R_RfhabVarYok','ADDR_S_RfhabVarYok','ADDR_T_RfhabVarYok'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="mod"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hat=h;return d}
   if(page==='rf'){const d={};const iKeys=['HatID','ZoneID','SetEdilebilirAcmaArizaSayisi','OluHatAkimiDogrulamaSuresi','YenilenmeSifirlamaSuresi'];const fKeys=['SistemNominalAkimi','SetEdilebilirActirmaEsikAkimi','ArtimliAkimEsigi','HatKopukHatBosta'];const sKeys=['R_DEVICEID','S_DEVICEID','T_DEVICEID'];['inUse','CalismaModu','HatFrekansi',...iKeys,...fKeys,...sKeys].forEach(k=>d[k]=[]);
     for(let i=0;i<FEEDER_COUNT;i++){d.inUse[i]=getBool('rf-inUse-'+i);d.CalismaModu[i]=getInt('rf-CalismaModu-'+i);d.HatFrekansi[i]=getInt('rf-HatFrekansi-'+i);iKeys.forEach(k=>d[k][i]=getInt('rf-'+k+'-'+i));fKeys.forEach(k=>d[k][i]=getFloat('rf-'+k+'-'+i));sKeys.forEach(k=>d[k][i]=getText('rf-'+k+'-'+i).trim().toUpperCase())}return d}

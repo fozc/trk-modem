@@ -206,12 +206,12 @@ void nvram_set_defaults(void)
             nvram.breaker.line[i].iec104.rf_haberlesme_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 60 + ph);
         }
 
-        /* temporary/permanent fault: skaler alan bir BAZ adrestir; faz
-         * (x20) ve kayit ofsetlerini tuketici hesaplar (iec104_config.c).
-         * Faz dongusu icinde ph*10 ile atamak R/S degerlerini eziyordu
-         * (Y3.12) - dongu disinda sabit baz atanir. */
-        nvram.breaker.line[i].iec104.temporary_fault = iec104_make_ioa_3byte(base_ioa + 100);
-        nvram.breaker.line[i].iec104.permanent_fault = iec104_make_ioa_3byte(base_ioa + 200);
+        /* Separate fault regions; getters add the feeder/phase offsets.
+         * These defaults apply only when initializing factory settings. */
+        nvram.breaker.line[i].iec104.temporary_fault =
+            iec104_make_ioa_3byte(100000U + ((uint32_t)i * 1000U));
+        nvram.breaker.line[i].iec104.permanent_fault =
+            iec104_make_ioa_3byte(200000U + ((uint32_t)i * 1000U));
         
         // Initialize Modbus line config with default register addresses.
         // Contiguous map (see MODBUS_REGISTER_MAP.md): FLOAT32 fields take two
