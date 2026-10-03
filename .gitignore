@@ -76,6 +76,7 @@ doc/*
 !doc/PowerBoard_I2C_Protocol.md
 !doc/belge_yazim_rehberi.md
 !doc/HW_TEST_VE_DEBUG_REHBERI.md
+!doc/IEC104_YAPILANDIRMA_VE_ADRES_REHBERI.md
 
 # simulator derleme ciktilari
 tools/rf-hub-sim/rf_hub_sim.exe
