@@ -1,4 +1,7 @@
-/* index_html.h - embedded index.html header */
+/* index_html.h - embedded index.html header
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ */
 #ifndef INDEX_HTML_H
 #define INDEX_HTML_H
 

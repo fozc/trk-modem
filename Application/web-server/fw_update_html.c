@@ -1,4 +1,7 @@
-/* fw_update_html.c - embedded fw_update.html */
+/* fw_update_html.c - embedded fw_update.html
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ */
 #include "fw_update_html.h"
 
 static const uint8_t fw_update_html_data[] = {

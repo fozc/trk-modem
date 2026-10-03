@@ -56,7 +56,7 @@ iecKeys.forEach((k, j) => { iecHat[k] = arr8(i => 100 + j * 10 + i); });
 
 const iec104 = { success: true, data: {
   Port: 2404, PeriodicSend: 10, T0: 30, T1: 30, T2: 30, T3: 30, K: 64, W: 32,
-  OriginatorAddr: 1, CommonAddr: 1, SBOTimeout: 30000, SBO: true,
+  OriginatorAddr: 1, CommonAddr: 1, SBOTimeout: 30, SBO: true,
   AkuUyarisi: 100, ModemReset: 101, Hatlar: iecHat
 }};
 

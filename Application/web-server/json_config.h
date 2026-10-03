@@ -2,7 +2,8 @@
  * json_config.h
  *
  *  Created on: 31 Eki 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef JSON_CONFIG_H_
@@ -60,8 +61,8 @@ typedef struct
     uint8_t t3_timeout;
     uint8_t k_max;
     uint8_t w_max;
-    uint16_t originator_address;
-    uint8_t common_address;
+    uint8_t originator_address;
+    uint16_t common_address;
     bool sbo_active;
     uint32_t sbo_timeout;
     uint32_t ioa_aku_uyarisi;
