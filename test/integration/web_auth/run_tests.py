@@ -276,9 +276,74 @@ int main(void) {
 (audit/'bsp_rng_repro.c').write_text(bsp_code,encoding='utf8')
 
 
+# Use the actual formatter and production version/status handlers.
+length_preamble = r"""
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdio.h>
+#include "xprintf.h"
+#define CSLOG(...) ((void)0)
+static const char *fw_version="1.0.0", *fw_build_date="2026-10-03";
+static const char *fw_hardware="TROIKA-SCB-v1";
+static struct {char *tx_buffer; int tx_buffer_size;} handler_state;
+static struct {
+ bool in_progress;
+ uint32_t received_bytes, total_size, file_hash;
+} fw_state;
+static int response_length;
+static void http_send_json(const char *body,int length) {
+ assert(length >= 0 && length < handler_state.tx_buffer_size);
+ assert((size_t)length == strlen(body));
+ response_length=length;
+}
+"""
+handler_source=(root/'Application/web-server/http_handlers.c').read_text(encoding='utf8')
+length_code=length_preamble
+for function in ['handle_get_fw_version', 'handle_get_fw_status']:
+ match=re.search(r'^void '+function+r'\(void\)\s*\{.*?\n\}',handler_source,re.M|re.S)
+ if not match: raise RuntimeError(function)
+ length_code += match.group(0)+'\n'
+length_code+=r"""
+static void check_response(void (*handler)(void), const char *expected) {
+ static char canvas[8194];
+ const int capacities[]={1,2,8,32,128,8192};
+ for(size_t i=0;i<sizeof(capacities)/sizeof(capacities[0]);i++) {
+  int capacity=capacities[i];
+  memset(canvas,0x55,sizeof(canvas));
+  canvas[0]='*';canvas[capacity+1]='*';
+  handler_state.tx_buffer=canvas+1;handler_state.tx_buffer_size=capacity;
+  handler();
+  size_t length=strlen(expected);
+  if(length>(size_t)(capacity-1))length=(size_t)(capacity-1);
+  assert(response_length==(int)length);
+  assert(memcmp(canvas+1,expected,length)==0);
+  assert(canvas[length+1]=='\0');
+  assert(canvas[0]=='*' && canvas[capacity+1]=='*');
+ }
+}
+int main(void) {
+ check_response(handle_get_fw_version,
+  "{\"version\":\"1.0.0\",\"buildDate\":\"2026-10-03\",\"hardware\":\"TROIKA-SCB-v1\"}");
+ check_response(handle_get_fw_status,"{\"active\":false}");
+ fw_state.in_progress=true;fw_state.received_bytes=4294967295U;
+ fw_state.total_size=4294967295U;fw_state.file_hash=4294967295U;
+ check_response(handle_get_fw_status,
+  "{\"active\":true,\"received\":4294967295,\"total\":4294967295,\"fh\":4294967295}");
+ fw_state.in_progress=false;
+ check_response(handle_get_fw_status,
+  "{\"active\":false,\"ready\":true,\"received\":4294967295,\"total\":4294967295,\"fh\":4294967295}");
+ puts("PASS: actual HTTP handlers and formatter preserve bytes, bounded lengths and guards");
+ return 0;
+}
+"""
+(audit/'http_lengths_repro.c').write_text(length_code,encoding='utf8')
+
 outputs=[]
-for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro']:
- run=subprocess.run([args.cc,'-std=c11','-O0','-I'+str(root/'Application/web-server'),'-I'+str(root/'Application/bsp'),str(audit/(name+'.c')),'-o',str(audit/(name+'.exe'))],capture_output=True,text=True)
+for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro']:
+ extra=[str(root/'Application/libs/xprintf.c'),'-I'+str(root/'Application/libs'),'-lm'] if name=='http_lengths_repro' else []
+ run=subprocess.run([args.cc,'-std=c11','-O0','-I'+str(root/'Application/web-server'),'-I'+str(root/'Application/bsp'),str(audit/(name+'.c')),*extra,'-o',str(audit/(name+'.exe'))],capture_output=True,text=True)
  if run.returncode: print(run.stderr);raise SystemExit(run.returncode)
  run=subprocess.run([str(audit/(name+'.exe'))],capture_output=True,text=True)
  outputs.append(run.stdout+run.stderr)

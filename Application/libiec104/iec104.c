@@ -238,13 +238,14 @@ void iec104_set_common_address(uint16_t address)
     config.common_address = address;
 }
 
+/* Wire fields retain their existing low-bit encoding explicitly. */
 static inline i_format_control_t make_iframe_control(uint16_t send_seq, uint16_t receive_seq)
 {
     return (i_format_control_t){
         .format = 0x00, // I-Format
-        .send_seq = send_seq,
+        .send_seq = send_seq & 0x7FFFU,
         .format2 = 0x00, // I-Format
-        .receive_seq = receive_seq
+        .receive_seq = receive_seq & 0x7FFFU
     };
 }
 
@@ -256,7 +257,7 @@ static inline siq_t make_siq(uint8_t value, uint8_t quality)
         .blocked     = (uint8_t)((quality >> 4) & 0x01U),
         .substituted = (uint8_t)((quality >> 5) & 0x01U),
         .not_topical = (uint8_t)((quality >> 6) & 0x01U),
-        .invalid     = (uint8_t)((quality >> 7) & 0x01U)
+        .invalid     = ((quality >> 7) & 0x01U)
     };
 }
 
@@ -267,7 +268,7 @@ static inline diq_t make_diq(uint8_t value, uint8_t quality)
         .blocked     = (uint8_t)((quality >> 4) & 0x01U),
         .substituted = (uint8_t)((quality >> 5) & 0x01U),
         .not_topical = (uint8_t)((quality >> 6) & 0x01U),
-        .invalid     = (uint8_t)((quality >> 7) & 0x01U)
+        .invalid     = ((quality >> 7) & 0x01U)
     };
 }
 
@@ -287,8 +288,8 @@ static inline asdu_header_t make_asdu_header(uint8_t type_id, cot_t cot, uint16_
         .originator_address = originator_address,
         .common_asdu_address = common_address,
         .vsq = {
-            .number_of_objects = vsq_number_of_objects, // 1: single object, != 1: multiple objects
-            .sq_bit = vsq_sq_bit // 1: Single object, 0: multiple objects, sq=1 ise IOA'lar arsisik tek IOA gonderilir, sq=0 ise her obje için ayri IOA var
+            .number_of_objects = vsq_number_of_objects & 0x7FU, // 1: single object, != 1: multiple objects
+            .sq_bit = vsq_sq_bit & 0x01U // 1: Single object, 0: multiple objects, sq=1 ise IOA'lar arsisik tek IOA gonderilir, sq=0 ise her obje için ayri IOA var
         }
     };
 }
@@ -361,11 +362,14 @@ void iec104_send_end_of_initialization(void)
     memset(&pkt, 0, pkt_length); // +2 for start byte and length byte
 
     pkt.frame.apci.start_char = IEC104_START_BYTE;
-    pkt.frame.apci.apdu_length = pkt_length - 2; // -2 for start byte and length byte
+    _Static_assert(sizeof(apci_header_t) + sizeof(asdu_header_t)
+                   + sizeof(m_ei_na_1_t) - 2U <= UINT8_MAX,
+                   "Initialization APDU length must fit in one byte");
+    pkt.frame.apci.apdu_length = (uint8_t)(pkt_length - 2U);
     pkt.frame.apci.i_frame.format = 0x00; // I-Format
-    pkt.frame.apci.i_frame.send_seq = send_sn;
+    pkt.frame.apci.i_frame.send_seq = send_sn & 0x7FFFU;
     pkt.frame.apci.i_frame.format2 = 0x00;
-    pkt.frame.apci.i_frame.receive_seq = receive_sn;
+    pkt.frame.apci.i_frame.receive_seq = receive_sn & 0x7FFFU;
 
     pkt.frame.asdu_header.type_id = M_EI_NA_1; // End of Initialization
     pkt.frame.asdu_header.cot.cause = COT_INITIALIZED;
@@ -392,13 +396,13 @@ void iec104_send_general_interrogation_con(iec104_qoi_t qoi, uint8_t is_negative
     pkt.frame.apci.start_char = IEC104_START_BYTE;
     pkt.frame.apci.apdu_length = 14; // ASDU header + 1 object
     pkt.frame.apci.i_frame.format = 0x00; // I-Format
-    pkt.frame.apci.i_frame.send_seq = send_sn;
+    pkt.frame.apci.i_frame.send_seq = send_sn & 0x7FFFU;
     pkt.frame.apci.i_frame.format2 = 0x00;
-    pkt.frame.apci.i_frame.receive_seq = receive_sn;
+    pkt.frame.apci.i_frame.receive_seq = receive_sn & 0x7FFFU;
 
     pkt.frame.asdu_header.type_id = C_IC_NA_1; // Interrogation Command
     pkt.frame.asdu_header.cot.cause = COT_ACTIVATION_CON;
-    pkt.frame.asdu_header.cot.pn_bit = is_negative;       // 0=Positive, 1=Negative
+    pkt.frame.asdu_header.cot.pn_bit = is_negative & 0x01U;       // 0=Positive, 1=Negative
     pkt.frame.asdu_header.cot.test_bit = 0;
 
     pkt.frame.asdu_header.originator_address = response_originator_address;
@@ -421,13 +425,13 @@ void iec104_send_general_interrogation_term(iec104_qoi_t qoi, uint8_t is_negativ
     pkt.frame.apci.start_char = IEC104_START_BYTE;
     pkt.frame.apci.apdu_length = 14; // ASDU header + 1 object
     pkt.frame.apci.i_frame.format = 0x00; // I-Format
-    pkt.frame.apci.i_frame.send_seq = send_sn;
+    pkt.frame.apci.i_frame.send_seq = send_sn & 0x7FFFU;
     pkt.frame.apci.i_frame.format2 = 0x00;
-    pkt.frame.apci.i_frame.receive_seq = receive_sn;
+    pkt.frame.apci.i_frame.receive_seq = receive_sn & 0x7FFFU;
 
     pkt.frame.asdu_header.type_id = C_IC_NA_1; // Interrogation Command
     pkt.frame.asdu_header.cot.cause = COT_ACTIVATION_TERM;
-    pkt.frame.asdu_header.cot.pn_bit = is_negative;       // 1: sorgulama eksik tamamlandi
+    pkt.frame.asdu_header.cot.pn_bit = is_negative & 0x01U;       // 1: sorgulama eksik tamamlandi
     pkt.frame.asdu_header.cot.test_bit = 0;
 
     pkt.frame.asdu_header.originator_address = response_originator_address;
@@ -520,7 +524,7 @@ void iec104_interrogation_send_c_sc_na_1_object(ioa_3byte_t ioa, uint8_t state, 
     c_sc_na_1_t *c_sc_na_1 = (c_sc_na_1_t *)&pkt.data[DATA_START_IDX];
 
     c_sc_na_1->ioa = ioa;
-    c_sc_na_1->sco.scs = state; // Single Command State
+    c_sc_na_1->sco.scs = state & 0x01U; // Single Command State
     c_sc_na_1->sco.qu = qualifier; // Qualifier of Command State
     c_sc_na_1->sco.reserved = 0;
     c_sc_na_1->sco.se_bit = se_bit; // SE Bit
@@ -592,19 +596,19 @@ void iec104_interrogation_handler(const iec104_package_t *pkt)
     {
         iec104_send_general_interrogation_con(QOI_STATION, 0);
         const bool complete = iec104_interrogation_send_all_objects();
-        iec104_send_general_interrogation_term(QOI_STATION, complete ? 0U : 1U);
+        iec104_send_general_interrogation_term(QOI_STATION, (uint8_t)!complete);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 21)
     {
     	iec104_send_general_interrogation_con(QOI_GROUP_1, 0);
     	const bool complete = iec104_interrogation_send_group1();
-		iec104_send_general_interrogation_term(QOI_GROUP_1, complete ? 0U : 1U);
+		iec104_send_general_interrogation_term(QOI_GROUP_1, (uint8_t)!complete);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 22)
     {
     	iec104_send_general_interrogation_con(QOI_GROUP_2, 0);
     	const bool complete = iec104_interrogation_send_group2();
-		iec104_send_general_interrogation_term(QOI_GROUP_2, complete ? 0U : 1U);
+		iec104_send_general_interrogation_term(QOI_GROUP_2, (uint8_t)!complete);
     }
     else if(pkt->frame.c_ic_na_1_command.qoi == 23)
     {
@@ -923,7 +927,7 @@ bool iec104_send_s_frame(uint16_t receive_seq)
 	pkt.frame.apci.s_frame.format = 0x01;
     pkt.frame.apci.s_frame.reserved = 0x00;
     pkt.frame.apci.s_frame.format2 = 0x00;
-	pkt.frame.apci.s_frame.receive_seq = receive_seq;
+	pkt.frame.apci.s_frame.receive_seq = receive_seq & 0x7FFFU;
 
 	return iec104_send(pkt.data, 6);
 }
@@ -1001,7 +1005,7 @@ void iec104_send_negative_ack(const iec104_package_t *original_pkt, uint8_t caus
    memcpy(&pkt, original_pkt, frame_length);
 
     pkt.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
-    pkt.frame.asdu_header.cot.cause = cause;
+    pkt.frame.asdu_header.cot.cause = cause & 0x3FU;
     pkt.frame.asdu_header.cot.pn_bit = 1; // Negatif onay
 
     iec104_send(pkt.data, frame_length);
@@ -1525,9 +1529,9 @@ void iec104_send_M_SP_TB_1_spontan(ioa_3byte_t ioa, uint8_t value, uint8_t quali
     pkt.frame.apci.start_char = IEC104_START_BYTE;
     pkt.frame.apci.apdu_length = sizeof(m_sp_tb_1_t) + 10; // Object size + ASDU header + 1 object
     pkt.frame.apci.i_frame.format = 0x00; // I-Format
-    pkt.frame.apci.i_frame.send_seq = send_sn;
+    pkt.frame.apci.i_frame.send_seq = send_sn & 0x7FFFU;
     pkt.frame.apci.i_frame.format2 = 0x00;
-    pkt.frame.apci.i_frame.receive_seq = receive_sn;
+    pkt.frame.apci.i_frame.receive_seq = receive_sn & 0x7FFFU;
     pkt.frame.asdu_header.type_id = M_SP_TB_1; // Single Point Information
     pkt.frame.asdu_header.vsq.sq_bit = 0;
     pkt.frame.asdu_header.vsq.number_of_objects = 1; // 1 object 
@@ -1982,7 +1986,7 @@ bool iec104_send_phase_currents(cause_of_transmission_t cause)
     m_me_tf_1_t objects[MAX_POWER_LINE_COUNT * 3];
     uint8_t obj_count = 0;
 
-    for (int power_line = 0; power_line < MAX_POWER_LINE_COUNT; power_line++)
+    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(power_line);
 
@@ -1990,7 +1994,7 @@ bool iec104_send_phase_currents(cause_of_transmission_t cause)
             continue;
         }
 
-        for (int phase = 0; phase < 3; phase++)
+        for (uint8_t phase = 0U; phase < 3; phase++)
         {
             float value;
             qds_t quality;
@@ -2016,7 +2020,7 @@ bool iec104_send_phase_currents(cause_of_transmission_t cause)
         }
 
         iec104_package_t pkt;
-        const uint8_t apdu_len = (sizeof(m_me_tf_1_t) * batch) + 10; // ASDU header + batch * object size
+        const uint8_t apdu_len = (uint8_t)((sizeof(m_me_tf_1_t) * batch) + 10U); // ASDU header + batch * object size
         const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_me_tf_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
 
         memset(&pkt, 0, total_len);
@@ -2061,7 +2065,7 @@ bool iec104_send_fault_currents(cause_of_transmission_t cause)
     m_me_tf_1_t objects[MAX_POWER_LINE_COUNT * 3];
     uint8_t obj_count = 0;
 
-    for (int power_line = 0; power_line < MAX_POWER_LINE_COUNT; power_line++)
+    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(power_line);
 
@@ -2069,7 +2073,7 @@ bool iec104_send_fault_currents(cause_of_transmission_t cause)
             continue;
         }
 
-        for (int phase = 0; phase < 3; phase++)
+        for (uint8_t phase = 0U; phase < 3; phase++)
         {
             float value;
             qds_t quality;
@@ -2095,7 +2099,7 @@ bool iec104_send_fault_currents(cause_of_transmission_t cause)
         }
 
         iec104_package_t pkt;
-        const uint8_t apdu_len = (sizeof(m_me_tf_1_t) * batch) + 10; // ASDU header + batch * object size
+        const uint8_t apdu_len = (uint8_t)((sizeof(m_me_tf_1_t) * batch) + 10U); // ASDU header + batch * object size
         const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_me_tf_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
 
         memset(&pkt, 0, total_len);
@@ -2140,7 +2144,7 @@ bool iec104_send_fault_durations(cause_of_transmission_t cause)
     m_me_tf_1_t objects[MAX_POWER_LINE_COUNT * 3];
     uint8_t obj_count = 0;
 
-    for (int power_line = 0; power_line < MAX_POWER_LINE_COUNT; power_line++)
+    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(power_line);
 
@@ -2148,7 +2152,7 @@ bool iec104_send_fault_durations(cause_of_transmission_t cause)
             continue;
         }
 
-        for (int phase = 0; phase < 3; phase++)
+        for (uint8_t phase = 0U; phase < 3; phase++)
         {
             float value;
             qds_t quality;
@@ -2174,7 +2178,7 @@ bool iec104_send_fault_durations(cause_of_transmission_t cause)
         }
 
         iec104_package_t pkt;
-        const uint8_t apdu_len = (sizeof(m_me_tf_1_t) * batch) + 10; // ASDU header + batch * object size
+        const uint8_t apdu_len = (uint8_t)((sizeof(m_me_tf_1_t) * batch) + 10U); // ASDU header + batch * object size
         const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_me_tf_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
 
         memset(&pkt, 0, total_len);
@@ -2219,7 +2223,7 @@ bool iec104_send_fault_types(cause_of_transmission_t cause)
     m_sp_tb_1_t objects[MAX_POWER_LINE_COUNT * 3];
     uint8_t obj_count = 0;
 
-    for (int power_line = 0; power_line < MAX_POWER_LINE_COUNT; power_line++)
+    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(power_line);
 
@@ -2227,7 +2231,7 @@ bool iec104_send_fault_types(cause_of_transmission_t cause)
             continue;
         }
 
-        for (int phase = 0; phase < 3; phase++)
+        for (uint8_t phase = 0U; phase < 3; phase++)
         {
         	siq_t siq;
             cp56time2a_t timestamp;
@@ -2251,7 +2255,7 @@ bool iec104_send_fault_types(cause_of_transmission_t cause)
         }
 
         iec104_package_t pkt;
-        const uint8_t apdu_len = (sizeof(m_sp_tb_1_t) * batch) + 10; // ASDU header + batch * object size
+        const uint8_t apdu_len = (uint8_t)((sizeof(m_sp_tb_1_t) * batch) + 10U); // ASDU header + batch * object size
         const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_sp_tb_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
 
         memset(&pkt, 0, total_len);
@@ -2296,7 +2300,7 @@ bool iec104_send_energy_states(cause_of_transmission_t cause)
     m_sp_tb_1_t objects[MAX_POWER_LINE_COUNT * 3];
     uint8_t obj_count = 0;
 
-    for (int power_line = 0; power_line < MAX_POWER_LINE_COUNT; power_line++)
+    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(power_line);
 
@@ -2304,7 +2308,7 @@ bool iec104_send_energy_states(cause_of_transmission_t cause)
             continue;
         }
 
-        for (int phase = 0; phase < 3; phase++)
+        for (uint8_t phase = 0U; phase < 3; phase++)
         {
         	siq_t siq;
             cp56time2a_t timestamp;
@@ -2328,7 +2332,7 @@ bool iec104_send_energy_states(cause_of_transmission_t cause)
         }
 
         iec104_package_t pkt;
-        const uint8_t apdu_len = (sizeof(m_sp_tb_1_t) * batch) + 10; // ASDU header + batch * object size
+        const uint8_t apdu_len = (uint8_t)((sizeof(m_sp_tb_1_t) * batch) + 10U); // ASDU header + batch * object size
         const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_sp_tb_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
 
         memset(&pkt, 0, total_len);
@@ -2388,7 +2392,7 @@ bool iec104_send_nominal_current_states(cause_of_transmission_t cause)
     m_sp_tb_1_t objects[MAX_POWER_LINE_COUNT * 3];
     uint8_t obj_count = 0;
 
-    for (int power_line = 0; power_line < MAX_POWER_LINE_COUNT; power_line++)
+    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(power_line);
 
@@ -2396,7 +2400,7 @@ bool iec104_send_nominal_current_states(cause_of_transmission_t cause)
             continue;
         }
 
-        for (int phase = 0; phase < 3; phase++)
+        for (uint8_t phase = 0U; phase < 3; phase++)
         {
         	siq_t siq;
             cp56time2a_t timestamp;
@@ -2464,7 +2468,7 @@ bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
     m_sp_tb_1_t objects[MAX_POWER_LINE_COUNT * 3];
     uint8_t obj_count = 0;
 
-    for (int power_line = 0; power_line < MAX_POWER_LINE_COUNT; power_line++)
+    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(power_line);
 
@@ -2472,7 +2476,7 @@ bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
             continue;
         }
 
-        for (int phase = 0; phase < 3; phase++)
+        for (uint8_t phase = 0U; phase < 3; phase++)
         {
         	siq_t siq;
             cp56time2a_t timestamp;
@@ -2496,7 +2500,7 @@ bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
         }
 
         iec104_package_t pkt;
-        const uint8_t apdu_len = (sizeof(m_sp_tb_1_t) * batch) + 10; // ASDU header + batch * object size
+        const uint8_t apdu_len = (uint8_t)((sizeof(m_sp_tb_1_t) * batch) + 10U); // ASDU header + batch * object size
         const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_sp_tb_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
 
         memset(&pkt, 0, total_len);
@@ -2564,7 +2568,7 @@ static bool send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             : fault_log_get_perm_count(feeder_id, phase_id);
 
         fault_log_t log;
-        for (int index = 0; index < fault_count; index++) 
+        for (uint8_t index = 0U; index < fault_count; index++)
         {
             if (!fault_log_read_nth(feeder_id, phase_id, log_type, index, &log)) {
                 continue;
@@ -2603,7 +2607,7 @@ static bool send_fault_me_tf_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         }
 
         iec104_package_t pkt = {0};
-        const uint8_t apdu_len  = (sizeof(m_me_tf_1_t) * batch) + 10;
+        const uint8_t apdu_len  = (uint8_t)((sizeof(m_me_tf_1_t) * batch) + 10U);
         const size_t  total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
                                   + (sizeof(m_me_tf_1_t) * batch);
 
@@ -2656,7 +2660,7 @@ static bool send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             : fault_log_get_perm_count(feeder_id, phase_id);
 
         fault_log_t log;
-        for (int index = 0; index < fault_count; index++) 
+        for (uint8_t index = 0U; index < fault_count; index++)
         {
             if (!fault_log_read_nth(feeder_id, phase_id, log_type, index, &log)) {
                 continue;
@@ -2694,7 +2698,7 @@ static bool send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
         }
 
         iec104_package_t pkt = {0};
-        const uint8_t apdu_len  = (sizeof(m_sp_tb_1_t) * batch) + 10;
+        const uint8_t apdu_len  = (uint8_t)((sizeof(m_sp_tb_1_t) * batch) + 10U);
         const size_t  total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
                                   + (sizeof(m_sp_tb_1_t) * batch);
 

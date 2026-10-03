@@ -431,8 +431,53 @@ static void test_iec_default_address_regions(void)
     }
 }
 
+static void test_factory_register_addresses_are_unchanged(void)
+{
+    boot_virgin();
+    const breaker_t *breaker = nvram_get_breaker();
+    for (uint32_t i = 0U; i < MAX_POWER_LINE_COUNT; i++)
+    {
+        const modbus_line_config_t *line = &breaker->line[i].modbus;
+        const iec104_line_config_t *iec = &breaker->line[i].iec104;
+        const uint32_t offsets[] = {0U, 6U, 12U, 15U, 18U, 21U, 24U};
+        const uint32_t base = 40000U + (i * 100U);
+        for (uint32_t phase = 0U; phase < 3U; phase++)
+        {
+            /* Copy packed members by value; never take their address. */
+            const uint16_t fields[] =
+            {
+                line->ariza_akimi[phase], line->anlik_akim[phase],
+                line->ariza_suresi[phase], line->ariza_kalicimi[phase],
+                line->enerji_varyok[phase], line->nominal_akim_varyok[phase],
+                line->rf_haberlesme_varyok[phase]
+            };
+            const uint32_t iec_fields[] =
+            {
+                iec104_ioa_3byte_to_uint32(iec->ariza_akimi[phase]),
+                iec104_ioa_3byte_to_uint32(iec->ariza_suresi[phase]),
+                iec104_ioa_3byte_to_uint32(iec->ariza_kalicimi[phase]),
+                iec104_ioa_3byte_to_uint32(iec->anlik_akim[phase]),
+                iec104_ioa_3byte_to_uint32(iec->enerji_varyok[phase]),
+                iec104_ioa_3byte_to_uint32(iec->nominal_akim_varyok[phase]),
+                iec104_ioa_3byte_to_uint32(iec->rf_haberlesme_varyok[phase])
+            };
+            for (size_t field = 0U; field < 7U; field++)
+            {
+                const uint32_t stride = (field < 2U) ? 2U : 1U;
+                check(fields[field] ==
+                      (base + offsets[field] + (phase * stride)),
+                      "factory Modbus: every default address unchanged");
+                check(iec_fields[field] ==
+                      (1000U + (i * 100U) + ((uint32_t)field * 10U) + phase),
+                      "factory IEC: every point address unchanged");
+            }
+        }
+    }
+}
+
 int main(void)
 {
+    test_factory_register_addresses_are_unchanged();
     test_iec_default_address_regions();
     test_lifetime_persistence_boundary();
     test_normal_flow();

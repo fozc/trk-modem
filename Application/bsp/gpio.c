@@ -2,7 +2,8 @@
  * gpio.c
  *
  *  Created on: Dec 19, 2023
- *      Author: fatih.ozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  *
  *  GPIO API Version 1.0.1
@@ -143,7 +144,7 @@ void gpio_toggle_pin(uint8_t port, uint8_t pin)
   */
 uint8_t gpio_read_pin(uint8_t port, uint8_t pin)
 {
-	return  LL_GPIO_IsInputPinSet(port_to_stm32(port), pin_map[pin]);
+	return (uint8_t)LL_GPIO_IsInputPinSet(port_to_stm32(port), pin_map[pin]);
 }
 
 /**
@@ -153,7 +154,7 @@ uint8_t gpio_read_pin(uint8_t port, uint8_t pin)
   */
 uint16_t gpio_read_port(uint8_t port)
 {
-	return LL_GPIO_ReadInputPort(port_to_stm32(port));
+	return (uint16_t)(LL_GPIO_ReadInputPort(port_to_stm32(port)) & 0xFFFFU);
 }
 
 

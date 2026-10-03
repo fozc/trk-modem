@@ -26,7 +26,19 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   no heap-based STL containers, no `alloca()`.
 - **C11 / Embedded C++20**, warning-free under
   `-Wall -Wextra -Werror -Wshadow -Wconversion -Wdouble-promotion -Wformat=2`.
-- **Fixed-width types** (`uint8_t`..`int32_t`); `size_t` for sizes/indices.
+- **Integer type policy:** use `<stdint.h>` fixed-width types
+  (`uint8_t`..`uint64_t`, `int8_t`..`int64_t`) for integer data, counters,
+  IDs, protocol fields, and stored values. Use `size_t` for buffer sizes,
+  lengths, and array indices; `ptrdiff_t` for pointer differences; `bool`
+  for Boolean state; enums for named status/state codes. `char` for text
+  and `float`/`double` for required
+  real-valued measurements remain allowed. Do not introduce plain
+  `int`, `unsigned int`, `short`, or `long` for application data.
+  Standard-library, HAL, and existing public API signatures may require
+  these types: preserve their contracts and convert explicitly only at
+  the boundary after proving the value range. Do not bulk-replace types
+  or add casts merely to silence warnings. Format arguments must match
+  the formatter's actual supported formats and expected argument types.
   **`errno` is forbidden** — use the project `status_t` enum.
 - **MISRA essentials** — every `switch` has a `default`; every
   `if ... else if` ends with an `else`; no VLA, no recursion, no

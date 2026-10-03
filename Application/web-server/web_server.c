@@ -2,7 +2,8 @@
  * web_server.c
  *
  *  Created on: 12 Eki 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "web_server.h"
 #include "http_server.h"
@@ -30,7 +31,7 @@ static int web_server_send(const void *data, int len)
 {
 	if(io.send){
 		/* Send data without logging to avoid blocking */
-		return io.send(data, len);
+		return io.send(data, (uint32_t)len);
 	}
 	return 0;
 }

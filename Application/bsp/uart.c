@@ -2,7 +2,8 @@
  * uart.c
  *
  *  Created on: May 5, 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "uart.h"
 #include "main.h"
@@ -64,7 +65,7 @@ int uart_is_transmit_complete(uart_port_t port)
     USART_TypeDef const *uart = get_uart_instance(port);
     if (!uart) return 0;
 
-    return LL_USART_IsActiveFlag_TC(uart);
+    return (int)LL_USART_IsActiveFlag_TC(uart);
 }
 
 void uart_set_rx_interrupt(uart_port_t port, uart_rx_interrupt_state_t state)
@@ -189,7 +190,7 @@ void uart1_send(uint8_t data)
 }
 int uart1_is_transmit_complete(void)
 {
-    return LL_USART_IsActiveFlag_TC(USART1);
+    return (int)LL_USART_IsActiveFlag_TC(USART1);
 }
 void uart1_set_rx_interrupt(uart_rx_interrupt_state_t state)
 {
@@ -208,7 +209,7 @@ void uart2_send(uint8_t data)
 }
 int uart2_is_transmit_complete(void)
 {
-    return LL_USART_IsActiveFlag_TC(USART2);
+    return (int)LL_USART_IsActiveFlag_TC(USART2);
 }
 void uart2_set_rx_interrupt(uart_rx_interrupt_state_t state)
 {
@@ -227,7 +228,7 @@ void uart3_send(uint8_t data)
 }
 int uart3_is_transmit_complete(void)
 {
-    return LL_USART_IsActiveFlag_TC(USART3);
+    return (int)LL_USART_IsActiveFlag_TC(USART3);
 }
 void uart3_set_rx_interrupt(uart_rx_interrupt_state_t state)
 {
@@ -246,7 +247,7 @@ void uart4_send(uint8_t data)
 }
 int uart4_is_transmit_complete(void)
 {
-    return LL_USART_IsActiveFlag_TC(UART4);
+    return (int)LL_USART_IsActiveFlag_TC(UART4);
 }
 void uart4_set_rx_interrupt(uart_rx_interrupt_state_t state)
 {
@@ -265,7 +266,7 @@ void uart5_send(uint8_t data)
 }
 int uart5_is_transmit_complete(void)
 {
-    return LL_USART_IsActiveFlag_TC(UART5);
+    return (int)LL_USART_IsActiveFlag_TC(UART5);
 }
 void uart5_set_rx_interrupt(uart_rx_interrupt_state_t state)
 {
@@ -324,7 +325,7 @@ int uart_lp_is_transmit_complete(uart_lp_port_t port)
     USART_TypeDef const *uart_lp = get_uart_lp_instance(port);
     if (!uart_lp) return 0;
 
-    return LL_LPUART_IsActiveFlag_TC(uart_lp);
+    return (int)LL_LPUART_IsActiveFlag_TC(uart_lp);
 }
 
 void uart_lp_set_rx_interrupt(uart_lp_port_t port, uart_lp_rx_interrupt_state_t state)
@@ -347,7 +348,7 @@ void uart_lp_1_send(uint8_t data)
 }
 int uart_lp_1_is_transmit_complete(void)
 {
-    return LL_LPUART_IsActiveFlag_TC(LPUART1);
+    return (int)LL_LPUART_IsActiveFlag_TC(LPUART1);
 }
 void uart_lp_1_set_rx_interrupt(uart_lp_rx_interrupt_state_t state)
 {
