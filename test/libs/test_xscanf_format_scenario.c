@@ -10,6 +10,9 @@
  *     xscanf_get_last_error() instead of pretending success
  *   - the production patterns (%u32 AT parsing, %S fits, %s32) are
  *     unaffected
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "unity.h"
 
@@ -91,6 +94,29 @@ void test_xscanf_embedded_scenario(void)
     int embedded_failed = xscanf_run_all_tests(print_shim);
 
     check(embedded_failed == 0, "embedded xscanf suite passes");
+}
+
+void test_hex_maximum_and_zero(void)
+{
+    uint32_t value = 0U;
+
+    TEST_ASSERT_EQUAL_INT(1, xscanf("FFFFFFFF", 8U, "%x", &value));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, value);
+    TEST_ASSERT_EQUAL_INT(XSCANF_OK, xscanf_get_last_error());
+    TEST_ASSERT_EQUAL_INT(1, xscanf("0x00", 4U, "%x", &value));
+    TEST_ASSERT_EQUAL_UINT32(0U, value);
+}
+
+void test_hex_invalid_input_preserves_output(void)
+{
+    uint32_t value = 0x12345678U;
+
+    TEST_ASSERT_EQUAL_INT(0, xscanf("xyz", 3U, "%x", &value));
+    TEST_ASSERT_EQUAL_UINT32(0x12345678U, value);
+    TEST_ASSERT_EQUAL_INT(XSCANF_ERR_NO_MATCH, xscanf_get_last_error());
+    TEST_ASSERT_EQUAL_INT(0, xscanf("", 0U, "%x", &value));
+    TEST_ASSERT_EQUAL_UINT32(0x12345678U, value);
+    TEST_ASSERT_EQUAL_INT(XSCANF_ERR_EMPTY_INPUT, xscanf_get_last_error());
 }
 
 void setUp(void)

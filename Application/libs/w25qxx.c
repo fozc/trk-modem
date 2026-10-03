@@ -2,7 +2,8 @@
  * w25q64.c
  *
  *  Created on: Dec 6, 2023
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include <ctype.h>
 #include "w25qxx.h"
@@ -559,7 +560,8 @@ int w25qxx_verify(uint32_t addr, const void *data, uint32_t len)
 
 	if(data == NULL || len == 0)
 	{
-		CSLOG("Invalid parameters! addr: 0x%X, data: %p, len: %u\r\n", addr, data, len);
+		CSLOG("Invalid parameters! addr: 0x%lX, data: 0x%08lX, "
+              "len: %lu\r\n", addr, (unsigned long)(uintptr_t)data, len);
 		return W25QXX_RES_INVALID_PARAM;
 	}
 
@@ -677,7 +679,7 @@ int w25qxx_write_buff(uint32_t addr, const void *buff, uint32_t buff_len)
 void printf_buff(uint8_t *buff, uint32_t len, uint32_t addr)
 {
 	uint32_t row_len = 0;
-	CSLOG_NODT("%06X: ", addr);
+	CSLOG_NODT("%06lX: ", addr);
 	for(int i = addr; i < (addr + len); i++)
 	{
 		row_len++;

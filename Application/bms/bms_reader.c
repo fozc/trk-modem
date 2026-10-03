@@ -1,8 +1,9 @@
 /*
  * bms_reader.c
  *
- *  Created on: 1 Ağu 2026
- *      Author: fatih
+ *  Created on: Aug 1, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "bms_reader.h"
 #include "bms.h"
@@ -41,7 +42,6 @@ void bms_rx_interrupt_handler(uint8_t data)
 #endif
 static void bms_send_buff(const uint8_t *buffer, size_t length)
 {
-	extern UART_HandleTypeDef huart5;
 
     gpio_set_pin(BMS_OE_BSP_GPIO, BMS_OE_BSP_PIN, GPIO_HIGH);
     gpio_set_pin(BMS_RE_BSP_GPIO, BMS_RE_BSP_PIN, GPIO_HIGH);
@@ -172,6 +172,9 @@ void bms_process_package()
 PROCESS(bms_process, "bms_process");
 PROCESS_THREAD(bms_process, ev, data)
 {
+    (void)data;
+    (void)ev;
+
     static struct etimer timer;
     static uint8_t package_id = 0;
     PROCESS_BEGIN();

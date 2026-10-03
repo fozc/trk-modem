@@ -6,7 +6,8 @@
  * boot_log_init() or any bootloader-side state.
  *
  *  Created on: May 09, 2026
- *      Author: fatih.ozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #include "app_boot_log.h"
@@ -337,7 +338,7 @@ void app_boot_log_dump(uint32_t count, bool raw)
     boot_log_entry_t entries[32];
     uint32_t num = app_boot_log_read_last(entries, count);
 
-    SHELL_LOG("Boot log: %u entries (showing last %u)\r\n", total, num);
+    SHELL_LOG("Boot log: %lu entries (showing last %lu)\r\n", total, num);
 
     if (raw)
     {
@@ -365,7 +366,7 @@ void app_boot_log_dump(uint32_t count, bool raw)
 
         if (raw)
         {
-            SHELL_LOG("  %-5u  %02u/%02u/%02u %02u:%02u:%02u  0x%02X   0x%02X  0x%04X\r\n",
+            SHELL_LOG("  %-5lu  %02u/%02u/%02u %02u:%02u:%02u  0x%02X   0x%02X  0x%04X\r\n",
                       p_e->sequence,
                       year, month, day, hour, minute, second,
                       p_e->event_id, p_e->detail, p_e->payload);
@@ -375,7 +376,7 @@ void app_boot_log_dump(uint32_t count, bool raw)
             char desc[64];
             boot_log_event_desc(p_e, desc, (uint32_t)sizeof(desc));
 
-            SHELL_LOG("  %-5u  %02u/%02u/%02u %02u:%02u:%02u  %-20s  %s\r\n",
+            SHELL_LOG("  %-5lu  %02u/%02u/%02u %02u:%02u:%02u  %-20s  %s\r\n",
                       p_e->sequence,
                       year, month, day, hour, minute, second,
                       boot_log_event_name(p_e->event_id), desc);
@@ -399,12 +400,12 @@ static int bootlog_shell_handler(int argc, char *argv[])
     {
         uint32_t total = app_boot_log_count();
         SHELL_LOG("=== Boot Log Status ===\r\n");
-        SHELL_LOG("Flash base : 0x%08X\r\n", LOG_BASE_ADDR);
-        SHELL_LOG("Flash end  : 0x%08X\r\n", LOG_END_ADDR);
+        SHELL_LOG("Flash base : 0x%08lX\r\n", LOG_BASE_ADDR);
+        SHELL_LOG("Flash end  : 0x%08lX\r\n", LOG_END_ADDR);
         SHELL_LOG("Sectors    : %u\r\n", LOG_NUM_SECTORS);
-        SHELL_LOG("Entry size : %u bytes\r\n", LOG_ENTRY_SIZE);
-        SHELL_LOG("Capacity   : %u entries\r\n", LOG_TOTAL_ENTRIES);
-        SHELL_LOG("Used       : %u entries\r\n", total);
+        SHELL_LOG("Entry size : %lu bytes\r\n", LOG_ENTRY_SIZE);
+        SHELL_LOG("Capacity   : %lu entries\r\n", LOG_TOTAL_ENTRIES);
+        SHELL_LOG("Used       : %lu entries\r\n", total);
         return 0;
     }
 

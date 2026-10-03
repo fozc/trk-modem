@@ -2,7 +2,8 @@
  * rf_comm.c
  *
  *  Created on: 23 Aug 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * RF hub communication: Contiki process + UART transport + SCP dispatch
  * + single-outstanding command mechanism.
@@ -624,6 +625,8 @@ static void rf_comm_periodic_jobs(void)
 PROCESS(rf_comm_process, "rf_comm_process");
 PROCESS_THREAD(rf_comm_process, ev, data)
 {
+    (void)ev;
+
     static struct etimer poll_timer;
     (void)data;
 

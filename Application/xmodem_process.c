@@ -2,7 +2,8 @@
  * xmodem_process.c
  *
  *  Created on: Apr 28, 2026
- *      Author: fatih.ozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "xmodem_process.h"
 #include "xmodem.h"
@@ -111,7 +112,7 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 		break;
 
 	case XMODEM_EVT_FILE_DOWNLOAD_COMPLETE:
-		CSLOG("Download Complete: Size: %u\r\n", s_total_bytes_received);
+		CSLOG("Download Complete: Size: %lu\r\n", s_total_bytes_received);
 
 		if (s_transfer_overflow)
 		{
@@ -196,11 +197,11 @@ static void xmodem_event_handler(uint8_t evt, const void *data, uint32_t size)
 		}
 		else
 		{
-			CSLOG("Xmodem buffer overflow ! Size: %u  Buff Index: %u\r\n", size, s_rx_buff_index);
+			CSLOG("Xmodem buffer overflow ! Size: %lu  Buff Index: %u\r\n", size, s_rx_buff_index);
 		}
 
 		s_total_bytes_received += size;
-		CSLOG("Xmodem Chunk Received: Size: [%u] Total: [%u] Addr: [0x%00000X]\r\n",
+		CSLOG("Xmodem Chunk Received: Size: [%lu] Total: [%lu] Addr: [0x%08lX]\r\n",
 		      size, s_total_bytes_received, s_write_addr + s_total_bytes_received);
 		break;
 
@@ -300,6 +301,9 @@ static void xmodem_start_mode(void)
 PROCESS(xmodem_watchdog_process, "xmodem-wd");
 PROCESS_THREAD(xmodem_watchdog_process, ev, data)
 {
+    (void)data;
+    (void)ev;
+
 	static struct etimer timer;
 
 	PROCESS_BEGIN();

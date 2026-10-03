@@ -2,7 +2,8 @@
  * nvram.c
  *
  *  Created on: 15 Agu 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "nvram.h"
 #include "iec104.h"
@@ -270,7 +271,7 @@ void nvram_dump()
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
 	CSLOG_NODT("  MODEM CONFIG [%u bytes]\r\n", sizeof(nvram.modem_config));
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
-	CSLOG_NODT("  Serial Number              : %u\r\n", nvram.modem_config.serial_number);
+	CSLOG_NODT("  Serial Number              : %lu\r\n", nvram.modem_config.serial_number);
 	CSLOG_NODT("  Web Interface Port         : %u\r\n", nvram.modem_config.web_interface_port);
 	CSLOG_NODT("  SIM Card PIN               : %u\r\n", nvram.modem_config.sim_card_pin);
 	CSLOG_NODT("  SIM Card APN               : %.16s\r\n", nvram.modem_config.apn.apn);
@@ -278,35 +279,35 @@ void nvram_dump()
 	CSLOG_NODT("  SIM Card APN Password      : %.16s\r\n", nvram.modem_config.apn.user_pass);
 	CSLOG_NODT("  NTP Server Address         : %.64s\r\n", nvram.modem_config.ntp_server);
 	CSLOG_NODT("  NTP Server Port            : %u\r\n", nvram.modem_config.ntp_server_port);
-	CSLOG_NODT("  Time Zone                  : %d\r\n", nvram.modem_config.time_zone);
-	CSLOG_NODT("  Time (Epoch)               : %u\r\n", nvram.modem_config.time);
+	CSLOG_NODT("  Time Zone                  : %ld\r\n", nvram.modem_config.time_zone);
+	CSLOG_NODT("  Time (Epoch)               : %lu\r\n", nvram.modem_config.time);
 	CSLOG_NODT("  Coordinates:\r\n");
 	CSLOG_NODT("    - MCC                    : %.4s\r\n", nvram.modem_config.coordinates.mcc);
 	CSLOG_NODT("    - MNC                    : %.4s\r\n", nvram.modem_config.coordinates.mnc);
 	CSLOG_NODT("    - LAC                    : %.4s\r\n", nvram.modem_config.coordinates.lac);
 	CSLOG_NODT("    - CI                     : %.4s\r\n", nvram.modem_config.coordinates.ci);
-	CSLOG_NODT("  Production Date (Epoch)    : %u\r\n", nvram.modem_config.production_date);
-	CSLOG_NODT("  Lifetime (seconds)         : %u\r\n", nvram.modem_config.lifetime);
-	CSLOG_NODT("  Periodic Reset Period (s)  : %u\r\n", nvram.modem_config.periodic_modem_reset_period);
-	CSLOG_NODT("  Commissioning Time (Epoch) : %u\r\n", nvram.modem_config.commissioning_time);
+	CSLOG_NODT("  Production Date (Epoch)    : %lu\r\n", nvram.modem_config.production_date);
+	CSLOG_NODT("  Lifetime (seconds)         : %lu\r\n", nvram.modem_config.lifetime);
+	CSLOG_NODT("  Periodic Reset Period (s)  : %lu\r\n", nvram.modem_config.periodic_modem_reset_period);
+	CSLOG_NODT("  Commissioning Time (Epoch) : %lu\r\n", nvram.modem_config.commissioning_time);
 	CSLOG_NODT("  RF Firmware Version        : %u.%u.%u.%u\r\n",
 			nvram.modem_config.rf_firmware_version[0],
 			nvram.modem_config.rf_firmware_version[1],
 			nvram.modem_config.rf_firmware_version[2],
 			nvram.modem_config.rf_firmware_version[3]);
-	CSLOG_NODT("  WEB Session Counter            : %u\r\n", nvram.modem_config.web_session_counter);
-	CSLOG_NODT("  IEC Session Counter            : %u\r\n", nvram.modem_config.iec_session_counter);
+	CSLOG_NODT("  WEB Session Counter            : %lu\r\n", nvram.modem_config.web_session_counter);
+	CSLOG_NODT("  IEC Session Counter            : %lu\r\n", nvram.modem_config.iec_session_counter);
 	CSLOG_NODT("\r\n");
 
 	/* IEC104 CONFIG SECTION */
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
 	CSLOG_NODT("  IEC104 CONFIG [%u bytes]\r\n", sizeof(nvram.iec104_config));
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
-	CSLOG_NODT("  SCADA IP Address           : %u\r\n", nvram.iec104_config.scada_ip_address);
+	CSLOG_NODT("  SCADA IP Address           : %lu\r\n", nvram.iec104_config.scada_ip_address);
 	CSLOG_NODT("  SCADA Port                 : %u\r\n", nvram.iec104_config.scada_port);
 	CSLOG_NODT("  Originator Address         : %u\r\n", nvram.iec104_config.originator_address);
 	CSLOG_NODT("  Common Address             : %u\r\n", nvram.iec104_config.common_address);
-	CSLOG_NODT("  Periodical Send Interval   : %u\r\n", nvram.iec104_config.periodical_send_interval);
+	CSLOG_NODT("  Periodical Send Interval   : %lu\r\n", nvram.iec104_config.periodical_send_interval);
 	CSLOG_NODT("  Timing Parameters:\r\n");
 	CSLOG_NODT("    - T0 Max (Connect)       : %u\r\n", nvram.iec104_config.t0_max);
 	CSLOG_NODT("    - T1 Max (ACK)           : %u\r\n", nvram.iec104_config.t1_max);
@@ -318,7 +319,7 @@ void nvram_dump()
 	CSLOG_NODT("  SBO Parameters:\r\n");
 	CSLOG_NODT("    - Is SBO Active          : %s\r\n", nvram.iec104_config.is_sbo_active ? "Yes" : "No");
 	CSLOG_NODT("    - SBO Execute Timeout    : %u\r\n", nvram.iec104_config.sbo_execute_timeout);
-	CSLOG_NODT("  CRC                        : 0x%08X\r\n", nvram.iec104_config.crc);
+	CSLOG_NODT("  CRC                        : 0x%08lX\r\n", nvram.iec104_config.crc);
 	CSLOG_NODT("\r\n");
 
 	/* MODBUS CONFIG SECTION */
@@ -326,7 +327,7 @@ void nvram_dump()
 	CSLOG_NODT("  MODBUS CONFIG [%u bytes]\r\n", sizeof(nvram.modbus_config));
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
 	CSLOG_NODT("  Device Address             : %u\r\n", nvram.modbus_config.device_addr);
-	CSLOG_NODT("  Baud Rate                  : %u\r\n", nvram.modbus_config.baud_rate);
+	CSLOG_NODT("  Baud Rate                  : %lu\r\n", nvram.modbus_config.baud_rate);
 	CSLOG_NODT("  Last Error Code            : %u\r\n", nvram.modbus_config.last_error_code);
 	CSLOG_NODT("\r\n");
 
@@ -335,7 +336,7 @@ void nvram_dump()
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
 	CSLOG_NODT("  BREAKER CONFIG [%u bytes]\r\n", sizeof(nvram.breaker));
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
-	CSLOG_NODT("  CRC                        : 0x%08X\r\n", nvram.breaker.crc);
+	CSLOG_NODT("  CRC                        : 0x%08lX\r\n", nvram.breaker.crc);
 	CSLOG_NODT("\r\n");
 
 	bool any_line_in_use = false;
@@ -353,16 +354,16 @@ void nvram_dump()
 		CSLOG_NODT("    SBO State:\r\n");
 		CSLOG_NODT("      - State                : %s\r\n", nvram.breaker.line[i].sbo_state.state == SBO_IDLE ? "IDLE" : "SELECTED");
 		CSLOG_NODT("      - Value                : %u\r\n", nvram.breaker.line[i].sbo_state.value);
-		CSLOG_NODT("      - Select Time          : %u\r\n", nvram.breaker.line[i].sbo_state.select_time);
+		CSLOG_NODT("      - Select Time          : %lu\r\n", nvram.breaker.line[i].sbo_state.select_time);
 		CSLOG_NODT("    IEC104 IOA Config:\r\n");
 		CSLOG_NODT("      M_SP_TB_1 (Switch State):\r\n");
-		CSLOG_NODT("        - Phase R            : %u\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_sp_tb_1_ioa[PHASE_L1]));
-		CSLOG_NODT("        - Phase S            : %u\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_sp_tb_1_ioa[PHASE_L2]));
-		CSLOG_NODT("        - Phase T            : %u\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_sp_tb_1_ioa[PHASE_L3]));
+		CSLOG_NODT("        - Phase R            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_sp_tb_1_ioa[PHASE_L1]));
+		CSLOG_NODT("        - Phase S            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_sp_tb_1_ioa[PHASE_L2]));
+		CSLOG_NODT("        - Phase T            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_sp_tb_1_ioa[PHASE_L3]));
 		CSLOG_NODT("      M_ME_TF_1 (Current Meas):\r\n");
-		CSLOG_NODT("        - Phase R            : %u\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L1]));
-		CSLOG_NODT("        - Phase S            : %u\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L2]));
-		CSLOG_NODT("        - Phase T            : %u\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L3]));
+		CSLOG_NODT("        - Phase R            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L1]));
+		CSLOG_NODT("        - Phase S            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L2]));
+		CSLOG_NODT("        - Phase T            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L3]));
 		CSLOG_NODT("    Modbus Address Config:\r\n");
 		CSLOG_NODT("      Ariza Akimi Addr:\r\n");
 		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.ariza_akimi[PHASE_L1]);
@@ -414,11 +415,11 @@ void nvram_dump()
 			CSLOG_NODT("        - Mode                   : %u\r\n", rf_cfg->config.operating_mode);
 			CSLOG_NODT("        - Trip Mode              : %u\r\n", rf_cfg->config.trip_mode);
 			CSLOG_NODT("        - Line Frequency (Hz)    : %u\r\n", rf_cfg->config.line_frequency);
-			CSLOG_NODT("        - Nominal Current (A)    : %.1f\r\n", rf_cfg->config.nominal_current);
-			CSLOG_NODT("        - Opening Current Thr.   : %.1f\r\n", rf_cfg->config.ia_threshold);
-			CSLOG_NODT("        - Safety Current Thr.(A) : %.3f\r\n", rf_cfg->config.is_safety);
-			CSLOG_NODT("        - Incremental Curr (A/s) : %.1f\r\n", rf_cfg->config.di_dt_threshold);
-			CSLOG_NODT("        - Dead Line Current (A)  : %.2f\r\n", rf_cfg->config.line_break_threshold);
+			CSLOG_NODT("        - Nominal Current (A)    : %.1f\r\n", (double)rf_cfg->config.nominal_current);
+			CSLOG_NODT("        - Opening Current Thr.   : %.1f\r\n", (double)rf_cfg->config.ia_threshold);
+			CSLOG_NODT("        - Safety Current Thr.(A) : %.3f\r\n", (double)rf_cfg->config.is_safety);
+			CSLOG_NODT("        - Incremental Curr (A/s) : %.1f\r\n", (double)rf_cfg->config.di_dt_threshold);
+			CSLOG_NODT("        - Dead Line Current (A)  : %.2f\r\n", (double)rf_cfg->config.line_break_threshold);
 			CSLOG_NODT("        - Dead Line Valid (ms)   : %u\r\n", rf_cfg->config.dead_line_verify_ms);
 			CSLOG_NODT("        - Refresh Reset Time (s) : %u\r\n", rf_cfg->config.t_reclaim_sec);
 			CSLOG_NODT("        - Opening Errors Count   : %u\r\n", rf_cfg->config.set_count);
@@ -431,9 +432,9 @@ void nvram_dump()
 
 	/* CRC SECTION */
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
-	CSLOG_NODT("  NVRAM Version/Length/Seq    : v%u / %u / %u\r\n",
+	CSLOG_NODT("  NVRAM Version/Length/Seq    : v%lu / %lu / %lu\r\n",
 	           nvram.schema_version, nvram.length, nvram.sequence);
-	CSLOG_NODT("  NVRAM CRC                  : 0x%08X\r\n", nvram.crc);
+	CSLOG_NODT("  NVRAM CRC                  : 0x%08lX\r\n", nvram.crc);
 	CSLOG_NODT("-----------------------------------------------------------------------------\r\n");
 	CSLOG_NODT("\r\n");
 }

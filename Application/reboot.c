@@ -2,7 +2,8 @@
  * reboot.c
  *
  *  Created on: 28 Haz 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "reboot.h"
 #include "bsp.h"
@@ -28,6 +29,8 @@ void reboot_system(void)
 PROCESS(reboot_process, "reboot_process");
 PROCESS_THREAD(reboot_process, ev, data)
 {
+    (void)ev;
+
     static struct etimer timer;
 
     PROCESS_BEGIN();

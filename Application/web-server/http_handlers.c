@@ -485,7 +485,7 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "{");
     
     /* RO Fields */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SeriNumarasi\":%u,", config->serial_number);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"SeriNumarasi\":%lu,", config->serial_number);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"CihazKoordinati\":{");
     pos += xsnprintf(buf + pos, buf_size - pos, "\"MCC\":\"%s\",", config->coordinates.mcc);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"MNC\":\"%s\",", config->coordinates.mnc);
@@ -493,8 +493,8 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"CI\":\"%s\"", config->coordinates.ci);
     pos += xsnprintf(buf + pos, buf_size - pos, "},");
     /* TODO: Convert epoch to human-readable date format */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"UretimTarihi\":%u,", config->production_date);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"LifeTime\":%u,", config->lifetime);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"UretimTarihi\":%lu,", config->production_date);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"LifeTime\":%lu,", config->lifetime);
 
     /* Son resetten bu yana gecen sure (saniye) - bsp_get_run_time uzerinden
      * ayri cagri (shell'deki "Run Time" satiri ile ayni kaynak). NVRAM'de
@@ -531,14 +531,14 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SimKartAPNSifresi\":\"%s\",", config->apn.user_pass);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"NtpServer\":\"%s\",", config->ntp_server);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"NtpServerPortu\":%u,", config->ntp_server_port);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Time\":%u,", rtc_get_epoch());
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TimeZone\":%d,", config->time_zone);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"PeriyodikModemResetPeriyodu\":%u,", config->periodic_modem_reset_period);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"Time\":%lu,", rtc_get_epoch());
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"TimeZone\":%ld,", config->time_zone);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"PeriyodikModemResetPeriyodu\":%lu,", config->periodic_modem_reset_period);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"WebIlkVeriZamanAsimi\":%u,", config->web_first_data_timeout_sec);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"WebBostaKalmaZamanAsimi\":%u,", config->web_idle_timeout_sec);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IEC104IlkVeriZamanAsimi\":%u,", config->iec104_first_data_timeout_sec);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IEC104BostaKalmaZamanAsimi\":%u,", config->iec104_idle_timeout_sec);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"DevreyeAlinmaZamani\":%u", config->commissioning_time);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"DevreyeAlinmaZamani\":%lu", config->commissioning_time);
     
     pos += xsnprintf(buf + pos, buf_size - pos, "}");
     CSLOG("[HTTP] JSON response size: %d bytes\r\n", pos);
@@ -785,7 +785,7 @@ void handle_get_syslogs_json(void)
     }
 
     /* Close "recs" field and add total count */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\",\"t\":%u", available_entries);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\",\"t\":%lu", available_entries);
     
     pos += xsnprintf(buf + pos, buf_size - pos, "}");
     
@@ -826,7 +826,7 @@ void handle_get_iec_config_json(void)
     
     pos += xsnprintf(buf + pos, buf_size - pos, "{");
     pos += xsnprintf(buf + pos, buf_size - pos, "\"ScadaIPAdresi\":\"%d.%d.%d.%d\",", ip_a, ip_b, ip_c, ip_d);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"PeriodicSend\":%u,", config->periodical_send_interval);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"PeriodicSend\":%lu,", config->periodical_send_interval);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"Port\":%u,", config->scada_port);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T0\":%u,", config->t0_max);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"T1\":%u,", config->t1_max);
@@ -839,8 +839,8 @@ void handle_get_iec_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SBO\":%s,", config->is_sbo_active ? "true" : "false");
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SBOTimeout\":%u,", config->sbo_execute_timeout);
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"AkuUyarisi\":%u,", iec104_ioa_3byte_to_uint32(config->ioa_aku_uyarisi));
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ModemReset\":%u,", iec104_ioa_3byte_to_uint32(config->ioa_modem_reset));
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"AkuUyarisi\":%lu,", iec104_ioa_3byte_to_uint32(config->ioa_aku_uyarisi));
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"ModemReset\":%lu,", iec104_ioa_3byte_to_uint32(config->ioa_modem_reset));
 
     /* Hatlar bilgisi */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"Hatlar\":{");
@@ -854,147 +854,147 @@ void handle_get_iec_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_ArizaAkimi\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_ArizaAkimi\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_ArizaAkimi\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_ArizaSuresi\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_ArizaSuresi\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_ArizaSuresi\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_ArizaTuru\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_ArizaTuru\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_ArizaTuru\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_AnlikAkim\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_AnlikAkim\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_AnlikAkim\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_EnerjiVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_EnerjiVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_EnerjiVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_NominalAkimVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_NominalAkimVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_NominalAkimVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_RfhabVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_RfhabVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "],");
     
     pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_RfhabVarYok\":[");
     for (int i = 0; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, buf_size - pos, "]");
     pos += xsnprintf(buf + pos, buf_size - pos, "}");
@@ -1096,7 +1096,7 @@ void handle_post_iec_config_json(const char *json_body)
     CSLOG("[HTTP] JSON parsed successfully\r\n");
     CSLOG("[HTTP] ScadaIPAdresi: %s\r\n", config.scada_ip_address);
     CSLOG("[HTTP] ScadaPort: %u\r\n", config.scada_port);
-    CSLOG("[HTTP] PeriyodikGonderimZamani: %u\r\n", config.periodical_send_interval);
+    CSLOG("[HTTP] PeriyodikGonderimZamani: %lu\r\n", config.periodical_send_interval);
     
     /* Save config to persistent storage */
     int res = set_iec_config(&config);
@@ -1137,8 +1137,8 @@ void handle_get_modbus_config_json(void)
     pos += xsnprintf(buf + pos, buf_size - pos, "{");
     pos += xsnprintf(buf + pos, buf_size - pos, "\"CihazID\":%u,", config->device_addr);
     pos += xsnprintf(buf + pos, buf_size - pos, "\"SonHataKodu\":%u,", config->last_error_code);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SonHataZamani\":%u,", modbus_config_get_last_error_time());
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BaudRate\":%u,", config->baud_rate);
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"SonHataZamani\":%lu,", modbus_config_get_last_error_time());
+    pos += xsnprintf(buf + pos, buf_size - pos, "\"BaudRate\":%lu,", config->baud_rate);
     
     /* Hat bilgisi */
     pos += xsnprintf(buf + pos, buf_size - pos, "\"Hat\":{");
@@ -1381,7 +1381,7 @@ void handle_post_modbus_config_json(const char *json_body)
     
     CSLOG("[HTTP] JSON parsed successfully\r\n");
     CSLOG("[HTTP] CihazID: %u\r\n", config.device_addr);
-    CSLOG("[HTTP] BaudRate: %u\r\n", config.baud_rate);
+    CSLOG("[HTTP] BaudRate: %lu\r\n", config.baud_rate);
     
     int res = set_modbus_config(&config);
 
@@ -1578,7 +1578,7 @@ static void send_rf_monitor_json(int line_filter)
         if (i > start_line) pos += xsnprintf(buf + pos, buf_size - pos, ",");
         pos += xsnprintf(buf + pos, buf_size - pos, "{");
         pos += xsnprintf(buf + pos, buf_size - pos, "\"LineId\":%d,", i + 1);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"DEVICEID\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, buf_size - pos, "\"DEVICEID\":[%lu,%lu,%lu],",
             monitor->device_id[PHASE_L1], monitor->device_id[PHASE_L2], monitor->device_id[PHASE_L3]);
         pos += xsnprintf(buf + pos, buf_size - pos, "\"FazID\":[1,2,3],");
         pos += xsnprintf(buf + pos, buf_size - pos, "\"HatID\":%u,", monitor->hat_id[PHASE_L1]);
@@ -1607,7 +1607,7 @@ static void send_rf_monitor_json(int line_filter)
             monitor->aktif_ariza_sayaci[PHASE_L1], monitor->aktif_ariza_sayaci[PHASE_L2], monitor->aktif_ariza_sayaci[PHASE_L3]);
         pos += xsnprintf(buf + pos, buf_size - pos, "\"GecmisAcmaSayisi\":[%u,%u,%u],",
             monitor->gecmis_acma_sayisi[PHASE_L1], monitor->gecmis_acma_sayisi[PHASE_L2], monitor->gecmis_acma_sayisi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"LastTx\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, buf_size - pos, "\"LastTx\":[%lu,%lu,%lu],",
             monitor->last_tx[PHASE_L1], monitor->last_tx[PHASE_L2], monitor->last_tx[PHASE_L3]);
         pos += xsnprintf(buf + pos, buf_size - pos, "\"RSSI\":[%u,%u,%u],", monitor->rssi[PHASE_L1],
         		monitor->rssi[PHASE_L2], monitor->rssi[PHASE_L3]);
@@ -1832,7 +1832,7 @@ void handle_get_fw_status(void) {
 
     if (fw_state.in_progress) {
         pos += xsnprintf(buf + pos, buf_size - pos,
-                         "{\"active\":true,\"received\":%u,\"total\":%u,\"fh\":%u}",
+                         "{\"active\":true,\"received\":%lu,\"total\":%lu,\"fh\":%lu}",
                          fw_state.received_bytes, fw_state.total_size, fw_state.file_hash);
     }
     else if ((fw_state.total_size > 0U) &&
@@ -1840,7 +1840,7 @@ void handle_get_fw_status(void) {
     {
         /* Transfer bitti, apply bekliyor - UI butonu gostersin */
         pos += xsnprintf(buf + pos, buf_size - pos,
-                         "{\"active\":false,\"ready\":true,\"received\":%u,\"total\":%u,\"fh\":%u}",
+                         "{\"active\":false,\"ready\":true,\"received\":%lu,\"total\":%lu,\"fh\":%lu}",
                          fw_state.received_bytes, fw_state.total_size, fw_state.file_hash);
     }
     else {
@@ -1904,7 +1904,7 @@ void handle_fw_start(const char *json_body) {
                  fw_state.received_bytes, fw_state.total_size);
         char *buf = handler_state.tx_buffer;
         int len = xsnprintf(buf, handler_state.tx_buffer_size,
-                            "{\"status\":\"ok\",\"cs\":4096,\"received\":%u}",
+                            "{\"status\":\"ok\",\"cs\":4096,\"received\":%lu}",
                             fw_state.received_bytes);
         http_send_json(buf, len);
         return;
@@ -1919,9 +1919,9 @@ void handle_fw_start(const char *json_body) {
     }
 
     CCSLOG(XCOLOR_CYAN, "[FW] ========== FIRMWARE UPDATE START ==========\r\n");
-    CSLOG("[FW] Total Size: %u bytes\r\n", size);
-    CSLOG("[FW] Total Chunks: %u\r\n", chunks);
-    CSLOG("[FW] File Hash: 0x%04X\r\n", hash);
+    CSLOG("[FW] Total Size: %lu bytes\r\n", size);
+    CSLOG("[FW] Total Chunks: %lu\r\n", chunks);
+    CSLOG("[FW] File Hash: 0x%04lX\r\n", hash);
 
     int result = fw_callbacks.fw_init(size);
     if (result != 0) {
@@ -1974,7 +1974,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     /* Remember first chunk size for accurate chunk number calculation */
     if (offset == 0 && size > 0) {
         fw_state.first_chunk_size = size;
-        CSLOG("[FW] First chunk size: %u bytes\r\n", size);
+        CSLOG("[FW] First chunk size: %lu bytes\r\n", size);
     }
     
     /* Calculate chunk number - use received_chunks for current position
@@ -2008,13 +2008,13 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
             
             /* Request retry - send error with expected chunk number */
             len = xsnprintf(buf, handler_state.tx_buffer_size,
-                           "{\"status\":\"error\",\"error\":\"checksum\",\"chunk\":%u,\"retry\":true}",
+                           "{\"status\":\"error\",\"error\":\"checksum\",\"chunk\":%lu,\"retry\":true}",
                            chunk_num);
             http_send_json(buf, len);
             return;
         }
         /* Checksum OK - log for debugging */
-        CSLOG("[FW] Chunk #%u: offset=%u, size=%u, CS=0x%04X OK\r\n", 
+        CSLOG("[FW] Chunk #%lu: offset=%lu, size=%lu, CS=0x%04X OK\r\n",
                 chunk_num, offset, size, calc_checksum);
     } else {
         /* No checksum provided - log warning */
@@ -2030,7 +2030,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
             CSLOG_WARN("[FW] Retry chunk #%u accepted (total retries: %u)\r\n", 
                      chunk_num, fw_state.retry_count);
             len = xsnprintf(buf, handler_state.tx_buffer_size, 
-                            "{\"status\":\"ok\",\"chunk\":%u}", chunk_num);
+                            "{\"status\":\"ok\",\"chunk\":%lu}", chunk_num);
             http_send_json(buf, len);
             return;
         }
@@ -2039,7 +2039,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
                  offset, fw_state.received_bytes, chunk_num);
         /* Don't update received_bytes, just ACK */
         len = xsnprintf(buf, handler_state.tx_buffer_size, 
-                        "{\"status\":\"ok\",\"chunk\":%u}", chunk_num);
+                        "{\"status\":\"ok\",\"chunk\":%lu}", chunk_num);
         http_send_json(buf, len);
         return;
     }
@@ -2052,7 +2052,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
         CSLOG_ERR("[FW]   Missing %u bytes (chunk #%u expected)\r\n",
                  offset - fw_state.received_bytes, expected_chunk);
         len = xsnprintf(buf, handler_state.tx_buffer_size,
-                       "{\"status\":\"error\",\"error\":\"gap\",\"expected\":%u}",
+                       "{\"status\":\"error\",\"error\":\"gap\",\"expected\":%lu}",
                        fw_state.received_bytes);
         http_send_json(buf, len);
         return;
@@ -2089,11 +2089,13 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     
     /* Send OK response with chunk number for client verification */
     len = xsnprintf(buf, handler_state.tx_buffer_size, 
-                    "{\"status\":\"ok\",\"chunk\":%u}", chunk_num);
+                    "{\"status\":\"ok\",\"chunk\":%lu}", chunk_num);
     http_send_json(buf, len);
 }
 
 void handle_fw_finish(const char *json_body) {
+    (void)json_body;
+
     CCSLOG(XCOLOR_CYAN, "[FW] ========== FIRMWARE TRANSFER FINISH ==========\r\n");
     
     if (!fw_callbacks_registered || !fw_callbacks.fw_finish) {
@@ -2110,23 +2112,24 @@ void handle_fw_finish(const char *json_body) {
     
     /* Print detailed transfer summary */
     CSLOG("[FW] ---- Transfer Summary ----\r\n");
-    CSLOG("[FW] Total Size:      %u bytes\r\n", fw_state.total_size);
-    CSLOG("[FW] Received:        %u bytes\r\n", fw_state.received_bytes);
-    CSLOG("[FW] Expected Chunks: %u\r\n", fw_state.total_chunks);
-    CSLOG("[FW] Received Chunks: %u\r\n", fw_state.received_chunks);
-    CSLOG("[FW] Checksum Errors: %u\r\n", fw_state.checksum_errors);
-    CSLOG("[FW] Retry Count:     %u\r\n", fw_state.retry_count);
+    CSLOG("[FW] Total Size:      %lu bytes\r\n", fw_state.total_size);
+    CSLOG("[FW] Received:        %lu bytes\r\n", fw_state.received_bytes);
+    CSLOG("[FW] Expected Chunks: %lu\r\n", fw_state.total_chunks);
+    CSLOG("[FW] Received Chunks: %lu\r\n", fw_state.received_chunks);
+    CSLOG("[FW] Checksum Errors: %lu\r\n", fw_state.checksum_errors);
+    CSLOG("[FW] Retry Count:     %lu\r\n", fw_state.retry_count);
     
     if (fw_state.received_bytes != fw_state.total_size) {
         uint32_t missing = fw_state.total_size - fw_state.received_bytes;
         CSLOG_ERR("[FW] ERROR: Incomplete transfer!\r\n");
         CSLOG_ERR("[FW]   Missing: %u bytes (%.1f%%)\r\n", 
-                 missing, (missing * 100.0f) / fw_state.total_size);
+                 missing, (double)((float)missing * 100.0f /
+                                  (float)fw_state.total_size));
         
         char *buf = handler_state.tx_buffer;
         int len = xsnprintf(buf, handler_state.tx_buffer_size,
                            "{\"status\":\"error\",\"error\":\"incomplete\","
-                           "\"received\":%u,\"expected\":%u}",
+                           "\"received\":%lu,\"expected\":%lu}",
                            fw_state.received_bytes, fw_state.total_size);
         http_send_json(buf, len);
         return;
@@ -2154,7 +2157,7 @@ void handle_fw_finish(const char *json_body) {
         fw_state.fw_size = 0U;
         CSLOG_WARN("[FW] Downloaded image header unreadable - apply will be unbound\r\n");
     } else {
-        CSLOG("[FW] Image bound: crc=0x%08X size=%u\r\n",
+        CSLOG("[FW] Image bound: crc=0x%08lX size=%lu\r\n",
               fw_state.fw_crc, fw_state.fw_size);
     }
 
@@ -2162,7 +2165,7 @@ void handle_fw_finish(const char *json_body) {
     CCSLOG(XCOLOR_GREEN, "[FW] ========================================\r\n");
     CCSLOG(XCOLOR_GREEN, "[FW] FW TRANSFER COMPLETE - IMAGE VERIFIED\r\n");
     CCSLOG(XCOLOR_GREEN, "[FW] ========================================\r\n");
-    CSLOG("[FW] Total: %u bytes in %u chunks\r\n", 
+    CSLOG("[FW] Total: %lu bytes in %lu chunks\r\n",
             fw_state.total_size, fw_state.received_chunks);
     if (fw_state.checksum_errors > 0 || fw_state.retry_count > 0) {
         CSLOG_WARN("[FW] Note: %u checksum errors, %u retries during transfer\r\n",

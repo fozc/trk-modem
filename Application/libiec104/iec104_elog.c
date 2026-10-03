@@ -8,6 +8,9 @@
  * is connect/disconnect only.
  *
  * Reference layout: spi_flash_organization.h IEC104_LOG_* macros.
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_elog.h"
@@ -558,7 +561,7 @@ static int iec104_elog_shell_handler(int argc, char *argv[])
         SHELL_LOG("Status           : INITIALIZED (append-only ring)\r\n");
         SHELL_LOG("Next Seq         : %u (wraps at 65535)\r\n",
                   iec104_elog_get_next_seq());
-        SHELL_LOG("Stored Entries   : %u / %u\r\n",
+        SHELL_LOG("Stored Entries   : %lu / %u\r\n",
                   iec104_elog_get_stored_count(), iec104_elog_get_capacity());
         SHELL_LOG("========================================\r\n\r\n");
     }

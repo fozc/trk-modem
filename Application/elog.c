@@ -603,13 +603,13 @@ static void elog_shell_info(int argc, char **argv)
     SHELL_LOG("Status           : INITIALIZED (append-only ring)\r\n");
     SHELL_LOG("Next Seq         : %u (wraps at 65535)\r\n",
               elog_get_next_seq());
-    SHELL_LOG("Stored Entries   : %u / %u\r\n",
+    SHELL_LOG("Stored Entries   : %lu / %u\r\n",
               elog_get_stored_count(), elog_get_capacity());
 
     SHELL_LOG("\r\nMemory Addresses:\r\n");
-    SHELL_LOG("  Log Area       : 0x%08X (%u sectors)\r\n",
+    SHELL_LOG("  Log Area       : 0x%08lX (%lu sectors)\r\n",
               elog_ctx.base_addr, elog_ctx.sector_count);
-    SHELL_LOG("  Entry Size     : %u bytes (payload %u)\r\n",
+    SHELL_LOG("  Entry Size     : %lu bytes (payload %lu)\r\n",
               elog_ctx.entry_size, elog_ctx.payload_size);
 
     SHELL_LOG("========================================\r\n");
@@ -646,7 +646,7 @@ static void elog_print_entry(uint32_t seq, const elog_entry_t *entry)
         info_out = elog_info_to_text(entry);
     }
 
-    SHELL_LOG("%-6u %-5s %04u-%02u-%02u %02u:%02u:%02u %-18s %s\r\n",
+    SHELL_LOG("%-6lu %-5s %04u-%02u-%02u %02u:%02u:%02u %-18s %s\r\n",
             seq,
             elog_level_to_string((elog_level_t)entry->level),
             dt.date.year, dt.date.month, dt.date.day,

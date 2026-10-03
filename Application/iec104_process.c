@@ -2,7 +2,8 @@
  * iec104_process.c
  *
  *  Created on: Oct 26, 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_process.h"
@@ -209,6 +210,8 @@ static void iec104_tx_process(void)
 
 void iec104_on_data(const uint8_t *data, uint16_t len, void *user)
 {
+    (void)user;
+
     //printf("Data Received (%d byte): %.*s\n", len, len, data);
     iec104_data_received(data, len);
 }
@@ -377,6 +380,9 @@ static int read_rf_haberlesme_varyok(uint32_t line_index, uint8_t phase, siq_t *
 PROCESS(iec104_process, "iec104_process");
 PROCESS_THREAD(iec104_process, ev, data)
 {
+    (void)data;
+    (void)ev;
+
 	static struct etimer timer;
 	static struct timer  iec104_tick_timer;
 	PROCESS_BEGIN();
