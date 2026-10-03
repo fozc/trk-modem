@@ -12,6 +12,7 @@ INTEGRATION_SUITES = [
   ["libs", "libs", [[MAKE, "run"]]],
   ["nvram", "nvram", [[MAKE, "run"]]],
   ["rf_hub_sim", "rf_hub_sim", [[MAKE, "run"]]],
+  ["web_auth", "web_auth", [[MAKE, "run"]]],
   ["web_navigation", "web_navigation", [[MAKE, "run"]]]
 ].freeze
 

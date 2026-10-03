@@ -416,6 +416,19 @@ static void log_response(const char *p_result_str)
 	{
 		return;
 	}
+    /* SRECV responses contain raw socket payload, including HTTP secrets.
+     * Check the command as well as the payload marker: timeout/error paths
+     * may have only received part of a login request. */
+    static const char socket_read_prefix[] = "AT#SRECV=";
+    const size_t prefix_len = sizeof(socket_read_prefix) - 1U;
+    if ((0U != at_engine.srecv_payload_end) ||
+        (((size_t)at_engine.cmd_len >= prefix_len) &&
+         (0 == memcmp(at_engine.cmd, socket_read_prefix, prefix_len))))
+    {
+        CCSLOG(XCOLOR_CYAN, "AT RX< [%s] %u bytes [payload omitted]\r\n",
+               p_result_str, at_engine.response_buffer_len);
+        return;
+    }
 	const char *p_color = (strcmp(p_result_str, "OK") == 0) ? XCOLOR_CYAN : XCOLOR_RED;
 	CCSLOG(p_color, "AT RX< [%s] %u bytes [", p_result_str, at_engine.response_buffer_len);
 	for(uint16_t i = 0U; i < at_engine.response_buffer_len; i++)
