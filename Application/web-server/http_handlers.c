@@ -4,12 +4,14 @@
  *
  *  Created on: Apr 18, 2026
  *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_handlers.h"
 #include "http_response.h"
 #include "http_session_token.h"
+#include "bsp_random.h"
 #include "http_request_parser.h"
 #include "index_html.h"
 #include "fw_update_html.h"
@@ -348,19 +350,21 @@ void handle_post_login(const char *json_body)
     if (valid) {
         login_lock_reset();
 
-        /* Publish a new session only after all entropy reads succeed. */
+        uint32_t tx_bytes = 0U;
+        uint32_t rx_bytes = 0U;
+        gsm_get_rxtx_counters(&tx_bytes, &rx_bytes);
+        bsp_random_fallback_seed(bsp_get_tick(), tx_bytes, rx_bytes);
+
         char new_token[HTTP_SESSION_TOKEN_SIZE];
-        if (!http_session_token_generate(new_token, bsp_random_word))
+        if (!http_session_token_generate(new_token))
         {
-            CSLOG_ERR("[HTTP] Session entropy unavailable\r\n");
             static const char error_response[] =
-                "{\"success\":false,\"error\":\"Login temporarily "
-                "unavailable, try again\"}";
-            http_send_response(503, NULL, "application/json", error_response,
-                               (int)(sizeof(error_response) - 1U));
+                "{\"success\":false,\"error\":\"Token unavailable\"}";
+            http_send_response(503, NULL, "application/json",
+                error_response, (int)(sizeof(error_response) - 1U));
             return;
         }
-        /* Replace the role and token only after entropy succeeds. */
+        /* Replace the role and token only after token generation completes. */
         strncpy(handler_state.username, username,
                 sizeof(handler_state.username) - 1U);
         handler_state.username[sizeof(handler_state.username) - 1U] = '\0';

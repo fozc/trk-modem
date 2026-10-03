@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.11
+**Sürüm:** 1.13
 **Tarih:** 2026-10-03
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -196,14 +196,20 @@ kapsayan birim testleri eklenmelidir.
 
 `web_server/test_http_session_token.c` dosyası 12 Ceedling testi içerir.
 Token uzunluğu, sorgu eşleşmesi, hatalı girişler ve entropy (rastgelelik
-kaynağı) başarısızlığı denetlenir.
+kaynağı) başarısızlığı denetlenir. RNG ve fallback (yedek yol) kontrolleri
+`bsp/test_bsp_random.c` dosyasındaki 9 Ceedling testiyle ayrı yürütülür.
+Bu testler gerçek `Application/bsp/bsp_random.c` modülünü HAL CMock
+ile derler; kabul edilen okumaların birikimi, hata bayrakları, unsigned
+sarma, fallback token biçimi ve durum ilerlemesi doğrulanır.
 
-`integration/web_auth/run_tests.py` dosyası 16 host kontrolü içerir.
-Mevcut üretim dosyalarından giriş, oturum, AT log ve BSP RNG fonksiyonları
+`integration/web_auth/run_tests.py` dosyası 19 host kontrolü içerir.
+Mevcut üretim dosyalarından giriş, oturum, AT log ve BSP random modülü fonksiyonları
 alınarak host üzerinde derlenir. Eski token reddi, giriş kilidi, oturum
-süresi, RNG hatasında mevcut rol/token korunması, yetki artırmanın
-engellenmesi, hassas logların gizlenmesi ve seed hatasının HAL çağrısına
-ulaşması doğrulanır. Fonksiyonların kaynak şekli değişip çıkarılamazsa test
+süresi, RNG hatasında doğru parola ile fallback girişi, yanlış parola
+reddi, aynı tick değerinde ardışık token değişimi, hassas logların
+gizlenmesi, RNG birikiminin unsigned sarması ve fallback geçiş logunun
+yalnız durum değişiminde yazılması doğrulanır. RNG
+başlatması main içindeki mevcut CubeMX/HAL akışında kalır. Fonksiyonların kaynak şekli değişip çıkarılamazsa test
 başarısız olur; test düzeneği yeni kaynakla birlikte değerlendirilmelidir.
 
 Donanım, log ve taşıma çağrıları test doubles (taklit bileşenler) kullanır.
@@ -220,6 +226,19 @@ make -C test/integration/web_auth run
 ```
 
 Host derleyicisi `CC`, Python komutu `PYTHON` ile değiştirilebilir.
+
+Fallback, erişim sürekliliği amacıyla kullanıcı kararıyla eklenmiştir.
+32 hex karakter üretmesi 128 bit güvenlik sağladığı anlamına gelmez;
+xorshift32 kriptografik bir üretici değildir. RAM durumu reset ile sıfırlanır;
+ayrı açılışlarda tokenlerin farklı olması garanti edilmez. Bu testler
+fallback'in güvenlik gücünü kanıtlamaz.
+
+`http_session_token_generate()` doğrudan `bsp_random_word()` çağırır;
+random callback (işlev sağlayıcısı) parametresi yoktur. RNG/fallback seçimi
+BSP içinde yapılır. Web girişinde tick ve genel GSM sayaçları modüle
+aktarılır; normal RNG okuması başarısız olursa fallback kendiliğinden
+kullanılır. Fallback'e geçiş loglanır; aynı hata sürdükçe her kelime için
+log üretilmez. Sağlıklı bir RNG okuması geçiş durumunu sıfırlar.
 
 ## Doğrulama
 
@@ -280,3 +299,5 @@ testin neden başarısız olduğunu açıklamaz.
 | 2026-10-01 | 1.9 | Actions Python ortamının eşitlenmesi, JUnit raporunun coverage temizliğinden korunması ve CI loglarının saklanması |
 | 2026-10-02 | 1.10 | Linux host testlerinin 32 bit derlenmesi ve çalıştırma öncesi ABI kontrolü |
 | 2026-10-03 | 1.11 | Token testleri, 16 kalıcı web oturum güvenliği kontrolü ve merkezi web_auth paketi |
+| 2026-10-03 | 1.12 | RNG birikimi, genel GSM sayaçlarıyla fallback, main tarafından başlatılmış RNG kullanımı ve kalıcı hata yolu testleri |
+| 2026-10-03 | 1.13 | Ayrı bsp_random modülü, 9 CMock testi ve web token sorumluluğunun ayrılması |

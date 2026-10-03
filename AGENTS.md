@@ -65,6 +65,10 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   unnecessary abbreviations. Names are written for the next reader,
   not the author.
 - **ASCII only** in code and comments — no Turkish characters.
+- **File header author:** every new or edited C/C++ file header must use
+  `Author: Fatih Ozcan` with `fatihozcan@gmail.com` on the next aligned
+  line. No other author name or email is allowed. Use the BARR-C header
+  template above the code; this spelling preserves the ASCII-only rule.
 - Functions <= 100 lines, <= 5 parameters; private functions `static`;
   include order: own header, project, HAL, standard.
 - **Logging:** use cslog (`CSLOG(...)`, `xsprintf`) — no bare

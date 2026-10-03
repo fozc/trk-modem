@@ -35,6 +35,7 @@
 :paths:
   :test:
     - +:application/**
+    - +:bsp/**
     - +:efw/**
     - +:gsm/**
     - +:iec104/**

@@ -2,12 +2,15 @@
  * http_session_token.h
  *
  *  Created on: Oct 03, 2026
- *      Author: Codex
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Fixed-size HTTP session tokens with an injected entropy source.
  */
 #ifndef HTTP_SESSION_TOKEN_H
 #define HTTP_SESSION_TOKEN_H
+
+#include "bsp_random.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -17,11 +20,9 @@
 #define HTTP_SESSION_TOKEN_HEX_LEN 32U
 #define HTTP_SESSION_TOKEN_SIZE (HTTP_SESSION_TOKEN_HEX_LEN + 1U)
 
-typedef bool (*http_random_word_fn_t)(uint32_t *value);
-
-/** Build a 128-bit token. Failure clears the output; no weak fallback. */
+/** Format four BSP random words. Failure clears the output. */
 static inline bool http_session_token_generate(
-    char token[HTTP_SESSION_TOKEN_SIZE], http_random_word_fn_t random_word)
+    char token[HTTP_SESSION_TOKEN_SIZE])
 {
     static const char hex_digits[] = "0123456789ABCDEF";
     uint32_t combined = 0U;
@@ -31,16 +32,11 @@ static inline bool http_session_token_generate(
         return false;
     }
     memset(token, 0, HTTP_SESSION_TOKEN_SIZE);
-    if (NULL == random_word)
-    {
-        return false;
-    }
-
     for (size_t word_index = 0U; word_index < 4U; word_index++)
     {
         uint32_t word = 0U;
 
-        if (!random_word(&word))
+        if (!bsp_random_word(&word))
         {
             memset(token, 0, HTTP_SESSION_TOKEN_SIZE);
             return false;

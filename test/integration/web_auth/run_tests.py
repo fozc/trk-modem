@@ -36,6 +36,7 @@ preamble=r'''
 #include <string.h>
 #include <assert.h>
 #include "http_session_token.h"
+#include "bsp_random.h"
 #define USER_ROLE_ADMIN "admin"
 #define USER_ROLE_USER "user"
 #define HTTP_SESSION_TIMEOUT_MS (15UL * 60UL * 1000UL)
@@ -43,6 +44,10 @@ preamble=r'''
 #define LOGIN_LOCKOUT_MS (60UL * 1000UL)
 #define CSLOG(...) ((void)0)
 #define CSLOG_ERR(...) ((void)0)
+#define CSLOG_WARN(...) ((void)0)
+static uint32_t fallback_state=1U;
+static bool fallback_active;
+static uint32_t random_accumulator=0xE6B3E419U;
 #define xsnprintf snprintf
 static uint32_t test_tick=123456U, random_counter=1U;
 static bool entropy_ok=true;
@@ -57,10 +62,14 @@ static struct {
  int tx_buffer_size;
 } handler_state;
 static uint32_t bsp_get_tick(void) { return test_tick; }
-static bool bsp_random_word(uint32_t *value) {
+static bool read_hardware_word(uint32_t *value) {
  if (!entropy_ok) return false;
  *value=random_counter++;
  return true;
+}
+uint32_t bsp_get_random_accumulator(void) { return 0xE6B3E419U; }
+static void gsm_get_rxtx_counters(uint32_t *tx,uint32_t *rx) {
+ *tx=4096U;*rx=1024U;
 }
 static uint32_t gsm_get_ip_addr(void) { return 0x0A000018U; }
 static uint32_t gsm_get_web_client_ip(void) { return 0U; }
@@ -74,7 +83,7 @@ static void http_send_response(int status,const char *reason,
 }
 '''
 names=['login_lock_is_active','login_lock_register_failure','login_lock_reset','http_handlers_set_auth_from_token','http_handlers_is_admin','handle_post_login','handle_post_logout']
-code=preamble+'\n\n'.join(extract('Application/web-server/http_handlers.c',n) for n in names)
+code=preamble+extract('Application/bsp/bsp_random.c','bsp_random_fallback_seed')+extract('Application/bsp/bsp_random.c','generate_fallback_word')+extract('Application/bsp/bsp_random.c','bsp_random_word')+'\n\n'.join(extract('Application/web-server/http_handlers.c',n) for n in names)
 code+=r'''
 int main(void) {
  handler_state.tx_buffer=output; handler_state.tx_buffer_size=sizeof(output);
@@ -97,36 +106,33 @@ int main(void) {
  puts("PASS: relogin invalidates previous token");
  char saved_token[HTTP_SESSION_TOKEN_SIZE];
  strcpy(saved_token,handler_state.session_token);
- uint32_t saved_tick=handler_state.last_activity_tick;
- entropy_ok=false;
- handle_post_login("{\"username\":\"user\",\"password\":\"user11\"}");
- assert(response_status==503);
- assert(strcmp(saved_token,handler_state.session_token)==0);
- assert(strcmp(handler_state.username,"admin")==0);
- assert(handler_state.last_activity_tick==saved_tick);
  snprintf(query,sizeof(query),"t=%s",saved_token);
- http_handlers_set_auth_from_token(query);assert(http_handlers_is_admin());
- puts("PASS: failed user login preserves existing admin token, role and TTL");
- entropy_ok=true;
- handle_post_login("{\"username\":\"user\",\"password\":\"user11\"}");
- assert(!http_handlers_is_admin() && handler_state.is_authenticated);
- strcpy(saved_token,handler_state.session_token);
- saved_tick=handler_state.last_activity_tick;
  entropy_ok=false;
- handle_post_login("{\"username\":\"admin\",\"password\":\"admin25\"}");
- assert(response_status==503);
- assert(strcmp(saved_token,handler_state.session_token)==0);
+ handle_post_login("{\"username\":\"user\",\"password\":\"user11\"}");
+ assert(response_status==200 && handler_state.is_authenticated);
+ assert(!http_handlers_is_admin());
+ assert(strcmp(saved_token,handler_state.session_token)!=0);
  assert(strcmp(handler_state.username,"user")==0);
- assert(handler_state.last_activity_tick==saved_tick);
- snprintf(query,sizeof(query),"t=%s",saved_token);
+ http_handlers_set_auth_from_token(query);assert(!handler_state.is_authenticated);
+ snprintf(query,sizeof(query),"t=%s",handler_state.session_token);
  http_handlers_set_auth_from_token(query);
  assert(handler_state.is_authenticated && !http_handlers_is_admin());
- puts("PASS: failed admin login cannot elevate existing user session");
+ puts("PASS: RNG failure creates authenticated user fallback and replaces old token");
+ handle_post_login("{\"username\":\"admin\",\"password\":\"admin25\"}");
+ assert(response_status==200 && http_handlers_is_admin());
+ puts("PASS: valid admin credentials can create fallback session");
+ strcpy(saved_token,handler_state.session_token);
+ handle_post_login("{\"username\":\"admin\",\"password\":\"wrong\"}");
+ assert(strcmp(saved_token,handler_state.session_token)==0);
+ puts("PASS: invalid credentials do not create a fallback session");
  handle_post_logout();
  handle_post_login("{\"username\":\"admin\",\"password\":\"admin25\"}");
- assert(response_status==503 && !handler_state.is_authenticated);
- assert(handler_state.session_token[0]=='\0');
- puts("PASS: entropy failure without a session returns 503 and grants no access");
+ assert(response_status==200 && http_handlers_is_admin());
+ assert(strlen(handler_state.session_token)==32U);
+ strcpy(saved_token,handler_state.session_token);
+ handle_post_login("{\"username\":\"admin\",\"password\":\"admin25\"}");
+ assert(strcmp(saved_token,handler_state.session_token)!=0);
+ puts("PASS: repeated fallback logins at the same tick create different tokens");
  entropy_ok=true;
  handle_post_login("{\"username\":\"admin\",\"password\":\"admin25\"}");
  snprintf(query,sizeof(query),"t=%s",handler_state.session_token);
@@ -214,7 +220,7 @@ static bool inject_clock_error;
 static int hrng;
 #define __HAL_RNG_GET_FLAG(handle,flag) (flags & (flag))
 #define __HAL_RNG_GET_IT(handle,flag) (flags & (flag))
-static unsigned int HAL_RNG_GenerateRandomNumber(int *handle,uint32_t *value)
+static unsigned int HAL_RNG_GenerateRandomNumber(void *handle,uint32_t *value)
 {
  (void)handle;hal_calls++;
  if (hal_status!=HAL_OK) return hal_status;
@@ -224,33 +230,55 @@ static unsigned int HAL_RNG_GenerateRandomNumber(int *handle,uint32_t *value)
  return HAL_OK;
 }
 """
-bsp_code=bsp_preamble+extract('Application/bsp/bsp.c','bsp_random_word')+r"""
+bsp_source=(root/'Application/bsp/bsp_random.c').read_text(encoding='utf-8')
+accumulator=re.search(r'^static uint32_t random_accumulator = .*?;',bsp_source,re.M)
+if accumulator is None: raise RuntimeError("Missing RNG accumulator")
+bsp_code=bsp_preamble+accumulator.group(0)+'\nstatic uint32_t fallback_state=1U;\nstatic bool fallback_active;\nstatic unsigned int fallback_logs;\n#define CSLOG_WARN(...) ((void)++fallback_logs)\n'+'\n'.join([
+ extract('Application/bsp/bsp_random.c','bsp_get_random_accumulator'),
+ extract('Application/bsp/bsp_random.c','read_hardware_word'),
+ extract('Application/bsp/bsp_random.c','generate_fallback_word'),
+ extract('Application/bsp/bsp_random.c','bsp_random_word')])+r"""
 int main(void) {
  uint32_t value=99U;
+ uint32_t initial=bsp_get_random_accumulator();
  assert(!bsp_random_word(NULL) && hal_calls==0U);
  flags=RNG_FLAG_CECS;
- assert(!bsp_random_word(&value) && value==0U && hal_calls==0U);
+ assert(bsp_random_word(&value) && value!=0U && hal_calls==0U);
  flags=RNG_IT_CEI;
- assert(!bsp_random_word(&value) && value==0U && hal_calls==0U);
- puts("PASS: clock error flags reject entropy before HAL read");
+ assert(bsp_random_word(&value) && value!=0U && hal_calls==0U);
+ assert(fallback_logs==1U);
+ puts("PASS: clock errors select fallback without a HAL read");
  flags=RNG_FLAG_SECS | RNG_IT_SEI;
  assert(bsp_random_word(&value) && hal_calls==1U);
  assert(value==0x12345678U);
+ assert(bsp_get_random_accumulator()==initial+value);
  puts("PASS: seed error reaches existing HAL recovery path");
  hal_status=1U;
- assert(!bsp_random_word(&value) && value==0U);
- puts("PASS: HAL failure returns no entropy");
+ assert(bsp_random_word(&value) && value!=0U);
+ puts("PASS: HAL failure selects availability fallback");
  hal_status=HAL_OK;inject_clock_error=true;
- assert(!bsp_random_word(&value) && value==0U);
- puts("PASS: clock error after HAL read rejects entropy");
+ assert(bsp_random_word(&value) && value!=0U);
+ assert(fallback_logs==2U);
+ puts("PASS: clock error after HAL read selects fallback without accumulating");
+ assert(bsp_get_random_accumulator()==initial+0x12345678U);
+ flags=0U;inject_clock_error=false;
+ random_accumulator=UINT32_MAX-0x12345678U+2U;
+ assert(bsp_random_word(&value));
+ assert(bsp_get_random_accumulator()==1U);
+ puts("PASS: RNG accumulator accepts only successful words and wraps unsigned");
+ hal_status=1U;assert(bsp_random_word(&value));
+ assert(fallback_logs==3U);
+ assert(bsp_random_word(&value) && fallback_logs==3U);
+ puts("PASS: fallback logs once per transition and re-arms after hardware recovery");
  return 0;
 }
 """
 (audit/'bsp_rng_repro.c').write_text(bsp_code,encoding='utf8')
 
+
 outputs=[]
 for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro']:
- run=subprocess.run([args.cc,'-std=c11','-O0','-I'+str(root/'Application/web-server'),str(audit/(name+'.c')),'-o',str(audit/(name+'.exe'))],capture_output=True,text=True)
+ run=subprocess.run([args.cc,'-std=c11','-O0','-I'+str(root/'Application/web-server'),'-I'+str(root/'Application/bsp'),str(audit/(name+'.c')),'-o',str(audit/(name+'.exe'))],capture_output=True,text=True)
  if run.returncode: print(run.stderr);raise SystemExit(run.returncode)
  run=subprocess.run([str(audit/(name+'.exe'))],capture_output=True,text=True)
  outputs.append(run.stdout+run.stderr)

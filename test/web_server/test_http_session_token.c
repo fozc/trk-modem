@@ -2,12 +2,14 @@
  * test_http_session_token.c
  *
  *  Created on: Oct 03, 2026
- *      Author: Codex
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Entropy failure and token authentication boundary tests.
  */
 #include "unity.h"
 #include "http_session_token.h"
+#include "mock_bsp_random.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -19,8 +21,9 @@ static uint32_t words[4];
 static size_t word_index;
 static size_t fail_index;
 
-static bool read_word(uint32_t *value)
+static bool read_word(uint32_t *value, int call_count)
 {
+    (void)call_count;
     if ((word_index == fail_index) || (4U <= word_index))
     {
         return false;
@@ -38,6 +41,7 @@ void setUp(void)
     words[3] = 0xFEDCBA98U;
     word_index = 0U;
     fail_index = 4U;
+    bsp_random_word_StubWithCallback(read_word);
 }
 
 void tearDown(void)
@@ -48,7 +52,7 @@ void test_session_token_uses_all_four_entropy_words(void)
 {
     char token[HTTP_SESSION_TOKEN_SIZE];
 
-    TEST_ASSERT_TRUE(http_session_token_generate(token, read_word));
+    TEST_ASSERT_TRUE(http_session_token_generate(token));
     TEST_ASSERT_EQUAL_STRING(expected_token, token);
     TEST_ASSERT_EQUAL_UINT32(4U, word_index);
 }
@@ -60,7 +64,7 @@ void test_session_token_entropy_failure_clears_partial_secret(void)
 
     fail_index = 2U;
     memset(token, 'X', sizeof(token));
-    TEST_ASSERT_FALSE(http_session_token_generate(token, read_word));
+    TEST_ASSERT_FALSE(http_session_token_generate(token));
     TEST_ASSERT_EQUAL_MEMORY(cleared, token, sizeof(token));
 }
 
@@ -69,17 +73,13 @@ void test_session_token_rejects_zero_entropy_without_fallback(void)
     char token[HTTP_SESSION_TOKEN_SIZE];
 
     memset(words, 0, sizeof(words));
-    TEST_ASSERT_FALSE(http_session_token_generate(token, read_word));
+    TEST_ASSERT_FALSE(http_session_token_generate(token));
     TEST_ASSERT_EQUAL_STRING("", token);
 }
 
-void test_session_token_rejects_missing_entropy_source(void)
+void test_session_token_rejects_null_output(void)
 {
-    char token[HTTP_SESSION_TOKEN_SIZE];
-
-    TEST_ASSERT_FALSE(http_session_token_generate(token, NULL));
-    TEST_ASSERT_EQUAL_STRING("", token);
-    TEST_ASSERT_FALSE(http_session_token_generate(NULL, read_word));
+    TEST_ASSERT_FALSE(http_session_token_generate(NULL));
 }
 
 void test_session_token_accepts_exact_query_parameter(void)
@@ -144,7 +144,7 @@ void test_session_token_changes_when_entropy_changes(void)
     char token[HTTP_SESSION_TOKEN_SIZE];
 
     words[3] ^= 1U;
-    TEST_ASSERT_TRUE(http_session_token_generate(token, read_word));
+    TEST_ASSERT_TRUE(http_session_token_generate(token));
     TEST_ASSERT_NOT_EQUAL(0, strcmp(expected_token, token));
 }
 
