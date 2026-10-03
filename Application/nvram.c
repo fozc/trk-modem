@@ -187,15 +187,19 @@ void nvram_set_defaults(void)
     nvram.iec104_config.ioa_aku_uyarisi = iec104_make_ioa_3byte(10000);
     nvram.iec104_config.ioa_modem_reset = iec104_make_ioa_3byte(10001);
 
+    /* All computed default registers fit the stored 16-bit address. */
+    _Static_assert(MAX_POWER_LINE_COUNT > 0U, "At least one line required");
+    _Static_assert((40000U + ((MAX_POWER_LINE_COUNT - 1U) * 100U) + 26U)
+                   <= UINT16_MAX, "Default Modbus register out of range");
     /* Initialize all power lines with default values */
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
+    for (uint32_t i = 0U; i < MAX_POWER_LINE_COUNT; i++) {
         // Mark all lines as unused
         nvram.breaker.line[i].iec104.in_use = 0;
         nvram.breaker.line[i].modbus.in_use = 0;
         
         // Initialize IEC104 line config with default IOA values
-        uint32_t base_ioa = 1000 + (i * 100);  // Line 0: 1000, Line 1: 1100, etc.
-        for(int ph = 0; ph < PHASE_MAX; ++ph) 
+        uint32_t base_ioa = 1000U + (i * 100U);  // Line 0: 1000, Line 1: 1100, etc.
+        for(uint32_t ph = 0U; ph < PHASE_MAX; ++ph)
 		{
             nvram.breaker.line[i].iec104.ariza_akimi[ph] = iec104_make_ioa_3byte(base_ioa + ph);
             nvram.breaker.line[i].iec104.ariza_suresi[ph] = iec104_make_ioa_3byte(base_ioa + 10 + ph);
@@ -224,16 +228,16 @@ void nvram_set_defaults(void)
         //   enerji_varyok       -> base + 18 / 19 / 20 (UINT16)
         //   nominal_akim_varyok -> base + 21 / 22 / 23 (UINT16)
         //   rf_haberlesme_varyok-> base + 24 / 25 / 26 (UINT16)
-        uint16_t base_addr = 40000 + (i * 100);  // Line 0: 40000, Line 1: 40100, etc.
-        for(int ph = 0; ph < PHASE_MAX; ++ph) 
+        uint32_t base_addr = 40000U + (i * 100U);  // Line 0: 40000, Line 1: 40100, etc.
+        for(uint32_t ph = 0U; ph < PHASE_MAX; ++ph)
 		{
-            nvram.breaker.line[i].modbus.ariza_akimi[ph] = base_addr + 0 + (ph * 2);
-            nvram.breaker.line[i].modbus.anlik_akim[ph] = base_addr + 6 + (ph * 2);
-            nvram.breaker.line[i].modbus.ariza_suresi[ph] = base_addr + 12 + ph;
-            nvram.breaker.line[i].modbus.ariza_kalicimi[ph] = base_addr + 15 + ph;
-            nvram.breaker.line[i].modbus.enerji_varyok[ph] = base_addr + 18 + ph;
-            nvram.breaker.line[i].modbus.nominal_akim_varyok[ph] = base_addr + 21 + ph;
-            nvram.breaker.line[i].modbus.rf_haberlesme_varyok[ph] = base_addr + 24 + ph;
+            nvram.breaker.line[i].modbus.ariza_akimi[ph] = (uint16_t)(base_addr + 0 + (ph * 2));
+            nvram.breaker.line[i].modbus.anlik_akim[ph] = (uint16_t)(base_addr + 6 + (ph * 2));
+            nvram.breaker.line[i].modbus.ariza_suresi[ph] = (uint16_t)(base_addr + 12 + ph);
+            nvram.breaker.line[i].modbus.ariza_kalicimi[ph] = (uint16_t)(base_addr + 15 + ph);
+            nvram.breaker.line[i].modbus.enerji_varyok[ph] = (uint16_t)(base_addr + 18 + ph);
+            nvram.breaker.line[i].modbus.nominal_akim_varyok[ph] = (uint16_t)(base_addr + 21 + ph);
+            nvram.breaker.line[i].modbus.rf_haberlesme_varyok[ph] = (uint16_t)(base_addr + 24 + ph);
 
             // Fault-log blocks are reserved (offsets 27..99) and not yet mapped.
             nvram.breaker.line[i].modbus.temporary_fault[ph].ariza_akimi = 0;

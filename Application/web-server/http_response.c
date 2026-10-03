@@ -12,6 +12,7 @@
 #include "html_resources.h"  /* For HTML_COMPRESS_* constants */
 #include "xprintf.h"  /* For xsprintf */
 #include <string.h>
+#include <limits.h>
 /* ============================================================================
  * INTERNAL STATE
  * ============================================================================ */
@@ -90,6 +91,21 @@ int http_send_data(const char *data, int length)
 }
 
 
+/* Reject a truncated header before sending the caller's body. */
+static bool send_header(const char *header, unsigned int length)
+{
+    if ((4U > length) || (0 != memcmp(header + length - 4U, "\r\n\r\n", 4U)))
+    {
+        static const char error[] =
+            "HTTP/1.1 500 Internal Server Error\r\n"
+            "Content-Length: 0\r\nConnection: close\r\n\r\n";
+        (void)http_send_data(error, (int)(sizeof(error) - 1U));
+        return false;
+    }
+    (void)http_send_data(header, (int)length);
+    return true;
+}
+
 /* ============================================================================
  * HTTP RESPONSE BUILDER
  * ============================================================================ */
@@ -114,7 +130,7 @@ void http_send_response(int status_code,
 
     /* Build HTTP headers in stack buffer */
     char header_buffer[256];
-    int header_length = xsprintf(header_buffer,
+    unsigned int header_length = xsnprintf(header_buffer, sizeof(header_buffer),
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s; charset=utf-8\r\n"
         "Content-Length: %d\r\n"
@@ -131,7 +147,9 @@ void http_send_response(int status_code,
     CSLOG("[HTTP] Response status=%d bytes=%d\r\n",
           status_code, body_length);
     /* Send headers */
-    http_send_data(header_buffer, header_length);
+    if (!send_header(header_buffer, header_length)) {
+        return;
+    }
 
     /* Send body if present */
     if (body_length > 0) {
@@ -171,13 +189,18 @@ void http_send_html_resource(const html_resource_t *resource)
         resource = get_default_html();
     }
     
+    if (resource->length > INT_MAX) {
+        http_send_error(500, "HTML resource too large");
+        return;
+    }
+
     if (resource->is_gzipped != HTML_COMPRESS_NONE) {
         /* Determine Content-Encoding based on compression type */
         const char *encoding = (resource->is_gzipped == HTML_COMPRESS_BR) ? "br" : "gzip";
         
         /* Build HTTP headers with compression encoding */
         char header_buffer[256];
-        int header_length = xsprintf(header_buffer,
+        unsigned int header_length = xsnprintf(header_buffer, sizeof(header_buffer),
             "HTTP/1.1 200 OK\r\n"
             "Content-Type: text/html; charset=utf-8\r\n"
             "Content-Encoding: %s\r\n"
@@ -196,11 +219,13 @@ void http_send_html_resource(const html_resource_t *resource)
         CSLOG("=== END RESPONSE ===\r\n\r\n");
 
         /* Send headers and compressed body */
-        http_send_data(header_buffer, header_length);
-        http_send_data((const char *)resource->data, resource->length);
+        if (!send_header(header_buffer, header_length)) {
+            return;
+        }
+        http_send_data((const char *)resource->data, (int)resource->length);
     } else {
         /* Send as regular HTML */
-        http_send_response(200, "OK", "text/html", (const char *)resource->data, resource->length);
+        http_send_response(200, "OK", "text/html", (const char *)resource->data, (int)resource->length);
     }
 }
 

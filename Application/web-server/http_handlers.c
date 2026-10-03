@@ -18,6 +18,7 @@
 #include "web_shell.h"
 #include "json_config.h"
 #include "xprintf.h"
+#include <stddef.h>
 #include <string.h>
 #include "../utils.h"
 #include "version.h"
@@ -279,7 +280,7 @@ void handle_post_login(const char *json_body)
         const char *locked_response =
             "{\"success\":false,\"error\":\"Too many attempts, "
             "try again later\"}";
-        http_send_json(locked_response, strlen(locked_response));
+        http_send_json(locked_response, (int)strlen(locked_response));
         return;
     }
 
@@ -299,14 +300,14 @@ void handle_post_login(const char *json_body)
     if (user_start && pass_start) {
         user_start += 12; /* Skip \"username\":" */
         const char *user_end = strchr(user_start, '\"');
-        if (user_end && (user_end - user_start) < sizeof(username)) {
-            strncpy(username, user_start, user_end - user_start);
+        if (user_end && (size_t)(user_end - user_start) < sizeof(username)) {
+            strncpy(username, user_start, (size_t)(user_end - user_start));
         }
         
         pass_start += 12; /* Skip \"password\":" */
         const char *pass_end = strchr(pass_start, '\"');
-        if (pass_end && (pass_end - pass_start) < sizeof(password)) {
-            strncpy(password, pass_start, pass_end - pass_start);
+        if (pass_end && (size_t)(pass_end - pass_start) < sizeof(password)) {
+            strncpy(password, pass_start, (size_t)(pass_end - pass_start));
         }
     }
     
@@ -314,8 +315,8 @@ void handle_post_login(const char *json_body)
     
     /* Get device IP address */
     uint32_t ip = gsm_get_ip_addr();
-    uint8_t ip_a = (ip >> 24) & 0xFF;  /* First octet */
-    uint8_t ip_d = ip & 0xFF;           /* Last octet */
+    uint8_t ip_a = (uint8_t)((ip >> 24) & 0xFFU);  /* First octet */
+    uint8_t ip_d = (uint8_t)(ip & 0xFFU);           /* Last octet */
     
     CSLOG("[HTTP] Device IP octets - First: %d, Last: %d\r\n", ip_a, ip_d);
     
@@ -374,13 +375,14 @@ void handle_post_login(const char *json_body)
         CSLOG("[HTTP] Session authenticated\r\n");
 
         char *buf = handler_state.tx_buffer;
-        int   pos = xsnprintf(buf, handler_state.tx_buffer_size,
+        size_t pos = xsnprintf(buf,
+                              (unsigned int)handler_state.tx_buffer_size,
                               "{\"success\":true,\"token\":\"%s\",\"role\":\"%s\"}",
                               handler_state.session_token, handler_state.username);
-        http_send_json(buf, pos);
+        http_send_json(buf, (int)pos);
     } else {
         const char *error_response = "{\"success\":false,\"error\":\"Invalid credentials\"}";
-        http_send_json(error_response, strlen(error_response));
+        http_send_json(error_response, (int)strlen(error_response));
     }
 }
 
@@ -400,7 +402,7 @@ void handle_post_logout(void)
     
     /* Send success response */
     const char *success_response = "{\"success\":true}";
-    http_send_json(success_response, strlen(success_response));
+    http_send_json(success_response, (int)strlen(success_response));
 }
 
 void handle_post_echo(const char *body, int body_length)
@@ -425,7 +427,7 @@ void handle_post_web_shell(const char *json_body)
      * response buffer while the command runs (no intermediate copy). */
     char *buf = handler_state.tx_buffer;
     int buf_size = handler_state.tx_buffer_size;
-    int pos = xsnprintf(buf, buf_size, "{\"rx\":\"");
+    int pos = (int)xsnprintf(buf, (unsigned int)buf_size, "{\"rx\":\"");
 
     /* Parse "tx" field from JSON: {"tx":"..."} */
     int flush_len = 0;
@@ -451,7 +453,7 @@ void handle_post_web_shell(const char *json_body)
     }
 
     pos += flush_len;
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"}");
+    pos += (int)xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"}");
     http_send_json(buf, pos);
 }
 
@@ -462,6 +464,11 @@ void handle_get_web_shell(void)
     http_send_json("{\"rx\":\"\"}", 9);
 }
 
+
+/* JSON positions use size_t; formatter capacity is unsigned int. The server
+ * supplies a positive int-sized capacity (8192 bytes). xsnprintf returns
+ * at most remaining capacity - 1, so positions remain below this capacity
+ * and the conversion at the unchanged int response API is lossless. */
 
 /* ============================================================================
  * JSON CONFIGURATION HANDLERS
@@ -480,31 +487,32 @@ void handle_get_device_config_json(void)
         return;
     }
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
-    pos += xsnprintf(buf + pos, buf_size - pos, "{");
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
     
     /* RO Fields */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SeriNumarasi\":%lu,", config->serial_number);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"CihazKoordinati\":{");
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"MCC\":\"%s\",", config->coordinates.mcc);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"MNC\":\"%s\",", config->coordinates.mnc);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"LAC\":\"%s\",", config->coordinates.lac);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"CI\":\"%s\"", config->coordinates.ci);
-    pos += xsnprintf(buf + pos, buf_size - pos, "},");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SeriNumarasi\":%lu,", config->serial_number);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"CihazKoordinati\":{");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"MCC\":\"%s\",", config->coordinates.mcc);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"MNC\":\"%s\",", config->coordinates.mnc);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"LAC\":\"%s\",", config->coordinates.lac);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"CI\":\"%s\"", config->coordinates.ci);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "},");
     /* TODO: Convert epoch to human-readable date format */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"UretimTarihi\":%lu,", config->production_date);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"LifeTime\":%lu,", config->lifetime);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"UretimTarihi\":%lu,", config->production_date);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"LifeTime\":%lu,", config->lifetime);
 
     /* Son resetten bu yana gecen sure (saniye) - bsp_get_run_time uzerinden
      * ayri cagri (shell'deki "Run Time" satiri ile ayni kaynak). NVRAM'de
      * birikmez; tick acilista sifirdan baslar, ~49.7 gunde sarar. */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"RunTime\":%u,",
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"RunTime\":%u,",
                      (unsigned)(bsp_get_run_time() / 1000U));
 
     fw_info_t fw = *boot_get_installed_fw_info();
 
-    pos += xsnprintf(buf + pos, buf_size - pos,
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
                      "\"ModemYazilimVeriyonu\":\"v%u.%u.%u (%04u-%02u-%02u %02u:%02u:%02u %s)\",",
                      (unsigned)VERSION_MAJOR,
                      (unsigned)VERSION_MINOR,
@@ -515,37 +523,38 @@ void handle_get_device_config_json(void)
 
     /* Kurulum zamani: ham epoch sayisi (UI fmtEpoch ile cevirir; 0 ->
      * '-----'). Bootloader bu alani henuz RTC ile doldurmuyor. */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"KurulumTarihi\":%lu,",
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"KurulumTarihi\":%lu,",
                      (unsigned long)fw.installation_date);
 
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"RFYazilimVeriyonu\":\"v%u.%u.%u\",",
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"RFYazilimVeriyonu\":\"v%u.%u.%u\",",
                      config->rf_firmware_version[0],
                      config->rf_firmware_version[1],
                      config->rf_firmware_version[2]);
 
     /* RW Fields */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"WebArayuzuPortu\":%u,", config->web_interface_port);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SimKartPin\":%u,", config->sim_card_pin);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SimKartAPN\":\"%s\",", config->apn.apn);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SimKartAPNUsername\":\"%s\",", config->apn.user_name);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SimKartAPNSifresi\":\"%s\",", config->apn.user_pass);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"NtpServer\":\"%s\",", config->ntp_server);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"NtpServerPortu\":%u,", config->ntp_server_port);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Time\":%lu,", rtc_get_epoch());
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TimeZone\":%ld,", config->time_zone);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"PeriyodikModemResetPeriyodu\":%lu,", config->periodic_modem_reset_period);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"WebIlkVeriZamanAsimi\":%u,", config->web_first_data_timeout_sec);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"WebBostaKalmaZamanAsimi\":%u,", config->web_idle_timeout_sec);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IEC104IlkVeriZamanAsimi\":%u,", config->iec104_first_data_timeout_sec);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IEC104BostaKalmaZamanAsimi\":%u,", config->iec104_idle_timeout_sec);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"DevreyeAlinmaZamani\":%lu", config->commissioning_time);
-    
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
-    CSLOG("[HTTP] JSON response size: %d bytes\r\n", pos);
-    if (pos >= buf_size - 1) {
-        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"WebArayuzuPortu\":%u,", config->web_interface_port);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SimKartPin\":%u,", config->sim_card_pin);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SimKartAPN\":\"%s\",", config->apn.apn);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SimKartAPNUsername\":\"%s\",", config->apn.user_name);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SimKartAPNSifresi\":\"%s\",", config->apn.user_pass);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"NtpServer\":\"%s\",", config->ntp_server);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"NtpServerPortu\":%u,", config->ntp_server_port);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Time\":%lu,", rtc_get_epoch());
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TimeZone\":%ld,", config->time_zone);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"PeriyodikModemResetPeriyodu\":%lu,", config->periodic_modem_reset_period);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"WebIlkVeriZamanAsimi\":%u,", config->web_first_data_timeout_sec);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"WebBostaKalmaZamanAsimi\":%u,", config->web_idle_timeout_sec);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IEC104IlkVeriZamanAsimi\":%u,", config->iec104_first_data_timeout_sec);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IEC104BostaKalmaZamanAsimi\":%u,", config->iec104_idle_timeout_sec);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"DevreyeAlinmaZamani\":%lu", config->commissioning_time);
+
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
+    CSLOG("[HTTP] JSON response size: %u bytes\r\n", (unsigned int)pos);
+    if (pos >= buf_size - 1U) {
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%u, buf_size=%u\r\n",
+                  (unsigned int)pos, (unsigned int)buf_size);
     }
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 /**
@@ -591,7 +600,7 @@ void handle_post_device_config_json(const char *json_body)
     }
 
     const char *response_body = "{\"message\":\"Device configuration saved\",\"success\":true}";
-    http_send_json(response_body, strlen(response_body));
+    http_send_json(response_body, (int)strlen(response_body));
 }
 
 /**
@@ -611,50 +620,52 @@ void handle_get_board_status_json(void)
     }
     
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "{");
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"DIN\":[%u,%u,%u,%u],", 
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"DIN\":[%u,%u,%u,%u],",
                     status->din[0], status->din[1], status->din[2], status->din[3]);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"RLY\":[%u,%u],", status->rly[0], status->rly[1]);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"3V3\":%u,", status->v3v3);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"3V8\":%u,", status->v3v8);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"5V\":%u,", status->v5v);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ChargeState\":%u,", status->charge_state);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Temp\":%d,", status->temp);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TempMax\":%d,", status->temp_max);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TempMin\":%d,", status->temp_min);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"PanelAkimi\":%d,", status->panel_current);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"PanelVoltaji\":%u,", status->panel_voltage);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BataryaVoltaji\":%u,", status->battery_voltage);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIE\":%d,", status->tdie_temp);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIEMax\":%d,", status->tdie_temp_max);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TDIEMin\":%d,", status->tdie_temp_min);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"RLY\":[%u,%u],", status->rly[0], status->rly[1]);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"3V3\":%u,", status->v3v3);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"3V8\":%u,", status->v3v8);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"5V\":%u,", status->v5v);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ChargeState\":%u,", status->charge_state);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Temp\":%d,", status->temp);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TempMax\":%d,", status->temp_max);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TempMin\":%d,", status->temp_min);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"PanelAkimi\":%d,", status->panel_current);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"PanelVoltaji\":%u,", status->panel_voltage);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BataryaVoltaji\":%u,", status->battery_voltage);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TDIE\":%d,", status->tdie_temp);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TDIEMax\":%d,", status->tdie_temp_max);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TDIEMin\":%d,", status->tdie_temp_min);
     /* x10 alanlari ham gonderilir (995 = %99.5, 245 = 24.5C);
      * donusum istemci tarafinda gosterim aninda yapilir. */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ChargePertance\":%d,", status->battery_charge_x10);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Capacity\":%u,", status->battery_capacity);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"GsmSig\":%d,", status->gsm_signal);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"GsmRAT\":%u,", status->gsm_rat);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BataryaAkimi\":%d,", status->battery_current);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatteryTemp\":%d,", status->battery_temp_x10);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatterySOC\":%d,", status->battery_soc_x10);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BatterySOH\":%u,", status->battery_soh_x10);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"OrtamSicakligi\":%d,", status->ambient_temp);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"HeaterState\":%u,", status->heater_state);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"HeaterPower\":%u", status->heater_power);
-    
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
-    
-    CSLOG("[HTTP] Board status JSON size: %d bytes\r\n", pos);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ChargePertance\":%d,", status->battery_charge_x10);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Capacity\":%u,", status->battery_capacity);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"GsmSig\":%d,", status->gsm_signal);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"GsmRAT\":%u,", status->gsm_rat);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BataryaAkimi\":%d,", status->battery_current);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BatteryTemp\":%d,", status->battery_temp_x10);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BatterySOC\":%d,", status->battery_soc_x10);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BatterySOH\":%u,", status->battery_soh_x10);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"OrtamSicakligi\":%d,", status->ambient_temp);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"HeaterState\":%u,", status->heater_state);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"HeaterPower\":%u", status->heater_power);
+
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
+
+    CSLOG("[HTTP] Board status JSON size: %u bytes\r\n", (unsigned int)pos);
     
     /* Buffer overflow check */
-    if (pos >= buf_size - 1) {
-        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    if (pos >= buf_size - 1U) {
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%u, buf_size=%u\r\n",
+                  (unsigned int)pos, (unsigned int)buf_size);
     }
     
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 /**
@@ -705,11 +716,12 @@ void handle_get_syslogs_json(void)
     
     /* Build JSON response */
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
     
     /* Start JSON: {"recs":"..." */
-    pos += xsnprintf(buf + pos, buf_size - pos, "{\"recs\":\"");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{\"recs\":\"");
 
     /* Read the requested window (entries after skipping the `offset` newest)
      * in chunks and format newest-first, one entry per line. */
@@ -751,7 +763,7 @@ void handle_get_syslogs_json(void)
             uint32_t display_idx = offset + emitted + 1;
 
             if (!first_line) {
-                pos += xsnprintf(buf + pos, buf_size - pos, "\\n");
+                pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\\n");
             }
             first_line = 0;
 
@@ -761,7 +773,7 @@ void handle_get_syslogs_json(void)
             datetime_t dt;
             dt_conv_from_epoch(entry->timestamp, &dt);
 
-            pos += xsnprintf(buf + pos, buf_size - pos,
+            pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
                             "#%lu TS:%04u-%02u-%02u %02u:%02u:%02u LVL:%u CODE:%s INFO:",
                             display_idx,
                             dt.date.year, dt.date.month, dt.date.day, dt.time.hour, dt.time.minute, dt.time.second,
@@ -769,9 +781,9 @@ void handle_get_syslogs_json(void)
 
             for (const char *q = elog_info_to_text(entry); *q != '\0'; q++) {
                 if ((*q == '"') || (*q == '\\')) {
-                    pos += xsnprintf(buf + pos, buf_size - pos, "\\");
+                    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\\");
                 }
-                pos += xsnprintf(buf + pos, buf_size - pos, "%c", *q);
+                pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%c", *q);
             }
 
             emitted++;
@@ -785,18 +797,19 @@ void handle_get_syslogs_json(void)
     }
 
     /* Close "recs" field and add total count */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\",\"t\":%lu", available_entries);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\",\"t\":%lu", available_entries);
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     
-    CSLOG("[HTTP] System Logs JSON size: %d bytes\r\n", pos);
+    CSLOG("[HTTP] System Logs JSON size: %u bytes\r\n", (unsigned int)pos);
     
     /* Buffer overflow check */
-    if (pos >= buf_size - 1) {
-        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    if (pos >= buf_size - 1U) {
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%u, buf_size=%u\r\n",
+                  (unsigned int)pos, (unsigned int)buf_size);
     }
     
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 /**
@@ -814,219 +827,222 @@ void handle_get_iec_config_json(void)
     }
     
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
     
     // Convert IP from uint32_t to string
     uint32_t ip = config->scada_ip_address;
-    int ip_a = (ip >> 24) & 0xFF;
-    int ip_b = (ip >> 16) & 0xFF;
-    int ip_c = (ip >> 8) & 0xFF;
-    int ip_d = ip & 0xFF;
-    
-    pos += xsnprintf(buf + pos, buf_size - pos, "{");
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ScadaIPAdresi\":\"%d.%d.%d.%d\",", ip_a, ip_b, ip_c, ip_d);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"PeriodicSend\":%lu,", config->periodical_send_interval);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Port\":%u,", config->scada_port);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T0\":%u,", config->t0_max);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T1\":%u,", config->t1_max);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T2\":%u,", config->t2_max);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"T3\":%u,", config->t3_max);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"K\":%u,", config->k_max);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"W\":%u,", config->w_max);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"OriginatorAddr\":%u,", config->originator_address);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"CommonAddr\":%u,", config->common_address);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SBO\":%s,", config->is_sbo_active ? "true" : "false");
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SBOTimeout\":%u,", config->sbo_execute_timeout);
-    
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"AkuUyarisi\":%lu,", iec104_ioa_3byte_to_uint32(config->ioa_aku_uyarisi));
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ModemReset\":%lu,", iec104_ioa_3byte_to_uint32(config->ioa_modem_reset));
+    uint8_t ip_a = (uint8_t)((ip >> 24) & 0xFFU);
+    uint8_t ip_b = (uint8_t)((ip >> 16) & 0xFFU);
+    uint8_t ip_c = (uint8_t)((ip >> 8) & 0xFFU);
+    uint8_t ip_d = (uint8_t)(ip & 0xFFU);
+
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ScadaIPAdresi\":\"%u.%u.%u.%u\",", (unsigned int)ip_a, (unsigned int)ip_b,
+                     (unsigned int)ip_c, (unsigned int)ip_d);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"PeriodicSend\":%lu,", config->periodical_send_interval);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Port\":%u,", config->scada_port);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"T0\":%u,", config->t0_max);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"T1\":%u,", config->t1_max);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"T2\":%u,", config->t2_max);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"T3\":%u,", config->t3_max);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"K\":%u,", config->k_max);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"W\":%u,", config->w_max);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"OriginatorAddr\":%u,", config->originator_address);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"CommonAddr\":%u,", config->common_address);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SBO\":%s,", config->is_sbo_active ? "true" : "false");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SBOTimeout\":%u,", config->sbo_execute_timeout);
+
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"AkuUyarisi\":%lu,", iec104_ioa_3byte_to_uint32(config->ioa_aku_uyarisi));
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ModemReset\":%lu,", iec104_ioa_3byte_to_uint32(config->ioa_modem_reset));
 
     /* Hatlar bilgisi */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Hatlar\":{");
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"inUse\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Hatlar\":{");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"inUse\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", (line && line->in_use) ? "true" : "false", (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%s%s", (line && line->in_use) ? "true" : "false", (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"TemporaryFaultBase\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TemporaryFaultBase\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s",
             line ? iec104_ioa_3byte_to_uint32(line->temporary_fault) : 0U,
             (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
 
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"PermanentFaultBase\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"PermanentFaultBase\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s",
             line ? iec104_ioa_3byte_to_uint32(line->permanent_fault) : 0U,
             (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
 
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_ArizaAkimi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_ArizaAkimi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_ArizaAkimi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_ArizaAkimi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_ArizaAkimi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_ArizaAkimi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_ArizaSuresi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_ArizaSuresi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_ArizaSuresi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_ArizaSuresi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_ArizaSuresi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_ArizaSuresi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_ArizaTuru\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_ArizaTuru\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_ArizaTuru\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_ArizaTuru\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_ArizaTuru\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_ArizaTuru\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_AnlikAkim\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_AnlikAkim\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_AnlikAkim\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_AnlikAkim\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_AnlikAkim\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_AnlikAkim\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_EnerjiVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_EnerjiVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_EnerjiVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_EnerjiVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_EnerjiVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_EnerjiVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_NominalAkimVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_NominalAkimVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_NominalAkimVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_NominalAkimVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_NominalAkimVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_NominalAkimVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_R_RfhabVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_RfhabVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_S_RfhabVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_RfhabVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"IOA_T_RfhabVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_RfhabVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "]");
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "]");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     
-    CSLOG("[HTTP] IEC config JSON size: %d bytes\r\n", pos);
+    CSLOG("[HTTP] IEC config JSON size: %u bytes\r\n", (unsigned int)pos);
     
     /* Buffer overflow check */
-    if (pos >= buf_size - 1) {
-    	CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    if (pos >= buf_size - 1U) {
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%u, buf_size=%u\r\n",
+                  (unsigned int)pos, (unsigned int)buf_size);
     }
     
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 /**
@@ -1042,8 +1058,8 @@ void handle_post_iec_config_json(const char *json_body)
         return;
     }
     
-    int body_len = strlen(json_body);
-    CSLOG("[HTTP] JSON body length: %d bytes\r\n", body_len);
+    size_t body_len = strlen(json_body);
+    CSLOG("[HTTP] JSON body length: %u bytes\r\n", (unsigned int)body_len);
     
     // Create local config from current NVRAM state
     jiec_config_t config = {0};
@@ -1057,9 +1073,11 @@ void handle_post_iec_config_json(const char *json_body)
     // Convert NVRAM config to JSON config format (for partial updates)
     config.periodical_send_interval = nvram_config->periodical_send_interval;
     uint32_t ip = nvram_config->scada_ip_address;
-    xsnprintf(config.scada_ip_address, sizeof(config.scada_ip_address), "%d.%d.%d.%d",
-              (int)((ip >> 24) & 0xFF), (int)((ip >> 16) & 0xFF), 
-              (int)((ip >> 8) & 0xFF), (int)(ip & 0xFF));
+    xsnprintf(config.scada_ip_address, sizeof(config.scada_ip_address), "%u.%u.%u.%u",
+              (unsigned int)((ip >> 24) & 0xFFU),
+              (unsigned int)((ip >> 16) & 0xFFU),
+              (unsigned int)((ip >> 8) & 0xFFU),
+              (unsigned int)(ip & 0xFFU));
     config.scada_port = nvram_config->scada_port;
     config.t0_timeout = (uint8_t)nvram_config->t0_max;
     config.t1_timeout = (uint8_t)nvram_config->t1_max;
@@ -1075,7 +1093,7 @@ void handle_post_iec_config_json(const char *json_body)
     config.ioa_modem_reset = iec104_ioa_3byte_to_uint32(nvram_config->ioa_modem_reset);
     
     // Convert line configs
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
         if (NULL != line)
         {
@@ -1139,7 +1157,7 @@ void handle_post_iec_config_json(const char *json_body)
     }
 
     const char *response_body = "{\"message\":\"IEC104 configuration saved\",\"success\":true}";
-    http_send_json(response_body, strlen(response_body));
+    http_send_json(response_body, (int)strlen(response_body));
 
 }
 
@@ -1158,183 +1176,185 @@ void handle_get_modbus_config_json(void)
     }
     
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "{");
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"CihazID\":%u,", config->device_addr);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SonHataKodu\":%u,", config->last_error_code);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"SonHataZamani\":%lu,", modbus_config_get_last_error_time());
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"BaudRate\":%lu,", config->baud_rate);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"CihazID\":%u,", config->device_addr);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SonHataKodu\":%u,", config->last_error_code);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SonHataZamani\":%lu,", modbus_config_get_last_error_time());
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BaudRate\":%lu,", config->baud_rate);
     
     /* Hat bilgisi */
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"Hat\":{");
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"inUse\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Hat\":{");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"inUse\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%s%s", (line && line->in_use) ? "true" : "false", (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%s%s", (line && line->in_use) ? "true" : "false", (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_R_ArizaAkimi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_ArizaAkimi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_akimi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_akimi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_S_ArizaAkimi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_ArizaAkimi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_akimi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_akimi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_T_ArizaAkimi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_ArizaAkimi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_akimi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_akimi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_R_ArizaSuresi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_ArizaSuresi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_suresi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_suresi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_S_ArizaSuresi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_ArizaSuresi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_suresi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_suresi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_T_ArizaSuresi\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_ArizaSuresi\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_suresi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_suresi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_R_ArizaTuru\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_ArizaTuru\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_kalicimi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_kalicimi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_S_ArizaTuru\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_ArizaTuru\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_kalicimi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_kalicimi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_T_ArizaTuru\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_ArizaTuru\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->ariza_kalicimi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_kalicimi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_R_AnlikAkim\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_AnlikAkim\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->anlik_akim[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->anlik_akim[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_S_AnlikAkim\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_AnlikAkim\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->anlik_akim[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->anlik_akim[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_T_AnlikAkim\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_AnlikAkim\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->anlik_akim[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->anlik_akim[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_R_EnerjiVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_EnerjiVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->enerji_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->enerji_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_S_EnerjiVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_EnerjiVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->enerji_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->enerji_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_T_EnerjiVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_EnerjiVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->enerji_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->enerji_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_R_NominalAkimVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_NominalAkimVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->nominal_akim_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->nominal_akim_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_S_NominalAkimVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_NominalAkimVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->nominal_akim_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->nominal_akim_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_T_NominalAkimVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_NominalAkimVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->nominal_akim_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->nominal_akim_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_R_RfhabVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_RfhabVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_S_RfhabVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_RfhabVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "],");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"ADDR_T_RfhabVarYok\":[");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_RfhabVarYok\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, buf_size - pos, "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "]");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "]");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     
-    CSLOG("[HTTP] Modbus config JSON size: %d bytes\r\n", pos);
+    CSLOG("[HTTP] Modbus config JSON size: %u bytes\r\n", (unsigned int)pos);
     
     /* Buffer overflow check */
-    if (pos >= buf_size - 1) {
-    	CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    if (pos >= buf_size - 1U) {
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%u, buf_size=%u\r\n",
+                  (unsigned int)pos, (unsigned int)buf_size);
     }
     
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 /**
@@ -1350,8 +1370,8 @@ void handle_post_modbus_config_json(const char *json_body)
         return;
     }
     
-    int body_len = strlen(json_body);
-    CSLOG("[HTTP] JSON body length: %d bytes\r\n", body_len);
+    size_t body_len = strlen(json_body);
+    CSLOG("[HTTP] JSON body length: %u bytes\r\n", (unsigned int)body_len);
     
     // Create local config from current NVRAM state
     jmodbus_configs_t config = {0};
@@ -1370,7 +1390,7 @@ void handle_post_modbus_config_json(const char *json_body)
     config.addr_modem_reset = nvram_config->addr_modem_reset;
     
     // Convert line configs
-    for (int i = 0; i < MAX_ARRAYS; i++) {
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
         if (line && line->in_use) {
             config.line.in_use[i] = true;
@@ -1420,7 +1440,7 @@ void handle_post_modbus_config_json(const char *json_body)
     const char *response_body = res == 0 ? "{\"message\":\"Modbus configuration saved\",\"success\":true}"
     		: "{\"message\":\"Failed to save Modbus configuration\",\"success\":false}";
 
-    http_send_json(response_body, strlen(response_body));
+    http_send_json(response_body, (int)strlen(response_body));
 }
 
 /**
@@ -1433,7 +1453,7 @@ void handle_get_rf_discovery_json(void)
 {
     uint8_t  count;
     uint8_t  k;
-    int      pos = 0;
+    size_t pos = 0U;
     int      emitted = 0;
     char     hex[RF_EUI64_HEX_LEN];
     uint8_t  eui[RF_EUI64_LEN];
@@ -1443,7 +1463,7 @@ void handle_get_rf_discovery_json(void)
     count = rf_discovery_get_count();
 
     pos += xsnprintf(&handler_state.tx_buffer[pos],
-                     (unsigned int)(handler_state.tx_buffer_size - pos),
+                     (unsigned int)((size_t)handler_state.tx_buffer_size - pos),
                      "{\"success\":true,\"data\":{\"Unassigned\":[");
 
     for (k = 0U; k < count; k++)
@@ -1479,17 +1499,17 @@ void handle_get_rf_discovery_json(void)
 
         rf_eui64_to_hex(eui, hex);
         pos += xsnprintf(&handler_state.tx_buffer[pos],
-                         (unsigned int)(handler_state.tx_buffer_size - pos),
+                         (unsigned int)((size_t)handler_state.tx_buffer_size - pos),
                          "%s{\"EUI64\":\"%s\",\"FiderID\":0}",
                          (emitted > 0) ? "," : "", hex);
         emitted++;
     }
 
     pos += xsnprintf(&handler_state.tx_buffer[pos],
-                     (unsigned int)(handler_state.tx_buffer_size - pos),
+                     (unsigned int)((size_t)handler_state.tx_buffer_size - pos),
                      "]}}");
 
-    http_send_json(handler_state.tx_buffer, (size_t)pos);
+    http_send_json(handler_state.tx_buffer, (int)pos);
 }
 
 /**
@@ -1529,8 +1549,8 @@ void handle_post_rf_config_json(const char *json_body)
         return;
     }
     
-    int body_len = strlen(json_body);
-    CSLOG("[HTTP] JSON body length: %d bytes\r\n", body_len);
+    size_t body_len = strlen(json_body);
+    CSLOG("[HTTP] JSON body length: %u bytes\r\n", (unsigned int)body_len);
     
     jayirici_rf_config_t config;
 
@@ -1573,7 +1593,7 @@ void handle_post_rf_config_json(const char *json_body)
                            gsm_get_web_client_ip(), "rf", true);
 
     const char *response_body = "{\"message\":\"RF configuration saved\",\"success\":true}";
-    http_send_json(response_body, strlen(response_body));
+    http_send_json(response_body, (int)strlen(response_body));
 }
 
 /**
@@ -1590,64 +1610,66 @@ static void send_rf_monitor_json(int line_filter)
     }
 
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
-    pos += xsnprintf(buf + pos, buf_size - pos, "{\"lines\":[");
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{\"lines\":[");
     int start_line = (line_filter >= 0) ? line_filter : 0;
     int end_line = (line_filter >= 0) ? line_filter + 1 : MAX_POWER_LINE_COUNT;
     for (int i = start_line; i < end_line; i++) {
-        const rf_monitor_t *monitor = rf_get_monitor(i);
+        const rf_monitor_t *monitor = rf_get_monitor((uint32_t)i);
         if (!monitor) {
             CSLOG_ERR("[HTTP] ERROR: RF monitor data not available for line %d\r\n", i);
             continue;
         }
         
-        if (i > start_line) pos += xsnprintf(buf + pos, buf_size - pos, ",");
-        pos += xsnprintf(buf + pos, buf_size - pos, "{");
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"LineId\":%d,", i + 1);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"DEVICEID\":[%lu,%lu,%lu],",
+        if (i > start_line) pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), ",");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"LineId\":%d,", i + 1);
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"DEVICEID\":[%lu,%lu,%lu],",
             monitor->device_id[PHASE_L1], monitor->device_id[PHASE_L2], monitor->device_id[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"FazID\":[1,2,3],");
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"HatID\":%u,", monitor->hat_id[PHASE_L1]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"ZoneID\":%u,", monitor->zone_id[PHASE_L1]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"CalismaModu\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"FazID\":[1,2,3],");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"HatID\":%u,", monitor->hat_id[PHASE_L1]);
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ZoneID\":%u,", monitor->zone_id[PHASE_L1]);
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"CalismaModu\":[%u,%u,%u],",
             monitor->calisma_modu[PHASE_L1], monitor->calisma_modu[PHASE_L2], monitor->calisma_modu[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"HatFrekansi\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"HatFrekansi\":[%u,%u,%u],",
             monitor->hat_frekansi[PHASE_L1], monitor->hat_frekansi[PHASE_L2], monitor->hat_frekansi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"SistemSicakligi\":[%d,%d,%d],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SistemSicakligi\":[%d,%d,%d],",
             monitor->sistem_sicakligi[PHASE_L1], monitor->sistem_sicakligi[PHASE_L2], monitor->sistem_sicakligi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"SistemDCGerilimi\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SistemDCGerilimi\":[%u,%u,%u],",
             monitor->sistem_dc_gerilimi[PHASE_L1], monitor->sistem_dc_gerilimi[PHASE_L2], monitor->sistem_dc_gerilimi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"5Vdc\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"5Vdc\":[%u,%u,%u],",
             monitor->v5vdc[PHASE_L1], monitor->v5vdc[PHASE_L2], monitor->v5vdc[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"3V3dc\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"3V3dc\":[%u,%u,%u],",
             monitor->v3v3dc[PHASE_L1], monitor->v3v3dc[PHASE_L2], monitor->v3v3dc[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"ActirmaDCGerilimi\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ActirmaDCGerilimi\":[%u,%u,%u],",
             monitor->actirma_dc_gerilimi[PHASE_L1], monitor->actirma_dc_gerilimi[PHASE_L2], monitor->actirma_dc_gerilimi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"FazAkimi\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"FazAkimi\":[%u,%u,%u],",
             monitor->faz_akimi[PHASE_L1], monitor->faz_akimi[PHASE_L2], monitor->faz_akimi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"FazHataAkimi\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"FazHataAkimi\":[%u,%u,%u],",
             monitor->faz_hata_akimi[PHASE_L1], monitor->faz_hata_akimi[PHASE_L2], monitor->faz_hata_akimi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"AktifSifirlamaZamanlayiciDurumu\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"AktifSifirlamaZamanlayiciDurumu\":[%u,%u,%u],",
             monitor->aktif_sifirlama_zamanlayici_durumu[PHASE_L1], monitor->aktif_sifirlama_zamanlayici_durumu[PHASE_L2], monitor->aktif_sifirlama_zamanlayici_durumu[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"AktifArizaSayaci\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"AktifArizaSayaci\":[%u,%u,%u],",
             monitor->aktif_ariza_sayaci[PHASE_L1], monitor->aktif_ariza_sayaci[PHASE_L2], monitor->aktif_ariza_sayaci[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"GecmisAcmaSayisi\":[%u,%u,%u],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"GecmisAcmaSayisi\":[%u,%u,%u],",
             monitor->gecmis_acma_sayisi[PHASE_L1], monitor->gecmis_acma_sayisi[PHASE_L2], monitor->gecmis_acma_sayisi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"LastTx\":[%lu,%lu,%lu],",
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"LastTx\":[%lu,%lu,%lu],",
             monitor->last_tx[PHASE_L1], monitor->last_tx[PHASE_L2], monitor->last_tx[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"RSSI\":[%u,%u,%u],", monitor->rssi[PHASE_L1],
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"RSSI\":[%u,%u,%u],", monitor->rssi[PHASE_L1],
         		monitor->rssi[PHASE_L2], monitor->rssi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "\"LQI\":[%u,%u,%u]", monitor->lqi[PHASE_L1],
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"LQI\":[%u,%u,%u]", monitor->lqi[PHASE_L1],
         		monitor->lqi[PHASE_L2], monitor->lqi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, buf_size - pos, "}");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     }
-    pos += xsnprintf(buf + pos, buf_size - pos, "]}");
-    CSLOG("[HTTP] RF monitor JSON size: %d bytes (lines: %d-%d)\r\n", pos, start_line + 1, end_line);
-    if (pos >= buf_size - 1) {
-        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "]}");
+    CSLOG("[HTTP] RF monitor JSON size: %u bytes (lines: %d-%d)\r\n", (unsigned int)pos, start_line + 1, end_line);
+    if (pos >= buf_size - 1U) {
+        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%u, buf_size=%u\r\n",
+                  (unsigned int)pos, (unsigned int)buf_size);
     }
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 /**
@@ -1757,8 +1779,9 @@ void handle_get_fault_records_json(void)
     }
 
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
 
     uint8_t tc[3], pc[3];
     for (int ph = 0; ph < 3; ph++) 
@@ -1767,7 +1790,7 @@ void handle_get_fault_records_json(void)
         pc[ph] = fault_log_get_perm_count((uint8_t)feeder, (uint8_t)ph);
     }
 
-    pos += xsnprintf(buf + pos, buf_size - pos, "{\"feeder\":%d,", feeder);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{\"feeder\":%d,", feeder);
 
     static const char * const fnames[3][2] = {
         {"L1T", "L1P"}, {"L2T", "L2P"}, {"L3T", "L3P"}
@@ -1780,7 +1803,7 @@ void handle_get_fault_records_json(void)
             uint8_t count = (ty == 0) ? tc[ph] : pc[ph];
             fault_log_type_t log_type = (ty == 0) ? FAULT_LOG_TYPE_TEMPORARY : FAULT_LOG_TYPE_PERMANENT;
 
-            pos += xsnprintf(buf + pos, buf_size - pos, "\"%s\":\"", fnames[ph][ty]);
+            pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"%s\":\"", fnames[ph][ty]);
 
             fault_log_t log;
             for (uint8_t n = 0; n < count; n++) 
@@ -1796,7 +1819,7 @@ void handle_get_fault_records_json(void)
                 uint8_t  sc = cp56time2a_get_second(&log.tm);
                 uint16_t ms = cp56time2a_get_ms(&log.tm);
 
-                pos += xsnprintf(buf + pos, buf_size - pos,
+                pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
                     "%u %04u/%02u/%02u %02u:%02u:%02u:%03u %.3fA %ums %u %u\\n",
                     (unsigned)(n + 1u),
                     (unsigned)yr, (unsigned)mo, (unsigned)dy,
@@ -1808,45 +1831,48 @@ void handle_get_fault_records_json(void)
             }
 
             if (ph == 2 && ty == 1) {
-                pos += xsnprintf(buf + pos, buf_size - pos, "\"");
+                pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"");
             } else {
-                pos += xsnprintf(buf + pos, buf_size - pos, "\",");
+                pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\",");
             }
         }
     }
 
-    pos += xsnprintf(buf + pos, buf_size - pos,
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
         ",\"tc\":[%u,%u,%u],\"pc\":[%u,%u,%u]}",
         (unsigned)tc[0], (unsigned)tc[1], (unsigned)tc[2],
         (unsigned)pc[0], (unsigned)pc[1], (unsigned)pc[2]);
 
-    CSLOG("[HTTP] /faults JSON size: %d bytes (feeder %d)\r\n", pos, feeder);
-    if (pos >= buf_size - 1) {
-        CSLOG_WARN("[HTTP] WARNING: /faults buffer nearly full! pos=%d, buf_size=%d\r\n", pos, buf_size);
+    CSLOG("[HTTP] /faults JSON size: %u bytes (feeder %d)\r\n", (unsigned int)pos, feeder);
+    if (pos >= buf_size - 1U) {
+        CSLOG_WARN("[HTTP] WARNING: /faults buffer nearly full! pos=%u, buf_size=%u\r\n",
+                  (unsigned int)pos, (unsigned int)buf_size);
     }
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 void handle_get_fw_version(void) {
     CSLOG("[FW] GET /r?fwVersion\r\n");
     
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
     
-    pos += xsnprintf(buf + pos, buf_size - pos, "{");
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"version\":\"%s\",", fw_version);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"buildDate\":\"%s\",", fw_build_date);
-    pos += xsnprintf(buf + pos, buf_size - pos, "\"hardware\":\"%s\"", fw_hardware);
-    pos += xsnprintf(buf + pos, buf_size - pos, "}");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"version\":\"%s\",", fw_version);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"buildDate\":\"%s\",", fw_build_date);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"hardware\":\"%s\"", fw_hardware);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 void handle_get_fw_status(void) {
     char *buf = handler_state.tx_buffer;
-    int buf_size = handler_state.tx_buffer_size;
-    int pos = 0;
+    const size_t buf_size =
+        (size_t)handler_state.tx_buffer_size;
+    size_t pos = 0U;
 
     /* TODO: fw_state yalniz RAM'de - reset sonrasi "ready" durumu kaybolur.
      * NVRAM rfwu_nvram_t'ye su alanlari kalici yap:
@@ -1858,7 +1884,7 @@ void handle_get_fw_status(void) {
      * eslesmezse (farkli dosya) sifirdan basla. */
 
     if (fw_state.in_progress) {
-        pos += xsnprintf(buf + pos, buf_size - pos,
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
                          "{\"active\":true,\"received\":%lu,\"total\":%lu,\"fh\":%lu}",
                          fw_state.received_bytes, fw_state.total_size, fw_state.file_hash);
     }
@@ -1866,15 +1892,15 @@ void handle_get_fw_status(void) {
              (fw_state.received_bytes == fw_state.total_size))
     {
         /* Transfer bitti, apply bekliyor - UI butonu gostersin */
-        pos += xsnprintf(buf + pos, buf_size - pos,
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
                          "{\"active\":false,\"ready\":true,\"received\":%lu,\"total\":%lu,\"fh\":%lu}",
                          fw_state.received_bytes, fw_state.total_size, fw_state.file_hash);
     }
     else {
-        pos += xsnprintf(buf + pos, buf_size - pos, "{\"active\":false}");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{\"active\":false}");
     }
 
-    http_send_json(buf, pos);
+    http_send_json(buf, (int)pos);
 }
 
 void handle_fw_start(const char *json_body) {
@@ -1930,10 +1956,10 @@ void handle_fw_start(const char *json_body) {
         CCSLOG(XCOLOR_GREEN, "[FW] RESUME: same file detected, continuing from %u/%u bytes\r\n",
                  fw_state.received_bytes, fw_state.total_size);
         char *buf = handler_state.tx_buffer;
-        int len = xsnprintf(buf, handler_state.tx_buffer_size,
+        unsigned int len = xsnprintf(buf, (unsigned int)handler_state.tx_buffer_size,
                             "{\"status\":\"ok\",\"cs\":4096,\"received\":%lu}",
                             fw_state.received_bytes);
-        http_send_json(buf, len);
+        http_send_json(buf, (int)len);
         return;
     }
 
@@ -1979,8 +2005,8 @@ void handle_fw_start(const char *json_body) {
 static uint16_t fletcher16(const uint8_t *data, uint32_t len) {
     uint16_t sum1 = 0, sum2 = 0;
     for (uint32_t i = 0; i < len; i++) {
-        sum1 = (sum1 + data[i]) % 255;
-        sum2 = (sum2 + sum1) % 255;
+        sum1 = (uint16_t)((sum1 + data[i]) % 255U);
+        sum2 = (uint16_t)((sum2 + sum1) % 255U);
     }
     return (sum2 << 8) | sum1;
 }
@@ -2019,7 +2045,7 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     }
     
     char *buf = handler_state.tx_buffer;
-    int len;
+    unsigned int len;
     
     /* Verify checksum if provided - ALWAYS log checksum info */
     uint16_t calc_checksum = fletcher16(data, size);
@@ -2034,10 +2060,10 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
                      size, fw_state.checksum_errors);
             
             /* Request retry - send error with expected chunk number */
-            len = xsnprintf(buf, handler_state.tx_buffer_size,
+            len = xsnprintf(buf, (unsigned int)handler_state.tx_buffer_size,
                            "{\"status\":\"error\",\"error\":\"checksum\",\"chunk\":%lu,\"retry\":true}",
                            chunk_num);
-            http_send_json(buf, len);
+            http_send_json(buf, (int)len);
             return;
         }
         /* Checksum OK - log for debugging */
@@ -2056,18 +2082,18 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
         if (offset + size == fw_state.received_bytes) {
             CSLOG_WARN("[FW] Retry chunk #%u accepted (total retries: %u)\r\n", 
                      chunk_num, fw_state.retry_count);
-            len = xsnprintf(buf, handler_state.tx_buffer_size, 
+            len = xsnprintf(buf, (unsigned int)handler_state.tx_buffer_size,
                             "{\"status\":\"ok\",\"chunk\":%lu}", chunk_num);
-            http_send_json(buf, len);
+            http_send_json(buf, (int)len);
             return;
         }
         /* Offset is in the middle of received data - could be partial retry */
         CSLOG_WARN("[FW] Late retry? offset=%u < received=%u (chunk #%u)\r\n", 
                  offset, fw_state.received_bytes, chunk_num);
         /* Don't update received_bytes, just ACK */
-        len = xsnprintf(buf, handler_state.tx_buffer_size, 
+        len = xsnprintf(buf, (unsigned int)handler_state.tx_buffer_size,
                         "{\"status\":\"ok\",\"chunk\":%lu}", chunk_num);
-        http_send_json(buf, len);
+        http_send_json(buf, (int)len);
         return;
     }
     
@@ -2078,10 +2104,10 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
                  offset, fw_state.received_bytes);
         CSLOG_ERR("[FW]   Missing %u bytes (chunk #%u expected)\r\n",
                  offset - fw_state.received_bytes, expected_chunk);
-        len = xsnprintf(buf, handler_state.tx_buffer_size,
+        len = xsnprintf(buf, (unsigned int)handler_state.tx_buffer_size,
                        "{\"status\":\"error\",\"error\":\"gap\",\"expected\":%lu}",
                        fw_state.received_bytes);
-        http_send_json(buf, len);
+        http_send_json(buf, (int)len);
         return;
     }
     
@@ -2115,9 +2141,9 @@ void handle_fw_chunk(uint32_t offset, const uint8_t *data, uint32_t size,
     }
     
     /* Send OK response with chunk number for client verification */
-    len = xsnprintf(buf, handler_state.tx_buffer_size, 
+    len = xsnprintf(buf, (unsigned int)handler_state.tx_buffer_size,
                     "{\"status\":\"ok\",\"chunk\":%lu}", chunk_num);
-    http_send_json(buf, len);
+    http_send_json(buf, (int)len);
 }
 
 void handle_fw_finish(const char *json_body) {
@@ -2154,11 +2180,11 @@ void handle_fw_finish(const char *json_body) {
                                   (float)fw_state.total_size));
         
         char *buf = handler_state.tx_buffer;
-        int len = xsnprintf(buf, handler_state.tx_buffer_size,
+        unsigned int len = xsnprintf(buf, (unsigned int)handler_state.tx_buffer_size,
                            "{\"status\":\"error\",\"error\":\"incomplete\","
                            "\"received\":%lu,\"expected\":%lu}",
                            fw_state.received_bytes, fw_state.total_size);
-        http_send_json(buf, len);
+        http_send_json(buf, (int)len);
         return;
     }
     

@@ -357,7 +357,8 @@ static bool check_urc_in_response(void)
 		if(line_end_offset >= 0)
 		{
 			/* Include the trailing \r\n in the removal range */
-			urc_end = after_keyword + (uint16_t)line_end_offset + 2U;
+			urc_end = (uint16_t)(after_keyword
+                + (uint16_t)line_end_offset + 2U);
 		}
 		else
 		{
@@ -367,7 +368,7 @@ static bool check_urc_in_response(void)
 
 		/* Extract URC content (skip leading \r\n, include rest of line) */
 		uint16_t content_start = (uint16_t)urc_start;
-		uint16_t content_len   = urc_end - content_start - 2U; /* exclude trailing \r\n */
+		uint16_t content_len   = (uint16_t)(urc_end - content_start - 2U); /* exclude trailing \r\n */
 
 		if(content_len > AT_ENGINE_URC_BUFFER_SIZE - 1U)
 		{
@@ -395,7 +396,7 @@ static bool check_urc_in_response(void)
 		   (at_engine.response_buffer[remove_from - 2U] == '\r') &&
 		   (at_engine.response_buffer[remove_from - 1U] == '\n'))
 		{
-			remove_from -= 2U;
+			remove_from = (uint16_t)(remove_from - 2U);
 		}
 		response_buffer_remove(remove_from, urc_end);
 
@@ -628,7 +629,7 @@ static bool at_srecv_parse_pending_length(uint16_t *p_len)
 	uint16_t line_start = 0U;
 	if (buf_len > 2U)
 	{
-		uint16_t i = buf_len - 3U; /* start just before trailing \r\n */
+		uint16_t i = (uint16_t)(buf_len - 3U); /* start just before trailing \r\n */
 		while (i > 0U)
 		{
 			if ((p_buf[i] == '\n') && (i >= 1U) && (p_buf[i - 1U] == '\r'))
@@ -643,7 +644,7 @@ static bool at_srecv_parse_pending_length(uint16_t *p_len)
 
 	/* Last line content (without the trailing \r\n) */
 	const char *last_line     = p_buf + line_start;
-	uint16_t    last_line_len = (buf_len - 2U) - line_start; /* exclude trailing \r\n */
+	uint16_t    last_line_len = (uint16_t)((buf_len - 2U) - line_start); /* exclude trailing \r\n */
 
 	/* Must start with "#SRECV:" */
 	if ((last_line_len < 7U) || (strncmp(last_line, "#SRECV:", 7) != 0))

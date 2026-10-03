@@ -2,7 +2,8 @@
  * modbus_process.c
  *
  *  Created on: Oct 26, 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "modbus_process.h"
 #include "modbus_rtu_slave.h"
@@ -250,7 +251,7 @@ static bool modbus_resolve_offset(const feeder_data_t *p_data,
     } 
     else if (offset < MODBUS_OFF_ARIZA_SURESI) 
     {
-        uint16_t rel = offset - MODBUS_OFF_ANLIK_AKIM;
+        uint16_t rel = (uint16_t)(offset - MODBUS_OFF_ANLIK_AKIM);
         uint8_t  ph  = (uint8_t)(rel / MODBUS_FLOAT_REG_PER_PHASE);
         bool     high = ((rel % MODBUS_FLOAT_REG_PER_PHASE) == 0U);
         *p_value = modbus_float_to_word(p_data->phase[ph].anlik_akim, high);

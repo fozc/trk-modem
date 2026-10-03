@@ -614,13 +614,13 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                     if (!skip) {
                         char *out = va_arg(args, char*);
                         if (out) {
-                            s = parse_raw_string(s, end, out, (size_t)(width + 1), width, &err);
+                            s = parse_raw_string(s, end, out, (size_t)(width + 1), (size_t)width, &err);
                             count++;
                         }
                     } else {
                         /* Skip raw string */
                         char dummy[XSCANF_MAX_WIDTH + 1];
-                        s = parse_raw_string(s, end, dummy, sizeof(dummy), width, &err);
+                        s = parse_raw_string(s, end, dummy, sizeof(dummy), (size_t)width, &err);
                     }
                     break;
                 }

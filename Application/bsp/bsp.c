@@ -178,12 +178,12 @@ pdate_t bsp_get_pdate(void)
 {
 	bsp_rtc_t snap = rtc_snapshot();
 	return (pdate_t){
-		.year = snap.year,
-		.month = snap.month,
-		.day = snap.day,
-		.hour = snap.hour,
-		.min = snap.minute,
-		.sec = snap.second
+		.year = snap.year & 0x3FU,
+		.month = snap.month & 0x0FU,
+		.day = snap.day & 0x1FU,
+		.hour = snap.hour & 0x1FU,
+		.min = snap.minute & 0x3FU,
+		.sec = snap.second & 0x3FU
 	};
 }
 

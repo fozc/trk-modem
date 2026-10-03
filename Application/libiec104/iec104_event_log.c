@@ -2,7 +2,8 @@
  * iec104_event_log.c
  *
  *  Created on: Mar 16, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * IEC 104 ariza olaylarinin kalici gunlugu.
  *
@@ -525,8 +526,8 @@ void iec104_event_log_test(uint16_t count)
         e.tm                          = cp56time2a_now();
         fault_log_set_current_amps(&e, 100.0f + (float)(idx % 900U) / 10.0f);
         e.fault_duration_ms           = (uint16_t)(100U + (idx % 50U) * 20U);
-        e.info.feeder                 = feeders[idx % feeder_count];
-        e.info.phase                  = (uint8_t)(idx % 3U);
+        e.info.feeder                 = feeders[idx % feeder_count] & 0x07U;
+        e.info.phase                  = (idx % 3U) & 0x03U;
         e.info.type                   = (uint8_t)(idx % 2U);
         e.info.nominal_current_status = (uint8_t)(((idx % 3U) == 0U) ? 1U : 0U);
         e.info.power_status           = (uint8_t)(idx % 2U);

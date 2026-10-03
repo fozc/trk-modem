@@ -1556,3 +1556,42 @@ void test_fault_ioa_getters_match_reserved_window_boundaries(void)
 }
 
 /*** end of file ***/
+
+void test_gi_confirmation_pn_retains_only_the_low_bit(void)
+{
+    static const uint8_t values[] = {0U, 1U, 2U, 3U, 255U};
+    static const uint8_t expected[] = {0U, 1U, 0U, 1U, 1U};
+    for (size_t i = 0U; i < sizeof(values); i++)
+    {
+        setup(12U, 8U);
+        start_link();
+        iec104_send_general_interrogation_con(20U, values[i]);
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(expected[i], frame_asdu_pn(tx_log[0]));
+    }
+}
+
+void test_point_quality_flags_and_value_bits_preserve_wire_encoding(void)
+{
+    const ioa_3byte_t ioa = {0};
+    static const uint8_t quality[] =
+        {0x00U, 0x10U, 0x20U, 0x40U, 0x80U, 0xF0U};
+    static const uint8_t single[] =
+        {0x01U, 0x11U, 0x21U, 0x41U, 0x81U, 0xF1U};
+    static const uint8_t double_point[] =
+        {0x03U, 0x13U, 0x23U, 0x43U, 0x83U, 0xF3U};
+    for (size_t i = 0U; i < sizeof(quality); i++)
+    {
+        setup(12U, 8U);
+        start_link();
+        iec104_send_M_SP_TB_1_spontan(ioa, 255U, quality[i]);
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, tx_log[0][6]);
+        TEST_ASSERT_EQUAL_HEX8(single[i], tx_log[0][15]);
+        tx_clear();
+        iec104_send_M_DP_TB_1_spontan(ioa, 255U, quality[i]);
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(M_DP_TB_1, tx_log[0][6]);
+        TEST_ASSERT_EQUAL_HEX8(double_point[i], tx_log[0][15]);
+    }
+}

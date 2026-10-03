@@ -86,7 +86,8 @@ static struct
 	uint16_t       len;
 } rx = {0};
 
-static uint32_t gsm_at_response_ready(void)
+/* Callback results use int32_t; these fixed GSM codes are nonnegative. */
+static int32_t gsm_at_response_ready(void)
 {
 	uint16_t len = 0U;
 	rx.buff = at_engine_get_response(&len);
@@ -98,16 +99,16 @@ static uint32_t gsm_at_response_ready(void)
 		case AT_ENGINE_RESULT_OK:
 			if(str_index_of((const char *)rx.buff, "NO CARRIER") >= 0)
 			{
-				return (uint32_t)GSM_NO_CARRIER;
+				return (int32_t)GSM_NO_CARRIER;
 			}
-			return (uint32_t)GSM_RESPONSE_OK;
+			return (int32_t)GSM_RESPONSE_OK;
 
 		case AT_ENGINE_RESULT_ERROR:
 			if(str_index_of((const char *)rx.buff, "NO CARRIER") >= 0)
 			{
-				return (uint32_t)GSM_NO_CARRIER;
+				return (int32_t)GSM_NO_CARRIER;
 			}
-			return (uint32_t)GSM_ERROR;
+			return (int32_t)GSM_ERROR;
 
 		case AT_ENGINE_RESULT_NO_SIM:
 			CSLOG_ERR("NO SIM CARD !\r\n");
@@ -115,14 +116,14 @@ static uint32_t gsm_at_response_ready(void)
 			{
 				gsm_set_main_state(GSM_SIM_ERROR_MODE);
 			}
-			return (uint32_t)GSM_ERROR;
+			return (int32_t)GSM_ERROR;
 
 		case AT_ENGINE_RESULT_TIMEOUT:
-			return (uint32_t)GSM_TIMEOUT;
+			return (int32_t)GSM_TIMEOUT;
 
 		case AT_ENGINE_RESULT_NONE:
 		default:
-			return 0U;
+			return 0;
 	}
 }
 
@@ -545,7 +546,7 @@ uint32_t gsm_get_tx_state(void)
 //gsm_tx_direction_t
 void gsm_set_tx_direction(uint32_t direction)
 {
-	gsm.tx_direction = direction;
+	gsm.tx_direction = (uint8_t)direction;
 }
 
 uint32_t gsm_get_tx_direction()
@@ -564,7 +565,7 @@ uint32_t gsm_send_to_socket(const void *buff, uint16_t length, uint32_t socket, 
 	memcpy(gsm.tx_buff, buff, length);
 	gsm.tx_index     = length;
 	gsm.tx_flag      = GSM_TX_FIRED;
-	gsm.tx_direction = socket;
+	gsm.tx_direction = (uint8_t)socket;
 	gsm.tx_error = 0;
 	gsm.tx_close_socket_after_tx = tx_close_socket_after_tx;
 	return 0;
@@ -1052,7 +1053,8 @@ int32_t gsm_ss_all_cb(void)
 			ptr++;
 			if(ISNUM((uint8_t)*ptr)) /* 2-digit socket id (e.g. "10") */
 			{
-				modem_socket = modem_socket * 10U + (uint8_t)(*ptr - '0');
+				modem_socket = (uint8_t)(modem_socket * 10U
+                    + (uint8_t)(*ptr - '0'));
 				ptr++;
 			}
 		}
@@ -1347,7 +1349,7 @@ int32_t gsm_ntp_cb(void)
 							else
 							{
 								dt.month = 12;
-								dt.year = (dt.year > 0u) ? dt.year - 1u : 99u;
+								dt.year = (uint8_t)((dt.year > 0U) ? dt.year - 1U : 99U);
 							}
 
 							dt.day = days_in_month[dt.month];
@@ -1404,7 +1406,7 @@ int32_t gsm_csq_cb(void)
 			str_substr(ptr, buff, " ", "," ,3);
 
 			if(strlen(buff) == 2 && ISNUM(buff[0]) && ISNUM(buff[1]))
-				level = (buff[0] -'0') * 10 + (buff[1] - '0');
+				level = (uint8_t)((buff[0] - '0') * 10 + (buff[1] - '0'));
 			else if(strlen(buff) == 1 && ISNUM(buff[0]))
 				level = (buff[0] -'0');
 
@@ -1983,7 +1985,7 @@ int32_t gsm_httprcv_cb(void)
 			if(hash_ptr != NULL && ok_ptr != NULL)
 			{
 				/* Format-> \r\n<<<........n byte data........\r\nOK\r\n */
-				uint16_t length = (ok_ptr - 1 - hash_ptr - 2);
+				uint16_t length = (uint16_t)(ok_ptr - hash_ptr - 3);
 				//gsm_http_receive_data(&rx.buff[index], length);
 				//flash_add_gsm_rx_counter(length);
 				gsm_info.rx_counter += length;
@@ -2026,43 +2028,27 @@ int32_t gsm_httprcv_cb(void)
 
 int32_t gsm_trace_si_cb(void)
 {
-	int32_t at_res = gsm_at_response_ready();
-	if(at_res == GSM_RESPONSE_OK)
-	{
-		if(strstr((char *)rx.buff, "#SI: 3") == NULL)
-		{
-			at_res = GSM_ERROR;
-			return at_res;
-		}
-		int32_t index1 = str_index_of_th((char *)rx.buff, ",", 4);
-		int32_t index2 = str_index_of_th((char *)rx.buff, "\r\n", 2);
-		if(index1 > 0 && index2 > 0)
-		{
-			uint16_t ack_waiting = 0, mul = 1;
-			uint16_t len = index2 - index1 - 1;
-			index2--;
-			while(len--)
-			{
-				if(is_digit(rx.buff[index2]))
-				{
-					ack_waiting += (rx.buff[index2--] - 48) * mul;
-					mul *= 10;
-				}
-				else
-				{
-					break;
-				}
-			}
-
-			//trace_gsm_callback(TR_EVENT_TCP_ACK_WAITING, &ack_waiting, sizeof(ack_waiting));
-			LOG(_GSM_, "Trace TCP ACK: %d", ack_waiting);
-		}
-		else
-		{
-			LOG_TRACE(_GSM_, "Trace ERR TCP ACK");
-		}
-	}
-	return at_res;
+    int32_t at_res = gsm_at_response_ready();
+    if (GSM_RESPONSE_OK == at_res)
+    {
+        const char *ptr = strstr((const char *)rx.buff, "#SI: 3,");
+        uint32_t sent = 0U, received = 0U, buffered = 0U, waiting = 0U;
+        if (NULL == ptr)
+        {
+            return GSM_ERROR;
+        }
+        const size_t length = (size_t)rx.len
+            - (size_t)(ptr - (const char *)rx.buff);
+        const int32_t count = xscanf(ptr, length,
+            "#SI: 3,%u32,%u32,%u32,%u32",
+            &sent, &received, &buffered, &waiting);
+        if ((4 != count) || (waiting > UINT16_MAX))
+        {
+            return GSM_ERROR;
+        }
+        LOG(_GSM_, "TCP ACK: %u", (unsigned int)waiting);
+    }
+    return at_res;
 }
 
 int32_t gsm_listener_si_cb(void)
@@ -2088,7 +2074,7 @@ int32_t gsm_listener_si_cb(void)
 		if(index1 > 0)
 		{
 			int res = xscanf((const char *)&rx.buff[index1], 64, ",%u32,%u32,%u32,%u32", &f1, &f2, &f3, &f4);
-			if(res == 4)
+			if((res == 4) && (f4 <= UINT16_MAX))
 			{
 				gsm.listener[GSM_LISTENER_WEB].ack_waiting   = (uint16_t)f4;
 				/* SI tum alanlari sifir ise soket kapanmis olabilir (veri gonderimi oncesi kontrol) */
@@ -2131,7 +2117,7 @@ int32_t gsm_iec104_listener_si_cb(void)
 		if(index1 > 0)
 		{
 			int res = xscanf((const char *)&rx.buff[index1], 64, ",%u32,%u32,%u32,%u32", &f1, &f2, &f3, &f4);
-			if(res == 4)
+			if((res == 4) && (f4 <= UINT16_MAX))
 			{
 				gsm.listener[GSM_LISTENER_IEC104].ack_waiting  = (uint16_t)f4;
 				/* SI tum alanlari sifir ise soket kapanmis olabilir (veri gonderimi oncesi kontrol) */
@@ -2269,7 +2255,7 @@ static int32_t gsm_si_all_cb(void)
 		ptr++;
 		if(ISNUM((uint8_t)*ptr))
 		{
-			conn_id = (conn_id * 10U) + (uint8_t)(*ptr - '0');
+			conn_id = (uint8_t)((conn_id * 10U) + (uint8_t)(*ptr - '0'));
 			ptr++;
 		}
 
@@ -2295,7 +2281,11 @@ static int32_t gsm_si_all_cb(void)
 		                     &sent, &received, &buff_in, &ack_waiting);
 		if(res >= 4)
 		{
-			uint8_t idx = conn_id - 1U;
+            if ((conn_id <= 3U) && (ack_waiting > UINT16_MAX))
+            {
+                return GSM_ERROR;
+            }
+			uint8_t idx = (uint8_t)(conn_id - 1U);
 			gsm.si_info[idx].sent        = sent;
 			gsm.si_info[idx].received    = received;
 			gsm.si_info[idx].buff_in     = buff_in;
@@ -2349,81 +2339,65 @@ static int32_t gsm_si_all_cb(void)
 
 int32_t gsm_dialer_si_cb(void)
 {
-	//TODO: soket acik ise SI ile periyodik sorgulama yapilip, sokete gelen ve okunmayan veri kontrolu yapilsin.
-	/* #SS: 1,4,10.206.32.127,2020 */
-	int32_t at_res = gsm_at_response_ready();
-	if(at_res == GSM_RESPONSE_OK)
-	{
-		if(strstr((char *)rx.buff, "#SI: 2") == NULL)
-		{
-			at_res = GSM_ERROR;
-			return at_res;
-		}
-		int32_t index1 = str_index_of_th((char *)rx.buff, ",", 4);
-		int32_t index2 = str_index_of_th((char *)rx.buff, "\r\n", 2);
-		if(index1 > 0 && index2 > 0)
-		{
-			uint16_t ack_waiting = 0, mul = 1;
-			uint16_t len = index2 - index1 - 1;
-			index2--;
-			while(len--)
-			{
-				if(is_digit(rx.buff[index2]))
-				{
-					ack_waiting += (rx.buff[index2--] - 48) * mul;
-					mul *= 10;
-				}
-				else
-				{
-					break;
-				}
-			}
-			gsm.dialer_ack_waiting = ack_waiting;
-			LOG(_GSM_, "Dialer TCP ACK: %d", gsm.dialer_ack_waiting);
-		}
-		else
-		{
-			LOG_TRACE(_GSM_, "Dialer ERR TCP ACK");
-		}
-	}
-	return at_res;
+    int32_t at_res = gsm_at_response_ready();
+    if (GSM_RESPONSE_OK == at_res)
+    {
+        const char *ptr = strstr((const char *)rx.buff, "#SI: 2,");
+        uint32_t sent = 0U, received = 0U, buffered = 0U, waiting = 0U;
+        if (NULL == ptr)
+        {
+            return GSM_ERROR;
+        }
+        const size_t length = (size_t)rx.len
+            - (size_t)(ptr - (const char *)rx.buff);
+        const int32_t count = xscanf(ptr, length,
+            "#SI: 2,%u32,%u32,%u32,%u32",
+            &sent, &received, &buffered, &waiting);
+        if ((4 != count) || (waiting > UINT16_MAX))
+        {
+            return GSM_ERROR;
+        }
+        gsm.dialer_ack_waiting = (uint16_t)waiting;
+        LOG(_GSM_, "TCP ACK: %u", (unsigned int)waiting);
+    }
+    return at_res;
 }
 
 int32_t gsm_CCED_cb(void)
 {
-	int32_t at_res = gsm_at_response_ready();
-	if(at_res == GSM_RESPONSE_OK)   /* <\r><\n>+CCED: 286,01,6B2A,F271,11,50,47,47,47,0,0,0,<\r><\n><\r><\n>OK<\r><\n> */
-	{
-		/* mcc -> 3 digit, mnc-> 2/3 digit */
-		int32_t start_index = str_index_of((char *)rx.buff, "+CCED: ");
-		if(start_index != -1)
-		{
-			int32_t index1 = str_index_of((char *)rx.buff, " ");
-			int32_t index2 = str_index_of((char *)rx.buff, ",");
-			str_to_int(&rx.buff[index1 + 1], index2 - index1 - 1, &gsm_info.cell_info.mobile_country_code, 1, 0);
-			index1 = str_index_of_th((char *)rx.buff, ",", 2);
-
-			if(index1 > 0)
-			{
-				str_to_int(&rx.buff[index2 + 1], index1 - index2 - 1, &gsm_info.cell_info.mobile_network_code, 1, 0);
-				index2 = str_index_of_th((char *)rx.buff, ",", 3);
-				if(index1 > 0 && index2 > 0 )
-				{
-					str_to_int(&rx.buff[index1 + 1], index2 - index1 - 1, &gsm_info.cell_info.location_area_code, 1, 1);
-					index1 = str_index_of_th((char *)rx.buff, ",", 4);
-					if(index1 > 0)
-					{
-						str_to_int(&rx.buff[index2 + 1], index1 - index2 - 1, &gsm_info.cell_info.cell_id, 1, 1);
-					}
-				}
-			}
-			LOG_TRACE(_GSM_, "MCC: %d MNC: %d LAC: %d CI: %d", gsm_info.cell_info.mobile_country_code, gsm_info.cell_info.mobile_network_code,
-					gsm_info.cell_info.location_area_code, gsm_info.cell_info.cell_id);
-		}
-	}else if(at_res > 0){
-		at_res = GSM_RESPONSE_OK;
-	}
-	return at_res;
+    int32_t at_res = gsm_at_response_ready();
+    if (GSM_RESPONSE_OK == at_res)
+    {
+        const char *ptr = strstr((const char *)rx.buff, "+CCED: ");
+        uint32_t mcc = 0U, mnc = 0U, lac = 0U, cell = 0U;
+        if (NULL == ptr)
+        {
+            return GSM_ERROR;
+        }
+        const size_t length = (size_t)rx.len
+            - (size_t)(ptr - (const char *)rx.buff);
+        const int32_t count = xscanf(ptr, length,
+            "+CCED: %u32,%u32,%x,%x,", &mcc, &mnc, &lac, &cell);
+        if ((4 != count) || (XSCANF_OK != xscanf_get_last_error())
+            || (mcc > UINT16_MAX) || (mnc > UINT16_MAX)
+            || (lac > UINT16_MAX) || (cell > UINT16_MAX))
+        {
+            return GSM_ERROR;
+        }
+        gsm_info.cell_info.mobile_country_code = (uint16_t)mcc;
+        gsm_info.cell_info.mobile_network_code = (uint16_t)mnc;
+        gsm_info.cell_info.location_area_code = (uint16_t)lac;
+        gsm_info.cell_info.cell_id = (uint16_t)cell;
+    }
+    else if (0 < at_res)
+    {
+        at_res = GSM_RESPONSE_OK;
+    }
+    else
+    {
+        /* Response is still pending. */
+    }
+    return at_res;
 }
 
 int32_t gsm_CMGR_cb(void)
@@ -2523,7 +2497,7 @@ int32_t gsm_COPS_state_cb(void)
 			index = str_index_of_th((char *)rx.buff, ",", 3); /* AcT parametresi 0->2G, 2->3G */
 			if(index > -1)
 			{
-				uint32_t tech = rx.buff[index + 1] - 48;
+				uint8_t tech = (uint8_t)(rx.buff[index + 1] - 48);
 				const char *access_tech_str = "";
 				led_gsm_mode_t signal_led_mode = LED_GSM_OFF;
 
@@ -2728,11 +2702,11 @@ int32_t gsm_MONI_cb(void)
 			char *ptr = str_substr((char *)rx.buff, (char *)temp, "LAC:", " ", 6);
 			if(NULL != ptr)
 			{
-				str_to_int(temp, str_len((const char *)temp, 6), &gsm_info.cell_info.location_area_code, 1, 1);
+				str_to_int(temp, (uint8_t)str_len((const char *)temp, 6), &gsm_info.cell_info.location_area_code, 1, 1);
 				ptr = str_substr(ptr, (char *)temp, "Id:", " ", 6);
 				if(NULL != ptr)
 				{
-					str_to_int(temp, str_len((const char *)temp, 6), &gsm_info.cell_info.cell_id, 1, 1);
+					str_to_int(temp, (uint8_t)str_len((const char *)temp, 6), &gsm_info.cell_info.cell_id, 1, 1);
 				}
  			}
 			LOG_TRACE(_GSM_, "MCC: %d MNC: %d LAC: %d CI: %d", gsm_info.cell_info.mobile_country_code, gsm_info.cell_info.mobile_network_code,
@@ -2950,7 +2924,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 	url_t url = {};
 	uint16_t port = 0;
 	uint8_t at_buff[128] = {'A', 'T'};
-	uint8_t at_len = 2;
+	size_t at_len = 2U;
 	uint8_t try = 3;
 	uint8_t const *res = GSM_OK_STR;
 	uint8_t res_len    = GSM_OK_STR_LEN;
@@ -3493,7 +3467,8 @@ uint32_t gsm_engine_send_query(uint8_t query)
 	gsm.prev_at_cmd[0] =  query;
 	//LOG(_GSM_, " Gonderilen at cmd: %d Onceki at cmd: %d", gsm.prev_at_cmd[0], gsm.prev_at_cmd[1]);
 
-	if (!at_engine_send_at_command(at_buff, at_len, res, res_len, try, timeout))
+	if (!at_engine_send_at_command(at_buff, (uint16_t)at_len,
+                                   res, res_len, try, timeout))
 	{
 		CSLOG_ERR("AT query %u: at motoru komutu reddetti\r\n", (unsigned)query);
 		gsm_set_free();
@@ -3510,12 +3485,12 @@ uint32_t gsm_engine_get_query_res(void)
 	uint32_t res = 0;
 	if(gsm.query_state == GSM_WAITING_RESPONSE)
 	{
-		res = gsm_at_response_ready();
+		res = (uint32_t)gsm_at_response_ready();
 		if(res)
 		{
 			gsm.query_state = GSM_RESPONSE_READY; /* at komutuna cevap alinmis ise gsm_engine isi bitmistir. */
 			if(gsm.at_callback != NULL)
-				res = gsm.at_callback(); /* Cevabi callback parse eder ve gerekli bilgiler alir. Son olarak ust katman bu cevabi degerlendirir. */
+				res = (uint32_t)gsm.at_callback(); /* Cevabi callback parse eder ve gerekli bilgiler alir. Son olarak ust katman bu cevabi degerlendirir. */
 
 			at_engine_clear_buff();
 			at_engine_reset();
@@ -3553,7 +3528,7 @@ uint32_t gsm_set_sms_text_mode(void)
 		}
 			break;
 		case 1:
-			at_res = gsm_at_response_ready();
+			at_res = (uint32_t)gsm_at_response_ready();
 			if(at_res != 0)
 			{
 				at_engine_clear_buff();

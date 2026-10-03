@@ -85,12 +85,13 @@ static cache_mem_t cache_mem = {0};
 
 const flash_capacity_t* w25q_lookup_capacity(uint8_t cid)
 {
-    for (int i = 0; i < sizeof(capacity_table)/sizeof(capacity_table[0]); i++) {
+    for (size_t i = 0U; i < sizeof(capacity_table)/sizeof(capacity_table[0]); i++) {
         if (capacity_table[i].id == cid) {
             return &capacity_table[i];
         }
     }
-    return &(static flash_capacity_t){0, 0, "Unknown"};
+    static const flash_capacity_t unknown = {0U, 0U, "Unknown"};
+    return &unknown;
 }
 
 
@@ -312,7 +313,7 @@ uint16_t w25qxx_read_manu_deviceid(void)
 
 	spi_cs_high();
 
-	return id[0] | (id[1] << 8) ;
+	return (uint16_t)((uint16_t)id[0] | ((uint16_t)id[1] << 8));
 }
 
 uint32_t w25qxx_read_jedecid(void)
@@ -329,7 +330,8 @@ uint32_t w25qxx_read_jedecid(void)
 
 	spi_cs_high();
 
-	return jedec_id[0] | (jedec_id[1] << 8) | (jedec_id[2] << 16) | (jedec_id[3] << 24);
+	return (uint32_t)jedec_id[0] | ((uint32_t)jedec_id[1] << 8)
+        | ((uint32_t)jedec_id[2] << 16) | ((uint32_t)jedec_id[3] << 24);
 }
 
 
@@ -340,9 +342,9 @@ static int w25qxx_erase_(uint8_t erase_type, uint32_t addr)
 	delay(1);
 	spi_cs_low();
 	spi_send_byte(erase_type);
-	spi_send_byte(addr >> 16);
-	spi_send_byte(addr >> 8);
-	spi_send_byte(addr);
+	spi_send_byte((uint8_t)((addr >> 16) & 0xFFU));
+	spi_send_byte((uint8_t)((addr >> 8) & 0xFFU));
+	spi_send_byte((uint8_t)(addr & 0xFFU));
 	spi_cs_high();
 	delay(1);
 	int res = w25qxx_wait_for_write_or_erase();
@@ -393,9 +395,9 @@ uint8_t w25qxx_read_byte(uint32_t addr)
 {
 	spi_cs_low();
 	spi_send_byte(CMD_READ_DATA);
-	spi_send_byte(addr >> 16);
-	spi_send_byte(addr >> 8);
-	spi_send_byte(addr);
+	spi_send_byte((uint8_t)((addr >> 16) & 0xFFU));
+	spi_send_byte((uint8_t)((addr >> 8) & 0xFFU));
+	spi_send_byte((uint8_t)(addr & 0xFFU));
 
 	uint8_t res =  spi_read_byte();
 	spi_cs_high();
@@ -421,9 +423,9 @@ void w25qxx_read_buff(uint32_t addr, void *buff, uint32_t len)
 	uint8_t *ptr = buff;
 	spi_cs_low();
 	spi_send_byte(CMD_FAST_READ_DATA);
-	spi_send_byte(addr >> 16);
-	spi_send_byte(addr >> 8);
-	spi_send_byte(addr);
+	spi_send_byte((uint8_t)((addr >> 16) & 0xFFU));
+	spi_send_byte((uint8_t)((addr >> 8) & 0xFFU));
+	spi_send_byte((uint8_t)(addr & 0xFFU));
 	spi_send_byte(FLASH_DUMMY);
 	while(len--)
 	{
@@ -448,9 +450,9 @@ int w25qxx_write_byte(uint32_t addr, uint8_t data)
 
 	spi_cs_low();
 	spi_send_byte(CMD_PAGE_PROGRAM);
-	spi_send_byte(addr >> 16);
-	spi_send_byte(addr >> 8);
-	spi_send_byte(addr);
+	spi_send_byte((uint8_t)((addr >> 16) & 0xFFU));
+	spi_send_byte((uint8_t)((addr >> 8) & 0xFFU));
+	spi_send_byte((uint8_t)(addr & 0xFFU));
 
 	spi_send_byte(data);
 	spi_cs_high();
@@ -488,15 +490,15 @@ int w25qxx_page_write(uint32_t addr, const void *buff, uint32_t len)
 
 	spi_cs_low();
 	spi_send_byte(CMD_PAGE_PROGRAM);
-	spi_send_byte(addr >> 16);
-	spi_send_byte(addr >> 8);
+	spi_send_byte((uint8_t)((addr >> 16) & 0xFFU));
+	spi_send_byte((uint8_t)((addr >> 8) & 0xFFU));
 
 	// If an entire 256 byte page is to be programmed, the last address byte (the 8 LSB) should be set to 0.
 	if(len == W25QXX_PAGE_SIZE){
 		spi_send_byte(0x00);
 	}
 	else{
-		spi_send_byte(addr);
+		spi_send_byte((uint8_t)(addr & 0xFFU));
 	}
 	while(len--){
 		spi_send_byte(*ptr++);
@@ -571,9 +573,9 @@ int w25qxx_verify(uint32_t addr, const void *data, uint32_t len)
 
 	spi_cs_low();
 	spi_send_byte(CMD_FAST_READ_DATA);
-	spi_send_byte(addr >> 16);
-	spi_send_byte(addr >> 8);
-	spi_send_byte(addr);
+	spi_send_byte((uint8_t)((addr >> 16) & 0xFFU));
+	spi_send_byte((uint8_t)((addr >> 8) & 0xFFU));
+	spi_send_byte((uint8_t)(addr & 0xFFU));
 	spi_send_byte(FLASH_DUMMY);
 	while(len--)
 	{
@@ -680,7 +682,7 @@ void printf_buff(uint8_t *buff, uint32_t len, uint32_t addr)
 {
 	uint32_t row_len = 0;
 	CSLOG_NODT("%06lX: ", addr);
-	for(int i = addr; i < (addr + len); i++)
+	for(uint32_t i = addr; i < (addr + len); i++)
 	{
 		row_len++;
 		CSLOG_NODT("%02X ", *buff++);
@@ -688,7 +690,7 @@ void printf_buff(uint8_t *buff, uint32_t len, uint32_t addr)
 		{
 			uint8_t *ptr = buff - 16;
 			CSLOG_NODT("| ");
-			for(int j = 0; j < 16; j++)
+			for(uint32_t j = 0U; j < 16; j++)
 			{
 				CSLOG_NODT("%c", isprint(*ptr) ? *ptr : '.');
 				ptr++;
@@ -705,7 +707,7 @@ void printf_buff(uint8_t *buff, uint32_t len, uint32_t addr)
 	{
 		uint8_t *ptr = buff - row_len;
 		CSLOG_NODT("| ");
-		for(int j = 0; j < 16; j++)
+		for(uint32_t j = 0U; j < 16; j++)
 		{
 			CSLOG_NODT("%c ", *ptr++);
 		}
@@ -718,6 +720,8 @@ void printf_buff(uint8_t *buff, uint32_t len, uint32_t addr)
 
 void w25qxx_test(void)
 {
+    _Static_assert(W25QXX_PAGE_SIZE <= UINT8_MAX + 1U,
+                   "Test pattern index must fit in one byte");
 	uint8_t page[W25QXX_PAGE_SIZE] = {0};
 	uint32_t addr = 0;
 
@@ -730,9 +734,9 @@ void w25qxx_test(void)
 	printf_buff(page, W25QXX_PAGE_SIZE, addr);
 
 
-	for(int i = 0; i < W25QXX_PAGE_SIZE; i++)
+	for(size_t i = 0U; i < W25QXX_PAGE_SIZE; i++)
 	{
-		page[i] = i ;
+		page[i] = (uint8_t)i;
 	}
 	w25qxx_page_write(addr, page, W25QXX_PAGE_SIZE);
 	w25qxx_verify(addr, page, W25QXX_PAGE_SIZE);
@@ -742,9 +746,9 @@ void w25qxx_test(void)
 	printf_buff(page, W25QXX_PAGE_SIZE, addr);
 
 
-	for(int i = 0; i < sizeof(page); i++)
+	for(size_t i = 0U; i < sizeof(page); i++)
 	{
-		page[i] = i ;
+		page[i] = (uint8_t)i;
 	}
 
 	addr = 32768 * 5; //Block 5

@@ -2,7 +2,8 @@
  * gsm_http_server.c
  *
  *  Created on: Dec 20, 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_http_server.h"
@@ -112,7 +113,7 @@ static int http_server_send(const void *data, uint32_t len)
 	{
 		rbuff_write_buff(&tx_rb_ctx, (uint8_t *)data, len);
 		g_http_server.tx_data_ready = true;
-		return len;
+		return (int)len;
 	}
 	else
 	{
@@ -196,7 +197,7 @@ void gsm_http_server_send_response(void)
         uint32_t bytes_to_send = rbuff_read_buff(&tx_rb_ctx, temp_buffer, sizeof(temp_buffer));
         
         if(bytes_to_send > 0) {
-            gsm_send_to_socket(temp_buffer, bytes_to_send, GSM_TX_DIR_LISTENER_SOCKET, false, false);
+            gsm_send_to_socket(temp_buffer, (uint16_t)bytes_to_send, GSM_TX_DIR_LISTENER_SOCKET, false, false);
         }
     }
 

@@ -80,16 +80,6 @@
         - -Wconversion
         - -Wdouble-promotion
         - -Wformat=2
-      test_xsnprintf_format_scenario:
-        - -Wno-conversion
-        - -Wno-sign-conversion
-        - -Wno-float-conversion
-      test_xscanf_format_scenario:
-        - -Wno-sign-conversion
-      # Legacy protocol source has implicit narrow/bit-field assignments.
-      test_iec104_protocol_scenario:
-        - -Wno-conversion
-        - -Wno-sign-conversion
       # LTO drops unrelated callbacks from the monolithic legacy GSM unit.
       test_gsm_response_scenario:
         - -Wno-sign-compare

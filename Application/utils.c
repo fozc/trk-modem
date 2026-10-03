@@ -145,12 +145,13 @@ float xstrtof(const char *str)
 
     // Calculate the final result
     if (fractional_digits > 0) {
-        result = integer_part + (fractional_part / (float)fractional_divisor);
+        result = (float)integer_part
+            + ((float)fractional_part / (float)fractional_divisor);
     } else {
-        result = integer_part;
+        result = (float)integer_part;
     }
 
-    return sign * result;
+    return (float)sign * result;
 }
 
 int is_hex(int c)
@@ -190,10 +191,10 @@ uint32_t ascii_hex_to_integer(const void *data, uint8_t len)
             result |= (byteData[i] - '0');
         }
         else if (byteData[i] >= 'A' && byteData[i] <= 'F'){
-            result |= (byteData[i] - 'A' + 10);
+            result |= (uint32_t)(byteData[i] - 'A' + 10);
         }
         else if (byteData[i] >= 'a' && byteData[i] <= 'f'){
-            result |= (byteData[i] - 'a' + 10);
+            result |= (uint32_t)(byteData[i] - 'a' + 10);
         }
     }
 
@@ -268,7 +269,7 @@ void hex_dump(const void* data, size_t num_bytes)
     	if(num_bytes > BYTES_PER_LINE)
     		line_len = BYTES_PER_LINE;
     	else
-    		line_len = num_bytes;
+        line_len = (uint32_t)num_bytes; /* Remaining count is at most 16. */
 
         xprintf("%08lx | ", offset);
         for (size_t i = 0; i < line_len; i++)
@@ -297,11 +298,11 @@ void hex_dump(const void* data, size_t num_bytes)
 uint8_t hex_char_to_val(char c)
 {
     if (c >= '0' && c <= '9') {
-        return c - '0';
+        return (uint8_t)(c - '0');
     } else if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
+        return (uint8_t)(c - 'A' + 10);
     } else if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
+        return (uint8_t)(c - 'a' + 10);
     }
 
     return 0;
@@ -323,8 +324,8 @@ void byte_to_ascii_hex(uint8_t byte, void *output)
     const char hex_digits[] = "0123456789ABCDEF";
     uint8_t *ptr = output;
 
-    ptr[0] = hex_digits[(byte >> 4) & 0x0F];
-    ptr[1] = hex_digits[byte & 0x0F];
+    ptr[0] = (uint8_t)hex_digits[(byte >> 4) & 0x0F];
+    ptr[1] = (uint8_t)hex_digits[byte & 0x0F];
 }
  
 void uint32_to_ascii_bits(uint32_t number, char *buffer, int space)

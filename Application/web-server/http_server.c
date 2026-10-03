@@ -160,7 +160,7 @@ static void route_and_handle_request(http_request_t *request)
 
         if(strncmp(request->path, "/monitor/rf/", 12) == 0){
             const char *id_str = request->path + 12;
-            uint32_t id = id_str[0] - '0';
+            int32_t id = id_str[0] - '0';
             handle_get_rf_monitor_line_json(id);
             return;
         }
@@ -191,7 +191,7 @@ static void route_and_handle_request(http_request_t *request)
         if (strcmp(request->path, "/device/reboot") == 0) {
             CSLOG_WARN("[HTTP] GET /device/reboot - Rebooting device\r\n");
             const char *response_body = "{\"message\":\"Rebooting\",\"success\":true}";
-            http_send_json(response_body, strlen(response_body));
+            http_send_json(response_body, (int)strlen(response_body));
 
             reboot_system_delayed(3000);  /* Delay 3 seconds to allow response to be sent */
             return;
@@ -292,7 +292,7 @@ static void route_and_handle_request(http_request_t *request)
         if (strcmp(request->path, "/device/reboot") == 0) {
             CSLOG_WARN("[HTTP] GET /device/reboot - Rebooting device\r\n");
             const char *response_body = "{\"message\":\"Rebooting\",\"success\":true}";
-            http_send_json(response_body, strlen(response_body));
+            http_send_json(response_body, (int)strlen(response_body));
 
             reboot_system_delayed(3000);  /* Delay 3 seconds to allow response to be sent */
             return;
@@ -332,7 +332,7 @@ static void route_and_handle_request(http_request_t *request)
                     has_checksum = true;
                 }
             }
-            handle_fw_chunk(offset, (const uint8_t *)request->body, request->body_length, 
+            handle_fw_chunk(offset, (const uint8_t *)request->body, (uint32_t)request->body_length,
                            has_checksum, checksum);
             return;
         }
@@ -414,7 +414,7 @@ void http_server_on_receive(const uint8_t *data, int length)
     }
     
     /* Append data to RX buffer */
-    memcpy(server_state.rx_buffer + server_state.rx_length, data, length);
+    memcpy(server_state.rx_buffer + server_state.rx_length, data, (size_t)length);
     server_state.rx_length += length;
     
     CSLOG("[HTTP] Appended %d bytes, total rx_length=%d\r\n", length, server_state.rx_length);

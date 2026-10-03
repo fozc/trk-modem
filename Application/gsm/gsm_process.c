@@ -368,7 +368,7 @@ void gsm_webserver_listener_reset_gprs_check_timer(void)
 int32_t gsm_check_internet_connection(void)
 {
 	static uint8_t state = GSM_CHECK_GPRS_NEWTWORK_STATE;
-	int32_t res;
+	uint32_t res;
 	int32_t network_state = 0;
 
 	switch(state)

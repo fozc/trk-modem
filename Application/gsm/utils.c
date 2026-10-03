@@ -2,7 +2,8 @@
  * utils.c
  *
  *  Created on: 29 Mar 2018
- *      Author: fozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #include "utils.h"
@@ -23,31 +24,29 @@
  * str_substr(buff1, buff2, "+CSQ: ", "," , 2), max_len -> string len + '\0' olmali
  *
  * */
-char *str_substr(const char *str, char *buff, char *delim_f, char *delim_l, uint16_t max_len)
+char *str_substr(const char *str, char *buff, char *delim_f,
+                 char *delim_l, uint16_t max_len)
 {
-	char *res = NULL;
-	int32_t index1 = str_index_of(str, delim_f); //first
-	if(index1 >= 0)
-	{
-		index1 += strlen(delim_f);
-		int32_t index2 = str_index_of((str + index1), delim_l); //last
-		if(index2 > -1)
-		{
-			index2 += index1;
-			int32_t len = index2 - index1;
-			if(index2 > -1 && (len > -1 && len < max_len))
-			{
-				memcpy(buff, &str[index1], len);
-				buff[len] = 0;
-				res = (char *)&str[index1 + len + strlen(delim_l)];
-			}
-			else
-			{
-				buff[0] = 0;
-			}
-		}
-	}
-	return res;
+    const int32_t first = str_index_of(str, delim_f);
+    if (0 > first)
+    {
+        return NULL;
+    }
+    const size_t start = (size_t)first + strlen(delim_f);
+    const int32_t last = str_index_of(str + start, delim_l);
+    if (0 > last)
+    {
+        return NULL;
+    }
+    const size_t len = (size_t)last;
+    if (len >= max_len)
+    {
+        buff[0] = '\0';
+        return NULL;
+    }
+    memcpy(buff, str + start, len);
+    buff[len] = '\0';
+    return (char *)(str + start + len + strlen(delim_l));
 }
 
 int32_t str_index_of_s(const char *source, const char *sub, uint32_t len)
@@ -60,7 +59,7 @@ int32_t str_index_of_s(const char *source, const char *sub, uint32_t len)
 	return -1;
     }
 
-	for(int i = 0; i < len; i++, source++)
+	for(uint32_t i = 0U; i < len; i++, source++)
 	{
 		if (*source != *b) {
 		    continue;
@@ -111,8 +110,8 @@ int32_t str_index_of_th(const char *source, const char *cr, uint32_t th)
 
 int32_t str_end_withs(const char *source, const char *str)
 {
-	int32_t len1 = strlen(source);
-	int32_t len2 = strlen(str);
+	size_t len1 = strlen(source);
+	size_t len2 = strlen(str);
 
 	if(len1 < len2)
 		return -1;
@@ -131,7 +130,7 @@ int32_t str_start_withs(const char *source, const char *prefix)
 
 void str_toupper(char *source, uint32_t len)
 {
-	for(int i = 0; i < len; i++)
+	for(uint32_t i = 0U; i < len; i++)
 	{
 		if(*source >= 'a' && *source <= 'z')
 		{
@@ -143,7 +142,7 @@ void str_toupper(char *source, uint32_t len)
 
 void str_tolower(char *source, uint32_t len)
 {
-	for(int i = 0; i < len; i++)
+	for(uint32_t i = 0U; i < len; i++)
 	{
 		if(*source >= 'A' && *source <= 'Z')
 		{
@@ -156,7 +155,7 @@ void str_tolower(char *source, uint32_t len)
 int32_t str_count(const char *str, uint32_t str_len, char token)
 {
 	int32_t counter = 0;
-	for(int i = 0; i < str_len && str; i++)
+	for(uint32_t i = 0U; i < str_len && str; i++)
 	{
 		if(*str++ == token)
 		{
@@ -170,11 +169,11 @@ int32_t str_count(const char *str, uint32_t str_len, char token)
 int32_t str_len(const char * str, uint32_t max_len)
 {
 	int32_t len = 0;
-	for(int i = 0; i < max_len; i++)
+	for(uint32_t i = 0U; i < max_len; i++)
 	{
 		if(*str++ == 0x00)
 		{
-			len = i;
+			len = (int32_t)i;
 			break;
 		}
 	}
@@ -185,7 +184,7 @@ int32_t str_len(const char * str, uint32_t max_len)
 int32_t str_cpy(char *target, char *source, uint32_t max_len)
 {
 	int32_t len = str_len(source, max_len);
-	memcpy(target, source, len);
+	memcpy(target, source, (size_t)len);
 	target[len] = 0;
 	return len;
 }
@@ -198,7 +197,7 @@ void bit_set(uint8_t *data, uint8_t bit_no, uint8_t bit_val)
 	}
 	else
 	{
-		*data &= ~(1UL << bit_no);
+		*data = (uint8_t)(*data & ~(1UL << bit_no));
 	}
 }
 
@@ -282,7 +281,7 @@ void my_itoa(uint32_t num, uint8_t *str)
 	*str = 0;
 	while(num)
 	{
-		*--str = '0' + num % 10;
+		*--str = (uint8_t)('0' + num % 10U);
 		num /= 10;
 	}
 }
@@ -360,7 +359,7 @@ void dec_to_str(uint32_t num, uint8_t *str, uint32_t len)
 //	*str = 0;
 	while(len--)
 	{
-		*--str = '0' + num % 10;
+		*--str = (uint8_t)('0' + num % 10U);
 		num /= 10;
 	}
 }
@@ -375,7 +374,7 @@ uint32_t ipv4_to_int(const char *ip_str, uint32_t *ip_int) //__attribute__((opti
 	for(int i = 0; i < 4; i++)
 	{
 		digit_count = 0;
-		for(int j = 0; j < 4; j++)
+		for(uint32_t j = 0U; j < 4U; j++)
 		{
 			if(ip_str[j] == '.' || ip_str[j] == '\0')
 			{
@@ -424,9 +423,9 @@ uint32_t ipv4_to_str(uint32_t ip_int, uint8_t *ip_str)
 	{
 		uint32_t dec = (ip_int >> (i * 8)) & 0x000000FF;
 
-		*ip_str++ = (dec / 100) + 48;
-		*ip_str++ = ((dec % 100) / 10) + 48;
-		*ip_str++ = (dec % 10) + 48;
+		*ip_str++ = (uint8_t)((dec / 100U) + 48U);
+		*ip_str++ = (uint8_t)(((dec % 100U) / 10U) + 48U);
+		*ip_str++ = (uint8_t)((dec % 10U) + 48U);
 
 		*ip_str++ = '.';
 	}
@@ -438,8 +437,8 @@ uint32_t ipv4_to_str(uint32_t ip_int, uint8_t *ip_str)
 uint32_t str_is_alphanum(const uint8_t *str, uint32_t max_len)
 {
 	uint32_t res = 0;
-	uint32_t len = str_len((char *)str, max_len);
-	for(int i = 0; i < len; i++)
+	uint32_t len = (uint32_t)str_len((char *)str, max_len);
+	for(uint32_t i = 0U; i < len; i++)
 	{
 		if(!is_alnum(*str++))
 		{
