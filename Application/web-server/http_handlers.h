@@ -80,7 +80,7 @@ void http_handlers_reset(void);
 /**
  * @brief Validate session token from request query string.
  *
- * Parses the "t=XXXXXXXX" parameter, compares it to the stored session
+ * Parses the "t=<32 hex digits>" parameter, compares it to the stored session
  * token and checks the idle TTL.  Sets the internal is_authenticated flag
  * accordingly.  Must be called once per request, before the auth gate.
  *

@@ -9,6 +9,7 @@
 #define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_handlers.h"
 #include "http_response.h"
+#include "http_session_token.h"
 #include "http_request_parser.h"
 #include "index_html.h"
 #include "fw_update_html.h"
@@ -66,7 +67,7 @@ static struct {
     const char *current_query_string;  /* Current request query string */
     bool is_authenticated;             /* Per-request auth flag, set by set_auth_from_token() */
     char username[16];                 /* Logged-in role: "admin" or "user" */
-    uint32_t session_token;            /* 0 = no active session */
+    char session_token[HTTP_SESSION_TOKEN_SIZE]; /* Empty = no session */
     uint32_t last_activity_tick;       /* bsp_get_tick() of last authenticated request */
     uint8_t  login_fail_count;         /* Consecutive failed logins since last reset */
     bool     login_lock_active;        /* Brute-force lock engaged */
@@ -84,7 +85,7 @@ void http_handlers_init(char *tx_buffer_ptr, int tx_buffer_size)
     handler_state.tx_buffer_size = tx_buffer_size;
     handler_state.current_query_string = NULL;
     handler_state.is_authenticated = false;
-    handler_state.session_token = 0U;
+    handler_state.session_token[0] = '\0';
     handler_state.last_activity_tick = 0U;
     handler_state.login_fail_count = 0U;
     handler_state.login_lock_active = false;
@@ -121,7 +122,7 @@ const char* http_handlers_get_query_string(void)
 
 bool http_handlers_session_active(void)
 {
-    return handler_state.session_token != 0U;
+    return '\0' != handler_state.session_token[0];
 }
 
 bool http_handlers_is_authenticated(void)
@@ -145,56 +146,6 @@ bool http_handlers_is_admin(void)
  * ============================================================================ */
 
 /**
- * @brief Parse the 8-char hex session token from a query string.
- *
- * Looks for the "t=" parameter (e.g. "?config=1&t=A3F2B1C8").
- * Parsing is done without sscanf or strtoul to stay stdlib-free.
- *
- * @param qs Query string (may be NULL)
- * @return Parsed token value, or 0U on any error
- */
-static uint32_t parse_token_from_query(const char *qs)
-{
-    if (!qs) {
-        return 0U;
-    }
-
-    /* Find "t=" as a standalone parameter key, not a substring of another key.
-     * Valid positions: start of string ("t=...") or after '&' ("...&t=..."). */
-    const char *t_ptr = NULL;
-    if (qs[0] == 't' && qs[1] == '=') {
-        t_ptr = qs + 2;
-    } else {
-        const char *amp = strstr(qs, "&t=");
-        if (amp) {
-            t_ptr = amp + 3;
-        }
-    }
-    if (!t_ptr) {
-        return 0U;
-    }
-
-    uint32_t result = 0U;
-    uint8_t  digits = 0U;
-    while (digits < 8U) {
-        char     c      = t_ptr[digits];
-        uint32_t nibble = 0U;
-        if (c >= '0' && c <= '9') {
-            nibble = (uint32_t)(c - '0');
-        } else if (c >= 'A' && c <= 'F') {
-            nibble = (uint32_t)(c - 'A') + 10U;
-        } else if (c >= 'a' && c <= 'f') {
-            nibble = (uint32_t)(c - 'a') + 10U;
-        } else {
-            return 0U; /* short or invalid token */
-        }
-        result = (result << 4U) | nibble;
-        digits++;
-    }
-    return result;
-}
-
-/**
  * @brief Validate the session token from the request query string.
  *
  * Must be called at the start of every request, before the auth gate.
@@ -205,13 +156,13 @@ static uint32_t parse_token_from_query(const char *qs)
 void http_handlers_set_auth_from_token(const char *query_string)
 {
     /* No active session */
-    if (handler_state.session_token == 0U) {
+    if ('\0' == handler_state.session_token[0]) {
         handler_state.is_authenticated = false;
         return;
     }
 
-    uint32_t received = parse_token_from_query(query_string);
-    if (received != handler_state.session_token) {
+    if (!http_session_token_matches(handler_state.session_token,
+                                    query_string)) {
         handler_state.is_authenticated = false;
         return;
     }
@@ -219,7 +170,7 @@ void http_handlers_set_auth_from_token(const char *query_string)
     /* Check idle TTL */
     if ((bsp_get_tick() - handler_state.last_activity_tick) > HTTP_SESSION_TIMEOUT_MS) {
         handler_state.is_authenticated = false;
-        handler_state.session_token    = 0U;
+        handler_state.session_token[0] = '\0';
         handler_state.username[0]      = '\0';
         CSLOG("[HTTP] Session expired\r\n");
         return;
@@ -385,14 +336,8 @@ void handle_post_login(const char *json_body)
     bool valid = false;
     if (strcmp(username, USER_ROLE_ADMIN) == 0 && strcmp(password, expected_admin_pass) == 0) {
         valid = true;
-        strncpy(handler_state.username, USER_ROLE_ADMIN, sizeof(handler_state.username) - 1);
-        handler_state.username[sizeof(handler_state.username) - 1] = '\0';
-        CSLOG("[HTTP] Admin login successful\r\n");
     } else if (strcmp(username, USER_ROLE_USER) == 0 && strcmp(password, expected_user_pass) == 0) {
         valid = true;
-        strncpy(handler_state.username, USER_ROLE_USER, sizeof(handler_state.username) - 1);
-        handler_state.username[sizeof(handler_state.username) - 1] = '\0';
-        CSLOG("[HTTP] User login successful\r\n");
     } else {
         CSLOG_ERR("[HTTP] Login failed - Invalid credentials\r\n");
         elog_log_web_login_fail(gsm_get_web_client_ip());
@@ -403,21 +348,31 @@ void handle_post_login(const char *json_body)
     if (valid) {
         login_lock_reset();
 
-        /* Generate session token */
-        uint32_t new_token = bsp_get_tick() ^ 0x5A5A0000UL ^ (uint32_t)(uint8_t)handler_state.username[0];
-        if (new_token == 0U) {
-            new_token = 0xDEADBEEFUL;
+        /* Publish a new session only after all entropy reads succeed. */
+        char new_token[HTTP_SESSION_TOKEN_SIZE];
+        if (!http_session_token_generate(new_token, bsp_random_word))
+        {
+            CSLOG_ERR("[HTTP] Session entropy unavailable\r\n");
+            static const char error_response[] =
+                "{\"success\":false,\"error\":\"Login temporarily "
+                "unavailable, try again\"}";
+            http_send_response(503, NULL, "application/json", error_response,
+                               (int)(sizeof(error_response) - 1U));
+            return;
         }
-        handler_state.session_token      = new_token;
+        /* Replace the role and token only after entropy succeeds. */
+        strncpy(handler_state.username, username,
+                sizeof(handler_state.username) - 1U);
+        handler_state.username[sizeof(handler_state.username) - 1U] = '\0';
+        memcpy(handler_state.session_token, new_token, sizeof(new_token));
         handler_state.last_activity_tick = bsp_get_tick();
-        handler_state.is_authenticated   = true;
-
-        CSLOG("[HTTP] Session authenticated, token: %08lX\r\n", (unsigned long)new_token);
+        handler_state.is_authenticated = true;
+        CSLOG("[HTTP] Session authenticated\r\n");
 
         char *buf = handler_state.tx_buffer;
         int   pos = xsnprintf(buf, handler_state.tx_buffer_size,
-                              "{\"success\":true,\"token\":\"%08lX\",\"role\":\"%s\"}",
-                              (unsigned long)new_token, handler_state.username);
+                              "{\"success\":true,\"token\":\"%s\",\"role\":\"%s\"}",
+                              handler_state.session_token, handler_state.username);
         http_send_json(buf, pos);
     } else {
         const char *error_response = "{\"success\":false,\"error\":\"Invalid credentials\"}";
@@ -434,7 +389,7 @@ void handle_post_logout(void)
     
     /* Clear authentication state */
     handler_state.is_authenticated = false;
-    handler_state.session_token    = 0U;
+    handler_state.session_token[0] = '\0';
     memset(handler_state.username, 0, sizeof(handler_state.username));
 
     CSLOG("[HTTP] Session cleared\r\n");
@@ -1067,7 +1022,6 @@ void handle_post_iec_config_json(const char *json_body)
     
     int body_len = strlen(json_body);
     CSLOG("[HTTP] JSON body length: %d bytes\r\n", body_len);
-    CSLOG("[HTTP] JSON body (full): %s\r\n", json_body);
     
     // Create local config from current NVRAM state
     jiec_config_t config = {0};

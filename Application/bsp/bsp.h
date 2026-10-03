@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "xprintf.h"
 #include "console_logger.h"
@@ -62,6 +63,8 @@ void bsp_putchr(int chr);
 
 void bsp_system_reset(void);
 uint32_t bsp_get_tick(void);
+/** Read hardware entropy in main context; failure leaves value at zero. */
+bool bsp_random_word(uint32_t *value);
 uint32_t bsp_get_run_time(void);
 uint32_t bsp_get_epoch_time(void);
 void bsp_set_epoch_time(uint32_t epoch_time);

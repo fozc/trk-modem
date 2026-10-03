@@ -70,6 +70,26 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
 - **Logging:** use cslog (`CSLOG(...)`, `xsprintf`) — no bare
   `printf`/`sprintf`. Logging compile-time removable.
 
+## Evidence and simplicity before implementation
+
+- Before proposing or coding a fix, verify that the reported condition
+  exists in the current code and is reachable in the actual call path.
+  State the trigger and evidence (source lines, a reproduction, or tests).
+  Separate confirmed behavior from assumptions and untested hardware.
+- Inspect the exact versions of the existing HAL, drivers, libraries,
+  and frameworks first. Check whether they already handle the condition,
+  including their recovery paths, limits, and return values. Use local
+  source and authoritative documentation; do not invent probabilities,
+  hardware behavior, or requirements. If evidence is missing, investigate
+  or report the uncertainty before designing a workaround.
+- Implement only after presenting the evidence and the smallest adequate
+  solution. Reuse existing infrastructure. Prefer simple control flow
+  and minimal state; do not add speculative fallback algorithms, retry
+  layers, background processes, resets, or abstractions without a
+  demonstrated need. Complexity must have a concrete, explained benefit.
+- Keep verification proportional to the change and test the actual failure
+  path. These rules do not replace the user approval requirements below.
+
 ## Repo-specific constraints
 
 - **NVRAM layout changes need discipline:** bump
@@ -101,6 +121,9 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
 - **Contiki port caveat:** `critical_enter()` is a no-op on ARM
   (`_PLATFORM_=_WIN32_` build). Never depend on it masking IRQs; use
   `volatile` flags or atomics for ISR-shared state.
+- Preserve code disabled with `#if 0`. Do not remove these blocks unless
+  the user explicitly requests their removal. This is an exception to
+  the commented-out-code cleanup rule.
 - Match surrounding code style where it diverges from BARR-C; follow the
   standards fully for new files.
 - When changing a module's logic, run its Ceedling test under that

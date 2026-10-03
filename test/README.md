@@ -1,7 +1,7 @@
 # Test Altyapısı
 
-**Sürüm:** 1.10
-**Tarih:** 2026-10-02
+**Sürüm:** 1.11
+**Tarih:** 2026-10-03
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
@@ -14,6 +14,7 @@ testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar
 - Ruby ve Ceedling 1.0.1 kurulu olmalıdır.
 - Host C derleyicisi ve GNU Make komut satırında bulunmalıdır.
 - Web arayüzü integration testi için Node.js bulunmalıdır.
+- Web oturum güvenliği integration testi için Python 3 bulunmalıdır.
 - Coverage (kapsam) raporu için `gcov`, Python ve `gcovr` Python modülü
   bulunmalıdır.
 
@@ -188,7 +189,37 @@ kapsayan birim testleri eklenmelidir.
 | `libs` | SPI flash halka kaydını yüzlerce yazma ve yeniden açılış adımıyla doğrular |
 | `nvram` | Çift NVRAM görüntüsünü, yazma arızalarını ve yeniden açılışı birlikte doğrular |
 | `rf_hub_sim` | Ayrı RF hub simülatörünü kendi çalıştırılabilir dosyasıyla sınar |
+| `web_auth` | Üretim fonksiyonlarını donanım ve taşıma test doubles ile izole ederek sınar |
 | `web_navigation` | Kaynak ve gömülü web içeriğini Node.js üzerinde karşılaştırır |
+
+## Web oturum güvenliği kontrolleri
+
+`web_server/test_http_session_token.c` dosyası 12 Ceedling testi içerir.
+Token uzunluğu, sorgu eşleşmesi, hatalı girişler ve entropy (rastgelelik
+kaynağı) başarısızlığı denetlenir.
+
+`integration/web_auth/run_tests.py` dosyası 16 host kontrolü içerir.
+Mevcut üretim dosyalarından giriş, oturum, AT log ve BSP RNG fonksiyonları
+alınarak host üzerinde derlenir. Eski token reddi, giriş kilidi, oturum
+süresi, RNG hatasında mevcut rol/token korunması, yetki artırmanın
+engellenmesi, hassas logların gizlenmesi ve seed hatasının HAL çağrısına
+ulaşması doğrulanır. Fonksiyonların kaynak şekli değişip çıkarılamazsa test
+başarısız olur; test düzeneği yeni kaynakla birlikte değerlendirilmelidir.
+
+Donanım, log ve taşıma çağrıları test doubles (taklit bileşenler) kullanır.
+Gerçek RNG kurtarması, tam HTTP/AT süreçleri ve cihaz davranışı bu testin
+kapsamı dışındadır. Üretilen C dosyaları, çalıştırılabilir dosyalar ve loglar
+Git tarafından yok sayılan `test/build/web_auth/` dizininde tutulur.
+Test kaynağı ise repoda saklanmalıdır.
+
+Bu paket `ruby test/run_all.rb all` ve `integration` koşularına dahildir.
+Tek başına repo kökünden şu komutla çalıştırılır:
+
+```text
+make -C test/integration/web_auth run
+```
+
+Host derleyicisi `CC`, Python komutu `PYTHON` ile değiştirilebilir.
 
 ## Doğrulama
 
@@ -248,3 +279,4 @@ testin neden başarısız olduğunu açıklamaz.
 | 2026-10-01 | 1.8 | IEC104 ACK, sıra numarası döngüsü, zamanlayıcı, alıcı tamponu ve saat komutu senaryolarının genişletilmesi |
 | 2026-10-01 | 1.9 | Actions Python ortamının eşitlenmesi, JUnit raporunun coverage temizliğinden korunması ve CI loglarının saklanması |
 | 2026-10-02 | 1.10 | Linux host testlerinin 32 bit derlenmesi ve çalıştırma öncesi ABI kontrolü |
+| 2026-10-03 | 1.11 | Token testleri, 16 kalıcı web oturum güvenliği kontrolü ve merkezi web_auth paketi |

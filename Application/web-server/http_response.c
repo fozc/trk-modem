@@ -35,6 +35,7 @@ static const status_code_entry_t STATUS_CODES[] = {
     {413, "Payload Too Large"},
     {422, "Unprocessable Entity"},
     {500, "Internal Server Error"},
+    {503, "Service Unavailable"},
     {0, NULL}  /* Sentinel */
 };
 
@@ -123,13 +124,9 @@ void http_send_response(int status_code,
         body_length
     );
 
-#if 1
-    /* Print response for debugging */
-    CCSLOG(XCOLOR_CYAN, "\r\n=== HTTP RESPONSE ===\r\n");
-    CSLOG("%s", header_buffer);
-    CSLOG("[Body: %d bytes] \r\n%s", body_length, body);
-    CCSLOG(XCOLOR_CYAN,"\r\n=== END RESPONSE ===\r\n\r\n");
-#endif
+    /* Response bodies may contain credentials and session tokens. */
+    CSLOG("[HTTP] Response status=%d bytes=%d\r\n",
+          status_code, body_length);
     /* Send headers */
     http_send_data(header_buffer, header_length);
 
