@@ -326,4 +326,13 @@ HTTP uzunlukları, GSM parser sınırları, IEC104/SPI kodlama düzeltmeleri,
 ek Ceedling/entegrasyon testleri ve veri türü kuralları `bf7ac1a`
 commit'inde kaydedilmiştir. CubeIDE uyarı ayarları `5db75b8` commit'indedir.
 
+### 9.5 Anahtarların geçici Git takibi — 04.10.2026
+
+Kullanıcı kararıyla `keys/private_key.pem`, `keys/aes_key.bin` ve
+`keys/rfwu_key.bin` geliştirme döneminde ana repoda takip edilir.
+Anahtarlar değiştirilmedi. Saha öncesinde yeni üretim anahtarları ve cihaz
+karşılıkları hazırlanıp doğrulanmalıdır. Ayrıntı `keys/README.md` içindedir.
+Git takibi güvenli yedekleme ve saha kabulü maddelerini kapatmaz.
+ARM CI/Docker ve README/CHANGELOG/kılavuz işleri kullanıcı kararıyla ertelendi.
+
 /*** end of report ***/
