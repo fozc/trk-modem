@@ -93,7 +93,7 @@ Ancak **üretime çıkış için hâlâ hazır değil.** Kalan engeller artık d
 | Y3.10 reset öncesi flush | **AÇIK** | `reboot.c:18`: `//TODO: nvram sync()` hemen `NVIC_SystemReset()` önünde; `periodic_reset.c` reset öncesi sync yapmıyor |
 | K10.1 shell RX çift bağlam | **KISMEN** | Shell dosyası bootloader ile bayt-pariteye alındı (commit `4429fc1`), ama RX durum makinesi (`shell.c:56-61`) hâlâ hem LPUART1 ISR (`stm32u3xx_it.c:503-504`) hem web terminal (`web_shell.c:113-117`) beslemeli; `session_level` tek global (`shell.c:58`) |
 | Y2.2 ARM uyarı bayrakları | **KISMEN / AÇIK** | 03.10.2026 düzeltmesi: `.cproject` içinde açık option görülmemesi derleyicinin uyarısız çalıştığını kanıtlamaz. Üretilen Debug/Release `Application/web-server/subdir.mk` komutları `-Wall` içerir. `-Wextra/-Wshadow/-Wconversion/-Wdouble-promotion/-Wformat=2/-Werror` ailesinin tamamı ARM tarafında etkin değildir. Uyarı düzeltmeleri ve kalan inceleme için bölüm 9.1/9.3 geçerlidir. |
-| Y2.3 heap rezervi | **AÇIK** | `_Min_Heap_Size = 0x200` üç linker betiğinde de (`STM32U375VETX_{FLASH,BOOT,RAM}.ld:43`); `Core/Src/sysmem.c` çalışır `_sbrk` içeriyor |
+| Y2.3 heap rezervi | **AKTİF HATA DOĞRULANMADI / KORUNDU** | 04.10.2026: üç linker betiğinde 512 byte minimum heap rezervi vardır. Mevcut Release ELF sembol tablosunda `_sbrk` ve allocation fonksiyonları yoktur; MAP dosyasında ilgili kodlar discarded input sections (çıkarılan bölümler) içindedir. Uygulamada allocation çağrısı bulunmadı. Kullanıcı kararıyla linker ve ST/CubeMX kaynakları korunmuştur. |
 | Y3.9 version.h elle bakım | **DEĞİŞTİ (iyileşti)** | Kimlik artık boot superblock'dan okunuyor (`boot.c:162`; tüketenler `elog.c:901`, `http_handlers.c:546`); EFW paketi `bin2efw.py -H version.h` ile sürüm + git hash gömüyor. Kalıntılar: `http_handlers.c:1738` sabit fallback `"1.0.0"` (setter'ının çağıranı yok), öksüz ve kırık araçlar `tools/update_git_hash.py` + `tools/post-build.py` |
 | Y6b.2 Modbus hat sayısı belgesi | **KAPATILDI** | Kayıt haritası v1.6 (2026-09-25): 7 fider nihai, `ibus_ma` INT16, sıcaklık sentinel -9990 — kod/belge uzlaşmış (commit `f71e50c` + `c74053e`) |
 | Y6b.4 "Aku uyarı" sabit 23 | **AÇIK** | `modbus_process.c:434`: `TODO: bind to the real battery-warning source` duruyor |
@@ -169,12 +169,12 @@ Release post-build: `bin2efw.py --sign-key keys/private_key.pem --encrypt-key ke
 
 | No | Önem | Bulgu | Kanıt |
 |---|---|---|---|
-| N1 | ORTA | Web arayüzünde GSM sinyal göstergesi ham CSQ (0-31) değerini **"dBm" etiketiyle** gösteriyor. CESQ yolu doğru çeviriyor (rxlev-111, rscp-121, rsrp-141; `gsm_info.c:444-563`), Modbus doğru belgeli (`modbus_gsm_stats.c:39` "raw 0..31") — yanlış yalnız web: `system_status.c:85-86` → `http_handlers.c:679 "GsmSig"` → `web-page/index.html:309 ['GsmSig',…,'dBm']` | Okuma + kod yolu |
+| N1 | ORTA — DÜZELTİLDİ | 04.10.2026: Web etiketi Sinyal seviyesi (CSQ) olarak değiştirildi; ham CSQ artık dBm diye gösterilmez. 0–31 birimsiz, 99 ve geçersiz/eksik değerler Bilinmiyor/Unknown gösterilir. HTTP ve Modbus ham değerleri korunur. | Gerçek renderBoard fonksiyonunu kaynak ve gömülü gzip HTML üzerinde çalıştıran web_navigation testleri; iki dil, 32 geçerli değer ve sekiz geçersiz/eksik girdi |
 | N2 | ORTA | RFWU `shared_key` NVRAM alanı hiç ilklendirilmiyor; kod 0 göründe gömülü default'a düşürüp default'u NVRAM'e kalıcı yazıyor — "cihaza özgü anahtar" hedefiyle çelişen davranış | `types.h:196`, `raw_tcp_fw_update.c:242-243, 270` |
 | N3 | ORTA | HTTP yanıt gövdesi dökümü `#if 1` ile derlemede; default log seviyesi VERBOSE olduğundan üretimde konsol trafiği ve gecikme üretir | `http_response.c:126-132`, `nvram.c:255` |
-| N4 | DÜŞÜK | `http_handlers.c:1738` sabit `fw_version = "1.0.0"` fallback; üstelik setter'ının çağıranı yok — v1.0.1 görüntüsünde yanlış sürüm göstergesi riski | okuma + grep |
+| N4 | DÜŞÜK — DÜZELTİLDİ | Firmware sürüm endpoint'i varsayılan sürümü VERSION_MAJOR/MINOR/PATCH üzerinden üretir. Sabit 1.0.0 kaldırıldı; mevcut setter override davranışı korunur. | Gerçek handler, gerçek initializer ve setter ile entegrasyon testi; varsayılan/override/NULL ve buffer sınırları |
 | N5 | DÜŞÜK | SSENDEXT/si_all_zero koruması `#if 0`'da ama besleyen veri canlı tutuluyor — bilinçli erteleme; karar ve tarih belgelenmeli | `gsm_listener_process.c:257-280` |
-| N6 | DÜŞÜK | Test ağacı artıkları: boş `test/unit/*` (8 dizin), yalnız build artığı integration dizinleri, `test/integration/nvram` içinde adı `-p` olan dosya | dizin listesi |
+| N6 | DÜŞÜK — TEMİZLENDİ / SINIRLI KAPSAM | 04.10.2026: test/unit altındaki sekiz boş dizin, boş test/unit kökü ve boş test/integration/nvram/-p dizini kullanıcı talebiyle kaldırıldı. Bunlar Git tarafından takip edilmiyordu ve test runner tarafından kullanılmıyordu. Entegrasyon build dizinlerinin topluca silinmesi yapılmadı. | Silme öncesi boşluk, repo içi yol ve Git takibi kontrolü; kaynak veya test dosyası silinmedi |
 | N7 | DÜŞÜK | `rf_dummy.h:14` "RF_DUMMY_ENABLE tanımlı değilse no-op" diyor; böyle bir makro yok — başlık kodu/yorum uyumsuzluğu (runtime `initialized` bayrağı fiilen inert) | `rf_dummy.c:328, 340` |
 
 ---
@@ -185,9 +185,9 @@ Aşağıdaki maddeler Eylül raporunda açık görünüyor ve bu tur HEAD'de kan
 
 - Y2.1 `int_master_enable` ARM dalı (latent tuzak) — derlenme koşulu değişmedi mi, kontrol edilmedi.
 - Y6b.1 baud değişimi erteleme; Y6b.5 RS-485 echo koruması (donanıma bağlı).
-- Y9.3 seq sarması boş-log okuma hatası; O9.7 ring erase WDT kick'i (commit `3913163` yalnız `log_read_all` taraması için kick ekliyor görünüyor — ring erase yolu doğrulanmadı).
-- Y-Y4 shell komut tablosu sınırı; T-T1 (IEC-104'te beş host uyarısı).
-- Y5.11'in belge tarafı: "desteklenen tipler" listesi temizliği.
+- Y9.3 sıra sarması bulgusu mevcut kod ve 04.10.2026 sınır testleriyle kapatıldı (bölüm 9.11). O9.7 değerlendirmesi bölüm 9.12 içindedir; kullanıcı bootloader ölçümlerinin uygun olduğunu bildirmiştir. Bu madde için kod değişikliği yapılmaz.
+- Y-Y4 shell komut tablosu değerlendirmesi bölüm 9.13 içindedir; mevcut kapasite 32'dir. T-T1 mevcut sıkı Ceedling derlemesinde tekrarlanmadı (bölüm 9.14).
+- Y5.11 mevcut kaynakta komut yanıtını etkiler; değerlendirme ve öneri bölüm 9.14 içindedir.
 - O5.15 katman sızıntısının veri kaynağı bağımlılıkları (Eylül §0c'de bilinçli taşınmış).
 - Dialer ölü kod paketi (O4.4) durumu.
 
@@ -334,5 +334,254 @@ Anahtarlar değiştirilmedi. Saha öncesinde yeni üretim anahtarları ve cihaz
 karşılıkları hazırlanıp doğrulanmalıdır. Ayrıntı `keys/README.md` içindedir.
 Git takibi güvenli yedekleme ve saha kabulü maddelerini kapatmaz.
 ARM CI/Docker ve README/CHANGELOG/kılavuz işleri kullanıcı kararıyla ertelendi.
+
+### 9.6 Heap bulgusunun değerlendirilmesi — 04.10.2026
+
+Mevcut Release ELF ve MAP dosyaları incelendi. `_sbrk`, `_sbrk_r` ve
+allocation (dinamik bellek ayırma) fonksiyonları nihai imajda bulunmuyor.
+Kaynakta `_sbrk` bulunması aktif heap kullanımını kanıtlamaz. Minimum heap
+rezervi 512 byte olarak kalır; rezervi sıfırlamak heap yasağını tek başına
+uygulamaz. Kullanıcı öneriyi kabul etti; linker ve ST/CubeMX kaynakları
+korundu. Bu madde mevcut imaj için doğrulanmış üretim engeli sayılmaz.
+Sonuç gelecekteki derlemeler için otomatik güvence veya donanım testi değildir.
+
+### 9.7 Web GSM sinyal birimi — 04.10.2026
+
+Gerçek veri yolu `gsm_csq_cb()` → `gsm_info_get_signal_quality()` →
+`system_status` → HTTP `GsmSig` → `renderBoard()` olarak doğrulandı.
+Ham CSQ değerinin dBm diye gösterilmesi düzeltildi. Backend, Modbus ve
+modem sorguları değiştirilmedi. Testler mevcut web_navigation entegrasyon
+paketine eklendi; kaynak ve yeniden üretilen gömülü HTML üzerinde geçti.
+Bu değişiklik C uygulama mantığını değiştirmez; ayrı Ceedling testi eklenmedi.
+Fiziksel cihaz testi yapılmadı.
+
+Telit LE9x0 AT Commands Reference Guide, 80407ST10116A Rev.12,
+02.07.2015, sayfa 109, +CSQ bölümü dönüşüm tablosunu verir:
+1–30 için `dBm = -113 + 2 × CSQ`; 0 için ≤ -113 dBm,
+31 için ≥ -51 dBm, 99 için bilinmiyor. Bu gösterge 2 dB adımlıdır;
+LTE RSRP ölçümü olarak adlandırılmamalıdır.
+[Telit belgesi, dağıtıcı kopyası](https://www.shoshin.co.jp/c/mt/documents/publications/manuals/telit_le910_at_commands_reference_guide_r12.pdf).
+Kullanıcının sağladığı yerel `TC_LE910R1_AT_Commands_Reference_Guide_r8.pdf`
+ile modele özgü içerik de doğrulandı: 80690ST11099A Rev.8, 29.04.2026,
+sayfa 246–250, AT+CSQ. Sayfa 246 aynı 3GPP RSSI tablosunu verir.
+Dolayısıyla 1–30 için dönüşüm LE910R1 rehberiyle de doğrulanmıştır.
+Sayfa 247 ayrıca TDSCDMA için ayrı bir kodlama listeler; 0–31 formülü
+bu ayrı kodlamaya uygulanmaz. Sayfa 249'daki LTE RSRQ tablosu cevapta
+ikinci alan olan `<sq>` içindir; mevcut parser ilk alan `<rssi>` değerini
+kullanır. Bu turda web gösterimi ham CSQ olarak kalır; dBm dönüşümü uygulanmadı.
+
+### 9.8 LE910R1 2G/4G ayrı sinyal alanları — 04.10.2026
+
+Yerel Telit Rev.8 rehberi, AT+CESQ, sayfa 277–281 ve gerçek
+`gsm_cesq_cb()` incelendi. Yazılım 2G RXLEV, 3G RSCP ve 4G RSRP/RSRQ
+alanlarını ayrı saklar. Web `GsmSig` alanı bunları kullanmaz; ortak CSQ'yu
+kullanır. `gsm_info_get_cesq_report()` vardır, fakat kaynak aramasında
+aktif çağıranı bulunmadı.
+
+Rehberdeki ara değer aralıklarının alt sınırları:
+2G RXLEV 1–62 için `raw - 111` dBm; 4G RSRP 1–96 için
+`raw - 141` dBm; 4G RSRQ 1–33 için `raw * 0.5 - 20` dB.
+Bu değerler ölçüm aralıklarıdır; kesin tek nokta değildir.
+RXLEV 0: < -110, 63: ≥ -48 dBm; RSRP 0: < -140, 97: ≥ -44 dBm;
+RSRQ 0: < -19.5, 34: ≥ -3 dB. RXLEV 99 ve LTE alanları 255 bilinmiyor
+veya ilgili hücre teknolojisinin aktif olmadığını belirtir.
+
+Mevcut CESQ rapor fonksiyonu ara değerlerde alt sınırı hesaplar; uç
+kodları da aynı doğrusal hesapla tek sayı olarak sunar ve bilinmiyor
+kodları dışındaki geçersiz aralıkları reddetmez. Dolayısıyla eski rapordaki
+CESQ dönüşümünün tamamen doğru olduğu ifadesi sınır durumları için geçerli
+değildir. Fonksiyon web'de kullanılmadığından bu, mevcut web'de ulaşılan
+ayrı bir hata olarak sunulmaz. Ayrı alanları web'e bağlamak ve sınır
+kodlarını açık göstermek henüz uygulanmamıştır.
+
+### 9.9 Web ayrı sinyal ölçümleri ve teknoloji — 04.10.2026
+
+Kullanıcı onayıyla board status HTTP yanıtına `GsmRxlev`, `GsmRscp`,
+`GsmRsrp`, `GsmRsrq`, `GsmCREG`, `GsmCGREG`, `GsmCEREG` eklendi.
+Mevcut `GsmSig` ve `GsmRAT` sözleşmeleri korundu. Yeni modem sorgusu,
+NVRAM alanı veya arka plan süreci eklenmedi; mevcut getter'lar kullanılır.
+
+Web 2G RSSI, 3G RSCP, 4G RSRP ve 4G RSRQ alanlarını ayrı gösterir.
+Ortak CSQ birimsiz kalır. Dönüşümler Telit Rev.8 AT+CESQ tablosuna göre
+web'de yapılır; ara değerlerde ölçüm aralığı, uç kodlarda < veya ≥ işareti
+kullanılır. Eksik, bilinmiyor veya geçersiz ölçüm Bilinmiyor/Unknown olur.
+Önceki kullanılmayan `gsm_info_get_cesq_report()` değiştirilmedi; web bu
+fonksiyonun uç değer yorumuna ve sinyalden teknoloji seçimine dayanmaz.
+
+Teknoloji mevcut RAT bilgisinden 2G/GSM, 3G/UMTS veya 4G/LTE olarak
+gösterilir. 4G için CEREG; 2G/3G için CREG/CGREG kayıt bilgileri kullanılır.
+Registered veya roaming durumunda Şebekeye kayıtlı, kayıt yok/arama/ret
+bilgisinde Şebekeye kayıtlı değil, bilinmeyen bilgide Bilinmiyor gösterilir.
+Bu ifade şebeke kaydını anlatır; internet veya SCADA bağlantısı garantisi
+vermez. Teknoloji mevcut ölçümlerden tahmin edilmez.
+
+Değerlendirme eşikleri projedeki mevcut CESQ yorumundan alınmıştır:
+
+| Ölçüm | Çok iyi | İyi | Orta | Zayıf | Çok zayıf |
+|---|---|---|---|---|---|
+| 2G RSSI / 3G RSCP | ≥ -60 dBm | ≥ -75 dBm | ≥ -85 dBm | ≥ -95 dBm | Daha düşük |
+| 4G RSRP | ≥ -80 dBm | ≥ -90 dBm | ≥ -100 dBm | ≥ -110 dBm | Daha düşük |
+| 4G RSRQ | ≥ -10 dB | ≥ -15 dB | ≥ -18 dB | ≥ -20 dB | Daha düşük |
+
+Tablo en yüksek karşılanan seviyeye göre değerlendirilir. Ara kodlarda
+aralığın alt sınırı kullanılır; alt uç kodu Çok zayıf olarak gösterilir.
+Bu eşikler Telit'in üretim kabul sınırları değildir; yardımcı yorumdur.
+Ekranda değerlendirmenin yol gösterici olduğu ve değerlerin son modem
+sorgusundan geldiği belirtilir. Aktif olmayan teknolojinin ölçümü bulunmayabilir.
+
+Doğrulama: kaynak ve gömülü gzip HTML üzerinde iki dil, 2G/3G/4G kayıt,
+roaming/arama/ret/bilinmiyor, dönüşüm uçları ve seviye eşikleri test edildi.
+Gerçek GSM callback'lerini kullanan Ceedling paketinde 25/25 test geçti;
+ayrı CESQ alanları, eksik yanıtta kayıt yapılmaması ve kayıt durumları
+kapsanır. Gerçek board HTTP handler'ı mevcut entegrasyon altyapısında
+çalıştırılıp JSON alanları, uzunluğu ve buffer sınırları doğrulandı.
+9/9 entegrasyon paketi ve ARM Release derlemesi geçti. Fiziksel cihaz
+üzerinde test yapılmadı; commit yapılmadı.
+
+### 9.10 Firmware sürüm endpoint'i — 04.10.2026
+
+Sabit `1.0.0` varsayılanı kaldırıldı. `fw_version` override (özel değer)
+yoksa `handle_get_fw_version()` sürümü `VERSION_MAJOR`, `VERSION_MINOR`,
+`VERSION_PATCH` üzerinden üretir. Mevcut `fw_update_set_version_info()`
+davranışı ve JSON alanları korunur; NULL parametre mevcut değeri değiştirmez.
+Bu değişiklik sürüm numarasını artırmaz; mevcut 1.0.1 doğru gösterilir.
+
+Mevcut web_auth entegrasyon harness (test düzeneği), üretim kaynağındaki
+initializer, gerçek handler ve setter'ı doğrudan kullanır. Beklenen
+varsayılan version.h'dan alınır; override ve NULL senaryoları, küçük buffer
+uzunlukları ve canary (sınır işareti) kontrolleri geçmiştir.
+Tam Ceedling çalışmasında 381/381 test geçti; sürüm endpoint'inin gerçek
+handler senaryoları mevcut web_auth entegrasyon paketindedir.
+ARM Release derlemesi geçti. Fiziksel cihaz testi ve commit yapılmadı.
+
+### 9.11 Log sıra sarması — Y9.3 kapatıldı, 04.10.2026
+
+Mevcut `log_read_last()` sıfır sıra değerini boş log göstergesi saymaz.
+Üretim kodu değiştirilmeden iki sınır senaryosu eklendi. Her senaryo gerçek
+`log_write()` ile 0–65534 arası 65.535 kayıt yazar; sıra alanı elle değiştirilmez.
+RAM tabanlı NOR modeli yalnız 1→0 programlama, sektör silme ve alan sonu
+canary kontrollerini uygular.
+
+- `next_seq = 0` iken son kayıtlar 65534, 65533, 65532 sırasıyla okunur.
+- Sonraki 0 ve 1 kayıtları yazılınca newest-first (yeniden eskiye) okuma
+  ve sayfa devamı 1, 0, 65534, 65533 sırasını korur.
+- Yeniden başlangıç taraması sarmanın hemen ardından next_seq=0,
+  iki yeni kayıt sonrasında next_seq=2 değerini bulur.
+- Kronolojik okuma 65534, 0, 1 sırasını ve payload içeriklerini korur.
+
+Testler mevcut `test/integration/libs/test_spi_flash_log.c` düzeneğine ve
+aynı düzeneği tekrar kullanan `test/libs/test_spi_flash_log_sequence_wrap.c`
+Ceedling dosyasına eklendi. Entegrasyonda 152 kontrol, Ceedling'de iki yeni
+senaryo geçti. Eski `next_seq == 0` boş-log kontrolünü yalnız geçici test
+kopyasına ekleyen mutation (hata ekleme) çalışması başarısız oldu; yeni
+testlerin eski hatayı yakaladığı doğrulandı. Loglar
+`test/build/production-audit-2026-10-03/log-sequence-*.log` içindedir.
+Fiziksel flash/güç kesintisi testi ve commit yapılmadı.
+
+### 9.12 Flash silme ve harici watchdog — O9.7, 04.10.2026
+
+Kullanıcı karttaki EWDT modelini TPS3828-33DBVR olarak bildirdi.
+TI SLVS165O Rev.O switching characteristics (anahtarlama özellikleri)
+tablosunda TPS3823/4/8 watchdog timeout minimum 0.9 s, tipik 1.6 s,
+maksimum 2.5 s olarak verilir. Bu tablonun koşulu TA=25°C'dir; tüm sıcaklık
+aralığı için aynı minimumun garanti edildiği iddia edilmez.
+Kaynak: https://www.ti.com/lit/ds/symlink/tps3828.pdf, sayfa 8 ve bölüm 7.3.4.
+
+Kart yazılımında tanımlı AT25SF321B için Renesas DS-AT25SF321B-179 Rev.I
+sayfa 55, 4 KB silme süresi tipik 55 ms, maksimum 250 ms verir.
+32 KB için maksimum 450 ms, 64 KB için 700 ms, tüm çip için 30 s'dir.
+Kaynak: https://www.renesas.com/en/document/dst/at25sf321b-datasheet?language=en.
+Bu değerler farklı silme büyüklükleri için ayrı değerlendirilmelidir.
+
+Log halkası `w25qxx_erase_sector()` üzerinden 4 KB siler. Bu fonksiyonda
+silme öncesi `bsp_kick_wdt()` zaten vardır. Dolayısıyla eski rapordaki
+silme yolunda hiç kick olmadığı iddiası mevcut kaynak için geçerli değildir.
+Bekleme döngüsünde kick yoktur; 300000 değeri zaman değil döngü sayısıdır.
+
+TI Rev.O TPS3828 WDI timer'ının falling edge (düşen kenar) ile beslendiğini
+belirtir. `bsp_kick_wdt()` GPIO toggle yapar; tek çağrı her zaman besleyen
+kenarı üretmez, ardışık iki çağrı bir düşen kenar üretir. Birbirini izleyen
+4 KB silmelerde flash'ın kendi silme sürelerinin toplamı iki silme için
+en fazla 500 ms'dir; SPI erişimi, aradaki işler ve önceki kenardan geçen
+süre buna dahil değildir. Ana süreç de GPIO'yu düzenli toggle eder.
+
+Mevcut normal 4 KB log silme yolunun watchdog resetine neden olduğu
+kanıtlanmadı; bu madde için periyodik kick veya yeni recovery katmanı
+uygulanmadı. SPI/flash arızası, blok/çip silme ve diğer uzun işlemler bu
+sonuçla kapatılmaz. Tam cihaz kabulünde WDI düşen kenarları arasındaki
+süre ve reset davranışı donanımda ölçülmelidir. Bu turda fiziksel ölçüm ve
+commit yapılmadı; yalnız değerlendirme güncellendi.
+
+Kullanıcı 04.10.2026 tarihinde bootloader tarafında ölçüm yapıldığını ve
+sonucun uygun olduğunu bildirmiştir. Ölçüm kaydı bu turda incelenmemiştir;
+bootloader sonucu uygulamadaki tüm uzun işlem yollarının ölçümü sayılmaz.
+Mevcut 4 KB log silme bulgusu için ek kod değişikliği yapılmadan ilerlenir.
+
+### 9.13 Shell komut tablosu kapasitesi — Y-Y4, 04.10.2026
+
+Eylül bulgusu 24 slot üzerinden yazılmıştır. Mevcut
+`Application/libs/shell.c:43` kapasiteyi 32 olarak tanımlar.
+`shell_register_command()` tablo doluysa kayıt öncesinde kontrol yapar,
+SHELL_LOG ile hata bildirir ve -1 döner (satır 158–175). Aynı isimle
+tekrar kayıt da -2 ile reddedilir. Tablo sınırı aşılmaz.
+
+Application kaynaklarında sabit isimli 27 kayıt noktası bulunmuştur;
+bunların tamamı etkin veya başlangıçta çağrılmış kabul edilmemelidir.
+Mevcut incelemede kapasite yüzünden bir üretim komutunun kaybolduğu
+kanıtlanmamıştır. Çağıranlar dönüş değerini çoğunlukla kontrol etmez;
+gelecekte kapasite aşılırsa yeni komut eklenmez ve hata yalnız terminal
+çıktısında görünür. Bu kalan bakım riski mevcut taşma hatası değildir.
+
+Kapasite veya shell mimarisi değiştirilmeden
+`test/libs/test_shell_command_registration.c` içine dört Ceedling testi
+eklendi. Testler gerçek `shell.c` dosyasını derler; kayıt ve silme
+fonksiyonları mock değildir. Her test öncesinde özel komut tablosu
+sıfırlanır; BSP bağımlılığı CMock ile ayrılır.
+
+- 32 kayıt sonrası 33. komut reddedilir; mevcut 32 komutun handler'ı
+  çalışmaya devam eder ve reddedilen komut çalıştırılamaz.
+- Aynı isimle tekrar kayıt -2 döner; ilk handler korunur ve slot tüketilmez.
+- Dolu tablonun ortasındaki komut silinir; kalan komutlar çalışır ve
+  boşalan kapasiteye yeni bir komut eklenir.
+- Son komut silinip aynı isimle yeniden eklenir; ikinci silme reddedilir
+  ve yeniden dolan tablo kapasitesini aşan kayıt yine reddedilir.
+
+`ceedling test:test_shell_command_registration` sonucu 4/4 geçti.
+Host GCC'nin varsayılan signed char davranışı Cortex-M33 GCC 14.3.rel1
+ile farklıdır; hedef derleyicide `__CHAR_UNSIGNED__ = 1` doğrulandı.
+Yalnız bu test için `-funsigned-char` eklendi; uyarı kontrolleri korunur.
+Contiki zamanlaması, UART/web eşzamanlılığı ve terminal hata metni bu
+testlerin kapsamında değildir. Firmware kodu ve kapasite değiştirilmedi.
+Test çıktısı `test/build/production-audit-2026-10-03/shell-command-ceedling.log`
+içindedir; commit yapılmadı.
+
+### 9.14 IEC104 desteklenmeyen kontrol komutları — Y5.11, 04.10.2026
+
+Önceki T-T1 host uyarıları mevcut Ceedling protokol testinin sıkı
+seçenekli derlemesinde tekrarlanmadı. `ceedling
+test:test_iec104_protocol_scenario` sonucu 57/57 geçti. Bu sonuç aşağıdaki
+kontrol komutlarının cevap davranışını ayrıca doğrulayan test sayılmaz.
+
+`Application/libiec104/iec104.c:19–29` içindeki `supported_asdu_types`
+listesinde C_SC_NA_1 (45, single command) ve C_DC_NA_1 (46, double command)
+vardır. Ancak C_SC_NA_1 handler'ı yalnız `C_SC_NA_1_ENABLED` ile derlenir;
+bu anahtar Debug ve Release yapılandırmalarında tanımlı değildir.
+C_DC_NA_1 için aktif switch case bulunmaz (satır 1204–1238).
+
+Doğru bağlantı sıra numarası, CA, uzunluk ve kabul edilen COT taşıyan bu
+komutlar destek kontrolünü geçip default dalına ulaşır; burada yalnız log
+vardır. ASDU komut yanıtı üretilmez. Taşıma katmanı S-frame onayı komut
+sonucu değildir. Bu yol kaynak üzerinden doğrulanmıştır; SCADA'nın
+sonrasında bağlantıyı kapatacağı kesin bir sonuç olarak ileri sürülmez.
+Bu nedenle madde yalnız belge temizliği değildir.
+
+En küçük öneri C_SC_NA_1 liste girişini handler ile aynı derleme anahtarına
+bağlamak ve handler'ı olmayan C_DC_NA_1 girişini aktif destek listesinden
+çıkarmaktır. Böylece mevcut desteklenmeyen tip yanıtı (UkTypeId, P/N=1)
+kullanılır. Komut handler'ları, tip tanımları ve kapalı kod korunur;
+SBO veya fiziksel çıkış kontrolü etkinleştirilmez. Davranış değişikliği
+kullanıcı kararı bekler. Uygulanırsa iki komutun gerçek RX/TX yolundan
+olumsuz yanıt aldığını doğrulayan Ceedling testleri eklenmelidir.
+Bu turda firmware kodu değiştirilmedi.
 
 /*** end of report ***/
