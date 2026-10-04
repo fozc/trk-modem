@@ -99,6 +99,9 @@
         - -Wno-conversion
         - -Wno-sign-conversion
         - -Wno-float-conversion
+      # Match Cortex-M33 GCC plain-char signedness for production shell.
+      test_shell_command_registration:
+        - -funsigned-char
 
     :link:
       test_gsm_response_scenario:

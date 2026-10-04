@@ -1,4 +1,10 @@
 /*
+ * test_spi_flash_log.c
+ *
+ *  Created on: Oct 4, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
  * Host tests for the spi_flash_log append-only ring library.
  *
  * Flash model: a RAM array with real NOR semantics - program can only
@@ -790,8 +796,99 @@ static void test_repro_erase_fail_on_transition(void)
           "R3: one full sector plus the retried record readable");
 }
 
+/* Exercise a complete sequence cycle through real writes, not ctx edits. */
+static bool prepare_sequence_wrap(void)
+{
+    sim_reset();
+    ctx_setup(2U);
+
+    for (uint32_t seq = 0U; seq <= 65534U; seq++)
+    {
+        if (LOG_OK != write_one(seq))
+        {
+            check(false, "SEQ: every write through 65534 succeeds");
+            return false;
+        }
+    }
+    check(0U == log_get_next_seq(&ctx), "SEQ: 65534 advances next_seq to 0");
+    check(!sim_out_of_area && canary_intact(),
+          "SEQ: full sequence cycle preserves flash bounds");
+    return true;
+}
+
+static void check_wrap_last_page(uint32_t newest, uint32_t second,
+                                 uint32_t third)
+{
+    log_page_ctx_t page = {0};
+
+    rec_n = 0U;
+    check(LOG_OK == log_read_last(&ctx, 3U, collect_visit, NULL, &page),
+          "SEQ: read_last succeeds around sequence wrap");
+    check((3U == rec_n) && (3U == page.page_count),
+          "SEQ: read_last returns three records, not empty");
+    check((newest == recs[0].seq) && (second == recs[1].seq) &&
+          (third == recs[2].seq), "SEQ: newest-first order crosses wrap");
+    check(payload_matches(recs[0].payload, newest) &&
+          payload_matches(recs[1].payload, second) &&
+          payload_matches(recs[2].payload, third),
+          "SEQ: payloads remain intact around wrap");
+    check(page.has_more, "SEQ: older records remain available");
+}
+
+static void test_sequence_wrap_read_last(void)
+{
+    if (!prepare_sequence_wrap())
+    {
+        return;
+    }
+    check_wrap_last_page(65534U, 65533U, 65532U);
+    check(LOG_OK == write_one(0U), "SEQ: sequence 0 write accepted");
+    check(LOG_OK == write_one(1U), "SEQ: sequence 1 write accepted");
+    check_wrap_last_page(1U, 0U, 65534U);
+
+    log_page_ctx_t page = {0};
+    rec_n = 0U;
+    check(LOG_OK == log_read_last(&ctx, 2U, collect_visit, NULL, &page),
+          "SEQ: first page succeeds after wrap");
+    check((2U == rec_n) && (1U == recs[0].seq) && (0U == recs[1].seq),
+          "SEQ: first page contains 1 and 0");
+    rec_n = 0U;
+    check(LOG_OK == log_read_last(&ctx, 2U, collect_visit, NULL, &page),
+          "SEQ: continuation page succeeds after wrap");
+    check((2U == rec_n) && (65534U == recs[0].seq) &&
+          (65533U == recs[1].seq),
+          "SEQ: continuation page crosses 0 to 65534");
+}
+
+static void test_sequence_wrap_boot_scan(void)
+{
+    if (!prepare_sequence_wrap())
+    {
+        return;
+    }
+    reboot_ctx();
+    check(0U == log_get_next_seq(&ctx),
+          "SEQ: reboot at wrap restores next_seq 0");
+    check_wrap_last_page(65534U, 65533U, 65532U);
+    check(LOG_OK == write_one(0U), "SEQ: post-reboot sequence 0 accepted");
+    check(LOG_OK == write_one(1U), "SEQ: post-reboot sequence 1 accepted");
+    reboot_ctx();
+    check(2U == log_get_next_seq(&ctx),
+          "SEQ: reboot after wrap restores next_seq 2");
+    check_wrap_last_page(1U, 0U, 65534U);
+    check(read_all_collect() >= 3U, "SEQ: chronological scan is not empty");
+    check((65534U == recs[rec_n - 3U].seq) &&
+          (0U == recs[rec_n - 2U].seq) &&
+          (1U == recs[rec_n - 1U].seq),
+          "SEQ: chronological scan ends with 65534, 0, 1");
+    check(!sim_out_of_area && canary_intact(),
+          "SEQ: reboot and wrap preserve flash bounds");
+}
+
 int main(void)
 {
+    test_sequence_wrap_read_last();
+    test_sequence_wrap_boot_scan();
     test_init_virgin();
     test_write_read_all();
     test_read_last_paging();
@@ -814,3 +911,5 @@ int main(void)
            passed, failed);
     return (failed == 0) ? 0 : 1;
 }
+
+/*** end of file ***/
