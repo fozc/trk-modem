@@ -92,10 +92,12 @@ private:
 - Prefer `const` and `constexpr` everywhere possible.
 - Mark classes `final` unless designed for inheritance.
 - Use `= delete` to prevent unwanted implicit operations.
-- Member variables use `m_` prefix: `m_packet_count`.
+- New member variables use descriptive `snake_case` under the repo
+  naming policy. Do not require storage/type prefixes; preserve existing
+  class/API names without unrelated bulk renaming.
 - Use `extern "C"` blocks for C-compatible interfaces (ISR handlers, HAL callbacks).
 - Keep translation unit sizes small — one class per file.
-- **ISR Integration:** For hardware interrupt integration with class methods, expose C-compatible wrapper functions via `extern "C"` blocks. Use static or singleton pointers to route the ISR call to the correct class instance method. Ensure shared primitive types use `std::atomic` instead of just `volatile` for correct thread-safe/ISR-safe read-modify-write semantics.
+- **ISR Integration:** For hardware interrupt integration with class methods, expose C-compatible wrapper functions via `extern "C"` blocks. Use static or singleton pointers to route the ISR call to the correct class instance method. First apply the access-path and protection checks in `cortex-m-atomic-isr.instructions.md` section 2.1. Use `std::atomic` with explicit memory orders for remaining atomic semantics; do not add redundant atomics to proven IRQ exclusion. `volatile` alone is not synchronization.
 
 ## CRTP — Zero-Cost Polymorphism
 
@@ -139,5 +141,4 @@ class RingBuffer final {
     /* ... */
 };
 ```
-
 

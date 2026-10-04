@@ -1,0 +1,43 @@
+/*
+ * alignment.cpp.txt
+ *
+ *  Created on: Sep 14, 2026
+ *      Author: Codex
+ *
+ * Host-only aligned-type check; 32 is not a target DMA requirement.
+ */
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+constexpr std::size_t example_alignment = 32U;
+
+struct alignas(example_alignment) aligned_buffer_t
+{
+    std::array<std::uint8_t, 256U> data{};
+};
+
+static_assert(alignof(aligned_buffer_t) >= example_alignment,
+              "The type must carry the alignment requirement");
+static_assert((sizeof(aligned_buffer_t) % example_alignment) == 0U,
+              "Array elements must preserve alignment");
+
+static aligned_buffer_t buffers[2U]{};
+
+int main()
+{
+    for (const auto& buffer : buffers)
+    {
+        const auto address =
+            reinterpret_cast<std::uintptr_t>(&buffer);
+        /* This conversion only checks the host address, not target DMA. */
+        if (0U != (address % example_alignment))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*** end of file ***/

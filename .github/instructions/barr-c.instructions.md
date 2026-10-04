@@ -9,6 +9,12 @@ applyTo: "**/*.{c,h}"
 > Coding Standard (2018 edition). Every rule is tagged with its original section number
 > for traceability.
 
+Troika repo overrides are defined in `AGENTS.md`: descriptive snake_case
+without `g_/s_/p_` prefixes, the required Fatih Ozcan file author, and
+preservation of existing `#if 0` blocks. These override conflicting
+generic naming/cleanup examples below. ISR protection selection follows
+`cortex-m-atomic-isr.instructions.md` section 2.1.
+
 ---
 
 ## 1  General Rules
@@ -745,10 +751,13 @@ All code shall compile **warning-free** with the following minimum set of flags:
 ### 9.4  `volatile` vs. Atomics
 
 - `volatile` does **not** provide atomicity.
-- For simple read/write flags shared with ISRs, `volatile` is sufficient.
-- For **read-modify-write** operations across concurrency boundaries, use
-  `<stdatomic.h>` (e.g., `atomic_bool`, `atomic_uint32_t`, `atomic_fetch_add()`)
-  or hardware-specific exclusive access instructions (`LDREX`/`STREX`).
+- First prove access paths, ownership and existing protection under
+  `cortex-m-atomic-isr.instructions.md` section 2.1. Proven IRQ exclusion
+  may remove the need for atomics; `volatile` is only access visibility.
+- For accesses still requiring atomic semantics, use C11 explicit
+  operations and suitable memory orders. Exact-width atomic typedefs
+  such as `atomic_uint32_t` are optional; use `_Atomic uint32_t` or the
+  mandatory least/fast typedefs. Verify ISR lock-free behavior on target.
 - Never rely on `volatile` alone for synchronization.
 
 ### 9.5  VLA Prohibition
@@ -899,8 +908,8 @@ No deviations in spacing or field names.
  * module_name.c          <- exact filename
  *
  *  Created on: MMM DD, YYYY
- *      Author: Name Surname
- *              email@example.com
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Brief description of what this module does.
  */
@@ -921,12 +930,12 @@ No deviations in spacing or field names.
 | Types (struct/enum/typedef) | `snake_case_t` | `scp_packet_t` |
 | Enum values | `MODULE_UPPER_SNAKE` | `SCP_CMD_GET` |
 | Local variables | `snake_case` | `packet_length` |
-| Global variables | `g_` prefix | `g_scp_rx_buffer` |
-| Static file-scope variables | `s_` prefix | `s_packet_count` |
-| Pointers | `p_` prefix | `p_buffer` |
-| Pointer-to-pointer | `pp_` prefix | `pp_vector_table` |
-| Booleans | `b_` prefix (phrased as question) | `b_is_valid` |
-| Handles | `h_` prefix | `h_input_file` |
+| Global variables | Descriptive `snake_case` | `scp_rx_buffer` |
+| Static file-scope variables | Descriptive `snake_case` | `packet_count` |
+| Pointers | Descriptive `snake_case` | `buffer` |
+| Pointer-to-pointer | Descriptive `snake_case` | `vector_table` |
+| Booleans | Conventional state name | `is_valid` |
+| Handles | Descriptive `snake_case` | `input_file` |
 
 ---
 

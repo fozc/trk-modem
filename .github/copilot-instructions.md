@@ -131,9 +131,9 @@ When a memory pool is needed, implement it with:
 | Enum values | `MODULE_UPPER_SNAKE` | `SCP_CMD_GET` |
 | Macros / Constants | `UPPER_SNAKE_CASE` | `SCP_MAX_PAYLOAD_SIZE` |
 | Local variables | `snake_case` | `packet_length` |
-| Global variables | **Avoid**; if needed: `g_module_name` | `g_scp_rx_buffer` |
-| Static file-scope | `s_descriptive_name` | `s_packet_count` |
-| Pointers | `p_` prefix | `p_buffer` |
+| Global variables | **Avoid**; descriptive `snake_case` if needed | `scp_rx_buffer` |
+| Static file-scope | Descriptive `snake_case` | `packet_count` |
+| Pointers | Descriptive `snake_case`, no `p_` prefix | `buffer` |
 | Boolean | `is_`, `has_`, `should_` prefix | `is_valid` |
 
 ---
@@ -207,8 +207,8 @@ typedef enum {
 
 ## Interrupt & Concurrency Safety
 
-- Shared variables between ISR and main/task context MUST follow `.github/instructions/cortex-m-atomic-isr.instructions.md`: C11 `<stdatomic.h>` with explicit operations and memory orders (`atomic_fetch_or` to set event flags, `atomic_exchange` for atomic read-and-clear, release/acquire for publication, `relaxed` for independent counters). `volatile` alone is **not** a synchronization primitive — use it only for MMIO and simple single-writer flags. Multi-field transactions use short critical sections.
-- Protect critical sections with interrupt disable/enable pairs or CMSIS `__disable_irq()` / `__enable_irq()`.
+- Shared variables between ISR and main/task context MUST follow `.github/instructions/cortex-m-atomic-isr.instructions.md` section 2.1: prove access paths, ownership, protocol role and existing protection before choosing the simplest adequate synchronization. Proven targeted IRQ exclusion may remove the need for atomic operations; `volatile` alone is **not** protection. Do not combine atomics and IRQ masking without distinct needs. For remaining atomic semantics, use C11 explicit operations and suitable memory orders.
+- Critical sections MUST preserve and restore the previous IRQ/mask state on every exit. Prefer only the relevant IRQ when sufficient; use global masking only when demonstrated access paths require it. Verify the exact CMSIS/compiler barriers and pending-data behavior. Never enable interrupts unconditionally.
 - Keep ISRs **short**: set a flag, write to a ring buffer, or post to a queue — then return.
 - Never call blocking functions from ISRs.
 - Use `__DMB()`, `__DSB()`, `__ISB()` barriers when required by the memory model.

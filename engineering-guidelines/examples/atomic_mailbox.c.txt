@@ -1,0 +1,120 @@
+/*
+ * atomic_mailbox.c.txt
+ *
+ *  Created on: Sep 14, 2026
+ *      Author: Codex
+ *
+ * Host-only SPSC mailbox and event-coalescing checks.
+ */
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdatomic.h>
+
+typedef struct
+{
+    uint32_t value;
+    _Atomic(bool) ready;
+} mailbox_t;
+
+static mailbox_t mailbox = { .value = 0U, .ready = false };
+static _Atomic(uint32_t) event_flags = 0U;
+
+/* GCC builtin is a documented extension, isolated from strict ISO checks. */
+__extension__ _Static_assert(__atomic_always_lock_free(sizeof(bool), 0),
+               "bool atomic must be lock-free");
+__extension__ _Static_assert(__atomic_always_lock_free(sizeof(uint32_t), 0),
+               "uint32_t atomic must be lock-free");
+
+/* One producer only; failure leaves the pending value unchanged. */
+static bool mailbox_try_send(uint32_t value)
+{
+    if (atomic_load_explicit(&mailbox.ready, memory_order_acquire))
+    {
+        return false;
+    }
+
+    mailbox.value = value;
+    atomic_store_explicit(&mailbox.ready, true, memory_order_release);
+    return true;
+}
+
+/* One consumer only; ownership returns after the payload is copied. */
+static bool mailbox_try_receive(uint32_t *value)
+{
+    if (NULL == value)
+    {
+        return false;
+    }
+
+    if (!atomic_load_explicit(&mailbox.ready, memory_order_acquire))
+    {
+        return false;
+    }
+
+    *value = mailbox.value;
+    atomic_store_explicit(&mailbox.ready, false, memory_order_release);
+    return true;
+}
+
+/* Sequential contract checks, not a concurrent stress or ISR test. */
+int main(void)
+{
+    uint32_t received = 0U;
+    const uint32_t first_event = UINT32_C(1);
+    const uint32_t second_event = UINT32_C(2);
+
+    if (mailbox_try_receive(&received))
+    {
+        return 1;
+    }
+
+    for (uint32_t value = 1U; value <= 1000U; ++value)
+    {
+        if (!mailbox_try_send(value))
+        {
+            return 2;
+        }
+        if (mailbox_try_send(0U))
+        {
+            return 3;
+        }
+        if (mailbox_try_receive(NULL))
+        {
+            return 4;
+        }
+        if (!mailbox_try_receive(&received))
+        {
+            return 5;
+        }
+        if (value != received)
+        {
+            return 6;
+        }
+        if (mailbox_try_receive(&received))
+        {
+            return 7;
+        }
+    }
+
+    (void)atomic_fetch_or_explicit(&event_flags, first_event,
+                                  memory_order_relaxed);
+    (void)atomic_fetch_or_explicit(&event_flags, first_event,
+                                  memory_order_relaxed);
+    (void)atomic_fetch_or_explicit(&event_flags, second_event,
+                                  memory_order_relaxed);
+    if ((first_event | second_event) !=
+        atomic_exchange_explicit(&event_flags, 0U, memory_order_relaxed))
+    {
+        return 8;
+    }
+    if (0U != atomic_exchange_explicit(&event_flags, 0U,
+                                      memory_order_relaxed))
+    {
+        return 9;
+    }
+    return 0;
+}
+
+/*** end of file ***/
