@@ -588,10 +588,7 @@ static bool validate_baud_rate(uint32_t baud) {
 
 /* Validate Modbus device ID (1-247) */
 static bool validate_modbus_device_id(uint8_t device_addr) {
-    if (device_addr == 0) {
-        CSLOG_WARN( "[VALIDATION] WARNING: Modbus device ID 0 is broadcasting address\r\n");
-    }
-    if (device_addr > 247) {
+    if ((0U == device_addr) || (247U < device_addr)) {
         CSLOG_ERR( "[VALIDATION] ERROR: Modbus device ID %u exceeds valid range (1-247)\r\n", device_addr);
         return false;
     }
@@ -2498,7 +2495,8 @@ int set_modbus_config(const jmodbus_configs_t *config)
     	return -1;
     }
 
-    if (!validate_modbus_addresses(config))
+    if (!validate_modbus_addresses(config) ||
+        !validate_modbus_device_id(config->device_addr))
     {
         return -1;
     }
@@ -2570,5 +2568,4 @@ int set_modbus_config(const jmodbus_configs_t *config)
 
 	return -1;
 }
-
 

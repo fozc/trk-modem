@@ -14,6 +14,7 @@
 #include "modbus_gsm_stats.h"
 #include "breaker.h"
 #include "bsp.h"
+#include "reboot.h"
 #include "rtc.h"
 #include "nvram.h"
 #include "uart.h"
@@ -517,9 +518,8 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
     }
 
     CSLOG("  -> Modem reset requested via Modbus\r\n");
-    bsp_system_reset();
-
-    /* bsp_system_reset() does not return; kept for a well-formed signature. */
+    /* Allow the FC06 response to be sent before the scheduled reset. */
+    reboot_system_delayed(1000U);
     return MODBUS_REG_OK;
 }
 

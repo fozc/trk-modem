@@ -147,6 +147,43 @@ void test_cobs_uses_exact_capacity_for_long_nonzero_block(void)
     TEST_ASSERT_EQUAL_HEX8(0xFEU, encoded[0]);
 }
 
+void test_cobs_full_nonzero_run_then_zero_preserves_output_guards(void)
+{
+    uint8_t input[255U];
+    uint8_t guarded[257U];
+    size_t encoded_len = 0U;
+    memset(input, 0xA5, sizeof(input));
+    input[254U] = 0U;
+    memset(guarded, 0x5A, sizeof(guarded));
+
+    TEST_ASSERT_FALSE(cobs_encode(input, sizeof(input), &guarded[1],
+                                  255U, &encoded_len));
+    TEST_ASSERT_EQUAL_HEX8(0x5AU, guarded[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x5AU, guarded[256U]);
+}
+
+void test_cobs_full_nonzero_run_then_zero_round_trips_at_exact_capacity(void)
+{
+    uint8_t input[255U];
+    uint8_t guarded[259U];
+    uint8_t decoded[255U];
+    size_t encoded_len = 0U;
+    size_t decoded_len = 0U;
+    memset(input, 0xA5, sizeof(input));
+    input[254U] = 0U;
+    memset(guarded, 0x5A, sizeof(guarded));
+
+    TEST_ASSERT_TRUE(cobs_encode(input, sizeof(input), &guarded[1],
+                                 257U, &encoded_len));
+    TEST_ASSERT_EQUAL_size_t(257U, encoded_len);
+    TEST_ASSERT_EQUAL_HEX8(0x5AU, guarded[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x5AU, guarded[258U]);
+    TEST_ASSERT_TRUE(cobs_decode(&guarded[1], encoded_len, decoded,
+                                 sizeof(decoded), &decoded_len));
+    TEST_ASSERT_EQUAL_size_t(sizeof(input), decoded_len);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(input, decoded, sizeof(input));
+}
+
 void test_cobs_rejects_null_arguments(void)
 {
     static const uint8_t input[] = {0x11U};

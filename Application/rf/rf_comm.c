@@ -303,6 +303,18 @@ void scp_on_response(const scp_packet_t *pkt)
     }
     else if (pkt->type == SCP_TYPE_ERROR)
     {
+        if ((0U < pkt->data_len) &&
+            (RF_SCP_ERR_NOT_AVAILABLE == pkt->data[0]) &&
+            (0U < cmd_ctx.retries_left))
+        {
+            cmd_ctx.retries_left--;
+            (void)scp_send(&scp_ctx, &cmd_ctx.last_req);
+            cmd_ctx.deadline_ms = HAL_GetTick() + cmd_ctx.timeout_ms;
+            CSLOG_WARN("[RF] NOT_AVAILABLE retry cmd=0x%02X seq=%u "
+                       "(kalan=%u)\r\n", cmd_ctx.last_req.cmd,
+                       cmd_ctx.last_req.seq, cmd_ctx.retries_left);
+            return;
+        }
         result = SCP_CMD_ERR;
     }
     else
@@ -371,17 +383,10 @@ static void reply_ping(const scp_packet_t *pkt)
 {
     scp_packet_t ack;
 
-    if (RF_SCP_ADDR_BROADCAST == pkt->dst)
+    if (!rf_scp_build_ping_reply(pkt, &ack))
     {
         return;
     }
-
-    ack.dst      = pkt->src;
-    ack.src      = RF_SCP_ADDR_RTU;
-    ack.type     = SCP_TYPE_ACK;
-    ack.cmd      = pkt->cmd;
-    ack.seq      = pkt->seq;
-    ack.data_len = 0U;
 
     (void)scp_send(&scp_ctx, &ack);
 }

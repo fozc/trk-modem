@@ -24,7 +24,8 @@ static uint16_t BMS_CalculateCRC16(const uint8_t *p_data, uint16_t len)
     }
 
     for (uint16_t i = 0U; i < len; i++) {
-        crc ^= (uint16_t)p_data[i];
+        /* XOR of a 16-bit CRC and one byte remains within uint16_t. */
+        crc = (uint16_t)(crc ^ p_data[i]);
         for (uint8_t bit = 0U; bit < 8U; bit++) {
             if ((crc & 0x0001U) != 0U) {
                 crc >>= 1U;
@@ -71,31 +72,35 @@ bms_status_t BMS_ParseFullMapResponse(bms_data_t *p_bms, const uint8_t *p_frame,
         return BMS_ERROR_NULL_PTR;
     }
 
-    /* Support frames with or without Slave Address Header (51 03 FE) */
-    uint16_t data_start_offset = 0U;
-
-    if ((length >= BMS_FULL_MAP_FRAME_LEN) && (p_frame[0] == BMS_SLAVE_RESP_ADDR) && (p_frame[1] == 0x03U))
+    /* The reader supplies the complete UART response, including CRC. */
+    if (BMS_FULL_MAP_FRAME_LEN != length)
     {
-        /* Full Frame with Header: Verify CRC */
-        uint16_t calc_crc = BMS_CalculateCRC16(p_frame, (uint16_t)(length - 2U));
-        uint16_t recv_crc = (uint16_t)p_frame[length - 2U] | ((uint16_t)p_frame[length - 1U] << 8U);
-
-        if (calc_crc != recv_crc) {
-            return BMS_ERROR_CRC_MISMATCH;
-        }
-        data_start_offset = 3U; /* Header offset: ADDR (1) + CMD (1) + LEN (1) */
+        return BMS_ERROR_INVALID_LEN;
     }
-    else if (length >= BMS_FULL_MAP_PAYLOAD_LEN)
+    if (BMS_SLAVE_RESP_ADDR != p_frame[0])
     {
-        /* Raw payload stripped header case */
-        data_start_offset = 0U;
+        return BMS_ERROR_INVALID_ADDR;
     }
-    else
+    if (0x03U != p_frame[1])
+    {
+        return BMS_ERROR_INVALID_CMD;
+    }
+    if (BMS_FULL_MAP_PAYLOAD_LEN != p_frame[2])
     {
         return BMS_ERROR_INVALID_LEN;
     }
 
-    const uint8_t *p_regs = &p_frame[data_start_offset];
+    const uint16_t calc_crc =
+        BMS_CalculateCRC16(p_frame, (uint16_t)(length - 2U));
+    /* Two CRC bytes combined below cannot exceed UINT16_MAX. */
+    const uint16_t recv_crc = (uint16_t)((uint16_t)p_frame[length - 2U] |
+                              ((uint16_t)p_frame[length - 1U] << 8U));
+    if (calc_crc != recv_crc)
+    {
+        return BMS_ERROR_CRC_MISMATCH;
+    }
+
+    const uint8_t *p_regs = &p_frame[3];
 
     /* --- 1. Cell Voltages (0x0000 ~ 0x002F) --- */
     for (uint8_t i = 0U; i < BMS_MAX_CELL_COUNT; i++) {
@@ -226,7 +231,8 @@ bms_status_t BMS_ParseSOHResponse(bms_data_t *p_bms, const uint8_t *p_frame, uin
 
     /* CRC Check */
     uint16_t calc_crc = BMS_CalculateCRC16(p_frame, (uint16_t)(length - 2U));
-    uint16_t recv_crc = (uint16_t)p_frame[length - 2U] | ((uint16_t)p_frame[length - 1U] << 8U);
+    uint16_t recv_crc = (uint16_t)((uint16_t)p_frame[length - 2U] |
+                       ((uint16_t)p_frame[length - 1U] << 8U));
 
     if (calc_crc != recv_crc) {
         return BMS_ERROR_CRC_MISMATCH;
@@ -281,4 +287,3 @@ int16_t BMS_GetTemperature(const bms_data_t *p_bms, uint8_t sensor_index) {
 bool BMS_IsDataValid(const bms_data_t *p_bms) {
     return (p_bms != NULL) ? p_bms->is_data_valid : false;
 }
-

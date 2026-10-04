@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.7 |
-| Tarih | 2026-10-03 |
+| Dokuman surumu | 1.8 |
+| Tarih | 2026-10-04 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -39,6 +39,10 @@ eslesme: **L1 = R, L2 = S, L3 = T**.
 | Parite | None | Sabit |
 | Stop biti | 1 | Sabit |
 | Slave adresi (Unit ID) | 23 | Yapilandirilabilir (1..247) |
+
+Cihaz adresi 1..247 arasında olmalıdır. 0, broadcast (yayın) hedefidir;
+cihazın kendi adresi olarak kaydedilmemelidir. Web arayüzü ve sunucu bu
+aralık dışındaki ayarları reddeder.
 
 Hat seviyesi (frame) sonu, Modbus standardina uygun olarak **3.5 karakter
 sessizlik (T3.5)** ile belirlenir.
@@ -145,14 +149,16 @@ verir.
 
 > **Aktif olmayan fiderler:** Cihaz 7 fider destekler (v1.4'te kesinlesti)
 > ancak sahada hepsi aktif olmayabilir. Aktif olmayan bir fiderin register
-> araligi icin cihazin davranisi: tum register'lar 0 doner (boylece master
-> sabit pencereyle hatasiz okur ve "veri yok" durumunu degerden anlar).
+> aralığında tüm register değerleri 0 döner; FC03 normal yanıt verir.
+> Tek başına 0 değeri, gerçek ölçümün sıfır olduğunu veya fiderin aktif
+> olmadığını ayırt ettirmez; fiderin kullanım ayarı ayrıca kontrol edilmelidir.
 > 40700 ve uzeri (8. fider) **desteklenmez** - master bu araligi okursa
 > exception 02 (ILLEGAL DATA ADDRESS) alir.
 
 > **Offset 27..99 araligi:** Her fider blogunda canli veriden sonra gelen bu
 > aralik ileride ariza kayit (fault-log) bloklari icin **rezerve** edilmistir;
-> bu surumde okunmasi tavsiye edilmez.
+> Mevcut sürümde bu adresler de 0 döner ve FC03 normal yanıt verir.
+> Bu değerler ölçüm olarak kullanılmamalıdır.
 
 ### 5.2 Blok Icerigi (taban adresinden offset)
 
@@ -802,3 +808,5 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 | 1.6 | 2026-09-25 | Isimlendirme IEC104 tarafi ile uyumlu hale getirildi (hat/Line -> fider, R/S/T -> L1/L2/L3); 5.3'te tum fiderlerin tum alt adresleri kayit bazinda tek tek listelendi; BMS dizi alanlari (cell_voltage_mv, temperatures_c, balance_position, fault_codes) tek tek acildi; ibus_ma UINT16 -> INT16 duzeltildi; batt_temp_x10 sentinel degeri -9990 olarak duzeltildi; bolum 1'deki eski "8 hat" ifadesi 7 fider olarak duzeltildi; PowerBoard dokuman referansi guncellendi (I2C_SLAVE_ENTEGRASYON_16K.md -> PowerBoard_I2C_Protocol.md) |
 
 | 1.7 | 2026-10-03 | 49009 reset_reason ham CSR yerine mevcut reset_source_flag_t bitmask anlamına geçirildi; adresler ve register genişlikleri korundu. |
+
+| 1.8 | 2026-10-04 | Cihaz adresi 0 sunucuda reddedildi; pasif fider ve ayrılmış offset 27..99 için sıfır yanıtının anlamı açıklandı. |
