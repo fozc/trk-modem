@@ -59,6 +59,83 @@ async function checkPage(html, label) {
     }
     for (const language of ['tr', 'en']) {
         run(`LNG = '${language}';`);
+        for (let csq = 0; csq <= 31; csq++) {
+            const board = run(`renderBoard({GsmSig: ${csq}})`);
+            assert.ok(board.includes(run("t('fSignal')")));
+            assert.ok(board.includes(`class="v">${csq}</span>`));
+            assert.ok(!board.includes('dBm'));
+        }
+        for (const csq of ['99', '32', '-1', '1.5', 'null',
+                           'undefined', 'NaN', '"13"']) {
+            const board = run(`renderBoard({GsmSig: ${csq}})`);
+            assert.ok(board.includes('class="v">' +
+                      run("t('signalUnknown')") + '</span>'));
+            assert.ok(!board.includes('dBm'));
+        }
+        assert.equal(run("t('signalUnknown')"),
+                     language === 'tr' ? 'Bilinmiyor' : 'Unknown');
+        for (const [kind, raw, expected, rating] of [
+            ['rxlev', 0, '< -110 dBm', 'signalVeryWeak'],
+            ['rxlev', 1, '-110 … < -109 dBm', 'signalVeryWeak'],
+            ['rxlev', 16, '-95 … < -94 dBm', 'signalWeak'],
+            ['rxlev', 26, '-85 … < -84 dBm', 'signalMid'],
+            ['rxlev', 36, '-75 … < -74 dBm', 'signalStrong'],
+            ['rxlev', 51, '-60 … < -59 dBm', 'signalExcellent'],
+            ['rxlev', 63, '≥ -48 dBm', 'signalExcellent'],
+            ['rscp', 0, '< -120 dBm', 'signalVeryWeak'],
+            ['rscp', 96, '≥ -25 dBm', 'signalExcellent'],
+            ['rsrp', 0, '< -140 dBm', 'signalVeryWeak'],
+            ['rsrp', 1, '-140 … < -139 dBm', 'signalVeryWeak'],
+            ['rsrp', 31, '-110 … < -109 dBm', 'signalWeak'],
+            ['rsrp', 41, '-100 … < -99 dBm', 'signalMid'],
+            ['rsrp', 51, '-90 … < -89 dBm', 'signalStrong'],
+            ['rsrp', 61, '-80 … < -79 dBm', 'signalExcellent'],
+            ['rsrp', 97, '≥ -44 dBm', 'signalExcellent'],
+            ['rsrq', 0, '< -19.5 dB', 'signalVeryWeak'],
+            ['rsrq', 1, '-19.5 … < -19 dB', 'signalWeak'],
+            ['rsrq', 4, '-18 … < -17.5 dB', 'signalMid'],
+            ['rsrq', 10, '-15 … < -14.5 dB', 'signalStrong'],
+            ['rsrq', 20, '-10 … < -9.5 dB', 'signalExcellent'],
+            ['rsrq', 34, '≥ -3 dB', 'signalExcellent']
+        ]) {
+            assert.equal(run(`formatSignal(${raw}, '${kind}')`),
+                         expected + ' — ' + run(`t('${rating}')`));
+        }
+        for (const [kind, max] of [['rxlev', 63], ['rscp', 96],
+                                   ['rsrp', 97], ['rsrq', 34]]) {
+            for (const raw of ['99', '255', '-1', 'null', 'undefined',
+                               'NaN', '1.5', String(max + 1)]) {
+                assert.equal(run(`formatSignal(${raw}, '${kind}')`),
+                             run("t('signalUnknown')"));
+            }
+        }
+        for (const rat of [2, 3, 4]) {
+            const key = rat === 4 ? 'GsmCEREG' : 'GsmCGREG';
+            for (const reg of [1, 5]) {
+                const board = run(`renderBoard({GsmRAT:${rat},${key}:${reg},
+                    GsmRxlev:51,GsmRsrp:41,GsmRsrq:20})`);
+                assert.ok(board.includes(`${rat}G /`));
+                assert.ok(board.includes(run("t('networkRegistered')")));
+                assert.ok(board.includes('2G RSSI'));
+                assert.ok(board.includes('4G RSRP'));
+                assert.ok(board.includes('4G RSRQ'));
+                assert.ok(board.includes('-60 … &lt; -59 dBm'));
+                assert.ok(board.includes('-100 … &lt; -99 dBm'));
+            }
+        }
+        for (const reg of [0, 2, 3]) {
+            assert.ok(run(`formatNetwork({GsmRAT:4,GsmCEREG:${reg},
+                           GsmCREG:1,GsmCGREG:5})`)
+                      .endsWith(run("t('networkNotRegistered')")));
+        }
+        for (const reg of ['4', 'undefined', '99']) {
+            assert.ok(run(`formatNetwork({GsmRAT:4,GsmCEREG:${reg}})`)
+                      .endsWith(run("t('signalUnknown')")));
+        }
+        assert.equal(run('formatNetwork({GsmRAT:0,GsmCEREG:1})'),
+                     run("t('signalUnknown')"));
+
+
         for (const page of ['iec104', 'modbus', 'rf', 'board', 'device']) {
             run(`pageCache['${page}'] = {}; switchPageNow('${page}');`);
             assert.ok(body().length > 0, page + ' should render loaded data');

@@ -36,6 +36,7 @@
 #include "rf_discovery.h"
 #include "rf_json.h"
 #include "gsm_engine.h"
+#include "gsm_info.h"
 #include "elog.h"
 #include "fault_log.h"
 #include "cp56time2a.h"
@@ -647,6 +648,20 @@ void handle_get_board_status_json(void)
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Capacity\":%u,", status->battery_capacity);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"GsmSig\":%d,", status->gsm_signal);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"GsmRAT\":%u,", status->gsm_rat);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                    "\"GsmRxlev\":%u,", (unsigned int)gsm_info_get_signal_quality_2G());
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                    "\"GsmRscp\":%u,", (unsigned int)gsm_info_get_signal_quality_3G());
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                    "\"GsmRsrp\":%u,", (unsigned int)gsm_info_get_signal_quality_4G());
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                    "\"GsmRsrq\":%u,", (unsigned int)gsm_info_get_4G_rsrq());
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                    "\"GsmCREG\":%u,", (unsigned int)gsm_info_get_creg());
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                    "\"GsmCGREG\":%u,", (unsigned int)gsm_info_get_cgreg());
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                    "\"GsmCEREG\":%u,", (unsigned int)gsm_info_get_cereg());
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BataryaAkimi\":%d,", status->battery_current);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BatteryTemp\":%d,", status->battery_temp_x10);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BatterySOC\":%d,", status->battery_soc_x10);
@@ -1742,7 +1757,7 @@ static struct {
 #define FW_UPDATE_DEFAULT_CHUNK_SIZE  1024   /* Default chunk size if not detected */
 
 /* Firmware version info - can be overridden by application */
-static const char *fw_version = "1.0.0";
+static const char *fw_version = NULL;
 static const char *fw_build_date = __DATE__;
 static const char *fw_hardware = "TROIKA-SCB-v1";
 
@@ -1860,7 +1875,19 @@ void handle_get_fw_version(void) {
     size_t pos = 0U;
     
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"version\":\"%s\",", fw_version);
+    if (NULL == fw_version)
+    {
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                        "\"version\":\"%u.%u.%u\",",
+                        (unsigned int)VERSION_MAJOR,
+                        (unsigned int)VERSION_MINOR,
+                        (unsigned int)VERSION_PATCH);
+    }
+    else
+    {
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                        "\"version\":\"%s\",", fw_version);
+    }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"buildDate\":\"%s\",", fw_build_date);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"hardware\":\"%s\"", fw_hardware);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
