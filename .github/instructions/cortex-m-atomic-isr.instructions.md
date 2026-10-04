@@ -55,6 +55,43 @@ Use explicit memory orders rather than relying on the default unless there is a 
 
 For event flags and independent counters where no publication of other memory is involved, `memory_order_relaxed` is normally sufficient.
 
+### 2.1. Atomic seçiminden önce kanıt ve en basit koruma
+
+- Gerçek çağrı yolları kaynakta gösterilmelidir. Nesneyi okuyan,
+  yazan, sıfırlayan ve yayımlayan main/task, ISR ve DMA bağlamları
+  belirlenmelidir. Mevcut HAL/driver/framework koruması ve kullanılan
+  compiler/CMSIS sürümü incelenmelidir.
+- Protokolün master/slave rolü ve aynı anda bekleyen işlem sayısı
+  doğrulanmalıdır. Master olmak tek başına yarış olmadığına kanıt
+  sayılmamalıdır. Tek bekleyen yanıt için mevcut buffer ve kısa
+  snapshot yeterliyse kuyruk veya yeni paylaşım katmanı eklenmemelidir.
+- Sahiplik veya kritik bölüm rakip erişimleri zaten dışlıyorsa ek
+  atomic işlem zorunlu sayılmamalıdır. Tek ISR yazar ve main erişiminin
+  tamamında ilgili IRQ kapalıysa, hedef/compiler sözleşmesi altında
+  bu kısa kritik bölüm yeterli bir seçenek olarak değerlendirilmelidir.
+  Volatile yalnızca erişim görünürlüğü içindir; koruma IRQ'nun
+  maskelenmesinden gelir. Diğer ISR, task veya DMA erişimleri varsa
+  bunların da dışlandığı ayrıca kanıtlanmalıdır.
+- Yeterli olan en dar IRQ kapsamı seçilmelidir. Tek IRQ yeterliyse
+  global PRIMASK uygulanmamalıdır. Önceki açık/kapalı durum bütün
+  çıkışlarda korunmalıdır; koşulsuz enable yapılmamalıdır. Yerel
+  CMSIS/driver disable/enable ve compiler/memory barrier davranışı
+  doğrulanmalıdır. Pending IRQ veya çevrebirim verisi kendiliğinden
+  temizlenmemelidir.
+- Paket kopyalama ve sayacı temizleme tek işlem olarak korunmalıdır.
+  Decode, log ve bekleme kritik bölüm dışında tutulmalıdır. Kesme
+  gecikmesi ve alım kapasitesi etkisi incelenmeli; ölçülmemiş donanım
+  süresi garanti olarak sunulmamalıdır.
+- Dışlanmadan kalan eşzamanlı scalar erişim için gereken atomic
+  işlem ve memory order seçilmelidir. Atomic ile IRQ maskeleme birlikte
+  kullanılacaksa her birinin çözdüğü ayrı ihtiyaç açıklanmalıdır.
+  Release/acquire, yazılmaya devam eden buffer'ın tutarlı snapshot
+  olmasını tek başına sağlamış sayılmamalıdır.
+- Seçilen koruma gerçek hata yoluyla sınanmalıdır. IRQ maskelemede
+  önceki kapalı durum ve yeniden açılınca gelen byte/olayın korunması
+  kontrol edilmelidir. Host işlem sırası testi, fiziksel kesme
+  zamanlamasının kanıtı olarak sunulmamalıdır.
+
 ---
 
 ## 3. volatile Is Not Atomic
@@ -587,6 +624,7 @@ Atomics protect the shared state; they do not make expensive ISR work appropriat
 
 | Situation | Preferred approach |
 |---|---|
+| One ISR writes; every main access excludes that IRQ | Short targeted critical section after section 2.1 checks; no redundant atomic required |
 | ISR writes simple 32-bit flag, consumer only reads | `_Atomic` preferred for language-level correctness |
 | ISR sets independent event bits | `atomic_fetch_or(..., relaxed)` |
 | Consumer reads and clears event bits | `atomic_exchange(..., relaxed)` |
@@ -611,7 +649,9 @@ volatile uint32_t counter;
 counter++;
 ```
 
-`volatile` does not make the increment atomic.
+`volatile` does not make the increment atomic. This pattern is incorrect
+when conflicting accesses are not excluded; a proven critical section
+under section 2.1 is a separate synchronization mechanism.
 
 ### Incorrect: non-atomic event read/clear
 
@@ -683,6 +723,10 @@ Do not use dynamic memory for synchronization primitives.
 
 When reviewing ISR-shared state, ask in this order:
 
+First complete the access-path, ownership and exclusion checks in
+section 2.1. Apply the atomic-specific questions below only to accesses
+that still require atomic semantics.
+
 1. Is the object shared between execution contexts?
 2. Is the object accessed by an ISR?
 3. Is the access a simple load/store or read-modify-write?
@@ -710,6 +754,9 @@ When reviewing ISR-shared state, ask in this order:
 
 Unless project requirements dictate otherwise:
 
+- Complete section 2.1 before selecting a synchronization mechanism.
+- Prefer the narrowest adequate exclusion; preserve the previous IRQ state.
+- Do not combine atomics and IRQ masking without distinct demonstrated needs.
 - Use C11 atomics for ISR-shared scalar state requiring atomic semantics.
 - Use `memory_order_relaxed` for independent counters and event flags.
 - Use release/acquire for data publication/ownership transfer.

@@ -42,19 +42,32 @@ The most load-bearing rules, restated so they are never missed:
 - **MISRA essentials** — every `switch` has a `default`; every
   `if ... else if` ends with an `else`; no VLA, no recursion, no back-jumping `goto`.
 - **ISR-shared state & atomics** — follow
-  `.github/instructions/cortex-m-atomic-isr.instructions.md`: C11
-  `<stdatomic.h>` with explicit operations (`atomic_fetch_or` to set
+  `.github/instructions/cortex-m-atomic-isr.instructions.md` section 2.1:
+  prove access paths, ownership and existing protection first. Use the
+  simplest adequate protection; targeted IRQ exclusion may remove the
+  need for atomics. Preserve the prior IRQ state and verify barriers.
+  For accesses still requiring atomic semantics, use C11 `<stdatomic.h>`
+  with explicit operations (`atomic_fetch_or` to set
   flags, `atomic_exchange` for read-and-clear, release/acquire for
   publication, `relaxed` for independent counters); `volatile` alone is
-  not synchronization; multi-field transactions use short PRIMASK
-  critical sections; enforce lock-free ISR-path atomics with
+  not synchronization; multi-field transactions use short critical
+  sections, with only the relevant IRQ masked when sufficient.
+  Do not combine atomics and IRQ masking without separate needs;
+  enforce lock-free ISR-path atomics with
   `_Static_assert(__atomic_always_lock_free(sizeof(T), 0), ...)`
   next to the definition.
 - **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns,
-  `g_/p_/s_/b_` prefixes, Yoda conditions, `for (;;)` for infinite loops,
+  descriptive snake_case without `g_/s_/p_` prefixes (repo deviation),
+  Yoda conditions, `for (;;)` for infinite loops,
   `/*** end of file ***/` trailer.
 - **ASCII only** in code and comments — no Turkish characters
   (per copilot-instructions §Language & Locale).
+- **Header author:** new or edited C/C++ file headers must say
+  `Author: Fatih Ozcan`, with `fatihozcan@gmail.com` on the next aligned
+  line. Preserve `#if 0` blocks unless the user requests removal.
+- **Evidence and simplicity:** follow `AGENTS.md` before coding: prove the
+  reachable condition, inspect existing recovery and use the smallest
+  adequate solution. Existing authorization and explicit deferrals persist.
 
 ---
 
@@ -128,12 +141,12 @@ Anything outside those markers is lost on the next code generation.
 
 This port builds with `_PLATFORM_=_WIN32_`, which stubs
 `int-master` / `critical_enter` to **no-ops on ARM**. The application
-deliberately does not rely on interrupt-masking for synchronization.
+does not rely on these port helpers for interrupt masking.
 Do **not** introduce code that depends on `critical_enter()` actually
 masking IRQs. For ISR-shared state follow
 `.github/instructions/cortex-m-atomic-isr.instructions.md`
-(C11 atomics with explicit memory orders; `volatile` only for MMIO and
-simple single-writer flags).
+(proven targeted IRQ exclusion or C11 atomics with explicit memory
+orders; `volatile` alone does not provide synchronization).
 
 ---
 
@@ -158,7 +171,12 @@ compile-time removable via preprocessor switches.
   write a migration plus a host test. The image header
   (magic/version/length/sequence) is self-describing and the dual
   copies are arbitrated by `sequence`; keep both properties intact.
-- When you change a module's logic, run its Ceedling test under that
-  module's `test/` directory.
+- When you change a module's logic, add/run its tests in the central
+  `test/<module>/` Ceedling infrastructure; use `test/README.md`.
+  Test production behavior, including the failure path. Keep tests in the
+  repo and include them with the change when a commit is requested.
+- Follow `AGENTS.md` and `engineering-guidelines/architecture.md` A08-A11
+  for the current dummy, lifetime, RNG, key and deferred-work decisions.
+  Record audit evidence and remaining limits in the production report.
 - **Never invent hardware details** — register addresses, timing, or clock
   rates. If unclear, leave a `TODO` and ask.
