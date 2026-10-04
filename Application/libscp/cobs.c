@@ -1,8 +1,10 @@
-/**
- * @file cobs.c
- * @brief COBS encode / decode implementation.
- * @version 1.0.0
- * @author Fatih Ozcan
+/*
+ * cobs.c
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * COBS encode / decode implementation.
  */
 
 #include "cobs.h"
@@ -39,6 +41,10 @@ bool cobs_encode(const uint8_t *p_input,
     {
         if (p_input[read_idx] == 0x00U)
         {
+            if (code_idx >= output_size)
+            {
+                return false;
+            }
             p_output[code_idx] = code;
             code_idx  = write_idx;
             write_idx++;

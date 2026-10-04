@@ -1,6 +1,8 @@
-/**
- * @file modbus_rtu_slave.c
- * @brief Modbus RTU Slave Implementation
+/*
+ *      File: modbus_rtu_slave.c
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *      Description: Modbus RTU slave implementation.
  */
 
 #include "modbus_rtu_slave.h"
@@ -136,6 +138,8 @@ static void modbus_send_exception(modbus_slave_t *p_ctx, uint8_t function_code, 
 static void modbus_process_fc03(modbus_slave_t *p_ctx, const uint8_t *frame, uint16_t len)
 {
     if (len != MODBUS_FC03_REQ_LEN) {
+        modbus_send_exception(p_ctx, MODBUS_FC_READ_HOLDING_REGISTERS,
+                              MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE);
         return;
     }
 
@@ -207,6 +211,10 @@ static void modbus_process_fc03(modbus_slave_t *p_ctx, const uint8_t *frame, uin
 static void modbus_process_fc06(modbus_slave_t *p_ctx, const uint8_t *frame, uint16_t len, bool is_broadcast)
 {
     if (len != MODBUS_FC06_REQ_LEN) {
+        if (!is_broadcast) {
+            modbus_send_exception(p_ctx, MODBUS_FC_WRITE_SINGLE_REGISTER,
+                                  MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE);
+        }
         return;
     }
 

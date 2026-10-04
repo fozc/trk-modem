@@ -102,8 +102,34 @@
       # Match Cortex-M33 GCC plain-char signedness for production shell.
       test_shell_command_registration:
         - -funsigned-char
+      # Drop unrelated hardware/process paths from the reset scenario.
+      test_modbus_reset_scenario:
+        - -flto
+        - -O2
+      # Keep the real FC03 path; drop unrelated process/hardware paths.
+      test_modbus_power_snapshot_scenario:
+        - -flto
+        - -O2
+      test_rf_error_retry_scenario:
+        - -flto
+        - -O2
+      test_bms_reader_scenario:
+        - -flto
+        - -O2
 
     :link:
+      test_bms_reader_scenario:
+        - -flto
+        - -O2
+      test_rf_error_retry_scenario:
+        - -flto
+        - -O2
+      test_modbus_power_snapshot_scenario:
+        - -flto
+        - -O2
+      test_modbus_reset_scenario:
+        - -flto
+        - -O2
       test_gsm_response_scenario:
         - -flto
         - -O2

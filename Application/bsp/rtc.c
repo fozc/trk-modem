@@ -2,7 +2,8 @@
  * rtc.c
  *
  *  Created on: Mar 31, 2026
- *      Author: fatih.ozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Hybrid software/hardware RTC service. See rtc.h for the design overview.
  */
@@ -246,7 +247,8 @@ static bool rtc_is_valid(const rtc_t *dt)
 	};
 	uint8_t max_day;
 
-	if ((dt->month < 1U) || (dt->month > 12U) ||
+	if ((dt->year > 99U) || (dt->millisec > 999U) ||
+	    (dt->month < 1U) || (dt->month > 12U) ||
 	    (dt->day   < 1U) ||
 	    (dt->hour  > 23U) || (dt->minute > 59U) || (dt->second > 59U))
 	{

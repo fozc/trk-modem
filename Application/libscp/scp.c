@@ -1,8 +1,9 @@
 /**
  * @file scp.c
- * @brief SCP v1.0 unified implementation — CRC, packet encode/decode, parser.
+ * @brief SCP v1.0 unified implementation - CRC, packet encode/decode, parser.
  * @version 1.0.0
- * @author Fatih Ozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #include "scp.h"
@@ -114,6 +115,12 @@ static bool decode_packet(uint8_t *p_cobs,
     uint16_t received  = scp_unpack_u16(&p_cobs[crc_scope]);
 
     if (computed != received)
+    {
+        return false;
+    }
+
+    /* Broadcast is a destination only, never a source address. */
+    if (SCP_BROADCAST_ADDR == p_cobs[OFFSET_SRC])
     {
         return false;
     }
