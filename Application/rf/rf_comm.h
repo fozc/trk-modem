@@ -2,11 +2,12 @@
  * rf_comm.h
  *
  *  Created on: 23 Aug 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * RF hub communication: Contiki process, UART transport, SCP frame
  * dispatch, and the single-outstanding command mechanism
- * (send_command / process / is_free / on_reply).
+ * (send_command / process / is_free / on_response).
  */
 
 #ifndef RF_RF_COMM_H_
@@ -33,7 +34,7 @@ typedef enum
 } scp_cmd_result_t;
 
 /**
- * Komut bitince cagrilir - scp_process / scp_on_reply baglaminda
+ * Komut bitince cagrilir - scp_process / scp_on_response baglaminda
  * calisir (Contiki process poll dongusu, ISR degil).
  * rsp yalnizca callback suresince gecerlidir; kalici bilgi
  * gerekiyorsa kopyalayin. TIMEOUT'ta rsp = NULL'dur.
@@ -73,7 +74,7 @@ void scp_process(uint32_t now_ms);
  * @brief RX dispatch'ten beslenir: ACK/ERROR geldiginde cagrilir.
  *        CMD+SEQ eslesmesi yalnizca beklenen yanit ise isler.
  */
-void scp_on_reply(const scp_packet_t *pkt);
+void scp_on_response(const scp_packet_t *pkt);
 
 /** @return true yeni komut gonderilebilir. */
 bool scp_is_free(void);

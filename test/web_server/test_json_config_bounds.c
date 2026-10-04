@@ -78,6 +78,57 @@ void tearDown(void)
 {
 }
 
+void test_modbus_device_id_rejects_zero_and_reserved_addresses(void)
+{
+    jmodbus_configs_t config = {0};
+    config.baud_rate = 9600U;
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"CihazID\":0}", &config));
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"CihazID\":248}", &config));
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"CihazID\":255}", &config));
+}
+
+void test_modbus_device_id_accepts_both_unicast_boundaries(void)
+{
+    jmodbus_configs_t config = {0};
+    config.baud_rate = 9600U;
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"CihazID\":1}", &config));
+    TEST_ASSERT_EQUAL_UINT8(1U, config.device_addr);
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"CihazID\":247}", &config));
+    TEST_ASSERT_EQUAL_UINT8(247U, config.device_addr);
+}
+
+void test_modbus_setter_rejects_invalid_device_id_without_storage_calls(void)
+{
+    const uint8_t addresses[] = {0U, 248U, 255U};
+    jmodbus_configs_t config = {0};
+    config.baud_rate = 9600U;
+    for (size_t index = 0U; index < sizeof(addresses); index++)
+    {
+        config.device_addr = addresses[index];
+        /* Storage and runtime notification mocks must remain untouched. */
+        TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    }
+}
+
+void test_modbus_device_id_247_reaches_storage_unchanged(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 247U;
+    config.baud_rate = 9600U;
+    modbus_config_get_IgnoreAndReturn(NULL);
+    modbus_config_set_Stub(capture_modbus);
+    modbus_set_line_config_Stub(capture_modbus_line);
+    modbus_config_sync_ExpectAndReturn(0);
+    modbus_process_notify_config_changed_Expect();
+    TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
+    TEST_ASSERT_EQUAL_UINT8(247U, saved_modbus.device_addr);
+}
+
 void test_scada_ip_high_first_octet_is_saved(void)
 {
     iec104_config_get_IgnoreAndReturn(NULL);

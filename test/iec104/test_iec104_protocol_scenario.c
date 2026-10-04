@@ -1230,6 +1230,42 @@ void test_unknown_asdu_returns_negative_type_response_with_own_sequences(void)
     TEST_ASSERT_EQUAL_MEMORY(&frame[10], &tx_log[0][10], 6U);
 }
 
+static void assert_control_command_returns_unsupported_type(uint8_t type_id)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    build_reset_process(frame, 0U, 1U, TEST_COMMON_ADDRESS, 0x1234U, 1U);
+    frame[6] = type_id;
+    frame[9] = 0x37U;
+
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_TRUE(frame_is_i(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT16(sizeof(frame), tx_log_len[0]);
+    TEST_ASSERT_EQUAL_UINT8(type_id, frame_asdu_type(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(UkTypeId, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(0x37U, frame_asdu_oa(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT16(1U, frame_ns(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT16(1U, frame_nr(tx_log[0]));
+    TEST_ASSERT_EQUAL_MEMORY(&frame[10], &tx_log[0][10], 6U);
+    TEST_ASSERT_NOT_EQUAL(IEC104_EVT_REBOOT_REQUESTED, last_event);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
+void test_single_command_returns_negative_unsupported_type_response(void)
+{
+    assert_control_command_returns_unsupported_type(C_SC_NA_1);
+}
+
+void test_double_command_returns_negative_unsupported_type_response(void)
+{
+    assert_control_command_returns_unsupported_type(C_DC_NA_1);
+}
+
 void test_truncated_reset_command_is_rejected_without_reboot(void)
 {
     uint8_t frame[16];

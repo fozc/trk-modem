@@ -147,6 +147,59 @@ void test_scp_broadcast_is_received_but_other_address_is_ignored(void)
     TEST_ASSERT_TRUE(scp_packet_ready(&receiver));
 }
 
+static void assert_zero_source_is_rejected_and_next_frame_is_received(
+    uint8_t destination)
+{
+    scp_t transmitter;
+    scp_t receiver;
+    scp_packet_t packet = make_packet(destination);
+
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK,
+                          scp_init(&transmitter, TEST_REMOTE_ADDRESS,
+                                   capture_transmit, NULL, 0U));
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK,
+                          scp_init(&receiver, TEST_DEVICE_ADDRESS,
+                                   NULL, NULL, 0U));
+
+    /* The production encoder computes a valid CRC for the invalid source. */
+    packet.src = 0x00U;
+    packet.type = SCP_TYPE_PING;
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK, scp_send(&transmitter, &packet));
+    feed_frame(&receiver, captured_frame, captured_len);
+    TEST_ASSERT_FALSE(scp_packet_ready(&receiver));
+    TEST_ASSERT_NULL(scp_get_packet(&receiver));
+
+    /* No reset or packet_done: rejecting a frame must leave RX usable. */
+    packet.src = TEST_REMOTE_ADDRESS;
+    packet.seq++;
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK, scp_send(&transmitter, &packet));
+    feed_frame(&receiver, captured_frame, captured_len);
+    TEST_ASSERT_TRUE(scp_packet_ready(&receiver));
+
+    const scp_packet_t *received = scp_get_packet(&receiver);
+    TEST_ASSERT_NOT_NULL(received);
+    TEST_ASSERT_EQUAL_HEX8(destination, received->dst);
+    TEST_ASSERT_EQUAL_HEX8(TEST_REMOTE_ADDRESS, received->src);
+    TEST_ASSERT_EQUAL_HEX8(packet.type, received->type);
+    TEST_ASSERT_EQUAL_HEX8(packet.cmd, received->cmd);
+    TEST_ASSERT_EQUAL_HEX8(packet.seq, received->seq);
+    TEST_ASSERT_EQUAL_UINT8(packet.data_len, received->data_len);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(packet.data, received->data,
+                                  packet.data_len);
+}
+
+void test_scp_unicast_rejects_zero_source_and_receives_next_valid_frame(void)
+{
+    assert_zero_source_is_rejected_and_next_frame_is_received(
+        TEST_DEVICE_ADDRESS);
+}
+
+void test_scp_broadcast_rejects_zero_source_and_accepts_valid_source(void)
+{
+    assert_zero_source_is_rejected_and_next_frame_is_received(
+        SCP_BROADCAST_ADDR);
+}
+
 void test_scp_corrupted_frame_is_rejected_and_parser_resynchronizes(void)
 {
     scp_t transmitter;

@@ -2,7 +2,8 @@
  * iec104.c
  *
  *  Created on: 26 Tem 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104.h"
@@ -20,8 +21,8 @@ static const uint8_t supported_asdu_types[] = {
     M_DP_TB_1, // 31, Double Point Information
     M_SP_TB_1, // 30, Single Point Information
     M_ME_TF_1, // 36, Measured Value, Normalized Value
-    C_SC_NA_1, // 45, Single Command
-    C_DC_NA_1, // 46, Double Command
+    // C_SC_NA_1, // 45, Single Command (disabled)
+    // C_DC_NA_1, // 46, Double Command (no handler)
     M_EI_NA_1, // 70, End of Initialization
     C_IC_NA_1, // 100, Interrogation Command
 	C_CS_NA_1, // 103, clock synchronization command

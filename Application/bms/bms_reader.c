@@ -12,32 +12,77 @@
 #include "main.h"
 #include "gpio.h"
 #include "elog.h"
+#include <string.h>
 
-uint8_t bms_rx_buffer[272];
-uint16_t bms_rx_index = 0;
+#define BMS_DATA_MAX_AGE_MS   5000U
+
+static uint8_t bms_rx_buffer[272];
+/* Main accesses RX state only while the sole writer's IRQ is disabled. */
+static volatile uint32_t bms_rx_index;
+static uint16_t expected_length;
+static uint8_t package_id;
+static uint32_t last_full_map_tick;
+static uint32_t last_soh_tick;
+PROCESS_NAME(bms_process);
 
 /* Persistent decoded snapshot. Full-map and SOH responses update disjoint
  * fields of this single record, so each parse preserves the other's data. It is
  * the source the Modbus BMS-stats block reads back (see bms_reader_get_data). */
 static bms_data_t s_bms_data;
 
+static void bms_expire_data(void)
+{
+    const uint32_t now = bsp_get_tick();
+    if ((now - last_full_map_tick) >= BMS_DATA_MAX_AGE_MS)
+    {
+        s_bms_data.is_data_valid = false;
+    }
+    if ((now - last_soh_tick) >= BMS_DATA_MAX_AGE_MS)
+    {
+        s_bms_data.is_soh_valid = false;
+    }
+}
+
+static void bms_prepare_request(uint16_t length)
+{
+    const uint32_t irq_enabled = NVIC_GetEnableIRQ(UART5_IRQn);
+    NVIC_DisableIRQ(UART5_IRQn);
+    bms_rx_index = 0U;
+    expected_length = length;
+    if (0U != irq_enabled)
+    {
+        NVIC_EnableIRQ(UART5_IRQn);
+    }
+}
+
 void bms_reader_get_data(bms_data_t *p_out)
 {
 	if (p_out == NULL) {
 		return;
 	}
+    bms_expire_data();
 	*p_out = s_bms_data;
 }
 
 #if 1
 void bms_rx_interrupt_handler(uint8_t data)
 {
-	if (bms_rx_index < sizeof(bms_rx_buffer)){
-		bms_rx_buffer[bms_rx_index++] = data;
-	}else{
-		// Buffer overflow, reset index
-		bms_rx_index = 0;
-	}
+    const uint32_t count = bms_rx_index;
+    if (count < sizeof(bms_rx_buffer))
+    {
+        bms_rx_buffer[count] = data;
+        bms_rx_index = count + 1U;
+        if (((count + 1U) == BMS_SOH_FRAME_LEN) ||
+            ((count + 1U) == BMS_FULL_MAP_FRAME_LEN))
+        {
+            process_poll(&bms_process);
+        }
+    }
+    else
+    {
+        /* Latch overflow until the current request is discarded. */
+        bms_rx_index = sizeof(bms_rx_buffer) + 1U;
+    }
 }
 #endif
 static void bms_send_buff(const uint8_t *buffer, size_t length)
@@ -68,15 +113,24 @@ static void bms_send_buff(const uint8_t *buffer, size_t length)
 
 static void send_full_map_request(void)
 {
-	uint8_t request_frame[] = { 0x81, 0x03, 0x00, 0x00, 0x00, 0x7F, 0x1B, 0xEA }; // Slave Address (0x51), Function Code (0x03), Starting Address (0x0000), Quantity of Registers (0x007F), CRC (0x1BEA)
-
-	bms_send_buff(request_frame, sizeof(request_frame));
+    bms_prepare_request(BMS_FULL_MAP_FRAME_LEN);
+    /* Address 0x81, FC03, start 0, 127 registers; CRC low byte first. */
+    const uint8_t request_frame[] =
+    {
+        0x81U, 0x03U, 0x00U, 0x00U, 0x00U, 0x7FU, 0x1BU, 0xEAU
+    };
+    bms_send_buff(request_frame, sizeof(request_frame));
 }
 
 static void send_soh_request(void)
 {
-	uint8_t request_frame[] = { 0x81, 0x03, 0x01, 0x17, 0x00, 0x01, 0x2A, 0x32}; // Slave Address (0x51), Function Code (0x03), Starting Address (0x0117), Quantity of Registers (0x0001), CRC (0x2A32)
-	bms_send_buff(request_frame, sizeof(request_frame));
+    bms_prepare_request(BMS_SOH_FRAME_LEN);
+    /* Address 0x81, FC03, start 0x0117, one register. */
+    const uint8_t request_frame[] =
+    {
+        0x81U, 0x03U, 0x01U, 0x17U, 0x00U, 0x01U, 0x2AU, 0x32U
+    };
+    bms_send_buff(request_frame, sizeof(request_frame));
 }
 
 
@@ -93,7 +147,7 @@ static void bms_log_transitions(const bms_data_t *d)
 	              : ((d->soh_percent > 100.0f) ? 100U : (uint8_t)d->soh_percent);
 
 	/* Yalnizca batarya dusuk seviye kayitlari tutulur: SOC esikleri.
-	 * Work-state gecisleri (sarj/deşarj hukumleri) loglanmaz. */
+	 * Work-state gecisleri (sarj/desarj hukumleri) loglanmaz. */
 
 	/* SOC thresholds with hysteresis: set at <=20/<=10, clear at >=25/>=15. */
 	if ((!low20 && (d->soc_percent <= 20.0f)) || (low20 && (d->soc_percent >= 25.0f)))
@@ -117,57 +171,57 @@ static void bms_log_transitions(const bms_data_t *d)
 	}
 }
 
-void bms_process_package()
+static void bms_process_package(void)
 {
-	if (bms_rx_index >= BMS_FULL_MAP_FRAME_LEN)
-	{
-		bms_status_t status = BMS_ParseFullMapResponse(&s_bms_data, bms_rx_buffer, bms_rx_index);
-		if (status == BMS_OK)
-		{
-			// Successfully parsed the BMS data; s_bms_data now holds the latest
-			// full-map snapshot (readable via bms_reader_get_data / Modbus).
-			float total_voltage = BMS_GetTotalVoltage(&s_bms_data);
-			float current = BMS_GetCurrent(&s_bms_data);
-			float soc = BMS_GetSOC(&s_bms_data);
-			float soh = BMS_GetSOH(&s_bms_data);
+    uint8_t frame[BMS_FULL_MAP_FRAME_LEN];
+    const uint16_t length = expected_length;
+    bms_expire_data();
+    if (0U == length)
+    {
+        return;
+    }
 
-			(void)total_voltage;
-			(void)current;
-			(void)soc;
-			(void)soh;
+    const uint32_t irq_enabled = NVIC_GetEnableIRQ(UART5_IRQn);
+    NVIC_DisableIRQ(UART5_IRQn);
+    const uint32_t count = bms_rx_index;
+    if (count == length)
+    {
+        memcpy(frame, bms_rx_buffer, length);
+    }
+    if (count >= length)
+    {
+        bms_rx_index = 0U;
+        expected_length = 0U;
+    }
+    if (0U != irq_enabled)
+    {
+        NVIC_EnableIRQ(UART5_IRQn);
+    }
 
-			bms_log_transitions(&s_bms_data);
-		}
-		else
-		{
-			// Handle parsing error (e.g., log the error, reset the buffer, etc.)
-		}
-
-		// Reset the buffer index for the next frame
-		bms_rx_index = 0;
-	}
-	else if (bms_rx_index >= BMS_SOH_FRAME_LEN)
-	{
-		bms_status_t status = BMS_ParseSOHResponse(&s_bms_data, bms_rx_buffer, bms_rx_index);
-		if (status == BMS_OK)
-		{
-			// Successfully parsed the SOH data (only the SOH fields of the
-			// persistent snapshot are touched).
-			float soh = BMS_GetSOH(&s_bms_data);
-			(void)soh;
-
-			//CSLOG("BMS SOH: %.2f %% \r\n", soh);
-		}
-		else
-		{
-			// Handle parsing error (e.g., log the error, reset the buffer, etc.)
-		}
-
-		// Reset the buffer index for the next frame
-		bms_rx_index = 0;
-	}
+    if (count != length)
+    {
+        return;
+    }
+    if (BMS_FULL_MAP_FRAME_LEN == length)
+    {
+        if (BMS_OK == BMS_ParseFullMapResponse(&s_bms_data, frame, length))
+        {
+            last_full_map_tick = bsp_get_tick();
+            bms_log_transitions(&s_bms_data);
+        }
+    }
+    else if (BMS_SOH_FRAME_LEN == length)
+    {
+        if (BMS_OK == BMS_ParseSOHResponse(&s_bms_data, frame, length))
+        {
+            last_soh_tick = bsp_get_tick();
+        }
+    }
+    else
+    {
+        /* Only the two existing request lengths are issued. */
+    }
 }
-
 
 PROCESS(bms_process, "bms_process");
 PROCESS_THREAD(bms_process, ev, data)
@@ -176,30 +230,31 @@ PROCESS_THREAD(bms_process, ev, data)
     (void)ev;
 
     static struct etimer timer;
-    static uint8_t package_id = 0;
     PROCESS_BEGIN();
 
-    etimer_set(&timer, 1000);
+    etimer_set(&timer, CLOCK_SECOND);
 
 
-    while(1)
+    for (;;)
     {
-        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
-        etimer_restart(&timer);
-
+        PROCESS_WAIT_EVENT();
         bms_process_package();
-        if(package_id == 0)
-		{
-			// Send Full Map Request
-			send_full_map_request();
-			package_id = 1;
-		}
-		else if(package_id == 1)
-		{
-			// Send SOH Request
-			send_soh_request();
-			package_id = 0;
-		}
+        if (!etimer_expired(&timer))
+        {
+            continue;
+        }
+        etimer_restart(&timer);
+        /* A partial response expires before the next request is issued. */
+        if (0U == package_id)
+        {
+            send_full_map_request();
+            package_id = 1U;
+        }
+        else
+        {
+            send_soh_request();
+            package_id = 0U;
+        }
     }
 
     PROCESS_END();
@@ -209,7 +264,12 @@ PROCESS_THREAD(bms_process, ev, data)
 
 void bms_reader_init(void)
 {
+    bms_prepare_request(0U);
+    package_id = 0U;
+    last_full_map_tick = 0U;
+    last_soh_tick = 0U;
 	BMS_Init(&s_bms_data);
 	process_start(&bms_process, NULL);
 }
 
+/*** end of file ***/

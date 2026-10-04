@@ -1,7 +1,7 @@
 # IEC104 yapılandırma ve adres rehberi
 
-Sürüm: 1.2
-Tarih: 2026-10-03
+Sürüm: 1.3
+Tarih: 2026-10-04
 
 ## Amaç
 
@@ -58,6 +58,18 @@ kabul eder. QRP=1 için onay ve ardından gecikmeli reboot yapılır. QRP=2
 mevcut kodda onaylanır; bekleyen olayları temizleme işi TODO durumundadır.
 Diğer QRP değerleri olumsuz onay alır. Yapılandırmadaki sıfır IOA yasağı,
 protokol reset komutunun IOA=0 kullanımını değiştirmez.
+
+## Kontrol komutlarının mevcut durumu
+
+C_SC_NA_1 (45, single command) ve C_DC_NA_1 (46, double command) mevcut
+firmware'de aktif destek listesinde değildir; liste girişleri yorum
+satırındadır. Bu komutlara UkTypeId (desteklenmeyen tip) ve P/N=1 içeren
+olumsuz yanıt gönderilir. Fiziksel çıkış kontrolü veya SBO çalıştırılmaz.
+
+C_SC_NA_1 handler kodu derleme anahtarı altında korunur; C_DC_NA_1 için
+aktif handler yoktur. İleride destek eklenirken handler, liste girişi ve
+fiziksel çıkış bağlantısı birlikte doğrulanmalıdır. Gerçek RX/TX yolu iki
+Ceedling senaryosuyla doğrulanmıştır; protokol paketi 59/59 geçmiştir.
 
 ## Fiderin tek nokta adresleri
 
@@ -244,3 +256,4 @@ Kaynak dosyalar: `Application/nvram.c`, `Application/nvram.h`,
 | 1.0 | 2026-10-03 | Aktif noktalar, arıza adres hesabı, yeni varsayılan plan, kayıt hataları ve mevcut sınırlar |
 | 1.1 | 2026-10-03 | Save öncesi adres kontrolü ve alan üzerinde hata gösterimi |
 | 1.2 | 2026-10-03 | Modbus veri tipi ve canlı register aralığı, çakışan register adresinin hata metninde gösterimi |
+| 1.3 | 2026-10-04 | 45/46 kontrol komutlarının aktif destek durumu ve olumsuz yanıt davranışı |
