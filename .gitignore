@@ -86,6 +86,11 @@ tools/rf-hub-sim/build/
 # Central host-test artifacts
 test/integration/**/build_scp/
 
-# Private common RFWU product key and generated header
-/keys/rfwu_key.bin
+# Generated RFWU header remains local; rebuild from keys/rfwu_key.bin.
 /Application/rfwu_product_key.h
+
+# Temporary development keys tracked by user decision (2026-10-04).
+# Replace all keys before field deployment; see keys/README.md.
+!/keys/private_key.pem
+!/keys/aes_key.bin
+!/keys/rfwu_key.bin
