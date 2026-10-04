@@ -242,6 +242,45 @@ void test_long_at_command_is_rejected_before_sending(void)
     TEST_ASSERT_FALSE(gsm_is_busy());
 }
 
+
+void test_cesq_stores_2g_and_4g_measurements_separately(void)
+{
+    response_text = "\r\n+CESQ: 51,0,255,255,20,41\r\n\r\nOK\r\n";
+    gsm_info_set_signal_quality_2G_Expect(51U);
+    gsm_info_set_2G_ber_Expect(0U);
+    gsm_info_set_signal_quality_3G_Expect(255U);
+    gsm_info_set_3G_ecno_Expect(255U);
+    gsm_info_set_4G_rsrq_Expect(20U);
+    gsm_info_set_signal_quality_4G_Expect(41U);
+    TEST_ASSERT_EQUAL_INT(GSM_RESPONSE_OK, gsm_cesq_cb());
+}
+
+void test_cesq_incomplete_response_does_not_change_measurements(void)
+{
+    response_text = "\r\n+CESQ: 51,0,255,255,20\r\n\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT(GSM_RESPONSE_OK, gsm_cesq_cb());
+}
+
+void test_lte_registration_callback_reports_registered_and_searching(void)
+{
+    response_text = "\r\n+CEREG: 0,1\r\n\r\nOK\r\n";
+    gsm_info_set_cereg_Expect(GSM_NET_REG_REGISTERED);
+    TEST_ASSERT_EQUAL_INT(GSM_LTE_NETWORK_REGISTERED, gsm_cereg_get_cb());
+    response_text = "\r\n+CEREG: 0,2\r\n\r\nOK\r\n";
+    gsm_info_set_cereg_Expect(GSM_NET_REG_SEARCHING);
+    TEST_ASSERT_EQUAL_INT(GSM_LTE_NETWORK_SEARCHING, gsm_cereg_get_cb());
+}
+
+void test_2g_registration_callback_reports_home_and_roaming(void)
+{
+    response_text = "\r\n+CGREG: 0,1\r\n\r\nOK\r\n";
+    gsm_info_set_cgreg_Expect(GSM_NET_REG_REGISTERED);
+    TEST_ASSERT_EQUAL_INT(GSM_GPRS_NETWORK_REGISTERED, gsm_cgreg_get_cb());
+    response_text = "\r\n+CGREG: 0,5\r\n\r\nOK\r\n";
+    gsm_info_set_cgreg_Expect(GSM_NET_REG_ROAMING);
+    TEST_ASSERT_EQUAL_INT(GSM_GPRS_NETWORK_ROAMING, gsm_cgreg_get_cb());
+}
+
 /*** end of file ***/
 
 void test_dialer_si_preserves_zero_and_maximum_ack_count(void)

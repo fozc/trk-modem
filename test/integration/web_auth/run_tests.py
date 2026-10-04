@@ -285,7 +285,7 @@ length_preamble = r"""
 #include <stdio.h>
 #include "xprintf.h"
 #define CSLOG(...) ((void)0)
-static const char *fw_version="1.0.0", *fw_build_date="2026-10-03";
+static const char *fw_version=NULL, *fw_build_date="2026-10-03";
 static const char *fw_hardware="TROIKA-SCB-v1";
 static struct {char *tx_buffer; int tx_buffer_size;} handler_state;
 static struct {
@@ -300,7 +300,16 @@ static void http_send_json(const char *body,int length) {
 }
 """
 handler_source=(root/'Application/web-server/http_handlers.c').read_text(encoding='utf8')
-length_code=length_preamble
+# Keep the real default initializer and setter in the regression harness.
+match=re.search(r'^static const char \*fw_version = ([^;]+);', handler_source,re.M)
+if not match: raise RuntimeError('fw_version default initializer missing')
+length_preamble=length_preamble.replace('fw_version=NULL,',
+                                      'fw_version='+match.group(1)+',')
+length_code='#include "version.h"\n'+length_preamble
+setter=re.search(r'^void fw_update_set_version_info\([^;]*?\)\s*\{.*?\n\}',
+                 handler_source,re.M|re.S)
+if not setter: raise RuntimeError('fw_update_set_version_info')
+length_code+=setter.group(0)+'\n'
 for function in ['handle_get_fw_version', 'handle_get_fw_status']:
  match=re.search(r'^void '+function+r'\(void\)\s*\{.*?\n\}',handler_source,re.M|re.S)
  if not match: raise RuntimeError(function)
@@ -324,8 +333,18 @@ static void check_response(void (*handler)(void), const char *expected) {
  }
 }
 int main(void) {
+ char expected[256];
+ snprintf(expected,sizeof(expected),
+  "{\"version\":\"%u.%u.%u\",\"buildDate\":\"2026-10-03\",\"hardware\":\"TROIKA-SCB-v1\"}",
+  (unsigned int)VERSION_MAJOR,(unsigned int)VERSION_MINOR,
+  (unsigned int)VERSION_PATCH);
+ check_response(handle_get_fw_version,expected);
+ fw_update_set_version_info("2.3.4","2026-10-04","CUSTOM");
  check_response(handle_get_fw_version,
-  "{\"version\":\"1.0.0\",\"buildDate\":\"2026-10-03\",\"hardware\":\"TROIKA-SCB-v1\"}");
+  "{\"version\":\"2.3.4\",\"buildDate\":\"2026-10-04\",\"hardware\":\"CUSTOM\"}");
+ fw_update_set_version_info(NULL,NULL,NULL);
+ check_response(handle_get_fw_version,
+  "{\"version\":\"2.3.4\",\"buildDate\":\"2026-10-04\",\"hardware\":\"CUSTOM\"}");
  check_response(handle_get_fw_status,"{\"active\":false}");
  fw_state.in_progress=true;fw_state.received_bytes=4294967295U;
  fw_state.total_size=4294967295U;fw_state.file_hash=4294967295U;
@@ -340,12 +359,88 @@ int main(void) {
 """
 (audit/'http_lengths_repro.c').write_text(length_code,encoding='utf8')
 
+board_code = r"""
+/*
+ * board_signal_repro.c
+ *
+ *  Created on: Oct 4, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Exercise the actual board HTTP handler with deterministic telemetry.
+ */
+#include <assert.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdio.h>
+#include "system_status.h"
+#include "xprintf.h"
+#define CSLOG(...) ((void)0)
+#define CSLOG_ERR(...) ((void)0)
+static system_status_t board;
+static char canvas[4098];
+static struct { char *tx_buffer; int tx_buffer_size; } handler_state;
+static uint8_t rxlev, rscp, rsrp, rsrq, creg, cgreg, cereg;
+const system_status_t *system_status_get(void) { return &board; }
+static uint8_t gsm_info_get_signal_quality_2G(void) { return rxlev; }
+static uint8_t gsm_info_get_signal_quality_3G(void) { return rscp; }
+static uint8_t gsm_info_get_signal_quality_4G(void) { return rsrp; }
+static uint8_t gsm_info_get_4G_rsrq(void) { return rsrq; }
+static uint8_t gsm_info_get_creg(void) { return creg; }
+static uint8_t gsm_info_get_cgreg(void) { return cgreg; }
+static uint8_t gsm_info_get_cereg(void) { return cereg; }
+static void http_send_error(int code, const char *message)
+{ (void)code; (void)message; assert(false); }
+static void http_send_json(const char *data, int length)
+{
+    assert(length > 0 && length < 4096);
+    assert(strlen(data) == (size_t)length);
+    assert(data[0] == '{' && data[length - 1] == '}');
+    puts(data);
+}
+""" + extract('Application/web-server/http_handlers.c',
+              'handle_get_board_status_json') + r"""
+int main(void)
+{
+    memset(canvas, '*', sizeof(canvas));
+    handler_state.tx_buffer = canvas + 1;
+    handler_state.tx_buffer_size = 4096;
+    board.gsm_signal = 13;
+    board.gsm_rat = 4;
+    rxlev = 99; rscp = 255; rsrp = 41; rsrq = 20;
+    creg = 0; cgreg = 0; cereg = 1;
+    handle_get_board_status_json();
+    board.gsm_rat = 2;
+    rxlev = 51; rscp = 255; rsrp = 255; rsrq = 255;
+    creg = 1; cgreg = 5; cereg = 0;
+    handle_get_board_status_json();
+    assert(canvas[0] == '*' && canvas[4097] == '*');
+    return 0;
+}
+/*** end of file ***/
+"""
+(audit/'board_signal_repro.c').write_text(board_code, encoding='utf8')
+
 outputs=[]
-for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro']:
- extra=[str(root/'Application/libs/xprintf.c'),'-I'+str(root/'Application/libs'),'-lm'] if name=='http_lengths_repro' else []
- run=subprocess.run([args.cc,'-std=c11','-O0','-I'+str(root/'Application/web-server'),'-I'+str(root/'Application/bsp'),str(audit/(name+'.c')),*extra,'-o',str(audit/(name+'.exe'))],capture_output=True,text=True)
+for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro','board_signal_repro']:
+ extra=[str(root/'Application/libs/xprintf.c'),'-I'+str(root/'Application/libs'),'-lm'] if name in ['http_lengths_repro', 'board_signal_repro'] else []
+ run=subprocess.run([args.cc,'-std=c11','-O0','-I'+str(root/'Application/web-server'),'-I'+str(root/'Application/bsp'),'-I'+str(root/'Application'),str(audit/(name+'.c')),*extra,'-o',str(audit/(name+'.exe'))],capture_output=True,text=True)
  if run.returncode: print(run.stderr);raise SystemExit(run.returncode)
  run=subprocess.run([str(audit/(name+'.exe'))],capture_output=True,text=True)
+ if name == 'board_signal_repro' and run.returncode == 0:
+  import json
+  values = [json.loads(line) for line in run.stdout.splitlines()]
+  assert len(values) == 2
+  expected = [dict(GsmRAT=4,GsmRxlev=99,GsmRscp=255,GsmRsrp=41,
+                   GsmRsrq=20,GsmCREG=0,GsmCGREG=0,GsmCEREG=1),
+              dict(GsmRAT=2,GsmRxlev=51,GsmRscp=255,GsmRsrp=255,
+                   GsmRsrq=255,GsmCREG=1,GsmCGREG=5,GsmCEREG=0)]
+  for data, fields in zip(values, expected):
+   assert data['GsmSig'] == 13
+   for key, value in fields.items(): assert data[key] == value, key
+  run.stdout = 'PASS: actual board HTTP handler preserves separate GSM measurements and registration\n'
+
  outputs.append(run.stdout+run.stderr)
  print(run.stdout)
  if run.returncode: raise SystemExit(run.returncode)
