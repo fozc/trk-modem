@@ -16,6 +16,18 @@ Cihaz üzerinde derleme, yükleme ve test yaparken **önce
 ölçütleri ve sık hatalar tablosu oradadır. Bu dosya yalnızca hızlı özeti ve
 kritik kuralları taşır.
 
+## Yetki ve kanıt kapsamı
+
+- İşe başlamadan kök `AGENTS.md` ve mevcut kullanıcı yetkisi okunmalıdır.
+  Yalnız derleme/host testi talebi cihaza yükleme, reset, Flash yazma veya
+  ayar değiştirme yetkisi sayılmamalıdır. Önceden verilmiş ilgili yetki
+  korunmalı; aynı işlem için tekrar onay istenmemelidir.
+- Dummy üreticiler, kapalı BMS reader ve kapsam dışı vendor/Contiki
+  kararları donanım testi hazırlığı sırasında kendiliğinden değiştirilmemelidir.
+- Host testi, hedef derleme, seri konsol gözlemi ve fiziksel ölçüm ayrı
+  kanıtlar olarak raporlanmalıdır. Yazılımda geçen süre veya sahadaki
+  hata olasılığı ölçüm/üretici kaynağı olmadan garanti sayılmamalıdır.
+
 ## Ortam (bu makine)
 
 - Konsol: **COM16, 230400 8N1** (LPUART1). ST-Link VCP (COM17) konsol değildir.
