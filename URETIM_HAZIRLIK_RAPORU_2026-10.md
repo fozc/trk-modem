@@ -57,7 +57,7 @@ Ancak **üretime çıkış için hâlâ hazır değil.** Kalan engeller artık d
 - K5.1–K5.5, Y5.6, Y5.10, O-O1: Eylül §0/§0c'de kapatıldı; loopback host testi (11 senaryo/40 assertion, mutasyonla doğrulanmış) test setine dahil — bugün `test/iec104/test_iec104_protocol_scenario.c` CI'da koşuyor.
 - Y5.12 kopuş nedeni hep `reason=0`: **KAPATILDI** — `iec104_elog_disconnected(iec104_elog_disc_reason_t reason)` parametreli (`iec104_elog.h:71-91`), çağıran `map_disc_reason()` ile besliyor (`iec104_process.c:83`).
 - Y5.9 koşulsuz dummy veri: **KISMEN** — yapı sıfırlama ve geçerli sabit zaman damgası düzeltildi (commit `d24a3fc`), geçersiz CP56 damgalarını IV ile işaretleme altyapısı geldi (`cp56time2a.c:199-207`, commit `bc59de7`). Ancak `generate_dummy_test_data()` üretim init'inde **koşulsuz** çağrılıyor (`iec104_process.c:431`), dummy veri IV işaretli değil ve **gerçek veriyi bekleyen hiçbir yol yok** (aşağıda 3.1).
-- Y5.11 C_DC/C_SC komutları: derleme anahtarı `C_SC_NA_1_ENABLED` her iki konfigürasyonda da tanımsız (`.cproject:46-50, 153-157`) → komut zinciri ölü kod; "destekleniyor" listesinden çıkarılıp çıkarılmadığı bu turda doğrulanmadı (§6).
+- Y5.11 C_DC/C_SC komutları: derleme anahtarı `C_SC_NA_1_ENABLED` her iki konfigürasyonda da tanımsız (`.cproject:46-50, 153-157`) → komut zinciri ölü kod; 45/46 liste girişleri kullanıcı kararıyla yorum satırına alındı; olumsuz yanıt 59/59 protokol testiyle doğrulandı (bölüm 9.14).
 
 ### 0.3 GSM kalıcılığı ve fw-update zinciri — KAPANDI
 
@@ -126,7 +126,7 @@ Ancak **üretime çıkış için hâlâ hazır değil.** Kalan engeller artık d
 
 | Alt sistem | Durum | Yapılacak |
 |---|---|---|
-| BMS | `bms_reader_init()` yorumda (`app_main.c:331`) ama UART5 RX kesmesi açık (`:332`) — bayt akıyor, hiç işlenmiyor; Modbus BMS bloğu sonsuza dek sıfır | **Aç** (init+süreç+tüketici; Eylül Y8.4-Y8.7 hâlâ geçerli) **veya tam kapat** (kesme dahil) — tek satırlık gerekçe yorumuyla |
+| BMS | `bms_reader_init()` yorumda (`app_main.c:331`) ama UART5 RX kesmesi açık (`:332`) — reader etkin değil; Modbus BMS bloğu güncellenmiyor | Altyapı kararı ertelendi (§9.31). Y8.4 parser ve Y8.5–Y8.7 reader düzeltmeleri yapıldı (§9.32–§9.33); fiziksel BMS kabulü ve etkinleştirme ayrı kalemdir. |
 | PowerBoard NVM persist | Stub, yalnız log (`power_board.c:407-432`, `TODO(NVM)` ×2) — her reset sonrası SoC %100 | Aşınma dengeli küçük bölgeye RESTORE görüntüsü (Eylül çözüm önerisi geçerli) ya da ilk sürümde bilinçli erteleme kararı |
 | SBO/komut zinciri | `C_SC_NA_1_ENABLED` tanımsız; `breaker_init` bayrağı set etmiyor (`breaker.c:102-112`); IOA eşleşme TODO (`breaker.c:180,197`) | Uçtan uca aç ya da destek listesinden çıkar + ölü kod temizliği |
 | Power panic | **KAPATILDI** — PE15 EXTI15 rising/falling (`main.c:1137-1154`), PA7 aynalama ISR girişte+çıkışta (`stm32u3xx_it.c:202-246`), bölüm (episode) modeli, tek-atımlı log (`power_panic.c`). Sınırlar: panik yolunda GSM susturma ve NVM persist yok; **PA7/RF_IO1 hattının donanımsal çakışmazlığı teyit edilmemiş** (§8) | Donanım teyidi + istenirse susturma/persist adımı |
@@ -187,7 +187,7 @@ Aşağıdaki maddeler Eylül raporunda açık görünüyor ve bu tur HEAD'de kan
 - Y6b.1 baud değişimi erteleme; Y6b.5 RS-485 echo koruması (donanıma bağlı).
 - Y9.3 sıra sarması bulgusu mevcut kod ve 04.10.2026 sınır testleriyle kapatıldı (bölüm 9.11). O9.7 değerlendirmesi bölüm 9.12 içindedir; kullanıcı bootloader ölçümlerinin uygun olduğunu bildirmiştir. Bu madde için kod değişikliği yapılmaz.
 - Y-Y4 shell komut tablosu değerlendirmesi bölüm 9.13 içindedir; mevcut kapasite 32'dir. T-T1 mevcut sıkı Ceedling derlemesinde tekrarlanmadı (bölüm 9.14).
-- Y5.11 mevcut kaynakta komut yanıtını etkiler; değerlendirme ve öneri bölüm 9.14 içindedir.
+- Y5.11 mevcut derleme için kapatıldı; iki aktif destek girişi yorum satırındadır, test sonucu bölüm 9.14 içindedir.
 - O5.15 katman sızıntısının veri kaynağı bağımlılıkları (Eylül §0c'de bilinçli taşınmış).
 - Dialer ölü kod paketi (O4.4) durumu.
 
@@ -557,31 +557,796 @@ içindedir; commit yapılmadı.
 
 ### 9.14 IEC104 desteklenmeyen kontrol komutları — Y5.11, 04.10.2026
 
-Önceki T-T1 host uyarıları mevcut Ceedling protokol testinin sıkı
-seçenekli derlemesinde tekrarlanmadı. `ceedling
-test:test_iec104_protocol_scenario` sonucu 57/57 geçti. Bu sonuç aşağıdaki
-kontrol komutlarının cevap davranışını ayrıca doğrulayan test sayılmaz.
+Önceki T-T1 host uyarıları mevcut sıkı Ceedling protokol derlemesinde
+tekrarlanmadı; değişiklik öncesi mevcut 57 senaryo geçti.
 
-`Application/libiec104/iec104.c:19–29` içindeki `supported_asdu_types`
-listesinde C_SC_NA_1 (45, single command) ve C_DC_NA_1 (46, double command)
-vardır. Ancak C_SC_NA_1 handler'ı yalnız `C_SC_NA_1_ENABLED` ile derlenir;
-bu anahtar Debug ve Release yapılandırmalarında tanımlı değildir.
-C_DC_NA_1 için aktif switch case bulunmaz (satır 1204–1238).
+C_SC_NA_1 (45, single command) ve C_DC_NA_1 (46, double command) aktif
+destek listesinde bulunmasına rağmen mevcut derlemede handler'ları yoktu.
+Geçerli komutlar destek kontrolünü geçip yalnız log basan default dalına
+ulaşıyordu. Gerçek RX/TX yoluna eklenen iki yeni Ceedling testi değişiklik
+öncesinde beklenen tek yanıt yerine sıfır yanıt gördü ve başarısız oldu.
+Bu durumun gerçek komut yanıtını etkilediği testle doğrulandı.
 
-Doğru bağlantı sıra numarası, CA, uzunluk ve kabul edilen COT taşıyan bu
-komutlar destek kontrolünü geçip default dalına ulaşır; burada yalnız log
-vardır. ASDU komut yanıtı üretilmez. Taşıma katmanı S-frame onayı komut
-sonucu değildir. Bu yol kaynak üzerinden doğrulanmıştır; SCADA'nın
-sonrasında bağlantıyı kapatacağı kesin bir sonuç olarak ileri sürülmez.
-Bu nedenle madde yalnız belge temizliği değildir.
+Kullanıcının kararıyla iki liste girişi yorum satırına alındı. Böylece
+mevcut desteklenmeyen tip yanıtı (UkTypeId, P/N=1) gönderilir. Handler'lar,
+tip tanımları ve kapalı kod korunur; SBO veya fiziksel çıkış kontrolü
+etkinleştirilmez. Gelecekte komut etkinleştirilirken liste girişi ve
+handler birlikte değerlendirilmelidir.
 
-En küçük öneri C_SC_NA_1 liste girişini handler ile aynı derleme anahtarına
-bağlamak ve handler'ı olmayan C_DC_NA_1 girişini aktif destek listesinden
-çıkarmaktır. Böylece mevcut desteklenmeyen tip yanıtı (UkTypeId, P/N=1)
-kullanılır. Komut handler'ları, tip tanımları ve kapalı kod korunur;
-SBO veya fiziksel çıkış kontrolü etkinleştirilmez. Davranış değişikliği
-kullanıcı kararı bekler. Uygulanırsa iki komutun gerçek RX/TX yolundan
-olumsuz yanıt aldığını doğrulayan Ceedling testleri eklenmelidir.
-Bu turda firmware kodu değiştirilmedi.
+`test/iec104/test_iec104_protocol_scenario.c` içindeki iki yeni senaryo
+cevap türünü, olumsuz teyit bitini, originator adresini, bağlantı sıra
+numaralarını, CA/IOA ve komut verisinin korunmasını doğrular. Bağlantı
+aktif kalır. Değişiklik sonrası `ceedling test:test_iec104_protocol_scenario`
+sonucu 59/59 geçti. Önce/sonra çıktıları
+`test/build/production-audit-2026-10-03/iec104-command-before.log` ve
+`iec104-command-after.log` içindedir. Bu değişiklik için cihaz testi ve
+ARM derlemesi yapılmadı; değişiklik henüz commit edilmedi.
+
+### 9.15 Önceki çalışmaların commit kaydı — 04.10.2026
+
+- `054842a`: web GSM sinyal/şebeke gösterimi, firmware sürüm kaynağı ve testler.
+- `4f43331`: log sıra sarması ve shell kayıt sınırı testleri ile rapor.
+
+Commit öncesinde tam Ceedling koşumu 387/387, entegrasyon 9/9 paket geçti.
+Çıktılar `test/build/production-audit-2026-10-03/pre-commit-*.log` içindedir.
+Bu sayılar bölüm 9.14'teki iki yeni senaryoyu içermez. Push yapılmadı.
+
+### 9.16 Ertelenen maddeler ve I2C kurtarma incelemesi — 04.10.2026
+
+Kullanıcı dialer O4.4 maddesini, altyapısı değişecek PowerBoard kalıcılığını
+ve shell yardım kontrolü O10.8 maddesini ertelemiştir. Shell yardım
+incelemesinde eklenen iki geçici test geri alınmıştır; önceki dört shell
+kayıt testi korunmuştur. UART5/BMS RX kapatma değişikliği de geri
+alınmıştır; kullanıcı hattın mevcut haliyle kalmasını istemiştir.
+RF_SIMULATOR seçeneği açıldığında RF, UART5/BMS hattını kullanabilir;
+mevcut kaynakta bu seçenek kapalıdır.
+
+Sıradaki O8.11 maddesi için `HAL_I2C_ErrorCallback()` incelendi.
+BERR/ARLO/OVR hatalarında DeInit/Init ve filtre ayarı ISR içinde yapılır;
+normal read sonu NACK (AF) tek başına bu yeniden başlatmayı tetiklemez.
+Bu davranış kaynakta doğrulanmıştır; ISR içinde olması tek başına
+kilitlenme veya süre aşımı kanıtı değildir.
+
+Yerel STM32U3 HAL 1.4.0 kaynaklarında I2C Init/DeInit ve filtre ayarı
+fonksiyonlarında HAL_Delay veya tick ile timeout bekleyen döngü yoktur.
+I2C3 MSP yolunda PCLK3 seçilir, GPIO ve NVIC yeniden ayarlanır; seçilen
+RCC I2C3 dalı clock mux ayarıdır. Bu inceleme donanımda ISR süresi ölçümü
+sayılmaz. Mevcut hata kurtarma yolunun cihazda kesme gecikmesine veya
+kilitlenmeye neden olduğu doğrulanmamıştır. Bu yüzden yalnız genel
+ISR kuralına dayanarak yeni süreç, bayrak veya retry katmanı önerilmez.
+Kullanıcı mevcut kurtarma yolunun korunmasını onaylamıştır. İhtiyaç oluşursa I2C hata anında ISR süresi ve kurtarma sonucu ölçülmelidir.
+Bu madde için kod değişikliği veya donanım testi yapılmamıştır.
+
+### 9.17 SCP kaynak adresi doğrulaması — O6b.7, 04.10.2026
+
+`doc/SCP_Arayuz_Paketi_R1_yeniden_yazim.md` bölüm 3.3 ve 3.7, 0x00
+adresinin yalnız DST broadcast için geçerli olduğunu ve SRC=0x00'ın
+reddedilmesini belirtir. Mevcut `scp.c` çözümcüsü COBS, hedef, uzunluk ve
+CRC kontrolü yapar; SRC için bu kontrol yoktur. CRC'si ve uzunluğu doğru,
+hedefi cihaz olan SRC=0x00 paketi callback'e iletilebilir. RF callback de
+ayrı bir SRC reddi yapmaz. PING yanıtında hedef gelen SRC'den kopyalandığı
+için böyle bir paket broadcast hedefli ACK üretme yoluna ulaşabilir.
+
+Kullanıcı onayıyla çözümcüye CRC doğrulamasından sonra SRC=0x00 reddi
+eklendi. DST=0x00 geçerli broadcast davranışı korunur. Yeni durum,
+retry veya kurtarma katmanı eklenmedi.
+
+`test/scp/test_scp.c` içine iki Ceedling senaryosu eklendi. Gerçek
+`scp_send()` CRC ve COBS üretir; gerçek `scp_process_byte()` ile bu
+paketler alınır. Unicast ve broadcast hedefler için sıfır kaynaklı
+paketler packet-ready durumuna ulaşmaz ve `scp_get_packet()` NULL döner.
+Ardından reset veya packet_done çağırmadan gönderilen geçerli paket
+alınır; adres, tip, komut, sıra ve payload doğrulanır.
+
+Düzeltme öncesi iki yeni test başarısız oldu (10 geçti / 2 kaldı);
+düzeltme sonrası `ceedling test:test_scp` sonucu 12/12 geçti.
+RF hub simülatörü entegrasyon paketi de 74/74 geçti; bu paket gerçek RF
+cihazı testi değildir. Çıktılar
+`test/build/production-audit-2026-10-03/scp-source-before.log`,
+`scp-source-after.log` ve `scp-source-rf-hub.log` içindedir.
+Bu madde mevcut RX yolu için kapatıldı. ARM derlemesi, cihaz testi ve
+commit bu düzeltme için yapılmadı.
+
+### 9.18 Modbus reset komutunun yanıt sırası — O6b.6, 04.10.2026
+
+`Application/modbus_process.c` içindeki FC06 yazma callback'i geçerli
+modem-reset adresi ve tetik değerinde doğrudan `bsp_system_reset()` çağırır.
+Bu fonksiyon NVIC_SystemReset yapar ve dönmez. Modbus çekirdeği ise FC06
+echo yanıtını yazma callback'i MODBUS_REG_OK döndükten sonra gönderir.
+Dolayısıyla başarılı reset komutunun yanıtı gönderilmeden cihaz resetlenir.
+Bu sıra mevcut aktif çağrı yolunda doğrulanmıştır; fiziksel ölçüm yapılmadı.
+
+Kullanıcı mevcut web reset altyapısının kullanılmasını ve 1 saniyelik
+gecikme verilmesini seçmiştir. Callback doğrudan reset yerine
+`reboot_system_delayed(1000U)` çağırıp MODBUS_REG_OK döner. Normal FC06
+yanıtı çekirdeğin mevcut echo yolundan gönderilir; broadcast isteğinde
+reset planlanır ancak protokol gereği yanıt gönderilmez. Yeni TX-complete
+bekleme durumu, retry, reset süreci veya NVRAM flush politikası eklenmez.
+Mevcut `CLOCK_CONF_SECOND=1000` ile gecikme bir saniyedir.
+
+`test/application/test_modbus_reset_scenario.c` gerçek uygulama
+callback'ini ve gerçek RTU çekirdeğini kullanır. Yalnız reset planlayıcı,
+config ve BSP mock'tur; test taşıması yanıt byte'larını yakalar. DMA ve
+Contiki zamanlayıcısının fiziksel davranışı bu senaryolarda çalıştırılmaz.
+LTO yalnız bu test için kullanılarak ilgisiz donanım/süreç yolları çıkarılır;
+zorunlu uyarı seçenekleri korunur.
+
+- Doğru unicast reset: planlayıcı 1000 ms alır ve istek byte'ları echo edilir.
+- Broadcast reset: aynı gecikme planlanır, yanıt gönderilmez.
+- Yanlış tetik değeri: 0x03 exception, reset planlanmaz.
+- Yanlış adres: 0x02 exception, reset planlanmaz.
+
+Düzeltme öncesi unicast/broadcast testleri beklenmeyen doğrudan BSP reset
+çağrısını yakaladı. Düzeltme sonrası dört Ceedling testi geçti.
+ARM Release incremental derlemesi başarılıdır; değişen kaynaklarda yeni
+uyarı görülmedi. Çıktılar
+`test/build/production-audit-2026-10-03/modbus-reset-before.log`,
+`modbus-reset-after.log` ve `modbus-reset-release.log` içindedir.
+Fiziksel UART iletimi veya reset zamanı ölçülmedi; bir saniye gecikme
+iletim başarısını donanımsal olarak garanti eden bir kontrol değildir.
+Bu düzeltme henüz commit edilmedi.
+
+### 9.19 Modbus istek uzunluğu hatasının yanıtı — O6b.8, 04.10.2026
+
+Gerçek RTU alım yolu en az dört byte, doğru CRC ve uygun cihaz adresi
+kontrollerinden sonra FC03/FC06 işleyicilerine ulaşır. Bu işleyiciler
+sekiz byte olmayan isteği yanıt vermeden bırakıyordu. Böyle bir paket
+register callback'ini çalıştırmıyordu; sorun hatanın istemciye
+bildirilmemesiydi. Yeni testler düzeltme öncesinde bu davranışı doğruladı:
+beş testin üçü geçti, iki unicast exception testi başarısız oldu.
+
+Kullanıcı onayıyla mevcut uzunluk kontrollerine mevcut exception gönderme
+fonksiyonu eklendi. Cihaza yöneltilmiş, CRC'si doğru fakat uzunluğu hatalı
+FC03/FC06 isteğine 0x03 (Illegal Data Value) yanıtı verilir. Broadcast,
+başka cihaz adresi ve yanlış CRC durumlarında yanıt gönderilmez.
+Dört byte'tan kısa paketler mevcut çerçeve kontrolünde reddedilir.
+Yeni durum, retry veya alım mekanizması eklenmedi.
+
+[Modbus Application Protocol V1.1b3, bölüm 7](https://modbus.org/docs/Modbus_Application_Protocol_V1_1b3.pdf)
+0x03 kodunu istek yapısı ve ima edilen uzunluk hataları için tanımlar.
+
+`test/libs/test_modbus_request_length.c` Ceedling altyapısına eklendi.
+Testler gerçek `libmodbusrtu_modbus_rx_byte()` ve
+`libmodbusrtu_modbus_process()` yolunu kullanır. Tick ve register callback'leri
+test karşılıklarıdır; UART donanımı çalıştırılmaz. FC03 ve FC06 için 4, 7
+ve 9 byte uzunlukları, exception byte'ları ve CRC, register callback'lerinin
+çalışmaması, broadcast/başka adres/yanlış CRC sessizliği doğrulanır.
+Her hatalı paketten sonra reset yapılmadan geçerli istek gönderilir ve
+başarılı yanıtı kontrol edilir.
+
+- Uzunluk senaryoları: 5/5 Ceedling testi geçti.
+- Mevcut Modbus reset senaryoları: 4/4 Ceedling testi geçti.
+- ARM Release incremental derlemesi başarılı; yeni uyarı görülmedi.
+
+Çıktılar `test/build/production-audit-2026-10-03/modbus-length-before.log`,
+`modbus-length-after.log`, `modbus-length-reset-regression.log` ve
+`modbus-length-release.log` içindedir. Bu madde mevcut yazılım yolu için
+kapatıldı. Fiziksel Modbus hattında test ve commit henüz yapılmadı.
+
+### 9.20 Modbus çerçeveleme açıklamasının kanıtı — O6b.9, 04.10.2026
+
+**Amaç:** Başlıktaki byte sayısıyla çerçeveleme açıklaması mevcut
+uygulamayla karşılaştırılmıştır. Üretim kodu değiştirilmemiştir.
+
+**Kullanım yeri:** `Application/libmodbusrtu/modbus_rtu_slave.h` içindeki
+function code açıklaması ve `libmodbusrtu_modbus_process()` API açıklaması.
+Bu yorumlar bilinen function code için uzunluğun paketi tamamlayabileceğini
+söyler. Çekirdeğin gerçek kararı ise `modbus_rtu_slave.c` içindeki
+`libmodbusrtu_modbus_process()` fonksiyonunda verilir: yazılım modunda
+son RX byte'ından itibaren geçen süre `MODBUS_TIMEOUT_MS` değerine
+ulaşmalıdır. Mevcut değer 10 ms, varsayılan `MODBUS_USE_HW_RTO` değeri
+0'dır; `.cproject` içinde bunu değiştiren bir tanım bulunmamıştır.
+Donanım modundaki ayrı yol `frame_ready` bayrağını kullanır.
+
+**Doğrulama:** `test/libs/test_modbus_request_length.c` içine üç Ceedling
+testi eklenmiştir. Gerçek RX ve process fonksiyonları çalıştırılmış;
+yalnız tick, register callback'leri ve TX taşıması test karşılığıdır.
+
+- Geçerli sekiz byte FC03 ve FC06 isteği hemen veya 9 ms sessizlikte
+  işlenmez. Tam 10 ms sessizlikte callback çalışır ve yanıt gönderilir.
+- Desteklenmeyen FC01 ve FC0F için de aynı bekleme gerçekleşir. Sonrasında
+  beş byte 0x01 (Illegal Function) exception yanıtı, adresi ve CRC'si
+  doğrulanır. Register callback'leri çalışmaz. FC0F gövdesinin geçerliliği
+  test edilmez; mevcut çekirdek bu function code'u zaten desteklemez.
+- Sekiz byte'tan 9 ms sonra ek bir byte alınması sessizlik süresini yeniden
+  başlatır. İlk paketin başlangıcından 10 ms geçtiğinde hâlâ beklenir;
+  son byte'tan 10 ms sonra çerçeve işlenir. Bozuk CRC nedeniyle yanıt
+  gönderilmez; sonraki geçerli istek reset yapılmadan başarıyla işlenir.
+
+Üç yeni test ve mevcut beş uzunluk testi birlikte 8/8 geçmiştir.
+Çıktı: `test/build/production-audit-2026-10-03/modbus-framing-evidence.log`.
+Bu sonuç byte sayısıyla erken tamamlama iddiasının mevcut yazılım modu
+için yanlış olduğunu kanıtlar. Donanım RTO modu, UART kesme zamanlaması
+ve fiziksel hattaki süreler bu testte doğrulanmamıştır.
+
+**Öneri:** Yalnız ilgili başlık yorumları gerçek davranışa göre
+düzeltilmelidir. Çalışma mantığını veya timeout değerini değiştiren bir
+çözüm bu bulgu için gerekli değildir. Yorum düzeltmesi henüz yapılmamıştır.
+
+### 9.21 PowerBoard toplu okuma örneklerinin kanıtı — O6b.10, 04.10.2026
+
+**Amaç:** Register başına snapshot (anlık kopya) alma ve tek FC03
+response (yanıt) içinde farklı örneklerin birleşmesi incelenmiştir.
+Üretim kodu değiştirilmemiştir.
+
+**Kullanım yeri:** Gerçek çağrı zinciri şöyledir:
+`modbus_process_fc03()` her register için `fc03_read_callback()` çağırır;
+PowerBoard aralığında `modbus_power_stats_read()` her defasında
+`power_board_get_telemetry()` çağırır. Getter, `i2c_slave_snapshot()` ile
+96 byte alır ve `power_board_decode_telemetry()` ile yeniden çözer.
+`Application/power_board/i2c_slave.c:261-269` kopya sırasında kesmeleri
+kapatır ve önceki PRIMASK değerini geri yükler. Aynı dosyadaki RX callback,
+I2C verisini kesme bağlamında register map'e yazar. Bu yüzden kooperatif
+Contiki modeli PowerBoard verisinin register okumaları arasında sabit
+kalacağını garanti etmez. Her kopya sırasında kesmeler kapalıdır; bu
+koruma bütün FC03 yanıtını kapsamaz. Kopya koruması, devam eden bir I2C
+transferinin bütünüyle tamamlandığını da garanti etmez.
+
+BMS tarafı farklıdır: `Application/bms/bms_reader.c:24-30` içindeki
+getter yapıyı kopyalar fakat kesmeleri kapatmaz. Rapordaki BMS için
+79 kez kesme kapatma iddiası mevcut kod için geçerli değildir. BMS
+çözülmüş verisi kooperatif süreçte güncellenir; RX kesmesi yalnız ham
+buffer'ı doldurur. BMS veri tutarsızlığı bu incelemede gösterilmemiştir.
+
+**Doğrulama:** `test/application/test_modbus_power_snapshot_scenario.c`
+Ceedling altyapısına eklenmiştir. Gerçek RTU çekirdeği, uygulamanın
+`fc03_read_callback()` fonksiyonu, PowerBoard register eşlemesi,
+telemetri getter'ı ve decoder çalıştırılmıştır. I2C snapshot kaynağı,
+config ve ilgisiz kaynaklar test karşılığıdır. LTO yalnız bu testte
+ilgisiz donanım/süreç yollarını çıkarır. Shell log argümanları derlemede
+korunur; zorunlu uyarı seçenekleri kapatılmamıştır.
+
+- 49200..49231 aralığının tek FC03 isteğinde okunması, 32 snapshot
+  çağrısı oluşturmuştur. Yanıtın FC03 yapısı, uzunluğu ve CRC'si
+  doğrulanmıştır. Sabit örneğin sequence=7 ve VBAT=24000 değerleri
+  beklenen register'larda görülmüştür.
+- 49200..49210 isteğinde üçüncü snapshot'tan sonra test kaynağı,
+  sequence=7/VBAT=24000 örneğinden sequence=8/VBAT=28000 örneğine
+  geçirilmiştir. İki örnek de doğru XSUM ile hazırlanmıştır. Tek
+  yanıt eski sequence=7 ile yeni VBAT=28000 değerini birlikte
+  taşımıştır. 11 register için 11 snapshot çağrısı oluşmuştur.
+  Son örneğin sequence=8 ve VBAT=28000 olduğu gerçek decoder ile
+  ayrıca doğrulanmıştır.
+
+İki kanıt testi 2/2 geçmiştir. Bu testler mevcut kusurlu davranışı
+belgeler; düzeltme yapıldığında beklentiler aynı örnek ve istek başına
+tek snapshot davranışına göre değiştirilmelidir. Çıktı:
+`test/build/production-audit-2026-10-03/modbus-power-snapshot-evidence.log`.
+Fiziksel I2C kesmesi çalıştırılmamıştır. Veri değişimi kontrollü olarak
+snapshot çağrıları arasına yerleştirilmiştir; sahadaki oluşma sıklığı,
+kesme kapatma süresi veya performans kaybı ölçülmemiştir.
+
+**Öneri:** PowerBoard verisi her FC03 isteğinde yalnız bir kez alınmalı;
+o isteğin ilgili register'ları aynı kopyadan üretilmelidir. Uzun bir
+kesme kapatma bölgesi, retry veya yeni arka plan süreci eklenmemelidir.
+**Durum: Ertelendi.** Kullanıcı 04.10.2026 tarihinde bu bulgunun
+şimdilik mevcut haliyle bırakılmasını seçmiştir. Üretim kodu
+değiştirilmemiştir; iki Ceedling kanıt testi repoda korunmuştur.
+PowerBoard için aynı yanıtta farklı örneklerin birleşmesi riski açıktır.
+BMS optimizasyonu bu kanıtla zorunlu hale gelmemiştir.
+
+### 9.22 Modbus cihaz adresi doğrulaması — D6b.12, 04.10.2026
+
+**Amaç:** Web ve sunucu cihaz adresi kontrollerinin aynı aralığı kabul
+etmesi ve register rehberindeki mevcut davranışın açıklanması.
+
+**Kanıt:** Web arayüzü zaten 1..247 aralığını doğrulamaktadır. Sunucudaki
+`validate_modbus_device_id()` ise 0 için yalnız uyarı verip true dönüyordu.
+HTTP kayıt yolu gerçek `parse_modbus_config()` ardından
+`set_modbus_config()` çağırır. RTU başlangıç fonksiyonu geçersiz cihaz
+adresini 23 ile değiştirir; çalışma sırasındaki adres güncelleme API'si
+geçersiz adresi yok sayar. Dolayısıyla 0 kaydedilmesi kayıtlı adres ile
+çalışan adresin farklı olmasına yol açabilir. Broadcast paketlerinin
+hedef adresi 0 olması, cihazın kendi adresinin 0 yapılmasını gerektirmez.
+
+**Değişiklik:** Kullanıcı onayıyla mevcut doğrulama 0 ve 247 üzerini
+reddedecek şekilde düzeltildi. Aynı doğrulama doğrudan setter'a da
+konuldu; geçersiz adres config okumaya/yazmaya, sync veya çalışma ayarı
+bildirimine ulaşmadan reddedilir. JSON parse hatası mevcut HTTP 400
+cevabı üzerinden döner. Web ve RTU broadcast davranışı değiştirilmedi.
+
+Başlangıç `active_baud=115200` ile CubeMX `huart4.Init.BaudRate=115200`
+mevcut kodda aynıdır. Bu konuda çalışma hatası gösterilmedi; baud rate
+başlatma veya HAL/CubeMX kaynakları değiştirilmedi.
+Pasif fiderin sıfır dönmesi rehberin 5.1.1 bölümünde zaten yazılıdır.
+Tek başına sıfırın veri yok anlamına gelmediği ve ayrılmış offset 27..99
+adreslerinin de sıfır ile normal FC03 yanıtı verdiği açıklanmıştır.
+Adres rehberi sürümü 1.8 olmuştur.
+
+**Doğrulama:** `test/web_server/test_json_config_bounds.c` içine dört
+Ceedling testi eklenmiştir. Gerçek JSON parser ve setter kullanılmıştır;
+config depolama ve çalışma ayarı bildirimi mock'tur. 0/248/255 reddi,
+1/247 kabulü, geçersiz setter çağrısında depolama API'lerine ulaşılmaması
+ve 247'nin değişmeden depolama katmanına verilmesi doğrulanmıştır.
+Mevcut test ayrıca adres 1'in depolama yolunu kapsamaktadır.
+
+- Düzeltme öncesi: 24 geçti, iki yeni test başarısız oldu.
+- Düzeltme sonrası: JSON sınır paketi 26/26 geçti.
+- Entegrasyon: 9/9 paket geçti.
+- ARM Release incremental derlemesi başarılı; yeni uyarı görülmedi.
+
+Çıktılar `test/build/production-audit-2026-10-03/modbus-device-id-before.log`,
+`modbus-device-id-after.log`, `modbus-device-id-integration.log` ve
+`modbus-device-id-release.log` içindedir. Fiziksel cihaz testi ve commit
+henüz yapılmadı. Cihaz adresi doğrulama eksikliği kapatılmıştır.
+
+### 9.23 RF geçici ERROR yanıtının kanıtı — Y7.2, 04.10.2026
+
+**Amaç:** NOT_AVAILABLE (veri henüz hazır değil, 0x05) yanıtında mevcut
+retry haklarının kullanılıp kullanılmadığı ve envanter etkisi incelenmiştir.
+Üretim kodu değiştirilmemiştir.
+
+**Kanıt:** `rf_comm.c` içindeki `scp_on_response()` CMD/SEQ eşleşmesini
+kontrol eder. ERROR tipinde gövdedeki hata kodunu ayırmadan SCP_CMD_ERR
+sonucunu seçer; busy durumunu temizleyip done callback'ini çağırır.
+`rf_inventory.c` içindeki `on_set_done()` bu sonuçta skipped_count
+artırıp sonraki faza geçer. END için ACK alınırsa atlanan cihaz olsa
+bile `loaded=true` yapılır. Mevcut timeout yolu ise kalan retry hakkını
+azaltıp aynı paketi ve SEQ değerini yeniden gönderir.
+
+**Doğrulama:** `test/rf/test_rf_error_retry_scenario.c` Ceedling'e
+eklenmiştir. Gerçek komut gönderme/yanıt/timeout fonksiyonları ve
+inventory sequencer çalıştırılmıştır. TX paketleri gerçek SCP/COBS/CRC
+ile üretilmiş ve ikinci bir gerçek SCP parser ile çözümlenmiştir.
+RX yanıt nesnesi doğrudan `scp_on_response()` girişine verilmiştir;
+RX UART, RX dispatch ve fiziksel hub çalıştırılmamıştır. Tick ve feeder
+store test karşılığıdır. Test başlangıcında modülün private RAM durumu
+sıfırlanır; üretim reset veya API değişikliği eklenmemiştir.
+
+- GET_STATUS için iki retry hakkıyla gönderilen isteğe eşleşen ERROR
+  0x05 verildiğinde done bir kez SCP_CMD_ERR almıştır. Haklar hâlâ 2'dir,
+  komut serbesttir; ileride timeout kontrolü yeni gönderim yapmamıştır.
+- Yanıt gelmeyen kontrol senaryosunda 499 ms'de gönderim yoktur;
+  500 ms'de aynı paket/SEQ yeniden gönderilir, hak 1'e iner.
+  Sonraki ACK komutu başarıyla bitirir.
+- Tek aktif cihazın INVENTORY_SET isteğine ERROR 0x05 verildiğinde
+  skipped_count=1, sent_count=0 olmuştur. Bir sonraki continue çağrısı
+  cihazı yeniden göndermek yerine INVENTORY_END göndermiştir.
+  END ACK sonrası loaded=true ve active=false doğrulanmıştır.
+
+Üç kanıt testi 3/3 geçmiştir. Testler mevcut sorunlu ERROR davranışını
+belgeler; düzeltmede beklentiler retry davranışına göre değiştirilmelidir.
+Çıktı: `test/build/production-audit-2026-10-03/rf-error-retry-evidence.log`.
+Sahada 0x05 oluşma sıklığı ve fiziksel RF davranışı ölçülmemiştir.
+
+**Öneri:** 0x05 için mevcut sınırlı timeout/retry yolu kullanılmalı;
+aynı SEQ korunmalı ve kalıcı hata sonucu ancak haklar bitince verilmelidir.
+Yeni kuyruk, süreç veya sınırsız retry eklenmemelidir. 0x03 BUSY ayrı
+incelenmelidir: güncel SCP belgesi config işlemleri için 0x28/0x21
+ile durum izlemeyi tarif eder; tüm komutlara aynı retry kuralı uygulanması
+bu kanıtla gerekçelendirilmemiştir.
+
+**Durum: Ertelendi.** Kullanıcı 04.10.2026 tarihinde bu bulgunun not
+alınıp şimdilik geçilmesini seçmiştir. Üretim kodu değiştirilmemiştir;
+üç Ceedling kanıt testi repoda korunmuştur. NOT_AVAILABLE yanıtında
+retry yapılmaması ve envanterde cihaz atlanması riski açıktır.
+
+### 9.24 NOT_AVAILABLE için iki retry — Y7.2, 04.10.2026
+
+**Amaç:** Kullanıcı önceki erteleme kararından sonra 0x05 NOT_AVAILABLE
+için devam edilmesini ve iki retry (ek deneme) kullanılmasını seçmiştir.
+9.23 bölümündeki erteleme, bu hata kodu bakımından bu bölümle güncellenir.
+
+**Değişiklik:** `rf_comm.c` içindeki gerçek ERROR yanıt yoluna küçük bir
+kontrol eklenmiştir. CMD/SEQ eşleşmesinden sonra en az bir byte gövde,
+ilk byte=0x05 ve kalan retry hakkı varsa mevcut sayaç azaltılır. Aynı
+`last_req` paketi, aynı SEQ ile yeniden gönderilir ve mevcut timeout
+süresiyle deadline yeniden kurulur. Done callback çağrılmaz; komut
+busy kalır. Hak kalmadığında sonraki 0x05 mevcut SCP_CMD_ERR yolu ile
+komutu bitirir. Varsayılan ve envanter komutları zaten iki ek retry ile
+başlatılır; böylece toplam gönderim sınırı üçtür. Çağıranın verdiği
+retry sayısı değiştirilmemiştir.
+
+Timeout ve 0x05 aynı sayacı tüketir; iki ayrı retry bütçesi yoktur.
+Son gönderime yanıt gelmezse mevcut SCP_CMD_TIMEOUT sonucu korunur.
+BUSY, kalıcı ERROR ve boş ERROR gövdesi eski davranışla komutu bitirir.
+Yeni süreç, kuyruk, durum alanı veya sınırsız deneme eklenmemiştir.
+INVENTORY_SET ve INVENTORY_END mevcut komut yolundan bu davranışı alır;
+retry sırasında envanter sonraki adıma geçmez. O7.5 kapsamındaki bütün
+envanteri baştan otomatik başlatma ayrı bir konu olarak kalır.
+
+**Doğrulama:** `test/rf/test_rf_error_retry_scenario.c` kanıt testleri
+beklenen yeni davranışa uyarlanmıştır. Gerçek RF komut mekanizması,
+envanter sequencer, TX SCP/COBS/CRC üretimi ve karşı parser çalışır.
+Yanıt nesnesi doğrudan response girişine verilir; fiziksel UART/RF,
+RX dispatch ve gerçek Contiki zamanlayıcısı çalıştırılmaz.
+
+- Arka arkaya 0x05: aynı paket/SEQ ile iki retry, üçüncü hata sonrası
+  yalnız bir done callback ve ERR; daha sonra ek gönderim yoktur.
+- Timeout: mevcut aynı paket/SEQ ile retry ve sonraki ACK korunur.
+- Envanter SET: 0x05 sonrası cihaz atlanmaz; retry ACK sonrası END'e geçer.
+- Envanter END: iki 0x05 sırasında active kalır; üçüncü gönderimin ACK'i
+  loaded durumuna geçirir.
+- BUSY ve üç kalıcı hata: retry yapmadan ERR ile biter.
+- Boş ERROR gövdesi: data[0] değeri 0x05 olsa da retry yapılmaz.
+- 0x05 ve timeout birlikte: aynı iki hak tüketilir; ek hak oluşmaz.
+
+Yeni beklentiler eski kodda üç testi başarısız yapmıştır (3 geçti / 3
+başarısız). Düzeltme ve END testi sonrası 7/7 Ceedling testi geçmiştir.
+RF hub simülatörü 74/74 geçmiştir. ARM Release incremental derlemesi
+başarılıdır; yeni uyarı görülmemiştir. Çıktılar
+`test/build/production-audit-2026-10-03/rf-not-available-before.log`,
+`rf-not-available-after.log`, `rf-not-available-hub-sim.log` ve
+`rf-not-available-release.log` içindedir. Akış belgesinin 5.3 bölümüne
+mevcut uygulama notu eklenmiştir. Fiziksel cihaz testi ve commit henüz
+yapılmamıştır. Y7.2'nin 0x05 kısmı kapatılmış; BUSY/durum sorgulama
+politikası ve belgede tarif edilen link durumu bu değişikliğe alınmamıştır.
+
+### 9.25 RF UART gönderiminin beklemesi — O7.6, 04.10.2026
+
+**Kanıt:** Normal RF yolu `rf_comm_transmit()` üzerinden
+`uart_send_buffer(UART_3, ...)` çağırır. Byte gönderimi UART TXE/TXFNF
+bayrağını bekler; bu sırada kooperatif süreç ilerlemez, kesmeler açık
+kalır. Mevcut USART3 ayarı 230400 8N1 ve FIFO kapalıdır. 256 byte için
+11,1 ms ve mevcut 24 byte envanter paketi için yaklaşık 1 ms değerleri
+hat süresi hesabıdır; fonksiyonun gerçek süresi ölçülmemiştir. TXE,
+son byte'ın hat üzerindeki iletiminin tamamlandığı anlamına gelmez.
+
+**Durum: Ertelendi.** Kullanıcı bu değerlendirmeyi kabul edip sonraki
+bulguya geçilmesini seçmiştir. Mevcut kullanımda zamanlama ihlali veya
+veri kaybı gösterilmediğinden DMA/TX kuyruğu eklenmemiştir. Önce fiziksel
+cihazda gönderim süresi ve süreçlere etkisi ölçülmelidir. Üretim kodu
+ve donanım ayarları değiştirilmemiştir.
+
+### 9.26 Sanal RF keşif komutunun yetkisi — O7.7, 04.10.2026
+
+`rf_shell.c` içindeki `rf disc` sanal EUI üretip gerçek keşif listesine
+`rf_discovery_add()` ile ekler. Ana `rf` komutu SHELL_LVL_USER seviyesinde
+kayıtlıdır; disc için ayrı SUPER_USER kontrolü yoktur. Yardım metni test
+EUI/sanal cihaz olduğunu söyler; keşif listesi web tarafından da okunur.
+
+**Durum: Ertelendi.** Kullanıcı 04.10.2026 tarihinde bu maddenin
+geçilmesini seçmiştir. Test işlevi ve mevcut yetki korunmuştur;
+üretim kodu değiştirilmemiştir.
+
+### 9.27 RF response fonksiyon bildirimi — O7.8, 04.10.2026
+
+**Kanıt:** `Application/rf/rf_comm.h` yalnız `scp_on_reply()` bildirirken
+`rf_comm.c` içinde tanımlanan ve RX dispatch tarafından çağrılan fonksiyon
+`scp_on_response()` adındadır. Eski bildirim için bir tanım yoktur.
+Mevcut iç çağrı çalışır; header'daki eski adı kullanan dış çağrı link
+hatasına yol açar.
+
+**Değişiklik:** Kullanıcı onayıyla header bildirimi `scp_on_response()`
+olarak düzeltildi. Callback bağlamı ve dosya açıklamasındaki ad da
+uyumlu hale getirildi. Header author alanı repo kuralına göre güncellendi.
+Fonksiyon gövdesi, imza parametreleri ve protokol davranışı değiştirilmedi.
+
+**Doğrulama:** `ceedling test:test_rf_error_retry_scenario` 7/7 geçti.
+`Application/rf` altında `scp_on_reply` ve `on_reply` kalıntısı bulunmadı.
+Çıktı: `test/build/production-audit-2026-10-03/rf-response-header.log`.
+Yeni davranış testi gerektiren bir lojik değişiklik yapılmadı.
+Bu madde kapatıldı; commit henüz yapılmadı.
+
+### 9.28 RF PING yanıtında ortak builder — O7.9, 04.10.2026
+
+**Kanıt:** `rf_comm.c` içindeki `reply_ping()` ile `rf_scp.c` içindeki
+`rf_scp_build_ping_reply()` aynı alan atamalarını ve broadcast sessizliği
+kuralını ayrı uyguluyordu. Unicast için boş ACK, ters adresler ve gelen
+CMD/SEQ değerleri iki yerde de aynıydı. Çalışma hatası gösterilmemiştir;
+bulgu aynı kuralın tekrarlanması ve testli builder'ın bu yolda
+kullanılmamasıdır.
+
+**Değişiklik:** Kullanıcı onayıyla `reply_ping()` mevcut builder'ı
+çağırır; builder false dönerse göndermez, true dönerse mevcut
+`scp_send()` ile ACK gönderir. Tekrarlanan alan atamaları kaldırılmıştır.
+Yeni durum, abstraction (soyutlama) veya protokol davranışı eklenmemiştir.
+
+**Doğrulama:** RF senaryo testine iki üretim PING yolu testi eklenmiştir.
+Gerçek `reply_ping()`, builder ve SCP/COBS/CRC gönderimi çalışır; ikinci
+SCP parser gönderilen paketi çözer. Unicast için hedef/kaynak, ACK tipi,
+CMD, SEQ ve boş gövde kontrol edilir. Broadcast için TX çağrısı yoktur.
+Komut mekanizmasının bu yanıttan sonra serbest kalması da doğrulanır.
+UART taşıması ve fiziksel hub bu testte çalıştırılmaz.
+
+- RF komut/PING senaryoları: 9/9 Ceedling testi geçti.
+- RF codec paketi: 4/4 Ceedling testi geçti.
+- ARM Release incremental derlemesi başarılı; yeni uyarı görülmedi.
+
+Çıktılar `test/build/production-audit-2026-10-03/rf-ping-path.log`,
+`rf-ping-codec.log` ve `rf-ping-release.log` içindedir.
+Bu madde kapatıldı; commit henüz yapılmadı.
+
+### 9.29 RF telemetri ve eski akış belgesi — O7.10 / D7.11, 04.10.2026
+
+O7.10 kapsamında gerçek RF telemetrisini veri modeline bağlayan handler'lar
+henüz kurulmamıştır. Dummy üreticileri koruma kararı geçerlidir.
+D7.11 kapsamında `doc/RF_SCP_Akis.md` hâlâ artık bulunmayan rf_process.c
+ve eski FSM/link tasarımını anlatır; 5.3 bölümündeki güncel retry notu
+belgenin geri kalanını güncel hale getirmez.
+
+**Durum: Ertelendi.** Kullanıcı bu iki maddenin şimdilik geçilmesini
+seçmiştir. Yeni telemetri handler'ı veya belge düzenlemesi yapılmamıştır.
+
+### 9.30 COBS code byte sınır kontrolü — D7.12, 04.10.2026
+
+**Kanıt:** Genel COBS encoder'a 254 sıfır olmayan byte ardından 0x00
+verildiğinde 0xFF run (blok) code indeksini 255'e taşır. Çıkış kapasitesi
+255 ise sonraki sıfır byte yolu, kapasiteyi kontrol etmeden bu indekse
+code=1 yazar. Fonksiyon sonra false döner; ancak sınır dışı yazma
+zaten gerçekleşmiştir. Mevcut SCP logical paket sınırı 253 byte'tır;
+bu özel tetik mevcut SCP gönderim yolunda erişilebilir değildir.
+Genel COBS API'sindeki kusur host testinde doğrulanmıştır.
+
+**Değişiklik:** Kullanıcı onayıyla sıfır byte yolunda code byte yazılmadan
+önce `code_idx >= output_size` kontrolü eklenmiştir. Yetersiz kapasitede
+false döner. Kütüphane header author bilgisi repo kuralına uyarlanmıştır.
+Yeni algoritma, durum veya protokol değişikliği eklenmemiştir.
+
+**Doğrulama:** `test/scp/test_cobs.c` içine iki Ceedling testi eklenmiştir.
+255 byte giriş için 255 byte çıkış kapasitesi verilen testte, buffer'ın
+önü ve arkasındaki canary (koruyucu byte) kontrol edilmiştir. Eski kod
+arka canary'yi 0x5A'dan 0x01'e değiştirmiştir. Diğer test aynı girişi
+257 byte kapasiteyle kodlar; iki canary korunur ve gerçek decoder
+ile bütün giriş byte'ları yeniden elde edilir.
+
+- Düzeltme öncesi COBS: 13 geçti, bir canary testi başarısız oldu.
+- Düzeltme sonrası COBS: 14/14 geçti.
+- SCP: 12/12 geçti.
+- RF komut/PING senaryoları: 9/9 geçti.
+- ARM Release incremental derlemesi başarılı; yeni uyarı görülmedi.
+
+Çıktılar `test/build/production-audit-2026-10-03/cobs-run-before.log`,
+`cobs-run-after.log`, `cobs-run-scp.log`, `cobs-run-rf.log` ve
+`cobs-run-release.log` içindedir. Bu madde kapatıldı; fiziksel cihaz testi
+ve commit henüz yapılmadı.
+
+### 9.31 PowerBoard ve BMS altyapısının değişmesi — 04.10.2026
+
+**Durum: Ertelendi.** Kullanıcı PowerBoard ve BMS altyapısının değişeceğini
+belirterek bu alt sistemlere özgü kalan bulguların geçilmesini istemiştir.
+BMS raw payload CRC eksikliği (Y8.4), alım çerçeveleme/ortak durum/bayatlık
+konuları (Y8.5–Y8.7) bu kapsamda düzeltilmemiştir. PowerBoard kalıcılığı
+ve snapshot bulguları için önceki erteleme kararları da korunur.
+BSP'nin RTC, UART ve benzeri ortak servisleri bu ertelemenin kapsamında
+sayılmamıştır. Mevcut riskler yeni altyapı devreye alınmadan önce yeniden
+incelenmelidir; bu karar üretime hazır oldukları anlamına gelmez.
+
+### 9.32 BMS full-map yanıtının doğrulanması — Y8.4, 04.10.2026
+
+**Amaç:** Kullanıcı BMS altyapısı değişecek olsa da bu parser kusurunun
+şimdi düzeltilmesini seçmiştir. 9.31 bölümündeki erteleme Y8.4 için
+bu bölümle kaldırılır; diğer BMS/PowerBoard ertelemeleri korunur.
+
+**Kanıt:** Reader UART buffer'ını doğrudan BMS_ParseFullMapResponse'a
+verir. Başlığı sıyıran bir çağrı veya başka raw payload tüketicisi
+repoda bulunmamıştır. Eski parser, beklenen adres/fonksiyon başlığı
+olmadığında en az 254 byte veriyi CRC kontrolü yapmadan çözüp geçerli
+işaretliyordu. Geçerli başlık yolunda da tam uzunluk ve byte count
+zorunlu değildi. Yeni testlerde raw, eksik/uzun, yanlış adres/fonksiyon
+ve yanlış byte count senaryoları eski davranışı göstermiştir.
+BMS reader init mevcut durumda kapalıdır; kusur bu yapılandırmada
+aktif reader yolundan tüketilmez.
+
+**Değişiklik:** Mevcut 259 byte tam yanıt, adres 0x51, fonksiyon 0x03,
+byte count 254 ve doğru CRC zorunlu tutulmuştur. Kontroller decode'dan
+önce yapılır. CRC'siz raw payload fallback kaldırılmıştır; #if 0
+blokları kaldırılmamıştır. Doğru yanıtın veri çözümleme mantığı ve SOH
+politikası değiştirilmemiştir. Reddedilen paket hedef snapshot'ı
+bozmaz; önceki verinin bayatlatılması Y8.7'nin ayrı konusudur.
+
+Host derlemesindeki üç integer-promotion uyarısı için CRC XOR sonucuna
+ve birleştirilen iki CRC byte'ına, 16-bit aralıkları kanıtlanarak açık
+dönüşüm uygulanmıştır. CRC algoritması ve byte sırası aynıdır;
+uyarı seçenekleri kapatılmamıştır. SOH CRC byte birleştirmesi de bu
+kapsamdadır ve ayrı regresyon senaryosuyla doğrulanmıştır.
+
+**Doğrulama:** `test/libs/test_bms_full_map.c` Ceedling'e eklenmiştir.
+Gerçek BMS parser ve CRC çalışır; test fixture bağımsız bitwise CRC
+üretir. Geçerli paketin ilk hücre değeri 3300 mV ve ayrı SOH verisinin
+korunması kontrol edilmiştir. Raw 254 byte, 0/2/258 byte kısa paket,
+CRC'si yeniden hesaplanmış 260 byte uzun paket, yanlış adres/fonksiyon,
+yanlış byte count ve bozuk CRC reddedilir. Her hata sonrası bütün
+hedef yapının önceki örnekle aynı kaldığı kontrol edilir. SOH için
+geçerli paket çözümleme ve bozuk CRC reddi de kapsanmıştır.
+
+- Parser düzeltmesi öncesi: 2 geçti / 5 başarısız.
+- Düzeltme ve SOH regresyon testi sonrası: 8/8 Ceedling testi geçti.
+- ARM Release incremental derlemesi başarılı; yeni uyarı görülmedi.
+
+Çıktılar `test/build/production-audit-2026-10-03/bms-full-map-before.log`,
+`bms-full-map-after.log` ve `bms-full-map-release.log` içindedir.
+BMS reader etkinleştirilmemiştir; reader çerçeveleme, ISR paylaşımı
+ve bayatlık bulguları bu değişiklikle kapatılmış sayılmaz. Fiziksel
+BMS testi ve commit henüz yapılmadı. Y8.4 parser kusuru kapatılmıştır.
+
+### 9.33 BMS alım, ISR paylaşımı ve veri bayatlığı — Y8.5–Y8.7, 04.10.2026
+
+**Amaç:** Kullanıcı kalan üç BMS bulgusunun da incelenip düzeltilmesini
+istemiştir. §9.31'deki erteleme bu bulgular için kaldırılmıştır.
+PowerBoard ertelemeleri ve BMS etkinleştirme kararı korunmuştur.
+
+**Kanıt:** UART5 ISR (kesme işleyicisi) reader buffer'ına byte eklerken
+process aynı buffer'ı çözüp sayacı sıfırlıyordu. Sayaç normal integer
+olarak iki bağlamda paylaşılıyordu. Eski process her saniye, yanıt henüz
+tamamlanmamış olsa da buffer'ı siliyordu. Full-map ve SOH geçerlilik
+bayraklarında yaş sınırı yoktu. Kullanılan parser yalnızca verilen
+paketi doğrular; reader'ın alım süresi, ortak buffer ve veri yaşı için
+başka HAL veya kütüphane kurtarması bulunmamıştır. Reader init mevcut
+yapılandırmada kapalı olduğundan bu kusurlar etkin reader yolunda
+tüketilmez; testlerde gerçek reader etkinleştirilmiştir.
+
+**Değişiklik:** Mevcut saniyelik, dönüşümlü full-map/SOH sorgulama
+korunmuştur. Gönderilen isteğe göre 259 veya 7 byte yanıt beklenir.
+ISR bu uzunluklara ulaşıldığında mevcut process'i poll ile uyandırır.
+Eksik yanıt bir sonraki isteğe kadar korunur; mevcut bir saniyelik
+yanıt penceresi dolunca bırakılır. İşleme anında beklenen uzunluğu
+aşan veri ve buffer taşması reddedilir. Taşma sayacı başa sarmaz;
+yeni istek alımı yeniden başlatır. Yeni process, kuyruk veya retry
+(yeniden deneme) katmanı eklenmemiştir.
+
+Kullanıcı master rolünü ve yalnızca ilgili RX kesmesinin kapatılmasını
+hatırlatınca ilk atomic + PRIMASK çözümü sadeleştirilmiştir. RX buffer'ını
+yazan tek yol UART5 ISR'dir. Main bağlamında sayacın okunması,
+paket kopyalama ve sayacı temizleme yalnızca UART5 IRQ kapalıyken
+yapılır. Önceki IRQ açık/kapalı durumu korunur. Global kesmeler
+kapatılmaz; USART alıcısı ve pending (bekleyen) IRQ temizlenmez.
+Sayaç `volatile uint32_t` olarak tutulur. Koruma volatile özelliğinden
+değil, ortak duruma erişirken UART5 ISR'nin dışlanmasından gelir.
+Ek atomic işleme ihtiyaç kalmamıştır. Yerel CMSIS `NVIC_DisableIRQ`
+DSB/ISB, `NVIC_EnableIRQ` compiler barrier (derleyici bariyeri) içerir.
+Decode, log ve UART gönderimi kritik bölümün dışındadır.
+
+Full-map ve SOH için son başarılı yanıt zamanı ayrı tutulur. Her biri
+5000 ms boyunca yenilenmezse kendi geçerlilik bayrağı temizlenir.
+Son ölçüm değerleri korunur. Bozuk CRC zamanı yenilemez; yeni geçerli
+yanıt ilgili bayrağı yeniden açar. Beş saniye, mevcut iki saniyelik
+sorgu çevrimine göre seçilen yazılım politikasıdır; BMS donanımının
+zorunlu yanıt süresi olarak kabul edilmemiştir. Tick sarması unsigned
+zaman farkı ile ele alınmıştır.
+
+**Doğrulama:** `test/libs/test_bms_reader_scenario.c` Ceedling'e
+eklenmiştir. Gerçek reader, protothread ve BMS parser çalışır; UART,
+tick, timer ve kesme maskesi host ortamında taklit edilir. İlk üç
+test eski kodda başarısız olmuştur. Son durumda 11/11 reader testi
+geçmiştir. Kapsam: parçalı full-map/SOH, yanlış yanıt türü, poll ile
+erken işleme, sonraki istekte eksik yanıtın bırakılması, taşma sonrası
+toparlanma, CRC hatasında zamanın yenilenmemesi, bağımsız bayatlama,
+tick sarması ve önceden kapalı UART5 IRQ durumunun hem snapshot hem
+yeni istek hazırlığında korunmasıdır. Kritik
+bölümden çıkarken byte ekleyen senaryo, kopyalama sonrası yeni byte'ın
+silinmediğini doğrular. Bu host senaryosu fiziksel kesme gecikmesini
+ölçmez.
+
+Sadeleştirme sonrası Ceedling genel paketi 439/439 geçmiştir.
+ARM Release son derlemesi başarılıdır; yeni uyarı görülmemiştir.
+Test çıktıları `test/build/production-audit-2026-10-03/` altındaki
+`bms-reader-before.log`, `bms-reader-after.log`,
+`bms-reader-all-final.log`, `bms-reader-uart-irq.log` ve
+`bms-reader-uart-irq-release.log` içindedir.
+Y8.5–Y8.7 yazılım düzeltmeleri tamamlanmıştır. BMS etkinleştirilmemiş,
+fiziksel BMS/UART testi ve commit yapılmamıştır.
+
+### 9.34 Skill ve ajan kurallarının kararlarla uyumu — 04.10.2026
+
+Kullanıcı kararıyla mevcut oturum kararları kalıcı yönergelerle
+karşılaştırılmıştır. AGENTS.md/CLAUDE.md, .github C/C++ yönergeleri ve
+engineering-guidelines skill'leri uyumlu hale getirilmiştir. Atomic
+seçiminden önce erişim kanıtı; mevcut HAL/driver toparlanmasının
+incelenmesi; en küçük yeterli çözüm; gerçek davranışı sınayan ve repoda
+tutulan regresyon testleri; mevcut yetki ve ertelemelerin korunması
+kuralları eklenmiş veya netleştirilmiştir.
+
+İsim önekleri, zorunlu Fatih Ozcan author bilgisi, #if 0 koruması ve
+merkezi Ceedling test girişlerindeki çelişkiler giderilmiştir.
+Projeye özgü dummy, lifetime, RNG API ayrımı, geliştirme anahtarları,
+vendor/Contiki kapsamı ve kapalı BMS kararları
+`engineering-guidelines/architecture.md` A08–A11'de kaynaklarıyla
+tutulur. NVRAM boyut/ofset kaydı mevcut types.h assert'lerine
+uyarlanmıştır; üretim kodu veya NVRAM yerleşimi değiştirilmemiştir.
+Donanım skill'inde yalnız build/host testi ile cihaza müdahale yetkisi
+ve host/derleme/fiziksel kanıt sınırları ayrılmıştır.
+
+Bu güncelleme yönerge/belge değişikliğidir. Yeni firmware davranışı,
+cihaza yükleme, ertelemelerin kaldırılması veya commit içermez.
+
+### 9.35 RTC aralık doğrulamasının güncel incelemesi — O8.8, 04.10.2026
+
+**Kanıt:** GSM'nin iki saat kaynağı ve IEC104 saat komutu rtc_sync()
+üzerinden geçer. Mevcut rtc_is_valid() ay 1–12, takvim günü, saat
+0–23 ve dakika/saniye 0–59 kontrollerini dizi erişiminden önce yapar.
+2026-01-01 kaynak zamanı tabanı da korunur. Eski rapordaki dış kaynaklı
+geçersiz ayın bu girişten days_lookup dizisini taşırması mevcut kodda
+tekrarlanacak bir açık olarak kabul edilmemiştir. rtc_set() için repo
+üretim kaynaklarında çağıran bulunmamıştır. bsp_set_rtc() ayrıca
+rtc_load_sw() tarafından kullanılır; donanımdan resync yolu dış kaynak
+zaman tabanından bilinçli olarak geçmez.
+
+**Kalanlar:** rtc_is_valid() yılın 0–99 aralığını ve millisec <1000
+sınırını kontrol etmez. Yerel HAL yıl sınırını yalnız assert_param ile
+kontrol eder; USE_FULL_ASSERT mevcut konfigürasyonda kapalıdır.
+IEC104 saat handler'ı yalnız iv_bit alanını kontrol eder; mevcut
+cp56time2a_is_valid() fonksiyonunu çağırmaz. Yıl 100, 7-bit wire
+alanına sığar; decoder bu alanı doğrudan RTC yapısına taşır. Dolayısıyla
+bu değerin rtc_sync() üzerinden HAL'a ulaşabilmesi kaynak kodunda
+izlenmiştir. Fiziksel RTC'nin bu değerdeki sonucu ölçülmemiştir.
+Millisec sınırı genel RTC API'sindeki eksikliktir; mevcut GSM girişleri
+0 üretir, CP56 decoder ise modulo 1000 kullanır. Aynı dış kaynak
+ulaşılabilirliği bu alan için iddia edilmemiştir.
+
+**Test hazırlığı:** Kullanıcının isteğiyle test/bsp/test_rtc_sync.c
+merkezi Ceedling altyapısına eklenmiştir. On iki senaryo gerçek rtc.c
+ve datetime.c kaynaklarını kullanır; BSP depolama ve HAL sınırları
+CMock ile taklit edilir. Geçerli saat/epoch/marker, NULL, ay ve gün
+sınırları, şubat/artık yıl, saat/dakika/saniye sınırları, kaynak zaman
+tabanı, yıl 99/100 ve millisec 1000 kapsam içindedir. Red senaryoları
+hiçbir yazma yapılmamasını ve önceki snapshot/epoch/marker değerlerinin
+korunmasını ister. Yıl 100 ve millisec 1000 beklentileri mevcut kodda
+karşılanmaz; bunlar düzeltme bekleyen regresyon senaryolarıdır.
+Host-only RTC HAL bildirimleri mevcut test/support/main.h girişine
+bağlanmıştır; firmware header'ları değiştirilmemiştir.
+
+**04.10.2026 test devamı:** Kullanıcı kurulu Ceedling ile testlerin
+çalıştırılmasını istemiştir. Ruby 3.4.9 ve Ceedling kuruludur. Normal
+sandbox içindeki Ruby başlatması 0xC0000022 hatası vermiş; sandbox dışı
+onaylı test çalıştırması başarılı biçimde başlamıştır. Yeniden kurulum
+veya test altyapısı değişikliği gerekmemiştir.
+
+- RTC paketi: 12 test, 10 geçti / 2 başarısız.
+- Merkezi Ceedling paketi: 451 test, 449 geçti / 2 başarısız.
+- İki başarısız senaryo: yıl 100 ve millisec 1000 için beklenen
+  reddetme yerine altı yazma çağrısı gerçekleşmiştir. Bu sonuç gerçek
+  rtc_sync() ve datetime.c koduyla doğrulanmıştır; HAL/BSP taklittir.
+- Diğer 439 test geçmiştir; ortak RTC host header desteği nedeniyle
+  ek bir test başarısızlığı görülmemiştir.
+
+Tam çıktı test/build/production-audit-2026-10-03/rtc-all-before.log
+içindedir. Testler atlanmamış, beklentiler mevcut hatalı davranışa göre
+gevşetilmemiştir. Merkezi test paketi şu anda bu iki regresyon nedeniyle
+başarısızdır. Sınır düzeltmesi beklemektedir; hedef ARM derlemesi ve
+fiziksel RTC testi bu devam turunda yapılmamıştır. Epoch fixture
+değerleri .NET ile bağımsız kontrol edilmiş; git diff --check geçmiştir.
+Üretim kodu, IEC104 yanıt politikası, fiziksel cihaz ve commit bu turda
+değiştirilmemiştir. O8.8 henüz kapatılmamıştır.
+
+### 9.36 RTC yıl ve milisaniye sınır düzeltmesi — O8.8, 04.10.2026
+
+**Amaç:** Kullanıcı §9.35'teki iki sınır eksikliğinin düzeltilmesini
+onaylamıştır. Mevcut rtc_is_valid() kontrolüne year >99 ve millisec
+>999 koşulları eklenmiştir. Diğer doğrulamalar ve 2026 kaynak zamanı
+tabanı korunmuştur. Geçersiz istek mevcut reddetme yolundan döner;
+yazılım saati, donanım saati, epoch ve geçerlilik işareti değiştirilmez.
+Yeni API, durum alanı veya zaman politikası eklenmemiştir. Kaynak header
+author bilgisi repo kuralına uyarlanmıştır.
+
+**Doğrulama:** Merkezi test/bsp/test_rtc_sync.c senaryoları korunmuştur.
+Düzeltme öncesi yıl 100 ve millisec 1000 testlerinde altı yazma çağrısı
+oluşurken düzeltme sonrası hiçbir yazma yapılmaz; önceki snapshot,
+epoch ve marker korunur. Yıl 99 ve millisec 999 içeren geçerli saat
+senaryoları da geçer. Gerçek rtc.c/datetime.c çalışır; HAL ve BSP
+depolama sınırları CMock ile taklit edilir.
+
+- RTC paketi: 12/12 Ceedling testi geçti.
+- Merkezi Ceedling paketi: 451/451 testi geçti, atlanan test yok.
+- ARM Release incremental derlemesi başarılı; logda warning/error yok.
+- Release paketinin raw-byte equality ve ECDSA self-check'i geçti.
+- git diff --check geçti.
+
+Çıktılar test/build/production-audit-2026-10-03/ altında
+rtc-sync-after.log, rtc-all-after.log ve rtc-sync-release.log içindedir.
+Önceki başarısız genel test çıktısı rtc-all-before.log olarak korunur.
+
+RTC dış kaynak girişindeki bu iki sınır eksikliği kapatılmıştır.
+IEC104 handler'ının yalnız iv_bit'e göre olumlu yanıt vermesi ayrı açık
+konudur: RTC'nin isteği reddetmesi protokol yanıtını kendiliğinden
+olumsuza çevirmez. Bu değişiklik IEC104 yanıt politikasını değiştirmez.
+Donanımdan resync ve doğrudan BSP setter yolları bu düzeltmeye alınmamıştır.
+Fiziksel RTC testi, cihaza yükleme ve commit yapılmamıştır.
+### 9.37 Düzeltmeler ve yönergelerin commit kaydı — 04.10.2026
+
+Kullanıcı onayıyla birikmiş değişiklikler ayrı commit'lerde kaydedildi:
+
+- `809748f`: protokol sınırları, Modbus reset/adres, RF retry/PING,
+  BMS parser/reader ve RTC sınır düzeltmeleri; ilgili Ceedling testleri
+  ve protokol rehberi güncellemeleri birlikte kaydedildi.
+- `b3e1f1e`: skill/ajan kuralları ve bağlı engineering-guidelines paketi;
+  kullanıcı kararları, erişim kanıtı, koruma seçimi ve test yönlendirmeleri.
+
+Commit öncesi son kayıt: 451/451 Ceedling testi, başarılı ARM Release
+derlemesi ve raw-byte equality/ECDSA paket self-check. Skill paketinin
+yapı, bağlantı ve UTF-8/LF kontrolleri geçti; staged diff kontrolü temiz.
+Bu kayıt önceki bölümlerin o an için yazılmış "commit yapılmadı"
+notlarını günceller; erteleme ve fiziksel test sınırlarını kaldırmaz.
+Fiziksel cihaz testi, cihaza yükleme ve push yapılmadı.
 
 /*** end of report ***/
