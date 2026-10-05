@@ -384,16 +384,18 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
         if (result) {
             result->error = XSCANF_ERR_NULL_PTR;
             result->count = -1;
+            result->input_pos = 0;
         }
         return -1;
     }
-    
+
     /* Empty input check */
     if (input_len == 0 || *input == '\0') {
         s_last_error = XSCANF_ERR_EMPTY_INPUT;
         if (result) {
             result->error = XSCANF_ERR_EMPTY_INPUT;
             result->count = 0;
+            result->input_pos = 0;
         }
         return 0;
     }
