@@ -1,0 +1,389 @@
+/*
+ * rf_group.c
+ *
+ *  Created on: Oct 5, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Check group identity, WRITE three identical blocks, COMMIT and verify.
+ */
+
+#include "rf_group.h"
+#include "rf_comm.h"
+#include "rf_inventory.h"
+#include "rf_config.h"
+#include "stm32u3xx_hal.h"
+#include <string.h>
+
+#define GROUP_STATUS_PERIOD_MS 5000U
+
+typedef struct
+{
+    rf_group_status_t status;
+    rf_feeder_config_t block;
+    uint8_t zone;
+    bool command_pending;
+    bool write_sent;
+    bool commit_sent;
+    bool group_known;
+    uint8_t pending_command;
+    uint32_t poll_ms;
+} rf_group_t;
+
+/* All accesses run in cooperative process/shell context, never the ISR. */
+static rf_group_t group;
+
+void rf_group_init(void)
+{
+    (void)memset(&group, 0, sizeof(group));
+}
+
+void rf_group_hub_restarted(void)
+{
+    if (RF_GROUP_IDLE != group.status.state)
+    {
+        group.status.state = RF_GROUP_RESTARTED;
+    }
+    group.command_pending = false;
+    group.write_sent = false;
+    group.commit_sent = false;
+    group.group_known = false;
+}
+
+bool rf_group_get_status(rf_group_status_t *out)
+{
+    if (NULL == out)
+    {
+        return false;
+    }
+    *out = group.status;
+    return true;
+}
+
+static bool can_start(void)
+{
+    switch (group.status.state)
+    {
+        case RF_GROUP_IDLE:
+        case RF_GROUP_APPLIED:
+        case RF_GROUP_FAILED:
+        case RF_GROUP_ID_IN_USE:
+        case RF_GROUP_CANCELLED:
+        case RF_GROUP_RESTARTED:
+            return !group.command_pending;
+        case RF_GROUP_MISMATCH:
+            return !group.command_pending && group.status.has_report &&
+                   (3U == group.status.report.state) &&
+                   (7U == group.status.report.member_bitmap);
+        case RF_GROUP_UNCERTAIN:
+            return !group.command_pending && !group.write_sent &&
+                   !group.commit_sent;
+        default:
+            return false;
+    }
+}
+
+static bool bindings_match(const rf_group_t *job)
+{
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        const uint8_t source = (uint8_t)((job->status.feeder << 2U) |
+                                         (uint8_t)(index + 1U));
+        rf_inventory_entry_t entry;
+
+        if (!rf_inventory_get_binding(source, &entry) ||
+            (entry.zone != job->zone) ||
+            (0 != memcmp(entry.eui64, job->status.members[index], 8U)))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool rf_group_start(size_t line_index, uint8_t group_id)
+{
+    rf_group_t candidate = {0};
+
+    if ((MAX_POWER_LINE_COUNT <= line_index) || !can_start() ||
+        !scp_is_free() || !rf_inventory_is_loaded() ||
+        !rf_comm_can_load_inventory())
+    {
+        return false;
+    }
+    const rf_feeder_t *feeder = rf_store_get((feeder_id_t)line_index);
+
+    if ((NULL == feeder) || !feeder->in_use ||
+        !rf_config_for_write(&feeder->config, NULL, &candidate.block))
+    {
+        return false;
+    }
+    (void)memcpy(candidate.status.members[0], feeder->r_eui64, 8U);
+    (void)memcpy(candidate.status.members[1], feeder->s_eui64, 8U);
+    (void)memcpy(candidate.status.members[2], feeder->t_eui64, 8U);
+    candidate.status.feeder = feeder->config.fider_id;
+    if (!rf_inventory_epoch_ready(candidate.status.feeder))
+    {
+        return false;
+    }
+    candidate.zone = feeder->config.zone_id;
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        if (rf_eui64_is_zero(candidate.status.members[index]))
+        {
+            return false;
+        }
+        for (size_t other = 0U; other < index; other++)
+        {
+            if (0 == memcmp(candidate.status.members[index],
+                            candidate.status.members[other], 8U))
+            {
+                return false;
+            }
+        }
+    }
+    if (!bindings_match(&candidate))
+    {
+        return false;
+    }
+    candidate.block.zone_id = 0U;
+    candidate.block.phase_id = 0U;
+    candidate.status.expected_crc = rf_config_writable_crc(&candidate.block);
+    candidate.status.group_id = group_id;
+    candidate.status.state = RF_GROUP_CHECKING;
+    group = candidate;
+    return true;
+}
+
+bool rf_group_handle_status(const rf_scp_message_t *message)
+{
+    if ((NULL == message) || !group.commit_sent ||
+        !(((RF_SCP_CMD_CFG_STATUS_NOTIFY == message->cmd) &&
+           (SCP_TYPE_SET == message->type)) ||
+          ((RF_SCP_CMD_CFG_STATUS_GET == message->cmd) &&
+           (SCP_TYPE_ACK == message->type))) ||
+        (group.status.group_id != message->body.config.group_id) ||
+        (4U < message->body.config.state) ||
+        (7U < message->body.config.member_bitmap) ||
+        (RF_GROUP_APPLIED == group.status.state) ||
+        (RF_GROUP_FAILED == group.status.state) ||
+        ((RF_GROUP_MISMATCH == group.status.state) &&
+         (SCP_TYPE_ACK != message->type)) ||
+        (RF_GROUP_CANCELLED == group.status.state) ||
+        (RF_GROUP_RESTARTED == group.status.state))
+    {
+        return false;
+    }
+    group.group_known = true;
+    group.status.report = message->body.config;
+    group.status.has_report = true;
+    switch (message->body.config.state)
+    {
+        case 1U:
+        case 2U:
+            /* Delayed progress must not undo a terminal result. */
+            if ((RF_GROUP_APPLIED != group.status.state) &&
+                (RF_GROUP_FAILED != group.status.state) &&
+                (RF_GROUP_COMMITTING != group.status.state) &&
+                (RF_GROUP_ABORTING != group.status.state))
+            {
+                group.status.state = RF_GROUP_WAITING;
+            }
+            break;
+        case 3U:
+            group.status.state =
+                ((7U == message->body.config.member_bitmap) &&
+                 (group.status.expected_crc == message->body.config.config_crc))
+                ? RF_GROUP_APPLIED : RF_GROUP_MISMATCH;
+            break;
+        case 4U:
+            group.status.state = (10U == message->body.config.reason) ?
+                                 RF_GROUP_CANCELLED : RF_GROUP_FAILED;
+            break;
+        default:
+            group.status.state = RF_GROUP_UNCERTAIN;
+            break;
+    }
+    return true;
+}
+
+static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
+{
+    const rf_group_state_t state = group.status.state;
+    rf_scp_message_t message;
+
+    group.command_pending = false;
+    if (SCP_CMD_RESTARTED == result)
+    {
+        rf_group_hub_restarted();
+        return;
+    }
+    if (RF_GROUP_CHECKING == state)
+    {
+        if ((SCP_CMD_ERR == result) && (NULL != packet) &&
+            (1U <= packet->data_len) &&
+            (RF_SCP_ERR_INVALID_PARAM == packet->data[0]))
+        {
+            group.status.state = RF_GROUP_WRITING;
+        }
+        else if ((SCP_CMD_OK == result) && (NULL != packet) &&
+                 (RF_CMD_OK == rf_scp_decode_message(packet, &message)) &&
+                 (group.status.group_id == message.body.config.group_id))
+        {
+            group.status.state = (0U == message.body.config.state) ?
+                                 RF_GROUP_WRITING : RF_GROUP_ID_IN_USE;
+        }
+        else
+        {
+            group.status.state = RF_GROUP_UNCERTAIN;
+        }
+        return;
+    }
+    if ((RF_SCP_CMD_CFG_ABORT == group.pending_command) &&
+        (SCP_CMD_OK == result))
+    {
+        group.status.state = RF_GROUP_CANCELLED;
+        return;
+    }
+    if ((RF_GROUP_APPLIED == state) || (RF_GROUP_FAILED == state) ||
+        (RF_GROUP_CANCELLED == state) ||
+        ((RF_GROUP_MISMATCH == state) &&
+         ((RF_SCP_CMD_CFG_STATUS_GET != group.pending_command) ||
+          (SCP_CMD_OK != result))))
+    {
+        return;
+    }
+    if (SCP_CMD_OK != result)
+    {
+        group.status.state = RF_GROUP_UNCERTAIN;
+        return;
+    }
+    if (RF_GROUP_WRITING == state)
+    {
+        group.status.writes_acked++;
+        if (3U == group.status.writes_acked)
+        {
+            group.status.state = RF_GROUP_COMMITTING;
+        }
+    }
+    else if (RF_GROUP_COMMITTING == state)
+    {
+        group.group_known = true;
+        group.status.state = RF_GROUP_WAITING;
+        group.poll_ms = HAL_GetTick();
+    }
+    else if (RF_GROUP_ABORTING == state)
+    {
+        group.status.state = RF_GROUP_CANCELLED;
+    }
+    else if ((NULL == packet) ||
+             (RF_CMD_OK != rf_scp_decode_message(packet, &message)) ||
+             !rf_group_handle_status(&message))
+    {
+        group.status.state = RF_GROUP_UNCERTAIN;
+    }
+    else
+    {
+        /* Status GET uses the same report path as an unsolicited SET. */
+    }
+}
+
+static bool send_request(uint8_t command)
+{
+    scp_packet_t request = {.cmd = command};
+
+    if (RF_SCP_CMD_CFG_WRITE == command)
+    {
+        request.type = SCP_TYPE_SET;
+        request.data_len = 104U;
+        (void)memcpy(request.data,
+                     group.status.members[group.status.writes_acked], 8U);
+        (void)memcpy(&request.data[8], &group.block, sizeof(group.block));
+    }
+    else
+    {
+        request.type = (RF_SCP_CMD_CFG_STATUS_GET == command) ?
+                       SCP_TYPE_GET : SCP_TYPE_SET;
+        request.data_len = 1U;
+        request.data[0] = group.status.group_id;
+    }
+    if (!scp_send_request(&request, command_done))
+    {
+        return false;
+    }
+    group.command_pending = true;
+    group.pending_command = command;
+    if (RF_SCP_CMD_CFG_WRITE == command)
+    {
+        group.write_sent = true;
+    }
+    if (RF_SCP_CMD_CFG_COMMIT == command)
+    {
+        group.commit_sent = true;
+    }
+    return true;
+}
+
+bool rf_group_abort(void)
+{
+    if (!group.write_sent && !group.commit_sent &&
+        ((RF_GROUP_CHECKING == group.status.state) ||
+         (RF_GROUP_UNCERTAIN == group.status.state)))
+    {
+        group.status.state = RF_GROUP_CANCELLED;
+        return true;
+    }
+    if (!group.group_known || !scp_is_free() || group.command_pending ||
+        ((RF_GROUP_WAITING != group.status.state) &&
+         (RF_GROUP_UNCERTAIN != group.status.state) &&
+         (RF_GROUP_MISMATCH != group.status.state)))
+    {
+        return false;
+    }
+    if (!send_request(RF_SCP_CMD_CFG_ABORT))
+    {
+        return false;
+    }
+    group.status.state = RF_GROUP_ABORTING;
+    return true;
+}
+
+void rf_group_process(uint32_t now_ms)
+{
+    if (group.command_pending || !scp_is_free())
+    {
+        return;
+    }
+    switch (group.status.state)
+    {
+        case RF_GROUP_CHECKING:
+            (void)send_request(RF_SCP_CMD_CFG_STATUS_GET);
+            break;
+        case RF_GROUP_WRITING:
+        case RF_GROUP_COMMITTING:
+            if (!rf_inventory_is_loaded() || !bindings_match(&group) ||
+                !rf_inventory_epoch_ready(group.status.feeder))
+            {
+                group.status.state = RF_GROUP_UNCERTAIN;
+            }
+            else
+            {
+                (void)send_request((RF_GROUP_WRITING == group.status.state)
+                    ? RF_SCP_CMD_CFG_WRITE : RF_SCP_CMD_CFG_COMMIT);
+            }
+            break;
+        case RF_GROUP_WAITING:
+            if (GROUP_STATUS_PERIOD_MS <= (uint32_t)(now_ms - group.poll_ms))
+            {
+                if (send_request(RF_SCP_CMD_CFG_STATUS_GET))
+                {
+                    group.poll_ms = now_ms;
+                }
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+/*** end of file ***/

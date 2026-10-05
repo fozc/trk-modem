@@ -13,6 +13,7 @@
  * rf inv     - Envanter push'u yeniden tetikler.
  * rf time    - Request a time refresh without reloading inventory.
  * rf epoch N - Queue epoch refresh for feeder N after hub replacement.
+ * rf cfg-status N - Read the hub configuration group status.
  */
 
 #define CSLOG_MODULE LOG_MOD_RF
@@ -27,6 +28,7 @@
 #include "rf_inventory.h"
 #include "rf_log.h"
 #include "rf.h"
+#include "rf_group.h"
 #include "stm32u3xx_hal.h"
 
 #ifndef DISABLE_SHELL_LOG
@@ -41,6 +43,40 @@ static const char *inventory_status_name(rf_inventory_status_t status)
         case RF_INVENTORY_READY: return "YUKLU";
         case RF_INVENTORY_ERROR: return "HATA";
         default: return "BILINMIYOR";
+    }
+}
+
+static const char *config_status_name(uint8_t state)
+{
+    switch (state)
+    {
+        case 0U: return "IDLE";
+        case 1U: return "STAGED";
+        case 2U: return "DELIVERED";
+        case 3U: return "APPLIED";
+        case 4U: return "FAILED";
+        default: return "UNKNOWN";
+    }
+}
+
+static const char *group_state_name(rf_group_state_t state)
+{
+    switch (state)
+    {
+        case RF_GROUP_IDLE: return "IDLE";
+        case RF_GROUP_CHECKING: return "CHECKING_ID";
+        case RF_GROUP_WRITING: return "WRITING";
+        case RF_GROUP_COMMITTING: return "COMMITTING";
+        case RF_GROUP_WAITING: return "WAITING";
+        case RF_GROUP_APPLIED: return "APPLIED";
+        case RF_GROUP_FAILED: return "FAILED";
+        case RF_GROUP_UNCERTAIN: return "UNCERTAIN";
+        case RF_GROUP_ID_IN_USE: return "ID_IN_USE";
+        case RF_GROUP_MISMATCH: return "REPORT_MISMATCH";
+        case RF_GROUP_ABORTING: return "ABORTING";
+        case RF_GROUP_CANCELLED: return "CANCELLED";
+        case RF_GROUP_RESTARTED: return "MH_RESTARTED";
+        default: return "UNKNOWN";
     }
 }
 
@@ -315,12 +351,156 @@ static int rf_shell_alarm_ack(int argc, char **argv)
     return 0;
 }
 
+static uint8_t requested_group;
+
+static void on_config_status_done(scp_cmd_result_t result,
+                                  const scp_packet_t *packet)
+{
+    rf_scp_message_t message;
+
+    if ((SCP_CMD_OK == result) && (NULL != packet) &&
+        (RF_CMD_OK == rf_scp_decode_message(packet, &message)))
+    {
+        if (requested_group != message.body.config.group_id)
+        {
+            SHELL_LOG("CFG_STATUS: unexpected group ID\r\n");
+            return;
+        }
+        SHELL_LOG("MH group=%u state=%s members=0x%02X "
+                  "reason=%u cfg_crc=0x%04X attempts=%u\r\n",
+                  (unsigned)message.body.config.group_id,
+                  config_status_name(message.body.config.state),
+                  (unsigned)message.body.config.member_bitmap,
+                  (unsigned)message.body.config.reason,
+                  (unsigned)message.body.config.config_crc,
+                  (unsigned)message.body.config.attempts);
+        (void)rf_group_handle_status(&message);
+    }
+    else if ((SCP_CMD_ERR == result) && (NULL != packet))
+    {
+        SHELL_LOG("CFG_STATUS ERROR: 0x%02X\r\n", packet->data[0]);
+    }
+    else
+    {
+        SHELL_LOG("CFG_STATUS unavailable (timeout or MH restart)\r\n");
+    }
+}
+
+static bool parse_group_id(const char *text, uint8_t *group)
+{
+    uint16_t value = 0U;
+
+    if ((NULL == text) || ('\0' == text[0]))
+    {
+        return false;
+    }
+    for (size_t index = 0U; '\0' != text[index]; index++)
+    {
+        if ((3U <= index) || ('0' > text[index]) || ('9' < text[index]))
+        {
+            return false;
+        }
+        value = (uint16_t)((value * 10U) + (uint8_t)(text[index] - '0'));
+        if (UINT8_MAX < value)
+        {
+            return false;
+        }
+    }
+    *group = (uint8_t)value;
+    return true;
+}
+
+static int rf_shell_config_status(int argc, char **argv)
+{
+    uint8_t group;
+    scp_packet_t request =
+    {
+        .type = SCP_TYPE_GET, .cmd = RF_SCP_CMD_CFG_STATUS_GET,
+        .data_len = 1U
+    };
+
+    if ((2 != argc) || (NULL == argv) || !parse_group_id(argv[1], &group))
+    {
+        SHELL_LOG("Usage: rf cfg-status <group_id 0..255>\r\n");
+        return -1;
+    }
+    request.data[0] = group;
+    if (!scp_send_request(&request, on_config_status_done))
+    {
+        SHELL_LOG("CFG_STATUS request not sent; check hub/link state\r\n");
+        return -1;
+    }
+    requested_group = group;
+    return 0;
+}
+
+static int rf_shell_config_apply(int argc, char **argv)
+{
+    uint8_t line;
+    uint8_t group_id;
+
+    if ((3 != argc) || (NULL == argv) ||
+        !parse_group_id(argv[1], &line) ||
+        !parse_group_id(argv[2], &group_id) ||
+        (0U == line) || (MAX_POWER_LINE_COUNT < line))
+    {
+        SHELL_LOG("Usage: rf cfg-apply <line 1..7> <fresh group_id>\r\n");
+        return -1;
+    }
+    if (!rf_group_start((size_t)line - 1U, group_id))
+    {
+        SHELL_LOG("Config not started: check members, inventory, epoch "
+                  "wait and current operation\r\n");
+        return -1;
+    }
+    SHELL_LOG("Config queued; use rf cfg-state for the verified result\r\n");
+    return 0;
+}
+
+static int rf_shell_config_state(int argc, char **argv)
+{
+    rf_group_status_t status;
+
+    (void)argv;
+    if ((1 != argc) || !rf_group_get_status(&status))
+    {
+        return -1;
+    }
+    SHELL_LOG("RTU group=%u feeder=%u state=%s writes=%u "
+              "expected_crc=0x%04X\r\n",
+              (unsigned)status.group_id, (unsigned)status.feeder,
+              group_state_name(status.state), (unsigned)status.writes_acked,
+              (unsigned)status.expected_crc);
+    if (status.has_report)
+    {
+        SHELL_LOG("MH state=%s bitmap=0x%02X reason=%u cfg_crc=0x%04X\r\n",
+                  config_status_name(status.report.state),
+                  (unsigned)status.report.member_bitmap,
+                  (unsigned)status.report.reason,
+                  (unsigned)status.report.config_crc);
+    }
+    return 0;
+}
+
+static int rf_shell_config_abort(int argc, char **argv)
+{
+    (void)argv;
+    if ((1 != argc) || !rf_group_abort())
+    {
+        SHELL_LOG("Abort not sent: active COMMIT group must be known\r\n");
+        return -1;
+    }
+    SHELL_LOG("Cancellation requested; inspect rf cfg-state for result\r\n");
+    return 0;
+}
+
 static int rf_shell_command(int argc, char *argv[])
 {
     if (argc < 2)
     {
         SHELL_LOG(
-                 "Usage: rf <disc|status|inv|time|epoch|live|alarm-ack|log>\r\n"
+                 "Usage: rf <disc|status|inv|time|epoch|live|alarm-ack|"
+                 "cfg-status|cfg-apply|cfg-state|cfg-abort|log>\r\n"
                  "  disc   : kesif kuyruguna sanal cihaz ekle\r\n"
                  "  status : hub ve link durumu\r\n"
                  "  inv    : envanteri yeniden push et\r\n"
@@ -328,6 +508,10 @@ static int rf_shell_command(int argc, char *argv[])
                  "  epoch N: MH degisimi sonrasi fider 1..4 epoch yenile\r\n"
                  "  live F P: fider/faz canli veri ve alarm\r\n"
                  "  alarm-ack F P: latched acma basarisizligi onayi\r\n"
+                 "  cfg-status N: MH group status (0..255)\r\n"
+                 "  cfg-apply L N: apply stored line config with fresh ID\r\n"
+                 "  cfg-state: local verified group result\r\n"
+                 "  cfg-abort: cancel an active known COMMIT group\r\n"
                  "  log    : log seviyesi (off/on/verbose)\r\n");
         return -1;
     }
@@ -350,6 +534,23 @@ static int rf_shell_command(int argc, char *argv[])
     if (0 == strcmp(argv[1], "log"))
     {
         return rf_shell_log(argc - 1, &argv[1]);
+    }
+
+    if (0 == strcmp(argv[1], "cfg-status"))
+    {
+        return rf_shell_config_status(argc - 1, &argv[1]);
+    }
+    if (0 == strcmp(argv[1], "cfg-apply"))
+    {
+        return rf_shell_config_apply(argc - 1, &argv[1]);
+    }
+    if (0 == strcmp(argv[1], "cfg-state"))
+    {
+        return rf_shell_config_state(argc - 1, &argv[1]);
+    }
+    if (0 == strcmp(argv[1], "cfg-abort"))
+    {
+        return rf_shell_config_abort(argc - 1, &argv[1]);
     }
     if (0 == strcmp(argv[1], "time"))
     {
@@ -388,6 +589,10 @@ void rf_shell_init(void)
                 "\trf epoch <1..4>         - epoch yenile (MH degisimi)\r\n"
                 "\trf live <fider> <faz>   - canli veri ve alarm\r\n"
                 "\trf alarm-ack <fider> <faz> - latched alarmi onayla\r\n"
+                "\trf cfg-status <group_id> - MH config group status\r\n"
+                "\trf cfg-apply <line> <group_id> - apply stored config\r\n"
+                "\trf cfg-state            - local verified group result\r\n"
+                "\trf cfg-abort            - cancel active COMMIT group\r\n"
                 "\trf log [off|on|verbose] - RF log seviyesini goster/ayarla",
         .level = SHELL_LVL_USER,
         .func = rf_shell_command

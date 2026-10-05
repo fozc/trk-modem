@@ -1,7 +1,7 @@
 # Test Altyapısı
 
-**Sürüm:** 1.21
-**Tarih:** 2026-10-03
+**Sürüm:** 1.25
+**Tarih:** 2026-10-06
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
@@ -551,6 +551,77 @@ pending=100 bildirimi varsa dolu halka okunur.
 üretici bağlantısı bu testlerle tamamlanmış sayılmaz. Host NOR modeli
 fiziksel enerji kesintisini veya UART/Flash sürelerini kanıtlamaz.
 
+## RF olaylarının IEC104 spontane ve replay aktarımı
+
+**Amaç:** Hazır kaynak kaydı yeniden zamanlanmadan IEC104 günlüğüne
+aktarılır. Online gönderim kabulünde mark_sent, başarısız gönderimde
+replay kaydı ve state sync hatasında tekrar eklememe sınanır.
+
+**Kullanım yeri:** Önceki otomatik olay servisinin aynı Ceedling komutu
+kullanılır. 15 ilgili dosyada 250/250, olay servisinde 27 test geçti.
+Kanıt `build/scp-replay-tests.log`. Dört yeni senaryo online gönderim,
+gönderim reddi, günlük yazma ve NVRAM sync hatasıdır. Kayıt/transport
+API sınırları taklit edilir; frame üretimi mevcut IEC104 paketindedir.
+
+**Kapsam sınırı:** 101/105'in geç kayıt politikası kullanıcı cevabı bekler.
+Remote ACK ve fiziksel SCADA kabulü bu host sonuçlarıyla kanıtlanmaz.
+
+## Grup ayarı bloğu hazırlığı
+
+**Amaç:** R1 §4.10 yazma bloğu hedef Fider_ID, writable alanlar ve sıfır
+reserved/CRC ile hazırlanır; geçersiz girdiler çıktıyı bozmaz.
+
+**Kullanım yeri:** `ceedling test:test_rf_config_scenario`. Ayar paketi
+10/10; önceki ortak RF/SCP/IEC104 komutunda 15 dosyada 253/253 test geçti.
+AY_06/AY_06b'deki altı gerçek WRITE bloğu üretim hazırlık/request codec'inden
+geçer; 54 writable bayt kaynak örnekle aynı kalır. Fider 0/5/255, NaN,
+Inf, null ve alias korunması sınanır. Kanıt
+`build/scp-group-block-regression.log` içindedir. Codec bağımlılığı RF JSON
+ve NVRAM integration paketine eklendi; NVRAM'de 433/433 kontrol geçti.
+
+**Kapsam sınırı:** WRITE×3/COMMIT/STATUS sıralayıcısı, APPLIED ve NVRAM
+ürün politikası henüz bu testlerin kapsamında değildir. Protokol soruları
+[BOLATeX belgesinde](../doc/BOLATEXE_SORULACAKLAR.md) takip edilir.
+
+## Grup durumunun shell üzerinden sorgulanması
+
+**Amaç:** `rf cfg-status <group_id>` mevcut 0x28 sorgusunu gönderir; MH
+durumunu gösterir. Yerel ayarın uygulanmış veya kalıcı olduğunu iddia etmez.
+
+**Kullanım yeri:** Önceki ortak RF/SCP/IEC104 test komutu kullanılır.
+Haberleşme paketindeki 69 test ve 15 ilgili dosyada 256/256 test geçti.
+Üç yeni senaryo, gerçek UART/SCP yolunda örnek APPLIED gövdesi, geçersiz
+argüman/busy koruması ve 0/255 kimlik sınırlarıdır. Yanıt gövdesi kaynak
+bildirimden aynen alınır; CMD/TYPE/SEQ sorgu yanıtına göre çerçevelenir.
+Kanıt `build/scp-group-status-regression.log` içindedir.
+
+**Kapsam sınırı:** WRITE/COMMIT/ABORT sıralayıcısı ve BOLATeX cevabı
+bekleyen BQ-10/BQ-11 tamamlanmış sayılmaz. Arıza enumuna teyit bekleyen
+RTU eşlemesi notu eklenmiştir; sınıflama değiştirilmemiştir.
+
+## Normal grup uygulama servisi
+
+**Amaç:** Grup kimliği kontrolü → WRITE×3 → COMMIT → bildirim/STATUS_GET
+zinciri gerçek rf_group, config/store ve codec ile doğrulanır. APPLIED
+için bitmap ve beklenen cfg_crc gerekir; NVRAM Save değiştirilmez.
+
+**Kullanım yeri:** Önceki ortak RF/SCP/IEC104 komutu test_rf_group paketini
+de alır. 06.10.2026 koşusunda 16 dosyada 283/283 test; grup 23/23,
+haberleşme 73/73 geçti. Kanıt `build/scp-group-service-regression.log`.
+NVRAM ve komut/ACK envanter sınırları taklit edilir; ayar hazırlığı ve
+writable CRC gerçek kodda çalışır. AY_06'nın üç EUI'si, writable bloğu,
+cfg_crc=0x096D ve üç durum bildirimi ham örneklerden alınır. Orijinal
+wire APPLIED bildirimi RX/ring/parser/dispatch yolunda ayrıca sınanır.
+
+Kapsam: Üç aynı blok, eski group_id reddi, envanter değişimi, fider 4,
+yarım/yanlış CRC/yanlış group/type, erken ACK/notify sırası, timeout,
+PARTIAL bitmap kabul sırası, USER_ABORT bilgisi, read-only probe iptali,
+transport reddi, 5 s tick wrap ve 30 s epoch beklemesi. Pending WRITE
+sonucunun belirsizliğinde bilinmeyen ABORT veya yeni grup gönderilmez.
+
+**Kapsam sınırı:** BQ-06/BQ-07/BQ-11, desired/APPLIED kalıcılık, fiziksel
+MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılmaz.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Etkilenen bölüm |
@@ -575,3 +646,7 @@ fiziksel enerji kesintisini veya UART/Flash sürelerini kanıtlamaz.
 | 2026-10-03 | 1.16 | RFWU v2 ret/resume/PC ve kripto vektör kontrolleri, secure RNG ve Python ABI uyumu |
 | 2026-10-05 | 1.19 | 8 KB RF tam olay günlüğü ve örnek iletişim; 11 ilgili dosyada 157/157 test |
 | 2026-10-05 | 1.21 | Otomatik RF olay tüketimi, 1/7 kalıcı ve 3 geçici listesi, 32 bit süre; 15 ilgili dosyada 246/246 test |
+| 2026-10-05 | 1.22 | Commit sonrası IEC104 spontane/replay bağlantısı ve 250/250 ilgili regresyon |
+| 2026-10-05 | 1.23 | Grup bloğu capture/target/CRC/invalid/alias testleri; 253/253 ilgili test, 433 NVRAM kontrolü |
+| 2026-10-05 | 1.24 | Shell CFG_STATUS_GET ve 256/256 ilgili regresyon; BQ-10/BQ-11 teyit notları |
+| 2026-10-06 | 1.25 | Grup sıralayıcısı/CRC/kimlik/epoch/shell; 16 ilgili dosyada 283/283 test |

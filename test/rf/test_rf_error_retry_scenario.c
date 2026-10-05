@@ -17,6 +17,7 @@
 #include "rf_dummy.h"
 #include "rf_monitor_json.h"
 #include "mock_rf_events.h"
+#include "mock_rf_group.h"
 #include "../fixtures/rf_scp_vectors.h"
 #include <string.h>
 
@@ -168,6 +169,10 @@ static void deliver_response(uint8_t type, uint8_t error)
 void setUp(void)
 {
     rf_events_init_Ignore();
+    rf_group_init_Ignore();
+    rf_group_hub_restarted_Ignore();
+    rf_group_process_Ignore();
+    rf_group_handle_status_IgnoreAndReturn(true);
     rf_events_notify_StubWithCallback(capture_event_notification);
     rf_events_process_Ignore();
     fake_tick = 0U;
@@ -1866,6 +1871,161 @@ void test_event_notification_has_no_ack_and_cannot_complete_pending_read(void)
     receive_event_capture(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
     TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
     TEST_ASSERT_EQUAL_INT(SCP_CMD_OK, done_result);
+}
+
+void test_config_status_shell_sends_get_and_accepts_captured_applied_body(void)
+{
+    char *args[] = {"rf", "cfg-status", "1"};
+    scp_packet_t response = {0};
+    const size_t count = sizeof(rf_scp_vectors) /
+                         sizeof(rf_scp_vectors[0]);
+    bool found = false;
+
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_command(3, args));
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_STATUS_GET, transmitted.cmd);
+    TEST_ASSERT_EQUAL_HEX8(SCP_TYPE_GET, transmitted.type);
+    TEST_ASSERT_EQUAL_UINT8(1U, transmitted.data_len);
+    TEST_ASSERT_EQUAL_UINT8(1U, transmitted.data[0]);
+    TEST_ASSERT_EQUAL_UINT32(500U, cmd_ctx.timeout_ms);
+    for (size_t index = 0U; index < count; index++)
+    {
+        const uint8_t *frame = rf_scp_vectors[index].logical;
+
+        if ((RF_SCP_CMD_CFG_STATUS_NOTIFY == frame[3]) &&
+            (3U == frame[8]) && (1U == frame[7]))
+        {
+            response.dst = frame[0];
+            response.src = frame[1];
+            response.type = SCP_TYPE_ACK;
+            response.cmd = RF_SCP_CMD_CFG_STATUS_GET;
+            response.seq = transmitted.seq;
+            response.data_len = frame[5];
+            (void)memcpy(response.data, &frame[7], response.data_len);
+            found = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(found);
+    inject_packet(&response);
+    TEST_ASSERT_TRUE(scp_is_free());
+    TEST_ASSERT_EQUAL_UINT32(1U, transmit_calls);
+}
+
+void test_config_status_shell_rejects_bad_ids_and_preserves_busy_request(void)
+{
+    char *args[] = {"cfg-status", "1"};
+    static char invalid[][5] = {"", "-1", "+1", "256", "1000", "1x"};
+
+    for (size_t index = 0U; index < sizeof(invalid) / sizeof(invalid[0]);
+         index++)
+    {
+        args[1] = invalid[index];
+        TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_status(2, args));
+    }
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_status(1, args));
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_status(2, NULL));
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
+    args[1] = "1";
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_config_status(2, args));
+    args[1] = "2";
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_status(2, args));
+    TEST_ASSERT_EQUAL_UINT8(1U, requested_group);
+    TEST_ASSERT_EQUAL_UINT32(1U, transmit_calls);
+}
+
+void test_config_status_shell_accepts_protocol_id_endpoints(void)
+{
+    char *args[] = {"cfg-status", "0"};
+
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_config_status(2, args));
+    TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[0]);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    TEST_ASSERT_TRUE(scp_is_free());
+    args[1] = "255";
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_config_status(2, args));
+    TEST_ASSERT_EQUAL_UINT8(255U, transmitted.data[0]);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    TEST_ASSERT_TRUE(scp_is_free());
+}
+
+void test_epoch_ack_blocks_configuration_for_thirty_seconds_across_tick_wrap(void)
+{
+    rf_inventory_start();
+    complete_inventory();
+    fake_tick = UINT32_MAX - 999U;
+    TEST_ASSERT_TRUE(rf_inventory_refresh_epoch(1U, command_done));
+    TEST_ASSERT_FALSE(rf_inventory_refresh_epoch(2U, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
+    TEST_ASSERT_FALSE(rf_inventory_epoch_ready(1U));
+    TEST_ASSERT_TRUE(rf_inventory_epoch_ready(2U));
+    fake_tick = 28999U;
+    TEST_ASSERT_FALSE(rf_inventory_epoch_ready(1U));
+    fake_tick = 29000U;
+    TEST_ASSERT_TRUE(rf_inventory_epoch_ready(1U));
+    TEST_ASSERT_FALSE(rf_inventory_epoch_ready(0U));
+    TEST_ASSERT_FALSE(rf_inventory_epoch_ready(5U));
+}
+
+void test_failed_epoch_does_not_report_successful_refresh_wait(void)
+{
+    rf_inventory_start();
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_refresh_epoch(1U, command_done));
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    TEST_ASSERT_TRUE(rf_inventory_epoch_ready(1U));
+    TEST_ASSERT_EQUAL_INT(SCP_CMD_ERR, done_result);
+}
+
+void test_group_apply_shell_validates_arguments_and_passes_store_line_index(void)
+{
+    char *valid[] = {"cfg-apply", "3", "7"};
+    char *invalid[] = {"cfg-apply", "0", "7"};
+
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_apply(3, invalid));
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_apply(2, valid));
+    rf_group_start_ExpectAndReturn(2U, 7U, true);
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_config_apply(3, valid));
+    rf_group_start_ExpectAndReturn(2U, 7U, false);
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_apply(3, valid));
+}
+
+static bool check_group_notification(const rf_scp_message_t *message,
+                                      int call_count)
+{
+    TEST_ASSERT_EQUAL_INT(0, call_count);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_STATUS_NOTIFY, message->cmd);
+    TEST_ASSERT_EQUAL_UINT8(1U, message->body.config.group_id);
+    TEST_ASSERT_EQUAL_UINT8(3U, message->body.config.state);
+    TEST_ASSERT_EQUAL_UINT8(7U, message->body.config.member_bitmap);
+    TEST_ASSERT_EQUAL_HEX16(0x096DU, message->body.config.config_crc);
+    return true;
+}
+
+void test_group_notify_reaches_service_through_captured_wire_without_ack(void)
+{
+    const size_t count = sizeof(rf_scp_vectors) /
+                         sizeof(rf_scp_vectors[0]);
+    bool found = false;
+
+    rf_group_handle_status_StopIgnore();
+    rf_group_handle_status_StubWithCallback(check_group_notification);
+    for (size_t index = 0U; index < count; index++)
+    {
+        const rf_scp_vector_t *vector = &rf_scp_vectors[index];
+
+        if ((0 == strcmp("AY_06_yapilandirma_yazma.csv", vector->source)) &&
+            (RF_SCP_CMD_CFG_STATUS_NOTIFY == vector->logical[3]) &&
+            (3U == vector->logical[8]))
+        {
+            receive_frame(vector->wire, vector->wire_len);
+            rf_comm_check_rx();
+            found = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(found);
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
 }
 
 /*** end of file ***/

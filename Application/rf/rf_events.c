@@ -15,9 +15,12 @@
 #include "rf_config.h"
 #include "rf_event_log.h"
 #include "fault_log.h"
+/* HAL types must precede the legacy IEC104 Init macro. */
+#include "stm32u3xx_hal.h"
+#include "iec104.h"
+#include "iec104_event_log.h"
 #include "scp_endian.h"
 #include "utils.h"
-#include "stm32u3xx_hal.h"
 #include <float.h>
 #include <math.h>
 #include <string.h>
@@ -59,6 +62,8 @@ static uint8_t batch_count;
 static uint8_t saved_count;
 static bool raw_saved;
 static bool fault_added;
+static bool replay_added;
+static fault_log_t fault_record;
 static bool stop_after_consume;
 
 static uint16_t next_slot(uint16_t slot, uint16_t count)
@@ -76,6 +81,7 @@ void rf_events_init(void)
     saved_count = 0U;
     raw_saved = false;
     fault_added = false;
+    replay_added = false;
     stop_after_consume = false;
     needs_verification = false;
 }
@@ -146,6 +152,7 @@ static void range_received(const rf_scp_message_t *message)
     saved_count = 0U;
     raw_saved = false;
     fault_added = false;
+    replay_added = false;
     store_waiting = false;
     stop_after_consume = false;
     needs_verification = false;
@@ -268,10 +275,37 @@ static bool build_fault(const rf_scp_event_t *event, fault_log_t *record)
     return false;
 }
 
+static bool save_fault(void)
+{
+    if (!fault_added)
+    {
+        fault_added = fault_log_append(&fault_record);
+    }
+    if (!fault_added || (0 != fault_log_sync()))
+    {
+        return false;
+    }
+    if (!replay_added)
+    {
+        uint16_t seq;
+
+        replay_added = iec104_event_log_add(&fault_record, &seq);
+        if (!replay_added)
+        {
+            return false;
+        }
+        if (iec104_is_link_active() &&
+            iec104_emit_evtlog_record(&fault_record))
+        {
+            iec104_event_log_mark_sent(seq);
+        }
+    }
+    return 0 == iec104_event_log_sync();
+}
+
 static void store_record(uint32_t now_ms)
 {
     rf_scp_event_t event;
-    fault_log_t fault;
     const uint8_t *raw = &batch[(size_t)saved_count * RF_SCP_EVENT_SIZE];
 
     if (RF_CMD_OK != rf_scp_decode_event(raw, RF_SCP_EVENT_SIZE, &event))
@@ -300,13 +334,9 @@ static void store_record(uint32_t now_ms)
             return;
         }
     }
-    if (fault_added || build_fault(&event, &fault))
+    if (fault_added || build_fault(&event, &fault_record))
     {
-        if (!fault_added)
-        {
-            fault_added = fault_log_append(&fault);
-        }
-        if (!fault_added || (0 != fault_log_sync()))
+        if (!save_fault())
         {
             store_waiting = true;
             store_retry_ms = now_ms;
@@ -317,6 +347,7 @@ static void store_record(uint32_t now_ms)
     saved_count++;
     raw_saved = false;
     fault_added = false;
+    replay_added = false;
     store_waiting = false;
     if (saved_count == batch_count)
     {

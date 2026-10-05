@@ -2,7 +2,8 @@
  * rf_config.h
  *
  *  Created on: Feb 1, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * RF ayirici konfigurasyonu: 96 baytlik blok codec (default / CRC / RMW)
  * + RAM SSOT store + staging API + EUI-64 yardimcilari.
@@ -37,19 +38,11 @@ void rf_config_copy_writable(const rf_feeder_config_t *src,
                              rf_feeder_config_t *dst);
 
 /**
- * @brief Cihaza yazilacak blogu uret (RMW merge; spec R2 section 5.4 + 5.3-7).
- *
- * - device NULL degilse: cikisin tamami device'dan kopyalanir; yalniz
- *   yazilabilir alanlar (@3-56) ram'den uzerine yazilir. MASKELI alanlar
- *   (toploloji @0-2 + RF ailesi @57-66) cihaz degerinde KORUNUR - cihaz
- *   zaten yok sayar, RTU override etmez.
- * - device NULL ise (test / ilk imaj): taban default blok; yazilabilir
- *   alanlar ram'den; phase_id bilgi amacli ram'den alinir.
- *
- * RF-rezervi @67-93 sifirlanir; blok CRC-16'si (0-93) yeniden hesaplanir
- * (0x22-yazim yolunda cihaz denetlemez - R2-ek4; hesap zararsizdir).
- *
- * @return true basarili; false parametre hatasi.
+ * Build a validated SCP configuration write block from RAM settings.
+ * The target Fider_ID always comes from ram (1..4). Other masked fields
+ * may use the optional diagnostic device block; no device GET is sent.
+ * Reserved bytes and block CRC are zero. Writable CRC is separate.
+ * Failure leaves out untouched, including when out aliases ram/device.
  */
 bool rf_config_for_write(const rf_feeder_config_t *ram,
                          const rf_feeder_config_t *device,
