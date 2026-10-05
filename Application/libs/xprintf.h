@@ -32,6 +32,7 @@ extern void (*xfunc_output)(int);
 void xputc (int chr);
 void xfputc (void (*func)(int), int chr);
 void xputs (const char* str);
+/* NULL strings produce no output (also applies to xputs/set_color). */
 void xfputs (void (*func)(int), const char* str);
 unsigned int xprintf (const char* fmt, ...);
 unsigned int xvprintf(const char *fmt, va_list arp);

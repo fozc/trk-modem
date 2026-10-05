@@ -11,6 +11,9 @@ __pycache__
 *.launch
 .cyclo
 
+# Build sirasinda uretilir (tools/pre-build.py)
+Application/version_gen.h
+
 .zcode/
 
 

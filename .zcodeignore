@@ -1,0 +1,130 @@
+.vscode/
+Debug/
+Release/
+build/
+DebugWithBootloader/
+
+__pycache__
+
+*.pem
+
+*.launch
+.cyclo
+
+# Build sirasinda uretilir (tools/pre-build.py)
+Application/version_gen.h
+
+.zcode/
+
+
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Linker output
+*.ilk
+*.map
+*.exp
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+*.bin
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Kernel Module Compile Results
+*.mod*
+*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+Mkfile.old
+dkms.conf
+
+# Burayi haric tut, en sonda olmali!
+!Middlewares/ST/touchgfx/**
+
+# doc/ local-only files: keep on disk, out of git (PowerBoard doc + writing guide stay tracked)
+doc/*
+!doc/PowerBoard_I2C_Protocol.md
+!doc/belge_yazim_rehberi.md
+!doc/HW_TEST_VE_DEBUG_REHBERI.md
+!doc/IEC104_YAPILANDIRMA_VE_ADRES_REHBERI.md
+
+# simulator derleme ciktilari
+tools/rf-hub-sim/rf_hub_sim.exe
+tools/rf-hub-sim/hub_selftest.exe
+tools/rf-hub-sim/build/
+
+# Central host-test artifacts
+test/integration/**/build_scp/
+
+# Generated RFWU header remains local; rebuild from keys/rfwu_key.bin.
+/Application/rfwu_product_key.h
+
+# Temporary development keys tracked by user decision (2026-10-04).
+# Replace all keys before field deployment; see keys/README.md.
+!/keys/private_key.pem
+!/keys/aes_key.bin
+!/keys/rfwu_key.bin
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+node_modules/
+bower_components/
+jspm_packages/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
