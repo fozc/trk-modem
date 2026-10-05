@@ -28,14 +28,17 @@ LIB_SRCS  := $(APP_DIR)/nvram.c \
              $(APP_DIR)/libs/crc32.c \
              $(APP_DIR)/libiec104/iec104_util.c \
              $(APP_DIR)/gsm/utils.c \
-             $(APP_DIR)/rf/rf_config.c
+             $(APP_DIR)/rf/rf_config.c \
+             $(APP_DIR)/rf/rf_scp_codec.c \
+             $(APP_DIR)/rf/rf_scp.c
 
 # Explicit object list: gsm/utils.c needs its own rule, otherwise the
 # generic $(APP_DIR)/%.c pattern matches Application/utils.c for the
 # basename "utils.o".
 TEST_OBJS := $(addprefix $(BUILD)/,$(TEST_SRCS:.c=.o))
 LIB_OBJS  := $(BUILD)/nvram.o $(BUILD)/crc32.o $(BUILD)/iec104_util.o \
-             $(BUILD)/gsm_utils.o $(BUILD)/rf_config.o
+             $(BUILD)/gsm_utils.o $(BUILD)/rf_config.o \
+             $(BUILD)/rf_scp_codec.o $(BUILD)/rf_scp.o
 
 TARGET := $(BUILD)/test_nvram_sync
 

@@ -1,8 +1,9 @@
 /*
- * test_rf_config.c
+ * test_rf_config_scenario.c
  *
  *  Created on: Aug 20, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * RF config modulu host testleri: 96B blok codec (default / CRC / RMW,
  * spec R2 Ek-A + R2-ek3/ek4) + RAM store/staging + EUI-64 yardimcilari.
@@ -19,9 +20,14 @@
 #include <stdint.h>
 #include "rf_config.h"
 #include "rf_types.h"
+#include "rf_scp_codec.h"
 #include "rf_nvram_fake.h"
+#include "../fixtures/rf_scp_vectors.h"
+#include <math.h>
 
 TEST_SOURCE_FILE("rf_nvram_fake.c")
+TEST_SOURCE_FILE("rf_scp_codec.c")
+TEST_SOURCE_FILE("rf_scp.c")
 
 #define TEST_CHECK(condition, message) \
     TEST_ASSERT_TRUE_MESSAGE((condition), (message))
@@ -61,7 +67,7 @@ static void fill_example_ram(rf_feeder_config_t *ram)
 {
     (void)memset(ram, 0, sizeof(*ram));
     ram->zone_id = 2U;
-    ram->fider_id = 5U;
+    ram->fider_id = 4U;
     ram->phase_id = RF_CONFIG_PHASE_L2;
     ram->nominal_current = 10.0f;
     ram->ia_threshold = 15.0f;
@@ -168,9 +174,9 @@ void test_for_write_rmw(void)
     dev_blk.crc16 = rf_config_crc_compute(&dev_blk);
 
     TEST_CHECK(rf_config_for_write(&ram_blk, &dev_blk, &out) == true, "for_write(dev) OK");
-    TEST_CHECK(rf_config_crc_ok(&out) == true, "for_write(dev) CRC valid");
+    TEST_CHECK(out.crc16 == 0U, "write block CRC is zero");
     TEST_CHECK(out.zone_id == 4U, "RMW zone from device");
-    TEST_CHECK(out.fider_id == 3U, "RMW fider from device");
+    TEST_CHECK(out.fider_id == 4U, "target feeder from RAM");
     TEST_CHECK(out.phase_id == RF_CONFIG_PHASE_L3, "RMW phase from device");
     TEST_CHECK(out.rf_channel == 17U, "RMW rf_channel from device");
     TEST_CHECK(out.rf_atim == 9U, "RMW rf_atim from device");
@@ -197,7 +203,7 @@ void test_for_write_rmw(void)
                "default-taban zone");
     TEST_CHECK(out.phase_id == RF_CONFIG_PHASE_L2, "default-taban phase RAM'den");
     TEST_CHECK(floats_close(out.vtrip_target, 36.0f), "default-taban writable RAM'den");
-    TEST_CHECK(rf_config_crc_ok(&out) == true, "default-taban CRC valid");
+    TEST_CHECK(out.crc16 == 0U, "default write block CRC is zero");
 
     /* NULL parametre reddi. */
     TEST_CHECK(rf_config_for_write(NULL, &dev_blk, &out) == false, "for_write NULL ram reddi");
@@ -314,6 +320,88 @@ void setUp(void)
 
 void tearDown(void)
 {
+}
+
+void test_captured_group_write_settings_prepare_valid_targeted_blocks(void)
+{
+    const size_t count = sizeof(rf_scp_vectors) /
+                         sizeof(rf_scp_vectors[0]);
+    size_t checked = 0U;
+
+    for (size_t index = 0U; index < count; index++)
+    {
+        const uint8_t *frame = rf_scp_vectors[index].logical;
+
+        if ((SCP_TYPE_SET == frame[2]) &&
+            (RF_SCP_CMD_CFG_WRITE == frame[3]))
+        {
+            rf_feeder_config_t ram;
+            rf_feeder_config_t block;
+            scp_packet_t request =
+            {
+                .type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_CFG_WRITE,
+                .seq = frame[4], .data_len = 104U
+            };
+            scp_packet_t out;
+
+            (void)memcpy(&ram, &frame[15], sizeof(ram));
+            TEST_ASSERT_TRUE(rf_config_for_write(&ram, NULL, &block));
+            TEST_ASSERT_EQUAL_UINT8(ram.fider_id, block.fider_id);
+            TEST_ASSERT_EQUAL_MEMORY(&frame[18],
+                &((const uint8_t *)&block)[3], RF_CONFIG_WRITABLE_LEN);
+            TEST_ASSERT_EQUAL_HEX16(0U, block.crc16);
+            for (size_t byte = 0U; byte < sizeof(block.rf_reserved); byte++)
+            {
+                TEST_ASSERT_EQUAL_UINT8(0U, block.rf_reserved[byte]);
+            }
+            (void)memcpy(request.data, &frame[7], 8U);
+            (void)memcpy(&request.data[8], &block, sizeof(block));
+            TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                                  rf_scp_build_packet(&request, &out));
+            TEST_ASSERT_EQUAL_HEX8_ARRAY(request.data, out.data, 104U);
+            checked++;
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT32(6U, checked);
+}
+
+void test_write_validation_preserves_output_for_invalid_target_and_nan(void)
+{
+    rf_feeder_config_t ram = *rf_config_default_block_get();
+    rf_feeder_config_t out;
+    rf_feeder_config_t previous;
+    static const uint8_t invalid_feeders[] = {0U, 5U, 0xFFU};
+
+    (void)memset(&out, 0xA5, sizeof(out));
+    previous = out;
+    for (size_t index = 0U; index < sizeof(invalid_feeders); index++)
+    {
+        ram.fider_id = invalid_feeders[index];
+        TEST_ASSERT_FALSE(rf_config_for_write(&ram, NULL, &out));
+        TEST_ASSERT_EQUAL_MEMORY(&previous, &out, sizeof(out));
+    }
+    ram.fider_id = 4U;
+    ram.ia_threshold = NAN;
+    TEST_ASSERT_FALSE(rf_config_for_write(&ram, NULL, &out));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &out, sizeof(out));
+    TEST_ASSERT_FALSE(rf_config_for_write(NULL, NULL, &out));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &out, sizeof(out));
+}
+
+void test_write_preparation_supports_alias_without_changing_source_on_failure(void)
+{
+    rf_feeder_config_t ram = *rf_config_default_block_get();
+    rf_feeder_config_t previous;
+
+    ram.fider_id = 4U;
+    ram.crc16 = 0x1234U;
+    TEST_ASSERT_TRUE(rf_config_for_write(&ram, NULL, &ram));
+    TEST_ASSERT_EQUAL_UINT8(4U, ram.fider_id);
+    TEST_ASSERT_EQUAL_UINT16(0U, ram.crc16);
+    ram.nominal_current = INFINITY;
+    previous = ram;
+    TEST_ASSERT_FALSE(rf_config_for_write(&ram, NULL, &ram));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &ram, sizeof(ram));
 }
 
 /*** end of file ***/

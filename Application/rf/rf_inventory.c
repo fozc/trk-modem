@@ -34,6 +34,7 @@
 #include "rf_discovery.h"
 #include "contiki.h"
 #include "timer.h"
+#include "stm32u3xx_hal.h"
 #include <string.h>
 
 /* ======================================================================
@@ -60,6 +61,10 @@ static scp_cmd_done_fn_t update_done;
 static struct timer upload_timer;
 static bool upload_timer_started;
 static rf_inventory_entry_t bindings[MAX_POWER_LINE_COUNT][3];
+static bool epoch_waiting[4];
+static uint32_t epoch_started_ms[4];
+static uint8_t epoch_feeder;
+static scp_cmd_done_fn_t epoch_done;
 
 _Static_assert(MAX_POWER_LINE_COUNT >= 7,
                "MH inventory supports seven feeder IDs");
@@ -329,6 +334,7 @@ void rf_inventory_continue(void)
 
 void rf_inventory_reset(void)
 {
+    (void)memset(epoch_waiting, 0, sizeof(epoch_waiting));
     (void)memset(bindings, 0, sizeof(bindings));
     inventory_status = RF_INVENTORY_IDLE;
     feeder_index = 0U;
@@ -465,6 +471,40 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
     return true;
 }
 
+bool rf_inventory_epoch_ready(uint8_t feeder)
+{
+    if ((1U > feeder) || (4U < feeder))
+    {
+        return false;
+    }
+    const size_t index = (size_t)feeder - 1U;
+
+    if (epoch_waiting[index] &&
+        (30000U <= (uint32_t)(HAL_GetTick() - epoch_started_ms[index])))
+    {
+        epoch_waiting[index] = false;
+    }
+    return !epoch_waiting[index];
+}
+
+static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *packet)
+{
+    scp_cmd_done_fn_t done = epoch_done;
+
+    epoch_done = NULL;
+    if (SCP_CMD_OK == result)
+    {
+        const size_t index = (size_t)epoch_feeder - 1U;
+
+        epoch_started_ms[index] = HAL_GetTick();
+        epoch_waiting[index] = true;
+    }
+    if (NULL != done)
+    {
+        done(result, packet);
+    }
+}
+
 bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done)
 {
     if ((1U > feeder) || (4U < feeder) || !rf_inventory_is_loaded() ||
@@ -472,8 +512,14 @@ bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done)
     {
         return false;
     }
-    return scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_EPOCH_REFRESH,
-                            &feeder, 1U, 1000U, 1U, done);
+    if (!scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_EPOCH_REFRESH,
+                          &feeder, 1U, 1000U, 1U, on_epoch_refresh_done))
+    {
+        return false;
+    }
+    epoch_feeder = feeder;
+    epoch_done = done;
+    return true;
 }
 
 /*** end of file ***/

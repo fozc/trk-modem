@@ -1,8 +1,9 @@
 /*
- * test_rf_json.c
+ * test_rf_json_golden_scenario.c
  *
  *  Created on: Aug 20, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * rf_json altin-cikti (golden output) host testi: sabit store/monitor/
  * kesif girisi ile uretilen JSON govdesinin tam metin karsilastirmasi.
@@ -27,6 +28,8 @@
 #include "rf_nvram_fake.h"
 
 TEST_SOURCE_FILE("rf_nvram_fake.c")
+TEST_SOURCE_FILE("rf_scp_codec.c")
+TEST_SOURCE_FILE("rf_scp.c")
 
 #define TEST_CHECK(condition, message) \
     TEST_ASSERT_TRUE_MESSAGE((condition), (message))
