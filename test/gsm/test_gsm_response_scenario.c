@@ -28,6 +28,8 @@
 #include "../../Application/gsm/utils.c"
 
 static const char *response_text;
+/* Match the AT motor's actual allocation and NUL-termination contract. */
+static uint8_t response_buffer[1280];
 static at_engine_result_t response_result;
 
 static at_engine_result_t get_result(int call_count)
@@ -39,8 +41,11 @@ static at_engine_result_t get_result(int call_count)
 static const uint8_t *get_response(uint16_t *length, int call_count)
 {
     (void)call_count;
-    *length = (uint16_t)strlen(response_text);
-    return (const uint8_t *)response_text;
+    const size_t response_length = strlen(response_text);
+    TEST_ASSERT_TRUE(response_length < sizeof(response_buffer));
+    memcpy(response_buffer, response_text, response_length + 1U);
+    *length = (uint16_t)response_length;
+    return response_buffer;
 }
 
 void setUp(void)
@@ -372,4 +377,46 @@ void test_si_all_keeps_full_counters_and_rejects_narrow_ack_overflow(void)
     TEST_ASSERT_EQUAL_UINT16(65535U, gsm.dialer_ack_waiting);
     TEST_ASSERT_FALSE(gsm.si_info[1].is_valid);
     TEST_ASSERT_EQUAL_UINT32(0U, gsm.si_info[1].sent);
+}
+
+void test_si_all_parses_telit_reference_six_socket_example(void)
+{
+    response_text = "\r\n#SI: 1,123,400,10,50\r\n"
+        "#SI: 2,0,100,0,0\r\n"
+        "#SI: 3,589,100,10,100\r\n"
+        "#SI: 4,0,0,0,0\r\n"
+        "#SI: 5,0,0,0,0\r\n"
+        "#SI: 6,0,98,60,0\r\n\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT(GSM_RESPONSE_OK, gsm_si_all_cb());
+    for (size_t i = 0U; i < GSM_MODEM_SOCKET_COUNT; i++)
+    {
+        TEST_ASSERT_TRUE(gsm.si_info[i].is_valid);
+    }
+    TEST_ASSERT_EQUAL_UINT32(123U, gsm.si_info[0].sent);
+    TEST_ASSERT_EQUAL_UINT32(400U, gsm.si_info[0].received);
+    TEST_ASSERT_EQUAL_UINT32(50U, gsm.si_info[0].ack_waiting);
+    TEST_ASSERT_EQUAL_UINT32(589U, gsm.si_info[2].sent);
+    TEST_ASSERT_EQUAL_UINT32(100U, gsm.si_info[2].ack_waiting);
+    TEST_ASSERT_EQUAL_UINT32(98U, gsm.si_info[5].received);
+    TEST_ASSERT_EQUAL_UINT32(60U, gsm.si_info[5].buff_in);
+}
+
+void test_si_all_four_maximum_uint32_fields_fit_parse_window(void)
+{
+    response_text = "\r\n#SI: 4,4294967295,4294967295,"
+        "4294967295,4294967295\r\n\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT(GSM_RESPONSE_OK, gsm_si_all_cb());
+    TEST_ASSERT_TRUE(gsm.si_info[3].is_valid);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, gsm.si_info[3].sent);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, gsm.si_info[3].received);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, gsm.si_info[3].buff_in);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, gsm.si_info[3].ack_waiting);
+}
+
+void test_si_all_missing_final_field_is_not_a_valid_socket_record(void)
+{
+    response_text = "\r\n#SI: 4,1,2,3,\r\n\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT(GSM_ERROR, gsm_si_all_cb());
+    TEST_ASSERT_FALSE(gsm.si_info[3].is_valid);
+    TEST_ASSERT_EQUAL_UINT32(0U, gsm.si_info[3].ack_waiting);
 }

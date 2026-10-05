@@ -458,7 +458,7 @@ void http_server_on_receive(const uint8_t *data, int length)
                                   server_state.rx_length, 
                                   &server_state.cached_request)) {
         /* Wait for more body data */
-        CSLOG("[HTTP] Request incomplete - waiting for more data (rx_length=%d)\n",
+        CSLOG("[HTTP] Request incomplete - waiting for more data (rx_length=%d)\r\n",
                 server_state.rx_length);
         return;
     }

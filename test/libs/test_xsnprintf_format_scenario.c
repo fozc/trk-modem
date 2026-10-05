@@ -417,3 +417,26 @@ void test_character_nul_padding_preserves_output_count(void)
         xsnprintf(buffer, sizeof(buffer), "%3c", 0));
     TEST_ASSERT_EQUAL_MEMORY(expected, buffer, sizeof(expected));
 }
+
+static uint32_t string_output_count;
+static char last_output_char;
+static void capture_string_char(int chr)
+{
+    string_output_count++;
+    last_output_char = (char)chr;
+}
+
+void test_null_string_output_is_noop_and_valid_output_still_works(void)
+{
+    void (*saved_output)(int) = xfunc_output;
+    string_output_count = 0U;
+    xdev_out(capture_string_char);
+    xfputs(capture_string_char, NULL);
+    xputs(NULL);
+    xprintf_set_color(NULL);
+    TEST_ASSERT_EQUAL_UINT32(0U, string_output_count);
+    xfputs(capture_string_char, "A");
+    TEST_ASSERT_EQUAL_UINT32(1U, string_output_count);
+    TEST_ASSERT_EQUAL_INT('A', last_output_char);
+    xfunc_output = saved_output;
+}
