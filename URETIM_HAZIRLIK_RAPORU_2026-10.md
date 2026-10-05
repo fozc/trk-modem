@@ -2317,3 +2317,150 @@ G-01 kapatılmaz. IEC104 süre ölçümü mevcut float wire tipidir: büyük
 değerlerde her milisaniyenin tam gösterimi garanti edilmez, kalıcı
 uint32_t ve ham kayıtta tam değer korunur. Cihaz yükleme/reset veya
 commit yapılmamıştır.
+
+### 10.16. RF olaylarının IEC104 aktarım bağlantısı — 05.10.2026
+
+RF-SCP'nin önceki kapsamı kullanıcı isteğiyle a635d61 commit'ine alındı.
+Sonraki çalışma mevcut IEC104 producer'ın kaynak zamanı yerine yeni
+zaman oluşturduğu ve sync hatalarını yok saydığı girişe doğrudan gitmez.
+Kaynak-zaman/32-bit-süre taşıyan hazır 1/7/3 kaydı mevcut event_log_add,
+emit_evtlog_record, mark_sent ve sync API'lerine aktarılır. Hat kapalı
+veya anlık gönderim reddedilmişse unsent kayıt replay sürecinde kalır.
+
+IEC104 günlük ekleme veya NVRAM sync başarısızsa MH tüketimi bekler.
+Sync tekrarında ham/list/IEC104 kaydı ikinci kez eklenmez; spontane
+gönderim de yeniden denenmez. Bir hazır fault kaydı batch işlenirken
+tutulur; config değişimi yeniden denemede kaynak eşlemesini değiştirmez.
+Yeni public API/process/kuyruk yoktur. Reboot sırasında kopya mümkün
+olmaya devam eder; kalıcı tekilleştirme yapılmadı. 101/105'in geç gelen
+kaydında LIVE açılış kimliğini taşımadığı için alarm kararı kullanıcıya
+sorulmuş; bu cevap gelmeden alarm kodu değiştirilmemiştir.
+
+27 olay servisi testi dahil 15 ilgili dosyada 250/250 test geçti.
+Dört yeni senaryo online gönderim/mark_sent, gönderim reddi/replay,
+IEC104 yazma ve NVRAM sync hatasıdır. Servis sınırları taklit edilir;
+gerçek frame üretimi mevcut IEC104 protokol paketi kapsamındadır.
+On RF/monitor modülü Cortex-M33/C11 sıkı uyarılar/-Werror ile geçti.
+Mevcut IEC104 Init makrosunun HAL struct alanıyla çakışması include
+sırasıyla giderildi; vendor/macro tanımı değiştirilmedi. Release link
+307972/524/126584 B text/data/bss; toplam diğer kullanıcı değişikliklerini
+de içerir. Kanıtlar `test/build/scp-replay-tests.log`,
+`build/scp-replay-strict.log`, `build/scp-replay-release.log`.
+
+Bu sonraki parça henüz commit edilmedi. 101/105, Powerboard ve grup ayarı,
+fiziksel UART/Flash/SCADA kabulü açık olduğundan G-01 kapanmadı. Cihaza
+yükleme veya reset yapılmadı.
+
+### 10.17. BOLATeX soruları ve grup bloğu hazırlığı — 05.10.2026
+
+Kullanıcı protokol belirsizliklerini ayrı belgede toplamayı ve geç
+101/105'i BOLATeX cevabıyla netleştirmeyi istedi. Dokuz konu
+doc/BOLATEXE_SORULACAKLAR.md BQ-01–09 altında kaynak/kanıt/soru/mevcut
+uygulama/cevap alanlarıyla tutulur. Geç alarm, halka dolu/boş ayrımı,
+overwrite/CONSUME, örnek ACK/zaman sırası, reset sayaçları, olay 122
+işlem kimliği, epoch tamamlanması, E8 biçimi ve değişen envanterde
+eski kayıt kimliği kapsanır. RTU tercihleri vendor cevabı sayılmaz.
+101/105 için geçici politika uygulanmadı; açık madde düzeltme sayılmaz.
+Belge BOLATeX'e gönderilmedi.
+
+Grup hazırlık API'si device/default Fider_ID'yi bırakıyor ve blok CRC'si
+hesaplıyordu; R1 §4.10 hedef fider ve CRC/reserved sıfırlama ister.
+API üretimde henüz çağrılmadığından ulaşılabilir saha hatası iddiası
+yoktur. Yaklaşan grup servisine hazırlık olarak Fider_ID RAM'den alınır,
+aynı writable veriler korunur, CRC/reserved sıfırlanır. Mevcut codec
+doğrulaması kullanılır; başarısızlıkta çıktı, alias dahil, korunur.
+API imzası ve RAM/NVRAM düzeni değişmedi; CFG_READ_ALL sorgusu eklenmedi.
+
+Ayar paketi 10/10; 15 ilgili Ceedling dosyası 253/253 geçti. Altı gerçek
+AY_06/AY_06b WRITE bloğu, invalid fider/NaN/Inf/null ve alias sınırları
+sınandı. Yeni codec bağımlılığı RF JSON ve NVRAM integration build'inde
+tanımlandı; NVRAM paketi 433/433 kontrol geçti. On bir RF/monitor modülü
+Cortex-M33/C11 sıkı uyarılar/-Werror ile geçti. Release link başarılı:
+307972/524/126584 B text/data/bss; toplam diğer kullanıcı değişikliklerini
+de içerir. Helper'ın aktif çağıranı henüz olmadığı için link'te atılabilir.
+Kanıtlar `test/build/scp-group-block-regression.log`,
+`build/scp-group-nvram-integration.log`, `build/scp-group-block-strict.log`
+ve `build/scp-group-block-release.log`.
+
+WRITE×3/COMMIT/STATUS, APPLIED/desired kalıcılık, Powerboard ve fiziksel
+kabul henüz tamamlanmadı; G-01 kapanmadı. Yeni commit veya cihaz
+yükleme/reset yapılmadı.
+
+### 10.18. Arıza sınıflama sorusu ve grup durum sorgusu — 05.10.2026
+
+Kullanıcı geçici/kalıcı arızaların tanımını BOLATeX'e sormayı istedi.
+doc/BOLATEXE_SORULACAKLAR.md BQ-10 tüm event_trigger eşlemesini,
+algılama/sonuç ayrımını, çift sayımı, 100/101/105'i ve sayaç artışını sorar.
+Mevcut 1/7 kalıcı, 3 geçici RTU kabulü korunmuş; enum üstüne BQ-10 teyit
+notu eklenmiştir. BQ-11, WRITE'ta group_id bulunmazken COMMIT öncesi
+ABORT kimliğini sorar. Açık sorular ertelenmiş olup düzeltme sayılmaz;
+belge henüz BOLATeX'e gönderilmemiştir.
+
+Bağımsız normal sorgu rf cfg-status <0..255> üzerinden eklendi. Mevcut
+tek bekleyen komut/codec/UART kullanılır. Callback MH state/bitmap/reason/
+cfg_crc/attempts gösterir; yerel APPLIED veya NVRAM durumu güncellenmez.
+Group_id eşleşmesi kontrol edilir; busy çağrı bekleyen isteğin kimliğini
+değiştirmez. Yanıt SHELL_LOG kanalına gider. Yeni kuyruk/process/API yoktur.
+
+Haberleşme paketi 69/69; 15 ilgili Ceedling dosyası 256/256 geçti.
+Üç yeni test örnek APPLIED gövdesinin gerçek UART/SCP sorgu yanıtı olarak
+alınması, invalid argüman/busy ve ID 0/255 sınırıdır. On bir RF/monitor
+modülü Cortex-M33/C11 sıkı uyarılar/-Werror ile geçti. Release link
+308704/524/126584 B text/data/bss; toplam diğer kullanıcı değişikliklerini
+de içerir. Kanıtlar test/build/scp-group-status-regression.log,
+build/scp-group-status-strict.log ve build/scp-group-status-release.log.
+
+WRITE×3/COMMIT sıralayıcısı, ABORT temizliği, eski 122 eşlemesi, kalıcılık
+ürün kararı ve saha kabulü halen açıktır. G-01 kapanmaz; yeni commit veya
+cihaz yükleme/reset yapılmadı.
+
+### 10.19. Normal RF grup uygulaması ve doğrulama — 06.10.2026
+
+Mevcut rf_comm WRITE×3/COMMIT sıralayıcısı içermiyor ve 0x21 bildirimi
+işlenmiyordu. rf_group tek RAM snapshot'ı ve mevcut tek bekleyen komutla
+bağlandı. Üç farklı/nonzero EUI, ACK envanteri, zone/fider/faz ve 22 alan
+doğrulanır. Önce kimlik sorgulanır; R1'e göre eski APPLIED kimliğinin
+COMMIT'i yeni uygulama başlatmadığından kullanımda kimlik WRITE öncesi
+reddedilir. Üç aynı 96 B blok ve COMMIT ilerler. NVRAM/Save/API store
+işlemi değiştirilmedi; yeni process/retry katmanı yoktur.
+
+COMMIT ACK WAITING'dir. APPLIED ancak bitmap=7 ve expected writable CRC
+ile doğrulanır. Farklı CRC/eksik bitmap yerel MISMATCH'tır; ham MH raporu
+korunur. Member bitmap kabul edilen EUI sırasına göre gösterilir. Kısmi
+başarısızlık otomatik yeniden uygulamaz. Notify kaybı için 5 s STATUS_GET
+poll'u kullanılır; MH'nin yaklaşık 60/120 s limitleri yerel sahte FAILED
+sonucuna dönüştürülmez. Komut timeout'ı UNCERTAIN olur; geç kesin bildirim
+sonucu kurtarabilir. Erken terminal notify geç ACK ile ezilmez, gecikmiş
+progress terminal sonucu geri almaz. USER_ABORT=10 CANCELLED bilgisidir.
+
+Group ID ve üyeler işlem boyunca sabittir; desired store değişimi bloğu
+karıştırmaz. ACK envanteri WRITE/COMMIT öncesi yeniden kontrol edilir.
+EPOCH_REFRESH ACK'inden sonra ilgili fidere 30 s yerel bekleme eklenir;
+diğer fiderler bağımsızdır. Bu RF tamamlanma kanıtı değildir, BQ-07 açıktır.
+BOOT RESTARTED sonucudur. WRITE yapılmamış read-only probe güvenle iptal
+ve tekrar edilebilir; gereksiz MH reseti gerekmez. WRITE sonucu belirsizse
+yeni iş kilitlidir; BQ-11 cevaplanmadan bilinmeyen ABORT gönderilmez.
+Kimliği bilinen COMMIT operatörle ABORT edilebilir; ERROR iptal sayılmaz.
+
+Shell: rf cfg-apply <store line 1..7> <fresh group_id>, rf cfg-state,
+rf cfg-status <group_id>, rf cfg-abort. Yanıtlar SHELL_LOG'tadır. Bu
+komutlarla gerçek cihazda uygulama/iptal yapılmadı. K5 desired/APPLIED
+NVRAM politikası, BQ-06 eski 122 eşlemesi ve BQ-11 temizliği ayrı açık
+kalemlerdir; normal akışın tamamlanması bunların çözümü sayılmaz.
+
+Grup paketi 23/23, haberleşme 73/73; 16 ilgili Ceedling dosyasında
+283/283 geçti. Gerçek config/store/CRC çalışır; NVRAM ve transport/ACK
+envanter sınırları taklit edilir. AY_06'nın EUI/ayar/0x096D CRC ve üç
+durum gövdesi örneklerden alınır. Unmodified wire bildiriminin gerçek
+RX/ring/parser/dispatch'ten servise ulaşması ve ACK üretmemesi de sınandı.
+Erken/geç notify/ACK, wrong CRC/bitmap/group/type, PARTIAL, abort/red,
+probe iptali/timeout, fider 4, timer wrap ve epoch beklemesi kapsandı.
+Kanıt test/build/scp-group-service-regression.log içindedir.
+
+On iki RF/monitor modülü Cortex-M33/C11 sıkı uyarılar/-Werror ile geçti.
+CubeIDE yeni kaynağı managed build'e ekledi. Son Release link
+311704/524/126768 B text/data/bss; diğer kullanıcı değişikliklerini de
+içerir. Loglar build/scp-group-service-strict.log,
+build/scp-group-service-release.log, build/scp-group-service-final-build.log.
+Yeni commit veya cihaz yükleme/reset yapılmadı. BOLATeX soruları,
+Powerboard tüketici geçişi ve fiziksel kabul açık; G-01 kapanmadı.

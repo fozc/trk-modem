@@ -30,6 +30,7 @@
 #include "rf_scp_codec.h"
 #include "rf.h"
 #include "rf_events.h"
+#include "rf_group.h"
 #include "rf_inventory.h"
 #include "rf_discovery.h"
 #include "rf_log.h"
@@ -602,6 +603,7 @@ static void handle_boot_notify(const scp_packet_t *pkt)
         finish_command(SCP_CMD_RESTARTED, NULL);
     }
     rf_events_init();
+    rf_group_hub_restarted();
     if (major != RF_SCP_MAJOR_EXPECTED)
     {
         CSLOG_WARN("[RF] BOOT_NOTIFY scp_major=%u (beklenen %u) - uyari, "
@@ -655,6 +657,10 @@ static void handle_proactive(const scp_packet_t *pkt)
 
         case RF_SCP_CMD_LOG_AVAILABLE:
             rf_events_notify(&message);
+            break;
+
+        case RF_SCP_CMD_CFG_STATUS_NOTIFY:
+            (void)rf_group_handle_status(&message);
             break;
 
         default:    /* MISRA 16.4 - S3-S5'te yeni case'ler gelecek */
@@ -796,6 +802,7 @@ static void rf_comm_periodic_jobs(void)
 
     /* Envanter siralayici: aktif ama komut mekanizmasi mesgulse bekle */
     rf_inventory_continue();
+    rf_group_process(HAL_GetTick());
     rf_events_process(HAL_GetTick());
 
     /* Periyodik GET_STATUS (canlilik) */
@@ -857,6 +864,7 @@ void rf_comm_init(uint8_t device_address)
     rf_inventory_reset();
     rf_init();
     rf_events_init();
+    rf_group_init();
     if (!rbuff_init(&rx_ring, rx_buff, sizeof(rx_buff)))
     {
         CSLOG_ERR("[RF] Failed to initialize RX ring buffer!\r\n");

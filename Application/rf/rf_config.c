@@ -2,13 +2,15 @@
  * rf_config.c
  *
  *  Created on: Feb 1, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * RF ayirici konfigurasyonu: 96 baytlik blok codec (default / CRC / RMW,
  * spec R2 Ek-A + R2-ek/ek2/ek3/ek4) + RAM SSOT store + staging.
  */
 
 #include "rf_config.h"
+#include "rf_scp_codec.h"
 #include "types.h"
 #include "nvram.h"
 #include <string.h>
@@ -118,37 +120,26 @@ bool rf_config_for_write(const rf_feeder_config_t *ram,
                          const rf_feeder_config_t *device,
                          rf_feeder_config_t *out)
 {
-    if ((ram == NULL) || (out == NULL))
+    rf_feeder_config_t block;
+
+    if ((NULL == ram) || (NULL == out) ||
+        (RF_CMD_OK != rf_scp_validate_config((const uint8_t *)ram,
+                                             sizeof(*ram))))
     {
         return false;
     }
-
-    /* RMW tabani (spec R2 section 5.4 + 5.3-7): cihazdan son okunan blok
-     * varsa tamami ondan kopyalanir; maskeli alanlar (toploloji @0-2 + RF
-     * ailesi @57-66) boylece cihaz degerinde korunur - cihaz zaten yok
-     * sayar, RTU override etmez. Yoksa default taban. */
-    if (device != NULL)
+    block = (NULL != device) ? *device : rf_config_default;
+    if (NULL == device)
     {
-        (void)memcpy(out, device, sizeof(rf_feeder_config_t));
+        block.phase_id = ram->phase_id;
     }
-    else
-    {
-        (void)memcpy(out, &rf_config_default, sizeof(rf_feeder_config_t));
-        /* Ilk-imaj yolu: phase bilgi-amacli RAM modelinden alinir. */
-        out->phase_id = ram->phase_id;
-    }
-
-    /* Yalnizca yazilabilir aralik (@3-56) RAM modelinden gelir. */
-    rf_config_copy_writable(ram, out);
-
-    /* RF-rezervi her zaman sifir (spec Ek-A). */
-    (void)memset(out->rf_reserved, 0, sizeof(out->rf_reserved));
-
-    /* Blok CRC-16 (ofset 0-93). 0x22-yazim yolunda denetlenmez (R2-ek4);
-     * hesap zararsizdir ve FRAM-boot benzeri kullanim icin dogrudur. */
-    out->crc16 = rf_config_crc16((const uint8_t *)out,
-                                   RF_CONFIG_CRC_RANGE_LEN);
-
+    rf_config_copy_writable(ram, &block);
+    /* The hub uses this masked field to select the destination feeder. */
+    block.fider_id = ram->fider_id;
+    (void)memset(block.rf_reserved, 0, sizeof(block.rf_reserved));
+    /* R1 4.10 requires zero reserved bytes and zero block CRC on writes. */
+    block.crc16 = 0U;
+    *out = block;
     return true;
 }
 

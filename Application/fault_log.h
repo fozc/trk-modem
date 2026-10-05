@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include "types.h"
 
+/* Provisional RTU event mapping; vendor confirmation is tracked in BQ-10. */
 typedef enum
 {
     FAULT_LOG_TYPE_TEMPORARY = 0, /* RF event 3: fault cleared itself. */

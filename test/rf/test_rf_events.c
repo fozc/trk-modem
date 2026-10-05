@@ -15,6 +15,7 @@
 #include "rf_types.h"
 #include "mock_rf_event_log.h"
 #include "mock_fault_log.h"
+#include "mock_iec104_event_log.h"
 #include "mock_bsp.h"
 #include "spi_flash_log.h"
 #include "scp_endian.h"
@@ -39,11 +40,31 @@ static uint8_t written_raw[60];
 static rf_feeder_t feeder;
 static rf_inventory_status_t inventory_status;
 static bool transport_free;
+static bool link_active;
+static bool emit_success;
+static size_t emit_calls;
+static size_t replay_writes;
+static bool replay_success;
 
 uint32_t HAL_GetTick(void);
 uint32_t HAL_GetTick(void)
 {
     return tick;
+}
+
+bool iec104_is_link_active(void);
+bool iec104_is_link_active(void)
+{
+    return link_active;
+}
+
+bool iec104_emit_evtlog_record(const fault_log_t *record);
+bool iec104_emit_evtlog_record(const fault_log_t *record)
+{
+    TEST_ASSERT_EQUAL_MEMORY(&written_fault.tm, &record->tm,
+                             sizeof(record->tm));
+    emit_calls++;
+    return emit_success;
 }
 
 static rf_inventory_status_t get_inventory_status(int call_count)
@@ -89,6 +110,17 @@ static int sync_fault(int call_count)
 {
     (void)call_count;
     return sync_result;
+}
+
+static bool save_replay(const fault_log_t *record, uint16_t *seq,
+                         int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_MEMORY(&written_fault.tm, &record->tm,
+                             sizeof(record->tm));
+    *seq = 42U;
+    replay_writes++;
+    return replay_success;
 }
 
 const rf_feeder_t *rf_store_get(feeder_id_t index);
@@ -171,6 +203,11 @@ void setUp(void)
     fault_success = true;
     sync_result = 0;
     response_handler = NULL;
+    link_active = false;
+    emit_success = true;
+    emit_calls = 0U;
+    replay_writes = 0U;
+    replay_success = true;
     (void)memset(&written_fault, 0, sizeof(written_fault));
     (void)memset(&request, 0, sizeof(request));
     (void)memset(&feeder, 0, sizeof(feeder));
@@ -186,6 +223,8 @@ void setUp(void)
     rf_event_log_append_StubWithCallback(save_raw);
     fault_log_append_StubWithCallback(save_fault);
     fault_log_sync_StubWithCallback(sync_fault);
+    iec104_event_log_add_StubWithCallback(save_replay);
+    iec104_event_log_sync_IgnoreAndReturn(0);
     rf_events_init();
 }
 
@@ -616,6 +655,72 @@ void test_overwrite_during_local_failure_cannot_consume_reused_slots(void)
     rf_events_process(tick);
     TEST_ASSERT_EQUAL_UINT32(3U, requests);
     TEST_ASSERT_NOT_EQUAL(RF_SCP_CMD_LOG_CONSUME_TO, request.cmd);
+}
+
+void test_online_fault_is_forwarded_and_marked_sent_after_persistent_add(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    uint16_t seq = 42U;
+
+    link_active = true;
+    iec104_event_log_mark_sent_Expect(seq);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(1U, emit_calls);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_CONSUME_TO, request.cmd);
+}
+
+void test_failed_online_send_remains_in_replay_without_blocking_consumption(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    link_active = true;
+    emit_success = false;
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(1U, emit_calls);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_CONSUME_TO, request.cmd);
+}
+
+void test_replay_sync_failure_retries_without_appending_or_sending_again(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    iec104_event_log_sync_StopIgnore();
+    iec104_event_log_sync_ExpectAndReturn(-1);
+    iec104_event_log_sync_ExpectAndReturn(0);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(2U, requests);
+    tick = 60000U;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
+    TEST_ASSERT_EQUAL_UINT32(1U, fault_writes);
+    TEST_ASSERT_EQUAL_UINT32(1U, replay_writes);
+    confirm_consumption();
+}
+
+void test_replay_write_failure_holds_tail_and_keeps_both_previous_writes(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    replay_success = false;
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(2U, requests);
+    replay_success = true;
+    tick = 60000U;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
+    TEST_ASSERT_EQUAL_UINT32(1U, fault_writes);
+    TEST_ASSERT_EQUAL_UINT32(2U, replay_writes);
+    confirm_consumption();
 }
 
 /*** end of file ***/

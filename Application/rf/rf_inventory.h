@@ -64,6 +64,9 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
 /** Queue epoch refresh only after the nonempty inventory is accepted. */
 bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done);
 
+/* Minimum local wait after an acknowledged epoch refresh; not RF proof. */
+bool rf_inventory_epoch_ready(uint8_t feeder);
+
 /** True for accepted nonempty READY/PARTIAL inventory, false for EMPTY. */
 bool rf_inventory_is_loaded(void);
 
