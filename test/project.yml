@@ -118,6 +118,10 @@
         - -Wno-array-parameter
         - -Wno-conversion
         - -Wno-sign-conversion
+      test_json_parser_edges:
+        - -Wno-array-parameter
+        - -Wno-conversion
+        - -Wno-sign-conversion
       test_rf_json_golden_scenario:
         - -Wno-conversion
         - -Wno-sign-conversion
