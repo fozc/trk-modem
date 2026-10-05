@@ -126,7 +126,21 @@ static inline uint8_t w25qxx_read_status(void)
 int w25qxx_wait_for_write_or_erase(void)
 {
 	volatile uint32_t timeout = 300000u;
-	while(w25qxx_read_status() & STATUS1_BUSY && (timeout > 0u)){
+	while (timeout > 0U)
+	{
+		if (SPI_TRANSFER_OK != spi_get_transfer_status())
+		{
+			return W25QXX_RES_TIMEOUT;
+		}
+		const uint8_t status = w25qxx_read_status();
+		if (SPI_TRANSFER_OK != spi_get_transfer_status())
+		{
+			return W25QXX_RES_TIMEOUT;
+		}
+		if (0U == (status & STATUS1_BUSY))
+		{
+			return W25QXX_RES_OK;
+		}
 		timeout--;
 	}
 
@@ -148,6 +162,7 @@ void w25qxx_write_enable(void)
 void w25qxx_reset(void)
 {
 	spi_cs_high();
+	spi_clear_transfer_error();
 	delay(1);
 	spi_cs_low();
 	spi_send_byte(CMD_ENABLE_RESET);
@@ -167,7 +182,12 @@ int w25qxx_disable_block_protect(void)
 	w25qxx_write_enable();
 	delay(1);
 
-	if(!(w25qxx_read_status() & STATUS1_WEL))
+	const uint8_t status = w25qxx_read_status();
+    if (SPI_TRANSFER_OK != spi_get_transfer_status())
+    {
+        return W25QXX_RES_TIMEOUT;
+    }
+    if (0U == (status & STATUS1_WEL))
 	{
 		CCSLOG(XCOLOR_RED, "Error!: WEL is not set!\r\n");
 		return W25QXX_RES_WEL_NOT_SET;
@@ -224,6 +244,10 @@ int w25qxx_init(void)
 
 	w25qxx_reset();
 	uint32_t read_jid = w25qxx_read_jedecid();
+	if (SPI_TRANSFER_OK != spi_get_transfer_status())
+	{
+		return W25QXX_RES_TIMEOUT;
+	}
 	const uint8_t *p_id = (const uint8_t *)&read_jid;
 	const flash_id_t *p_part = NULL;
 
@@ -241,6 +265,10 @@ int w25qxx_init(void)
 	uint8_t status_1 = w25qxx_read_status();
 	uint8_t status_2 = w25qxx_read_register(CMD_READ_STATUS_REGISTER_2);
 	uint8_t status_3 = w25qxx_read_register(CMD_READ_STATUS_REGISTER_3);
+	if (SPI_TRANSFER_OK != spi_get_transfer_status())
+	{
+		return W25QXX_RES_TIMEOUT;
+	}
 
 	if(status_1 != 0x00)
 	{
@@ -442,7 +470,12 @@ int w25qxx_write_byte(uint32_t addr, uint8_t data)
 		return 1;
 	}
 	w25qxx_write_enable();
-	if(!(w25qxx_read_status() & STATUS1_WEL))
+	const uint8_t status = w25qxx_read_status();
+    if (SPI_TRANSFER_OK != spi_get_transfer_status())
+    {
+        return W25QXX_RES_TIMEOUT;
+    }
+    if (0U == (status & STATUS1_WEL))
 	{
 		CCSLOG(XCOLOR_RED,"Error!: WEL is not set!\r\n");
 		return 1;
@@ -482,7 +515,12 @@ int w25qxx_page_write(uint32_t addr, const void *buff, uint32_t len)
 
 	w25qxx_write_enable();
 	delay(3);
-	if(!(w25qxx_read_status() & STATUS1_WEL))
+	const uint8_t status = w25qxx_read_status();
+    if (SPI_TRANSFER_OK != spi_get_transfer_status())
+    {
+        return W25QXX_RES_TIMEOUT;
+    }
+    if (0U == (status & STATUS1_WEL))
 	{
 		CCSLOG(XCOLOR_RED, "Error!: WEL is not set!\r\n");
 		return 1;
@@ -580,6 +618,11 @@ int w25qxx_verify(uint32_t addr, const void *data, uint32_t len)
 	while(len--)
 	{
 		temp = spi_read_byte();
+        if (SPI_TRANSFER_OK != spi_get_transfer_status())
+        {
+            spi_cs_high();
+            return W25QXX_RES_TIMEOUT;
+        }
 		if(*ptr != temp)
 		{
 			CCSLOG(XCOLOR_RED, "Flash Verify Err. index: %u 0x%X->0x%X\r\n", (ptr - (const uint8_t *)data), *ptr, temp);

@@ -1,13 +1,15 @@
 /**
  * @file  led_driver.h
  * @brief Pattern-driven LED driver for single-color and RGB LEDs.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  *
  * Provides a table-driven blink pattern engine that supports multi-phase
  * patterns (single pulse, double pulse, triple pulse, solid, off).
  * Each logical LED channel runs its own state machine, all driven from
  * a single periodic tick call.
  *
- * Hardware mapping (active-high, accent LEDs accent accent accent):
+ * Hardware mapping (all channels are active-low):
  *
  * | Channel              | GPIO              | Function          |
  * |----------------------|-------------------|-------------------|
@@ -18,7 +20,7 @@
  * | LED_CHANNEL_GSM_G    | RGB2 Green PE9    | GSM network grn   |
  * | LED_CHANNEL_GSM_B    | RGB2 Blue  PE10   | GSM network blu   |
  * | LED_CHANNEL_IEC104   | LED2       PB2    | IEC104 listener   |
- * | LED_CHANNEL_WEB      | LED1       PE7    | Web listener      |
+ * | LED_CHANNEL_WEB      | LED3       PB1    | Web listener      |
  */
 
 #ifndef BSP_LED_DRIVER_H
