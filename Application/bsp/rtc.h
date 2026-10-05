@@ -2,7 +2,8 @@
  * rtc.h
  *
  *  Created on: Mar 31, 2026
- *      Author: fatih.ozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Hybrid software/hardware RTC service.
  *
@@ -62,6 +63,7 @@ bool rtc_hw_is_valid(void);
 /**
  * @brief  Read the current hardware RTC calendar (including sub-second ms).
  * @param[out] out  Destination time structure. Ignored if NULL.
+ * @note Inconsistent hardware subseconds leave the destination unchanged.
  */
 void rtc_hw_read(rtc_t *out);
 
@@ -88,6 +90,7 @@ void rtc_sync(const rtc_t *dt);
  * @brief  Reload the software RTC (and epoch) from the hardware RTC.
  *
  * Used at boot and by the periodic anti-drift resync.
+ * Invalid hardware calendar/subseconds preserve software time and epoch.
  */
 void rtc_resync_sw_from_hw(void);
 
