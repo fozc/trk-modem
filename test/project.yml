@@ -80,6 +80,16 @@
         - -Wconversion
         - -Wdouble-promotion
         - -Wformat=2
+      test_uart_tx_scenario:
+        - -DUART_TX_HOST_TEST
+        - -Isupport/uart_tx
+        - -flto
+        - -O2
+      # Link only the real delay entry from the monolithic BSP.
+      test_bsp_delay_us:
+        - -DBSP_DELAY_HOST_TEST
+        - -flto
+        - -O2
       # LTO drops unrelated callbacks from the monolithic legacy GSM unit.
       test_gsm_response_scenario:
         - -Wno-sign-compare
@@ -118,6 +128,12 @@
         - -O2
 
     :link:
+      test_uart_tx_scenario:
+        - -flto
+        - -O2
+      test_bsp_delay_us:
+        - -flto
+        - -O2
       test_bms_reader_scenario:
         - -flto
         - -O2

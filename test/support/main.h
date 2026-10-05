@@ -11,6 +11,12 @@
 #define TEST_SUPPORT_MAIN_H
 
 #include "stm32u3xx_hal_rtc.h"
+#ifdef BSP_DELAY_HOST_TEST
+#include "bsp_delay_test_platform.h"
+#endif
+#ifdef UART_TX_HOST_TEST
+#include "uart_tx_test_platform.h"
+#endif
 /* Host tests check SPI transactions, not MCU delay timing. */
 #define __NOP() ((void)0)
 

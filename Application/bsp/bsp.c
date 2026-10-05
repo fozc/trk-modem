@@ -23,9 +23,17 @@ static const char *banner =  "\r\n+=================TROIKA======================
 #define SYSTICK_US_DELAY
 #define AHB_FREQ 96000000UL
 
-#if ((AHB_FREQ / 1000000UL) > SysTick_LOAD_RELOAD_Msk)
-	#error  "For usec delay, Reload value impossible"
-#endif
+#define SYSTICK_TICKS_PER_US (AHB_FREQ / 1000000UL)
+#define SYSTICK_MAX_DELAY_US \
+    ((SysTick_LOAD_RELOAD_Msk + 1UL) / SYSTICK_TICKS_PER_US)
+
+_Static_assert(0UL == (AHB_FREQ % 1000000UL),
+               "Microsecond delay requires an integer ticks/us ratio");
+_Static_assert((2UL <= SYSTICK_TICKS_PER_US) &&
+               (SYSTICK_TICKS_PER_US <= SysTick_LOAD_RELOAD_Msk + 1UL),
+               "One microsecond must use a valid nonzero reload");
+_Static_assert(0UL < SYSTICK_MAX_DELAY_US,
+               "SysTick must support at least one microsecond");
 
 static volatile uint32_t life_timer = 0;
 static volatile uint32_t life_timer_wraps = 0; /* life_timer'in 2^32 ms sarma sayisi */
@@ -199,19 +207,34 @@ uint32_t bsp_get_tick(void)
 
 void bsp_delay_us(uint32_t us)
 {
+    if (0U == us)
+    {
+        return;
+    }
+
 #if defined(SYSTICK_US_DELAY)
-	volatile uint32_t tmp = SysTick->CTRL; /* Clear the COUNTFLAG first */
-	((void) tmp);
+    while (0U < us)
+    {
+        const uint32_t chunk_us = (us > SYSTICK_MAX_DELAY_US)
+            ? (uint32_t)SYSTICK_MAX_DELAY_US : us;
+        const uint32_t previous_ctrl = SysTick->CTRL;
+        (void)previous_ctrl; /* Read to clear the previous COUNTFLAG. */
 
-	SysTick->VAL   = 0UL;
-	SysTick->LOAD  = (uint32_t)((AHB_FREQ / 1000000U)*us - 1UL);  /* set reload register */
-	SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_ENABLE_Msk; //* Enable Systick */
-	while((SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk) == 0U);
+        SysTick->VAL = 0UL;
+        SysTick->LOAD = SYSTICK_TICKS_PER_US * chunk_us - 1UL;
+        SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk |
+                        SysTick_CTRL_ENABLE_Msk;
+        while (0U == (SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk))
+        {
+            /* Wait for this bounded chunk to complete. */
+        }
 
-	SysTick->CTRL = 0; // Disable Systick
-	SysTick->VAL   = 0UL;
+        SysTick->CTRL = 0UL;
+        SysTick->VAL = 0UL;
+        us -= chunk_us;
+    }
 #else
-	bsp_delay(us);
+    bsp_delay(us);
 #endif
 }
 

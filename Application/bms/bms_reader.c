@@ -95,6 +95,10 @@ static void bms_send_buff(const uint8_t *buffer, size_t length)
     LL_USART_ClearFlag_TC(UART5);
 
     for (uint16_t i = 0U; i < length; i++) {
+        while (0U == LL_USART_IsActiveFlag_TXE_TXFNF(UART5))
+        {
+            /* Wait until the transmitter can accept this byte. */
+        }
         LL_USART_TransmitData8(UART5, buffer[i]);
         while (!LL_USART_IsActiveFlag_TXE_TXFNF(UART5)) {
             /* Wait until the data register can accept the next byte. */

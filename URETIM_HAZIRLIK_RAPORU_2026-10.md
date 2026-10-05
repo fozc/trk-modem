@@ -1349,4 +1349,105 @@ Bu kayıt önceki bölümlerin o an için yazılmış "commit yapılmadı"
 notlarını günceller; erteleme ve fiziksel test sınırlarını kaldırmaz.
 Fiziksel cihaz testi, cihaza yükleme ve push yapılmadı.
 
+
+### 9.38 Mikro-saniye gecikmesinin sınırları — O8.9, 04.10.2026
+
+**Kanıt:** bsp_delay_us() için repo C/H kaynaklarında çağıran
+bulunmamıştır. Mevcut 96 MHz saat ve 24-bit SysTick reload alanında
+tek parça sınırı 174762 us'dir. Eski kod sıfır istekte LOAD=0xFFFFFFFF,
+174763 us istekte LOAD=0x0100001F yazıyordu. Yaklaşık 175 ms ve
+sınır üstündeki kısa bekleme değerleri register hesabıdır; fiziksel
+süre ölçümü değildir. HAL zaman tabanı TIM17 kullanır; SysTick_Handler
+boştur. Mevcut akışta HAL tick kaybı veya saha arızası gösterilmemiştir.
+
+**Değişiklik:** Kullanıcı sıfır girdinin hemen dönmesini ve üst sınırı
+aşan sürelerin parçalanmasını onaylamıştır. Sıfır istekte hiçbir
+SysTick erişimi yapılmaz. Diğer istekler en fazla 174762 us parçalarla
+işlenir; her parçanın ticks/us çarpımı reload alanına sığar. Süre
+sessizce kısaltılmaz. Her parça sonrası timer kapatılıp VAL sıfırlanır.
+Mevcut busy-wait (bekleme döngüsü) korunur; yeni IRQ, queue veya süreç
+eklenmez. Tick/us oranı ve parça sınırı adlandırılmış sabitlerden
+türetilmiştir. Static assert'ler tam sayı frekans oranını, en küçük
+istekte sıfır olmayan geçerli reload'u ve pozitif parça sınırını
+kontrol eder. IRQ kapatma veya watchdog davranışı değiştirilmemiştir.
+
+**Doğrulama:** test/bsp/test_bsp_delay_us.c merkezi Ceedling'e eklenmiştir.
+Gerçek bsp.c fonksiyonu çalışır. Host-only SysTick register modeli her
+parça tamamlandığında COUNTFLAG üretir; bütün LOAD değerlerinin sınıra
+sığmasını, toplam programlanan tick sayısını ve çıkışta CTRL/VAL
+sıfırlanmasını kontrol eder. Sıfır, 1 us, 123 us, tek parça sınırı,
+sınır+1, iki tam parça, bir saniye ve UINT32_MAX senaryoları vardır.
+Sıfır istekte önceki register değerlerinin korunması da sınanır.
+LTO yalnız bu test için BSP'nin ilgisiz donanım yollarını dışarıda
+bırakır; uyarı seçenekleri kapatılmaz. Test üretim gecikme algoritmasını
+taklit etmez; gerçek register zamanlamasını veya fiziksel süreyi ölçmez.
+
+- Düzeltme öncesi: 8 test, 3 geçti / 5 başarısız.
+- Düzeltme sonrası: 8/8 gecikme testi geçti.
+- Merkezi Ceedling paketi: 459/459 geçti; atlanan test yok.
+- ARM Release incremental derlemesi başarılı; logda warning/error yok.
+- Release paketinin raw-byte equality ve ECDSA self-check'i geçti.
+- git diff --check geçti.
+
+Çıktılar test/build/production-audit-2026-10-03/ altındaki
+delay-us-before.log, delay-us-after.log, delay-us-all.log ve
+delay-us-release.log içindedir. O8.9 yazılım sınır kusurları kapatılmıştır.
+Fiziksel süre ölçümü, cihaza yükleme ve commit yapılmamıştır.
+
+**Sıradaki madde:** O8.10 PowerBoard işaret uyuşmazlığı §9.31 kapsamındaki
+erteleme nedeniyle atlanır. O8.11 I2C kurtarmasını koruma kararı §9.16'da
+bulunur. Sonraki incelenecek ortak servis bulgusu O8.12'dir:
+uart_send_byte() mevcut durumda önce yazar, ardından TXE/TXFNF bekler.
+Gerçek çağrı bağlamları ve mevcut UART/HAL koruması incelenmeden yeni
+senkronizasyon veya üretim davranışı eklenmemelidir.
+### 9.39 UART yazma oncesi hazirlik kontrolu — O8.12, 04.10.2026
+
+**Kanıt:** Yerel STM32 LL sürücüsünde LL_USART_TransmitData8() yalnız
+TDR'ye yazar; TXE/TXFNF beklemez. uart_send_byte(), RS-485 gönderimi,
+legacy UART/LPUART yolları ve BMS reader'ın yerel gönderim döngüsü önce
+yazıyor, ardından hazır bayrağını bekliyordu. İlk byte göndericinin
+hazır olmadığı anda yazılabiliyordu. Generic buffer yolu GSM ve RF,
+RS-485 yolu Modbus tarafından kullanılır. Legacy göndericiler için
+uygulama çağrısı bulunmamıştır. BMS reader devre dışı kalmaya devam eder.
+Sahada byte kaybı veya eşzamanlı yazan bağlam gösterilmemiştir.
+
+**Değişiklik:** Bütün bu byte yazımlarından önce TXE/TXFNF beklenir.
+Mevcut yazma sonrası bekleme korunur; fonksiyon dönüşündeki hazır olma
+koşulu değişmez. RS-485 son TC beklemesini tamamladıktan sonra DE'yi
+bırakır. BMS'nin OE/RE kontrolü korunmuştur. Yeni IRQ maskesi, mutex,
+queue, timeout veya retry eklenmemiştir. Bu kontrol, farklı bağlamların
+aynı UART'a eşzamanlı yazması için karşılıklı dışlama sağlamaz.
+
+**Doğrulama:** test/bsp/test_uart_tx_scenario.c merkezi Ceedling'e
+8 senaryo ekler ve gerçek uart.c çalıştırılır. Host LL modeli ilk
+byte öncesinde ve ardışık byte'lar arasında göndericiyi meşgul tutar;
+TDR yazımında hazır olmayı zorunlu kılar. Generic byte/buffer, hazır
+giriş, geçersiz port, bütün legacy portlar, LPUART ve RS-485'in iki
+DE polaritesi kapsanır. RS-485 testleri son TC tamamlanmadan DE'nin
+bırakılmasını reddeder. Mevcut 11 BMS reader senaryosu aynı hazır olma
+kontrolüyle güçlendirilmiştir ve gerçek yerel gönderim kodunu çalıştırır.
+LTO yalnız UART host testi için ilgisiz donanım yollarını dışarıda
+bırakır; uyarı kontrolleri korunur.
+
+- Düzeltme öncesi UART: 8 test, 2 geçti / 6 başarısız.
+- Düzeltme öncesi BMS reader: 11 test, 11 başarısız.
+- Düzeltme sonrası UART: 8/8; BMS reader: 11/11 geçti.
+- Merkezi Ceedling paketi: 467/467 geçti; atlanan test yok.
+- ARM Release incremental derlemesi başarılı; logda warning/error yok.
+- Release paketinin raw-byte equality ve ECDSA self-check'i geçti.
+- git diff --check geçti.
+
+Çıktılar test/build/production-audit-2026-10-03/ altında
+uart-tx-before.log, uart-tx-bms-before.log, uart-tx-after.log,
+uart-tx-bms-after.log, uart-tx-all.log ve uart-tx-release.log içindedir.
+O8.12'nin yazmadan önce hazır olma kontrolü eksikliği kapatılmıştır.
+Fiziksel UART testi, cihaza yükleme ve commit yapılmamıştır.
+
+**Sıradaki bulgu:** D8.13 eski yorumlar. led_driver.h donanım açıklaması
+active-high derken led_driver.c pin tablosunda sekiz kanalın tamamı
+active-low'dur. BMS reader'ın eski 0x51 yorumları önceki çalışmada
+0x81 olarak düzeltilmiştir; güncel frame ile tutarlıdır. PowerBoard
+prot_ver alanındaki 0x06 yorumu güncel 0x09 sabitiyle uyuşmaz; bu modül
+§9.31 ertelemesi kapsamındadır. Bu bölüm D8.13 için tespittir;
+yorum düzeltmesi henüz yapılmamıştır.
 /*** end of report ***/
