@@ -332,14 +332,22 @@ static bool check_urc_in_response(void)
 
 	const char *p_buf = (const char *)at_engine.response_buffer;
 
+    /* Payload is raw data, including NUL and URC-looking text. */
+    const uint16_t text_start = at_engine.srecv_payload_end;
+    if (text_start > at_engine.response_buffer_len)
+    {
+        return false;
+    }
+
 	for(size_t i = 0U; i < urc_table_size; i++)
 	{
-		/* Find URC keyword in response buffer */
-		int32_t urc_start = str_index_of(p_buf, urc_table[i]);
+		/* Search only modem text after the binary payload. */
+		int32_t urc_start = str_index_of(p_buf + text_start, urc_table[i]);
 		if(urc_start < 0)
 		{
 			continue;
 		}
+        urc_start += (int32_t)text_start;
 
 		/* Find the end of the URC line: search for \r\n AFTER the keyword */
 		uint16_t keyword_len = (uint16_t)strlen(urc_table[i]);
@@ -383,16 +391,10 @@ static bool check_urc_in_response(void)
 
 		gsm_URC_callback(urc_buffer, content_len);
 
-		/* Remove URC from response buffer.
-		 * Also include the preceding \r\n separator if present so that no
-		 * whitespace residue remains in the buffer after extraction.  Without
-		 * this, at_engine_urc_incoming_process() would never see
-		 * response_buffer_len == 0 and the engine would block in
-		 * AT_ENGINE_URC_INCOMING for the full 300 ms timeout, causing
-		 * at_engine_is_busy() == true and dropping subsequent AT commands
-		 * (e.g. AT#SRECV triggered by the very SRING just dispatched). */
+        /* Remove text separators too, but never consume payload CRLF.
+         * Empty text buffers unblock the next AT command immediately. */
 		uint16_t remove_from = (uint16_t)urc_start;
-		if((remove_from >= 2U) &&
+		if((remove_from >= (text_start + 2U)) &&
 		   (at_engine.response_buffer[remove_from - 2U] == '\r') &&
 		   (at_engine.response_buffer[remove_from - 1U] == '\n'))
 		{
@@ -457,25 +459,21 @@ static void log_response(const char *p_result_str)
 static void check_response_complete(void)
 {
 	uint16_t buf_len = at_engine.response_buffer_len;
+    const uint16_t text_start = at_engine.srecv_payload_end;
+    if (text_start > buf_len)
+    {
+        return;
+    }
+    const uint16_t text_len = (uint16_t)(buf_len - text_start);
 
 	/* Check for expected response (typically "OK\r\n") */
-	if(at_engine.expected_response_len > 0U && buf_len >= at_engine.expected_response_len)
+    /* The whole terminator must be outside the declared payload. */
+    if ((at_engine.expected_response_len > 0U) &&
+        (text_len >= at_engine.expected_response_len))
 	{
 		const uint8_t *p_tail = &at_engine.response_buffer[buf_len - at_engine.expected_response_len];
 		if(memcmp(p_tail, at_engine.expected_response, at_engine.expected_response_len) == 0)
 		{
-			/* Ignore a terminator that starts inside the declared #SRECV payload.
-			 * srecv_payload_end is the offset one past the last payload byte
-			 * (set when "#SRECV: N,LEN" was parsed).  An "OK\r\n" whose start lies
-			 * before it is a byte pattern within the binary payload (e.g. data
-			 * ending in "OK" followed by the modem's own "\r\n" framing), not the
-			 * real end of response. */
-			uint16_t ok_pos = buf_len - at_engine.expected_response_len;
-			if((at_engine.srecv_payload_end > 0U) && (ok_pos < at_engine.srecv_payload_end))
-			{
-				return; /* Terminator pattern inside SRECV payload -- keep reading */
-			}
-
 			at_engine.state = AT_ENGINE_DONE;
 			at_engine.result = AT_ENGINE_RESULT_OK;
 			log_response("OK");
@@ -484,16 +482,11 @@ static void check_response_complete(void)
 	}
 
 	/* Check for ERROR response */
-	if(buf_len >= (sizeof(AT_ERROR_STR) - 1U))
+	if(text_len >= (sizeof(AT_ERROR_STR) - 1U))
 	{
 		const uint8_t *p_tail = &at_engine.response_buffer[buf_len - (sizeof(AT_ERROR_STR) - 1U)];
 		if(memcmp(p_tail, AT_ERROR_STR, sizeof(AT_ERROR_STR) - 1U) == 0)
 		{
-			uint16_t err_pos = buf_len - (uint16_t)(sizeof(AT_ERROR_STR) - 1U);
-			if((at_engine.srecv_payload_end > 0U) && (err_pos < at_engine.srecv_payload_end))
-			{
-				return; /* Pattern inside SRECV payload -- keep reading */
-			}
 			at_engine.state = AT_ENGINE_DONE;
 			at_engine.result = AT_ENGINE_RESULT_ERROR;
 			log_response("ERROR");
@@ -502,7 +495,7 @@ static void check_response_complete(void)
 	}
 
 	/* Check for +CME ERROR: 10 (NO SIM) — must precede generic CME check */
-	if(buf_len >= (sizeof(AT_NO_SIM_CARD_STR) - 1U))
+	if(text_len >= (sizeof(AT_NO_SIM_CARD_STR) - 1U))
 	{
 		const uint8_t *p_tail = &at_engine.response_buffer[buf_len - (sizeof(AT_NO_SIM_CARD_STR) - 1U)];
 		if(memcmp(p_tail, AT_NO_SIM_CARD_STR, sizeof(AT_NO_SIM_CARD_STR) - 1U) == 0)
@@ -520,8 +513,9 @@ static void check_response_complete(void)
 		}
 	}
 
-	/* Check for +CME ERROR: anywhere in buffer */
-	if(str_index_of((const char *)at_engine.response_buffer, AT_CME_ERROR_STR) >= 0)
+	/* CME errors, like URCs, must not be searched inside binary data. */
+	if(str_index_of((const char *)at_engine.response_buffer + text_start,
+        AT_CME_ERROR_STR) >= 0)
 	{
 		/* +CME ERROR lines end with \r\n — check if line is complete */
 		if(buf_len >= 2U &&
@@ -584,10 +578,15 @@ static void check_response_complete(void)
  *      While > 0, each incoming byte is stored and counted down with NO URC /
  *      OK / ERROR checking.  This isolates the payload from all text parsing.
  *   2) srecv_payload_end : buffer offset one past the last payload byte
- *      (= buffer length at arm time + LEN).  In check_response_complete() an
- *      "OK\r\n"/ERROR match is IGNORED if its start position is < this offset,
- *      i.e. the match lies inside the declared payload.  Only a terminator
- *      at/after srecv_payload_end is the real end of response.
+ *      (= buffer length at arm time + LEN).  All subsequent URC and CME
+ *      searches start at this boundary, including after a binary NUL.
+ *      The whole OK/ERROR terminator must fit in the text after it.
+ *      The header is armed only once; payload text cannot re-arm it.
+ *      Reset/clear/cancel discard both counters. Reset/clear preserve
+ *      queued RX bytes; cancel deliberately discards them.
+ *
+ * The modem must send all LEN payload bytes contiguously. A real URC
+ * inserted inside that declared window is indistinguishable from data.
  *
  * WORKED EXAMPLE (LEN = 1024, header is 18 bytes)
  * -----------------------------------------------
@@ -744,7 +743,8 @@ static void consume_rx_data(bool check_response)
 		if(check_response)
 		{
 			uint16_t srecv_len = 0U;
-			if(at_srecv_parse_pending_length(&srecv_len))
+			if((0U == at_engine.srecv_payload_end) &&
+                at_srecv_parse_pending_length(&srecv_len))
 			{
 				at_engine.binary_bytes_remaining = srecv_len;
 				/* Record one-past-the-last payload byte so terminator detection
@@ -880,6 +880,9 @@ void at_engine_reset(void)
 	at_engine.cmd_len = 0U;
 	at_engine.expected_response_len = 0U;
 	at_engine.response_buffer_len = 0U;
+    at_engine.response_buffer[0] = '\0';
+    at_engine.binary_bytes_remaining = 0U;
+    at_engine.srecv_payload_end = 0U;
 }
 
 int32_t at_engine_process(void)
@@ -948,6 +951,8 @@ void at_engine_clear_buff(void)
 	 * IDLE and transitions to URC_INCOMING. */
 	at_engine.response_buffer_len = 0U;
 	at_engine.response_buffer[0] = '\0';
+    at_engine.binary_bytes_remaining = 0U;
+    at_engine.srecv_payload_end = 0U;
 }
 
 void at_engine_cancel(void)
@@ -960,6 +965,9 @@ void at_engine_cancel(void)
 	at_engine.cmd_len = 0U;
 	at_engine.expected_response_len = 0U;
 	at_engine.response_buffer_len = 0U;
+    at_engine.response_buffer[0] = '\0';
+    at_engine.binary_bytes_remaining = 0U;
+    at_engine.srecv_payload_end = 0U;
 	rbuff_clear(&rx_ringbuf);
 }
 
