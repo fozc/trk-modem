@@ -14,9 +14,29 @@
 
 #include "../../Application/libs/w25qxx.c"
 
+static spi_transfer_status_t fake_transfer_status;
+
+static spi_transfer_status_t transfer_status_callback(int call_count)
+{
+    (void)call_count;
+    return fake_transfer_status;
+}
+
+static uint8_t fail_program_command(uint8_t data, int call_count)
+{
+    (void)call_count;
+    if (0x02U == data)
+    {
+        fake_transfer_status = SPI_TRANSFER_TIMEOUT;
+    }
+    return 0xFFU;
+}
+
 void setUp(void)
 {
     bsp_kick_wdt_Ignore();
+    spi_get_transfer_status_IgnoreAndReturn(SPI_TRANSFER_OK);
+    fake_transfer_status = SPI_TRANSFER_OK;
 }
 
 void tearDown(void)
@@ -189,5 +209,58 @@ void test_capacity_lookup_unknown_is_stable_and_empty(void)
     TEST_ASSERT_EQUAL_STRING("Unknown", unknown->size_str);
     TEST_ASSERT_EQUAL_PTR(unknown, w25q_lookup_capacity(0x00U));
     TEST_ASSERT_EQUAL_UINT32(1UL << 22, w25q_lookup_capacity(0x16U)->size_bytes);
+}
+void test_latched_spi_fault_rejects_flash_wait_without_polling(void)
+{
+    spi_get_transfer_status_StopIgnore();
+    spi_get_transfer_status_ExpectAndReturn(SPI_TRANSFER_TIMEOUT);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_TIMEOUT,
+        w25qxx_wait_for_write_or_erase());
+}
+
+void test_status_read_timeout_cannot_be_accepted_as_idle(void)
+{
+    spi_get_transfer_status_StopIgnore();
+    spi_get_transfer_status_ExpectAndReturn(SPI_TRANSFER_OK);
+    expect_status(0x00U);
+    spi_get_transfer_status_ExpectAndReturn(SPI_TRANSFER_TIMEOUT);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_TIMEOUT,
+        w25qxx_wait_for_write_or_erase());
+}
+
+void test_write_enable_status_timeout_cannot_approve_programming(void)
+{
+    expect_write_enable();
+    expect_status(0xFFU);
+    spi_get_transfer_status_StopIgnore();
+    spi_get_transfer_status_ExpectAndReturn(SPI_TRANSFER_TIMEOUT);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_TIMEOUT,
+        w25qxx_write_byte(0U, 0xFFU));
+}
+
+void test_program_transfer_timeout_is_returned_to_caller(void)
+{
+    const uint8_t data = 0xA5U;
+    spi_get_transfer_status_StopIgnore();
+    spi_get_transfer_status_Stub(transfer_status_callback);
+    spi_cs_low_Ignore();
+    spi_cs_high_Ignore();
+    spi_read_byte_IgnoreAndReturn(0x02U);
+    spi_send_byte_Stub(fail_program_command);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_TIMEOUT,
+        w25qxx_page_write(0U, &data, 1U));
+}
+
+void test_verify_ff_payload_cannot_hide_transport_failure(void)
+{
+    const uint8_t data = 0xFFU;
+    expect_address(0x0BU, 0U, 0U, 0U);
+    spi_send_byte_ExpectAndReturn(0U, 0U);
+    spi_read_byte_ExpectAndReturn(0xFFU);
+    spi_get_transfer_status_StopIgnore();
+    spi_get_transfer_status_ExpectAndReturn(SPI_TRANSFER_TIMEOUT);
+    spi_cs_high_Expect();
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_TIMEOUT,
+        w25qxx_verify(0U, &data, 1U));
 }
 /*** end of file ***/

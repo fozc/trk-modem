@@ -11,6 +11,9 @@
 #define TEST_SUPPORT_MAIN_H
 
 #include "stm32u3xx_hal_rtc.h"
+#ifdef BSP_IO_HOST_TEST
+#include "bsp_io_test_platform.h"
+#endif
 #ifdef BSP_DELAY_HOST_TEST
 #include "bsp_delay_test_platform.h"
 #endif

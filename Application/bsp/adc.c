@@ -2,6 +2,8 @@
  * adc.c
  *
  *  ADC acquisition and conversion module implementation.
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  *  See adc.h for the ADC1 regular-sequence channel map.
  */
@@ -45,7 +47,8 @@
  * ====================================================================== */
 
 /** DMA target buffer — written continuously by the ADC in circular mode. */
-static uint16_t __attribute__((aligned(32))) s_adc_buffer[ADC_CONV_COUNT] = {0};
+static volatile uint16_t __attribute__((aligned(32)))
+    s_adc_buffer[ADC_CONV_COUNT] = {0};
 
 /* ADC handle owned by the CubeMX-generated code. */
 extern ADC_HandleTypeDef hadc1;
@@ -98,6 +101,8 @@ static uint8_t adc_channel_to_index(adc_channel_t channel)
 
 void adc_init(void)
 {
+    /* HAL uses the pointer as a DMA destination address. CPU reads keep
+     * the volatile qualifier; HAL's API requires an unqualified pointer. */
     (void)HAL_ADC_Start_DMA(&hadc1,
                             (uint32_t *)s_adc_buffer,
                             ADC_CONV_COUNT);
@@ -129,8 +134,9 @@ uint16_t adc_get_voltage_mv(adc_channel_t channel)
 
 int16_t adc_get_mcu_temp_c(void)
 {
+    const uint16_t raw = s_adc_buffer[ADC_IDX_TEMP];
     int32_t temp = __LL_ADC_CALC_TEMPERATURE(ADC_TEMP_VDDA_MV,
-                                             s_adc_buffer[ADC_IDX_TEMP],
+                                             raw,
                                              LL_ADC_RESOLUTION_12B);
     return (int16_t)temp;
 }
