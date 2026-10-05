@@ -1,48 +1,33 @@
 /*
  * rf_dummy.h
  *
- * Dummy RF data generator for development and testing.
- * Produces plausible, incrementally-changing rf_monitor_t values
- * for all configured feeders without requiring real RF hardware.
+ *  Created on: Oct 5, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
- * Usage:
- *   1. Call rf_dummy_init() once after nvram_init().
- *   2. Call rf_dummy_tick() periodically (e.g. from the 10 Hz heartbeat).
- *      The function has an internal 2-second gate; calls at higher frequency
- *      are silently ignored until the gate expires.
- *
- * The module is a no-op when RF_DUMMY_ENABLE is not defined.
+ * Isolated synthetic R1 payload generation for explicit development tests.
  */
 
 #ifndef RF_RF_DUMMY_H_
 #define RF_RF_DUMMY_H_
 
+#include "rf_scp_codec.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * @brief Initialise the dummy RF generator.
- *
- * Seeds per-feeder LFSR noise sources and snapshots the current
- * rf_config so that device IDs, hat IDs, and zone IDs stay consistent
- * with the stored configuration.
- *
- * Must be called after nvram_init().
+/* These functions never change configuration, ACK bindings or live state.
+ * The application still leaves initialization disabled by default.
  */
 void rf_dummy_init(void);
-
-/**
- * @brief Advance the dummy RF simulation by one step.
- *
- * Internal gate: updates the rf_monitor store at most once every
- * RF_DUMMY_TICK_PERIOD_MS milliseconds regardless of call frequency.
- * Safe to call from the main-loop heartbeat or any non-ISR context.
- */
 void rf_dummy_tick(void);
+bool rf_dummy_get_live(uint8_t source, rf_scp_live_t *out);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* RF_RF_DUMMY_H_ */
+
+/*** end of file ***/

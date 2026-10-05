@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.16
+**Sürüm:** 1.21
 **Tarih:** 2026-10-03
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -316,6 +316,241 @@ adımda tek kayıt çağrısını ve başarısız kayıtta sonraki 25 saate kada
 olmamasını doğrular. Periodic reset testleri sync çağrısının resetten önce
 olduğunu ve sync hatasının reseti engellemediğini doğrular.
 
+## RF-SCP R1 örnek çerçeve testleri
+
+**Amaç:** BOLATeX R1 teslimindeki 14 senaryo dosyasının 175 ham
+çerçevesini gerçek SCP parser (çözümleyici) ve encoder (kodlayıcı)
+üzerinden doğrular. Test dosyası `scp/test_scp_capture_scenario.c`'dir.
+
+**Kullanım yeri:** `test/` dizininden şu komut çalıştırılmalıdır:
+
+```text
+ceedling test:test_scp_capture_scenario
+```
+
+05.10.2026 koşusunda 6/6 Unity testi geçmiştir. Örneklerin çözülmesi,
+yakalanan baytlarla birebir yeniden kodlanması, her parçalama noktası,
+konsol metniyle ve arka arkaya alım, bozuk CRC sonrası toparlanma ve
+100 ms yarım çerçeve sınırı denetlenir. Döngüde kullanılan 175 vektör
+ayrı Unity testleri olarak sayılmaz.
+
+Fixture, teslim edilen `mantiksal_hex` ve `hat_hex` sütunlarından
+üretilir; beklenen çıktı üretim codec'inden oluşturulmaz. Repo kökünde:
+
+```text
+python test/scripts/generate_rf_scp_vectors.py
+python test/scripts/generate_rf_scp_vectors.py --check
+```
+
+İlk komut takip edilen `test/fixtures/rf_scp_vectors.h` dosyasını
+üretir; ikinci komut yazmadan güncelliği kontrol eder. Araç CSV alanlarını,
+CRC'leri ve olay kayıtlarının iç CRC'lerini ayrıca denetler. Ceedling
+koşusu üretilmiş header'ı kullandığından Python/CSV erişimi gerektirmez.
+Fixture BOLATeX verisidir; teslimdeki proje kullanım ve üçüncü kişilerle
+paylaşmama koşulu korunmalıdır.
+
+**Kapsam sınırı:** Bu testler R1 uygulama işleyicileri veya cihazlar
+arası akış kabulü değildir. AY_05b'deki bildirim ACK'i ve ölçüm zamanından
+kaynaklanan istek/yanıt sırası firmware davranışına kopyalanmaz.
+R1 bildirimi ACK gerektirmez. PWRB_04 geçersiz PARAM ile alınmış bir ret
+örneğidir; geçerli akü değişti komutunun uygulandığını kanıtlamaz.
+
+## RF-SCP R1 payload codec testleri
+
+**Amaç:** `Application/rf/rf_scp_codec.c` içindeki durumsuz istek
+doğrulaması ve yanıt/bildirim decoder (çözümleyici) işlevlerini sınar.
+`rf/test_rf_scp_codec.c` içinde 18 Unity testi bulunur.
+
+**Kullanım yeri:** `test/` dizininden:
+
+```text
+ceedling test:test_rf_scp_codec
+ceedling "test:pattern[(test_rf_|test_scp|test_cobs)]"
+```
+
+05.10.2026 koşusunda yeni testler 18/18, ilgili RF/SCP/COBS/JSON
+paketlerinin toplamı 71/71 geçmiştir. Testler yakalanan bütün gelen
+paketleri, geçerli giden örnekleri, tüm isteklerin TYPE/uzunluk haritasını,
+hatalı uzunluk/adres/sürüm/null girişlerini ve önceki çıktının korunmasını
+denetler. Ayırıcı ayarlarının 22 alanı, float uç değerleri/NaN/Inf,
+bağımlı eşikler ve integer sınırları sınanır. Olayların 32 bit süresi,
+bilinmeyen olay/geçersiz saat/NaN tanısı, dört kayıt batch (toplu yanıt)
+ve yuva bazında CRC hatası test edilir.
+
+PWRB signed ölçümleri ve birimleri, bayat veri bayrakları, ham big-endian
+baytlar, müşteri yazma maskesi, ayarsız değerler, komut PARAM kontrolü,
+yankı alanları ve ERROR ek baytları korunur. Bilerek geçersiz PWRB_04
+isteği başarılı komut örneği olarak kullanılmaz.
+
+**Kapsam sınırı:** İşlem zamanlayıcıları, GEN/önceki GET karşılaştırması,
+ilk CFG2 yazımı, grup uygulama takibi, kalıcı kayıt/tüketme ve gerçek
+Powerboard tüketicilerine yayın bu saf codec testinin kapsamında değildir.
+Testlerde production (üretim) codec kullanılır; ilgili mantık taklit edilmez.
+
+## RF-SCP istek ve RX dispatch testleri
+
+**Amaç:** `rf/test_rf_error_retry_scenario.c` içindeki 25 Unity testi,
+gerçek rf_comm/envanter kodunun paket kabulü ve sınırlı retry
+(yeniden deneme) davranışını doğrular. RX (alım) senaryoları gerçek
+ring buffer, SCP parser (çözümleyici) ve dispatch (mesaj yönlendirme)
+yolunu çalıştırır. UART gönderimi, bridge (saydam köprü) ve tick
+(zaman sayacı) taklit edilir; protokol algoritması taklit edilmez.
+
+**Kullanım yeri:** `test/` dizininden:
+
+```text
+ceedling test:test_rf_error_retry_scenario
+ceedling "test:pattern[(test_rf_|test_scp|test_cobs)]"
+```
+
+05.10.2026 son koşusunda 25/25 senaryo ve ilgili sekiz dosyada 87/87
+test geçmiştir. Yanıt adresi/CMD/SEQ/TYPE/payload kontrolü, geciken ACK,
+aktif istek sırasında bütün örnek SET bildirimleri, ACK üretilmemesi,
+bozuk keşif mesajında durum korunması, komuta göre timeout/retry,
+SEQ/tick sarma, bütçe tükenmesi ve callback'ten yeni istek sınanır.
+Timeout aynı SEQ kullanır; ERROR sonrası izinli girişim yeni SEQ ile
+gönderilir. GEN uyuşmazlığı ve desteklenmeyen ayar okuması otomatik
+tekrarlanmaz. Hata yanıtının ek baytları sonuç işlevine aynen ulaşır.
+
+**Kapsam sınırı:** BOOT zincirinin restart/RTC/major politikası, envanter
+boş/kısmi loaded durumu, diğer bildirimlerin veri tüketicileri ve gerçek
+UART/RF zamanlaması sonraki adımlardadır. Sürüm eki kaynak ve test
+adlarından çıkarılmıştır; örnekler halen kaynak R1 protokol paketindendir.
+Üretilmiş fixture güncellik kontrolü yeni adla
+`python test/scripts/generate_rf_scp_vectors.py --check` yapılmalıdır.
+
+## RF açılış, saat ve envanter akışları
+
+**Amaç:** Haberleşme senaryo dosyası açılış/envanter akışlarıyla birlikte
+46 Unity testi içerir. Gerçek timer.c ve cp56time2a.c çalışır; RTC ve
+tick (zaman sayacı) donanım sınırları taklit edilir. Aynı dosyada gerçek
+rf_shell time/epoch girişleri de test edilir.
+
+**Kullanım yeri:** `test/` dizininden:
+
+```text
+ceedling test:test_rf_error_retry_scenario
+ceedling "test:pattern[(test_rf_|test_scp|test_cobs|test_cp56time2a)]"
+```
+
+05.10.2026 son koşusunda 46/46 senaryo, ilgili dokuz dosyada 122/122 test
+geçmiştir. Log `test/build/scp-startup-tests.log` içindedir.
+
+Geçerli saatle BOOT → TIME_SYNC → INVENTORY_SET → END; geçersiz saatle
+doğrudan envanter, sonra saat geçerli olunca eşitleme; saatlik yenilemede
+envanterin korunması sınanır. Yeniden BOOT'ta pending (bekleyen) isteğin
+iptali ve eski ACK reddi, major uyuşmazlığı, boş/kısmi/hatalı envanter,
+10 s sınırı, channel, update/delete ACK sonrası discovery kaldırma ve
+epoch koşulları denetlenir. Discovery RSSI yenilemesi, dolu kuyruk ve
+SIZE_MAX dahil geçersiz indekslerde mevcut durumun korunması test edilir.
+
+**Kapsam sınırı:** TIME_SYNC geçersizken envantere devam etme, 05.10.2026
+kullanıcı kararıdır; R1 bu RTU tercihini belirlemez. Web Save bağlantısı,
+kalıcı envanter değişikliği ve yapılandırma öncesi epoch bekleme servisi
+sonraki adımlardadır. Host tick sınırı fiziksel UART/RF sürelerini kanıtlamaz.
+
+## RF canlı veri, alarm ve kanonik monitor
+
+**Amaç:** R1 snapshot (son veri), ACK verilmiş EUI eşlemesi, canlı veri
+tazeliği ve açma/anomali durumları gerçek RF/RX koduyla doğrulanır.
+Haberleşme senaryo dosyası bu kapsamla birlikte 64 Unity testi içerir.
+
+**Kullanım yeri:**
+
+```text
+ceedling "test:pattern[(test_rf_|test_scp|test_cobs|test_cp56time2a)]"
+node test/integration/web_navigation/test_navigation.js
+```
+
+05.10.2026 koşusunda 64/64 RF senaryosu, dokuz ilgili dosyada toplam
+140/140 test geçmiştir. Log `test/build/scp-live-tests.log` içindedir.
+Web paketi kaynak ve gzip gömülü sayfada Türkçe/İngilizce yeni RF
+monitor tablosunu doğrular.
+
+Testler ACK öncesi veri reddi, store değişiminde eski verinin yeni EUI'ye
+etiketlenmemesi, EUI taşıma/silme ve başarısız update, fider 4 maskesi,
+30 s sınırı/unsigned tick sarma, SEQ boşluğu, signed RSSI/int16 sıcaklık,
+NaN kalite bilgisi ve TRIP anlık akım ayrımını kapsar. AY restart'ında
+latched (operatör onaylı) alarm, MH restart'ında alarmın korunması ve
+SHELL onayı denetlenir. Anomali reset sırası ve yolları bağımsızdır.
+
+JSON builder'da küçük tampon taşması/yarım yanıt engeli, 12 fazlı tam
+yanıtın mevcut 8192 B tamponuna sığması ve son R1 alanları test edilir.
+Simülasyon örnekleri gerçek envanter veya RF snapshot'ını değiştirmez.
+Eski rf_monitor_t/DEVICEID32/unsigned RSSI modeli kullanılmaz.
+
+**Kapsam sınırı:** 101/105 olayından alarm üretme, kalıcı geçmiş ve
+IEC104/Modbus producer (veri sağlayıcı) bağlantısı sonraki adımlardadır.
+Host testleri gerçek RF/UART veya açma süresini kanıtlamaz.
+
+## RF tam olay kaydı ve örnek iletişim
+
+**Amaç:** 60 B ham RF olayları spi_flash_log üzerinden ayrı 8 KB alanda
+saklanır. Örnek HEAD/RANGE/CONSUME paketleri UART/SCP yolunda sınanır.
+
+**Kullanım yeri:**
+
+```text
+ceedling "test:pattern[(test_rf_|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log_sequence_wrap)]"
+python test/scripts/generate_rf_scp_vectors.py --check
+```
+
+05.10.2026 koşusunda on bir dosyada 157/157 test geçmiştir. Yeni
+`test/rf/test_rf_event_log.c` paketindeki 11 test gerçek günlük kodunu
+çalıştırır; yalnız W25QXX/BSP sınırları taklit edilir. NOR modeli 1→0
+yazım ve 4096 B sektör silmesini uygular, bölge dışı erişimi reddeder.
+Yarım payload/CRC yazımı, sessiz CRC kaybı, geri okuma kaybı, yeniden
+başlatma, halka sarma, silme hatasından toparlanma ve eski arıza alanı
+adresleri sınanır. Geçersiz girdiler eski geçerli kayıtları değiştirmez.
+Bilinmeyen olay, NaN, clock_quality ve ayrılmış baytlar ham kayıtta
+korunur. Kanıt `build/scp-event-tests.log` içindedir.
+
+Örnek kaydın bütün alanları sabit beklenen değerlerle doğrulanır. 0x47
+bildirimi bekleyen HEAD'i tamamlamaz, R1 gereğince ACK üretmez. CSV'deki
+bildirim ACK'i uygulanmaz; ham yanıtlar değiştirilmeden istek/yanıt
+bağımlılıkları mantıksal sırayla yürütülür. Kısa batch ve eksik kayıt
+sınırları da sınanır.
+
+**Kapsam sınırı:** Otomatik olay çekme/tüketme, 101/105 alarm bağlantısı
+ve merkez aktarımı sonraki parçadadır. NOR modeli fiziksel enerji
+kesintisi veya sürücü zamanlamasını kanıtlamaz.
+
+## Otomatik RF olay tüketimi ve 32 bit arıza süresi
+
+**Amaç:** HEAD → RANGE → ham kalıcı kayıt → gereken arıza listesi/sync →
+CONSUME akışı gerçek servis koduyla sınanır. 1/7 kalıcı, 3 geçici listesine
+aktarılır; kaynak zamanı ve uint32_t süre korunur.
+
+**Kullanım yeri:**
+
+```text
+ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log_sequence_wrap|test_iec104)]"
+```
+
+05.10.2026 koşusunda 15 dosyada 246/246 test geçti. Olay servisi 23 testi
+kapsar. Depolama beklerken MH halkası sarıp aynı indekse döndüğünde
+HEAD total farkının eski CONSUME isteğini engellediği de sınanır. Kanıt
+`build/scp-event-service-tests.log`.
+Servis taşıma/kayıt API sınırlarını taklit eder; gerçek kayıt algoritmaları
+ayrı NOR testlerinde çalışır. `application/test_fault_log.c` eski çift
+kopya paketindeki 53 kontrolü merkezi Ceedling'de yürütür; yeni test
+kaynak zamanı ve UINT32_MAX sürenin Flash yeniden açılışını doğrular.
+Bu eski fixture için conversion/unused uyarı istisnaları yalnız ilgili
+test paketindedir; yeni RF servisinin sıkı uyarıları korunur.
+
+Örnek AY_05b yanıtları servis kararlarında da kullanılır; önceki gerçek
+UART/SCP testleri yeni servise bildirim aktarımını denetler. Tüm 14 CSV'nin
+175 frame fixture kontrolü geçmiştir. Tek/four-record batch, kısa yanıt,
+99→0 sarma, bozuk ikinci kayıtta yalnız geçerli önek, yazma/append/sync
+hatası, kalıcı ERROR 0x06, consume reddi, BUSY/degraded, notify kaybı ve
+MH restart sonrası HEAD'den başlama sınanır. Liste eşlemesi store
+indeksine göre yapılır; Fider_ID−1 varsayılmaz. head=tail boş kabul edilir;
+pending=100 bildirimi varsa dolu halka okunur.
+
+**Kapsam sınırı:** Tekilleştirme, 101/105 alarmı ve IEC104 replay/spontane
+üretici bağlantısı bu testlerle tamamlanmış sayılmaz. Host NOR modeli
+fiziksel enerji kesintisini veya UART/Flash sürelerini kanıtlamaz.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Etkilenen bölüm |
@@ -338,3 +573,5 @@ olduğunu ve sync hatasının reseti engellemediğini doğrular.
 | 2026-10-03 | 1.14 | RFWU kimlik doğrulama karakterizasyonu ve ömür sayacı kayıt/reset sınırı testleri |
 | 2026-10-03 | 1.15 | 25 saatlik lifetime kaydı ve periyodik reset öncesi sync hata/sıra kontrolleri |
 | 2026-10-03 | 1.16 | RFWU v2 ret/resume/PC ve kripto vektör kontrolleri, secure RNG ve Python ABI uyumu |
+| 2026-10-05 | 1.19 | 8 KB RF tam olay günlüğü ve örnek iletişim; 11 ilgili dosyada 157/157 test |
+| 2026-10-05 | 1.21 | Otomatik RF olay tüketimi, 1/7 kalıcı ve 3 geçici listesi, 32 bit süre; 15 ilgili dosyada 246/246 test |

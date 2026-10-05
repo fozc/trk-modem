@@ -59,6 +59,20 @@ async function checkPage(html, label) {
     }
     for (const language of ['tr', 'en']) {
         run(`LNG = '${language}';`);
+        const rfMonitor = run(`buildRfMonitorTable({Phases:[
+            {HasData:true,Eui64:'00124B0038C9F1CB',Online:true,
+             Live:{RSSI:-128,Temp:300,Irms:1.25,VTrip:32,VRec:13},
+             TripFailedAlarm:true,TripFailureLatched:true},
+            {HasData:false},{HasData:false}]})`);
+        assert.ok(rfMonitor.includes('00124B0038C9F1CB'));
+        assert.ok(rfMonitor.includes('-128'));
+        assert.ok(rfMonitor.includes('300'));
+        assert.ok(rfMonitor.includes('1.250'));
+        assert.ok(!rfMonitor.includes('5V DC'));
+        assert.ok(!rfMonitor.includes('LQI'));
+        assert.ok(!rfMonitor.includes('undefined'));
+        assert.ok(rfMonitor.includes(language === 'tr'
+            ? 'Açma kondansatörü' : 'Trip capacitor'));
         for (let csq = 0; csq <= 31; csq++) {
             const board = run(`renderBoard({GsmSig: ${csq}})`);
             assert.ok(board.includes(run("t('fSignal')")));

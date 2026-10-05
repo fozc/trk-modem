@@ -1,8 +1,9 @@
 /*
  * iec104_replay.h
  *
- *  Created on: 11 Eyl 2026
- *      Author: fatih
+ *  Created on: Sep 11, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef IEC104_REPLAY_H_
@@ -21,8 +22,10 @@ void iec104_replay_link_established(void);
  * olayini 15+15 listelerine ve 3 aylik olay gunlugune yazar; hat aciksa
  * olay aninda spontane gonderir, degilse kayit replay'i bekler.
  * Parametre anlami fault_log_add() ile aynidir. */
-void iec104_report_fault_event(float fault_current, uint16_t fault_duration_ms,
+void iec104_report_fault_event(float fault_current, uint32_t fault_duration_ms,
                                uint8_t nominal_current_status, uint8_t power_status,
                                uint8_t type, uint8_t feeder_id, uint8_t phase_id);
 
 #endif /* IEC104_REPLAY_H_ */
+
+/*** end of file ***/

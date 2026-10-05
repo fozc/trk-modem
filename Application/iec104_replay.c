@@ -1,8 +1,9 @@
 /*
  * iec104_replay.c
  *
- *  Created on: 11 Eyl 2026
- *      Author: fatih
+ *  Created on: Sep 11, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Baglanti kurulup GI tamamlandiktan sonra, haberlesme kesikken
  * birikmis olay gunlugu kayitlarini en yeniden eskiye spontane
@@ -125,7 +126,7 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 
 /* Tek atimlik emniyet sayaci: STARTDT'den REPLAY_FALLBACK_TIMEOUT_S kadar
  * sonra, GI tetikleri bugun kalmadiysa replay'i kendiliginden kaldirmaya
- * calisir. Kosul kontrolu replay_start_if_pending icinde - sayaç bos yere
+ * calisir. Kosul kontrolu replay_start_if_pending icinde - sayac bos yere
  * atesleyebilir. Surecten sonra kendiliginden olur; yeniden STARTDT
  * kalmadiysa calismiyorsa bastan baslatilir. */
 PROCESS_THREAD(iec104_replay_fallback_timer, ev, data)
@@ -186,7 +187,7 @@ static void iec104_replay_start_if_pending(void)
 	process_start(&iec104_replay_process, NULL);
 }
 
-void iec104_report_fault_event(float fault_current, uint16_t fault_duration_ms,
+void iec104_report_fault_event(float fault_current, uint32_t fault_duration_ms,
                                uint8_t nominal_current_status, uint8_t power_status,
                                uint8_t type, uint8_t feeder_id, uint8_t phase_id)
 {
@@ -238,3 +239,5 @@ void iec104_report_fault_event(float fault_current, uint16_t fault_duration_ms,
 	/* Kayit basina bir nvram_sync() kabul edilebilir - olaylar seyrek. */
 	(void)iec104_event_log_sync();
 }
+
+/*** end of file ***/

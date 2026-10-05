@@ -2,7 +2,8 @@
  * rf_scp.h
  *
  *  Created on: Aug 21, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * SCP v1.0 wire codec for the RF hub link: constants, request builders and
  * response decoders. Pure and hardware-independent (no state, no callbacks,
@@ -37,6 +38,25 @@ extern "C" {
 #define RF_SCP_CMD_TIME_SYNC         0x07U  /* SET <- CP56Time2a 7 B (R0 8.1) */
 #define RF_SCP_CMD_INVENTORY_SET     0x04U  /* SET <- 12 B (R0 3.2) */
 #define RF_SCP_CMD_INVENTORY_END     0x05U  /* SET <- 0 B (R0 3.2) */
+#define RF_SCP_CMD_GET_FRAM_STATS    0x02U
+#define RF_SCP_CMD_SET_CONFIG        0x03U
+#define RF_SCP_CMD_INVENTORY_UPDATE  0x06U
+#define RF_SCP_CMD_CFG_READ_ALL      0x20U
+#define RF_SCP_CMD_CFG_WRITE         0x22U
+#define RF_SCP_CMD_CFG_COMMIT        0x24U
+#define RF_SCP_CMD_CFG_ABORT         0x26U
+#define RF_SCP_CMD_CFG_STATUS_GET    0x28U
+#define RF_SCP_CMD_EPOCH_REFRESH     0x2AU
+#define RF_SCP_CMD_LOG_READ_HEAD     0x40U
+#define RF_SCP_CMD_LOG_READ_RECORD   0x42U
+#define RF_SCP_CMD_LOG_READ_RANGE    0x44U
+#define RF_SCP_CMD_LOG_CONSUME_TO    0x46U
+#define RF_SCP_CMD_PWR_SUMMARY       0xE1U
+#define RF_SCP_CMD_PWR_ALARM         0xE3U
+#define RF_SCP_CMD_PWR_CFG2          0xE5U
+#define RF_SCP_CMD_PWR_COMMAND       0xE6U
+#define RF_SCP_CMD_PWR_RESULT        0xE7U
+#define RF_SCP_CMD_PWR_TELEMETRY     0xE8U
 
 /** CP56Time2a body length for 0x07 TIME_SYNC (R0 section 8.1). */
 #define RF_SCP_TIME_SYNC_BODY_LEN    7U
@@ -62,6 +82,7 @@ extern "C" {
 #define RF_SCP_ERR_BUSY           0x03U
 #define RF_SCP_ERR_NOT_SUPPORTED  0x04U   /* permanent */
 #define RF_SCP_ERR_NOT_AVAILABLE  0x05U   /* transient - "try again later"  */
+#define RF_SCP_ERR_RECORD_INVALID 0x06U
 
 /* ---------------------------------------------------------------------------
  * Logical operations (a request/response exchange, possibly multi-step)
@@ -93,7 +114,13 @@ typedef enum
 {
     RF_CMD_OK = 0,
     RF_CMD_ERR_NULL,
-    RF_CMD_ERR_LEN                            /* body not the expected length */
+    RF_CMD_ERR_LEN,                           /* body not the expected length */
+    RF_CMD_ERR_PARAM,
+    RF_CMD_ERR_ADDRESS,
+    RF_CMD_ERR_TYPE,
+    RF_CMD_ERR_VERSION,
+    RF_CMD_ERR_CRC,
+    RF_CMD_ERR_UNSUPPORTED
 } rf_cmd_status_t;
 
 /* ---------------------------------------------------------------------------

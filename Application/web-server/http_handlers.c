@@ -35,6 +35,7 @@
 #include "rf_config.h"
 #include "rf_discovery.h"
 #include "rf_json.h"
+#include "rf_monitor_json.h"
 #include "gsm_engine.h"
 #include "gsm_info.h"
 #include "elog.h"
@@ -43,6 +44,7 @@
 #include "datetime.h"
 #include "bsp.h"
 #include "rtc.h"
+#include "stm32u3xx_hal.h"
 
 /* ============================================================================
  * CONSTANTS
@@ -1618,73 +1620,28 @@ void handle_post_rf_config_json(const char *json_body)
  */
 static void send_rf_monitor_json(int line_filter)
 {
-    if (line_filter >= MAX_POWER_LINE_COUNT) {
-        CSLOG_ERR("[HTTP] ERROR: Invalid line index: %d\r\n", line_filter);
-        http_send_error(400, "Invalid line index (out of range)");
+    if ((-1 > line_filter) || (MAX_POWER_LINE_COUNT <= line_filter))
+    {
+        http_send_error(400, "Invalid line index");
         return;
     }
+    size_t length = 0U;
+    if ((NULL == handler_state.tx_buffer) ||
+        (0 >= handler_state.tx_buffer_size))
+    {
+        http_send_error(500, "RF monitor buffer unavailable");
+        return;
+    }
+    size_t capacity = (size_t)handler_state.tx_buffer_size;
 
-    char *buf = handler_state.tx_buffer;
-    const size_t buf_size =
-        (size_t)handler_state.tx_buffer_size;
-    size_t pos = 0U;
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{\"lines\":[");
-    int start_line = (line_filter >= 0) ? line_filter : 0;
-    int end_line = (line_filter >= 0) ? line_filter + 1 : MAX_POWER_LINE_COUNT;
-    for (int i = start_line; i < end_line; i++) {
-        const rf_monitor_t *monitor = rf_get_monitor((uint32_t)i);
-        if (!monitor) {
-            CSLOG_ERR("[HTTP] ERROR: RF monitor data not available for line %d\r\n", i);
-            continue;
-        }
-        
-        if (i > start_line) pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), ",");
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"LineId\":%d,", i + 1);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"DEVICEID\":[%lu,%lu,%lu],",
-            monitor->device_id[PHASE_L1], monitor->device_id[PHASE_L2], monitor->device_id[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"FazID\":[1,2,3],");
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"HatID\":%u,", monitor->hat_id[PHASE_L1]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ZoneID\":%u,", monitor->zone_id[PHASE_L1]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"CalismaModu\":[%u,%u,%u],",
-            monitor->calisma_modu[PHASE_L1], monitor->calisma_modu[PHASE_L2], monitor->calisma_modu[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"HatFrekansi\":[%u,%u,%u],",
-            monitor->hat_frekansi[PHASE_L1], monitor->hat_frekansi[PHASE_L2], monitor->hat_frekansi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SistemSicakligi\":[%d,%d,%d],",
-            monitor->sistem_sicakligi[PHASE_L1], monitor->sistem_sicakligi[PHASE_L2], monitor->sistem_sicakligi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SistemDCGerilimi\":[%u,%u,%u],",
-            monitor->sistem_dc_gerilimi[PHASE_L1], monitor->sistem_dc_gerilimi[PHASE_L2], monitor->sistem_dc_gerilimi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"5Vdc\":[%u,%u,%u],",
-            monitor->v5vdc[PHASE_L1], monitor->v5vdc[PHASE_L2], monitor->v5vdc[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"3V3dc\":[%u,%u,%u],",
-            monitor->v3v3dc[PHASE_L1], monitor->v3v3dc[PHASE_L2], monitor->v3v3dc[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ActirmaDCGerilimi\":[%u,%u,%u],",
-            monitor->actirma_dc_gerilimi[PHASE_L1], monitor->actirma_dc_gerilimi[PHASE_L2], monitor->actirma_dc_gerilimi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"FazAkimi\":[%u,%u,%u],",
-            monitor->faz_akimi[PHASE_L1], monitor->faz_akimi[PHASE_L2], monitor->faz_akimi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"FazHataAkimi\":[%u,%u,%u],",
-            monitor->faz_hata_akimi[PHASE_L1], monitor->faz_hata_akimi[PHASE_L2], monitor->faz_hata_akimi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"AktifSifirlamaZamanlayiciDurumu\":[%u,%u,%u],",
-            monitor->aktif_sifirlama_zamanlayici_durumu[PHASE_L1], monitor->aktif_sifirlama_zamanlayici_durumu[PHASE_L2], monitor->aktif_sifirlama_zamanlayici_durumu[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"AktifArizaSayaci\":[%u,%u,%u],",
-            monitor->aktif_ariza_sayaci[PHASE_L1], monitor->aktif_ariza_sayaci[PHASE_L2], monitor->aktif_ariza_sayaci[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"GecmisAcmaSayisi\":[%u,%u,%u],",
-            monitor->gecmis_acma_sayisi[PHASE_L1], monitor->gecmis_acma_sayisi[PHASE_L2], monitor->gecmis_acma_sayisi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"LastTx\":[%lu,%lu,%lu],",
-            monitor->last_tx[PHASE_L1], monitor->last_tx[PHASE_L2], monitor->last_tx[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"RSSI\":[%u,%u,%u],", monitor->rssi[PHASE_L1],
-        		monitor->rssi[PHASE_L2], monitor->rssi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"LQI\":[%u,%u,%u]", monitor->lqi[PHASE_L1],
-        		monitor->lqi[PHASE_L2], monitor->lqi[PHASE_L3]);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
+    if (!rf_json_monitor_build(handler_state.tx_buffer, capacity,
+                                (int32_t)line_filter, HAL_GetTick(), &length))
+    {
+        http_send_error(500, "RF monitor response does not fit");
+        return;
     }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "]}");
-    CSLOG("[HTTP] RF monitor JSON size: %u bytes (lines: %d-%d)\r\n", (unsigned int)pos, start_line + 1, end_line);
-    if (pos >= buf_size - 1U) {
-        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%u, buf_size=%u\r\n",
-                  (unsigned int)pos, (unsigned int)buf_size);
-    }
-    http_send_json(buf, (int)pos);
+    /* The handler buffer bounds length to its configured 8192-byte size. */
+    http_send_json(handler_state.tx_buffer, (int)length);
 }
 
 /**
