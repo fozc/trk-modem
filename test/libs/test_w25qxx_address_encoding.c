@@ -148,18 +148,21 @@ void test_full_page_write_sends_zero_low_address_byte(void)
 void test_erase_commands_preserve_sector_and_block_addresses(void)
 {
     expect_write_enable();
+    expect_status(0x02U);
     expect_address(0x20U, 0x12U, 0x30U, 0x00U);
     spi_cs_high_Expect();
     expect_status(0x00U);
     TEST_ASSERT_EQUAL_INT(0, w25qxx_erase_sector(0x123000U));
 
     expect_write_enable();
+    expect_status(0x02U);
     expect_address(0x52U, 0x12U, 0x80U, 0x00U);
     spi_cs_high_Expect();
     expect_status(0x00U);
     TEST_ASSERT_EQUAL_INT(0, w25qxx_erase_block32(0x128000U));
 
     expect_write_enable();
+    expect_status(0x02U);
     expect_address(0xD8U, 0x12U, 0x00U, 0x00U);
     spi_cs_high_Expect();
     expect_status(0x00U);
@@ -262,5 +265,62 @@ void test_verify_ff_payload_cannot_hide_transport_failure(void)
     spi_cs_high_Expect();
     TEST_ASSERT_EQUAL_INT(W25QXX_RES_TIMEOUT,
         w25qxx_verify(0U, &data, 1U));
+}
+void test_sector_erase_without_wel_does_not_send_erase_command(void)
+{
+    expect_write_enable();
+    expect_status(0x00U);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_WEL_NOT_SET,
+        w25qxx_erase_sector(0x123000U));
+}
+
+void test_block32_erase_without_wel_does_not_send_erase_command(void)
+{
+    expect_write_enable();
+    expect_status(0x00U);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_WEL_NOT_SET,
+        w25qxx_erase_block32(0x128000U));
+}
+
+void test_block64_erase_without_wel_does_not_send_erase_command(void)
+{
+    expect_write_enable();
+    expect_status(0x00U);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_WEL_NOT_SET,
+        w25qxx_erase_block64(0x120000U));
+}
+
+void test_chip_erase_without_wel_does_not_send_erase_command(void)
+{
+    expect_write_enable();
+    expect_status(0x00U);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_WEL_NOT_SET, w25qxx_erase_chip());
+}
+
+void test_erase_status_timeout_takes_priority_over_wel_bit(void)
+{
+    expect_write_enable();
+    expect_status(0xFFU);
+    spi_get_transfer_status_StopIgnore();
+    spi_get_transfer_status_ExpectAndReturn(SPI_TRANSFER_TIMEOUT);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_TIMEOUT,
+        w25qxx_erase_sector(0x123000U));
+
+    expect_write_enable();
+    expect_status(0x00U);
+    spi_get_transfer_status_ExpectAndReturn(SPI_TRANSFER_TIMEOUT);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_TIMEOUT, w25qxx_erase_chip());
+}
+
+void test_chip_erase_with_wel_preserves_command_and_busy_polling(void)
+{
+    expect_write_enable();
+    expect_status(0x02U);
+    spi_cs_low_Expect();
+    spi_send_byte_ExpectAndReturn(0xC7U, 0U);
+    spi_cs_high_Expect();
+    expect_status(0x01U);
+    expect_status(0x00U);
+    TEST_ASSERT_EQUAL_INT(W25QXX_RES_OK, w25qxx_erase_chip());
 }
 /*** end of file ***/
