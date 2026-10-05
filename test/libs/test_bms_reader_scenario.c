@@ -18,6 +18,8 @@ static uint32_t uart_irq_enabled;
 static uint32_t critical_calls;
 static bool inject_on_restore;
 static uint32_t transmitted_bytes;
+static uint32_t tx_busy_reads;
+static bool tx_ready;
 static uint32_t poll_calls;
 static uint8_t received_frame[BMS_FULL_MAP_FRAME_LEN];
 void bms_rx_interrupt_handler(uint8_t byte);
@@ -47,7 +49,21 @@ static void transmit_byte(uint8_t byte)
 {
     (void)byte;
     TEST_ASSERT_EQUAL_UINT32(1U, uart_irq_enabled);
+    TEST_ASSERT_TRUE_MESSAGE(tx_ready, "BMS TDR written before TXE");
+    tx_ready = false;
+    tx_busy_reads = 1U;
     transmitted_bytes++;
+}
+
+static uint32_t tx_is_ready(void)
+{
+    if (0U < tx_busy_reads)
+    {
+        tx_busy_reads--;
+        return 0U;
+    }
+    tx_ready = true;
+    return 1U;
 }
 
 #define UART5_IRQn 0U
@@ -57,7 +73,7 @@ static void transmit_byte(uint8_t byte)
 #define UART5 0U
 #define LL_USART_ClearFlag_TC(port) ((void)(port))
 #define LL_USART_TransmitData8(port, byte) transmit_byte(byte)
-#define LL_USART_IsActiveFlag_TXE_TXFNF(port) (1U)
+#define LL_USART_IsActiveFlag_TXE_TXFNF(port) tx_is_ready()
 #define LL_USART_IsActiveFlag_TC(port) (1U)
 #include "../../Application/bms/bms_reader.c"
 
@@ -143,6 +159,8 @@ void setUp(void)
     critical_calls = 0U;
     inject_on_restore = false;
     transmitted_bytes = 0U;
+    tx_busy_reads = 2U;
+    tx_ready = false;
     poll_calls = 0U;
     bsp_get_tick_Stub(get_tick);
     gpio_set_pin_Ignore();
