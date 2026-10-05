@@ -12,5 +12,7 @@
 
 #include "stm32u3xx_hal_rng.h"
 
+uint32_t HAL_GetTick(void);
+
 #endif /* TEST_HAL_H */
 /*** end of file ***/

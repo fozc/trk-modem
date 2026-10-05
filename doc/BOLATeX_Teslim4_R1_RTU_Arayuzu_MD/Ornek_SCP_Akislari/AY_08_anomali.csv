@@ -1,0 +1,2 @@
+t_s;zaman;yon;cmd;komut;tip;seq;len;veri_hex;mantiksal_hex;hat_hex;anlam
+0.000;2026-10-04T20:20:54.127+03:00;MH→RTU;0x12;ANOMALY_REPORT;SET;1;10;ff020000000000000000;02010212010af5ff020000000000000000947b;000a02010212010af5ff020101010101010103947b00;Anomaly report — bildirim

@@ -1,0 +1,2 @@
+t_s;zaman;yon;cmd;komut;tip;seq;len;veri_hex;mantiksal_hex;hat_hex;anlam
+0.000;2026-10-04T21:59:37.560+03:00;MH→RTU;0x10;TRIP_NOTIFY;SET;172;12;04010105030081d8c13c0000;02010210ac0cf304010105030081d8c13c00004d41;000d02010210ac0cf304010105030581d8c13c01034d4100;Trip notify — bildirim

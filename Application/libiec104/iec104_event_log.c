@@ -46,8 +46,8 @@
 #define IEC104_EVTLOG_PER_SECTOR   (LOG_SECTOR_SIZE / IEC104_EVTLOG_ENTRY_SIZE)
 #define IEC104_EVTLOG_MAX_ENTRIES  ((IEC104_EVTLOG_SECTOR_COUNT - 1U) * IEC104_EVTLOG_PER_SECTOR)
 
-/* ────────────────────────────────────────────────────────── derleme kontrolleri */
-_Static_assert(sizeof(fault_log_t) == 18U,
+/* ---------------------------------------------------------- derleme kontrolleri */
+_Static_assert(sizeof(fault_log_t) == 20U,
                "fault_log_t layout degisti - evtlog kapasitesi ve flash haritasi gecersiz");
 _Static_assert(IEC104_EVTLOG_SECTOR_COUNT >= LOG_MIN_SECTOR_COUNT,
                "evtlog icin en az LOG_MIN_SECTOR_COUNT sektor gerekir");
@@ -57,7 +57,7 @@ _Static_assert(IEC104_EVTLOG_SECTOR_SIZE == LOG_SECTOR_SIZE,
 /* Seq 16-bit ve 0xFFFF "hic yazilmamis slot" icin ayrilmis. */
 #define EVTLOG_SEQ_INVALID   0xFFFFU
 
-/* ────────────────────────────────────────────────────────── modul durumu */
+/* ---------------------------------------------------------- modul durumu */
 static log_ctx_t s_log;
 static bool      s_initialized;
 
@@ -65,13 +65,13 @@ static bool      s_initialized;
 #define s_state (nvram_get_iec104_evtlog_state())
 
 /* log_read_last() imleci: replay tek gecisde ilerlesin diye cagrilar arasinda
- * korunur. Araya bir log_write() girerse imleç gecersizlesir (modul dokumani),
+ * korunur. Araya bir log_write() girerse imlec gecersizlesir (modul dokumani),
  * bu yuzden yazim sayaci ile karsilastirilir. */
 static log_page_ctx_t s_cursor;
 static uint32_t       s_cursor_gen;
 static uint32_t       s_write_gen;
 
-/* ────────────────────────────────────────────────────────── w25qxx adaptoru */
+/* ---------------------------------------------------------- w25qxx adaptoru */
 
 /* w25qxx_read_buff void doner: surucu katmani basarisiz SPI okumasini ayirt
  * edemiyor, bu yuzden adaptor daima basari bildirir (elog.c ile ayni durum).
@@ -94,9 +94,9 @@ static int evtlog_flash_erase_sector(uint32_t sector_addr)
     return w25qxx_erase_sector(sector_addr);
 }
 
-/* ────────────────────────────────────────────────────────── seq yardimcilari */
+/* ---------------------------------------------------------- seq yardimcilari */
 
-/* Modüler karsilastirma: a, b'den yeni ise > 0 (halka kapasitesi < 32768). */
+/* Moduler karsilastirma: a, b'den yeni ise > 0 (halka kapasitesi < 32768). */
 static int16_t seq_diff(uint16_t a, uint16_t b)
 {
     return (int16_t)((uint16_t)(a - b));
@@ -107,7 +107,7 @@ static uint16_t seq_prev(uint16_t seq)
     return (uint16_t)((0U == seq) ? (LOG_SEQ_MODULUS - 2U) : (seq - 1U));
 }
 
-/* ────────────────────────────────────────────────────────── kayit CRC'si */
+/* ---------------------------------------------------------- kayit CRC'si */
 
 static uint32_t record_calc_crc(const fault_log_t *r)
 {
@@ -116,7 +116,7 @@ static uint32_t record_calc_crc(const fault_log_t *r)
     return crc32_finalize(c);
 }
 
-/* ────────────────────────────────────────────────────────── unsent araligi */
+/* ---------------------------------------------------------- unsent araligi */
 
 static void unsent_clear(void)
 {
@@ -135,7 +135,7 @@ static void unsent_extend(uint16_t seq)
     s_state->unsent_high = seq;
 }
 
-/* ────────────────────────────────────────────────────────── public API */
+/* ---------------------------------------------------------- public API */
 
 bool iec104_event_log_init(void)
 {
@@ -251,7 +251,7 @@ bool iec104_event_log_read_newest_unsent(fault_log_t *out, uint16_t *seq_out)
         return false;
     }
 
-    /* Araya yazim girdiyse imleç gecersiz: bastan tara. */
+    /* Araya yazim girdiyse imlec gecersiz: bastan tara. */
     if (s_cursor_gen != s_write_gen)
     {
         (void)memset(&s_cursor, 0, sizeof(s_cursor));
@@ -363,7 +363,7 @@ void iec104_event_log_clear(void)
     CSLOG("evtlog: temizlendi\r\n");
 }
 
-/* ────────────────────────────────────────────────────────── shell */
+/* ---------------------------------------------------------- shell */
 
 typedef struct
 {
@@ -558,7 +558,7 @@ static void visit_count(const void *payload, uint32_t payload_size, uint32_t seq
     }
 }
 
-/* Ozet durum: kayit dökmeden saglik gorunumu (elog 'info' duzeni). */
+/* Ozet durum: kayit dokmeden saglik gorunumu (elog 'info' duzeni). */
 static void evtlog_status(void)
 {
     if (!s_initialized)

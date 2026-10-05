@@ -2,7 +2,8 @@
  * fault_log.h
  *
  *  Created on: Feb 21, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef FAULT_LOG_H_
@@ -13,8 +14,8 @@
 
 typedef enum
 {
-	FAULT_LOG_TYPE_TEMPORARY = 0,
-	FAULT_LOG_TYPE_PERMANENT = 1
+    FAULT_LOG_TYPE_TEMPORARY = 0, /* RF event 3: fault cleared itself. */
+    FAULT_LOG_TYPE_PERMANENT = 1  /* RF events 1 and 7: disconnector opened. */
 }fault_log_type_t;
 
 
@@ -38,7 +39,7 @@ typedef struct
 {
 	cp56time2a_t  tm;           // Timestamp of the fault event
 	float    fault_current;
-	uint16_t fault_duration_ms;
+    uint32_t fault_duration_ms;
 	struct
 	{
 		uint8_t feeder : 3;              // 0: Feeder 1, 6: Feeder 7
@@ -49,6 +50,12 @@ typedef struct
 	} __attribute__((packed)) info;
 	uint32_t crc;
 }__attribute__((packed)) fault_log_t;
+
+_Static_assert(sizeof(fault_log_t) == 20U, "fault record must be 20 bytes");
+_Static_assert(offsetof(fault_log_t, fault_duration_ms) == 11U,
+               "fault duration must follow timestamp and current");
+_Static_assert(offsetof(fault_log_t, crc) == 16U,
+               "fault record CRC must follow all data");
 
 /* fault_current alani 0.1 A cozunurlukle (x10) saklanir; amper cinsinden
  * okumanin tek erisim noktasi - olcegi bilen yer yalnizca burasi olsun. */
@@ -69,7 +76,9 @@ int fault_log_sync(void);
 void fault_log_dump(void);      /* all feeders, via the shell channel */
 void fault_log_clear(void);     /* erase every feeder (primary + backup) */
 bool fault_log_add_log(fault_log_t *log);
-bool fault_log_add(float fault_current, uint16_t fault_duration_ms, uint8_t nominal_current_status,
+/* Add without replacing the source timestamp. Caller must sync. */
+bool fault_log_append(const fault_log_t *log);
+bool fault_log_add(float fault_current, uint32_t fault_duration_ms, uint8_t nominal_current_status,
 		uint8_t power_status, uint8_t type, uint8_t feeder_id, uint8_t phase_id);
 bool fault_log_read_permanent(uint8_t feeder_id, uint8_t phase_id, uint8_t index, fault_log_t *log);
 bool fault_log_read_temporary(uint8_t feeder_id, uint8_t phase_id, uint8_t index, fault_log_t *log);
@@ -83,3 +92,5 @@ uint8_t fault_log_get_perm_count(uint8_t feeder_id, uint8_t phase_id);
 bool fault_log_read_nth(uint8_t feeder_id, uint8_t phase_id, fault_log_type_t type, uint8_t n, fault_log_t *log);
 
 #endif /* FAULT_LOG_H_ */
+
+/*** end of file ***/

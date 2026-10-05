@@ -58,7 +58,7 @@ const uint32_t fault_log_feeder_addresses[MAX_POWER_LINE_COUNT] = {
  * ===================================================================== */
 
 #define FAULT_LOG_MAGIC          0x54524B46U   /* "TRKF" */
-#define FAULT_LOG_SCHEMA_VERSION 1U
+#define FAULT_LOG_SCHEMA_VERSION 2U
 
 #define FAULT_LOG_SLOT_A 0U
 #define FAULT_LOG_SLOT_B 1U
@@ -80,6 +80,8 @@ typedef struct
 }fault_log_feeder_history_t;
 
 /* Layout kaymasini derleme zamanina cevir (nvram_t bekcilerinin esleri). */
+_Static_assert(sizeof(fault_log_feeder_history_t) == 1852U,
+               "32-bit fault durations must fit the existing sector");
 _Static_assert(offsetof(fault_log_feeder_history_t, magic) == 0U, "fault_log: magic@0");
 _Static_assert(offsetof(fault_log_feeder_history_t, schema_version) == 4U, "fault_log: schema_version@4");
 _Static_assert(offsetof(fault_log_feeder_history_t, length) == 8U, "fault_log: length@8");
@@ -541,7 +543,7 @@ static void fault_log_dump_feeder(uint8_t feeder)
 		uint32_t total_temp = fh->total_temporary_faults[phase];
 		uint32_t temp_count = total_temp > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_temp;
 
-		SHELL_LOG("  Phase %d — TEMPORARY FAULTS (total: %lu, showing: %lu, newest first):\r\n",
+		SHELL_LOG("  Phase %d - TEMPORARY FAULTS (total: %lu, showing: %lu, newest first):\r\n",
 				phase + 1, total_temp, temp_count);
 
 		if(temp_count == 0)
@@ -561,7 +563,7 @@ static void fault_log_dump_feeder(uint8_t feeder)
 		uint32_t total_perm_flt = fh->total_permanent_faults[phase];
 		uint32_t perm_flt_count = total_perm_flt > FAULT_LOG_COUNT ? FAULT_LOG_COUNT : total_perm_flt;
 
-		SHELL_LOG("  Phase %d — PERMANENT FAULTS (total: %lu, showing: %lu, newest first):\r\n",
+		SHELL_LOG("  Phase %d - PERMANENT FAULTS (total: %lu, showing: %lu, newest first):\r\n",
 				phase + 1, total_perm_flt, perm_flt_count);
 
 		if(perm_flt_count == 0)
@@ -595,14 +597,14 @@ static void test_fault_log_add_random(void)
 {
 	/* Values are encoded so they are self-identifying when read back:
 	 *   fault_current (A)  = (feeder+1)*100 + (phase+1)*10 + (i+1)
-	 *     e.g. feeder=0, phase=0, i=0  →  111.0 A
-	 *          feeder=1, phase=2, i=3  →  234.0 A
+	 *     e.g. feeder=0, phase=0, i=0  ->  111.0 A
+	 *          feeder=1, phase=2, i=3  ->  234.0 A
 	 *   fault_duration_ms  = (feeder+1)*1000 + (phase+1)*100 + (i+1)*10
-	 *     e.g. feeder=0, phase=0, i=0  →  1110 ms
-	 *          feeder=1, phase=2, i=3  →  2340 ms
+	 *     e.g. feeder=0, phase=0, i=0  ->  1110 ms
+	 *          feeder=1, phase=2, i=3  ->  2340 ms
 	 *   nominal_current_status / power_status:
-	 *     temporary  →  0 / 0
-	 *     permanent  →  1 / 1
+	 *     temporary  ->  0 / 0
+	 *     permanent  ->  1 / 1
 	 */
 	for(uint32_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
 	{
@@ -828,7 +830,7 @@ static bool fault_log_add_permanent(uint8_t feeder_id, uint8_t phase_id, const f
 	return true;
 }
 
-bool fault_log_add(float fault_current, uint16_t fault_duration_ms, uint8_t nominal_current_status,
+bool fault_log_add(float fault_current, uint32_t fault_duration_ms, uint8_t nominal_current_status,
 		uint8_t power_status, uint8_t type, uint8_t feeder_id, uint8_t phase_id)
 {
 	cp56time2a_t timestamp = cp56time2a_now();
@@ -854,6 +856,20 @@ bool fault_log_add(float fault_current, uint16_t fault_duration_ms, uint8_t nomi
 	else{
 		return fault_log_add_temporary(feeder_id, phase_id, &new_log);
 	}
+}
+
+bool fault_log_append(const fault_log_t *log)
+{
+    if (NULL == log)
+    {
+        return false;
+    }
+    if (0U != log->info.type)
+    {
+        return fault_log_add_permanent(log->info.feeder, log->info.phase,
+                                       log);
+    }
+    return fault_log_add_temporary(log->info.feeder, log->info.phase, log);
 }
 
 bool fault_log_add_log(fault_log_t *log)

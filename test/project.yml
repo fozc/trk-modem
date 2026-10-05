@@ -136,6 +136,13 @@
       test_rf_error_retry_scenario:
         - -flto
         - -O2
+      # Existing fault/NOR fixture retains its legacy integer contracts.
+      test_fault_log:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-parameter
+        - -Wno-unused-variable
+        - -Wno-unused-but-set-variable
       test_bms_reader_scenario:
         - -flto
         - -O2
