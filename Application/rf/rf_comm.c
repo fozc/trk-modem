@@ -9,7 +9,8 @@
  * + single-outstanding command mechanism.
  *
  * Katmanlar:
- *   rf_scp.c/h   -> saf codec (paket kurma / cozumle, durumsuz)
+ *   rf_scp_codec -> request validation and payload decoding
+ *   rf_scp.c/h   -> legacy status/PING codec
  *   rf_comm.c/h  -> tasima + komut mekanizmasi (bu dosya)
  *   libscp       -> cerceveleme (COBS + CRC + SOF/EOF)
  */
@@ -26,6 +27,9 @@
 #include <string.h>
 #include "stm32u3xx_hal.h"
 #include "rf_scp.h"
+#include "rf_scp_codec.h"
+#include "rf.h"
+#include "rf_events.h"
 #include "rf_inventory.h"
 #include "rf_discovery.h"
 #include "rf_log.h"
@@ -46,17 +50,14 @@
 
 /** Komut mekanizmasi: varsayilan timeout ve deneme sayilari */
 #define RF_CMD_TIMEOUT_MS         500U
-#define RF_CMD_RETRIES            2U
+#define RF_CMD_RETRIES            3U
 
-/** TIME_SYNC: yazma sinifi, daha uzun bekleme (R1 zamanlama tablosu) */
-#define RF_CMD_TIMEOUT_WRITE_MS   1000U
-#define RF_CMD_RETRIES_WRITE      2U
+/** TIME_SYNC uses the same 500 ms / 3 extra retries as inventory. */
 
 /** BOOT_NOTIFY scp_major beklenen deger */
 #define RF_SCP_MAJOR_EXPECTED     1U
 
-/** TIME_SYNC deneme limiti (tek BOOT bildirisi basina) */
-#define RF_TIME_SYNC_MAX_TRIES    5U
+#define RF_TIME_SYNC_PERIOD_S     3600U
 
 /* ======================================================================
  * Module state
@@ -73,6 +74,7 @@ static scp_t         scp_ctx;
 typedef struct
 {
     bool              busy;          /* komut aktif mi                    */
+    bool              retry_pending; /* ERROR retry waits for deadline    */
     scp_packet_t      last_req;      /* retry'de AYNI paket gonderilir    */
     uint8_t           retries_left;  /* kalan ek deneme hakki             */
     uint32_t          deadline_ms;   /* bu denemenin son beklenme ani      */
@@ -80,12 +82,21 @@ typedef struct
     scp_cmd_done_fn_t done;          /* bitince cagrilacak                */
 } scp_cmd_ctx_t;
 
+/* Owned by cooperative Contiki callers. UART ISR only writes rx_ring;
+ * command and notification processing run in rf_comm_check_rx/process.
+ */
 static scp_cmd_ctx_t cmd_ctx = {0};
 static uint8_t       cmd_next_seq = 1;  /* 1'den baslar, 0xFF -> 0x00 sarar */
 
 /* BOOT_NOTIFY -> TIME_SYNC pending (komut mekanizmasi mesgulse bekler) */
 static bool          time_sync_pending = false;
-static uint8_t       time_sync_tries = 0;
+static bool          time_sync_boot = false;
+static uint8_t       hub_major;
+static bool          hub_boot_received;
+static struct timer  time_sync_timer;
+static bool          time_sync_timer_started;
+static struct timer  liveness_timer;
+static bool          liveness_timer_started;
 
 /* ======================================================================
  * Process declaration + simulator block
@@ -178,7 +189,75 @@ static void rf_comm_transmit(const uint8_t *frame, size_t frame_len)
 
 bool scp_is_free(void)
 {
-    return !cmd_ctx.busy;
+    return !cmd_ctx.busy && !rf_uart_bridge_is_enabled();
+}
+
+bool rf_comm_can_load_inventory(void)
+{
+    return (RF_SCP_MAJOR_EXPECTED == hub_major) && !time_sync_boot;
+}
+
+uint8_t rf_comm_get_hub_major(void)
+{
+    return hub_major;
+}
+
+void rf_comm_sync_time(void)
+{
+    if (RF_SCP_MAJOR_EXPECTED == hub_major)
+    {
+        time_sync_pending = true;
+    }
+}
+
+static void finish_command(scp_cmd_result_t result, const scp_packet_t *packet)
+{
+    scp_cmd_done_fn_t done = cmd_ctx.done;
+
+    cmd_ctx.busy = false;
+    cmd_ctx.retry_pending = false;
+    cmd_ctx.done = NULL;
+    if (NULL != done)
+    {
+        done(result, packet);
+    }
+}
+
+bool scp_send_request(const scp_packet_t *request, scp_cmd_done_fn_t done)
+{
+    uint32_t timeout_ms = RF_CMD_TIMEOUT_MS;
+    uint8_t retries = RF_CMD_RETRIES;
+
+    if (NULL == request)
+    {
+        return false;
+    }
+    switch (request->cmd)
+    {
+        case RF_SCP_CMD_CFG_WRITE:
+        case RF_SCP_CMD_CFG_COMMIT:
+        case RF_SCP_CMD_CFG_ABORT:
+        case RF_SCP_CMD_PWR_COMMAND:
+            timeout_ms = 1000U;
+            break;
+        case RF_SCP_CMD_EPOCH_REFRESH:
+            timeout_ms = 1000U;
+            retries = 1U;
+            break;
+        case RF_SCP_CMD_LOG_READ_RANGE:
+            retries = 2U;
+            break;
+        case RF_SCP_CMD_PWR_CFG2:
+            if (SCP_TYPE_SET == request->type)
+            {
+                timeout_ms = 1000U;
+            }
+            break;
+        default:
+            break;
+    }
+    return scp_send_command(request->type, request->cmd, request->data,
+                            request->data_len, timeout_ms, retries, done);
 }
 
 bool scp_send_command(uint8_t type, uint8_t cmd,
@@ -186,40 +265,62 @@ bool scp_send_command(uint8_t type, uint8_t cmd,
                       uint32_t timeout_ms, uint8_t retries,
                       scp_cmd_done_fn_t done)
 {
-    if (cmd_ctx.busy)
+    scp_packet_t request = {0};
+
+    if (!scp_is_free() || (NULL == scp_ctx.transmit))
     {
         return false;   /* mesgul - tek aktif komut kurali */
     }
+    if ((hub_boot_received && (RF_SCP_MAJOR_EXPECTED != hub_major) &&
+         (RF_SCP_CMD_GET_STATUS != cmd) && (0U != cmd)) ||
+        (((RF_SCP_CMD_INVENTORY_SET == cmd) ||
+          (RF_SCP_CMD_INVENTORY_END == cmd) ||
+          (RF_SCP_CMD_INVENTORY_UPDATE == cmd)) &&
+         !rf_comm_can_load_inventory()))
+    {
+        return false;
+    }
 
-    if (body_len > SCP_MAX_DATA_SIZE)
+    if ((body_len > SCP_MAX_DATA_SIZE) ||
+        ((0U < body_len) && (NULL == body)) || (0U == timeout_ms) ||
+        (0x7FFFFFFFU < timeout_ms))
     {
         return false;   /* gecersiz govde boyutu */
     }
 
     /* Paketi kur - retry'de bu ayni paket yeniden gonderilir */
-    cmd_ctx.last_req.dst      = RF_SCP_ADDR_HUB;
-    cmd_ctx.last_req.src      = RF_SCP_ADDR_RTU;
-    cmd_ctx.last_req.type     = type;
-    cmd_ctx.last_req.cmd      = cmd;
-    cmd_ctx.last_req.seq      = cmd_next_seq++;
-    cmd_ctx.last_req.data_len = body_len;
+    request.type     = type;
+    request.cmd      = cmd;
+    request.seq      = cmd_next_seq;
+    request.data_len = body_len;
 
     if ((body != NULL) && (body_len > 0U))
     {
-        (void)memcpy(cmd_ctx.last_req.data, body, body_len);
+        (void)memcpy(request.data, body, body_len);
+    }
+    if (RF_CMD_OK != rf_scp_build_packet(&request, &cmd_ctx.last_req))
+    {
+        return false;
     }
 
     /* Ilk gonderim */
-    (void)scp_send(&scp_ctx, &cmd_ctx.last_req);
+    if (SCP_STATUS_OK != scp_send(&scp_ctx, &cmd_ctx.last_req))
+    {
+        return false;
+    }
+    cmd_next_seq++;
+    rf_inventory_request_sent(cmd);
 
     /* Durumu isaretle */
     cmd_ctx.busy         = true;
+    cmd_ctx.retry_pending = false;
     cmd_ctx.retries_left = retries;
     cmd_ctx.timeout_ms   = timeout_ms;
     cmd_ctx.done         = done;
     cmd_ctx.deadline_ms  = HAL_GetTick() + timeout_ms;
 
-    CSLOG("[RF ST->RF] cmd=0x%02X seq=%u gonderildi (timeout=%ums, retries=%u)\r\n",
+    CSLOG("[RF ST->RF] cmd=0x%02X seq=%u "
+          "gonderildi (timeout=%ums, retries=%u)\r\n",
 		  cmd_ctx.last_req.cmd, cmd_ctx.last_req.seq,
 		  (unsigned)cmd_ctx.timeout_ms, (unsigned)cmd_ctx.retries_left);
 
@@ -228,27 +329,36 @@ bool scp_send_command(uint8_t type, uint8_t cmd,
 
 void scp_process(uint32_t now_ms)
 {
-    scp_cmd_done_fn_t  done;
-    scp_cmd_result_t   result;
-
-    if (!cmd_ctx.busy)
+    if (!cmd_ctx.busy || rf_uart_bridge_is_enabled())
     {
         return;
     }
 
-    /* Henuz sure dolmadi mi? (isaretli fark = wraparound guvenli) */
-    if ((int32_t)(now_ms - cmd_ctx.deadline_ms) < 0)
+    /* Delays are 1..INT32_MAX ms; unsigned subtraction handles tick wrap. */
+    if (0x7FFFFFFFU < (now_ms - cmd_ctx.deadline_ms))
     {
         return;
     }
 
     /* Sure doldu - retry hakki var mi? */
-    if (cmd_ctx.retries_left > 0U)
+    if (cmd_ctx.retry_pending || (0U < cmd_ctx.retries_left))
     {
-        cmd_ctx.retries_left--;
-
-        /* AYNI paket, AYNI SEQ - idempotentlik (R1 2.3d) */
-        (void)scp_send(&scp_ctx, &cmd_ctx.last_req);
+        if (cmd_ctx.retry_pending)
+        {
+            cmd_ctx.last_req.seq = cmd_next_seq++;
+            cmd_ctx.retry_pending = false;
+        }
+        else
+        {
+            /* Only an unanswered request is repeated with the same SEQ. */
+            cmd_ctx.retries_left--;
+        }
+        if (SCP_STATUS_OK != scp_send(&scp_ctx, &cmd_ctx.last_req))
+        {
+            finish_command(SCP_CMD_TIMEOUT, NULL);
+            return;
+        }
+        rf_inventory_request_sent(cmd_ctx.last_req.cmd);
         cmd_ctx.deadline_ms = now_ms + cmd_ctx.timeout_ms;
 
         CSLOG("[RF] retry cmd=0x%02X seq=%u (kalan=%u)\r\n",
@@ -258,61 +368,71 @@ void scp_process(uint32_t now_ms)
     else
     {
         /* Tum denemeler tukendi - TIMEOUT bildir */
-        done   = cmd_ctx.done;
-        result = SCP_CMD_TIMEOUT;
-
-        /* Once serbest birak - callback icinde yeni komut
-         * baslatilabilir */
-        cmd_ctx.busy = false;
-
         CSLOG_WARN("[RF] cmd=0x%02X seq=%u TIMEOUT\r\n",
                    cmd_ctx.last_req.cmd, cmd_ctx.last_req.seq);
 
-        if (done != NULL)
-        {
-            done(result, NULL);
-        }
+        finish_command(SCP_CMD_TIMEOUT, NULL);
     }
+}
+
+static bool can_retry_error(const scp_packet_t *packet)
+{
+    if (RF_SCP_ERR_BUSY == packet->data[0])
+    {
+        /* CFG2 GEN mismatch requires a fresh GET, not a blind SET. */
+        return !((RF_SCP_CMD_PWR_CFG2 == packet->cmd) &&
+                 (2U == packet->data_len));
+    }
+    return (RF_SCP_ERR_NOT_AVAILABLE == packet->data[0]) &&
+           ((RF_SCP_CMD_PWR_CFG2 == packet->cmd) ||
+            (RF_SCP_CMD_PWR_TELEMETRY == packet->cmd));
 }
 
 void scp_on_response(const scp_packet_t *pkt)
 {
-    scp_cmd_done_fn_t  done;
+    rf_scp_message_t message;
     scp_cmd_result_t   result;
 
-    if (!cmd_ctx.busy)
+    if ((NULL == pkt) || !cmd_ctx.busy || cmd_ctx.retry_pending ||
+        rf_uart_bridge_is_enabled())
     {
-    	CSLOG_WARN("[RF] Yanit beklenmiyor cmd=0x%02X seq=%u - atla\r\n",
-				   pkt->cmd, pkt->seq);
         return;             /* bekleyen komut yok - bayat yanit */
     }
-
     /* Eslesme: CMD ve SEQ ayni olmali */
     if ((pkt->cmd != cmd_ctx.last_req.cmd) ||
         (pkt->seq != cmd_ctx.last_req.seq))
     {
-    	CSLOG_WARN("[RF] Belenen CMD/SEQ cmd=0x%02X seq=%u yanit cmd=0x%02X seq=%u - atla\r\n",
+        CSLOG_WARN("[RF] expected cmd=0x%02X seq=%u, "
+                   "received cmd=0x%02X seq=%u\r\n",
 				   cmd_ctx.last_req.cmd, cmd_ctx.last_req.seq,
 				   pkt->cmd, pkt->seq);
         return;             /* baska istegin yanitina benziyor - atla */
     }
+    if (RF_CMD_OK != rf_scp_decode_message(pkt, &message))
+    {
+        return;
+    }
 
     if (pkt->type == SCP_TYPE_ACK)
     {
+        if ((RF_SCP_CMD_PWR_CFG2 == pkt->cmd) &&
+            (((SCP_TYPE_GET == cmd_ctx.last_req.type) &&
+              (23U != pkt->data_len)) ||
+             ((SCP_TYPE_SET == cmd_ctx.last_req.type) &&
+              (1U != pkt->data_len))))
+        {
+            return;
+        }
         result = SCP_CMD_OK;
     }
     else if (pkt->type == SCP_TYPE_ERROR)
     {
-        if ((0U < pkt->data_len) &&
-            (RF_SCP_ERR_NOT_AVAILABLE == pkt->data[0]) &&
+        if (can_retry_error(pkt) &&
             (0U < cmd_ctx.retries_left))
         {
             cmd_ctx.retries_left--;
-            (void)scp_send(&scp_ctx, &cmd_ctx.last_req);
+            cmd_ctx.retry_pending = true;
             cmd_ctx.deadline_ms = HAL_GetTick() + cmd_ctx.timeout_ms;
-            CSLOG_WARN("[RF] NOT_AVAILABLE retry cmd=0x%02X seq=%u "
-                       "(kalan=%u)\r\n", cmd_ctx.last_req.cmd,
-                       cmd_ctx.last_req.seq, cmd_ctx.retries_left);
             return;
         }
         result = SCP_CMD_ERR;
@@ -325,13 +445,11 @@ void scp_on_response(const scp_packet_t *pkt)
     }
 
     /* Once serbest birak - callback icinde yeni komut baslatilabilir */
-    done         = cmd_ctx.done;
-    cmd_ctx.busy = false;
-
-    if (done != NULL)
+    if (SCP_CMD_OK == result)
     {
-        done(result, pkt);  /* pkt yalnizca callback suresince gecerli */
+        rf_inventory_record_ack(&cmd_ctx.last_req);
     }
+    finish_command(result, pkt);
 }
 
 /* ======================================================================
@@ -383,12 +501,22 @@ static void reply_ping(const scp_packet_t *pkt)
 {
     scp_packet_t ack;
 
+    if ((NULL == pkt) || (RF_SCP_ADDR_HUB != pkt->src) ||
+        (RF_SCP_ADDR_RTU != pkt->dst) || (SCP_TYPE_PING != pkt->type) ||
+        (0U != pkt->cmd) || (0U != pkt->data_len) ||
+        rf_uart_bridge_is_enabled())
+    {
+        return;
+    }
     if (!rf_scp_build_ping_reply(pkt, &ack))
     {
         return;
     }
 
-    (void)scp_send(&scp_ctx, &ack);
+    if (SCP_STATUS_OK != scp_send(&scp_ctx, &ack))
+    {
+        CSLOG_WARN("[RF] PING ACK encode failed\r\n");
+    }
 }
 
 /* ======================================================================
@@ -401,37 +529,43 @@ static void on_time_sync_done(scp_cmd_result_t result,
 {
     (void)rsp;
 
+    if (SCP_CMD_RESTARTED == result)
+    {
+        return;
+    }
+    timer_set(&time_sync_timer, CLOCK_SECOND * RF_TIME_SYNC_PERIOD_S);
+    time_sync_timer_started = true;
+
     if (SCP_CMD_OK == result)
     {
         CSLOG("[RF] hub saati senkronize (TIME_SYNC ACK)\r\n");
 
         /* Devreye alma zincirinin 3. adimi: saat tamam -> envanter push */
-        rf_inventory_start();
+        if (time_sync_boot)
+        {
+            time_sync_boot = false;
+            rf_inventory_start();
+        }
     }
     else
     {
-        time_sync_tries++;
-        if (time_sync_tries < RF_TIME_SYNC_MAX_TRIES)
-        {
-            time_sync_pending = true;    /* bosken tekrar dene */
-        }
-        else
-        {
-            CSLOG_WARN("[RF] TIME_SYNC %u denemede basarisiz\r\n",
-                       time_sync_tries);
-        }
+        CSLOG_WARN("[RF] TIME_SYNC failed; next BOOT/hour may retry\r\n");
     }
 }
 
-/** RTC'den CP56Time2a govdesi kur (G-4: RTC gecersizse IV=1) */
-static void build_time_sync_body(uint8_t out[RF_SCP_TIME_SYNC_BODY_LEN])
+/** Use the validated local RTC; an invalid clock is never sent. */
+static bool build_time_sync_body(uint8_t out[RF_SCP_TIME_SYNC_BODY_LEN])
 {
+    if (!rtc_hw_is_valid())
+    {
+        return false;
+    }
     bsp_rtc_t    now_rtc = bsp_get_datetime();
     cp56time2a_t ts      = cp56time2a_from_rtc(&now_rtc);
 
-    if (!rtc_hw_is_valid())
+    if (0U != ts.iv_bit)
     {
-        ts.iv_bit = 1U;   /* RTC guvensiz -> damza gecersiz isaretle */
+        return false;
     }
 
     out[0] = (uint8_t)(ts.milliseconds & 0xFFU);
@@ -441,6 +575,7 @@ static void build_time_sync_body(uint8_t out[RF_SCP_TIME_SYNC_BODY_LEN])
     out[4] = (uint8_t)((ts.day & 0x1FU) | (uint8_t)(ts.dow << 5));
     out[5] = ts.month;
     out[6] = ts.year;
+    return true;
 }
 
 /** 0x13 BOOT_NOTIFY isle: surum kontrolu + TIME_SYNC tetikle (G-5, G-4) */
@@ -448,29 +583,46 @@ static void handle_boot_notify(const scp_packet_t *pkt)
 {
     uint8_t major;
 
-    if (pkt->data_len < 1U)
+    if (pkt->data_len != 1U)
     {
         CSLOG_WARN("[RF] BOOT_NOTIFY gecersiz (bos govde)\r\n");
         return;
     }
 
     major = pkt->data[0];
+    hub_major = major;
+    hub_boot_received = true;
+    time_sync_boot = true;
+    time_sync_pending = (RF_SCP_MAJOR_EXPECTED == major);
+    time_sync_timer_started = false;
+    rf_inventory_reset();
+    rf_hub_restarted();
+    if (cmd_ctx.busy)
+    {
+        finish_command(SCP_CMD_RESTARTED, NULL);
+    }
+    rf_events_init();
     if (major != RF_SCP_MAJOR_EXPECTED)
     {
         CSLOG_WARN("[RF] BOOT_NOTIFY scp_major=%u (beklenen %u) - uyari, "
-                   "devam\r\n",
+                   "inventory stopped\r\n",
                    (unsigned)major, (unsigned)RF_SCP_MAJOR_EXPECTED);
+        return;
     }
 
     CSLOG("[RF] BOOT_NOTIFY (scp_major=%u) -> TIME_SYNC hazirlaniyor\r\n",
           (unsigned)major);
-    time_sync_pending = true;
-    time_sync_tries   = 0;
 }
 
 /** Proaktik SET'ler - komut mekanizmasindan bagimsiz, her zaman islenir */
 static void handle_proactive(const scp_packet_t *pkt)
 {
+    rf_scp_message_t message;
+
+    if (RF_CMD_OK != rf_scp_decode_message(pkt, &message))
+    {
+        return;
+    }
     switch (pkt->cmd)
     {
         case RF_SCP_CMD_BOOT_NOTIFY:
@@ -478,8 +630,8 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         case RF_SCP_CMD_DISCOVERY_REPORT:
-            if ((pkt->data_len >= 8U) &&
-                (rf_discovery_add(pkt->data)))
+            if (rf_discovery_report(message.body.discovery.eui64,
+                                    message.body.discovery.rssi))
             {
                 CSLOG("[RF] kesif: yeni cihaz "
                       "EUI=%02X%02X%02X%02X%02X%02X%02X%02X\r\n",
@@ -487,6 +639,22 @@ static void handle_proactive(const scp_packet_t *pkt)
                       pkt->data[3], pkt->data[4], pkt->data[5],
                       pkt->data[6], pkt->data[7]);
             }
+            break;
+
+        case RF_SCP_CMD_LIVE_DATA:
+            (void)rf_handle_live(&message.body.live, HAL_GetTick());
+            break;
+
+        case RF_SCP_CMD_TRIP_NOTIFY:
+            (void)rf_handle_trip(&message.body.trip, HAL_GetTick());
+            break;
+
+        case RF_SCP_CMD_ANOMALY_REPORT:
+            (void)rf_handle_anomaly(&message.body.anomaly);
+            break;
+
+        case RF_SCP_CMD_LOG_AVAILABLE:
+            rf_events_notify(&message);
             break;
 
         default:    /* MISRA 16.4 - S3-S5'te yeni case'ler gelecek */
@@ -509,6 +677,11 @@ static void handle_proactive(const scp_packet_t *pkt)
  */
 static void rf_comm_on_data_received(const scp_packet_t *pkt)
 {
+    if ((NULL == pkt) || (RF_SCP_ADDR_HUB != pkt->src) ||
+        (0xF0U <= pkt->cmd) || rf_uart_bridge_is_enabled())
+    {
+        return;
+    }
     switch (pkt->type)
     {
         case SCP_TYPE_PING:
@@ -520,7 +693,7 @@ static void rf_comm_on_data_received(const scp_packet_t *pkt)
         	scp_on_response(pkt);
             break;
 
-        case SCP_TYPE_SET:        // proaktif SET'ler (BOOT_NOTIFY, TRIP_NOTIFY, ...)
+        case SCP_TYPE_SET:        /* Unsolicited notifications. */
             handle_proactive(pkt);
             break;
 
@@ -583,34 +756,53 @@ static void on_status_done(scp_cmd_result_t result,
 
 static void rf_comm_periodic_jobs(void)
 {
-    static struct timer liveness_timer;
-    static bool         timer_started = false;
+    if (time_sync_timer_started && timer_expired(&time_sync_timer) &&
+        (RF_SCP_MAJOR_EXPECTED == hub_major))
+    {
+        time_sync_pending = true;
+        time_sync_timer_started = false;
+    }
 
     /* TIME_SYNC pending: BOOT geldi ama komut mekanizmasi mesguldu;
      * simdi bos mu? */
-    if (time_sync_pending && scp_is_free())
+    if (time_sync_pending && scp_is_free() &&
+        (RF_SCP_MAJOR_EXPECTED == hub_major))
     {
         uint8_t cp56_body[RF_SCP_TIME_SYNC_BODY_LEN];
+        bool has_valid_time = build_time_sync_body(cp56_body);
 
-        build_time_sync_body(cp56_body);
-        if (scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_TIME_SYNC,
+        if (has_valid_time &&
+            scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_TIME_SYNC,
                              cp56_body, RF_SCP_TIME_SYNC_BODY_LEN,
-                             RF_CMD_TIMEOUT_WRITE_MS,
-                             RF_CMD_RETRIES_WRITE,
+                             RF_CMD_TIMEOUT_MS,
+                             RF_CMD_RETRIES,
                              on_time_sync_done))
         {
             time_sync_pending = false;
+        }
+        else if (!has_valid_time && time_sync_boot)
+        {
+            /* Invalid RTC does not block inventory. Keep the time request
+             * pending; its later ACK must not restart the upload.
+             */
+            time_sync_boot = false;
+            rf_inventory_start();
+        }
+        else
+        {
+            /* Busy/invalid periodic time refresh waits for a valid clock. */
         }
     }
 
     /* Envanter siralayici: aktif ama komut mekanizmasi mesgulse bekle */
     rf_inventory_continue();
+    rf_events_process(HAL_GetTick());
 
     /* Periyodik GET_STATUS (canlilik) */
-    if (!timer_started)
+    if (!liveness_timer_started)
     {
         timer_set(&liveness_timer, CLOCK_SECOND * RF_LIVENESS_PERIOD_S);
-        timer_started = true;
+        liveness_timer_started = true;
     }
 
     if (timer_expired(&liveness_timer) && scp_is_free())
@@ -654,6 +846,17 @@ PROCESS_THREAD(rf_comm_process, ev, data)
 
 void rf_comm_init(uint8_t device_address)
 {
+    (void)memset(&cmd_ctx, 0, sizeof(cmd_ctx));
+    cmd_next_seq = 1U;
+    hub_major = 0U;
+    hub_boot_received = false;
+    time_sync_pending = false;
+    time_sync_boot = false;
+    time_sync_timer_started = false;
+    liveness_timer_started = false;
+    rf_inventory_reset();
+    rf_init();
+    rf_events_init();
     if (!rbuff_init(&rx_ring, rx_buff, sizeof(rx_buff)))
     {
         CSLOG_ERR("[RF] Failed to initialize RX ring buffer!\r\n");

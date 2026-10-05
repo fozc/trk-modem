@@ -2018,3 +2018,302 @@ USER CODE alanlarında kaldığı kontrol edilmiştir. Fiziksel cihaz testi,
 cihaza yükleme ve push yapılmamıştır. Önceden izlenmeyen diğer belgeler
 commit kapsamına alınmamıştır.
 /*** end of report ***/
+
+## 10. RF-SCP uygulama kanıtları
+
+### 10.8. RF-SCP R1 örnek doğrulama — 05.10.2026
+
+Kullanıcı yeni görevde BOLATeX R1 davranışlarının RTU tarafına eklenmesini
+istemiştir. MH modem üzerindeki RF hub'dır; PWRB bildirimleri de RTU'ya
+bu SCP arayüzünden gelecektir. Önce servis/shell, sonra ürün bağlantıları
+sırası kabul edilmiştir. Olay, başarılı gönderim veya başarılı kalıcı
+kayıt sonrasında tüketilebilir; merkez ACK'i ayrıca beklenmeyecektir.
+
+İlk adımda 14 senaryo CSV'sindeki 175 çerçeve takip edilen fixture'a
+dönüştürülmüştür. Python standart kütüphanesiyle çerçeve ve olay iç
+CRC'leri denetlenmiş; fixture güncellik kontrolü geçmiştir. Gerçek
+`scp.c`/`cobs.c` üzerinde yeni 6/6 Ceedling testi geçmiştir: örnek
+decode/encode, her parçalama noktası, konsol/arka arkaya alım, bozuk
+CRC ve yarım çerçeve sonrası toparlanma. Bu döngülerin 175 vektörü
+ayrı Unity testleri olarak sayılmamıştır.
+
+Üretim firmware kaynağı bu adımda değiştirilmemiştir. Y7.2/O7.5 hata
+politikası, O7.10 canlı veri üreticisi ve G-01 gibi mevcut bulguların
+kapanışı bu test sonucu ile değiştirilmemiştir. R1 işleyicileri ve
+PWRB tüketici geçişi henüz uygulanmamıştır. Merkezi bütün testler,
+integration, ARM derlemesi ve cihaz kabulü bu adımda çalıştırılmamıştır.
+
+Kanıt: `test/scp/test_scp_capture_scenario.c`,
+`test/fixtures/rf_scp_vectors.h`,
+`test/scripts/generate_rf_scp_vectors.py --check` ve ilgili Ceedling
+sonucu. Ayrıntılı sıra `doc/RF_SCP_MODEM_UYGULAMA_PLANI.md` içindedir.
+
+### 10.9. RF-SCP R1 codec ve alan doğrulaması — 05.10.2026
+
+Yeni `Application/rf/rf_scp_codec.c/.h`, R1 istek haritasını doğrular ve
+ACK/ERROR/SET payload'larını çözer. Mevcut rf_scp API'leri korunmuştur.
+Powerboard ailesi dahil R1 codec'leri eklenmiş; yeni kaynak henüz
+rf_comm dispatch veya ürün tüketicilerine bağlanmamıştır.
+
+`test/rf/test_rf_scp_codec.c` içinde 18/18 test geçmiştir. İlgili RF
+config/retry/JSON, eski codec, SCP/COBS ve örnek paket testleri birlikte
+71/71 geçmiştir. Tüm istek TYPE/uzunluk haritası, örnek gelen paketler,
+hatalı girişte önceki çıktının korunması, ayırıcı 22 alan sınırları,
+NaN/Inf, iç olay CRC'si, 32 bit süre ve ham PWRB endian alanları sınanmıştır.
+
+GCC 14.3.rel1 Cortex-M33 hard-float `-Os` ile yeni modül bağımsız object
+olarak sıkı uyarı seçeneklerinde derlenmiştir: text 3292 B, data/bss 0 B.
+Yerel stack frame ölçümleri decode 272 B, event decode 160 B,
+build_request/config validate 16 B'dır. Harici semboller memcpy, memset
+ve mevcut rf_scp_decode_status ile sınırlıdır. Bu ölçüm toplam çağrı
+zincirinin stack bütçesi veya tam firmware boyutu/kabulü değildir.
+Object/stack kanıtı `build/rf-scp-r1/rf_scp_r1.o/.su` altındadır.
+
+O7.10/G-01 gerçek veri üreticisi ve Y7.2/O7.5 işlem hata politikası
+bu adımda kapanmış sayılmaz. İstek timeout/retry/SEQ ve dispatch bağlantısı
+sonraki adımdadır. NVRAM, Flash yerleşimi, mevcut dummy/BMS kararları
+korunmuştur. Tam merkezi test, integration, CubeIDE link ve cihaz
+kabulü bu adımda yapılmamıştır; commit veya yükleme yoktur.
+
+### 10.10. RF-SCP istek mekanizması ve adlandırma — 05.10.2026
+
+Kullanıcı kaynak/API adlarında belge sürümü kullanılmamasını istemiştir.
+Üretim codec'i `rf_scp_codec.c/.h`, girişleri rf_scp_build_packet,
+rf_scp_decode_message, rf_scp_decode_event ve rf_scp_validate_config
+olarak adlandırılmıştır. Test/fixture/generator ve plan dosyası da aynı
+tercihe göre adlandırılmıştır. Tarihsel object ölçüm yolu §10.9'da
+gerçek eski artifact adıyla kalır; kaynak R1 sürüm atfı korunur.
+
+Mevcut tek aktif istek altyapısına codec doğrulaması bağlanmıştır.
+Yanıtta MH/RTU adresi, CMD/SEQ, TYPE ve payload; CFG2 GET/SET'te özel
+ACK uzunluğu kontrol edilir. Hatalı paket ve boş ERROR bekleyen isteği
+tamamlamaz. Timeout aynı paket/SEQ kullanır; BUSY ve CFG2/ham telemetri
+NOT_AVAILABLE sonrası mevcut timeout aralığında yeni SEQ ile girişim
+yapılır. Bütün denemeler aynı bütçededir. GEN uyuşmazlığı ve CFG_READ_ALL
+NOT_AVAILABLE otomatik tekrarlanmaz. Bu, §9.24'teki önceki kullanıcı
+kararını yeni R1 uygulama yetkisiyle günceller.
+
+Yeni scp_send_request doküman başlangıç timeout/retry değerlerini seçer.
+Eski API korunur. Bridge açıkken istek/PING/retry durur; eski budget
+harcanmaz. Bildirimler aktif istek sırasında doğrulanıp yönlendirilir
+ve ACK almaz. Henüz eklenmemiş durum/ölçüm tüketicileri tamamlanmış
+sayılmaz; BOOT/envanter özel politikaları sonraki adımdadır.
+
+RF command senaryoları 25/25, ilgili sekiz RF/SCP test dosyası 87/87
+geçmiştir. RX senaryolarında gerçek ISR girişi, ring buffer, parser ve
+dispatch çalışır; UART/tick/bridge dış sınırları taklit edilir.
+Kaynak/SEQ/payload reddi, kayıp/geç ACK, bildirim araya girmesi,
+GEN/ERROR biçimi, retry tükenmesi ve sayaç sarma doğrulanmıştır.
+
+CubeIDE managed Release build yeni codec'i kaynak/objects listesine
+dahil etmiş ve tamamlanmıştır: 0 hata, daha önce kapsam dışında bırakılan
+8 Contiki + 5 ST + 1 Core uyarısı. rf_comm/rf_inventory/rf_scp_codec
+ayrıca GCC 14.3.rel1 Cortex-M33/C11 ve bütün sıkı uyarı seçenekleriyle
+`-Werror` altında derlenmiştir. ELF text/data/bss 300308/524/125144 B'dır;
+bu toplam mevcut diğer kullanıcı değişikliklerini de içerir, bu görevin
+boyut farkı olarak sunulmaz. Mevcut 4096 B stack yerleşimi korunmuştur.
+Toplam çağrı zinciri/ISR payı ve fiziksel kabul ölçümü yapılmamıştır.
+
+Kanıtlar `build/scp-release-build.log`, `build/scp-strict-compile.log`,
+`build/scp-target/` ve ilgili Ceedling sonuçlarıdır. Donanım yükleme,
+reset, NVRAM değişikliği ve commit yapılmamıştır. Y7.2 tablosu güncel
+kanıta bağlanmış; O7.5 açılış/envanter adımı nedeniyle açık kalmıştır.
+
+### 10.11. RF açılış, saat, envanter ve keşif — 05.10.2026
+
+Kullanıcı kararına göre geçersiz saatte TIME_SYNC atlanır, envanter
+yüklenir; saat geçerli olunca eşitlenir. Yeni ACK envanteri yeniden
+başlatmaz. Geçerli saatle başlangıçta TIME_SYNC önce gönderilir;
+saatlik yenileme yüklenmiş envanteri korur. Geçersiz RTC/takvim değeri
+wire (hat) paketine yazılmaz. Mevcut yerel RTC kaynağı kullanılır;
+NTP'nin mevcut varsayılan timezone (saat dilimi) değeri +3'tür.
+
+BOOT eski pending isteği SCP_CMD_RESTARTED ile sonlandırır, envanter
+imlecini temizler ve yeni SEQ ile yükler. Tek baytlık BOOT tekrar/restart
+ayrımı sağlamadığı için her geçerli BOOT resync talebi olarak ele alınır.
+Major uyuşmazlığı envanter/yazmayı durdurur; eski ACK yeni isteği bitirmez.
+Kısmi/boş/hatalı ve tam envanter durumları ayrı izlenir. Nonempty PARTIAL
+MH'de loaded olabilir; bu tam başarı olarak gösterilmez. Hatalı/bölgesi
+farklı girdilerde sonsuz bekleme yoktur. Local (yerel) 10 s upload gap
+sınırı izlenir; bu fiziksel UART/MH işlem sürelerinin ölçümü değildir.
+
+Discovery EUI/signed RSSI tutulur; yinelenen rapor sinyali yeniler,
+dolu kuyruk yeni cihaz için eski girdiyi silmez. INVENTORY_UPDATE ve
+silme servisi ACK öncesinde discovery girdisini kaldırmaz; NVRAM'i
+kendisi değiştirmez. Yeni rf time ve rf epoch <1..4> shell komutları
+vardır; epoch ACK yalnız broadcast kuyruğudur ve yaklaşık 30 s bekleme
+bildirilir. Otomatik MH kart değişimi çıkarımı yapılmaz.
+
+Haberleşme/açılış paketi 46/46; dokuz ilgili RF/SCP/CP56Time2a test
+dosyası toplam 122/122 geçmiştir. Gerçek timer/CP56/RX/ring/dispatch
+yolları çalışır; donanım ve NVRAM erişim sınırları taklit edilir.
+Kanıt: `test/build/scp-startup-tests.log` ve ilgili Ceedling sonuçları.
+
+Beş RF modülü GCC 14.3.rel1/Cortex-M33/C11 ve bütün sıkı uyarılarla
+-Werror altında derlenmiştir. Release main-build/link geçmiştir;
+text/data/bss 302136/524/125200 B'dır. Kanıtlar
+`build/scp-startup-strict-compile.log` ve
+`build/scp-startup-release-build.log` içindedir. Bu total (toplam)
+diğer mevcut kullanıcı değişikliklerini de içerir. 14 mevcut kapsam dışı
+Contiki/ST/Core uyarısını kapatma veya susturma işlemi yapılmamıştır.
+
+O7.5 güncel host kanıtına bağlanmıştır. O7.10/G-01 ölçüm/arıza üreticileri,
+Powerboard SCP kaynağına tüketici geçişi, web Save ve kalıcı kayıt
+bağlantısı sonraki adımlardadır. NVRAM/linker düzeni, dummy ve kapalı BMS
+kararları korunmuştur. Cihaz yükleme/reset, fiziksel kabul ve commit yoktur.
+
+### 10.12. Kanonik RF canlı veri ve monitor — 05.10.2026
+
+Kullanıcı sahada cihaz olmadığını ve eski RF modeline geriye dönük
+uyumluluk gerekmediğini bildirdi. rf_monitor_t/DEVICEID32 ve unsigned
+RSSI/int8 sıcaklık gibi eski monitor alanları kaldırılmıştır. RF modeli
+EUI-64, float ölçüm, int16 sıcaklık, signed RSSI ve R1 alanlarını korur.
+Monitor endpoint/tablosu bu modele geçirilmiştir; eski field adapter'ı
+yoktur. Sentetik RF örneği gerçek envanter/cache'i değiştirmez.
+
+Web Save desired store'u MH ACK'inden önce değiştirebildiğinden,
+kaynak baytı yalnız fider/faz taşıyan LIVE için yanlış EUI etiketi
+ulaşılabilir durumdur. Yeni ACK envanter aynası bu karışmayı önler;
+atama/silme/taşınma yalnız geçerli eşleşen ACK ile güncellenir.
+Eski ölçüm yeni cihaza bağlanmaz. Mevcut NVRAM düzeni bu adımda değişmez.
+
+30 s LIVE tazeliği, SEQ boşluğunun kayıp sayılmaması, ayrı numeric
+quality (sayısal geçerlilik), TRIP anlık akımının arıza akımından ayrılması
+ve iki anomali yolu uygulanmıştır. AY uptime sıfırlaması Trip_Failed
+alarmını latched tutar; MH BOOT alarmı silmez. Operatör onayı yalnız
+live flag sıfırken kapanır. Bu durum RAM'dedir; RTU güç kesintisi sonrası
+kalıcı geçmiş garantisi değildir. Event 101/105 bağlantısı olay adımındadır.
+
+RF senaryo paketi 64/64, dokuz ilgili dosya 140/140 geçmiştir. Yeni JSON
+yanıtı tam 12 faz/en büyük değerlerle mevcut HTTP 8192 B tamponunda
+test edilmiş; küçük tampon taşması ve yarım yanıt engellenmiştir.
+Kaynak/gömülü web sayfasında Türkçe/İngilizce yeni alan gösterimleri
+geçmiştir. Kanıt `test/build/scp-live-tests.log` ve web_navigation paketidir.
+
+Sekiz RF/monitor modülü GCC 14.3.rel1/Cortex-M33/C11 sıkı uyarılar ve
+-Werror altında derlenmiştir. Release main-build/link tamamlanmıştır:
+text/data/bss 305168/524/126048 B; toplam diğer kullanıcı değişikliklerini
+de içerir. Loglar `build/scp-live-strict-compile.log` ve
+`build/scp-live-final-build.log` altındadır. JSON builder yerel stack
+frame'i 400 B'dır; çağrı zinciri/ISR toplamı fiziksel kabulde ölçülmelidir.
+
+O7.10 güncel kanıta bağlanmış; G-01 merkez/fiziksel kabul kapısı henüz
+kapanmamıştır. Diğer modüllerin dummy kararları ve kapalı BMS durumu
+korunmuştur. Source RC ve model handler'ları actual (gerçek) üretim
+kodudur; hardware (donanım) sınırları host'ta taklit edilir. Cihaz
+yükleme/reset, linker değişikliği, NVRAM migration veya commit yoktur.
+
+### 10.13. RF tam olay günlüğü ve örnek iletişim — 05.10.2026
+
+R1 §4.7 olay kaydı 60 B ve tüm olay türlerini içerir. Mevcut 18 B
+fault_log_t ile tam kaydın saklanması mümkün değildir. Kullanıcı mevcut
+kalıcı/geçici arıza alanlarının korunmasını ve ayrı 8 KB alanı onayladı.
+Yeni bölge 0x232000–0x233FFF adreslerindedir. Önceki Flash alanları ve
+NVRAM adres/schema düzeni değişmedi; adresler Ceedling'de doğrulanır.
+
+60 B ham paket + 4 B spi_flash_log ek bilgisi = 64 B entry. İki 4096 B
+sektörde toplam 128 kayıt sığar. Sektör silinirken diğer 64 kayıt korunur;
+yazım sonrasında 65–128 kayıt tutulur. Bu sınırlı geçmiş alanıdır.
+Kütüphanenin yeniden açılış, yarım yazım ve ertelenmiş erase davranışları
+kullanılır. Yeni kuyruk, heap veya retry katmanı eklenmedi.
+
+rf_event_log_append yalnız iç CRC/uzunluk, başarılı yazma ve geri
+okumada sıra numarası/tüm bayt eşleşmesi sonrasında true döner. Sessiz
+CRC kaybında önceki aynı içerikte kayıt başarı kanıtı sayılmaz. Sürücü
+okuma API'si void olduğu için doğrudan okuma hata kodu yoktur; boş Flash
+ile genel okuma hatası ayrımının sürücü sınırı korunur. Fiziksel enerji
+kesintisi dayanımı host testiyle tamamlanmış sayılmaz.
+
+AY_05b örneğindeki HEAD/RANGE/CONSUME yanıtları değişmeden gerçek UART
+ring/SCP parser/rf_comm yolunda sınanır. Bütün 60 B alanlar sabit
+beklenen değerlerle doğrulanır. CSV'nin 0x47 ACK'i R1'e aykırıdır;
+R1 gereğince ACK üretilmez. Test istek/yanıt bağımlılıklarını mantıksal
+sırayla yürütür; CSV timestamp sırası uygulama kuralı sayılmaz.
+
+Yeni kalıcı kayıt paketinde 11/11; on bir ilgili RF/SCP/CP56/SPI-log
+dosyasında 157/157 test geçmiştir. Fixture kontrolü 175 frame'i doğrular.
+Kanıt `test/build/scp-event-tests.log`. Dokuz RF/monitor modülü sıkı
+uyarılar/-Werror ile Cortex-M33/C11 altında geçmiştir. CubeIDE Release
+derleme/link sıfır uyarıyla bitmiştir: text/data/bss 305348/524/126096 B.
+Bu derleme değişen kaynakları kapsar; önceki kapsam dışı vendor/Contiki
+uyarı kararı sürer. Loglar `build/scp-event-strict-compile.log` ve
+`build/scp-event-release-build.log`; toplam diğer kullanıcı değişikliklerini
+de içerir. Cihaz yükleme/reset veya commit yapılmadı.
+
+Otomatik olay çekme → kalıcı yazma → CONSUME bağlantısı henüz yoktur.
+Yeni günlük başlangıçta açılır; kayıt API'si bir sonraki servis parçasında
+bağlanacaktır. 101/105 alarm bağlantısı, merkez aktarımı, FRAM degraded
+akışı ve Powerboard kaynak geçişi açık olduğundan G-01 tamamlandı sayılmaz.
+
+### 10.15. Otomatik RF olay tüketimi ve arıza listesi — 05.10.2026
+
+Kullanıcı olay 1/7'nin kalıcı, olay 3'ün geçici arıza listesine
+yönlendirilmesini ve mevcut sürenin uint32_t olmasını onayladı.
+Enum açıklamaları bu kararı taşır. fault_log_t 18 B'den 20 B'ye,
+fider görüntüsü 1852 B'ye çıktı; mevcut 4096 B ana/yedek sektörlerine
+sığar. FAULT_LOG_SCHEMA_VERSION 2 oldu. NVRAM ve Flash alan adresleri
+değişmedi. Sahada cihaz olmadığı için eski görüntü migration'ı yoktur.
+IEC104 günlük entry boyutu 24 B, kapasitesi sektör başına 170;
+sekiz sektörde en çok 1360, sektör silinirken 1190 kayıttır.
+
+Ulaşılabilir kaynak-zaman kaybı doğrulandı: fault_log_add_log mevcut
+timestamp'i cp56time2a_now ile değiştiriyordu. Yeni fault_log_append
+kaynak zamanını değiştirmeden mevcut private temporary/permanent
+girişlerini kullanır; çağıran sync sonucunu kontrol eder. RF aktarımı
+Fider_ID−1 yerine zone/Fider_ID ile store indeksini bulur. Clock quality
+IV bitine aktarılır; RMS amper mevcut x10 helper'ı üzerinden saklanır.
+R1 yük-akımı-var biti eski Below biti için terslenir. Line_ID=0,
+eşleşmeyen kaynak veya temsil edilemeyen ölçüm için liste kaydı
+uydurulmaz; ham 60 B paket korunur.
+
+rf_events mevcut tek bekleyen SCP komutunu ve tek dört kayıtlık tamponu
+kullanır. Envanter sonrasında/bildirimde/60 s kontrolde HEAD çekilir;
+tail'den RANGE okunur. Ham yazma ve gereken arıza listesi/sync başarılı
+olmadan CONSUME gönderilmez. Sync yeniden denemesi aynı kaydı RAM'e
+ikinci kez eklemez; raw yazma da tekrar edilmez. Restart veya kayıp
+CONSUME sonrası yeniden çekme kopya üretebilir; kalıcı tekilleştirme
+garantisi yoktur. Kalıcı kayıt kullanıcı kararıyla teslim koşuludur;
+merkez ACK'i beklenmez.
+
+Yerel depolama hatası nedeniyle beklenmişse CONSUME öncesi HEAD tekrar
+çekilir. Tail/total farkıyla eski yuvanın ezilmesi denetlenir; indeks
+sarma nedeniyle eski değerine dönse de total değişimi görülür. Eski
+yuvadan sonra yanlış yeni kayıtlar tüketilmez, güncel HEAD ile yeniden
+başlanır. Normal başarılı örnek akışa ek sorgu eklenmez. Bu kontrol SCP
+yanıtı ile sonraki istek arasını atomik yapmaz; fiziksel zamanlama
+ve MH ring davranışı kabulde doğrulanmalıdır.
+
+Kısa batch, 99→0 sarma ve geçerli önekin tüketilmesi uygulanır. Bozuk
+iç CRC tüketilmez; yalnız MH ERROR 0x06 verdiğinde bir yuva atlanır.
+Consume ERROR 0x02 sonrasında yeni HEAD alınır. Ortak retry bütçesi
+sonrasında BUSY devam ederse FRAM tanısı çekilir; degraded=1 olay
+akışını BOOT'a kadar durdurur. head=tail kullanıcı cevabına göre boş
+kabul edilir; aynı head için pending=100 bildirimi dolu halkayı ayırır.
+Yaklaşık free_slots kesin tüketme kararı için kullanılmaz. 60 s RTU
+poll/yerel tekrar aralığı plan tercihidir; MH fiziksel süresi değildir.
+
+15 ilgili Ceedling dosyasında 246/246 test geçti. Olay servisi 23 testi
+kapsar. Merkezi fault_log paketi mevcut
+NOR/çift kopya fixture'ındaki 53 kontrolü ve kaynak-zaman/UINT32_MAX
+Flash yeniden açılış testini gerçek üretim koduyla çalıştırır. Servis
+taşıma/kayıt API sınırlarını taklit eder; kayıt algoritmaları ayrı NOR
+testlerinde sınanır. Eski fixture conversion/unused istisnaları yalnız
+bu pakettedir; yeni RF servisinin sıkı uyarı kapsamı korunur. Önceki
+UART/SCP örnek testleri yeni servise bildirim aktarımını da doğrular.
+14 CSV/175 frame kontrolü geçmiştir; örnek kaynaklar değiştirilmedi.
+Kanıtlar `test/build/scp-event-service-tests.log` ve
+`test/build/scp-event-final-tests.log`.
+
+On RF/monitor modülü Cortex-M33/C11 sıkı uyarılar/-Werror ile geçmiştir.
+CubeIDE yeni kaynağı managed build listesine almış, Release link
+307860/524/126568 B text/data/bss ile tamamlanmıştır. Kanıtlar
+`build/scp-event-service-strict.log`, `build/scp-event-service-release.log`
+ve `build/scp-event-service-final-build.log`. Toplam diğer kullanıcı
+değişikliklerini de içerir; fiziksel Flash/UART süreleri kanıtlanmaz.
+
+101/105 alarm bağlantısı, yeni olayların IEC104 replay/spontane üretici
+bağlantısı, Powerboard tüketici geçişi ve saha kabulü henüz tamamlanmadı;
+G-01 kapatılmaz. IEC104 süre ölçümü mevcut float wire tipidir: büyük
+değerlerde her milisaniyenin tam gösterimi garanti edilmez, kalıcı
+uint32_t ve ham kayıtta tam değer korunur. Cihaz yükleme/reset veya
+commit yapılmamıştır.

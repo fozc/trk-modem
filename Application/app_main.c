@@ -19,6 +19,7 @@
 #include "rf_config.h"
 #include "rf_scp.h"
 #include "rf_comm.h"
+#include "rf_event_log.h"
 #include "rf_shell.h"
 #include "rf_uart_bridge.h"
 #include "elog.h"
@@ -310,7 +311,12 @@ __attribute__ ((noreturn)) void app_main(void)
 	digital_input_init();
 	relay_init();
 
-	/* RTU SCP adresi sabittir (R0 2.3b): 0x02. Hub 0x01, broadcast 0x00. */
+    if (!rf_event_log_init())
+    {
+        CSLOG_ERR("RF event log initialization failed\r\n");
+    }
+
+	/* RTU SCP address is fixed: 0x02. Hub 0x01, broadcast 0x00. */
 	rf_comm_init(RF_SCP_ADDR_RTU);
 	rf_shell_init();
 	rf_uart_bridge_init();
@@ -343,3 +349,4 @@ __attribute__ ((noreturn)) void app_main(void)
 	}
 }
 
+/*** end of file ***/

@@ -1,8 +1,9 @@
 /*
- * w25qxx_memory_organization.h
+ * spi_flash_organization.h
  *
  *  Created on: Sep 20, 2025
- *      Author: fatih.ozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef LIBS_SPI_FLASH_ORGANIZATION_H_
@@ -19,7 +20,7 @@
 #define SPI_FLASH_END_ADDR      (SPI_FLASH_START_ADDR + SPI_FLASH_TOTAL_SIZE - 1UL)
 
 /* ------------------------------------------------------------------ */
-/*  Layout struct — never instantiated, used only for offsetof/sizeof */
+/*  Layout struct: never instantiated, used only for offsetof/sizeof  */
 /*                                                                    */
 /*  Region                        Size     Computed Address           */
 /* ------------------------------------------------------------------ */
@@ -42,6 +43,8 @@ typedef struct
     uint8_t SPIFLASH_SECTION_FAULT_LOG_BACKUP                [0x008000];  /*   32 KB  0x220000 */
     uint8_t SPIFLASH_SECTION_IEC104_EVTLOG                   [0x008000];  /*   32 KB  0x228000 */
     uint8_t SPIFLASH_SECTION_IEC104_LOG                      [0x002000];  /*    8 KB  0x230000 */
+    /* 8 KB, address 0x232000. */
+    uint8_t SPIFLASH_SECTION_RF_EVENT_LOG[0x002000];
 } spi_flash_layout_t;
 
 /* ------------------------------------------------------------------ */
@@ -90,6 +93,17 @@ typedef struct
 #define IEC104_LOGAREA_ADDRESS              SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_IEC104_LOG)
 #define IEC104_LOG_SECTOR_COUNT             (IEC104_LOG_AREA_SIZE / 4096UL)
 
+/* Complete RF event packets; existing fault regions stay unchanged. */
+#define RF_EVENT_LOG_ADDR \
+    SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_RF_EVENT_LOG)
+#define RF_EVENT_LOG_SIZE \
+    SPIFLASH_SECTION_SIZE(SPIFLASH_SECTION_RF_EVENT_LOG)
+
+_Static_assert(RF_EVENT_LOG_ADDR == 0x232000U,
+               "RF event region must follow the existing log regions");
+_Static_assert(RF_EVENT_LOG_SIZE == 8192U,
+               "RF event region must contain two 4 KB sectors");
+
 /* Firmware */
 #define FIRMWARE_FLASH_AREA_SIZE            SPIFLASH_SECTION_SIZE(SPIFLASH_SECTION_FIRMWARE_A)
 #define FIRMWARE_A_ADDRESS                  SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_A)
@@ -109,3 +123,5 @@ _Static_assert((SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_FIRMWARE_B) % 0x10000UL) 
                "Firmware B must be 64KB block-aligned");
 
 #endif /* LIBS_SPI_FLASH_ORGANIZATION_H_ */
+
+/*** end of file ***/

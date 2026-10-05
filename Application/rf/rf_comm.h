@@ -30,14 +30,15 @@ typedef enum
 {
     SCP_CMD_OK = 0,     /* ACK alindi                        */
     SCP_CMD_ERR,        /* ERROR alindi (kod data[0]'da)     */
-    SCP_CMD_TIMEOUT     /* tum denemeler tukendi              */
+    SCP_CMD_TIMEOUT,    /* tum denemeler tukendi              */
+    SCP_CMD_RESTARTED   /* BOOT invalidated the pending request */
 } scp_cmd_result_t;
 
 /**
  * Komut bitince cagrilir - scp_process / scp_on_response baglaminda
  * calisir (Contiki process poll dongusu, ISR degil).
  * rsp yalnizca callback suresince gecerlidir; kalici bilgi
- * gerekiyorsa kopyalayin. TIMEOUT'ta rsp = NULL'dur.
+ * gerekiyorsa kopyalayin. TIMEOUT/RESTARTED use rsp = NULL.
  */
 typedef void (*scp_cmd_done_fn_t)(scp_cmd_result_t result,
                                   const scp_packet_t *rsp);
@@ -65,6 +66,22 @@ bool scp_send_command(uint8_t type, uint8_t cmd,
                       scp_cmd_done_fn_t done);
 
 /**
+ * @brief Send a validated request with the documented command defaults.
+ * The command mechanism assigns SEQ. The request's SEQ is ignored.
+ * Returns false without sending for invalid input, busy or bridge mode.
+ */
+bool scp_send_request(const scp_packet_t *request, scp_cmd_done_fn_t done);
+
+/** True after a compatible BOOT and completion of the boot time step. */
+bool rf_comm_can_load_inventory(void);
+
+/** Last BOOT major; zero before a BOOT has been received. */
+uint8_t rf_comm_get_hub_major(void);
+
+/** Request a time refresh; it will not start another inventory upload. */
+void rf_comm_sync_time(void);
+
+/**
  * @brief Poll dongusunden cagirilir: timeout kontrolu, retry,
  *        tamamlanan komutun callback'i.
  */
@@ -72,7 +89,7 @@ void scp_process(uint32_t now_ms);
 
 /**
  * @brief RX dispatch'ten beslenir: ACK/ERROR geldiginde cagrilir.
- *        CMD+SEQ eslesmesi yalnizca beklenen yanit ise isler.
+ *        MH/RTU addresses, CMD/SEQ, TYPE and payload must match.
  */
 void scp_on_response(const scp_packet_t *pkt);
 

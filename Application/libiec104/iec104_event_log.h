@@ -2,7 +2,8 @@
  * iec104_event_log.h
  *
  *  Created on: Mar 16, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef LIBIEC104_IEC104_EVENT_LOG_H_
@@ -15,10 +16,9 @@
 
 /* ---------------------------------------------------------------------------
  * Kapasite (hesap iec104_event_log.c icinde, spi_flash_log sabitlerinden):
- *   entry  = LOG_ENTRY_OVERHEAD(4) + sizeof(fault_log_t)(18) = 22 bayt
- *   sektor = 4096 / 22 = 186 kayit
- *   halka head icin bir sektoru bos birakir -> (N-1) * 186
- *   8 sektor -> 1302 kayit (3 kayit/gun'de ~434 gun; sartname 90 gun ister)
+ *   entry = LOG_ENTRY_OVERHEAD(4) + sizeof(fault_log_t)(20) = 24 bytes
+ *   sector = 4096 / 24 = 170 records
+ *   8 sectors: 1360 records before erase, 1190 kept during rotation
  *
  * NOT: bu baslik spi_flash_log.h'i include etmez; kapasite makrolari .c
  * icinde kalir ve flash log kutuphanesi tuketicilere tasinmaz.

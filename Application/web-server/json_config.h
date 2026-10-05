@@ -145,62 +145,9 @@ typedef struct
     float vtrip_target[MAX_LINE_COUNT];
 } jayirici_rf_config_t;
 
-/* RF Monitor Structure (read-only status) */
-// 0.indexde, 1.hat için veriler, 1.indexde 2.hat için veriler vs.
-typedef struct {
-    uint8_t hat_id[MAX_LINE_COUNT];
-    uint8_t zone_id[MAX_LINE_COUNT];
-    uint32_t r_device_id[MAX_LINE_COUNT];
-    uint32_t s_device_id[MAX_LINE_COUNT];
-    uint32_t t_device_id[MAX_LINE_COUNT];
-    uint8_t r_calisma_modu[MAX_LINE_COUNT];
-    uint8_t s_calisma_modu[MAX_LINE_COUNT];
-    uint8_t t_calisma_modu[MAX_LINE_COUNT];
-    uint8_t r_hat_frekansi[MAX_LINE_COUNT];
-    uint8_t s_hat_frekansi[MAX_LINE_COUNT];
-    uint8_t t_hat_frekansi[MAX_LINE_COUNT];
-    int8_t r_sistem_sicakligi[MAX_LINE_COUNT];
-    int8_t s_sistem_sicakligi[MAX_LINE_COUNT];
-    int8_t t_sistem_sicakligi[MAX_LINE_COUNT];
-    uint8_t r_sistem_dc_gerilimi[MAX_LINE_COUNT];
-    uint8_t s_sistem_dc_gerilimi[MAX_LINE_COUNT];
-    uint8_t t_sistem_dc_gerilimi[MAX_LINE_COUNT];
-    uint16_t r_v5vdc[MAX_LINE_COUNT];
-    uint16_t s_v5vdc[MAX_LINE_COUNT];
-    uint16_t t_v5vdc[MAX_LINE_COUNT];
-    uint16_t r_v3v3dc[MAX_LINE_COUNT];
-    uint16_t s_v3v3dc[MAX_LINE_COUNT];
-    uint16_t t_v3v3dc[MAX_LINE_COUNT];
-    uint8_t r_actirma_dc_gerilimi[MAX_LINE_COUNT];
-    uint8_t s_actirma_dc_gerilimi[MAX_LINE_COUNT];
-    uint8_t t_actirma_dc_gerilimi[MAX_LINE_COUNT];
-    uint16_t r_faz_akimi[MAX_LINE_COUNT];
-    uint16_t s_faz_akimi[MAX_LINE_COUNT];
-    uint16_t t_faz_akimi[MAX_LINE_COUNT];
-    uint16_t r_faz_hata_akimi[MAX_LINE_COUNT];
-    uint16_t s_faz_hata_akimi[MAX_LINE_COUNT];
-    uint16_t t_faz_hata_akimi[MAX_LINE_COUNT];
-    uint8_t r_aktif_sifirlama_zamanlayici_durumu[MAX_LINE_COUNT];
-    uint8_t s_aktif_sifirlama_zamanlayici_durumu[MAX_LINE_COUNT];
-    uint8_t t_aktif_sifirlama_zamanlayici_durumu[MAX_LINE_COUNT];
-    uint8_t r_aktif_ariza_sayaci[MAX_LINE_COUNT];
-    uint8_t s_aktif_ariza_sayaci[MAX_LINE_COUNT];
-    uint8_t t_aktif_ariza_sayaci[MAX_LINE_COUNT];
-    uint16_t r_gecmis_acma_sayisi[MAX_LINE_COUNT];
-    uint16_t s_gecmis_acma_sayisi[MAX_LINE_COUNT];
-    uint16_t t_gecmis_acma_sayisi[MAX_LINE_COUNT];
-    uint32_t r_last_tx[MAX_LINE_COUNT];
-    uint32_t s_last_tx[MAX_LINE_COUNT];
-    uint32_t t_last_tx[MAX_LINE_COUNT];
-    int8_t r_rssi[MAX_LINE_COUNT];
-    int8_t s_rssi[MAX_LINE_COUNT];
-    int8_t t_rssi[MAX_LINE_COUNT];
-    uint8_t r_lqi[MAX_LINE_COUNT];
-    uint8_t s_lqi[MAX_LINE_COUNT];
-    uint8_t t_lqi[MAX_LINE_COUNT];
-} jayirici_rf_monitor_t;
 
-/* Partial Parser Functions - Alt bölümleri parse et */
+
+/* Partial Parser Functions - Alt bolumleri parse et */
 int parse_device_config(const char *json_str, modem_config_t *config);
 
 /* Last synchronous IEC parse/set address error; empty on other errors. */

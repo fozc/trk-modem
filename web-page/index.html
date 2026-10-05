@@ -438,7 +438,45 @@ function selectFaultFeeder(i){faultFeeder=i;renderPage('iec-faults')}
 
 // ---------------- MONITORING ----------------
 async function readRfFeeder(i){if(loading)return;try{showLoad();const r=await api('/monitor/rf/'+i);hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const d=r.data?.lines?.[0]||r.lines?.[0]||r.data||r;if(!pageCache.rfmon)pageCache.rfmon=[];pageCache.rfmon[i]=d;renderPage('rfmon');const card=$('rfmon-'+i);if(card){const body=card.querySelector('.card-body');body.innerHTML=buildRfMonitorTable(d)}toast(tf('tFeedRead',{n:i+1}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}}
-function buildRfMonitorTable(d){const fields=[['DEVICEID',t('monDev'),''],['CalismaModu',t('monMode'),''],['HatFrekansi',t('monFreq'),'Hz'],['SistemSicakligi',t('monSysTemp'),'°C'],['SistemDCGerilimi',t('monSysDc'),'V'],['5Vdc','5V DC','V'],['3V3dc','3.3V DC','V'],['ActirmaDCGerilimi',t('monTrigDc'),'V'],['FazAkimi',t('monPhCur'),'A'],['FazHataAkimi',t('monPhFault'),'A'],['AktifArizaSayaci',t('monActFault'),''],['GecmisAcmaSayisi',t('monTripCnt'),''],['RSSI','RSSI','dBm'],['LQI','LQI','']];let h='<div class="table-wrap"><table class="phase-table"><thead><tr><th>'+esc(t('thParam'))+'</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';fields.forEach(f=>{const a=d[f[0]]||['-','-','-'];h+='<tr><td>'+esc(f[1])+'</td><td>'+esc(fmt(a[0],f[2],f[0]==='5Vdc'||f[0]==='3V3dc'?2:f[0]==='FazAkimi'||f[0]==='FazHataAkimi'?1:undefined))+'</td><td>'+esc(fmt(a[1],f[2],f[0]==='5Vdc'||f[0]==='3V3dc'?2:f[0]==='FazAkimi'||f[0]==='FazHataAkimi'?1:undefined))+'</td><td>'+esc(fmt(a[2],f[2],f[0]==='5Vdc'||f[0]==='3V3dc'?2:f[0]==='FazAkimi'||f[0]==='FazHataAkimi'?1:undefined))+'</td></tr>'});return h+'</tbody></table></div>'}
+function buildRfMonitorTable(d){
+  const phases=d.Phases||[];
+  const fields=[
+    ['Eui64','EUI-64',''],['Online',(LNG==='tr'?'RF haberleşmesi':'RF online'),''],
+    ['Live.Seq','SEQ',''],['Live.Uptime',(LNG==='tr'?'Çalışma süresi':'Uptime'),'s'],
+    ['Live.State',(LNG==='tr'?'Koruma durumu':'Current state'),''],['Live.FaultCount',t('monActFault'),''],
+    ['Live.Irms',t('monPhCur'),'A',3],
+    ['Live.VTrip',(LNG==='tr'?'Açma kondansatörü':'Trip capacitor'),'V',3],
+    ['Live.VRec',(LNG==='tr'?'Hasat gerilimi':'Harvest voltage'),'V',3],
+    ['Live.Temp',(LNG==='tr'?'MCU sıcaklığı':'MCU temperature'),'°C'],
+    ['Live.RSSI','RSSI','dBm'],['Live.Flags',(LNG==='tr'?'Durum bayrakları':'Status flags'),''],
+    ['Live.FsmError',(LNG==='tr'?'FSM iç hatası':'FSM error'),''],['Live.TripFailed',(LNG==='tr'?'Canlı açma başarısızlığı':'Trip_Failed live'),''],
+    ['TripFailedAlarm',(LNG==='tr'?'Açma başarısızlığı alarmı':'Trip failure alarm'),''],
+    ['TripFailureLatched',(LNG==='tr'?'Operatör onayı gerekli':'Operator acknowledgement required'),''],
+    ['Live.LogPending',(LNG==='tr'?'Bekleyen olay kaydı':'Pending event records'),''],
+    ['Live.LogWrapLow',(LNG==='tr'?'Halka sarma düşük baytı':'Log wrap low'),''],['UptimeStalled',(LNG==='tr'?'Çalışma süresi ilerlemiyor':'Uptime stalled'),''],
+    ['LiveAgeMs',(LNG==='tr'?'Son veri yaşı':'Live data age'),'ms'],
+    ['Trip.InstantAmps',(LNG==='tr'?'Açma anındaki anlık akım':'Trip instant current'),'A',3],
+    ['Trip.RxMs',(LNG==='tr'?'Açma bildirimi alım sayacı':'Trip receive tick'),'ms'],
+    ['AnomalyLive.Active',(LNG==='tr'?'Canlı veri anomalisi':'Live anomaly'),''],
+    ['AnomalyLive.Window',(LNG==='tr'?'Canlı veri anomali penceresi':'Live anomaly window'),''],
+    ['AnomalyLive.Total',(LNG==='tr'?'Canlı veri anomali toplamı':'Live anomaly total'),''],
+    ['AnomalyTrip.Active',(LNG==='tr'?'Açma anomalisi':'Trip anomaly'),''],
+    ['AnomalyTrip.Window',(LNG==='tr'?'Açma anomali penceresi':'Trip anomaly window'),''],
+    ['AnomalyTrip.Total',(LNG==='tr'?'Açma anomali toplamı':'Trip anomaly total'),'']
+  ];
+  let html='<div class="table-wrap"><table class="phase-table"><thead><tr><th>'+esc(t('thParam'))+'</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
+  for(const [key,label,unit,precision] of fields){
+    html+='<tr><td>'+esc(label)+'</td>';
+    for(let index=0;index<3;index++){
+      const phase=phases[index];
+      const value=phase?.HasData?key.split('.').reduce((v,k)=>v?.[k],phase):null;
+      const shown=value==null?'—':typeof value==='boolean'?(value?'1':'0'):typeof value==='string'?value:fmt(value,unit,precision);
+      html+='<td>'+esc(shown)+'</td>';
+    }
+    html+='</tr>';
+  }
+  return html+'</tbody></table></div>';
+}
 async function readBoard(){await readPage('board')}
 
 // ---------------- FAULTS / LOGS ----------------

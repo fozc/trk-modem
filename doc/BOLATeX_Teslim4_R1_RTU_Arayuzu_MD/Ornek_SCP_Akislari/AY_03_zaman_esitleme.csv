@@ -1,0 +1,3 @@
+t_s;zaman;yon;cmd;komut;tip;seq;len;veri_hex;mantiksal_hex;hat_hex;anlam
+0.000;2026-10-04T18:30:54.514+03:00;RTU→MH;0x07;TIME_SYNC;SET;24;7;f2d41e12e40a1a;010202071807f8f2d41e12e40a1aa9bb;0011010202071807f8f2d41e12e40a1aa9bb00;Time sync — istek
+0.022;2026-10-04T18:30:54.536+03:00;MH→RTU;0x07;TIME_SYNC;ACK;24;0;;020103071800ff409f;0006020103071804ff409f00;Time sync — yanıt
