@@ -185,6 +185,13 @@ void rtc_hw_read(rtc_t *out)
 	(void)HAL_RTC_GetTime(&hrtc, &t, RTC_FORMAT_BIN);
 	(void)HAL_RTC_GetDate(&hrtc, &d, RTC_FORMAT_BIN);
 
+    /* Validate before unsigned subtraction or changing the destination.
+     * GetDate above must still run to unlock the calendar shadows. */
+    if (t.SubSeconds > t.SecondFraction)
+    {
+        return;
+    }
+
 	out->hour   = t.Hours;
 	out->minute = t.Minutes;
 	out->second = t.Seconds;
@@ -257,9 +264,9 @@ static bool rtc_is_valid(const rtc_t *dt)
 
 	max_day = days_in_month[dt->month];
 
-	/* Subat artik yil (2000 tabanli iki hane) */
-	if ((dt->month == 2U) &&
-	    ((0U == (dt->year % 4U)) && (0U != (dt->year % 100U))))
+    /* In the supported 2000..2099 range, every multiple of four is leap;
+     * year 00 denotes 2000, which is also divisible by 400. */
+    if ((2U == dt->month) && (0U == (dt->year % 4U)))
 	{
 		max_day = 29U;
 	}
@@ -311,6 +318,12 @@ void rtc_resync_sw_from_hw(void)
 	rtc_t hw = {0};
 
 	rtc_hw_read(&hw);
+    if (!rtc_is_valid(&hw))
+    {
+        CSLOG_WARN("RTC resync rejected: invalid hardware calendar "
+                   "or subseconds\r\n");
+        return;
+    }
 	rtc_load_sw(&hw);
 	rtc_update_epoch(&hw);
 }
@@ -339,6 +352,5 @@ uint32_t rtc_get_unix_epoch(void)
 	/* The epoch counter is already 1970-based, so this is identical. */
 	return bsp_get_epoch_time();
 }
-
 
 

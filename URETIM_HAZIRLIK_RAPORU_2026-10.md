@@ -1683,4 +1683,114 @@ bu commit açık bulguyu kapatmaz. Erteleme kararları ve eski byte/void flash
 okuma API'lerinin hata aktarımı sınırı korunur. Fiziksel cihaz testi,
 cihaza yükleme ve push yapılmamıştır. Önceden izlenmeyen diğer belgeler
 bu commit'in kapsamında değildir.
+### 9.46 Donanımdan RTC resync doğrulaması — D9.10, 05.10.2026
+
+Kullanıcı, geçersiz donanım takviminin mevcut sistem saatine yüklenmesini
+engelleyen kontrolü onaylamıştır. Önceki §9.44 incelemesinde açık kalan
+bu giriş kontrolü uygulanmıştır; sahada donanım bozulması gösterildiği
+iddia edilmez.
+
+**Değişiklik:** rtc_resync_sw_from_hw() donanım okumalarından sonra mevcut
+rtc_is_valid() takvim/alan kontrolünü kullanır. Geçersiz yıl/ay/gün/saat
+ve millisec değerinde yazılım RTC ve epoch setter'ları çağrılmaz; önceki
+snapshot, epoch ve backup marker korunur. Reddetme CSLOG_WARN ile bildirilir.
+Yazılım saatinin normal tick ilerlemesi değiştirilmemiştir. GetTime ardından
+GetDate sırası korunur. rtc_hw_read() alt-saniye çıkarma hesabından önce
+SubSeconds <= SecondFraction koşulunu kontrol eder; tutarsız okumada çıkış
+nesnesine dokunmaz. Resync'in sıfırlanmış yerel nesnesi takvim kontrolünden
+geçemediği için böyle okuma da yüklenmez. Mevcut millisecond formülü ve
+SecondFraction=0/SubSeconds=0 davranışı korunur; yeni hesap eklenmemiştir.
+
+Donanım resync'e dış kaynakların 2026 epoch tabanı eklenmemiştir. Geçerli
+2025 donanım tarihi ve 2000 artık gününün yüklenmesi korunur. Ortak
+rtc_is_valid() artık yıl hesabı desteklenen 2000–2099 aralığı için
+iki haneli yılın 4'e bölünmesine göre düzeltilmiştir; 00, 2000 yılıdır
+ve 400'e de bölünür. Bu düzeltme dış kaynakların 2026 taban reddini
+kaldırmaz. HAL okuma hata dönüşü taklit edilmemiştir: yerel HAL'ın
+GetTime/GetDate fonksiyonları her zaman HAL_OK döner. Otomatik
+reset/retry, marker temizleme veya uydurma log timestamp eklenmemiştir.
+
+**Doğrulama:** Mevcut test/bsp/test_rtc_sync.c merkezi Ceedling paketine
+12 senaryo eklenmiştir. Gerçek rtc.c/datetime.c çalışır; BSP depolaması
+ve HAL register sınırı CMock callback ile ayrılır. Callback'ler her
+okumada GetTime -> GetDate sırasını ve beklenen okuma sayısını kontrol eder.
+Geçersiz ay/gün/saat/yıl, alt-saniye tutarsızlığı, valid marker ile bozuk
+boot takvimi ve geçersiz okumadan sonra geçerli resync sınanır. Snapshot,
+epoch ve marker'ın korunması; geçerli takvim/ms yüklenmesi, markersız boot,
+2025 donanım saati ve 29.02.2000 senaryoları kapsanır.
+
+- Düzeltme öncesi: 24 test, 17 geçti / 7 başarısız; geçersiz girişte
+  setter çağrıları eski kodun eksikliğini göstermiştir.
+- Düzeltme sonrası RTC paketi: 24/24 geçti.
+- Tüm merkezi Ceedling paketi: 496/496 geçti; atlanan test yok.
+- ARM Release incremental derlemesi başarılı; logda warning/error yok.
+- Release raw-byte equality ve ECDSA self-check geçti.
+- git diff --check geçti.
+
+Loglar test/build/production-audit-2026-10-03/ altında rtc-resync-before.log,
+rtc-resync-after.log, rtc-resync-all.log ve rtc-resync-release.log içindedir.
+D9.10 donanımdan resync girişindeki takvim doğrulama eksikliği kapatılmıştır.
+Doğrudan BSP setter'ları veya HAL yazma hata politikası bu değişikliğin
+kapsamında değildir. Log timestamp formatı ve saat kurulmamışken kullanılan
+başlangıç tarihinin politikası değiştirilmemiştir. Fiziksel cihaz testi,
+cihaza yükleme ve commit yapılmamıştır.
+### 9.47 Flash silme öncesi WEL kontrolü — D9.12, 05.10.2026
+
+**Kanıt ve karar:** Kullanıcı silme öncesi Write Enable sonucunun
+kontrolünü onaylamıştır. Karttaki AT25SF321B'nin üretici belgesi WEL=0
+iken erase komutlarının yürütülmediğini belirtir. Mevcut ortak 4/32/64 KB
+silme ve chip erase yolları Write Enable gönderiyor, fakat bu bitin
+set olduğunu okumadan erase komutunu gönderiyordu. Sonraki BUSY=0 sonucu
+tek başına silmenin kabul edildiğini göstermez. Bu koşulun cihazda
+oluştuğu gösterilmemiştir; doğrulanan nokta önkoşul kontrolü eksikliğidir.
+Kaynak: https://www.renesas.com/en/document/dst/at25sf321b-datasheet?r=1608806
+
+**Değişiklik:** w25qxx_erase_() ve w25qxx_erase_chip(), mevcut Write Enable
+ve delay adımından sonra Status Register 1 okur. SPI durum sorgusu önce
+değerlendirilir: hata varsa W25QXX_RES_TIMEOUT dönülür. SPI sağlıklı,
+WEL=0 ise W25QXX_RES_WEL_NOT_SET dönülür. Her iki durumda erase opcode'u
+ve adresi gönderilmez. WEL=1 ise mevcut opcode/adres/CS ve son BUSY
+bekleme akışı korunur. Yeni hata kodu, API, retry veya reset eklenmemiştir.
+WEL=1 yalnız silme iznidir; koruma bitleri veya diğer koşullar nedeniyle
+silmenin başarıyla tamamlandığını tek başına garanti etmez. Erase sonrası
+veri doğrulaması bu değişikliğin kapsamında değildir.
+
+**Doğrulama:** test/libs/test_w25qxx_address_encoding.c merkezi Ceedling
+paketine altı senaryo eklenmiştir; gerçek w25qxx.c çalışır, SPI sınırı
+CMock ile ayrılır. Dört silme girişinde WEL=0 için yalnız Write Enable
+ve status okuması beklenir; fazladan erase komutu testi başarısız kılar.
+Transport timeout, hem WEL set görünen 0xFF hem WEL sıfır görünen 0x00
+okumalarında izin değerlendirmesinden önce reddedilir. Geçerli sektör/
+blok adres byte sıraları korunur; chip erase'te WEL=1 sonrası C7 komutu
+ve BUSY -> idle polling sınanır.
+
+- Düzeltme öncesi flash paketi: 21 test, 14 geçti / 7 başarısız.
+- Düzeltme sonrası flash paketi: 21/21 geçti.
+- Tüm merkezi Ceedling paketi: 502/502 geçti; atlanan test yok.
+- ARM Release incremental derlemesi başarılı; logda warning/error yok.
+- Release raw-byte equality ve ECDSA self-check geçti.
+- git diff --check geçti.
+
+Loglar test/build/production-audit-2026-10-03/ altında
+flash-erase-wel-before.log, flash-erase-wel-after.log,
+flash-erase-wel-all.log ve flash-erase-wel-release.log içindedir.
+D9.12'nin silme öncesi WEL kontrolü kısmı kapatılmıştır. Aynı maddede
+geçen JEDEC dört-byte okuması bu değişiklikte değiştirilmemiştir ve ayrı
+protokol incelemesi gerektirir. Fiziksel cihaz testi, cihaza yükleme ve
+commit yapılmamıştır.
+### 9.48 RTC ve flash WEL düzeltmelerinin commit kapsamı — 05.10.2026
+
+Kullanıcı tamamlanan değişikliklerin commit edilmesini onaylamıştır.
+Bu kayıtla aynı commit'in kapsamı D9.10 donanımdan RTC resync doğrulaması,
+D9.12 silme öncesi WEL kontrolü, ilgili merkezi Ceedling testleri ve
+§9.46–9.47 rapor kayıtlarıdır. Bu commit önceki iki bölümün
+"commit yapılmadı" notlarını günceller.
+
+Son tam Ceedling sonucu 502/502, RTC paketi 24/24 ve flash paketi 21/21'dir.
+ARM Release incremental derlemesi ve raw-byte equality/ECDSA paket
+self-check başarılıdır; son derleme logunda warning/error yoktur.
+git diff --check temizdir. Commit isteği nedeniyle testler yeniden
+çalıştırılmamıştır. JEDEC dört-byte okuması ayrı inceleme olarak kalır.
+Fiziksel cihaz testi, cihaza yükleme ve push yapılmamıştır. Önceden
+izlenmeyen diğer belgeler bu commit'in kapsamında değildir.
 /*** end of report ***/

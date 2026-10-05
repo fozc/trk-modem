@@ -208,6 +208,16 @@ int w25qxx_erase_chip(void)
 	w25qxx_write_enable();
 	delay(1);
 
+    const uint8_t status = w25qxx_read_status();
+    if (SPI_TRANSFER_OK != spi_get_transfer_status())
+    {
+        return W25QXX_RES_TIMEOUT;
+    }
+    if (0U == (status & STATUS1_WEL))
+    {
+        return W25QXX_RES_WEL_NOT_SET;
+    }
+
 	spi_cs_low();
 	spi_send_byte(0xC7); // Chip Erase
 	spi_cs_high();
@@ -368,6 +378,17 @@ static int w25qxx_erase_(uint8_t erase_type, uint32_t addr)
 {
 	w25qxx_write_enable();
 	delay(1);
+
+    const uint8_t status = w25qxx_read_status();
+    if (SPI_TRANSFER_OK != spi_get_transfer_status())
+    {
+        return W25QXX_RES_TIMEOUT;
+    }
+    if (0U == (status & STATUS1_WEL))
+    {
+        return W25QXX_RES_WEL_NOT_SET;
+    }
+
 	spi_cs_low();
 	spi_send_byte(erase_type);
 	spi_send_byte((uint8_t)((addr >> 16) & 0xFFU));
