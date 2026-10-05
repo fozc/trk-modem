@@ -80,6 +80,10 @@
         - -Wconversion
         - -Wdouble-promotion
         - -Wformat=2
+      test_at_socket_log:
+        - -DAT_ENGINE_LOG_HOST_TEST
+        - -flto
+        - -O2
       test_spi_timeout:
         - -DBSP_IO_HOST_TEST
       test_adc_dma:
@@ -133,6 +137,9 @@
         - -O2
 
     :link:
+      test_at_socket_log:
+        - -flto
+        - -O2
       test_uart_tx_scenario:
         - -flto
         - -O2

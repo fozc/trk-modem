@@ -198,6 +198,20 @@ int main(void) {
  at_engine.response_buffer_len=(uint16_t)strlen((char *)at_engine.response_buffer);
  log_response("OK");assert(strstr(logs,"+CSQ: 20,99")!=NULL);
  puts("PASS: ordinary modem diagnostics preserved");
+ logs[0]='\0';strcpy((char *)at_engine.cmd,"AT#SRECV=3,1024\r");
+ at_engine.cmd_len=(uint16_t)strlen((char *)at_engine.cmd);
+ const uint8_t iec_frame[]={0x68,0x04,0x07,0,0,0};
+ memcpy(at_engine.response_buffer,iec_frame,sizeof(iec_frame));
+ at_engine.response_buffer_len=sizeof(iec_frame);
+ at_engine.srecv_payload_end=sizeof(iec_frame);
+ log_response("OK");
+ assert(strstr(logs,"68 04 07 00 00 00")!=NULL);
+ assert(strstr(logs,"payload omitted")==NULL);
+ puts("PASS: IEC104 socket bytes visible in hex");
+ logs[0]='\0';strcpy((char *)at_engine.cmd,"AT#SRECV=30,1024\r");
+ at_engine.cmd_len=(uint16_t)strlen((char *)at_engine.cmd);
+ log_response("OK");assert(strstr(logs,"payload omitted")!=NULL);
+ puts("PASS: IEC104 prefix does not reveal other sockets");
  return 0;
 }
 '''
