@@ -1793,4 +1793,228 @@ git diff --check temizdir. Commit isteği nedeniyle testler yeniden
 çalıştırılmamıştır. JEDEC dört-byte okuması ayrı inceleme olarak kalır.
 Fiziksel cihaz testi, cihaza yükleme ve push yapılmamıştır. Önceden
 izlenmeyen diğer belgeler bu commit'in kapsamında değildir.
+### 9.49 JEDEC kimliğinin üç byte okunması — D9.12, 05.10.2026
+
+**Kanıt:** Karttaki AT25SF321B için 9Fh Read Manufacturer and Device ID
+komutu bir manufacturer ve iki device ID byte'ı tanımlar: 1F-87-01.
+Kaynak: Renesas datasheet §12.1.
+https://www.renesas.com/document/dst/at25sf321b-datasheet
+Mevcut w25qxx_read_jedecid() dört byte okuyordu. Repo C kaynaklarında
+tek çağıran w25qxx_init() kimlik eşlemesini ilk üç byte ile yapar; dördüncü
+byte'ın mevcut uygulamada yanlış parça seçimine neden olduğu gösterilmemiştir.
+Bu madde düşük öncelikli protokol tutarlılığı düzeltmesidir.
+
+**Değişiklik:** Kullanıcı onayıyla JEDEC tamponu üç byte yapılmıştır.
+Okuma döngüsü size_t indeks ve sizeof(tampon) kullanır; uint32_t dönüşe
+yalnız bu üç byte aynı sırayla yerleştirilir. Üst byte sıfır kalır. API,
+9Fh komutu, CS makroları, parça tablosu ve init kimlik kontrolü korunur.
+
+**Doğrulama:** Merkezi test/libs/test_w25qxx_address_encoding.c paketinde
+eski dört-byte beklentisi üç-byte beklentisine dönüştürülmüş ve iki
+senaryo eklenmiştir. Gerçek w25qxx.c çalışır; CMock SPI sınırında tam üç
+read bekler, dördüncü read'i reddeder. Winbond örneği EF-40-16,
+kart parçası 1F-87-01 ve üçüncü byte'ında yüksek bitler bulunan EF-40-F0
+girdilerinde byte sırası ve sıfır üst byte doğrulanır. Son girdi yalnız
+bit paketleme sınamasıdır; desteklenen flash parçası olduğu iddia edilmez.
+
+- Düzeltme öncesi flash paketi: 23 test, 20 geçti / 3 başarısız;
+  üç JEDEC testi fazla okuma nedeniyle başarısızdır.
+- Düzeltme sonrası flash paketi: 23/23 geçti.
+- Tüm merkezi Ceedling paketi: 504/504 geçti; atlanan test yok.
+- ARM Release incremental derlemesi başarılı; logda warning/error yok.
+- Release raw-byte equality ve ECDSA self-check geçti.
+- git diff --check geçti.
+
+Loglar test/build/production-audit-2026-10-03/ altında
+jedec-three-byte-before.log, jedec-three-byte-after.log,
+jedec-three-byte-all.log ve jedec-three-byte-release.log içindedir.
+D9.12 WEL kısmı §9.47'de, kalan JEDEC okuma kısmı bu bölümde kapatılmıştır.
+Fiziksel flash testi, cihaza yükleme ve commit yapılmamıştır.
+### 9.50 IEC104 soket verisinin AT logunda gösterilmesi — 05.10.2026
+
+**Kullanıcı isteği:** AT#SRECV=3,1024 yanıtındaki IEC104 verisinin konsol
+logunda gösterilmesi istenmiştir. Önceki payload omitted etiketi uyarı
+veya veri atılması değil, bütün SRECV yanıtları için ortak log gizlemesiydi.
+SRING:3,6 bir soket veri bildirimidir; altı byte ASDU içermeyen IEC104
+kontrol çerçevesi olabilir. Kullanıcının gerçek frame byte'ları görülmediği
+için U/S türü veya kontrol komutu kesin olarak belirlenmemiştir.
+
+**Değişiklik:** at_engine2.c log_response(), komutun AT#SRECV=3, önekiyle
+başladığını cmd_len sınırı içinde kontrol eder. Sondaki virgül 30/31 gibi
+başka socket ID'lerinin eşleşmesini engeller. IEC104 listener socket 3
+VERBOSE seviyesinde AT yanıt tamponunun tamamını iki haneli hex byte'larla
+gösterir. Böylece binary 00/04 gibi byte'lar nokta olarak kaybolmaz.
+AT header ve modem sonlandırıcısı da hex gösterime dahildir; bytes alanı
+halen response_buffer_len, yani bütün AT yanıtının boyutudur. IEC104
+çerçevesi başlık içinden ayrı boyutta raporlanmamıştır. HTTP ve diğer
+SRECV yollarının tam/kısmi/hatalı yanıt gizlemesi korunmuştur. Bilinmeyen
+soket payload marker'ı gizlenmeye devam eder. Normal modem cevaplarının
+metin/escaped CR-LF gösterimi ve VERBOSE kapısı korunur. Soket okuma,
+IEC104 parser veya veri teslim akışları değiştirilmemiştir.
+
+**Doğrulama:** test/gsm/test_at_socket_log.c merkezi Ceedling'e eklenmiştir.
+Gerçek at_engine2.c ve log_response() derlenip çalıştırılır; CMock BSP/GSM
+log seviyesi sınırlarını, capture fake konsol çıktılarını ayırır. LTO yalnız
+bu testte ilgisiz AT/hardware yollarını dışarıda bırakır; sıkı warning
+seçenekleri kapatılmamıştır. Host main shim yalnız UART DMA imzalarını
+sağlar; gerçek DMA çalıştırıldığı iddia edilmez. Sekiz test IEC104 binary
+ve kısmi timeout görünürlüğü, 29-byte AT zarfında altı-byte kontrol frame'i,
+HTTP secret gizlemesi, socket 30 ayrımı, bilinmeyen marker, normal CSQ
+metni ve VERBOSE kapısını kapsar. Web auth entegrasyonundaki mevcut
+üretim-fonksiyonu çıkarım testi de IEC104 görünürlüğü/socket ayrımıyla
+güçlendirilmiştir.
+
+- Düzeltme öncesi ilk yedi log testi: 5 geçti / 2 başarısız.
+- Son AT soket log paketi: 8/8 geçti.
+- Tüm merkezi Ceedling paketi: 512/512 geçti; atlanan test yok.
+- Web auth entegrasyonu: tam/kısmi socket secrets gizli, IEC104 hex görünür,
+  socket 30 gizli ve mevcut HTTP/kimlik kontrolleri geçti.
+- ARM Release incremental derlemesi başarılı; logda warning/error yok.
+- Release raw-byte equality ve ECDSA self-check geçti.
+- git diff --check geçti.
+
+Loglar test/build/production-audit-2026-10-03/ altında
+iec104-socket-log-before.log, iec104-socket-log-after.log,
+iec104-socket-log-all.log, iec104-socket-log-web-auth.log ve
+iec104-socket-log-release.log içindedir. Kullanıcının gönderdiği gerçek
+trafik cihazda tekrar yakalanmamıştır. Fiziksel cihaz testi, firmware
+ yükleme ve commit yapılmamıştır. Değişiklik yeni firmware yüklendiğinde
+ mevcut VERBOSE seviyesinde görünür olacaktır.
+### 9.51 Formatter/ISR yeniden giriş incelemesi — O10.13, 05.10.2026
+
+**Ara kararlar:** Kullanıcı O10.6 xsprintf çağrı değişikliklerini şimdilik
+geçmiştir. Y10.5 xscanf açıklaması maddesi ve O10.10 history maddesinde
+kod değişikliği yapılmadan sonraki maddelere geçilmiştir. O10.12 için
+repo üretim kaynaklarında %llb çağrısı bulunmamıştır; kullanıcı bu maddeyi
+geçmiştir. Bu karar tüm 64-bit veri kullanımının bulunmadığı anlamına gelmez.
+D9.13 incelemesinde eski flash haritası test kopyası bulunmamış, Stored
+Entries gerçek kayıt sayımıyla eşleşmiş ve fault akımı gösterimindeki
+açık double cast doğrulanmıştır. Saklanan fault_current alanı ve amper
+getter'ı float'tır; variadic formatter double bekler. Bu cast veri
+modelini veya kayıt boyutunu değiştirmemiştir.
+
+**O10.13 sonuç:** xsprintf/xsnprintf ortak strptr/strptr_end kullanır;
+iç içe iki tampon biçimleme çağrısına genel yeniden giriş güvencesi verilemez.
+Ancak incelenen üretim akışında normal ISR'nin bu formatter'ları çağırdığı
+bir yol doğrulanmamıştır. UART1 RX ring'e, TX tamamlanması bayrağa; UART3
+RF RX ring'e, UART4 Modbus RX tampon/bayrağa, UART5 BMS RX tamponuna yazar.
+LPUART RX shell/XMODEM durumuna aktarılır. Timer tick atomik uptime,
+Contiki timer/clock ve yazılım RTC'yi günceller. EXTI panic ISR yalnız
+GPIO/flag işidir; panic logu ana bağlamda yazılır. I2C callback ve yerel
+MSP re-init yollarında formatter çağrısı bulunmamıştır. ISR process_poll()
+fonksiyonu yalnız poll bayraklarını yazar; süreç callback'lerini anında
+çalıştırmaz. XMODEM byte ISR, event bitlerini kurar; olay işleme poll'dadır.
+
+CSLOG/CCSLOG, rtc_print_now() ve xprintf/xcprintf ile seçili çıktı
+callback'ine doğrudan yazar; timestamp için xsprintf çağırmaz. SHELL_LOG,
+xfprintf(shell_putchr, ...) kullanır. Normal bsp_putchr ve web capture
+callback'leri yeniden formatlama yapmaz. Formatter'ın sayı tamponu,
+va_list ve döngü durumu yereldir. Non-NULL çıktı callback'ine yazmak
+strptr/strptr_end'i değiştirmez. Dolayısıyla her ISR konsol çıktısının
+ana tamponu bozacağı şeklindeki genel iddia doğru değildir; iç içe
+tampon formatter'ı veya çıktı hedefi değişimi ayrıca kanıtlanmalıdır.
+Contiki süreçlerinin normal kooperatif akışı bu incelemede paralel RTOS
+thread yürütmesi olarak kabul edilmemiştir. Genel mutex, atomic pointer
+veya bütün biçimleme boyunca IRQ kapatma önerilmez.
+
+**Ayrı fault bağlamı:** HardFault_Handler_C() önce fault trace'i TAMP backup
+register'larına yazar, sonra konsol enable bayrağını açıp dump basar.
+web_shell default_rx_handler() ise komut yürütmesi boyunca xfunc_output'u
+web_shell_putchar'a yönlendirir. Bu aralıkta HardFault oluşursa handler
+çıktı hedefini değiştirmediği için dump UART yerine web capture'a gidebilir.
+Bu koşullu hedef seçimi kaynakta görünür; sahada gerçekleştiği gösterilmemiştir.
+Fault handler geri dönmez; TAMP trace, dump'tan önce saklandığı için
+bu yönlendirme tek başına backup kanıtının kaybolduğunu göstermez.
+Bu, normal ISR'nin strptr yarışından ayrı bir teşhis çıktısı konusudur.
+
+**Önerilen aksiyon:** Normal formatter yollarını korumak. İstenirse public
+sözleşmede tampon formatter'larının aynı anda/iç içe çağrılamadığını belirtmek.
+Fault dump için hedef garanti edilecekse HardFault dump başlamadan mevcut
+BSP konsol çıktı callback'ini açıkça seçmek ve web hedefi aktifken konsol
+hedefine dönüldüğünü test etmek. Bu turda yönlendirme veya API değişikliği
+yapılmamıştır. Shell oturum/ISR tasarımı önceki erteleme kapsamındadır.
+
+**Doğrulama:** Mevcut test/libs/test_xsnprintf_format_scenario.c merkezi
+Ceedling paketi 18/18 geçti. Buradaki interleaved_calls testi ardışık
+tamamlanmış çağrıları sınar; ISR preemption veya iç içe formatter testidir
+şeklinde sunulmaz. Log: test/build/production-audit-2026-10-03/
+formatter-isr-review.log. Genel yeniden giriş güvenliği veya fiziksel
+kesme davranışı kanıtlanmamıştır. Yeni test/kod, Release derlemesi,
+cihaz testi ve commit yapılmamıştır.
+### 9.52 Shell/API ve karakter genişliği düzeltmeleri — D10.15, 05.10.2026
+
+Kullanıcı güncel incelemede belirtilen dört tutarsızlığın düzeltilmesini
+onaylamıştır. %c bir karakter formatıdır; %5c beş sütuna sağdan, %-5c
+soldan yerleştirir. Aktarılan char, variadic sınırda int olarak okunur.
+
+**İmza ve C++ bağlantısı:** LPUART ISR'deki shell_on_rx_received(uint8_t)
+yerel extern kaldırılmış, USER CODE Includes alanına shell.h eklenmiştir.
+Ortak gerçek int imzası kullanılır; alınan byte'ın 0–255 değeri korunur.
+Core dosyasındaki değişiklikler Header/Includes/LPUART USER CODE alanlarıyla
+sınırlıdır; bu alanlar çıkarıldıktan sonra önceki dosyayla metin eşitliği
+kontrol edilmiştir. ST lisans başlığı korunmuştur. xprintf.h içinde xcprintf
+ve xprintf_set_color bildirimleri mevcut extern "C" ve XF_USE_OUTPUT bloğuna
+alınmıştır. Gerçek formatter C olarak derlenmiş; iki fonksiyonu çağıran
+C++20 programı bu nesneyle linklenip çalışmıştır.
+
+**Renk:** SHELL_CLOG renk argümanını bir kez değerlendirir; NULL değilse
+shell_putchr yolu üzerinden ANSI renk dizisi, metin ve renk reseti gönderir.
+Global xfunc_output'a yönlenmez. Web terminalinin metin capture'ında ANSI
+CSI dizileri süzülür; UART renkli kalırken web'de [31m/[0m gibi parçalar
+ve gereksiz truncation oluşmaz. Escape durumu her request capture başında
+sıfırlanır. Metnin mevcut JSON quote/backslash/newline kaçışı korunur.
+Bu uyum renk argümanının uygulanmasının web yanıtına etkisini karşılar;
+yeni history/TAB özelliği veya shell oturum mimarisi eklenmemiştir.
+
+**Karakter genişliği:** xvfprintf() %c kolunda mevcut width/left-align
+bilgisine göre boşluk ekler. %c/%1c davranışı ve int argüman tüketimi
+korunur. Dinamik pozitif/negatif genişlik desteklenir. xsnprintf tampon
+sınırı ve truncation-clamped dönüş sözleşmesi korunur; padding için yeni
+heap veya geçici tampon eklenmemiştir. Ertelenen xsprintf çağrı dönüşümü
+ve 64-bit binary tampon genişletmesi bu değişiklikte yapılmamıştır.
+
+**Doğrulama:** test/libs/test_xsnprintf_format_scenario.c içine üç senaryo
+ eklenmiştir: snprintf ile statik/dinamik karakter hizalama karşılaştırması,
+ dar tampondaki canary/sınır ve NUL karakterinin padding/dönüş sayısı.
+ test/libs/test_shell_color_output.c merkezi Ceedling'e beş senaryo ekler:
+ gerçek SHELL_CLOG makrosu/xprintf.c/web_shell.c çalışır, shell writer sınırı
+ CMock callback ile ayrılır. UART renk/reset, NULL renk, web CSI süzme ile
+ JSON kaçışları, capture'lar arası durum sıfırlama ve renk dizilerinin text
+ kapasitesini tüketmemesi kapsanır.
+
+- Karakter testleri düzeltme öncesi 21 test: 18 geçti / 3 başarısız.
+- Düzeltme sonrası formatter paketi 21/21; shell renk paketi 5/5 geçti.
+- Tüm merkezi Ceedling paketi 520/520 geçti; atlanan test yok.
+- Tam paket sonrasında web renk testinin JSON kaçış kontrolü güçlendirilmiş,
+  ilgili paket tekrar 5/5 geçmiştir; üretim kodu bu adımda değişmemiştir.
+- C++ header/C formatter link ve çalıştırma kontrolü geçti.
+- ARM Release incremental ve raw-byte equality/ECDSA self-check başarılı;
+  logda warning/error yok. git diff --check geçti.
+
+Loglar test/build/production-audit-2026-10-03/ altında
+character-width-before.log, character-width-after.log, shell-color-after.log,
+api-formatter-all.log ve api-formatter-release.log içindedir. C++ kontrol
+kaynak/nesne/programı xprintf-linkage-review adıyla aynı build alanındadır.
+Bu dört tutarsızlık kapatılmıştır. D10.15'in eski rapordaki diğer NULL,
+switch/default ve parser-bound maddeleri ayrı inceleme gerektirir.
+Fiziksel UART/web cihaz testi, cihaza yükleme ve commit yapılmamıştır.
+### 9.53 JEDEC, IEC104 log ve API/formatter commit kapsamı — 05.10.2026
+
+Kullanıcı tamamlanan değişikliklerin commit edilmesini onaylamıştır.
+Bu kayıtla aynı commit'in kapsamı §9.49 üç-byte JEDEC okuması, §9.50
+IEC104 socket 3 hex logu, §9.52 dört API/formatter düzeltmesi, ilgili
+merkezi Ceedling/web auth testleri ve §9.51 inceleme/erteleme kayıtlarıdır.
+Bu commit §9.49, §9.50 ve §9.52'nin önceki "commit yapılmadı" notlarını
+günceller; kalan D10.15 maddelerini kapatmaz.
+
+Son tam merkezi Ceedling sonucu 520/520'dir. Formatter 21/21, shell renk
+paketi 5/5, AT soket logu 8/8 ve flash paketi 23/23 geçmiştir. Son web renk
+paketi ayrıca JSON kaçış kontrolüyle 5/5 geçmiştir. Web auth entegrasyonu,
+C++ header/C formatter bağlantı kontrolü, ARM Release incremental derlemesi
+ve raw-byte equality/ECDSA self-check başarılıdır. Son Release logunda
+warning/error yoktur; git diff --check temizdir. Commit isteği nedeniyle
+testler tekrar çalıştırılmamıştır. CubeMX değişikliklerinin yalnız
+USER CODE alanlarında kaldığı kontrol edilmiştir. Fiziksel cihaz testi,
+cihaza yükleme ve push yapılmamıştır. Önceden izlenmeyen diğer belgeler
+commit kapsamına alınmamıştır.
 /*** end of report ***/

@@ -11,6 +11,9 @@
 #define TEST_SUPPORT_MAIN_H
 
 #include "stm32u3xx_hal_rtc.h"
+#ifdef AT_ENGINE_LOG_HOST_TEST
+#include "at_engine_log_test_platform.h"
+#endif
 #ifdef BSP_IO_HOST_TEST
 #include "bsp_io_test_platform.h"
 #endif

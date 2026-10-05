@@ -18,6 +18,9 @@
 /
 /-------------------------------------------------------------------------*/
 
+/* Author: Fatih Ozcan
+ *         fatihozcan@gmail.com */
+
 #include "xprintf.h"
 
 #define SZB_OUTPUT	32
@@ -331,8 +334,18 @@ unsigned int xvfprintf (
 		case 'X':					/* Hexdecimal (upper case) */
 			r = 16; break;
 		case 'c':					/* A character */
+            for (j = 1U; (0U == (f & 2U)) && (j < w); j++)
+            {
+                xfputc(func, ' ');
+                count++;
+            }
 			xfputc(func, (char)va_arg(arp, int));
 			count++;
+            for (; j < w; j++)
+            {
+                xfputc(func, ' ');
+                count++;
+            }
 			continue;
 		case 's':					/* String */
 			p = va_arg(arp, char*);		/* Get a pointer argument */

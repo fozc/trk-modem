@@ -1,5 +1,7 @@
 /*------------------------------------------------------------------------*/
 /* Universal string handler for user console interface  (C)ChaN, 2021     */
+/* Author: Fatih Ozcan                                                   */
+/*         fatihozcan@gmail.com                                          */
 /*------------------------------------------------------------------------*/
 
 #ifndef XPRINTF_DEF
@@ -38,6 +40,8 @@ unsigned int xsnprintf (char* buff, unsigned int len, const char* fmt, ...);
 void xfprintf (void (*func)(int), const char* fmt, ...);
 void put_dump (const void* buff, unsigned long addr, int len, size_t width);
 unsigned int xvfprintf (void(*func)(int),unsigned int max_len,const char* fmt, va_list arp);
+unsigned int xcprintf (const char* color, const char* fmt, ...);
+void xprintf_set_color(const char* color_code);
 
 
 
@@ -67,8 +71,6 @@ int xatof (char** str, double* res);
 #define XCOLOR_BLUE    "\033[34m"
 #define XCOLOR_CYAN    "\033[36m"
 
-unsigned int xcprintf (const char* color, const char* fmt, ...);
-void xprintf_set_color(const char* color_code);
 
 
 

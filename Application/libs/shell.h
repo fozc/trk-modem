@@ -2,7 +2,8 @@
  * shell.h
  *
  *  Created on: Oct 6, 2022
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  * Shell module for receiving and executing text-based commands.
  * It supports user and super-user levels, command registration, and basic line editing.
  * The shell runs as a Contiki process and interacts with the UART via a user-provided putchar function.
@@ -60,10 +61,20 @@ typedef struct
 		do{ \
 			xfprintf(shell_putchr, __VA_ARGS__); \
 		}while(0)
-	#define SHELL_CLOG(color, ...) \
-			do{ \
-				xfprintf(shell_putchr, __VA_ARGS__); \
-			}while(0)
+    #define SHELL_CLOG(color, ...) \
+        do \
+        { \
+            const char *shell_log_color = (color); \
+            if (NULL != shell_log_color) \
+            { \
+                xfprintf(shell_putchr, "%s", shell_log_color); \
+            } \
+            xfprintf(shell_putchr, __VA_ARGS__); \
+            if (NULL != shell_log_color) \
+            { \
+                xfprintf(shell_putchr, "%s", XCOLOR_RESET); \
+            } \
+        } while (0)
 #else
 	#define SHELL_LOG(...)
 	#define SHELL_CLOG(color, ...)
