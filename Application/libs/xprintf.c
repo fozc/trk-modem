@@ -208,6 +208,10 @@ void xfputs (			/* Put a string to the specified device */
 	const char*	str		/* Pointer to the string */
 )
 {
+    if (NULL == str)
+    {
+        return;
+    }
 	while (*str) {			/* Put the string */
 		xfputc(func, *str++);
 	}
