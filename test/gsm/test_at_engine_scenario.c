@@ -616,4 +616,35 @@ void test_at_srecv_real_trailer_errors_after_binary_nul_are_detected(void)
     }
 }
 
+void test_at_srecv_overflow_mid_payload_degrades_to_timeout_and_recovers(void)
+{
+    /* A late header plus a 1024-byte payload no longer fits the response
+     * buffer once junk echo text has filled most of it. The command must
+     * degrade to a clean timeout with the binary window still closed for
+     * URC dispatch, and the engine must serve the next command normally. */
+    uint8_t filler[600];
+    uint8_t payload[1024];
+    memset(filler, 'A', sizeof(filler));
+    memset(payload, 0xFF, sizeof(payload));
+    start_command("AT#SRECV=3,1024\r", 1U, 1000U);
+    receive_bytes(filler, sizeof(filler));
+    receive_bytes("\r\n#SRECV: 3,1024\r\n", 18U);
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_NONE, at_engine_get_result());
+    receive_bytes(payload, sizeof(payload));
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_NONE, at_engine_get_result());
+    TEST_ASSERT_EQUAL_UINT32(0U, urc_calls);
+    uint16_t length;
+    (void)at_engine_get_response(&length);
+    TEST_ASSERT_EQUAL_UINT16(AT_ENGINE_RESPONSE_BUFFER_SIZE - 1U, length);
+    now += 1000U;
+    (void)at_engine_process();
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_TIMEOUT, at_engine_get_result());
+    at_engine_reset();
+    start_command("AT\r", 1U, 1000U);
+    receive_bytes("\r\nOK\r\n", 6U);
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_OK, at_engine_get_result());
+    TEST_ASSERT_EQUAL_UINT32(0U, urc_calls);
+}
+
 /*** end of file ***/
