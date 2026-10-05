@@ -415,14 +415,19 @@ static void log_response(const char *p_result_str)
 	{
 		return;
 	}
-    /* SRECV responses contain raw socket payload, including HTTP secrets.
-     * Check the command as well as the payload marker: timeout/error paths
-     * may have only received part of a login request. */
+    /* Socket 3 is the IEC104 listener: show its bytes in hex at VERBOSE.
+     * Other SRECV responses can contain HTTP secrets. Keep command-based
+     * redaction even on partial timeout/error responses. */
     static const char socket_read_prefix[] = "AT#SRECV=";
+    static const char iec104_read_prefix[] = "AT#SRECV=3,";
     const size_t prefix_len = sizeof(socket_read_prefix) - 1U;
-    if ((0U != at_engine.srecv_payload_end) ||
+    const size_t iec104_prefix_len = sizeof(iec104_read_prefix) - 1U;
+    const bool iec104_read =
+        ((size_t)at_engine.cmd_len >= iec104_prefix_len) &&
+        (0 == memcmp(at_engine.cmd, iec104_read_prefix, iec104_prefix_len));
+    if (!iec104_read && ((0U != at_engine.srecv_payload_end) ||
         (((size_t)at_engine.cmd_len >= prefix_len) &&
-         (0 == memcmp(at_engine.cmd, socket_read_prefix, prefix_len))))
+         (0 == memcmp(at_engine.cmd, socket_read_prefix, prefix_len)))))
     {
         CCSLOG(XCOLOR_CYAN, "AT RX< [%s] %u bytes [payload omitted]\r\n",
                p_result_str, at_engine.response_buffer_len);
@@ -433,7 +438,12 @@ static void log_response(const char *p_result_str)
 	for(uint16_t i = 0U; i < at_engine.response_buffer_len; i++)
 	{
 		uint8_t c = at_engine.response_buffer[i];
-		if(c == '\r')      { CSLOG_NODT("\\r"); }
+        if (iec104_read)
+        {
+            CSLOG_NODT("%02X%s", (unsigned int)c,
+                (i + 1U < at_engine.response_buffer_len) ? " " : "");
+        }
+		else if(c == '\r') { CSLOG_NODT("\\r"); }
 		else if(c == '\n') { CSLOG_NODT("\\n"); }
 		else if(c >= 0x20U && c < 0x7FU) { CSLOG_NODT("%c", c); }
 		else { CSLOG_NODT("."); }

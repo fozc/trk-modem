@@ -3,6 +3,8 @@
   ******************************************************************************
   * @file    stm32u3xx_it.c
   * @brief   Interrupt Service Routines.
+  * Author: Fatih Ozcan
+  *         fatihozcan@gmail.com
   ******************************************************************************
   * @attention
   *
@@ -25,6 +27,7 @@
 #include "modbus_rtu_slave.h"
 #include "modbus_process.h"
 #include "rf_uart_bridge.h"
+#include "shell.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -500,7 +503,6 @@ void LPUART1_IRQHandler(void)
 				}
 				else
 				{
-					extern void shell_on_rx_received(uint8_t data);
 					shell_on_rx_received(data);
 				}
 			}

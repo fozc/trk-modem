@@ -192,16 +192,37 @@ void test_device_id_retains_both_bytes(void)
     TEST_ASSERT_EQUAL_HEX16(0xFFEFU, w25qxx_read_manu_deviceid());
 }
 
-void test_jedec_id_retains_high_bit_without_signed_shift(void)
+void test_jedec_id_reads_three_bytes_and_zeros_upper_byte(void)
 {
     spi_cs_low_Expect();
     spi_send_byte_ExpectAndReturn(0x9FU, 0U);
     spi_read_byte_ExpectAndReturn(0xEFU);
     spi_read_byte_ExpectAndReturn(0x40U);
     spi_read_byte_ExpectAndReturn(0x16U);
-    spi_read_byte_ExpectAndReturn(0xFFU);
     spi_cs_high_Expect();
-    TEST_ASSERT_EQUAL_HEX32(0xFF1640EFU, w25qxx_read_jedecid());
+    TEST_ASSERT_EQUAL_HEX32(0x001640EFU, w25qxx_read_jedecid());
+}
+
+void test_jedec_id_preserves_board_part_byte_order(void)
+{
+    spi_cs_low_Expect();
+    spi_send_byte_ExpectAndReturn(0x9FU, 0U);
+    spi_read_byte_ExpectAndReturn(0x1FU);
+    spi_read_byte_ExpectAndReturn(0x87U);
+    spi_read_byte_ExpectAndReturn(0x01U);
+    spi_cs_high_Expect();
+    TEST_ASSERT_EQUAL_HEX32(0x0001871FU, w25qxx_read_jedecid());
+}
+
+void test_jedec_id_preserves_high_bits_in_last_identity_byte(void)
+{
+    spi_cs_low_Expect();
+    spi_send_byte_ExpectAndReturn(0x9FU, 0U);
+    spi_read_byte_ExpectAndReturn(0xEFU);
+    spi_read_byte_ExpectAndReturn(0x40U);
+    spi_read_byte_ExpectAndReturn(0xF0U);
+    spi_cs_high_Expect();
+    TEST_ASSERT_EQUAL_HEX32(0x00F040EFU, w25qxx_read_jedecid());
 }
 
 void test_capacity_lookup_unknown_is_stable_and_empty(void)

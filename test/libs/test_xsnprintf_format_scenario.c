@@ -377,3 +377,43 @@ void test_negative_dynamic_width_retains_left_padding_contract(void)
     (void)xsnprintf(buffer, sizeof(buffer), "%*d", 6, 123);
     TEST_ASSERT_EQUAL_STRING("   123", buffer);
 }
+
+void test_character_width_and_alignment_match_snprintf(void)
+{
+    char buffer[24];
+    char expected[24];
+    static const int widths[] = {0, 1, 5, -5};
+    for (size_t i = 0U; i < sizeof(widths) / sizeof(widths[0]); i++)
+    {
+        const int length = snprintf(expected, sizeof(expected),
+            "%*c:%u", widths[i], 'A', 7U);
+        const unsigned int actual = xsnprintf(buffer, sizeof(buffer),
+            "%*c:%u", widths[i], 'A', 7U);
+        TEST_ASSERT_EQUAL_STRING(expected, buffer);
+        TEST_ASSERT_EQUAL_UINT32((uint32_t)length, actual);
+    }
+    (void)xsnprintf(buffer, sizeof(buffer), "%5c|%-5c", 'A', 'B');
+    TEST_ASSERT_EQUAL_STRING("    A|B    ", buffer);
+}
+
+void test_character_padding_truncates_without_overwriting_guards(void)
+{
+    canvas_t c;
+    canvas_init(&c);
+    TEST_ASSERT_EQUAL_UINT32(2U, xsnprintf(c.buf, 3U, "%5c", 'A'));
+    TEST_ASSERT_EQUAL_STRING("  ", c.buf);
+    TEST_ASSERT_EQUAL_HEX8(0x55U, (uint8_t)c.buf[3]);
+    TEST_ASSERT_TRUE(guards_intact(&c));
+    TEST_ASSERT_EQUAL_UINT32(2U, xsnprintf(c.buf, 3U, "%-5c", 'A'));
+    TEST_ASSERT_EQUAL_STRING("A ", c.buf);
+    TEST_ASSERT_TRUE(guards_intact(&c));
+}
+
+void test_character_nul_padding_preserves_output_count(void)
+{
+    char buffer[8];
+    static const char expected[] = {' ', ' ', '\0', '\0'};
+    TEST_ASSERT_EQUAL_UINT32(3U,
+        xsnprintf(buffer, sizeof(buffer), "%3c", 0));
+    TEST_ASSERT_EQUAL_MEMORY(expected, buffer, sizeof(expected));
+}

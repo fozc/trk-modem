@@ -1,6 +1,8 @@
 /**
  * @file web_shell.c
  * @brief Web shell - raw data transport between web UI and MCU
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  *
  * Request-scoped capture: the HTTP handler provides the response buffer
  * (web_shell_capture_begin); command output and the rf echo are
@@ -25,6 +27,8 @@ static int   cap_cap;       /* content limit: marker + NUL always fit      */
 static int   cap_pos;
 static bool  cap_active;
 static bool  cap_truncated;
+/* ANSI parser: 0 = text, 1 = ESC, 2 = CSI parameters/final byte. */
+static uint8_t cap_ansi_state;
 
 /** Write one raw byte into the capture, JSON-escaped. */
 static void capture_putc(uint8_t ch)
@@ -32,6 +36,26 @@ static void capture_putc(uint8_t ch)
     if (!cap_active)
     {
         return;   /* no capture in progress: drop */
+    }
+
+    /* The web terminal displays text; UART color sequences are not text. */
+    if (0x1BU == ch)
+    {
+        cap_ansi_state = 1U;
+        return;
+    }
+    if (1U == cap_ansi_state)
+    {
+        cap_ansi_state = ('[' == ch) ? 2U : 0U;
+        return;
+    }
+    if (2U == cap_ansi_state)
+    {
+        if ((ch >= 0x40U) && (ch <= 0x7EU))
+        {
+            cap_ansi_state = 0U;
+        }
+        return;
     }
 
     char a = 0;
@@ -137,6 +161,7 @@ void web_shell_init(web_shell_rx_cb_t rx_callback)
 
 void web_shell_capture_begin(char *dst, int room)
 {
+    cap_ansi_state = 0U;
     cap_dst = dst;
     cap_cap = (room > (WEB_SHELL_TRUNC_MARKER_LEN + 1))
                   ? (room - (WEB_SHELL_TRUNC_MARKER_LEN + 1))

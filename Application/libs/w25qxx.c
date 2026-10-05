@@ -356,20 +356,20 @@ uint16_t w25qxx_read_manu_deviceid(void)
 
 uint32_t w25qxx_read_jedecid(void)
 {
-	uint8_t jedec_id[4] = {0};
+    uint8_t jedec_id[3] = {0};
 
 	spi_cs_low();
 
 	spi_send_byte(CMD_JEDECID);
-	for(int i = 0; i < 4; i++)
+    for (size_t i = 0U; i < sizeof(jedec_id); i++)
 	{
 		jedec_id[i] = spi_read_byte();
 	}
 
 	spi_cs_high();
 
-	return (uint32_t)jedec_id[0] | ((uint32_t)jedec_id[1] << 8)
-        | ((uint32_t)jedec_id[2] << 16) | ((uint32_t)jedec_id[3] << 24);
+    return (uint32_t)jedec_id[0] | ((uint32_t)jedec_id[1] << 8)
+        | ((uint32_t)jedec_id[2] << 16);
 }
 
 
