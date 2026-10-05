@@ -1450,4 +1450,237 @@ active-low'dur. BMS reader'ın eski 0x51 yorumları önceki çalışmada
 prot_ver alanındaki 0x06 yorumu güncel 0x09 sabitiyle uyuşmaz; bu modül
 §9.31 ertelemesi kapsamındadır. Bu bölüm D8.13 için tespittir;
 yorum düzeltmesi henüz yapılmamıştır.
+### 9.40 Commit ve LED yorumlarının düzeltilmesi — D8.13, 05.10.2026
+
+Kullanıcı onayıyla O8.9 ve O8.12 düzeltmeleri, ilgili merkezi Ceedling
+testleri ve rapor kayıtları 78158e6 commit'ine alınmıştır. Commit öncesi
+son doğrulama 467/467 Ceedling testi, başarılı ARM Release derlemesi ve
+raw-byte equality/ECDSA paket self-check'tir. Bu kayıt §9.38 ve §9.39'un
+önceki "commit yapılmadı" notlarını günceller. Push yapılmamıştır.
+
+**Kanıt ve değişiklik:** led_driver.c pin tablosunun sekiz girdisi de
+active_low=1 kullanır. gpio_defs.h LED3'ü GPIO_B/PIN_1 olarak tanımlar;
+Web kanalı pin tablosunda LED3'e bağlıdır. led_driver.h açıklamasındaki
+active-high ifadesi active-low olarak ve Web satırındaki LED1/PE7
+ifadesi LED3/PB1 olarak düzeltilmiştir. Anlamsız tekrar kaldırılmış ve
+dosya başlığına zorunlu yazar bilgisi eklenmiştir. Üretim mantığı,
+API ve donanım eşlemesi değiştirilmemiştir.
+
+**Doğrulama:** Yorumlar gerçek pin tablosu ve GPIO sabitleriyle
+karşılaştırılmıştır; git diff --check geçmiştir. Yalnız açıklama değiştiği
+için yeni test eklenmemiş ve önceki test/derleme tekrar çalıştırılmamıştır.
+LED yorum uyuşmazlıkları kapatılmıştır. BMS'nin 0x81 açıklamaları güncel
+kodla tutarlıdır. PowerBoard yorum uyuşmazlığı §9.31 ertelemesi kapsamında
+açık kalır. LED yorum ve bu rapor değişikliği henüz commit edilmemiştir.
+### 9.41 SPI bekleme sınırı ve ADC DMA görünürlüğü — D8.15, 05.10.2026
+
+**Kullanıcı kararı:** D8.14 ölü kod maddesi geçilmiştir. D8.15'in GPIO
+kısmı kapsam dışında bırakılmış; SPI ve ADC düzeltmeleri onaylanmıştır.
+GPIO port/pin/mode davranışı değiştirilmemiştir.
+
+**SPI kanıtı:** spi_send_byte() TXP ve RXP bayraklarını sınırsız bekliyordu.
+Yerel LL fonksiyonları yalnız register bayrağını okur; timeout sağlamaz.
+Repo çağrıları w25qxx.c içindedir. SPI2 master, full-duplex, 8-bit ve
+DIV32 olarak başlatılır. Veri gelmeyen bir flash cevabı ile SPI register
+bayrağının hiç gelmemesi aynı durum değildir; sahada arıza gösterilmemiştir.
+
+**SPI değişikliği:** Her bayrak beklemesi HAL tick üzerinden 10 ms ile
+sınırlıdır; tick durmuşken de en fazla 100000 başarısız polling yapılır.
+Polling sınırı fiziksel süre değildir; hangisi önce dolarsa bekleme biter.
+Tick hesabı unsigned farkla sarmayı destekler. Timeout'ta CS bırakılır,
+SPI_TRANSFER_TIMEOUT kayıtlı kalır; sonraki byte/CS-low çağrıları transfer
+başlatmaz. Otomatik retry veya çevre birimi reseti eklenmemiştir. Mevcut
+w25qxx_reset() sınırında hata açıkça temizlenir; bu temizleme tek başına
+SPI donanımının toparlandığını garanti etmez. Byte API'si korunur; hatada
+0xFF döner. 0xFF geçerli veri de olabileceği için durum ayrıca sorgulanır.
+
+Flash init, WEL kontrolü, program/erase sonu busy beklemesi ve verify,
+SPI hatasını W25QXX_RES_TIMEOUT olarak iletir. Verify, beklenen veri 0xFF
+olsa bile transport hatasını başarı saymaz. Eski byte/void flash okuma
+API'leri durum dönüşü sunmaz; okuma tüketicilerinin tamamına hata aktarımı
+bu değişiklikle kapanmış sayılmaz. Kayıtlı hata yeni flash yazımlarının
+başarıyla tamamlanmasını engeller. Veri bütünlüğü ve fiziksel SPI recovery
+ayrı kabul konularıdır.
+
+**ADC kanıtı ve değişikliği:** main.c ADC1'i circular DMA olarak başlatır;
+MSP kaynağı halfword kaynak/hedef ve artan hedef adresi tanımlar. Yerel
+HAL, tampon pointer'ını DMA hedef adresi olarak kullanır. Sürekli yazılan
+32-byte aligned dört uint16_t örnekli tampon volatile yapılmıştır.
+HAL'ın uint32_t* imzasına dönüşüm yalnız adres teslim sınırında kalır.
+CPU okuma yolları volatile niteliğini korur; sıcaklık hesabı örneği bir
+kez yerel değişkene alır. Dört kanal için tutarlı toplu snapshot veya
+cache coherency güvencesi eklenmemiştir; fiziksel ölçüm testi yapılmamıştır.
+
+**Doğrulama:** Merkezi Ceedling'e test/bsp/test_spi_timeout.c (8 test) ve
+test/bsp/test_adc_dma.c (4 test) eklenmiştir. Gerçek spi.c/adc.c çalışır;
+LL/HAL sınırları fake ile ayrılır. SPI testleri hazır/gecikmeli bayrak,
+TX/RX timeout, tick sarması/durması, CS bırakma, kayıtlı hata ve geçerli
+0xFF verisini kapsar. ADC testi gerçek tampon türünü _Generic/static
+assert ile kontrol eder; HAL'a verilen hedefe değişen örnekler yazar,
+kanal eşlemesi, dönüşüm, geçersiz kanal ve sıcaklık örneğini doğrular.
+Sıcaklık fake'i yalnız örneğin LL sınırına aktarımını test eder; STM32
+kalibrasyon formülünün doğrulaması değildir. Mevcut flash senaryolarına
+beş transport hatası testi eklenmiştir. ARM objdump, üç ADC getter'da
+DMA örneği için LDRH okumasını ve sıcaklıkta tek örnek yüklemesini gösterir.
+
+- SPI: 8/8; ADC: 4/4; flash senaryoları: 15/15 geçti.
+- Tüm merkezi Ceedling paketi: 484/484 geçti; atlanan test yok.
+- ARM Release incremental derlemesi ve raw-byte equality/ECDSA self-check geçti.
+- ST stm32u3xx_ll_adc.h:2767'de bir sign-conversion uyarısı vardır;
+  önceden kapsam dışı bırakılan ST kaynağı değiştirilmemiştir.
+- git diff --check geçti. Fiziksel cihaz testi, yükleme ve commit yapılmadı.
+
+Loglar test/build/production-audit-2026-10-03/ altında
+spi-timeout-after.log, adc-dma-after.log, spi-flash-timeout-after.log,
+bsp-spi-adc-all.log ve bsp-spi-adc-release.log içindedir.
+D8.15 SPI sınırsız bekleme ve ADC okuma görünürlüğü kusurları kapatılmıştır;
+GPIO maddesi kullanıcı kararıyla kapsam dışındadır.
+### 9.42 SPI CS makroları ve hata ihtimalinin sınırı — 05.10.2026
+
+Kullanıcı isteğiyle SPI_FLASH_CS_HIGH()/SPI_FLASH_CS_LOW() makroları
+geri konmuş ve spi_cs_high()/spi_cs_low() yeniden bu makroları kullanmıştır.
+Timeout ve durum kontrolü korunur. SPI Ceedling paketi tekrar 8/8 geçmiştir;
+git diff --check temizdir. Yalnız makro yönlendirmesi değiştiği için tam
+paket ve ARM derlemesi tekrar çalıştırılmamıştır.
+
+Yerel LL kaynakta TXP gönderme FIFO'sunda paket yeri, RXP alma FIFO'sunda
+paket verisi gösterir. main.c SPI2'yi enable/start ederek master ve
+full-duplex kullanır; repo içinde SPI2'yi sonradan disable/suspend eden
+uygulama çağrısı bulunmamıştır. Güncel normal akışta bayrağın takıldığı
+somut bir yol veya saha arızası gösterilmemiştir. Timeout olağan flash
+cevabının gecikme kontrolü değil, tamamlanmayan çevre birimi aktarımında
+sonsuz beklemeyi önleyen savunmadır. Flash'ın ayrılması/yanıt vermemesi
+tek başına master RX bayrağının gelmemesini göstermez: SPI master saati
+üretir, MISO'dan geçersiz veri örnekleyebilir. Kimlik/veri kontrolü ayrı
+konudur. Kaynak: ST AN5543 SPI master/clock ve FIFO açıklamaları.
+https://www.st.com/resource/en/application_note/an5543-guidelines-for-enhanced-spi-communication-on-stm32-mcus-and-mpus-stmicroelectronics.pdf
+
+Hata oluşma sıklığı ölçülmemiştir; bir olasılık yüzdesi verilmez. Çevre
+biriminin clock/enable/transfer koşulları kaybolursa bayrak ilerlemeyebilir;
+bu koşulun mevcut uygulamada oluştuğu kanıtlanmamıştır. Kayıtlı timeout
+sonrası transferler açık reset/hata temizleme sınırına kadar engellenir;
+otomatik recovery yoktur. Fiziksel cihaz testi ve commit yapılmamıştır.
+### 9.43 Tekrarlayan olayların log üretimi — O9.8 incelemesi, 05.10.2026
+
+**Sonuç:** Ortak rate limiter bulunmaması tek başına log flood kusuru
+kanıtı değildir. İncelenen PowerBoard/GSM üreticilerinde mevcut tekrar
+kontrolleri vardır. Bu akışların log halkasını dakikalar içinde doldurduğu
+senaryo veya saha kaydı gösterilmemiştir. Genel baskılama önerilmez;
+gerçek alarm/reset geçişlerini saklayabilir. Üretim kodu değiştirilmemiştir.
+
+- Web login: elog.c:973–997 logged_once bayrağı kullanır; tick==0 sentinel
+  kusuru zaten düzeltilmiştir. İlk giriş hatası hemen, sonraki kayıt
+  unsigned tick farkı 60000 ms'yi aşınca yazılır. Tick sarması bu fark
+  hesabında desteklenir. Bu incelemede ayrı web log sınır testi koşulmamıştır.
+- PowerBoard: power_board.c:492–520 yalnız geçerli telemetride VBAT_LOW
+  alarm_latch bitinin değişimini kaydeder. İlk örnek yalnız başlangıç
+  durumunu kurar; aynı bit durumuyla tekrarlanan PUSH/REC paketleri kayıt
+  üretmez. Bitin gerçekten 0/1 arasında gidip gelmesi yeni kayıt üretir;
+  böyle hızlı değişim saha verisiyle doğrulanmamıştır. Yeni PowerBoard
+  altyapısı için önceki erteleme kararı korunur.
+- GSM watchdog: gsm_wtd.c busy yolunda 5 dakika, liveness yolunda 10 dakika
+  eşik kullanır. Her karardan sonra ilgili zaman damgası yenilenir.
+  Liveness iki restart sonrası hard reset ister; busy yolunda iki soft
+  recovery sonrası hard reset vardır. Hızlı poll çağrısı tek başına
+  eşik dolmadan tekrar kayıt üretmez. Bunlar genel tüm GSM olaylarının
+  minimum kayıt aralığı değildir; her üreticinin kendi koşuludur.
+- GSM init: gsm_init.c cold_boot_count ile en fazla iki cold boot dener;
+  tükenince bir INIT_EXHAUSTED kaydı yazıp reset bekler. SIM değişimi
+  gsm_engine.c:1584–1589 saklanan numara ile farklılık olduğunda kaydedilir;
+  aynı numaranın tekrar okunması kayıt üretmez. gsm_elog_modem_error()
+  için repo C kaynaklarında üretim çağıranı bulunmamıştır.
+
+**Kapasite:** ELOG alanı 8192 byte, iki 4096-byte sektör; kayıt 24-byte
+payload + 4-byte seq/CRC'dir. Her sektör 146, halka en fazla 292 kayıt
+barındırır. Sektör silinerek yenilendiği için tutulan kayıt sayısı halka
+geçişlerinde değişebilir. Yüksek olay hızı eski kayıtların ömrünü kısaltır;
+bu kapasite hesabı gerçek yüksek olay hızı gösterildiği anlamına gelmez.
+
+**Doğrulama:** Mevcut gerçek gsm_wtd.c kullanan merkezi Ceedling paketi
+4/4 geçti; log: test/build/production-audit-2026-10-03/elog-flood-gsm-review.log.
+Testler erken liveness kararını, iki restart sonrası reseti, ping ile
+sayacın yenilenmesini ve busy yolunun liveness'tan ayrılmasını kapsar.
+Sık poll altında bütün log türlerinin toplam hızını, PowerBoard geçişlerini
+ve fiziksel flash aşınmasını ölçmez. Yeni test/kod ve commit eklenmemiştir.
+
+**Önerilen aksiyon:** O9.8'i web sentinel kısmı düzeltilmiş, genel flood
+iddiası mevcut üreticilerde kanıtlanmamış olarak değerlendirmek; yeni
+rate limiter eklememek. İleride gerçek tekrar sorunu görülürse olay
+kodu/payload/zaman izinden gereksiz tekrar ile gerçek durum geçişini ayırıp
+yalnız ilgili üretici için politika belirlemek. Regresyon kapsamı
+istenirse merkezi Ceedling'e web tick=0/sarma ve GSM aynı tick'te sık poll
+senaryoları eklenebilir. PowerBoard geçiş testleri yeni altyapı kapsamında
+ele alınmalıdır. Fiziksel cihaz testi ve Release derlemesi yapılmamıştır.
+### 9.44 Arıza kaynağı ertelemesi ve RTC okuma incelemesi — D9.10, 05.10.2026
+
+**O9.9 kararı:** Kullanıcı gerçek arıza kaynağının daha sonra ekleneceğini
+belirtmiştir. iec104_report_fault_event() kayıt zinciri korunur; yeni
+üretici eklenmez. Bu madde ertelenmiştir, kapatılmış değildir.
+
+**D9.10 güncel kanıt:** dt_init() gün/ay uzunluğunu ve artık yılı zaten
+kontrol eder; eski Şubat 31 bulgusu mevcut kaynakta geçerli değildir.
+ENABLE_64BIT_TIME kapalıdır; üretim 32-bit epoch API'sini kullanır.
+Kullanılmayan 64-bit konfigürasyon farkı mevcut derlemede hata değildir.
+
+Log yolları elog.c:82–94 ve iec104_elog.c:69–81, rtc_now() üzerinden
+bsp_get_datetime()/rtc_snapshot() yazılım RTC snapshot'ını kullanır.
+Snapshot PRIMASK korunarak kısa IRQ kritik bölgesinde alınır; parçalı
+okuma için mevcut koruma vardır. Yazılım başlangıç takvimi 01.01.2026'dır.
+Dış kaynak rtc_sync() alan/takvim ve 2026 epoch tabanı kontrollerinden
+geçer. Normal dış kaynak yolundan geçersiz ay/tarih kabulü gösterilmemiştir.
+
+Açık kalan yol rtc_resync_sw_from_hw()'dir: rtc_hw_read() çıktısı takvim
+kontrolü olmadan yazılım RTC'ye ve epoch'a yüklenir. Boot ve periyodik
+resync çağıranları yalnız RTC_HW_VALID_MAGIC marker'ını kontrol eder.
+Marker geçmişte saatin ayarlandığını gösterir; güncel alan doğrulaması
+yapmaz. Yerel HAL_RTC_GetTime()/HAL_RTC_GetDate() register okur, BCD'yi
+binary'ye çevirir ve her zaman HAL_OK döner; geçersiz takvim alanını
+hata dönüşüyle bildirmez. GetTime ardından GetDate sırası doğrudur.
+Bu nedenle bu sürüm için HAL_ERROR okuma senaryosunu gerçek hata yolu
+olarak sunmak doğru değildir.
+
+Donanım takvimi marker korunmuşken geçersiz değer içerirse resync bunu
+kabul eder; iki log dönüştürücüsü ayrıca doğrulamadığı için hatalı epoch
+üretilebilir. Geçersiz ay yazılım takviminde gün değişimi lookup'ını da
+etkileyebilir. Bu koşulun sahada oluştuğu, donanım register'ının bozulduğu
+veya marker'ın yanlış kaldığı gösterilmemiştir. Kanıtlanan nokta bu girişte
+kontrol eksikliğidir; fiziksel hata olasılığına yüzde verilmez.
+
+**Önerilen en küçük aksiyon:** Donanımdan yazılıma yükleme sınırında
+okunan takvim/millisec alanlarını doğrulamak; geçersiz okumada mevcut
+yazılım saati ve epoch'u korumak. GetDate ile shadow unlock sırası korunmalı,
+otomatik reset/retry veya uydurma timestamp eklenmemelidir. Dış kaynak
+2026 taban politikası ile kalıcı donanım takviminin takvim geçerliliği
+ayrılmalıdır; boot resync'in mevcut yaş kabulü sessizce değiştirilmemelidir.
+Alt-saniye hesabında SubSeconds/SecondFraction tutarlılığı da sınanmalıdır.
+Merkezi Ceedling'de gerçek resync/boot yolları için geçersiz ay, ayın gün
+sınırı, saat alanı ve alt-saniye girdisinde önceki snapshot/epoch'un
+korunması; geçerli donanım saati ve markersız boot'un korunması test edilmelidir.
+
+**Doğrulama:** Mevcut rtc_sync paketi 12/12, datetime paketi 9/9 geçti.
+Bu testler donanımdan resync doğrulama eksikliğini kapsamaz. Loglar
+ test/build/production-audit-2026-10-03/rtc-read-review.log ve
+ datetime-read-review.log içindedir. Üretim kodu, yeni test ve commit
+ eklenmemiştir; Release veya fiziksel cihaz testi yapılmamıştır.
+### 9.45 Önceki düzeltmelerin commit kapsamı — 05.10.2026
+
+Kullanıcı önceki tamamlanmış değişikliklerin commit edilmesini onaylamıştır.
+Bu kayıtla aynı commit'in kapsamı LED polarite/pin yorumları, SPI bekleme
+sınırı ve durum sorgusu, flash timeout aktarımı, ADC DMA volatile tamponu,
+merkezi Ceedling testleri ve §9.40–9.44 inceleme/karar kayıtlarıdır.
+SPI_FLASH_CS_HIGH()/LOW() makroları kullanıcı isteğiyle korunmuştur.
+Bu commit §9.40–9.42'nin önceki "commit yapılmadı" notlarını günceller.
+
+Son tam merkezi Ceedling sonucu 484/484'tür. Makro geri dönüşünden sonra
+SPI paketi tekrar 8/8 geçmiştir. ARM Release ve raw-byte equality/ECDSA
+self-check başarılıdır; kapsam dışı ST ADC başlığındaki sign-conversion
+uyarısı sürer. İnceleme sırasında GSM watchdog 4/4, RTC sync 12/12 ve
+datetime 9/9 geçmiştir. git diff --check temizdir. Loglar önceki bölümlerde
+belirtilmiştir; bu commit isteği nedeniyle testler tekrar çalıştırılmamıştır.
+
+D9.10 için önerilen donanımdan resync doğrulaması henüz uygulanmamıştır;
+bu commit açık bulguyu kapatmaz. Erteleme kararları ve eski byte/void flash
+okuma API'lerinin hata aktarımı sınırı korunur. Fiziksel cihaz testi,
+cihaza yükleme ve push yapılmamıştır. Önceden izlenmeyen diğer belgeler
+bu commit'in kapsamında değildir.
 /*** end of report ***/

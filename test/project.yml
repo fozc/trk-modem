@@ -80,6 +80,11 @@
         - -Wconversion
         - -Wdouble-promotion
         - -Wformat=2
+      test_spi_timeout:
+        - -DBSP_IO_HOST_TEST
+      test_adc_dma:
+        - -DBSP_IO_HOST_TEST
+        - -O2
       test_uart_tx_scenario:
         - -DUART_TX_HOST_TEST
         - -Isupport/uart_tx
