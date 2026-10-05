@@ -48,6 +48,10 @@ void uart_send_byte(uart_port_t port, uint8_t data)
     USART_TypeDef *uart = get_uart_instance(port);
     if (!uart) return;
 
+    while (0U == LL_USART_IsActiveFlag_TXE_TXFNF(uart))
+    {
+        /* Wait until the transmitter can accept this byte. */
+    }
     LL_USART_TransmitData8(uart, data);
     while (!LL_USART_IsActiveFlag_TXE_TXFNF(uart));
 }
@@ -102,6 +106,10 @@ void uart_send_buffer_rs485(uart_port_t port,
     LL_USART_ClearFlag_TC(uart);
 
     for (uint16_t i = 0U; i < len; i++) {
+        while (0U == LL_USART_IsActiveFlag_TXE_TXFNF(uart))
+        {
+            /* Wait until the transmitter can accept this byte. */
+        }
         LL_USART_TransmitData8(uart, buffer[i]);
         while (!LL_USART_IsActiveFlag_TXE_TXFNF(uart)) {
             /* Wait until the data register can accept the next byte. */
@@ -185,6 +193,10 @@ void uart_set_baudrate(uart_port_t port, uint32_t baudrate)
 #ifdef USART1
 void uart1_send(uint8_t data)
 {
+    while (0U == LL_USART_IsActiveFlag_TXE_TXFNF(USART1))
+    {
+        /* Wait until the transmitter can accept this byte. */
+    }
     LL_USART_TransmitData8(USART1, data);
     while (!LL_USART_IsActiveFlag_TXE_TXFNF(USART1));
 }
@@ -204,6 +216,10 @@ void uart1_set_rx_interrupt(uart_rx_interrupt_state_t state)
 #ifdef USART2
 void uart2_send(uint8_t data)
 {
+    while (0U == LL_USART_IsActiveFlag_TXE_TXFNF(USART2))
+    {
+        /* Wait until the transmitter can accept this byte. */
+    }
     LL_USART_TransmitData8(USART2, data);
     while (!LL_USART_IsActiveFlag_TXE_TXFNF(USART2));
 }
@@ -223,6 +239,10 @@ void uart2_set_rx_interrupt(uart_rx_interrupt_state_t state)
 #ifdef USART3
 void uart3_send(uint8_t data)
 {
+    while (0U == LL_USART_IsActiveFlag_TXE_TXFNF(USART3))
+    {
+        /* Wait until the transmitter can accept this byte. */
+    }
     LL_USART_TransmitData8(USART3, data);
     while (!LL_USART_IsActiveFlag_TXE_TXFNF(USART3));
 }
@@ -242,6 +262,10 @@ void uart3_set_rx_interrupt(uart_rx_interrupt_state_t state)
 #if defined(UART4) || defined(USART4)
 void uart4_send(uint8_t data)
 {
+    while (0U == LL_USART_IsActiveFlag_TXE_TXFNF(UART4))
+    {
+        /* Wait until the transmitter can accept this byte. */
+    }
     LL_USART_TransmitData8(UART4, data);
     while (!LL_USART_IsActiveFlag_TXE_TXFNF(UART4));
 }
@@ -261,6 +285,10 @@ void uart4_set_rx_interrupt(uart_rx_interrupt_state_t state)
 #if defined(UART5) || defined(USART5)
 void uart5_send(uint8_t data)
 {
+    while (0U == LL_USART_IsActiveFlag_TXE_TXFNF(UART5))
+    {
+        /* Wait until the transmitter can accept this byte. */
+    }
     LL_USART_TransmitData8(UART5, data);
     while (!LL_USART_IsActiveFlag_TXE_TXFNF(UART5));
 }
@@ -307,6 +335,10 @@ void uart_lp_send_byte(uart_lp_port_t port, uint8_t data)
     USART_TypeDef *uart_lp = get_uart_lp_instance(port);
     if (!uart_lp) return;
 
+    while (0U == LL_LPUART_IsActiveFlag_TXE_TXFNF(uart_lp))
+    {
+        /* Wait until the transmitter can accept this byte. */
+    }
     LL_LPUART_TransmitData8(uart_lp, data);
     while (!LL_LPUART_IsActiveFlag_TXE_TXFNF(uart_lp));
 }
@@ -343,6 +375,10 @@ void uart_lp_set_rx_interrupt(uart_lp_port_t port, uart_lp_rx_interrupt_state_t 
 #ifdef LPUART1
 void uart_lp_1_send(uint8_t data)
 {
+    while (0U == LL_LPUART_IsActiveFlag_TXE_TXFNF(LPUART1))
+    {
+        /* Wait until the transmitter can accept this byte. */
+    }
     LL_LPUART_TransmitData8(LPUART1, data);
     while (!LL_LPUART_IsActiveFlag_TXE_TXFNF(LPUART1));
 }
