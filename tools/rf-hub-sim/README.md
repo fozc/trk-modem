@@ -1,5 +1,11 @@
 # RF HUB Simulatoru (host, Win32)
 
+> **DEPRECATED (2026-10-06):** Bu arac Agustos 2026 dokumanlarina
+> dayanir ve BOLATeX Teslim4 R1'den sapmalar tasiyor (PWRB ailesi
+> yok, 0x40 yanit eski bicim vb.). Guncel protokol icin referans
+> DEGILDIR; yeni calismalarda `tools/rf-hil/` (Python) kullanin.
+> Dosyalar ve run_all self-test'i dokunulmadan birakilmistir.
+
 Modem_RF_Hub'un PC uzerinde birebir simulasyonu. RTU (STM32) tarafini
 gercek UART uzerinden konusturur; tum gelen/giden cerceveleri hex +
 yorum olarak loglar, klavyeden proaktif bildirim ve hata enjeksiyonu

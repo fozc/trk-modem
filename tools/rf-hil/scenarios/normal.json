@@ -1,0 +1,14 @@
+{
+  "duration_s": 86400,
+  "setup": [
+    {"do": "set_knob", "name": "live_period_s", "value": 5}
+  ],
+  "steps": [
+    {"at_s": 1.0, "do": "boot"},
+    {"at_s": 120.0, "do": "inject_trip", "line": 1, "phase": 2},
+    {"at_s": 125.0, "do": "add_events", "count": 3, "code": 1, "line": 1},
+    {"at_s": 126.0, "do": "add_events", "count": 2, "code": 7, "line": 1},
+    {"at_s": 600.0, "do": "inject_discovery", "line": 9, "phase": 1,
+     "rssi": -38}
+  ]
+}
