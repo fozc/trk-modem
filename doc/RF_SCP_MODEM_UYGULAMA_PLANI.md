@@ -1303,6 +1303,47 @@ NOR liste depolama 53 kontrol geçti. Geniş regresyon 432/432, sıkı
 ARM/C11 22 modül ve Release 0 hata/0 uyarıyla geçti. Host sonuç fiziksel
 kabul değildir; BOLATeX soruları açık kalır.
 
+## Operatör onayı kanalının netleştirilmesi — 06.10.2026
+
+Arıza listesi geçişi `4578ada` commit'iyle kaydedildi. Sonraki incelemede
+RF monitorünün alarm/latch durumunu gösterdiği, onayın mevcut
+`rf alarm-ack` terminal komutuyla verildiği doğrulandı. Ayrı faz bazlı
+web düğmesi/yazma API'si önerildi. Kullanıcı onayın hangi taraftan
+gelmesi gerektiğinin BOLATeX'e sorulmasını istedi.
+
+Yeni düğme/API, [BQ-16](BOLATEXE_SORULACAKLAR.md#bq-16--operatör-onayı-hangi-taraftan-gelmelidir)
+cevabına kadar eklenmeyecektir. Mevcut servis ve terminal davranışı
+değişmedi. Olay 101/105'in belirsiz geç kayıt bağlantısı BQ-01 cevabını
+beklemeye devam eder; bu iki sorunun kapsamı birbirine karıştırılmamalıdır.
+
+Mevcut servisin olumlu operatör onayı yolu, gerçek SCP RX fixture'ıyla
+merkezi Ceedling paketinde sınandı: eksik/geçersiz/atanmamış kaynak,
+aktif Trip_Failed için ret, restart sonrası 0 LIVE ile latch onayı,
+tekrar onayın reddi ve EUI/örnek sayacının korunması. Paket 79/79 geçti
+(`test/build/rf-alarm-ack-service.log`). Bu sonuç yeni web kanalının
+onayı veya fiziksel cihaz kabulü değildir.
+
+## Arıza günlüklerinde yük bitinin gösterimi — 06.10.2026
+
+Kalan tüketicilerin incelemesinde `fault_log` shell çıktısının olay
+yük bitini Below/Normal olarak, `iec104evtlog dump` çıktısının ise ters
+bit olarak gösterdiği doğrulandı. R1 olay ofset 13 anlamına göre iki
+çıktı da `Load=1` yük var, `Load=0` yük yok olarak düzeltildi. Enerji
+durumu ayrı gösterilir. Kayıt biçimi ve onay servisi değişmedi.
+
+Üretim `fault_log_dump()` ve `iec104_event_log_dump()` girişleri gerçek
+xprintf ve NOR Flash modeliyle sınandı. Düzeltme öncesi iki çıktı testi
+başarısız oldu; düzeltme sonrası kayıt/SCP RX/olay/IEC104 tel seçiminde
+172/172 geçti. Shell testlerinde gerçek çıktı açılır; donanım ve terminal
+çıkışı sınırları test çiftidir. Beklenen yük/enerji bitleri birbirinden
+bağımsız değerlerle sınanır.
+
+`generate_rf_scp_vectors.py --check` 14 CSV'deki 175 çerçevenin takip
+edilen fixture ile eşleştiğini doğruladı. CubeIDE Release 0 hata ve
+0 uyarıyla tamamlandı. Bunlar fiziksel cihaz kabulü değildir. BQ-16
+onay kanalı ve diğer BOLATeX cevapları beklenmeye devam eder; bu gösterim
+hataları üreticiye sorulacak yeni bir protokol belirsizliği değildir.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Değişiklik |
@@ -1328,3 +1369,5 @@ kabul değildir; BOLATeX soruları açık kalır.
 | 06.10.2026 | 0.19 | IEC104 canlı akım/RF kaynağı, kullanıcı onaylı RTU alım zamanı, BQ-15 ve 418/418 ilgili test |
 | 06.10.2026 | 0.20 | Enerji/yük için SCP bit 0/1, onaylı 49500–49520 kalite bloğu, yeni yük adları, adres çakışması koruması ve 428/428 ilgili test |
 | 06.10.2026 | 0.21 | Commit 1692957; kullanıcı anlık arıza alanlarını kaldırdı, olay yük biti doğrudan kayıt düzeltmesi ve liste adresinden gönderim hazırlığı |
+| 06.10.2026 | 0.22 | Arıza paketi commit 4578ada; BQ-16 operatör onay kaynağı sorusu, yeni web API'sinin bekletilmesi ve mevcut servisin 79/79 testi |
+| 06.10.2026 | 0.23 | Arıza/IEC104 günlük çıktılarında doğrudan yük biti, iki hata testi, 172/172 ilgili regresyon, 175 paket fixture ve Release doğrulaması |

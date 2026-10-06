@@ -1,6 +1,6 @@
 # BOLATeX'e sorulacak RF-SCP konuları
 
-**Sürüm:** 0.6
+**Sürüm:** 0.9
 
 **Tarih:** 06.10.2026
 
@@ -412,6 +412,37 @@ değildir; kaynak olay kayıtlarının zamanını değiştirmez.
 
 **Cevap:** Bekleniyor. Bu soru listesi henüz gönderilmemiştir.
 
+## BQ-16 — Operatör onayı hangi taraftan gelmelidir?
+
+**Kaynak:** R1 §4.5, `Trip_Failed` yorum tablosu; olay 101/105 ve
+§9 canlı veri/alarm eşleme tablosu.
+
+**Kanıt:** `Trip_Failed` 1→0 geçişinde uptime sıfırlandıysa alarmın
+operatör onayıyla kapanması istenir. Onayın hangi kullanıcı/merkezden,
+hangi arayüz üzerinden geldiği ve MH/AY'ye iletilip iletilmeyeceği
+tanımlanmamıştır. Bu konu, BQ-01'deki geç olayın alarm oluşturması
+sorusundan ayrıdır.
+
+**Sorular:**
+
+1. Onay RTU üzerindeki yerel web/terminal operatöründen mi, SCADA
+   merkezinden IEC104/Modbus üzerinden mi gelmelidir? İkisi de kullanılabilir
+   mi; yetkili onay kaynağı hangi taraftır?
+2. Onay yalnız RTU'nun tuttuğu alarmı mı kapatmalıdır, MH/AY'ye de
+   iletilmeli midir? İletim gerekiyorsa SCP komutu, alanları ve başarı
+   yanıtı nedir?
+3. Onay için son `Trip_Failed=0` yeterli midir, güncel LIVE alınması
+   da gerekli midir? RF bağlantısı yokken operatör onayı kabul edilebilir mi?
+
+**Mevcut uygulama:** `rf alarm-ack` terminal komutu RTU RAM alarmını
+onaylar; MH/AY'ye SCP komutu göndermez. Mevcut servis atanmış EUI kimliği,
+LIVE örneği, `Trip_Failed=0` ve latch (açık tutulan alarm) koşullarını
+kontrol eder. Bu yol üreticinin belirlediği onay kanalı olarak sunulmamalıdır.
+06.10.2026 kullanıcı kararıyla yeni faz bazlı web düğmesi/yazma API'si
+bu sorunun cevabına kadar eklenmeyecektir. Mevcut terminal yolu değiştirilmedi.
+
+**Cevap:** Bekleniyor. Belge henüz BOLATeX'e gönderilmemiştir.
+
 ## RTU tarafında alınmış kararlar
 
 Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararları
@@ -430,6 +461,7 @@ Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararlar�
 | IEC104 canlı veri zamanı | Şimdilik RTU alım saati; RTC geçersizse IV=1. Ölçüm zamanı diye sunulmaz; BQ-15 teyidi beklenir |
 | Enerji/yük ve kalite | LIVE bit 0 enerji, bit 1 yük akımı olarak aynen kullanılır. Eski nominal gösterge adları tutulmaz. Modbus 49500–49520 kalite bloğu RTU ürün kararıdır; bit 0 akım, bit 1 enerji, bit 2 yük geçerliliği taşır. Web eski/eksik örnekte var/yok yerine — gösterir. Bu tercihler BOLATeX standardı olarak sunulmamalıdır |
 | Arıza göstergeleri | 06.10.2026 kullanıcı kararı: anlık arıza akımı/süresi/tipi alanları kaldırılır; geçici/kalıcı arıza listeleri kalır. Olay ofset 13 `nominal_current_status`, dokümandaki yük var anlamıyla doğrudan saklanır; ters çevrilmez. IEC104 spontane/replay ilk liste kaydı IOA'larından kendi olay zamanıyla gönderilir; hazırlanan paket 06.10.2026 kullanıcı commit talebiyle onaylandı |
+| Operatör onayı kanalı | 06.10.2026 kullanıcı kararı: onayın nereden gelmesi gerektiği BOLATeX'e BQ-16 olarak sorulur; yeni web düğmesi/yazma API'si cevap bekler. Mevcut terminal komutu değişmez |
 | Ayarsız Powerboard ayarı | Kapasite/C-oranı için MH kayıt ve yankı kabulü ayrı gösterilir; uygulanmış sayılmaz. Ayarsız periyot BQ-14 cevabını bekler |
 
 K5 kalıcılık/otomatik tekrar tercihi kullanıcı kararıyla netleşmiştir.
@@ -448,3 +480,4 @@ protokol cevabı bu ürün kararının yerine geçmez.
 | 06.10.2026 | 0.6 | BQ-15 canlı ölçüm zamanı/RTU alım zamanı ve kullanıcı geçici tercihi eklendi |
 | 06.10.2026 | 0.7 | Enerji/yük bitlerinin doğrudan kullanımı ve ayrı Modbus/web kalite tercihi RTU kararı olarak kaydedildi; yeni protokol sorusu oluşmadı |
 | 06.10.2026 | 0.8 | Anlık arıza göstergelerinin kaldırılması RTU kararı olarak eklendi; olay yük biti ters dönüşümü hata olarak düzeltildi, üretici sorusu değildir |
+| 06.10.2026 | 0.9 | BQ-16 operatör onayının kaynağı/kanalı, MH/AY iletimi ve canlı veri koşulu; kullanıcı yeni web API'sini cevap gelene kadar bekletti |

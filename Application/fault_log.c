@@ -516,13 +516,13 @@ static int fault_log_load_feeder(uint8_t feeder_id)
 
 static void print_log(int entry_num, const fault_log_t *log)
 {
-	SHELL_CLOG(XCOLOR_CYAN, "  [%2d] %02u-%02u-%04lu %02u:%02u:%02u  I=%.1fA  T=%ums  Nominal=%s  Power=%s\r\n",
+	SHELL_CLOG(XCOLOR_CYAN, "  [%2d] %02u-%02u-%04lu %02u:%02u:%02u  I=%.1fA  T=%ums  Load=%s  Power=%s\r\n",
 			entry_num,
 			log->tm.day, log->tm.month, (uint32_t)(log->tm.year + 2000),
 			log->tm.hour, log->tm.minute, cp56time2a_get_second(&log->tm),
 			(double)fault_log_current_amps(log),
 			log->fault_duration_ms,
-			log->info.nominal_current_status ? "Below" : "Normal",
+			log->info.nominal_current_status ? "1" : "0",
 			log->info.power_status ? "On" : "Off");
 }
 

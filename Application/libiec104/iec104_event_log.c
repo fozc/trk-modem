@@ -412,7 +412,7 @@ static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq,
                       (seq_diff((uint16_t)seq, s_state->unsent_high) > 0) ||
                       (seq_diff((uint16_t)seq, s_state->unsent_low) < 0);
 
-    SHELL_LOG("  seq=%5u sent=%u  F%u Ph%u %s  I=%.1fA  T=%ums  P=%s N=%s  %02u-%02u-%04u %02u:%02u:%02u\r\n",
+    SHELL_LOG("  seq=%5u sent=%u  F%u Ph%u %s  I=%.1fA  T=%ums  P=%s Load=%s  %02u-%02u-%04u %02u:%02u:%02u\r\n",
               (unsigned)seq,
               sent ? 1U : 0U,
               (unsigned)(e.info.feeder + 1U),
@@ -421,7 +421,7 @@ static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq,
               (double)fault_log_current_amps(&e),
               (unsigned)e.fault_duration_ms,
               e.info.power_status ? "1" : "0",
-              e.info.nominal_current_status ? "0" : "1",
+              e.info.nominal_current_status ? "1" : "0",
               (unsigned)e.tm.day,
               (unsigned)e.tm.month,
               (unsigned)(e.tm.year + 2000U),

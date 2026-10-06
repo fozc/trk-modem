@@ -151,11 +151,16 @@
         - -O2
       # Existing fault/NOR fixture retains its legacy integer contracts.
       test_fault_log:
+        - -include
+        - support/shell_log_enabled.h
         - -Wno-conversion
         - -Wno-sign-conversion
         - -Wno-unused-parameter
         - -Wno-unused-variable
         - -Wno-unused-but-set-variable
+      test_iec104_event_log_shell:
+        - -include
+        - support/shell_log_enabled.h
       test_bms_reader_scenario:
         - -flto
         - -O2
