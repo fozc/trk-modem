@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.32
+**Sürüm:** 1.33
 **Tarih:** 2026-10-06
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -657,6 +657,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-06 | 1.30 | IEC104 RTU alım zamanı ve kalite; gerçek RX ile 31 seçili dosyada 418/418 test |
 | 2026-10-06 | 1.31 | SCP enerji/yük, yeni alan adları ve RF kalite bloğu; 428/428 seçili Ceedling, web ve NVRAM doğrulaması |
 | 2026-10-06 | 1.32 | Anlık arıza alanlarının kaldırılması; doğrudan olay yük biti, liste IOA hazırlığı ve 432/432 ilgili regresyon |
+| 2026-10-06 | 1.33 | Gerçek arıza/IEC104 günlük shell çıktısı testleri; 172/172 ilgili regresyon ve 175 çerçeve fixture kontrolü |
 
 ## 06.10.2026 SCP Powerboard tüketici doğrulaması
 
@@ -801,3 +802,37 @@ Web navigation kaynak/gömülü sayfada iki dilde 14 IEC104 ve 12 Modbus
 canlı ayar adresini doğrular; eski arıza alanları yoktur. HTTP handler,
 NVRAM 307 kontrol ve NOR arıza saklama 53 kontrol geçti. 22 modül sıkı
 ARM/C11 ve Release 0 hata/0 uyarıyla geçti. Fiziksel kabul yapılmadı.
+
+## 06.10.2026 Mevcut RF operatör onayı servisi
+
+`rf/test_rf_error_retry_scenario.c` paketine olumlu operatör onayı
+regresyonu eklendi. Gerçek yakalanmış LIVE paketi SCP RX üzerinden
+restart latch'i oluşturur. Eksik/geçersiz/atanmamış kaynak ve aktif
+Trip_Failed için ret; 0 flag ile latch onayı; tekrar onayın reddi;
+EUI ve örnek zaman sayacının korunması sınanır. Paket 79/79 geçti:
+`build/rf-alarm-ack-service.log`.
+
+Bu test mevcut servisi doğrular; yeni web düğmesi/yazma API'si eklenmedi.
+Kullanıcı onay kanalını BOLATeX'e sormak istedi; BQ-16 cevabı beklenir.
+
+## 06.10.2026 Arıza günlüklerinde yük biti çıktısı
+
+`application/test_fault_log.c` mevcut NOR fixture üzerinden gerçek
+`fault_log_dump()` girişini sınar. Yeni
+`iec104/test_iec104_event_log_shell.c` gerçek event log, spi_flash_log,
+CRC ve xprintf ile public dump girişini çalıştırır. Yalnız Flash,
+NVRAM, servis bağımlılıkları ve terminal çıkışı test çiftidir.
+`support/shell_log_enabled.h`, bu iki paket için gerçek shell çıktısını
+açar; üretim kaynaklarına test dalı eklenmedi.
+
+Yük var/yok ile enerji var/yok birbirinden bağımsız değerlerle sınanır.
+İki eski gösterim düzeltme öncesi başarısız oldu. Son koşu:
+
+```text
+cd test
+ruby -S ceedling "test:pattern[(test_fault_log|test_iec104_event_log_shell|test_rf_events|test_rf_error_retry_scenario|test_iec104_protocol_scenario)]"
+```
+
+`build/rf-load-shell-regression.log`: 172/172 geçti; bütün depo suite
+sonucu değildir. Fixture güncellik kontrolü 14 CSV/175 çerçeve için
+geçti. Release 0 hata/0 uyarıyla tamamlandı; fiziksel kabul yapılmadı.
