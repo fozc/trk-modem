@@ -1,6 +1,9 @@
 /*
  * gsm_signal_led.c
  *
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
+ *
  * Classifies AT+CESQ readings into (technology, level) and delegates
  * the actual LED output to the weak BSP hook gsm_signal_led_apply().
  *
@@ -19,10 +22,8 @@
 #include "gsm_signal_led.h"
 #include "gsm_info.h"
 
-/* CESQ "not available" sentinels */
-#define RXLEV_UNAVAIL  99U
-#define RSCP_UNAVAIL  255U
-#define RSRP_UNAVAIL  255U
+/* Gecerli aralik sinirlari gsm_info.h'den gelir (GSM_CESQ_*_MAX):
+ * sentinel ve ayrilmis degerler ayni sekilde elenir. */
 
 /* Thresholds for field-to-level mapping */
 #define RXLEV_WEAK_MAX  14U
@@ -50,7 +51,7 @@ static gsm_signal_level_t s_level = GSM_SIGNAL_LEVEL_NONE;
 
 static gsm_signal_level_t level_from_rxlev(uint8_t rxlev)
 {
-    if (rxlev >= RXLEV_UNAVAIL)  { return GSM_SIGNAL_LEVEL_NONE;      }
+    if (rxlev > GSM_CESQ_RXLEV_MAX) { return GSM_SIGNAL_LEVEL_NONE;      }
     if (rxlev <= RXLEV_WEAK_MAX) { return GSM_SIGNAL_LEVEL_WEAK;      }
     if (rxlev <= RXLEV_FAIR_MAX) { return GSM_SIGNAL_LEVEL_FAIR;      }
     if (rxlev <= RXLEV_GOOD_MAX) { return GSM_SIGNAL_LEVEL_GOOD;      }
@@ -59,7 +60,7 @@ static gsm_signal_level_t level_from_rxlev(uint8_t rxlev)
 
 static gsm_signal_level_t level_from_rscp(uint8_t rscp)
 {
-    if (rscp >= RSCP_UNAVAIL)  { return GSM_SIGNAL_LEVEL_NONE;      }
+    if (rscp > GSM_CESQ_RSCP_MAX) { return GSM_SIGNAL_LEVEL_NONE;      }
     if (rscp <= RSCP_WEAK_MAX) { return GSM_SIGNAL_LEVEL_WEAK;      }
     if (rscp <= RSCP_FAIR_MAX) { return GSM_SIGNAL_LEVEL_FAIR;      }
     if (rscp <= RSCP_GOOD_MAX) { return GSM_SIGNAL_LEVEL_GOOD;      }
@@ -68,7 +69,7 @@ static gsm_signal_level_t level_from_rscp(uint8_t rscp)
 
 static gsm_signal_level_t level_from_rsrp(uint8_t rsrp)
 {
-    if (rsrp >= RSRP_UNAVAIL)  { return GSM_SIGNAL_LEVEL_NONE;      }
+    if (rsrp > GSM_CESQ_RSRP_MAX) { return GSM_SIGNAL_LEVEL_NONE;      }
     if (rsrp <= RSRP_WEAK_MAX) { return GSM_SIGNAL_LEVEL_WEAK;      }
     if (rsrp <= RSRP_FAIR_MAX) { return GSM_SIGNAL_LEVEL_FAIR;      }
     if (rsrp <= RSRP_GOOD_MAX) { return GSM_SIGNAL_LEVEL_GOOD;      }
@@ -118,17 +119,17 @@ void gsm_signal_led_update(void)
 
     /* Determine the highest-priority technology that is currently available.
      * Priority: 4G LTE (rsrp) > 3G WCDMA (rscp) > 2G GSM (rxlev). */
-    if (rsrp < RSRP_UNAVAIL)
+    if (rsrp <= GSM_CESQ_RSRP_MAX)
     {
         s_tech  = GSM_SIGNAL_TECH_4G;
         s_level = level_from_rsrp(rsrp);
     }
-    else if (rscp < RSCP_UNAVAIL)
+    else if (rscp <= GSM_CESQ_RSCP_MAX)
     {
         s_tech  = GSM_SIGNAL_TECH_3G;
         s_level = level_from_rscp(rscp);
     }
-    else if (rxlev < RXLEV_UNAVAIL)
+    else if (rxlev <= GSM_CESQ_RXLEV_MAX)
     {
         s_tech  = GSM_SIGNAL_TECH_2G;
         s_level = level_from_rxlev(rxlev);

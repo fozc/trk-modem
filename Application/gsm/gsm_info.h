@@ -1,6 +1,9 @@
 /*
  * gsm_info.h
  *
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
+ *
  * Centralised runtime storage for GSM module information.
  * All AT-parsed data (IMEI, ICCID, IMSI, signal, network state, etc.)
  * is written here by the init/periodical callbacks and read by the
@@ -189,6 +192,16 @@ void     gsm_info_get_rxtx_counters(uint32_t *p_tx, uint32_t *p_rx);
 
 /* ---------- +CESQ telemetry report ---------- */
 
+/** +CESQ belgelenmis gecerli aralik ust sinirlari (3GPP TS 27.007).
+ * Sentinel (99/255) ve ayrilmis degerler sinirlarin disindadir.
+ * Rapor ve LED siniflandirmasi icin tek kaynak. */
+#define GSM_CESQ_RXLEV_MAX  63U
+#define GSM_CESQ_BER_MAX    7U
+#define GSM_CESQ_RSCP_MAX   96U
+#define GSM_CESQ_ECNO_MAX   49U
+#define GSM_CESQ_RSRQ_MAX   34U
+#define GSM_CESQ_RSRP_MAX   97U
+
 /** Bir CESQ alaninin fiziksel birimi. */
 typedef enum
 {
@@ -202,7 +215,7 @@ typedef struct
 {
     uint8_t          raw;        /**< Ham +CESQ degeri                          */
     int16_t          physical;   /**< x10 birim (or. -800 = -80.0 dBm, -75=-7.5 dB) */
-    bool             available;  /**< Sentinel (99/255) degilse true            */
+    bool             available;  /**< Deger belgelenmis araliktaysa true (sentinel/ayrilmis = false) */
     gsm_cesq_unit_t  unit;       /**< Fiziksel birim                            */
     const char      *label;      /**< "Excellent".."Very Weak" veya "N/A"       */
 } gsm_cesq_field_t;
