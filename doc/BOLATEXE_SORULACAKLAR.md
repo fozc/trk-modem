@@ -1,6 +1,6 @@
 # BOLATeX'e sorulacak RF-SCP konuları
 
-**Sürüm:** 0.3
+**Sürüm:** 0.4
 
 **Tarih:** 06.10.2026
 
@@ -319,6 +319,67 @@ kimlik sorusunu çözülmüş saydırmaz.
 
 **Cevap:** Bekleniyor.
 
+## BQ-12 — Ayarsız kapasite/C-oranı yazımının uygulama doğrulaması
+
+**Kaynak:** R1 §5.4, ayarsız değer tablosu ve E1 ile uygulama doğrulaması.
+
+**Kanıt:** 0/255 yazımı kabul edilirken güç kartı çalışan kapasite/C-oranını
+korur. Aynı bölümde uygulama doğrulaması için E1 `cap_ah`, `crate_pm`
+alanlarının yazılan değere eşit olması istenir. Ayarsız yazımda bu eşitlik
+çalışan değerle sağlanamaz.
+
+**Sorular:** Ayarsız yazımın tamamlanması yalnız güncel GEN'e ait geçerli
+yankıyla mı doğrulanır? E1 `durum2` ve çalışan değeri için ayrıca hangi
+koşul aranmalıdır? Kapasite ayarsızken sonraki restart öncesi/sonrası
+sonuç nasıl adlandırılmalıdır?
+
+**Mevcut uygulama:** 06.10.2026 kullanıcı kararıyla MH kayıt ACK'i ve yankı
+kabulü ayrı gösterilir; bu yazıma `APPLIED` denmez. İlk yazımda gerçek
+kapasite zorunluluğu korunur. Otomatik akü değişti komutu gönderilmez.
+
+**Cevap:** Bekleniyor.
+
+## BQ-13 — E7 sonuç bekleme ile yanıtsız bitişin ayrılması
+
+**Kaynak:** R1 §5.6 ve PWRB_04_komut.csv.
+
+**Kanıt:** Örnek önce `[05 01 FF 01 00]`, ardından ret sonucu
+`[05 01 02 01 00]` bildirir. İlk mesaj komut sürerken gelir. Metin,
+yanıtsız biten normal zincirde de SONUC=FF, yayin≥1 ve DURUM b2/b3=0
+bildirileceğini söyler. GET yalnız aynı beş baytı döndürür.
+
+**Sorular:** RTU aynı gövdeden zincirin hâlâ sürdüğünü veya yanıtsız
+bittiğini nasıl ayırmalıdır? Ayrı bit, bildirim sırası veya belgelenmiş
+üst bekleme süresi var mıdır? Kaybolan bitiş bildiriminden sonra GET
+ile bu ayrım kesin yapılabilir mi?
+
+**Mevcut uygulama:** FF ve b1/b2/b3 olmaması tamamlandı sayılmaz; komut
+beklemede tutulur. Operatör E7 GET ile sorgular veya E6 iptal gönderir.
+Otomatik yeniden 05 gönderimi veya tahmini bitiş süresi eklenmedi.
+İptal ACK'i sayaçların sıfırlanmadığını kanıtlamaz; ayrı akıbet bildirimi
+aynı SIRA ile izlenir.
+
+**Cevap:** Bekleniyor.
+
+## BQ-14 — Ayarsız telemetri periyodu ve b7 koruması
+
+**Kaynak:** R1 §5.4, CFG2 bayt 14 ve ayarsız değer kuralları.
+
+**Kanıt:** 0/255 ayarsız periyot kabul edilir; güç kartı 1 s kullanır.
+Bayt 14 yazımında b7'nin GET'teki gibi korunması ve b6'nın 0 olması
+da istenir. 255 değeri b6'yı kurar; 0 değeri önceki b7=1 ise bu biti siler.
+
+**Sorular:** Ayarsız değer bütün bayta mı, periyot alt alanına mı uygulanır?
+Önceki b7=0/1 için ayarsız yazımın doğru SET baytı nedir? MH bu özel
+değerlerde b6/b7 kurallarını farklı mı değerlendirir?
+
+**Mevcut uygulama:** 06.10.2026 kullanıcı kararıyla müşteri kontrol servisi
+yalnız 1–10 s periyot yazmaktadır. b7 korunur, b6=0'dır. Ayarsız periyot
+yazımı açıklama bekler. Genel codec'in ham teşhis yeteneği bu servis
+kararının yerine geçmez.
+
+**Cevap:** Bekleniyor.
+
 ## RTU tarafında alınmış kararlar
 
 Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararları
@@ -333,6 +394,7 @@ Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararlar�
 | HEAD sorgusu | 60 s RTU poll tercihi; dokümanda zorunlu RTU süresi değildir |
 | Tekrar kayıt | Restart/kayıp tüketme sonucunda kopya mümkündür; kalıcı tekilleştirme garantisi yoktur |
 | Sahadaki eski biçim | Saha cihazı yoktur; eski RF model/JSON/görüntü migration'ı istenmemiştir |
+| Ayarsız Powerboard ayarı | Kapasite/C-oranı için MH kayıt ve yankı kabulü ayrı gösterilir; uygulanmış sayılmaz. Ayarsız periyot BQ-14 cevabını bekler |
 
 İstenen ayarın NVRAM'e kaydedilme zamanı, PARTIAL_COMMIT'te otomatik tekrar
 ve yeni IOA/Modbus adresleri RTU ürün kararlarıdır; BOLATeX'in protokol
@@ -345,3 +407,4 @@ cevabı bu ürün kararlarının yerine geçmez. Bu konular plan K5/K9'da açık
 | 05.10.2026 | 0.1 | Bugünkü RF-SCP incelemelerinden BQ-01–09 ve RTU kararları toplandı |
 | 05.10.2026 | 0.2 | BQ-10 arıza sınıflaması/sayaçlar ve BQ-11 COMMIT öncesi ABORT kimliği eklendi |
 | 06.10.2026 | 0.3 | BQ-11'in normal grup/COMMIT sonrası ABORT uygulama durumu güncellendi; soru açık kaldı |
+| 06.10.2026 | 0.4 | BQ-12 ayarsız ayar doğrulaması, BQ-13 E7 bitiş ayrımı ve BQ-14 periyot b7 koruması |

@@ -5,13 +5,18 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * Characterize PowerBoard sampling through the production FC03 path.
+ * Characterize canonical PowerBoard sampling through production FC03.
  */
 /* Keep log arguments compiled; LTO removes unused shell handlers. */
 #undef NO_SHELL_LOG
 #include "unity.h"
 #include "mock_bsp.h"
-#include "mock_i2c_slave.h"
+#include "power_board_scp.h"
+#include "mock_power_board_control.h"
+#include "mock_elog.h"
+#include "mock_shell.h"
+
+TEST_SOURCE_FILE("power_board_scp.c")
 #include "mock_modbus_config.h"
 #include "mock_modbus_system_stats.h"
 #include "mock_modbus_bms_stats.h"
@@ -20,19 +25,20 @@
 #include "mock_nvram.h"
 #include "modbus_rtu_slave.h"
 #include "modbus_power_stats.h"
-#include "power_board_decode.h"
 
 #define MODBUS_TX_USE_DMA 0
-#include "../../Application/power_board/power_board.c"
 #include "../../Application/modbus_process.c"
 
 static modbus_slave_t receiver;
 static uint32_t fake_tick;
-static uint32_t snapshot_calls;
-static bool change_sample;
-static uint8_t sample[96];
-static uint8_t response[69];
+static uint8_t response[5U + 2U * MODBUS_PWR_STATS_REG_COUNT];
 static uint16_t response_len;
+
+uint32_t HAL_GetTick(void);
+uint32_t HAL_GetTick(void)
+{
+    return fake_tick;
+}
 
 static uint32_t get_tick(void)
 {
@@ -41,27 +47,21 @@ static uint32_t get_tick(void)
 
 static void prepare_sample(uint8_t sequence, uint16_t voltage)
 {
-    memset(sample, 0, sizeof(sample));
-    sample[0x1DU] = sequence;
-    sample[0x1EU] = POWER_BOARD_PROT_VER;
-    sample[0x10U] = (uint8_t)(voltage >> 8U);
-    sample[0x11U] = (uint8_t)(voltage & 0xFFU);
-    sample[95U] = power_board_xsum(sample, 95U);
-}
-
-static void copy_snapshot(uint8_t *destination, uint8_t start,
-                          uint8_t length, int call_count)
-{
-    (void)call_count;
-    TEST_ASSERT_EQUAL_UINT8(POWER_BOARD_TLM_BASE, start);
-    TEST_ASSERT_EQUAL_UINT8(sizeof(sample), length);
-    snapshot_calls++;
-    memcpy(destination, sample, sizeof(sample));
-    /* Simulate a complete new I2C sample after register SEQ was read. */
-    if (change_sample && (3U == snapshot_calls))
+    rf_scp_message_t message =
     {
-        prepare_sample(8U, 28000U);
-    }
+        .cmd = RF_SCP_CMD_PWR_SUMMARY, .type = SCP_TYPE_SET,
+        .body.power =
+        {
+            .flags = 0x83U, .flags2 = 5U, .soc_flags = 3U,
+            .source = 1U, .session = 7U, .charge_phase = 2U,
+            .battery_ma = -321, .soc_tenths = -125,
+            .battery_temperature = 24, .board_temperature = 31,
+            .capacity_ah = 12U, .soh_percent = 96U
+        }
+    };
+    message.body.power.seq = sequence;
+    message.body.power.battery_mv = voltage;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, fake_tick));
 }
 
 static void capture_response(const uint8_t *data, uint16_t length)
@@ -121,45 +121,96 @@ static uint16_t response_register(size_t index)
 
 void setUp(void)
 {
+    power_board_control_init_Ignore();
     fake_tick = 0U;
-    snapshot_calls = 0U;
-    change_sample = false;
     response_len = 0U;
     memset(response, 0, sizeof(response));
+    shell_register_command_IgnoreAndReturn(0);
+    power_board_scp_init();
+    elog_add_Ignore();
     prepare_sample(7U, 24000U);
     libmodbusrtu_slave_init(&receiver, 1U, get_tick, capture_response);
     libmodbusrtu_register_read_callback(&receiver, fc03_read_callback);
     modbus_config_get_addr_aku_uyarisi_IgnoreAndReturn(50000U);
     modbus_config_get_addr_modem_reset_IgnoreAndReturn(50001U);
     modbus_system_stats_read_IgnoreAndReturn(false);
-    i2c_slave_snapshot_Stub(copy_snapshot);
 }
 
 void tearDown(void)
 {
 }
 
-void test_full_power_block_takes_one_snapshot_per_register(void)
+void test_full_scp_power_block_preserves_signed_quantities_and_quality(void)
 {
-    send_read(32U);
-    TEST_ASSERT_EQUAL_UINT32(32U, snapshot_calls);
+    send_read(MODBUS_PWR_STATS_REG_COUNT);
     TEST_ASSERT_EQUAL_UINT16(1U, response_register(0U));
+    TEST_ASSERT_TRUE(0U != (response_register(1U) & POWER_VALID_SUMMARY));
     TEST_ASSERT_EQUAL_UINT16(7U, response_register(2U));
-    TEST_ASSERT_EQUAL_UINT16(24000U, response_register(10U));
+    TEST_ASSERT_EQUAL_UINT16(24000U, response_register(13U));
+    TEST_ASSERT_EQUAL_HEX16((uint16_t)-321, response_register(14U));
+    TEST_ASSERT_EQUAL_HEX16((uint16_t)-125, response_register(18U));
+    TEST_ASSERT_EQUAL_UINT16(1U, response_register(37U));
 }
 
-void test_bulk_response_can_mix_two_valid_power_samples(void)
+void test_stale_power_block_retains_raw_values_but_clears_quality(void)
 {
-    change_sample = true;
-    send_read(11U);
-    TEST_ASSERT_EQUAL_UINT32(11U, snapshot_calls);
-    TEST_ASSERT_EQUAL_UINT16(1U, response_register(0U));
-    TEST_ASSERT_EQUAL_UINT16(7U, response_register(2U));
-    TEST_ASSERT_EQUAL_UINT16(28000U, response_register(10U));
-    power_board_telemetry_t latest;
-    TEST_ASSERT_TRUE(power_board_decode_telemetry(sample, &latest));
-    TEST_ASSERT_EQUAL_UINT8(8U, latest.seq);
-    TEST_ASSERT_EQUAL_UINT16(28000U, latest.vbat_mv);
+    fake_tick = 30000U;
+    send_read(MODBUS_PWR_STATS_REG_COUNT);
+    TEST_ASSERT_EQUAL_UINT16(0U, response_register(1U));
+    TEST_ASSERT_EQUAL_UINT16(24000U, response_register(13U));
+    prepare_sample(8U, 28000U);
+    send_read(MODBUS_PWR_STATS_REG_COUNT);
+    TEST_ASSERT_EQUAL_UINT16(8U, response_register(2U));
+    TEST_ASSERT_EQUAL_UINT16(28000U, response_register(13U));
+    TEST_ASSERT_TRUE(0U != (response_register(1U) & POWER_VALID_SUMMARY));
+}
+
+void test_power_read_rejects_out_of_range_and_null_without_write(void)
+{
+    uint16_t value = 0xA55AU;
+
+    TEST_ASSERT_FALSE(modbus_power_stats_read(
+        MODBUS_PWR_STATS_ADDR_BASE - 1U, &value));
+    TEST_ASSERT_EQUAL_HEX16(0xA55AU, value);
+    TEST_ASSERT_FALSE(modbus_power_stats_read(
+        MODBUS_PWR_STATS_ADDR_BASE + MODBUS_PWR_STATS_REG_COUNT, &value));
+    TEST_ASSERT_EQUAL_HEX16(0xA55AU, value);
+    TEST_ASSERT_FALSE(modbus_power_stats_read(
+        MODBUS_PWR_STATS_ADDR_BASE, NULL));
+}
+
+void test_missing_summary_has_no_quality_and_unknown_age(void)
+{
+    power_board_scp_init();
+    send_read(MODBUS_PWR_STATS_REG_COUNT);
+    TEST_ASSERT_EQUAL_UINT16(0U, response_register(0U));
+    TEST_ASSERT_EQUAL_UINT16(0U, response_register(1U));
+    TEST_ASSERT_EQUAL_UINT16(255U, response_register(5U));
+    TEST_ASSERT_EQUAL_HEX16(0xFFFFU, response_register(34U));
+    TEST_ASSERT_EQUAL_HEX16(0xFFFFU, response_register(35U));
+}
+
+void test_alarm_words_preserve_all_bits_in_fc03_response(void)
+{
+    const rf_scp_message_t message =
+    {
+        .cmd = RF_SCP_CMD_PWR_ALARM, .type = SCP_TYPE_SET,
+        .body.alarm = {.active = 0xA1234567U, .seq = 8U, .state = 1U}
+    };
+
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, fake_tick));
+    send_read(MODBUS_PWR_STATS_REG_COUNT);
+    TEST_ASSERT_EQUAL_HEX16(0xA123U, response_register(25U));
+    TEST_ASSERT_EQUAL_HEX16(0x4567U, response_register(26U));
+}
+
+void test_summary_age_uses_high_word_first_in_fc03_response(void)
+{
+    fake_tick = 0x12345678U;
+    send_read(MODBUS_PWR_STATS_REG_COUNT);
+    TEST_ASSERT_EQUAL_HEX16(0x1234U, response_register(34U));
+    TEST_ASSERT_EQUAL_HEX16((uint16_t)fake_tick, response_register(35U));
+    TEST_ASSERT_EQUAL_UINT16(0U, response_register(1U));
 }
 
 /*** end of file ***/

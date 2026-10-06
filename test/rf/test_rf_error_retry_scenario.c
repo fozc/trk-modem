@@ -18,6 +18,8 @@
 #include "rf_monitor_json.h"
 #include "mock_rf_events.h"
 #include "mock_rf_group.h"
+#include "mock_power_board_scp.h"
+#include "mock_power_board_control.h"
 #include "../fixtures/rf_scp_vectors.h"
 #include <string.h>
 
@@ -170,6 +172,14 @@ void setUp(void)
 {
     rf_events_init_Ignore();
     rf_group_init_Ignore();
+    power_board_scp_hub_restarted_Ignore();
+    power_board_control_hub_restarted_Ignore();
+    power_board_control_process_Ignore();
+    power_board_handle_command_result_IgnoreAndReturn(true);
+    power_board_handle_raw_IgnoreAndReturn(true);
+    power_board_scp_process_Ignore();
+    power_board_handle_summary_IgnoreAndReturn(true);
+    power_board_handle_alarm_IgnoreAndReturn(true);
     rf_group_hub_restarted_Ignore();
     rf_group_process_Ignore();
     rf_group_handle_status_IgnoreAndReturn(true);
@@ -2025,6 +2035,153 @@ void test_group_notify_reaches_service_through_captured_wire_without_ack(void)
         }
     }
     TEST_ASSERT_TRUE(found);
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
+}
+
+static rf_scp_message_t power_notification;
+static uint32_t power_notify_calls;
+
+static bool check_power_notification(const rf_scp_message_t *message,
+                                     uint32_t now_ms, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_UINT32(fake_tick, now_ms);
+    TEST_ASSERT_EQUAL_HEX8(power_notification.cmd, message->cmd);
+    TEST_ASSERT_EQUAL_UINT8(SCP_TYPE_SET, message->type);
+    if (RF_SCP_CMD_PWR_SUMMARY == message->cmd)
+    {
+        TEST_ASSERT_EQUAL_UINT8(power_notification.body.power.seq,
+                               message->body.power.seq);
+        TEST_ASSERT_EQUAL_INT16(power_notification.body.power.battery_ma,
+                               message->body.power.battery_ma);
+        TEST_ASSERT_EQUAL_HEX32(power_notification.body.power.active_alarms,
+                               message->body.power.active_alarms);
+    }
+    else
+    {
+        TEST_ASSERT_EQUAL_UINT8(power_notification.body.alarm.code,
+                               message->body.alarm.code);
+        TEST_ASSERT_EQUAL_UINT8(power_notification.body.alarm.value1,
+                               message->body.alarm.value1);
+        TEST_ASSERT_EQUAL_HEX32(power_notification.body.alarm.active,
+                               message->body.alarm.active);
+    }
+    power_notify_calls++;
+    return true;
+}
+
+void test_power_captures_reach_services_through_wire_without_ack(void)
+{
+    const size_t count = sizeof(rf_scp_vectors) /
+                         sizeof(rf_scp_vectors[0]);
+    uint32_t summaries = 0U;
+    uint32_t alarms = 0U;
+
+    power_notify_calls = 0U;
+    power_board_handle_summary_StopIgnore();
+    power_board_handle_alarm_StopIgnore();
+    power_board_handle_summary_StubWithCallback(check_power_notification);
+    power_board_handle_alarm_StubWithCallback(check_power_notification);
+    for (size_t index = 0U; index < count; index++)
+    {
+        const rf_scp_vector_t *vector = &rf_scp_vectors[index];
+        const uint8_t *logical = vector->logical;
+        if ((SCP_TYPE_SET == logical[2]) &&
+            ((RF_SCP_CMD_PWR_SUMMARY == logical[3]) ||
+             (RF_SCP_CMD_PWR_ALARM == logical[3])))
+        {
+            scp_packet_t packet = {0};
+
+            packet.dst = logical[0];
+            packet.src = logical[1];
+            packet.type = logical[2];
+            packet.cmd = logical[3];
+            packet.seq = logical[4];
+            packet.data_len = logical[5];
+            (void)memcpy(packet.data, &logical[7], packet.data_len);
+            TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                rf_scp_decode_message(&packet, &power_notification));
+            receive_frame(vector->wire, vector->wire_len);
+            rf_comm_check_rx();
+            if (RF_SCP_CMD_PWR_SUMMARY == packet.cmd)
+            {
+                summaries++;
+            }
+            else
+            {
+                alarms++;
+            }
+        }
+    }
+    TEST_ASSERT_TRUE(0U < summaries);
+    TEST_ASSERT_TRUE(0U < alarms);
+    TEST_ASSERT_EQUAL_UINT32(summaries + alarms, power_notify_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
+}
+
+static uint32_t control_notify_calls;
+
+static bool check_control_notification(const rf_scp_message_t *message,
+                                       int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_UINT8(SCP_TYPE_SET, message->type);
+    if (RF_SCP_CMD_PWR_RESULT == message->cmd)
+    {
+        TEST_ASSERT_EQUAL_UINT8(5U, message->body.command_result.command);
+        TEST_ASSERT_EQUAL_UINT8(1U, message->body.command_result.seq);
+    }
+    else
+    {
+        TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_PWR_TELEMETRY, message->cmd);
+        for (size_t index = 0U; index < 96U; index++)
+        {
+            TEST_ASSERT_EQUAL_UINT8(index, message->body.telemetry.bytes[index]);
+        }
+    }
+    control_notify_calls++;
+    return true;
+}
+
+void test_power_command_captures_reach_control_service_without_ack(void)
+{
+    control_notify_calls = 0U;
+    power_board_handle_command_result_StopIgnore();
+    power_board_handle_command_result_StubWithCallback(
+        check_control_notification);
+    for (size_t index = 0U;
+         index < sizeof(rf_scp_vectors) / sizeof(rf_scp_vectors[0]); index++)
+    {
+        const rf_scp_vector_t *vector = &rf_scp_vectors[index];
+        if ((RF_SCP_CMD_PWR_RESULT == vector->logical[3]) &&
+            (SCP_TYPE_SET == vector->logical[2]))
+        {
+            receive_frame(vector->wire, vector->wire_len);
+            rf_comm_check_rx();
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT32(2U, control_notify_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
+}
+
+void test_raw_notification_is_dispatched_only_for_exact_96_byte_block(void)
+{
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_PWR_TELEMETRY,
+        .data_len = 96U};
+
+    control_notify_calls = 0U;
+    power_board_handle_raw_StopIgnore();
+    power_board_handle_raw_StubWithCallback(check_control_notification);
+    for (size_t index = 0U; index < 96U; index++)
+    {
+        packet.data[index] = (uint8_t)index;
+    }
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_UINT32(1U, control_notify_calls);
+    packet.data_len = 95U;
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_UINT32(1U, control_notify_calls);
     TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
 }
 

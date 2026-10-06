@@ -9,7 +9,9 @@ olay çekme, 8 KB ham kayıt ve mevcut geçici/kalıcı arıza listesine aktarı
 bağlandı. IEC104 spontane/replay aktarımı eklendi. 101/105'in belirsiz
 geç kayıt davranışı BOLATeX cevabını bekliyor. Normal grup ayarı sıralayıcısı
 ve sonuç doğrulaması eklendi; COMMIT öncesi belirsiz temizleme, kalıcılık
-ürün kararı ve Powerboard/diğer ürün bağlantıları henüz tamamlanmadı.
+ürün kararı henüz tamamlanmadı. Powerboard özet/alarm tüketicileri SCP
+kaynağına geçirildi. Powerboard müşteri ayar/komut servisi ve ham teşhis
+bağlandı; BOLATeX teyitleri ve kalan ürün bağlantıları açıktır.
 
 ## Amaç
 
@@ -841,6 +843,177 @@ Yeni commit veya cihaz yükleme/reset yapılmadı.
 K5 desired/APPLIED kalıcılık seçimi, BQ-06/BQ-07/BQ-11 ve Powerboard
 tüketici geçişi açık kalır; normal grup akışının bitmesi bunları kapatmaz.
 
+## Powerboard tüketici geçişi — 06.10.2026
+
+### Amaç ve kullanım yeri
+
+`power_board_scp` modeli E1 özetini ve E3 alarmını mevcut RF RX/dispatch
+(alım/yönlendirme) yolundan alır. `system_status`, web JSON, Modbus ve
+`pwrboard [show|alarms]` shell komutu bu modeli okur. `app_main` artık eski
+I²C Powerboard process'ini başlatmaz. Eski kaynaklar ve saf decode testleri
+korunur; aynı ölçümlere ikinci bir üretici bağlanmaz. Fiziksel GPIO
+power-panic yolu ve kapalı BMS reader bu geçişle değiştirilmemiştir.
+
+### Kurallar ve alınan kararlar
+
+[KARAR: 06.10.2026] Kullanıcı 49200 tabanından yeni SCP Modbus haritasını
+onayladı. Blok 38 register'dır; 49200–49237 / PDU 9200–9237 aralığındadır.
+Alan, birim ve geçerlilik bitlerinin tek kaynağı
+[Modbus haritası §7.2](../Application/libmodbusrtu/MODBUS_REGISTER_MAP.md)
+olmalıdır. `modbus-tools/power_stats.mbp` aynı 38 alanı okur.
+
+E1'in 10 s periyoduna karşı RTU'da önerilen 30 s yerel eskime sınırıyla
+ilerlenmiştir. Bu süre R1'in zorunlu kuralı değildir. E1/E3 yenilenmezse
+ilgili geçerlilik bitleri temizlenir; önceki ham değer silinmez. MH BOOT
+ölçüm/alarm geçerliliğini kaldırır; Powerboard son nefes oturumu korunur.
+Web geçersiz ölçümleri `null` ve ekranda boş gösterir. SCP özetinde olmayan
+panel akımı, ortam sıcaklığı ve ısıtıcı bilgisine değer uydurulmamalıdır.
+Signed (işaretli) akım ve göreli SOC korunur; SOC'nin mutlak/göreli oluşu
+`BatterySOCAbsolute` alanıyla belirtilir. Sıcaklık ve SOH mevcut ekran
+birimlerine dönüştürülür; Modbus özetin kendi birimlerini taşır.
+
+E3 tam 32 bit active mask'i (etkin alarm bitleri) günceller. E1 mask'i
+bildirim kaybından sonra durumu düzeltir. RESET, yinelenen SEQ ve aynı
+Powerboard oturumundaki son nefes/iptal/restart bildirimleri ayrı ele alınır.
+Tahmini son nefesin gerçek kesintiye dönüşmesi aynı oturumun nedenini
+netleştirir; yeni kesinti oturumu oluşturmaz. E1 `last_gasp_count` alanı ham
+bildirim sayısıdır; benzersiz kesinti sayısı diye sunulmamalıdır.
+
+Olay günlüğü kodu 53 (`ELOG_PWR_SCP_ALARM`) E1 mask düzeltmesini ve E3
+alarmını kaydeder. 16 bayt info düzeni: [0] kaynak E1/E3, E3 için [1] code,
+[2] state, [3] seq, [4] suppressed, [6..7] value0/value1; E1 için [3] seq,
+[5] session; [8..11] yeni ve [12..15] önceki mask little-endian'dır.
+Mevcut `elog_add` API'si dönüş değeri vermediğinden bu yol kalıcı yazma
+başarısını bildirime ACK verme şartı olarak kullanmaz.
+
+### Doğrulama ve sınırlar
+
+20 ilgili Ceedling dosyasında 319/319 test geçti. Yeni model 13, sistem
+JSON 5, gerçek Modbus FC03 paketi 6 test içerir. Örnek akışlardaki E1/E3
+wire (hat) paketlerinin UART ring/COBS/parser/dispatch üzerinden servise
+ulaşması ve ACK üretilmemesi ayrıca sınandı. Ham fixture kontrolü 14 CSV'de
+175 frame için geçti. Geçersiz girişte mevcut durumun korunması, eskime,
+MH restart, tick wrap, negatif SOC/akım, sıcaklık sentinel, alarm mask'i,
+RESET ve son nefes tekrarları kapsandı.
+
+Web kaynak/gömülü sayfa navigation ve gerçek handler web_auth paketleri
+geçti. 16 modül Cortex-M33/C11 sıkı uyarılar/-Werror ile derlendi; Release
+link başarılıdır (text/data/bss: 307400/504/126792 B; eşzamanlı diğer
+değişiklikler de dahildir). Kanıtlar `test/build/scp-power-regression.log`,
+`build/scp-power-strict.log`, `build/scp-power-final-build.log` ve
+`build/scp-power-web-auth.log` içindedir. Bu sayı seçili paketlerin
+sonucudur; başka çalışmada raporlanan GSM CESQ başarısızlıklarını kapatmaz.
+Fiziksel UART/RF, enerji kesintisi veya cihaz kabulü bu adımda sınanmadı.
+
+E5/E6 Powerboard ayarları, E7 sonuç tüketicisi ve E8 ham alan eşlemesi
+sonraki adımdadır; BQ-08 açık kalır. K9'daki yeni IEC104 alarm adresleri ve
+mevcut dummy batarya uyarı register'ı bu geçişte değiştirilmemiştir.
+Yeni commit veya cihaz yükleme/reset yapılmadı.
+
+## Powerboard ayar ve komut servisi — 06.10.2026
+
+### Amaç ve kullanım yeri
+
+`power_board_control` E5–E8 için mevcut tek SCP request (istek) mekanizmasını
+kullanır. Müşteri ayarları ve operatör komutları `pwrboard` shell üzerinden
+başlatılır. Yeni NVRAM alanı yoktur; CFG2'yi kalıcı saklayan taraf R1'e göre
+MH'dir. Eski STATBLK yüzdeli C-oranı ve time calibration (saat kalibrasyonu)
+API'si bu yola taşınmaz; yeni oran binde birimindedir.
+
+### Akış ve kurallar
+
+Ayar yazımı önce E5 GET yapar; GEN alınır. Yalnız müşteri bitleri 9, 13 ve
+14 kullanılır; işletme ayarlarına yazılmamalıdır. İlk blok yokken gerçek
+7–54 Ah kapasite aynı istekte verilmelidir. Normal periyot 1–10 s'dir;
+b7 GET'teki gibi korunur ve b6=0'dır. Kapasite/C-oranında ayarsız 0/255
+kabul edilir; ayarsız periyot kullanıcı kararıyla BQ-14 cevabını bekler.
+
+SET ACK'i `written_gen` ve MH'ye kayıt kabulüdür; uygulanmış sonucu değildir.
+`max(20 s, 2 × periyot + 12 s)` sonra bir E5 GET başlatılır. Güncel GEN,
+geçerli yankı, eşleşen yankı GEN'i ve `(m1 & 0xDF)==0`, `(m2 & 0x7F)==0`
+arar. Kapasite/C-oranı değiştiyse ayrıca geçerli E1'de `durum2` b6:4=0 ve
+yazılan değerlerin eşleşmesi gerekir. Aynı anda iki alan yazımı servis
+API'sinde desteklenir. Normal kapasite/C-oranı talebi uygulanmadan akü
+değişti komutu başlatılmamalıdır; ret veya belirsiz yazım da bunu açmaz.
+
+Yankı henüz yoksa veya verification GET (doğrulama sorgusu) başarısızsa
+uygulandı/ret sonucu uydurulmaz. Operatör `cfg-read` ile yeniden sorgular;
+ek arka plan poll (periyodik sorgu) veya tahmini üst bekleme süresi eklenmez.
+GEN çatışmasında eski SET körlemesine yinelenmez; operatör aynı `cfg-set`
+talebini yeniden verdiğinde yeni GET ile başlar. Ortak SCP timeout/ERROR
+retry kuralları korunur. Yazım timeout'ı belirsizdir; yeni müşteri yazımı
+önce GET yapar. Son SET'in ret alanları ile GET'teki tarihsel `c2_red`
+ayrı gösterilir; tarihsel ret başarılı yazımın başarısızlığı sayılmamalıdır.
+
+[KARAR: 06.10.2026] Ayarsız kapasite/C-oranında MH kayıt ve yankı kabulü
+ayrı gösterilir; `ECHO_ACCEPTED` sonucu `APPLIED` diye sunulmamalıdır.
+BQ-12'de uygulama doğrulaması BOLATeX'e sorulur. Bu karar diğer normal
+kapasite/C-oranı değerinin uygulanmadan akü komutu gönderilmesini açmaz.
+
+`battery-replaced` yalnız E6 `[05 A5]` gönderir; servis komutları 01–04
+ürün API'sinde sunulmaz. ACK yalnız KOMUT/SIRA kabulüdür. E7 bildirimi veya
+GET raporu beklenen KOMUT/SIRA ile eşleşirse sonucu günceller; erken
+bildirim ACK sonrasında eşlenir. Başarılı sonuç/b3 uygulamayı, b1 izlemeyi,
+b2 doğrulanamamayı gösterir. SONUC=FF ve bit bulunmaması bitiş sayılmaz;
+BQ-13 açık kalır. Kayıp bildirim `result-get` ile sorgulanır. Otomatik yeni
+05 gönderilmemelidir. `cancel` ACK'i güç kartının sayaçları sıfırlamadığını
+kanıtlamaz; önceki SIRA'nın ayrı akıbet raporu izlenir.
+
+E8 GET ve istenmeden SET, son 96 baytı aynen saklar; alan düzeni yorumlanmaz.
+`raw` hex (onaltılık) gösterir. Blok karar/ölçüm kaynağı değildir; yaşı E1
+üzerinden değerlendirilmelidir. BQ-08 bu eklemeyle kapanmaz. MH BOOT
+kontrol sonuçlarını, config ve raw geçerliliğini kaldırır; eski işlemler
+kendiliğinden tekrar gönderilmez. Tüm kontrol erişimleri cooperative
+process/shell bağlamındadır; ISR yalnız mevcut RX ring'e bayt ekler.
+
+### Kullanım
+
+```text
+pwrboard cfg-read
+pwrboard cfg-set capacity 12
+pwrboard cfg-set rate 22
+pwrboard cfg-set period 2
+pwrboard control
+pwrboard battery-replaced
+pwrboard result-get
+pwrboard cancel
+pwrboard raw-get
+pwrboard raw
+```
+
+`cfg-set` bir alan değiştirir; her talep yeni GET ile başlar. İş sürerken
+başka yazım başlatılmaz. Yukarıdaki liste otomatik çalıştırılacak bir
+sıra değildir. Özellikle `battery-replaced` yalnız gerçekten akü değiştiyse
+ve önceki kapasite/C-oranı yazımı uygulanmışsa kullanılmalıdır. Komutların
+eklenmesi cihazda çalıştırıldığı anlamına gelmez. Shell cevabı SHELL_LOG
+ile aktif terminale gider; asenkron durum `control` ile okunur.
+
+### Doğrulama ve açık işler
+
+Yeni servis/shell paketinde 22/22, 21 ilgili Ceedling dosyasında 343/343
+geçti. Üretim codec ve kontrol servisi gerçektir; transport ve E1 snapshot
+sınırları taklit edilir. PWRB_03'ün GET/SET ACK/yankı gövdeleri, PWRB_04'ün
+sonuç bekleme ve bilerek geçersiz PARAM ret bildirimleri kullanıldı.
+E7 wire örnekleri gerçek RX/COBS/parser/dispatch'ten servise ulaşır.
+E8 CSV örneği bulunmadığından ayrı sentetik 96 bayt ve 95 bayt ret testi
+kullanıldı; alan anlamları doğrulanmış sayılmadı. GEN çatışması, ilk yazım,
+yankı ret bitleri, stale E1, birlikte kapasite/oran, ayarsız ayar, iptal
+akıbeti, erken bildirim, timeout, BOOT ve tick wrap kapsandı.
+
+18 modül Cortex-M33/C11 sıkı uyarılar/-Werror ile geçti. CubeIDE yeni iki
+kaynağı managed build'e aldı; Release link başarılıdır.
+Son link text/data/bss: 311164/504/126952 B; eşzamanlı diğer değişiklikler
+de dahildir. Web navigation kaynak/gömülü ve web_auth entegrasyonu geçti.
+Kanıtlar:
+`test/build/scp-power-control-regression.log`,
+`build/scp-power-control-strict.log`, `build/scp-power-control-release.log`,
+`build/scp-power-control-final-build.log`. Seçili test sonucu tam firmware
+suite sonucu değildir. Fiziksel UART/RF, enerji kesintisi ve güç kartı
+uygulaması sınanmadı. Commit veya cihaz yükleme/reset yapılmadı.
+
+BQ-08/BQ-12–14, K5/K9 ve fiziksel kabul açık kalır. Web/Modbus ayar yazma
+arayüzü, yeni alarm IOA'ları ve otomatik akü değişimi tetikleyicisi eklenmedi.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Değişiklik |
@@ -859,3 +1032,5 @@ tüketici geçişi açık kalır; normal grup akışının bitmesi bunları kapa
 | 05.10.2026 | 0.12 | BQ-01–09 ayrı belgeye taşındı; grup bloğu hedef/CRC/alan doğrulaması ve 253/253 ilgili test |
 | 05.10.2026 | 0.13 | BQ-10 arıza sınıflaması ve BQ-11 ABORT kimliği; shell STATUS_GET ve 256/256 ilgili test |
 | 06.10.2026 | 0.14 | Normal grup/kimlik/CRC sıralayıcısı, epoch bekleme ve shell akışı; 283/283 ilgili regresyon |
+| 06.10.2026 | 0.15 | SCP Powerboard modeli, tüketiciler, 38 register haritası ve 319/319 ilgili test |
+| 06.10.2026 | 0.16 | Powerboard E5–E8 kontrol/shell, uygulama doğrulaması, BQ-12–14 ve 343/343 ilgili test |
