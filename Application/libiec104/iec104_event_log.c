@@ -408,13 +408,11 @@ static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq,
     fault_log_t e;
     (void)memcpy(&e, payload, sizeof(e));
 
-    const bool sent = (0U == s_state->has_unsent) ||
-                      (seq_diff((uint16_t)seq, s_state->unsent_high) > 0) ||
-                      (seq_diff((uint16_t)seq, s_state->unsent_low) < 0);
-
     SHELL_LOG("  seq=%5u sent=%u  F%u Ph%u %s  I=%.1fA  T=%ums  P=%s Load=%s  %02u-%02u-%04u %02u:%02u:%02u\r\n",
               (unsigned)seq,
-              sent ? 1U : 0U,
+              ((0U == s_state->has_unsent) ||
+               (0 < seq_diff((uint16_t)seq, s_state->unsent_high)) ||
+               (0 > seq_diff((uint16_t)seq, s_state->unsent_low))) ? 1U : 0U,
               (unsigned)(e.info.feeder + 1U),
               (unsigned)(e.info.phase + 1U),
               e.info.type ? "P" : "T",
