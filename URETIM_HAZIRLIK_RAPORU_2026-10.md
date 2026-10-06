@@ -2742,3 +2742,47 @@ geçti; fiziksel RF/Flash/SCADA kabulü yapılmadı.
 `build/rf-fault-lists-web-auth.log`. Modbus haritası 1.10, plan 0.21 ve
 BOLATeX soru belgesindeki RTU karar tablosu güncellendi. Yeni bir
 üretici belirsizliği oluşmadı; açık BOLATeX soruları kapatılmadı.
+
+### 10.29. RF operatör onayı kanalı — 06.10.2026
+
+**Kanıt:** RF monitorü `TripFailedAlarm` ve `TripFailureLatched`
+durumlarını yayımlar. Onay mevcut `rf alarm-ack` terminal komutuyla
+`rf_ack_trip_failure()` servisine gider. Servis atanmış EUI/LIVE,
+Trip_Failed=0 ve latch=1 koşullarını kullanır; yalnız RTU RAM durumunu
+değiştirir. R1 §4.5 operatör onayı ister, ancak onayın kaynağını ve
+MH/AY'ye iletim gereksinimini tanımlamaz.
+
+**Kullanıcı kararı:** yeni web düğmesi/yazma API'si eklenmeden onayın
+hangi taraftan gelmesi gerektiği BOLATeX'e sorulacaktır. BQ-16 bu
+kapsamla eklendi. Mevcut servis/terminal değiştirilmedi; yeni UI/API
+eklenmedi. BQ-01'deki geç olay bağlantısı ayrıca açık kalır. Bu açık
+konu bir tamamlanmış entegrasyon olarak kapatılmamalıdır.
+
+**Doğrulama:** mevcut servisin olumlu onayı ve ret koşulları gerçek
+SCP RX fixture'ıyla Ceedling'e eklendi. Restart latch'inin doğru
+kimlik/0 flag ile kapanması, aktif hata/atanmamış kaynağın reddi,
+tekrar onayın reddi ve EUI/örnek zaman sayacının korunması sınandı.
+`test/build/rf-alarm-ack-service.log`: 79/79 geçti. Firmware mantığı
+değişmedi; yeniden hedef derlemesi veya fiziksel test yapılmadı.
+
+### 10.30. Arıza günlüklerinde yük biti çıktısı — 06.10.2026
+
+**Kanıt:** `fault_log.c:print_log()` 1 değerini Below, 0 değerini Normal
+olarak gösteriyordu. `iec104_event_log.c:visit_dump()` aynı biti ters
+gösteriyordu. R1 §4.9 olay ofset 13 ve önceki kullanıcı kararıyla bu
+bit doğrudan yük var/yok bilgisidir. İki public dump girişinin gerçek
+shell/NOR testleri düzeltme öncesi başarısız oldu.
+
+**Düzeltme:** iki shell çıktısı `Load=1/0` doğrudan anlamını kullanır;
+enerji durumu ayrı kalır. Kayıt/Flash/NVRAM biçimi, SCP veya alarm onay
+davranışı değiştirilmedi. BQ-16 ve diğer üretici cevapları beklenir.
+
+**Doğrulama:** gerçek fault/event log ve xprintf üretim girişleri;
+Flash ve terminal sınırları test çiftidir. Yük/enerji bitleri bağımsız
+değerlerle sınandı. Kayıt/SCP RX/olay/IEC104 tel seçiminde 172/172 geçti.
+14 CSV'deki 175 çerçeve güncel fixture ile eşleşti. Release 0 hata ve
+0 uyarıyla tamamlandı; fiziksel cihaz kabulü yapılmadı.
+
+**Kanıt:** `test/build/rf-load-shell-before.log`,
+`test/build/rf-load-shell-regression.log`, `build/rf-load-shell-release.log`;
+fixture için `python test/scripts/generate_rf_scp_vectors.py --check`.

@@ -1438,6 +1438,38 @@ void test_trip_failed_clears_only_with_advancing_uptime_in_same_boot(void)
     TEST_ASSERT_FALSE(data.trip_failure_latched);
 }
 
+void test_operator_ack_clears_restart_latch_only_after_zero_live_flag(void)
+{
+    load_one_phase();
+    TEST_ASSERT_FALSE(rf_ack_trip_failure(5U));
+    TEST_ASSERT_FALSE(rf_ack_trip_failure(0U));
+    TEST_ASSERT_FALSE(rf_ack_trip_failure(6U));
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    packet.data[0] = 5U;
+    packet.data[28] = 1U;
+    put_u32(&packet.data[5], 100U);
+    inject_packet(&packet);
+    TEST_ASSERT_FALSE(rf_ack_trip_failure(5U));
+
+    /* A reboot retains the failure until the operator acknowledges it. */
+    packet.data[28] = 0U;
+    put_u32(&packet.data[5], 1U);
+    inject_packet(&packet);
+    rf_phase_data_t before;
+    rf_phase_data_t after;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &before));
+    TEST_ASSERT_TRUE(before.trip_failed);
+    TEST_ASSERT_TRUE(before.trip_failure_latched);
+    TEST_ASSERT_TRUE(rf_ack_trip_failure(5U));
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &after));
+    TEST_ASSERT_FALSE(after.trip_failed);
+    TEST_ASSERT_FALSE(after.trip_failure_latched);
+    TEST_ASSERT_EQUAL_UINT32(before.live.uptime_sec, after.live.uptime_sec);
+    TEST_ASSERT_EQUAL_UINT32(before.last_live_ms, after.last_live_ms);
+    TEST_ASSERT_EQUAL_MEMORY(before.eui64, after.eui64, sizeof(after.eui64));
+    TEST_ASSERT_FALSE(rf_ack_trip_failure(5U));
+}
+
 void test_ay_restart_keeps_trip_failure_until_operator_acknowledgement(void)
 {
     load_one_phase();

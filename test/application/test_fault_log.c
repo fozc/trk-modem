@@ -15,16 +15,32 @@
 TEST_SOURCE_FILE("fault_log.c")
 TEST_SOURCE_FILE("crc32.c")
 TEST_SOURCE_FILE("cp56time2a.c")
+TEST_SOURCE_FILE("xprintf.c")
 
 #define main fault_log_integration_main
 #include "../integration/fault_log/test_fault_log.c"
 #undef main
+#define xcprintf fault_log_test_ignored_color_printf
 #include "../integration/fault_log/mock_platform.c"
+#undef xcprintf
+
+static char shell_output[8192U];
+static size_t shell_output_len;
+
+void shell_putchr(int ch)
+{
+    TEST_ASSERT_TRUE(sizeof(shell_output) > shell_output_len + 1U);
+    shell_output[shell_output_len] = (char)ch;
+    shell_output_len++;
+    shell_output[shell_output_len] = '\0';
+}
 
 void setUp(void)
 {
     passed = 0;
     failed = 0;
+    shell_output_len = 0U;
+    shell_output[0] = '\0';
 }
 
 void tearDown(void)
@@ -85,6 +101,19 @@ void test_old_inverted_load_schema_is_not_interpreted_as_load_present(void)
     }
     fault_log_init();
     TEST_ASSERT_EQUAL_UINT8(0U, fault_log_get_temp_count(0U, 0U));
+}
+
+void test_dump_displays_load_present_bit_without_old_nominal_meaning(void)
+{
+    boot_virgin();
+    TEST_ASSERT_TRUE(fault_log_add(12.0F, 100U, 1U, 0U, 0U, 0U, 0U));
+    TEST_ASSERT_TRUE(fault_log_add(13.0F, 200U, 0U, 1U, 1U, 0U, 0U));
+    TEST_ASSERT_EQUAL_INT(0, fault_log_sync());
+    fault_log_dump();
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "Load=1  Power=Off"));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "Load=0  Power=On"));
+    TEST_ASSERT_NULL(strstr(shell_output, "Nominal="));
+    TEST_ASSERT_NULL(strstr(shell_output, "Below"));
 }
 
 /*** end of file ***/
