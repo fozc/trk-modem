@@ -1567,7 +1567,7 @@ void test_invalid_data_getters_and_packets_preserve_previous_live_state(void)
     TEST_ASSERT_FALSE(rf_get_phase_data(0U, PHASE_L2, 0U, &data));
     TEST_ASSERT_FALSE(rf_get_source_data(0U, 0U, &data));
     TEST_ASSERT_FALSE(rf_get_source_data(5U, 0U, NULL));
-    TEST_ASSERT_FALSE(rf_handle_live(NULL, 0U));
+    TEST_ASSERT_FALSE(rf_handle_live(NULL, 0U, NULL));
     TEST_ASSERT_FALSE(rf_handle_trip(NULL, 0U));
     TEST_ASSERT_FALSE(rf_handle_anomaly(NULL));
     TEST_ASSERT_EQUAL_MEMORY(&previous, &data, sizeof(data));
@@ -1680,7 +1680,7 @@ void test_full_r1_monitor_response_fits_the_existing_http_buffer(void)
             live.fault_count = 255U;
             live.flags = 255U;
             live.log_wrap_low = 255U;
-            TEST_ASSERT_TRUE(rf_handle_live(&live, 0U));
+            TEST_ASSERT_TRUE(rf_handle_live(&live, 0U, NULL));
             rf_scp_trip_t trip = {0};
             trip.source = live.source;
             trip.event = 1U;
@@ -2183,6 +2183,43 @@ void test_raw_notification_is_dispatched_only_for_exact_96_byte_block(void)
     inject_packet(&packet);
     TEST_ASSERT_EQUAL_UINT32(1U, control_notify_calls);
     TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
+}
+
+void test_live_wire_captures_rtu_receive_time_and_does_not_retime_on_read(void)
+{
+    load_one_phase();
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    packet.data[0] = 5U;
+    const cp56time2a_t received = cp56time2a_from_rtc(&fake_rtc);
+
+    inject_packet(&packet);
+    rf_phase_data_t data;
+    fake_rtc.day = 6U;
+    fake_rtc.hour = 1U;
+    fake_tick = 1000U;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
+    TEST_ASSERT_EQUAL_MEMORY(&received, &data.received_time, sizeof(received));
+}
+
+void test_invalid_clock_live_wire_keeps_iv_and_bad_packet_preserves_timestamp(void)
+{
+    load_one_phase();
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    packet.data[0] = 5U;
+    rtc_valid = false;
+
+    inject_packet(&packet);
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
+    TEST_ASSERT_EQUAL_UINT8(1U, data.received_time.iv_bit);
+    const cp56time2a_t received = data.received_time;
+    rtc_valid = true;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
+    TEST_ASSERT_EQUAL_UINT8(1U, data.received_time.iv_bit);
+    packet.data_len--;
+    inject_packet(&packet);
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
+    TEST_ASSERT_EQUAL_MEMORY(&received, &data.received_time, sizeof(received));
 }
 
 /*** end of file ***/

@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.28
+**Sürüm:** 1.30
 **Tarih:** 2026-10-06
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -653,6 +653,8 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-06 | 1.26 | SCP Powerboard modeli/JSON/FC03/RX, 20 seçili dosyada 319/319 test |
 | 2026-10-06 | 1.27 | Powerboard E5–E8 servis/shell ve örnek akışlar, 21 seçili dosyada 343/343 test |
 | 2026-10-06 | 1.28 | RF web Kaydet/Uygula/durum/iptal, gerçek HTTP yetki yolu ve 24 seçili dosyada 378/378 test |
+| 2026-10-06 | 1.29 | Modbus sabit/yapılandırılabilir akım ve RF kaynağı; 30 seçili dosyada 411/411 test |
+| 2026-10-06 | 1.30 | IEC104 RTU alım zamanı ve kalite; gerçek RX ile 31 seçili dosyada 418/418 test |
 
 ## 06.10.2026 SCP Powerboard tüketici doğrulaması
 
@@ -727,3 +729,31 @@ ruby -S ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_
 24 seçili dosyada 378/378 geçti; kanıt `build/rf-group-web-regression.log`.
 RF grup/adaptör/yetki alt kümesi 32/32'dir. Host sonuç fiziksel AY kabulü
 sayılmaz. 19 modül sıkı ARM/C11 ile ve Release link başarıyla doğrulandı.
+
+## 06.10.2026 Modbus RF kaynak doğrulaması
+
+`application/test_modbus_rf_snapshot.c` sabit haritayı,
+`application/test_modbus_rf_configured.c` NVRAM adres haritasını çalıştırır.
+`support/modbus_rf_snapshot_fixture.h` gerçek RF cache ve FC03 üretim yolu
+ile ortak fixture'dır. Envanter/store ve hardware sınırları test çiftidir;
+RF tazelik/akım algoritması taklit edilmez. İki paket 5'er testtir; mevcut
+Powerboard paketiyle 16/16 geçti. Son genişletilmiş seçimde 30 dosya
+411/411 geçti (`build/modbus-rf-regression.log`); tam suite sayısı değildir.
+
+Önceki RF web komutundaki `test_modbus_power_snapshot` alternatifi yerine
+`test_modbus_` kullanılması reset/config ve her iki RF paketini de kapsar.
+LTO/O2 mevcut monolitik Modbus senaryolarındaki gibi yalnız ilgisiz
+process/hardware yollarını kaldırır; test edilen callback ve core gerçektir.
+20 modül sıkı ARM/C11 ile ve Release link başarıyla doğrulandı.
+
+## 06.10.2026 IEC104 RTU alım zamanı doğrulaması
+
+`application/test_iec104_rf_live.c` gerçek RF modeli ve üretimde kayıtlı
+IEC104 okuyucularıyla 5 test çalıştırır. `rf/test_rf_error_retry_scenario.c`
+gerçek wire RX üzerinden geçerli/geçersiz RTC ve eski zamanın korunmasını
+iki ek testle sınar. IEC104 fixture LTO/O2 ile ilgisiz socket/process
+bağlantılarını ayırır; model/okuyucu algoritmasını taklit etmez.
+
+Son Modbus seçiminde `test_iec104` yeni paketi zaten içerir: 31 seçili
+dosyada 418/418 geçti (`build/iec104-rf-live-regression.log`). 21 modül sıkı
+ARM/C11 ve Release link geçti. Bu, fiziksel RF/ölçüm gecikmesi kabulü değildir.

@@ -7,6 +7,8 @@
  */
 #define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104_process.h"
+/* HAL structs must be parsed before libiec104's legacy Init macro. */
+#include "stm32u3xx_hal.h"
 #include "iec104.h"
 #include "nvram.h"
 #include "bsp.h"
@@ -15,6 +17,7 @@
 #include "gsm_engine.h"
 #include "gsm_socket.h"
 #include "breaker.h"
+#include "rf.h"
 #include "iec104_application.h"
 #include "iec104_elog.h"
 
@@ -273,25 +276,38 @@ static int read_ariza_suresi(uint32_t line_index, uint8_t phase, float *value, q
 }
  
 
-static int read_anlik_akim(uint32_t line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp)
+static int read_anlik_akim(uint32_t line_index, uint8_t phase, float *value,
+                           qds_t *quality, cp56time2a_t *timestamp)
 {
-	*value = 0;
-	*quality = (qds_t){0};
-	*timestamp = (cp56time2a_t){0};
+    if ((NULL == value) || (NULL == quality) || (NULL == timestamp))
+    {
+        return -1;
+    }
+    *value = 0.0F;
+    *quality = (qds_t){.invalid = 1U};
+    *timestamp = (cp56time2a_t){.iv_bit = 1U};
+    if ((MAX_POWER_LINE_COUNT <= line_index) || (PHASE_MAX <= phase))
+    {
+        return -1;
+    }
+    rf_phase_data_t data;
 
-	if(phase >= PHASE_MAX){
-		return -1;
-	}
-
-	const feeder_data_t *feeder = breaker_get_feeder_data(line_index);
-	if(feeder == NULL){
-		return -1;
-	}
-
-	*value = feeder->phase[phase].anlik_akim;
-	*timestamp = feeder->phase[phase].tm_anlik_akim;
-	*quality = (qds_t){0}; //TODO: Quality bilgisini ekle
-	return 0;
+    if (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
+                         HAL_GetTick(), &data) && data.has_live)
+    {
+        *value = data.current_valid ? data.live.current_amps : 0.0F;
+        *timestamp = data.received_time;
+        *quality = (qds_t){0};
+        if (!data.current_valid || !data.is_online)
+        {
+            quality->invalid = 1U;
+        }
+        if (!data.is_online)
+        {
+            quality->not_topical = 1U;
+        }
+    }
+    return 0;
 }
 
 static int read_ariza_kalicimi(uint32_t line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp)
@@ -356,26 +372,37 @@ static int read_nominal_akim_varyok(uint32_t line_index, uint8_t phase, siq_t *v
 	return 0;
 }
 
-static int read_rf_haberlesme_varyok(uint32_t line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp)
+static int read_rf_haberlesme_varyok(uint32_t line_index, uint8_t phase,
+                                    siq_t *value, cp56time2a_t *timestamp)
 {
-	*value = (siq_t){.invalid = 1};
-	*timestamp = (cp56time2a_t){0};	
+    if ((NULL == value) || (NULL == timestamp))
+    {
+        return -1;
+    }
+    *value = (siq_t){.invalid = 1U};
+    *timestamp = (cp56time2a_t){.iv_bit = 1U};
+    if ((MAX_POWER_LINE_COUNT <= line_index) || (PHASE_MAX <= phase))
+    {
+        return -1;
+    }
+    rf_phase_data_t data;
 
-	if(phase >= PHASE_MAX){
-		return -1;
-	}
-
-	const feeder_data_t *feeder = breaker_get_feeder_data(line_index);
-	if(feeder == NULL){
-		return -1;
-	}
-
-	value->spi = feeder->phase[phase].rf_haberlesme_varyok & 0x01U;
-	value->invalid = 0; //TODO: Quality bilgisini ekle
-	*timestamp = feeder->phase[phase].tm_rf_haberlesme_varyok;
-	return 0;
+    if (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
+                         HAL_GetTick(), &data) && data.has_live)
+    {
+        *timestamp = data.received_time;
+        *value = (siq_t){0};
+        if (data.is_online)
+        {
+            value->spi = 1U;
+        }
+        else
+        {
+            value->not_topical = 1U;
+        }
+    }
+    return 0;
 }
- 
 
 PROCESS(iec104_process, "iec104_process");
 PROCESS_THREAD(iec104_process, ev, data)
@@ -439,5 +466,3 @@ void iec104_process_init(void)
 
 	process_start(&iec104_process, NULL);
 }
-
-

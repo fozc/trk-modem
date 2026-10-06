@@ -1,6 +1,6 @@
 # BOLATeX'e sorulacak RF-SCP konuları
 
-**Sürüm:** 0.5
+**Sürüm:** 0.6
 
 **Tarih:** 06.10.2026
 
@@ -380,6 +380,38 @@ kararının yerine geçmez.
 
 **Cevap:** Bekleniyor.
 
+## BQ-15 — LIVE_DATA için ölçüm zamanı ve RTU alım zamanı
+
+**Kaynak:** R1 §4.5 LIVE_DATA, 33 baytlık gövde tablosu.
+
+**Kanıt:** LIVE_DATA ayırıcının uptime (çalışma süresi) ve sıra numarasını
+taşır; mutlak ölçüm zamanı veya ölçüm zamanı geçerlilik bilgisi yoktur.
+IEC104 zaman etiketli anlık akım/RF bilgisi yayımlarken bu zaman doğrudan
+paketten alınamaz. Olay kayıtlarının zaman/clock_quality alanı farklıdır;
+canlı ölçüm zamanı yerine kullanılamaz.
+
+**Sorular:**
+
+1. IEC104 canlı verisinde RTU'nun geçerli paketi işlediği alım saatinin
+   kullanılması uygun mudur? Bu saatin ölçüm zamanı olmadığı belirtilirse
+   ayrıca önerilen zaman/kalite işareti var mıdır?
+2. Ayırıcının gerçek ölçüm zamanı başka bir bilgiyle kesin elde edilebilir
+   mi? Uptime ile saat eşlemesi öneriliyorsa restart/senkronizasyon ve
+   belirsizliğin nasıl ele alınacağı nedir?
+3. Ölçüm ile RTU alımı arasındaki gecikme için belgelenmiş bir üst sınır
+   veya doğrulanabilir hata payı var mıdır? Tipik 5/10 s gönderim periyodu
+   kesin gecikme sınırı olarak kabul edilebilir mi?
+
+**Mevcut uygulama:** 06.10.2026 kullanıcı kararıyla şimdilik RTU alım saati
+kullanılır. Saat, geçerli LIVE_DATA'nın Contiki process bağlamında
+çözümlenmesi sırasında bir kez alınır; UART ISR'in ilk bayt saati veya
+ayırıcı ölçüm saati diye sunulmaz. RTC geçersizse CP56 IV=1 kaydedilir.
+Sonraki sorgu/RTC düzeltmesi eski kaydı yeniden zamanlandırmaz. Ölçüm
+kalitesi ve zamanın IV bilgisi ayrı tutulur. Bu tercih BOLATeX cevabı
+değildir; kaynak olay kayıtlarının zamanını değiştirmez.
+
+**Cevap:** Bekleniyor. Bu soru listesi henüz gönderilmemiştir.
+
 ## RTU tarafında alınmış kararlar
 
 Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararları
@@ -395,6 +427,7 @@ Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararlar�
 | Tekrar kayıt | Restart/kayıp tüketme sonucunda kopya mümkündür; kalıcı tekilleştirme garantisi yoktur |
 | Sahadaki eski biçim | Saha cihazı yoktur; eski RF model/JSON/görüntü migration'ı istenmemiştir |
 | RF ayar kalıcılığı | 06.10.2026: Kaydet istenen ayarı NVRAM’e yazar; Uygula ayrı, APPLIED RAM durumudur; PARTIAL/FAILED otomatik tekrarlanmaz |
+| IEC104 canlı veri zamanı | Şimdilik RTU alım saati; RTC geçersizse IV=1. Ölçüm zamanı diye sunulmaz; BQ-15 teyidi beklenir |
 | Ayarsız Powerboard ayarı | Kapasite/C-oranı için MH kayıt ve yankı kabulü ayrı gösterilir; uygulanmış sayılmaz. Ayarsız periyot BQ-14 cevabını bekler |
 
 K5 kalıcılık/otomatik tekrar tercihi kullanıcı kararıyla netleşmiştir.
@@ -410,3 +443,4 @@ protokol cevabı bu ürün kararının yerine geçmez.
 | 06.10.2026 | 0.3 | BQ-11'in normal grup/COMMIT sonrası ABORT uygulama durumu güncellendi; soru açık kaldı |
 | 06.10.2026 | 0.4 | BQ-12 ayarsız ayar doğrulaması, BQ-13 E7 bitiş ayrımı ve BQ-14 periyot b7 koruması |
 | 06.10.2026 | 0.5 | K5 Kaydet/Uygula kalıcılık tercihi RTU kullanıcı kararı olarak kaydedildi; protokol soruları açık kaldı |
+| 06.10.2026 | 0.6 | BQ-15 canlı ölçüm zamanı/RTU alım zamanı ve kullanıcı geçici tercihi eklendi |

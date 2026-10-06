@@ -1098,6 +1098,104 @@ Bu web adımı henüz commit edilmedi. K9 yeni alarm adresleri, BOLATeX
 soruları ve fiziksel kabul açık kalır; K5 kalıcılık seçimi artık açık değildir.
 Cihaz yükleme/reset veya fiziksel ayar gönderimi yapılmadı.
 
+## Modbus SCP canlı veri bağlantısı — 06.10.2026
+
+RF web adımı `ba578b9` commit'ine alındı. Sonraki kaynak incelemesinde
+`iec104_process_init` içindeki `generate_dummy_test_data` çağrısının
+`breaker` faz verisini doldurduğu; mevcut IEC104 ve Modbus okuyucularının
+bu veriyi okuduğu doğrulandı. Gerçek RF cache hazır olmasına rağmen bu
+canlı akım/RF alanlarına bağlı değildi.
+
+[KARAR: 06.10.2026] Kullanıcı Modbus'ta mevcut adresleri koruyup geçersiz
+akımda NaN kullanılmasını, RF durumunun ayrı gösterilmesini onayladı.
+Anlık akım ve RF haberleşme getter (okuyucu) yolları `rf_get_phase_data`
+kaynağına geçirildi. Aynı FC03 içinde RF kalite değerlendirmesi için tek
+HAL zaman örneği alınır; tüm register callback'leri aynı cooperative
+process bağlamında tamamlanır. Böylece 30 s sınırındaki iki FLOAT32 word
+farklı geçerlilik kararları üretmez. Ek veri cache'i, IRQ kilidi veya
+Modbus library API değişikliği eklenmedi.
+
+Adres ve veri kurallarının tek kaynağı
+[Modbus haritası §5.2.1](../Application/libmodbusrtu/MODBUS_REGISTER_MAP.md)
+olmalıdır. Etkin olmayan satır/rezerve adres davranışı değişmedi.
+Dummy üretici diğer henüz bağlanmamış alanlar için korunur; yeni iki
+Modbus alanı bu veriye fallback (yedek kaynağa dönüş) yapmaz. Enerji bit 0
+R1'de açık tanımlıdır; bit 1 yük akımıdır, eski nominal akım alanıyla aynı
+olduğu varsayılmamalıdır. Bu kalan alanlar tamamlandı sayılmadı.
+
+Gerçek RF cache/FC03 ortak fixture ile sabit ve yapılandırılabilir haritada
+5'er yeni test; mevcut Powerboard FC03 6 testiyle alt küme 16/16 geçti.
+Mevcut yanlış dummy değeri yerine gerçek 1.25 A, eksik/eski/negatif veri,
+ölçüm geçersizken RF'nin güncel kalması, MH restart ve FLOAT32 eskime sınırı
+sınandı. RF modeli ve Modbus core gerçektir; envanter/store/hardware
+sınırları test çiftleridir. İlgili 30 dosyada 411/411 geçti; bunlar çalışma
+ağacındaki diğer Modbus regression (gerileme kontrolü) paketlerini de
+kapsar. Tam suite veya fiziksel IRQ/RF süre kabulü değildir.
+
+20 modül sıkı Cortex-M33/C11 uyarılar/-Werror ile geçti; Release link
+314224/504/126952 B text/data/bss ile başarılıdır. Eşzamanlı diğer kullanıcı
+çalışmaları da dahildir. Kanıtlar `test/build/modbus-rf-focused.log`,
+`test/build/modbus-rf-regression.log`, `build/modbus-rf-strict.log`,
+`build/modbus-rf-release.log` içindedir.
+
+LIVE_DATA ölçüm saati taşımaz. IEC104 için RTU alım saati / daima IV=1
+seçimi bu Modbus adımında açık kalmıştı; sonraki IEC104 bölümünde kullanıcı
+kararı ve uygulaması kaydedildi. Bu Modbus adımı IEC104
+canlı okuyucularını veya tarihlerini değiştirmedi. Yeni Modbus adımı henüz
+commit edilmedi; NVRAM düzeni, yeni IOA/register adresi ve cihaz
+uygulama/reset işlemi değişmedi. K9 ve BOLATeX soruları açık kalır.
+
+## IEC104 canlı veri ve RTU alım zamanı — 06.10.2026
+
+[KARAR: 06.10.2026] Kullanıcı şimdilik RTU alım saatinin kullanılmasını
+ve BOLATeX'e sorulmasını istedi. BQ-15, ayrı soru listesine eklendi.
+Gönderilmiş veya üretici tarafından onaylanmış cevap olarak sunulmaz.
+
+RF dispatch geçerli LIVE_DATA'yı çözerken geçerli yerel RTC'yi bir kez
+CP56Time2a'ya çevirir. RTC geçersiz veya tarih alanları hatalıysa IV=1
+kalır. `rf_phase_data_t.received_time` bu zamanı RAM'de saklar. Saf model
+API'sinde verilmemiş zaman da IV=1'dir. Hatalı paket önceki geçerli
+ölçüm/zamanı değiştirmez. Bu alan ayırıcının ölçüm zamanı veya UART'ın ilk
+bayt zamanı değildir; RTU process'inin geçerli paket kabul saatidir.
+
+IEC104 anlık akım ve RF haberleşme okuyucuları artık bu cache'i kullanır.
+Sorgu sırasında yeni RTC okunmaz; eski kayıt geç gelen RTC düzeltmesiyle
+veya yeni okuma saatiyle yeniden zamanlandırılmamalıdır. Yeni paket yeni
+alım zamanını getirir. Olay kaydı aktarımındaki kaynak zamanı ve
+clock_quality değişmez. Yeni NVRAM/Flash alanı ve IOA adresi eklenmedi.
+
+Anlık akım geçersiz/eksik olduğunda değer 0 ve QDS IV=1 kullanılır. Eski
+ama son ölçümü geçerli kayıt tutulur; QDS IV=1/NT=1 ile eskime gösterilir.
+RF güncelken yalnız akım ölçümünün geçersiz olması RF SPI'yi 0 yapmaz.
+Eski bağlantı SPI=0 ve NT=1 olarak, son paket alım zamanı ile gösterilir.
+Kaynak/veri bilinmiyorsa SIQ IV=1 ve CP56 IV=1 kalır. Zaman IV bilgisi
+ölçüm QDS kalitesiyle aynı şey değildir; geçerli akım, RTC bilinmiyorken
+QDS IV=0 ve zaman IV=1 taşıyabilir.
+
+Gerçek RF cache ve kayıtlı üretim okuyucuları için 5 yeni test, gerçek
+RX/COBS/codec yolunda RTC/zaman korunması için 2 yeni test eklendi.
+31 ilgili dosyada 418/418 geçti. Geç okuma, stale, negatif ölçüm/güncel
+RF ayrımı, olmayan kaynak, NULL/aralık hatası, geçersiz RTC, RTC'nin sonradan
+geçerli olması ve kısa paket sonrası zamanın korunması sınandı. Model/
+okuyucu/codec gerçektir; clock, envanter/store ve hardware sınırları test
+çiftleridir. Monolitik IEC104 testinde LTO/O2 yalnız ilgisiz socket/process
+bağlantılarını link dışı bırakır; test edilen okuyucular üretim kodudur.
+
+21 modül sıkı Cortex-M33/C11 uyarılar/-Werror ile ve Release link başarıyla
+geçti. Link text/data/bss 314472/504/127048 B; alım zamanı metadata'sı RF
+cache RAM'ini 96 B artırdı. Diğer eşzamanlı çalışmalar da linke dahildir.
+HAL header'ının eklenmesi libiec104'ın mevcut Init makrosuyla çakıştı;
+HAL tipleri bu makrodan önce parse edilerek include sırası düzeltildi,
+vendor/HAL kaynaklarına yama yapılmadı. Kanıtlar
+`test/build/iec104-rf-live-regression.log`,
+`build/iec104-rf-live-strict.log`, `build/iec104-rf-live-release.log`.
+Host/derleme fiziksel RF gecikmesi veya ölçüm zamanı doğruluğu kanıtı değildir.
+
+Enerji, nominal/yük ve kalan alarm eşlemeleri bu adımın dışında kaldı;
+bunların eski dummy üreticisi korunur. BQ-15 ve K9 açıktır. Bu yeni IEC104
+adımı commit edilmedi; cihaz yükleme/reset veya dışarı mesaj gönderimi
+bu çalışmada yapılmadı.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Değişiklik |
@@ -1119,3 +1217,5 @@ Cihaz yükleme/reset veya fiziksel ayar gönderimi yapılmadı.
 | 06.10.2026 | 0.15 | SCP Powerboard modeli, tüketiciler, 38 register haritası ve 319/319 ilgili test |
 | 06.10.2026 | 0.16 | Powerboard E5–E8 kontrol/shell, uygulama doğrulaması, BQ-12–14 ve 343/343 ilgili test |
 | 06.10.2026 | 0.17 | Powerboard commit 179205b; K5 kararı, ayrı RF web Kaydet/Uygula/durum/iptal ve 378/378 ilgili test |
+| 06.10.2026 | 0.18 | RF web commit ba578b9; mevcut Modbus akım/RF alanlarının SCP kaynağı, NaN tercihi ve 411/411 ilgili test |
+| 06.10.2026 | 0.19 | IEC104 canlı akım/RF kaynağı, kullanıcı onaylı RTU alım zamanı, BQ-15 ve 418/418 ilgili test |
