@@ -2559,3 +2559,35 @@ cops-led-inventory-2026-10-06.md ve cops-led-release-2026-10-06.log.
 §10.20 ve modül kapsam raporundaki altı eski CESQ regresyonu artık kapalıdır;
 eski başarısız sayılar yalnız ilk tespit koşusunu anlatır. Eşzamanlı başka
 modül değişiklikleri bu düzeltmenin katkısı olarak sayılmaz.
+
+### 10.24. RF web Kaydet/Uygula ve doğrulanmış durum — 06.10.2026
+
+Powerboard değişiklikleri 179205b commit'ine alındı; diğer kullanıcı
+çalışmaları korunmuştur. Ardından mevcut RF Kaydet yolunun NVRAM'e hemen
+sync ettiği ve grup servisinin ayrı APPLIED RAM sonucunu tuttuğu doğrulandı.
+Kullanıcı K5'te bu ayrımı ve PARTIAL/FAILED'de otomatik tekrar yapmamayı
+onayladı. Mevcut kayıt akışı değiştirilmeden web Uygula/durum/iptal yolları
+mevcut RF grup servisine ve HTTP admin kontrolüne bağlandı.
+
+Kaydet uygulama başlatmaz; POST started=true uygulanmış sonucu değildir.
+GET ayar gönderemez. Bir tabanlı store satırı ve MatchesDesired ile hedef
+fider/bölge/EUI/writable CRC eşleşmesi görünürdür. Eski APPLIED, yeni
+istenen ayarın APPLIED sonucu diye gösterilmez. Web önbelleği Kaydet/oku
+sonrasında temizlenir; eski ayar nesnesine ait geç GET cevabı atılır.
+Reset/partial sonrası otomatik RF gönderimi eklenmedi. NVRAM/SCP wire
+biçimi değişmedi; yalnız son işlem RAM'de izlenir.
+
+32 grup/adaptör/yetki testi ve 24 ilgili dosyada 378/378 geçti.
+Gerçek RF grup/CSV APPLIED → JSON/eşleşme, router auth/admin/GET ve gerçek
+handler yanıtları sınandı. Navigation kaynak/gömülü ve web_auth geçti.
+Transport/NVRAM/HTTP sınırları taklit edilir; algoritma taklit edilmez.
+19 modül sıkı Cortex-M33/C11 ile ve Release link geçti; text/data/bss
+314144/504/126952 B, eşzamanlı diğer değişiklikleri de içerir.
+Kanıt `test/build/rf-group-web-regression.log`, `build/rf-group-web-auth.log`,
+`build/rf-group-web-strict.log`, `build/rf-group-web-release.log`,
+`build/rf-group-web-final-build.log`. Seçili sonuç tam suite geçişi değildir.
+
+K5 ürün kararı kapandı; K9 adresleri, BOLATeX soruları ve G-01 açık kalır.
+Yeni EUI/atama Kaydet'i MH envanter ACK'i sayılmaz; Uygula eşleşmeyen üyeyle
+başlamaz. Fiziksel RF/AY/enerji kesintisi kabulü, cihaz yükleme/reset veya
+bu yeni web adımının commit'i yapılmadı. Ayrıntılar uygulama planı 0.17'de.

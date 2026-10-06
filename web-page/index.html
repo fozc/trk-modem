@@ -160,6 +160,8 @@ fWebPort:'Web Arayüzü Portu',fPin:'SIM Kart PIN Kodu',fApn:'SIM Kart APN',fApn
 fWebFd:'Web İlk Veri Zaman Aşımı (s)',fWebIdle:'Web Boşta Kalma Zaman Aşımı (s)',fIecFd:'IEC104 İlk Veri Zaman Aşımı (s)',fIecIdle:'IEC104 Boşta Kalma Zaman Aşımı (s)',
 devActions:'Cihaz İşlemleri',devActionsSub:'İşlemler anında uygulanır.',btnReboot:'Cihazı Yeniden Başlat',termPh:'Komut girin...'
 }};
+Object.assign(I18N.en,{rfStoreLine:'Settings row',rfStoreLineTpl:'Row {n}',rfGroupMHApplied:'Applied report',rfApplyTitle:'Apply RF settings',rfApplyHint:'Save keeps the desired settings in the modem. Apply sends the saved settings to all three disconnectors.',rfGroupId:'Fresh group ID',rfApply:'Apply',rfAbort:'Abort',rfSaveFirst:'Save the changes before applying.',rfGroupInvalid:'Select an active line and a fresh group ID (0–255).',rfGroupRequested:'Request started; refresh the status to follow the result.',rfGroupChanged:'Previous settings applied; desired settings have changed.',rfGroupIdle:'No application started',rfGroupChecking:'Checking group',rfGroupWriting:'Sending settings',rfGroupCommitting:'Starting application',rfGroupWaiting:'Waiting for result',rfGroupApplied:'Applied and CRC verified',rfGroupFailed:'Application failed',rfGroupUncertain:'Outcome unknown',rfGroupIdUsed:'Group ID already in use',rfGroupMismatch:'Result does not match the request',rfGroupAborting:'Aborting',rfGroupCancelled:'Cancelled',rfGroupRestarted:'MH restarted',rfGroupUnknown:'Unknown status',rfGroupMH:'Last MH report',rfGroupPrepared:'Prepared',rfGroupDelivered:'Delivered',rfGroupReason:'Reason',rfGroupMembers:'Member bitmap'});
+Object.assign(I18N.tr,{rfStoreLine:'Ayar satırı',rfStoreLineTpl:'Satır {n}',rfGroupMHApplied:'Uygulandı bildirimi',rfApplyTitle:'RF ayarını uygula',rfApplyHint:'Kaydet istenen ayarı modemde saklar. Uygula kaydedilen ayarı üç ayırıcıya gönderir.',rfGroupId:'Yeni grup kimliği',rfApply:'Uygula',rfAbort:'İptal',rfSaveFirst:'Uygulamadan önce değişiklikleri kaydedin.',rfGroupInvalid:'Etkin bir satır ve yeni grup kimliği (0–255) seçin.',rfGroupRequested:'İstek başlatıldı; sonucu izlemek için durumu yenileyin.',rfGroupChanged:'Önceki ayar uygulandı; istenen ayar değişti.',rfGroupIdle:'Uygulama başlatılmadı',rfGroupChecking:'Grup kontrol ediliyor',rfGroupWriting:'Ayar gönderiliyor',rfGroupCommitting:'Uygulama başlatılıyor',rfGroupWaiting:'Sonuç bekleniyor',rfGroupApplied:'Uygulandı ve CRC doğrulandı',rfGroupFailed:'Uygulama başarısız',rfGroupUncertain:'Sonuç belirsiz',rfGroupIdUsed:'Grup kimliği kullanımda',rfGroupMismatch:'Sonuç gönderilen ayarla eşleşmiyor',rfGroupAborting:'İptal ediliyor',rfGroupCancelled:'İptal edildi',rfGroupRestarted:'MH yeniden başladı',rfGroupUnknown:'Bilinmeyen durum',rfGroupMH:'Son MH raporu',rfGroupPrepared:'Hazırlandı',rfGroupDelivered:'Teslim edildi',rfGroupReason:'Neden',rfGroupMembers:'Üye bitleri'});
 let LNG=(()=>{try{const l=localStorage.getItem('tsb23lang');return(l==='en'||l==='tr')?l:'tr'}catch(e){return 'tr'}})();
 const t=k=>{const d=I18N[LNG];return (d&&d[k]!==undefined)?d[k]:((I18N.en[k]!==undefined)?I18N.en[k]:k)};
 const tf=(k,map)=>t(k).replace(/\{(\w+)\}/g,(_,x)=>(map&&map[x]!==undefined)?map[x]:('{'+x+'}'));
@@ -285,6 +287,35 @@ function renderModbus(d){
   s+='</div></div></div>';return s;
 }
 
+function buildRfGroupStatus(group){
+  if(!group)return '<div class="empty">'+esc(t('stNotRead'))+'</div>';
+  const keys={idle:'rfGroupIdle',checking:'rfGroupChecking',writing:'rfGroupWriting',committing:'rfGroupCommitting',waiting:'rfGroupWaiting',applied:'rfGroupApplied',failed:'rfGroupFailed',uncertain:'rfGroupUncertain',id_in_use:'rfGroupIdUsed',mismatch:'rfGroupMismatch',aborting:'rfGroupAborting',cancelled:'rfGroupCancelled',restarted:'rfGroupRestarted'};
+  let title=t(keys[group.State]||'rfGroupUnknown');
+  if(group.State==='applied'&&!group.MatchesDesired)title=t('rfGroupChanged');
+  let html='<p><strong>'+esc(title)+'</strong></p>';
+  if(group.Line)html+='<p>'+esc(tf('rfStoreLineTpl',{n:group.Line}))+' · '+esc(t('rfGroupId'))+': '+esc(group.GroupId)+'</p>';
+  if(group.HasReport){const mh=['rfGroupIdle','rfGroupPrepared','rfGroupDelivered','rfGroupMHApplied','rfGroupFailed'];html+='<p>'+esc(t('rfGroupMH'))+': '+esc(t(mh[group.MHState]||'rfGroupUnknown'))+' · '+esc(t('rfGroupMembers'))+': '+esc(group.MemberBitmap)+' · '+esc(t('rfGroupReason'))+': '+esc(group.Reason)+' · CRC: '+esc(group.ReportedCRC)+' / '+esc(group.ExpectedCRC)+'</p>'}
+  return html;
+}
+function invalidateRfGroupStatus(){delete pageCache.rfGroup;const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(null)}
+async function readRfGroupStatus(){
+  const desired=pageCache.rf;
+  try{const group=await api('/status/rf-group');if(pageCache.rf!==desired)return;pageCache.rfGroup=group;const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(group)}catch(e){toast(t('tReadErr')+e.message,'err')}
+}
+async function applyRfConfig(){
+  if(loading)return;
+  if(!pageCache.rf){toast(t('tReadFirst'),'err');return}
+  if(hasDirty('rf')){toast(t('rfSaveFirst'),'err');return}
+  const lineEl=$('rf-apply-line'),groupEl=$('rf-apply-group');
+  const line=Number(lineEl?.value),group=Number(groupEl?.value);
+  const rows=pageCache.rf.root||pageCache.rf;
+  if(!lineEl||!groupEl||groupEl.value.trim()===''||!Number.isInteger(line)||line<1||line>FEEDER_COUNT||!rows.inUse?.[line-1]||!Number.isInteger(group)||group<0||group>255){toast(t('rfGroupInvalid'),'err');return}
+  try{showLoad();await api('/config/rf/apply/'+line+'/'+group,{method:'POST'});hideLoad();toast(t('rfGroupRequested'),'info');await readRfGroupStatus()}catch(e){hideLoad();toast(t('tErr')+e.message,'err')}
+}
+async function abortRfConfig(){
+  if(loading)return;
+  try{showLoad();await api('/config/rf/abort',{method:'POST'});hideLoad();toast(t('rfGroupRequested'),'info');await readRfGroupStatus()}catch(e){hideLoad();toast(t('tErr')+e.message,'err')}
+}
 function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[]).filter(u=>u&&u.EUI64);
   let s=pageHead(t('rfTitle'),'rf',t('rfSub'))+'<div class="card"><div class="card-head"><div><h3>'+esc(t('rfCard'))+'</h3><div class="sub">'+esc(t('rfCardSub'))+'</div></div></div><div class="card-body">';
   s+=feederTabs('selectRfTab');
@@ -307,6 +338,9 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
     s+='</div>';
   }
   s+='</div></div></div>';
+  s+='<div class="card"><div class="card-head"><h3>'+esc(t('rfApplyTitle'))+'</h3><button class="btn btn-read btn-small" onclick="readRfGroupStatus()">'+esc(t('btnRefresh'))+'</button></div><div class="card-body"><p class="hint">'+esc(t('rfApplyHint'))+'</p><div class="grid g3"><label>'+esc(t('rfStoreLine'))+'<select id="rf-apply-line">';
+  for(let i=0;i<FEEDER_COUNT;i++)s+='<option value="'+(i+1)+'"'+(!rows.inUse?.[i]?' disabled':'')+'>'+esc(tf('rfStoreLineTpl',{n:i+1}))+'</option>';
+  s+='</select></label><label>'+esc(t('rfGroupId'))+'<input id="rf-apply-group" type="number" min="0" max="255" step="1"></label><div><button class="btn btn-save" onclick="applyRfConfig()">'+esc(t('rfApply'))+'</button> <button class="btn" onclick="abortRfConfig()">'+esc(t('rfAbort'))+'</button></div></div><div id="rf-group-status">'+buildRfGroupStatus(pageCache.rfGroup)+'</div></div></div>';
   s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('discTitle'))+'</h3><div class="sub">'+esc(t('discSub'))+'</div></div><div class="card-actions"><button class="btn btn-read btn-small" onclick="readRfDiscovery()">'+esc(t('btnRefresh'))+'</button></div></div><div class="card-body" id="rf-discovery-panel">';
   if(!un.length){s+='<div class="empty">'+esc(t('discNone'))+'</div>'}
   else{s+=buildDiscoveryTable(un)}
@@ -333,8 +367,8 @@ function renderLogs(){const done=sysLogLines.length>0&&sysLogOffset>=sysLogTotal
 function renderTerminal(){return '<div class="terminal"><div class="terminal-out" id="trmOut"></div><div class="terminal-in"><input id="trmCmd" maxlength="64" autocomplete="off" placeholder="'+esc(t('termPh'))+'"><button class="btn btn-read" onclick="trmSend()">'+esc(t('btnSend'))+'</button><button class="btn btn-muted" onclick="trmClr()">'+esc(t('btnClear'))+'</button></div></div>'}
 
 // ---------------- PAGE LOAD / SAVE ----------------
-const readPage=async(page)=>{if(loading)return;try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;pageCache[page]=d;renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}};
-const savePage=async(page)=>{if(loading)return;if(!pageCache[page]){toast(t('tReadFirst'),'err');return}if(!validatePage(page))return;const d=extractPage(page);try{showLoad();const r=await api('/config/'+page,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});hideLoad();if(r.success===false)throw new Error(r.error||t('tSaveFailed'));pageCache[page]={...pageCache[page],...d};markOriginals($('body'));clearDirty(page);toast(t('tSaveOk'),'ok')}catch(e){hideLoad();if(page==='iec104'&&markIecServerErrors(e.message))toast(t('tFixVal'),'err');else toast(t('tSaveErr')+e.message,'err')}};
+const readPage=async(page)=>{if(loading)return;try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;if(page==='rf')invalidateRfGroupStatus();pageCache[page]=d;renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}};
+const savePage=async(page)=>{if(loading)return;if(!pageCache[page]){toast(t('tReadFirst'),'err');return}if(!validatePage(page))return;const d=extractPage(page);try{showLoad();const r=await api('/config/'+page,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});hideLoad();if(r.success===false)throw new Error(r.error||t('tSaveFailed'));pageCache[page]={...pageCache[page],...d};if(page==='rf')invalidateRfGroupStatus();markOriginals($('body'));clearDirty(page);toast(t('tSaveOk'),'ok')}catch(e){hideLoad();if(page==='iec104'&&markIecServerErrors(e.message))toast(t('tFixVal'),'err');else toast(t('tSaveErr')+e.message,'err')}};
 const addressError=(el,message)=>{
   el.classList.add('invalid');
   const err=el.closest?.('.field')?.querySelector('.err')||$('err-'+el.id);
