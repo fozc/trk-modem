@@ -73,7 +73,14 @@ async function checkPage(html, label) {
         assert.ok(!rfMonitor.includes('undefined'));
         assert.ok(rfMonitor.includes(language === 'tr'
             ? 'Açma kondansatörü' : 'Trip capacitor'));
-        for (let csq = 0; csq <= 31; csq++) {
+          const missingPower = run(`renderBoard({BatterySOC:null,
+              BatterySOH:null,BatteryTemp:null,ChargePertance:null,
+              ChargeState:null,HeaterState:null,HeaterPower:null})`);
+          assert.ok(!missingPower.includes('NaN'));
+          assert.ok(!missingPower.includes('0.0 %'));
+          assert.equal(run('formatChargePhase(2)'), language === 'tr'
+              ? 'Sabit akım' : 'Constant current');
+          for (let csq = 0; csq <= 31; csq++) {
             const board = run(`renderBoard({GsmSig: ${csq}})`);
             assert.ok(board.includes(run("t('fSignal')")));
             assert.ok(board.includes(`class="v">${csq}</span>`));

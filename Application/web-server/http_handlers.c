@@ -36,6 +36,7 @@
 #include "rf_discovery.h"
 #include "rf_json.h"
 #include "rf_monitor_json.h"
+#include "system_status_json.h"
 #include "gsm_engine.h"
 #include "gsm_info.h"
 #include "elog.h"
@@ -626,53 +627,11 @@ void handle_get_board_status_json(void)
     const size_t buf_size =
         (size_t)handler_state.tx_buffer_size;
     size_t pos = 0U;
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"DIN\":[%u,%u,%u,%u],",
-                    status->din[0], status->din[1], status->din[2], status->din[3]);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"RLY\":[%u,%u],", status->rly[0], status->rly[1]);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"3V3\":%u,", status->v3v3);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"3V8\":%u,", status->v3v8);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"5V\":%u,", status->v5v);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ChargeState\":%u,", status->charge_state);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Temp\":%d,", status->temp);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TempMax\":%d,", status->temp_max);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TempMin\":%d,", status->temp_min);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"PanelAkimi\":%d,", status->panel_current);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"PanelVoltaji\":%u,", status->panel_voltage);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BataryaVoltaji\":%u,", status->battery_voltage);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TDIE\":%d,", status->tdie_temp);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TDIEMax\":%d,", status->tdie_temp_max);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TDIEMin\":%d,", status->tdie_temp_min);
-    /* x10 alanlari ham gonderilir (995 = %99.5, 245 = 24.5C);
-     * donusum istemci tarafinda gosterim aninda yapilir. */
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ChargePertance\":%d,", status->battery_charge_x10);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Capacity\":%u,", status->battery_capacity);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"GsmSig\":%d,", status->gsm_signal);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"GsmRAT\":%u,", status->gsm_rat);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
-                    "\"GsmRxlev\":%u,", (unsigned int)gsm_info_get_signal_quality_2G());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
-                    "\"GsmRscp\":%u,", (unsigned int)gsm_info_get_signal_quality_3G());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
-                    "\"GsmRsrp\":%u,", (unsigned int)gsm_info_get_signal_quality_4G());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
-                    "\"GsmRsrq\":%u,", (unsigned int)gsm_info_get_4G_rsrq());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
-                    "\"GsmCREG\":%u,", (unsigned int)gsm_info_get_creg());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
-                    "\"GsmCGREG\":%u,", (unsigned int)gsm_info_get_cgreg());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
-                    "\"GsmCEREG\":%u,", (unsigned int)gsm_info_get_cereg());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BataryaAkimi\":%d,", status->battery_current);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BatteryTemp\":%d,", status->battery_temp_x10);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BatterySOC\":%d,", status->battery_soc_x10);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BatterySOH\":%u,", status->battery_soh_x10);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"OrtamSicakligi\":%d,", status->ambient_temp);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"HeaterState\":%u,", status->heater_state);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"HeaterPower\":%u", status->heater_power);
-
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
+    if (!system_status_json_build(status, buf, buf_size, &pos))
+    {
+        http_send_error(500, "Board status response buffer too small");
+        return;
+    }
 
     CSLOG("[HTTP] Board status JSON size: %u bytes\r\n", (unsigned int)pos);
     

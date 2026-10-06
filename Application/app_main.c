@@ -51,6 +51,7 @@
 
 #include "relay.h"
 #include "power_board.h"
+#include "power_board_scp.h"
 #include "system_status.h"
 #include "reset_source.h"
 #include "bms_reader.h"
@@ -324,7 +325,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	web_shell_init(NULL);
 
 	adc_init();
-	power_board_init();
+    power_board_scp_init();
 
 	LL_LPUART_EnableIT_RXNE_RXFNE(LPUART1);  /* Console RX */
 	gpio_set_pin(MODBUS_EN_FLT_BSP_GPIO, MODBUS_EN_FLT_BSP_PIN, 1); // Modbus RS485 power enable
