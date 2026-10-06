@@ -1266,6 +1266,43 @@ NVRAM integration 433/433 kontrolü geçti. 22 modül sıkı ARM/C11 uyarıları
 derlendi; CubeIDE Release 0 hata ve 0 uyarıyla tamamlandı. Bu sonuçlar
 fiziksel RF/seri port kabulü değildir.
 
+## Arıza göstergelerinin kaldırılması — 06.10.2026
+
+**Karar:** kullanıcı anlık arıza akımı/süresi/tipi alanlarının kaldırılmasını,
+yalnız geçici ve kalıcı arıza listelerinin kalmasını istedi. Bu alanlar
+web ayarları, JSON ve IEC104 canlı sorgu üreticilerinden çıkarıldı.
+Modbus sabit haritada offset 0–5/12–17 ayrılmıştır, 0 döner;
+yapılandırılabilir haritada artık bu alanların anahtarları/adresleri yoktur.
+Mevcut anlık akım/enerji/yük/RF adresleri ve arıza liste pencereleri korunur.
+
+NVRAM byte yerleşimi değişmedi. Eski alanların byte yuvaları reserved
+(ayrılmış) olarak tutulur; uygulama bunları nokta adresi olarak kullanmaz.
+Dummy producer bu karar gerekçesiyle silinmedi.
+
+R1 olay tablosu ofset 13, `nominal_current_status=1` değerini yük var
+olarak tanımlar. Eski `rf_events.c` bunu ters çeviriyordu. Yakalanmış örnek
+paket ve yük var/yok girişleriyle hata gösterildi; düzeltme öncesi olay
+paketindeki 27 testin 17'si başarısız oldu. Artık kayıt/listeler/spontane
+gönderim aynı biti taşır. Fault log schema (kayıt sürümü) 3 oldu; eski
+ters anlamlı sürüm 2 liste görüntüsü yeni anlamla okunmamalıdır. Kayıt
+20 B, süre 32 bit ve fider görüntüsünün byte yerleşimi korunur.
+Eski geliştirme Flash/replay görüntülerini taşıma kapsamda değildir;
+hedef kabulü güncel biçimde oluşturulmuş kayıtlarla yapılmalıdır.
+
+**Onaylanan gönderim:** kaldırılan canlı IOA yerine geçici/kalıcı
+listenin ilk kayıt IOA'ları üzerinden spontane/replay hazırlanmıştır.
+İki ölçüm ve iki durum nesnesi kendi olay zamanını taşır; arıza türü
+hangi liste kullanıldığıyla ayrılır. Bu RTU ürün tercihidir, SCP
+belgesinin zorunlu IEC104 haritası değildir. Kullanıcı 06.10.2026
+tarihinde hazırlanan paketin commitlenmesini ve devam edilmesini istedi;
+bu gönderim biçimi onaylanan paketin parçasıdır.
+
+177/177 ilgili Ceedling testi, gerçek liste IOA/tel kontrolleri,
+web kaynak/gömülü sayfa, gerçek HTTP handler, NVRAM 307 kontrol ve
+NOR liste depolama 53 kontrol geçti. Geniş regresyon 432/432, sıkı
+ARM/C11 22 modül ve Release 0 hata/0 uyarıyla geçti. Host sonuç fiziksel
+kabul değildir; BOLATeX soruları açık kalır.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Değişiklik |
@@ -1290,3 +1327,4 @@ fiziksel RF/seri port kabulü değildir.
 | 06.10.2026 | 0.18 | RF web commit ba578b9; mevcut Modbus akım/RF alanlarının SCP kaynağı, NaN tercihi ve 411/411 ilgili test |
 | 06.10.2026 | 0.19 | IEC104 canlı akım/RF kaynağı, kullanıcı onaylı RTU alım zamanı, BQ-15 ve 418/418 ilgili test |
 | 06.10.2026 | 0.20 | Enerji/yük için SCP bit 0/1, onaylı 49500–49520 kalite bloğu, yeni yük adları, adres çakışması koruması ve 428/428 ilgili test |
+| 06.10.2026 | 0.21 | Commit 1692957; kullanıcı anlık arıza alanlarını kaldırdı, olay yük biti doğrudan kayıt düzeltmesi ve liste adresinden gönderim hazırlığı |

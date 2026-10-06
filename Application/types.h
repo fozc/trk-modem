@@ -47,10 +47,10 @@ typedef struct
 
 typedef struct
 {
-	ioa_3byte_t ariza_akimi[PHASE_MAX];          //m_me_tf_1
-	ioa_3byte_t ariza_suresi[PHASE_MAX];         //m_me_tf_1
+	ioa_3byte_t reserved_fault_current[PHASE_MAX]; /* Retired live field. */
+	ioa_3byte_t reserved_fault_duration[PHASE_MAX]; /* Retired live field. */
 	ioa_3byte_t anlik_akim[PHASE_MAX];           //m_me_tf_1
-	ioa_3byte_t ariza_kalicimi[PHASE_MAX];       //m_sp_tb_1
+	ioa_3byte_t reserved_fault_type[PHASE_MAX]; /* Retired live field. */
 	ioa_3byte_t enerji_varyok[PHASE_MAX];        //m_sp_tb_1
 	ioa_3byte_t yuk_akimi_varyok[PHASE_MAX];  //m_sp_tb_1
 	ioa_3byte_t rf_haberlesme_varyok[PHASE_MAX]; //m_sp_tb_1
@@ -101,9 +101,9 @@ typedef struct
 
 typedef struct
 {
-	uint16_t ariza_akimi[PHASE_MAX];
-	uint16_t ariza_suresi[PHASE_MAX];
-	uint16_t ariza_kalicimi[PHASE_MAX];
+	uint16_t reserved_fault_current[PHASE_MAX]; /* Retired live field. */
+	uint16_t reserved_fault_duration[PHASE_MAX]; /* Retired live field. */
+	uint16_t reserved_fault_type[PHASE_MAX]; /* Retired live field. */
 	uint16_t anlik_akim[PHASE_MAX]; 
 	uint16_t enerji_varyok[PHASE_MAX];
 	uint16_t yuk_akimi_varyok[PHASE_MAX];

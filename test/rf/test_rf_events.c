@@ -63,6 +63,8 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
 {
     TEST_ASSERT_EQUAL_MEMORY(&written_fault.tm, &record->tm,
                              sizeof(record->tm));
+    TEST_ASSERT_EQUAL_UINT8(written_raw[13],
+                            record->info.nominal_current_status);
     emit_calls++;
     return emit_success;
 }
@@ -101,6 +103,8 @@ static bool save_raw(const uint8_t *data, size_t length, int call_count)
 static bool save_fault(const fault_log_t *record, int call_count)
 {
     (void)call_count;
+    TEST_ASSERT_EQUAL_UINT8(written_raw[13],
+                            record->info.nominal_current_status);
     written_fault = *record;
     fault_writes++;
     return fault_success;
@@ -118,6 +122,8 @@ static bool save_replay(const fault_log_t *record, uint16_t *seq,
     (void)call_count;
     TEST_ASSERT_EQUAL_MEMORY(&written_fault.tm, &record->tm,
                              sizeof(record->tm));
+    TEST_ASSERT_EQUAL_UINT8(written_raw[13],
+                            record->info.nominal_current_status);
     *seq = 42U;
     replay_writes++;
     return replay_success;
@@ -259,7 +265,7 @@ void test_capture_is_saved_in_both_logs_before_consume(void)
     TEST_ASSERT_EQUAL_UINT8(0U, written_fault.info.phase);
     TEST_ASSERT_EQUAL_UINT8(FAULT_LOG_TYPE_PERMANENT,
                             written_fault.info.type);
-    TEST_ASSERT_EQUAL_UINT8(1U, written_fault.info.nominal_current_status);
+    TEST_ASSERT_EQUAL_UINT8(0U, written_fault.info.nominal_current_status);
     TEST_ASSERT_EQUAL_UINT32(2U, requests);
     rf_events_process(tick);
     TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_CONSUME_TO, request.cmd);
@@ -293,7 +299,7 @@ void test_temporary_and_rf_requested_opening_keep_full_32_bit_duration(void)
     TEST_ASSERT_EQUAL_UINT8(FAULT_LOG_TYPE_TEMPORARY,
                             written_fault.info.type);
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, written_fault.fault_duration_ms);
-    TEST_ASSERT_EQUAL_UINT8(0U, written_fault.info.nominal_current_status);
+    TEST_ASSERT_EQUAL_UINT8(1U, written_fault.info.nominal_current_status);
     TEST_ASSERT_EQUAL_UINT8(1U, written_fault.info.power_status);
     rf_events_process(tick);
     TEST_ASSERT_EQUAL_UINT8(FAULT_LOG_TYPE_PERMANENT,

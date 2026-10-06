@@ -303,7 +303,7 @@ async function checkPage(html, label) {
         assert.equal(request.url, '/config/' + page);
         assert.deepEqual(JSON.parse(run(`JSON.stringify(pageCache['${page}'])`)), request.data);
     }
-    const ioaError = 'IOA overlap: Hatlar.IOA_R_ArizaAkimi[1] (feeder 2) and Hatlar.TemporaryFaultBase[0] (feeder 1)';
+    const ioaError = 'IOA overlap: Hatlar.IOA_R_AnlikAkim[1] (feeder 2) and Hatlar.TemporaryFaultBase[0] (feeder 1)';
     const iecCache = run('JSON.stringify(pageCache.iec104)');
     context.fetch = async () => ({ok: false, status: 400, text: async () => ioaError});
     await run("savePage('iec104')");
@@ -324,9 +324,9 @@ async function checkPage(html, label) {
             return input;
         };
         const keyPrefix = page === 'iec104' ? 'IOA' : 'ADDR';
-        const a = makeField(keyPrefix + '_R_ArizaAkimi', 0, 100, 'Fault current');
-        const b = makeField(keyPrefix + '_S_ArizaAkimi', 0, 100, 'Fault current');
-        const c = makeField(keyPrefix + '_R_ArizaAkimi', 1, 200, 'Fault current');
+        const a = makeField(keyPrefix + '_R_AnlikAkim', 0, 100, 'Fault current');
+        const b = makeField(keyPrefix + '_S_AnlikAkim', 0, 100, 'Fault current');
+        const c = makeField(keyPrefix + '_R_AnlikAkim', 1, 200, 'Fault current');
         const active = [element(), element()];
         active.forEach((input, index) => {
             input.type = 'checkbox'; input.checked = true;
@@ -361,7 +361,7 @@ async function checkPage(html, label) {
         const rendered = run(page === 'iec104' ? 'renderIec104({Hatlar:{}})' : 'renderModbus({Hat:{}})');
         const allKeys = [...new Set([...rendered.matchAll(/data-id="(?:iec|mod)" data-key="([^"]+)" data-i="0"/g)]
             .map(match => match[1]).filter(key => key !== 'inUse'))];
-        assert.equal(allKeys.length, page === 'iec104' ? 23 : 21);
+        assert.equal(allKeys.length, page === 'iec104' ? 14 : 12);
         const originalKey = b.dataset.key;
         // Every actual rendered address field must collide across categories.
         a.value = '1000';
@@ -399,14 +399,14 @@ async function checkPage(html, label) {
                 a.dataset.key = key;
                 a.value = '40001';
                 run('updateModbusRegisterHint(hintField)');
-                const isFloat = /_(ArizaAkimi|AnlikAkim)$/.test(key);
+                const isFloat = /_(AnlikAkim|AnlikAkim)$/.test(key);
                 assert.equal(a.hint.textContent, isFloat ?
                     'FLOAT32 · 2 register · 40001–40002' :
                     'UINT16 · 1 register · 40001', key);
                 assert.ok(run(`feederField('mod', '${key}', 0, 'Address', 40001)`)
                     .includes(a.hint.textContent), 'initial hint: ' + key);
             }
-            a.dataset.key = keyPrefix + '_R_ArizaAkimi';
+            a.dataset.key = keyPrefix + '_R_AnlikAkim';
             a.value = '40003';
             run('updateModbusRegisterHint(hintField)');
             assert.equal(a.hint.textContent, 'FLOAT32 · 2 register · 40003–40004');

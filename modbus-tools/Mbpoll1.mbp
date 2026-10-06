@@ -177,19 +177,19 @@
          <Cell idx="0">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Arıza Akimi</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="2">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Arıza Akimi</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="4">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Arıza Akimi</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="6">
@@ -213,37 +213,37 @@
          <Cell idx="12">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Arıza Süresi</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="13">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Arıza Süresi</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="14">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Arıza Süresi</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="15">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L1 Arıza Türü</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="16">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L2 Arıza Türü</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="17">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat1 L3 Arıza Türü</Name>
+            <Name>Ayrılmış (0)</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="18">

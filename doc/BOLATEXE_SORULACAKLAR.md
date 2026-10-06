@@ -429,6 +429,7 @@ Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararlar�
 | RF ayar kalıcılığı | 06.10.2026: Kaydet istenen ayarı NVRAM’e yazar; Uygula ayrı, APPLIED RAM durumudur; PARTIAL/FAILED otomatik tekrarlanmaz |
 | IEC104 canlı veri zamanı | Şimdilik RTU alım saati; RTC geçersizse IV=1. Ölçüm zamanı diye sunulmaz; BQ-15 teyidi beklenir |
 | Enerji/yük ve kalite | LIVE bit 0 enerji, bit 1 yük akımı olarak aynen kullanılır. Eski nominal gösterge adları tutulmaz. Modbus 49500–49520 kalite bloğu RTU ürün kararıdır; bit 0 akım, bit 1 enerji, bit 2 yük geçerliliği taşır. Web eski/eksik örnekte var/yok yerine — gösterir. Bu tercihler BOLATeX standardı olarak sunulmamalıdır |
+| Arıza göstergeleri | 06.10.2026 kullanıcı kararı: anlık arıza akımı/süresi/tipi alanları kaldırılır; geçici/kalıcı arıza listeleri kalır. Olay ofset 13 `nominal_current_status`, dokümandaki yük var anlamıyla doğrudan saklanır; ters çevrilmez. IEC104 spontane/replay ilk liste kaydı IOA'larından kendi olay zamanıyla gönderilir; hazırlanan paket 06.10.2026 kullanıcı commit talebiyle onaylandı |
 | Ayarsız Powerboard ayarı | Kapasite/C-oranı için MH kayıt ve yankı kabulü ayrı gösterilir; uygulanmış sayılmaz. Ayarsız periyot BQ-14 cevabını bekler |
 
 K5 kalıcılık/otomatik tekrar tercihi kullanıcı kararıyla netleşmiştir.
@@ -446,3 +447,4 @@ protokol cevabı bu ürün kararının yerine geçmez.
 | 06.10.2026 | 0.5 | K5 Kaydet/Uygula kalıcılık tercihi RTU kullanıcı kararı olarak kaydedildi; protokol soruları açık kaldı |
 | 06.10.2026 | 0.6 | BQ-15 canlı ölçüm zamanı/RTU alım zamanı ve kullanıcı geçici tercihi eklendi |
 | 06.10.2026 | 0.7 | Enerji/yük bitlerinin doğrudan kullanımı ve ayrı Modbus/web kalite tercihi RTU kararı olarak kaydedildi; yeni protokol sorusu oluşmadı |
+| 06.10.2026 | 0.8 | Anlık arıza göstergelerinin kaldırılması RTU kararı olarak eklendi; olay yük biti ters dönüşümü hata olarak düzeltildi, üretici sorusu değildir |

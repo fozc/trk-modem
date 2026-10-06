@@ -2697,3 +2697,48 @@ Modbus/web kalite tercihi soru belgesindeki RTU kararlarına işlendi.
 ayrı değer/kalite yanıtları atomik görüntü değildir. Fiziksel RF/seri
 port kabulü veya cihaz yüklemesi yapılmadı. Kalan arıza/alarm eşlemeleri
 ve BOLATeX soruları bu adımla kapatılmaz. Dummy producer silinmedi.
+
+### 10.28. Anlık arıza alanları ve olay yük biti — 06.10.2026
+
+**Kanıt:** `rf_events.c:build_fault()` olay ofset 13 değerini ters
+çeviriyordu. R1 tablo §4.9 bu alanı LIVE bit 1 ile aynı yük var
+anlamında tanımlar. Yakalanmış paket ve yük var/yok fixture girişleriyle
+27 testin 17'si düzeltme öncesi başarısız oldu. IEC104 genel sorgusu ve
+Modbus anlık arıza alanları ayrıca eski breaker verisini okuyordu.
+
+**Kullanıcı kararı:** anlık arıza akımı/süresi/tipi kaldırılır; yalnız
+geçici/kalıcı arıza listeleri kalır. Web/JSON ayarları ve IEC104 canlı
+okuyucu/üreticileri kaldırıldı. Modbus offset 0–5/12–17 reserved sıfırdır;
+yapılandırılabilir harita bu eski alanları eşlemez. Kalan adresler ve
+NVRAM byte yerleşimi korunur; eski yuvalar reserved adlandırıldı.
+Modbus canlı tüketicisi artık breaker snapshot'ına ihtiyaç duymaz.
+Dummy producer silinmedi; Modbus liste blokları bu adımda eklenmedi.
+
+**Düzeltme:** olay yük biti liste ve replay kaydına doğrudan yazılır.
+Fault log schema 3'tür; eski ters bit anlamlı schema 2 görüntüsü
+reddedilir. 20 B kayıt/32 bit süre/fider boyutu ve Flash adresleri
+değişmedi. Eski geliştirme Flash/replay görüntülerini taşıma kapsamda
+değildir; bunların yeni kayıt biçimiyle uyumlu olduğu iddia edilmez.
+
+**Onaylanan gönderim:** spontane/replay eski canlı IOA'lar yerine
+geçici/kalıcı listenin ilk kayıt IOA'larını kullanacak şekilde hazırlandı.
+İki ölçüm ve iki durum nesnesi olay zamanını taşır. Kullanıcı
+06.10.2026 tarihinde bu hazırlanan paketin commitlenmesini ve devam
+edilmesini istedi; gönderim biçimi onaylanan paketin parçasıdır.
+Bu adım K9'un bütün alarm eşlemelerini tamamlamaz.
+
+**Doğrulama:** 177/177 ilgili ve 432/432 geniş seçili Ceedling testi
+geçti. Gerçek GI isteği, liste IOA/tel verisi, kaldırılan Modbus alanları,
+JSON adres/range koruması ve eski kayıt schema'sı sınandı. Web kaynak/
+gömülü sayfa, HTTP handler, NVRAM 307 kontrol ve NOR arıza saklama
+53 kontrol geçti. 22 modül sıkı ARM/C11 ve Release 0 hata/0 uyarıyla
+geçti; fiziksel RF/Flash/SCADA kabulü yapılmadı.
+
+**Kanıt:** `test/build/rf-event-load-before.log`,
+`test/build/rf-fault-lists-only.log`,
+`test/build/rf-fault-lists-regression.log`,
+`build/rf-fault-lists-only-strict.log`, `build/rf-fault-lists-release.log`,
+`build/rf-fault-lists-nvram.log`, `build/rf-fault-lists-storage.log`,
+`build/rf-fault-lists-web-auth.log`. Modbus haritası 1.10, plan 0.21 ve
+BOLATeX soru belgesindeki RTU karar tablosu güncellendi. Yeni bir
+üretici belirsizliği oluşmadı; açık BOLATeX soruları kapatılmadı.

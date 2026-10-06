@@ -10,6 +10,7 @@
 
 #include "unity.h"
 #include "fault_log.h"
+#include "crc32.h"
 
 TEST_SOURCE_FILE("fault_log.c")
 TEST_SOURCE_FILE("crc32.c")
@@ -63,6 +64,27 @@ void test_source_time_and_maximum_duration_survive_flash_reload(void)
     TEST_ASSERT_EQUAL_FLOAT(12.5F, fault_log_current_amps(&saved));
     TEST_ASSERT_EQUAL_UINT32(20U, sizeof(saved));
     TEST_ASSERT_FALSE(fault_log_append(NULL));
+}
+
+void test_old_inverted_load_schema_is_not_interpreted_as_load_present(void)
+{
+    boot_virgin();
+    TEST_ASSERT_TRUE(fault_log_add(12.0F, 100U, 1U, 1U, 0U, 0U, 0U));
+    TEST_ASSERT_EQUAL_INT(0, fault_log_sync());
+    TEST_ASSERT_EQUAL_UINT32(3U, img_u32(false, 0U, 4U));
+    for (uint8_t copy = 0U; 2U > copy; copy++)
+    {
+        const bool backup = (0U != copy);
+        uint8_t *image = mock_slot_image_rw(backup, 0U);
+        const uint32_t length = img_u32(backup, 0U, 8U);
+        const uint32_t old_version = 2U;
+        (void)memcpy(image + 4U, &old_version, sizeof(old_version));
+        const uint32_t crc = (uint32_t)crc32_finalize(crc32_update(crc32_init(),
+            image, length - 4U));
+        (void)memcpy(image + length - 4U, &crc, sizeof(crc));
+    }
+    fault_log_init();
+    TEST_ASSERT_EQUAL_UINT8(0U, fault_log_get_temp_count(0U, 0U));
 }
 
 /*** end of file ***/
