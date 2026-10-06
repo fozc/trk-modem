@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.33
+**Sürüm:** 1.34
 **Tarih:** 2026-10-06
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -85,50 +85,191 @@ Ağdaki gerçek cihaza istek gönderen testler `system/` altında tutulmalıdır
 Bu testler hedef adresi açıkça verilmeden merkezi host koşusuna
 eklenmemelidir.
 
+## RF HIL süiti (`system/rf_hil/`)
+
+RF hub (MH) donanımında-çevrim (HIL) testleri: `tools/rf-hil/`
+simülatörü DUT'un USART3 RF hattına bağlı USB-TTL adaptör üzerinden
+konuşur, DUT konsolu (COM16) etkileşimli oturumla sürülür ve doğrulama
+simülatör izi (DUT'un gönderdiği çerçeveler) + konsol çıktısı üzerinden
+yapılır.
+
+- Donanımsız self-test (codec CSV golden'ları, cfg_crc, halka, grup,
+  idempotency, PWRB GEN makinesi, fault motoru — 53 test):
+  `python test/system/rf_hil/test_sim_selftest.py`
+- HIL koşusu (canlı cihaz; RF hattında simülatör, konsolda DUT):
+  `python test/system/rf_hil/run_hil.py --rf-port COM10 --console COM16`
+  (vaka listesi: `--list`; rapor `test/build/hil-rf/<ts>/report.md`)
+- Kablolama ve simülatör kullanımı: `tools/rf-hil/README.md`.
+- Merkezi host koşusuna bağlı değildir; fiziksel kurulum ister.
+
 ## Ceedling modül kapsamı
 
-| Modül | Test dosyası | Doğrulanan ana davranışlar |
-|---|---|---|
-| `libscp/cobs` | `scp/test_cobs.c` | Tüm 0-253 bayt uzunlukları, sıfır dizileri, tam kapasite, yerinde çözme ve bozuk blok reddi |
-| `libs/crc32` | `libs/test_crc32.c` | Standart ve ikili kontrol değerleri, bayt bayt/parçalı hesaplama ve bit yansıtma sınırları |
-| `libefw/efw_crc` | `efw/test_efw_crc.c` | Firmware CRC tel değeri, boş girdi, ikili veri, parçalı hesaplama ve bit yansıtma sınırları |
-| `libiec104/iec104_util` | `iec104/test_iec104_util.c` | 24 bit IOA sınırları, üst bitlerin atılması, bayt sırası ve eşitlik |
-| `libiec104/iec104` | `iec104/test_iec104_protocol_scenario.c` | STARTDT/STOPDT, gönderim penceresi, TESTFR, taşıma reddi, sorgulama, reset ve tüm TCP bölünme noktaları |
-| `gsm/ring_buff` | `gsm/test_ring_buff.c` | FIFO, tek yuva, tam kapasite, sarma, kısmi okuma, peek, clear, blok ve sıfır kopya erişim |
-| `gsm/gsm_wtd` | `gsm/test_gsm_wtd_liveness_scenario.c` | Sessizlik eşiği, iki aşamalı yeniden başlatma, hard reset, ping ile toparlanma ve busy durumu |
-| `web-server/http_request_parser` | `web_server/test_http_request_parser.c` | Eksik/bozuk istekler, uzunluk sınırları, sayısal taşma, GET/POST, sorgu, gövde ve kötü yol reddi |
-| `power_board/power_board_decode` | `power_board/test_power_board_decode.c` | XSUM, protokol sürümü, bozuk çerçeveler, büyük endian, işaretli sayı sınırları ve last-gasp |
-| `libiec104/cp56time2a` | `iec104/test_cp56time2a.c` | RTC dönüşümü, takvim ve artık yıl, karşılaştırma, zaman farkı, ham alan sınırları ve geçersiz zaman damgası |
-| `libscp/scp` | `scp/test_scp.c` | Gönderme-alma çevrimi, adres ve yayın süzme, CRC, zaman aşımı, taşma, ayrıştırıcı toparlanması ve ping |
-| `libs/debouncer` | `libs/test_debouncer.c` | Alçak/yüksek geçiş eşiği, gürültü, doygunluk ve `UINT8_MAX` sayaç sınırı |
-| `libs/ring_buf` | `libs/test_ring_buf.c` | Atomik FIFO, kapasite, dolu/boş durum, sarma ve toplu işleme |
-| `libs/datetime` | `libs/test_datetime.c` | Biçimlendirme, takvim sınırları, artık yıl, karşılaştırma, geçen süre ve Unix epoch dönüşümü |
-| `modem_config` | `application/test_modem_config.c` | NVRAM erişimi, sayısal alanlar, metin sınırları, telefon numarası, NTP, reset üst sınırı ve sayaçlar |
-| `system_status` | `application/test_system_status.c` | Dijital giriş, röle, ADC, GSM ve güç kartı verilerinin birleştirilmesi ile sıcaklık min/max takibi |
-| `periodic_reset` | `application/test_periodic_reset.c` | Devre dışı durum, zamanlayıcı kurma, süre değişimi, eski ayar üst sınırı, süre dolması ve yeniden etkinleştirme |
-| `digital_input` | `application/test_digital_input.c` | Active-low başlangıç durumları, geçersiz kanallar ve kullanıcı reset düğmesinin 3/10/15 saniye eşikleri |
-| `relay` | `application/test_relay.c` | Komut kuyruğu, iki kanallı peak/hold geçişi, ortak zamanlayıcı, saat taşması, kapatma ve shell doğrulaması |
-| `time_service` | `application/test_time_service.c` | Atomik sayaç, normal geçen süre, `UINT32_MAX` taşması ve tam süre sınırı |
-| `power_panic` | `application/test_power_panic.c` | Açılış seviyesi, geçici darbe, yükselen/düşen kenarlar ve bölüm başına tek ELOG kaydı |
-| `libs/xprintf` | `libs/test_xsnprintf_format_scenario.c` | Tam sığma, kesilme, koruma baytları, biriktirme, float ve biçim genişliği senaryoları |
-| `libs/xscanf` | `libs/test_xscanf_format_scenario.c` | Sayısal türler, taşma, metin sınırları, hatalı format ve AT yanıtı senaryoları |
-| `rf/rf_scp` | `rf/test_rf_scp_codec_scenario.c` | İstek üretme, zaman eşitleme, ping yanıtı ve durum paketi çözme senaryoları |
-| `rf/rf_config` | `rf/test_rf_config_scenario.c` | Varsayılan ayarlar, kalıcı kayıt, çalışma modu ve kanal sınırı senaryoları |
-| `web-server/rf_json` | `web_server/test_rf_json_golden_scenario.c` | RF ayarlarının tam golden JSON çıktısı ve tampon uzunluğu |
+**Güncel envanter tarihi:** 06.10.2026. Saklanan tam koşuda 74 dosyada **875/875 test geçti; failed/ignored=0.** CESQ rapor/LED aralık düzeltmesi ve COPS ortak sınıflandırma bağlantısı doğrulanmıştır. Kaynak: build/production-audit-2026-10-03/cops-led-all-host-2026-10-06.log ve .xml. Tek paket XML'i tam envanter yerine kullanılmamalıdır.
 
-IEC104 protokol senaryoları gerçek `iec104.c`, `iec104_config.c`,
-`iec104_util.c` ve `cp56time2a.c` kaynaklarını birlikte derler. Taşıma
-işlevi ve platform çağrıları sabit boyutlu test yardımcılarıyla sağlanır.
-Mevcut protokol kaynağındaki daraltma ve bit alanı atamaları nedeniyle
-yalnız `test_iec104_protocol_scenario` derlemesinde `-Wconversion` ve
-`-Wsign-conversion` kapatılır. Diğer uyarı denetimleri açık kalır.
+| Test dosyası | Senaryo | Sonuç |
+|---|---:|---|
+| [application/test_application_utils_bounds.c](application/test_application_utils_bounds.c) | 4 | Geçti |
+| [application/test_digital_input.c](application/test_digital_input.c) | 11 | Geçti |
+| [application/test_fault_log.c](application/test_fault_log.c) | 2 | Geçti |
+| [application/test_modbus_config_edges.c](application/test_modbus_config_edges.c) | 6 | Geçti |
+| [application/test_modbus_power_snapshot_scenario.c](application/test_modbus_power_snapshot_scenario.c) | 6 | Geçti |
+| [application/test_modbus_reset_scenario.c](application/test_modbus_reset_scenario.c) | 4 | Geçti |
+| [application/test_modbus_system_stats.c](application/test_modbus_system_stats.c) | 5 | Geçti |
+| [application/test_modem_config.c](application/test_modem_config.c) | 16 | Geçti |
+| [application/test_periodic_reset.c](application/test_periodic_reset.c) | 8 | Geçti |
+| [application/test_power_panic.c](application/test_power_panic.c) | 5 | Geçti |
+| [application/test_relay.c](application/test_relay.c) | 9 | Geçti |
+| [application/test_system_status.c](application/test_system_status.c) | 5 | Geçti |
+| [application/test_time_service.c](application/test_time_service.c) | 6 | Geçti |
+| [bsp/test_adc_dma.c](bsp/test_adc_dma.c) | 4 | Geçti |
+| [bsp/test_bsp_delay_us.c](bsp/test_bsp_delay_us.c) | 8 | Geçti |
+| [bsp/test_bsp_random.c](bsp/test_bsp_random.c) | 11 | Geçti |
+| [bsp/test_rtc_sync.c](bsp/test_rtc_sync.c) | 24 | Geçti |
+| [bsp/test_spi_timeout.c](bsp/test_spi_timeout.c) | 8 | Geçti |
+| [bsp/test_uart_tx_scenario.c](bsp/test_uart_tx_scenario.c) | 8 | Geçti |
+| [efw/test_efw_crc.c](efw/test_efw_crc.c) | 5 | Geçti |
+| [efw/test_efw_parser.c](efw/test_efw_parser.c) | 6 | Geçti |
+| [gsm/test_at_engine_scenario.c](gsm/test_at_engine_scenario.c) | 35 | Geçti |
+| [gsm/test_at_socket_log.c](gsm/test_at_socket_log.c) | 8 | Geçti |
+| [gsm/test_gsm_info_edges.c](gsm/test_gsm_info_edges.c) | 18 | Geçti |
+| [gsm/test_gsm_response_scenario.c](gsm/test_gsm_response_scenario.c) | 33 | Geçti |
+| [gsm/test_gsm_signal_led_edges.c](gsm/test_gsm_signal_led_edges.c) | 3 | Geçti |
+| [gsm/test_gsm_socket_edges.c](gsm/test_gsm_socket_edges.c) | 10 | Geçti |
+| [gsm/test_gsm_wtd_liveness_scenario.c](gsm/test_gsm_wtd_liveness_scenario.c) | 4 | Geçti |
+| [gsm/test_ring_buff.c](gsm/test_ring_buff.c) | 16 | Geçti |
+| [iec104/test_cp56time2a.c](iec104/test_cp56time2a.c) | 14 | Geçti |
+| [iec104/test_iec104_protocol_scenario.c](iec104/test_iec104_protocol_scenario.c) | 59 | Geçti |
+| [iec104/test_iec104_util.c](iec104/test_iec104_util.c) | 5 | Geçti |
+| [libs/test_bms_full_map.c](libs/test_bms_full_map.c) | 8 | Geçti |
+| [libs/test_bms_reader_scenario.c](libs/test_bms_reader_scenario.c) | 11 | Geçti |
+| [libs/test_crc32.c](libs/test_crc32.c) | 6 | Geçti |
+| [libs/test_crc32_edges.c](libs/test_crc32_edges.c) | 5 | Geçti |
+| [libs/test_datetime.c](libs/test_datetime.c) | 9 | Geçti |
+| [libs/test_debouncer.c](libs/test_debouncer.c) | 5 | Geçti |
+| [libs/test_debouncer_edges.c](libs/test_debouncer_edges.c) | 6 | Geçti |
+| [libs/test_hmac_sha256.c](libs/test_hmac_sha256.c) | 3 | Geçti |
+| [libs/test_hmac_sha256_edges.c](libs/test_hmac_sha256_edges.c) | 4 | Geçti |
+| [libs/test_modbus_request_length.c](libs/test_modbus_request_length.c) | 8 | Geçti |
+| [libs/test_ring_buf.c](libs/test_ring_buf.c) | 6 | Geçti |
+| [libs/test_sha256_edges.c](libs/test_sha256_edges.c) | 5 | Geçti |
+| [libs/test_shell_color_output.c](libs/test_shell_color_output.c) | 5 | Geçti |
+| [libs/test_shell_command_registration.c](libs/test_shell_command_registration.c) | 4 | Geçti |
+| [libs/test_spi_flash_log_sequence_wrap.c](libs/test_spi_flash_log_sequence_wrap.c) | 2 | Geçti |
+| [libs/test_w25qxx_address_encoding.c](libs/test_w25qxx_address_encoding.c) | 23 | Geçti |
+| [libs/test_xscanf_edges.c](libs/test_xscanf_edges.c) | 7 | Geçti |
+| [libs/test_xscanf_format_scenario.c](libs/test_xscanf_format_scenario.c) | 8 | Geçti |
+| [libs/test_xsnprintf_edges.c](libs/test_xsnprintf_edges.c) | 4 | Geçti |
+| [libs/test_xsnprintf_format_scenario.c](libs/test_xsnprintf_format_scenario.c) | 22 | Geçti |
+| [power_board/test_power_board_control.c](power_board/test_power_board_control.c) | 22 | Geçti |
+| [power_board/test_power_board_decode.c](power_board/test_power_board_decode.c) | 11 | Geçti |
+| [power_board/test_power_board_scp.c](power_board/test_power_board_scp.c) | 13 | Geçti |
+| [rf/test_rf_config_scenario.c](rf/test_rf_config_scenario.c) | 10 | Geçti |
+| [rf/test_rf_error_retry_scenario.c](rf/test_rf_error_retry_scenario.c) | 76 | Geçti |
+| [rf/test_rf_event_log.c](rf/test_rf_event_log.c) | 11 | Geçti |
+| [rf/test_rf_events.c](rf/test_rf_events.c) | 27 | Geçti |
+| [rf/test_rf_group.c](rf/test_rf_group.c) | 23 | Geçti |
+| [rf/test_rf_scp_codec.c](rf/test_rf_scp_codec.c) | 20 | Geçti |
+| [rf/test_rf_scp_codec_scenario.c](rf/test_rf_scp_codec_scenario.c) | 4 | Geçti |
+| [scp/test_cobs.c](scp/test_cobs.c) | 14 | Geçti |
+| [scp/test_scp.c](scp/test_scp.c) | 12 | Geçti |
+| [scp/test_scp_capture_scenario.c](scp/test_scp_capture_scenario.c) | 6 | Geçti |
+| [web_server/test_http_request_parser.c](web_server/test_http_request_parser.c) | 23 | Geçti |
+| [web_server/test_http_request_parser_edges.c](web_server/test_http_request_parser_edges.c) | 12 | Geçti |
+| [web_server/test_http_response_bounds.c](web_server/test_http_response_bounds.c) | 4 | Geçti |
+| [web_server/test_http_response_edges.c](web_server/test_http_response_edges.c) | 11 | Geçti |
+| [web_server/test_http_session_token.c](web_server/test_http_session_token.c) | 12 | Geçti |
+| [web_server/test_http_session_token_edges.c](web_server/test_http_session_token_edges.c) | 6 | Geçti |
+| [web_server/test_json_config_bounds.c](web_server/test_json_config_bounds.c) | 26 | Geçti |
+| [web_server/test_json_parser_edges.c](web_server/test_json_parser_edges.c) | 14 | Geçti |
+| [web_server/test_rf_json_golden_scenario.c](web_server/test_rf_json_golden_scenario.c) | 1 | Geçti |
+
+Temel kapsam parser/sınır, RTC sync/boot/resync, SPI timeout, UART/RS-485
+gönderimi, ADC DMA örnekleri, Flash WEL/JEDEC, NVRAM/lifetime, Modbus,
+RF retry/COBS, IEC104 protokolü, BMS parser/reader ve formatter/web log
+senaryolarıdır. Test geçişi kapalı bir alt sistemi etkinleştirmez.
+
+Ortak host C seçenekleri `-std=c11 -pedantic -Wall -Wextra -Werror
+-Wshadow -Wconversion -Wdouble-promotion -Wformat=2`'dir. Güncel dar
+istisnalar `project.yml` dosyasındadır: legacy GSM senaryosunda sign,
+conversion, pedantic, unused-function ve array-parameter; JSON config
+senaryosunda array-parameter/conversion; RF JSON senaryosunda conversion
+ve float-conversion seçenekleri kapatılır. Bu istisnalar genel uygunluk
+belgesi olarak sunulmamalıdır. IEC104 paketinde eski conversion istisnası
+artık bulunmaz. İlgisiz donanım yollarını eleyen LTO/O2 ve host platform
+define'ları yalnız ilgili paketlere uygulanır; shell kayıt testi
+`-funsigned-char` ile hedef plain-char davranışını eşler.
+
+### SHA-256, HMAC ve AT sınır testleri — 05.10.2026
+
+Başlanmış üç paket tamamlanmıştır; başka modüle geçilmemiştir.
+29 yeni Unity testi toplamı 524'ten 553'e çıkarmıştır. SHA-256 paketi 5/5,
+HMAC paketi 4/4 geçmiştir. İlk AT koşusundaki 19/20 sonucu tarihsel kayıttır;
+SRING düzeltmesiyle 14 test daha eklenmiş, AT paketi **34/34** geçmiştir.
+
+SHA-256 padding/block sınırlarında 10, HMAC key/data sınırlarında 56
+bağımsız referans vektörü kullanılır. Vektörler `test` dizininde
+`python scripts/generate_crypto_vectors.py` ile standart Python hashlib/hmac
+üzerinden üretilir. Veri ve anahtar sentetiktir; ürün anahtarları okunmaz.
+Her kripto paketinde 129 bayt mesajın 130 split noktası sınanır.
+AT paketinde 29 bayt yanıtın 30 split noktası sınanır. Döngü kontrolleri
+ayrı Unity testi olarak sayılmaz. Güncel coverage yüzdesi çıkarılmamıştır.
+
+AT paketi gerçek `at_engine2.c`, GSM `utils.c` ve `ring_buff.c` çalıştırır.
+UART DMA, tick ve callback sınırları test çiftleriyle ayrılır. Command ve
+response kapasitesi, busy/retry/timeout, tick wrap, erken DMA completion,
+abort, binary NUL/OK, parçalı SRECV ve bekleyen URC'nin resetten sonra
+korunması test edilir. Host senaryoları fiziksel UART/IRQ zamanlamasını kanıtlamaz.
+
+Yeni AT profili host define ve LTO/O2 kullanır. Eski GSM `utils.c`
+include'u çevresinde yalnız `-Wconversion`/`-Wsign-conversion` tanıları
+scoped diagnostic push/pop ile bastırılır; diğer yeni kodda strict
+warning seçenekleri korunur. Host HAL enum'una BUSY/TIMEOUT eklenmiştir.
+
+İlk `test_at_srecv_binary_error_and_urc_patterns_are_not_dispatched` hatası
+kullanıcının yeni düzeltme talebiyle kapatılmıştır. URC/CME araması yalnız
+payload dışındaki metinde yapılır; silme aralığı payload CRLF'sine dokunmaz.
+Payload sonundaki sahte SRECV header'ı sayacı yeniden kurmaz.
+Reset/clear binary alanları temizler ve ring buffer'ı korur; cancel
+binary alanları ve ring buffer'ı temizler. Yeni kuyruk/durum eklenmemiştir.
+
+14 yeni Unity testi; yedi URC türü, CME, binary NUL, bytewise (bayt bayt)
+alım ve her split noktası, gerçek URC'lerin header öncesi/payload sonrası,
+kısmi satır, timeout/reset/clear/cancel/retry, sonraki normal komut,
+0/1024 bayt payload ve gerçek ERROR/CME terminal yanıtlarını kapsar.
+Düzeltme öncesi 33 testin 11'i başarısızdır; nihai AT paketi 34/34 geçer.
+[Hata ve düzeltme raporu](../AT_SRECV_URC_HATA_RAPORU_2026-10-05.md).
+Kanıt: `build/production-audit-2026-10-03/sring-all-unit-final.log`.
+
+### Güncel entegrasyon paketleri
+
+Merkezi `ruby test/run_all.rb` komutu 05.10.2026 tarihinde
+yeniden çalıştırılmıştır: **9/9 paket geçti**. Paket sayısı senaryo veya
+assertion sayısı değildir. Log: `build/production-audit-2026-10-03/
+sring-all-host.log`.
+
+| Paket | Kapsam | Sonuç |
+|---|---|---|
+| contiki_process | Host süreç davranışı | Geçti |
+| fault_log | Arıza kaydı/kalıcılık | Geçti |
+| gsm | GSM/AT ve akış kontrolleri | Geçti |
+| libs | Flash log/XMODEM/datetime ve ortak kütüphaneler | Geçti |
+| nvram | Gerçek NVRAM başlangıç ve sync | Geçti |
+| rfwu_auth | RFWU v2, nonce/MAC ve PC yardımcıları | Geçti |
+| rf_hub_sim | RF hub simülasyonu | Geçti |
+| web_auth | HTTP/oturum/RNG ve log gizleme | Geçti |
+| web_navigation | Web sayfa/Save/adres davranışı | Geçti |
+
+Host testleri MMIO (donanım register erişimi), fiziksel IRQ/DMA süresi,
+Flash güç kesintisi veya cihaz üzerinde OTA (uzaktan güncelleme) kabulünü
+kanıtlamaz. Bu sınırlar ve ertelenen işler
+[güncel üretim raporunda](../URETIM_HAZIRLIK_RAPORU_2026-10.md#10-güncel-üretim-durumu-ve-bulgu-tablosu) tutulur.
 
 ### IEC104 protokol senaryoları
 
 **Amaç:** SCADA tarafından gelen baytların doğru işlenmesini ve cihazın
 ürettiği APDU (uygulama protokol veri birimi) yanıtlarını doğrular.
 
-**Kullanım yeri:** `iec104/test_iec104_protocol_scenario.c` dosyasında 54
+**Kullanım yeri:** `iec104/test_iec104_protocol_scenario.c` dosyasında 59
 senaryo bulunur. Her senaryo bağımsız başlangıç durumuyla çalışır.
 
 | Alan | Kontrol edilen durumlar |
@@ -644,7 +785,13 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-03 | 1.14 | RFWU kimlik doğrulama karakterizasyonu ve ömür sayacı kayıt/reset sınırı testleri |
 | 2026-10-03 | 1.15 | 25 saatlik lifetime kaydı ve periyodik reset öncesi sync hata/sıra kontrolleri |
 | 2026-10-03 | 1.16 | RFWU v2 ret/resume/PC ve kripto vektör kontrolleri, secure RNG ve Python ABI uyumu |
+
+| 2026-10-05 | 1.17 | 51 Ceedling dosyası/524 senaryo, 9 entegrasyon paketi ve güncel warning/LTO kapsamı |
+
+| 2026-10-05 | 1.18 | SHA-256/HMAC/AT için 29 yeni test; 54 dosya/553 test, 552 geçti ve raporlanan 1 parser hatası açık |
 | 2026-10-05 | 1.19 | 8 KB RF tam olay günlüğü ve örnek iletişim; 11 ilgili dosyada 157/157 test |
+
+| 2026-10-05 | 1.20 | SRING binary payload düzeltmesi; AT 34/34, merkezi 57 dosya/661 test ve 9 integration paketi geçti |
 | 2026-10-05 | 1.21 | Otomatik RF olay tüketimi, 1/7 kalıcı ve 3 geçici listesi, 32 bit süre; 15 ilgili dosyada 246/246 test |
 | 2026-10-05 | 1.22 | Commit sonrası IEC104 spontane/replay bağlantısı ve 250/250 ilgili regresyon |
 | 2026-10-05 | 1.23 | Grup bloğu capture/target/CRC/invalid/alias testleri; 253/253 ilgili test, 433 NVRAM kontrolü |
@@ -658,6 +805,34 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-06 | 1.31 | SCP enerji/yük, yeni alan adları ve RF kalite bloğu; 428/428 seçili Ceedling, web ve NVRAM doğrulaması |
 | 2026-10-06 | 1.32 | Anlık arıza alanlarının kaldırılması; doğrudan olay yük biti, liste IOA hazırlığı ve 432/432 ilgili regresyon |
 | 2026-10-06 | 1.33 | Gerçek arıza/IEC104 günlük shell çıktısı testleri; 172/172 ilgili regresyon ve 175 çerçeve fixture kontrolü |
+| 2026-10-06 | 1.34 | Logging açık/kapalı olay günlüğü, gönderim durumu ve hata koruması; 95/95 ilgili test |
+
+## 06.10.2026 modül test genişletmesi
+
+GSM socket/info ve Modbus config için ilk Ceedling paketleri eklenmiştir.
+CRC/debouncer sınırları genişletilmiştir. Beş yeni dosyada 43 test ve mevcut
+PowerBoard FC03 paketinde dört ek test ile **47 yeni Unity testi** oluşmuştur.
+Yeni/uyarlanan altı pakette 49 test: 43 geçti, 6 CESQ regresyonu başarısızdır.
+Üretim kodu değiştirilmemiştir; önemli düzeltme önerileri son değerlendirmede
+[modül kapsam raporuna](../CEEDLING_MODUL_KAPSAM_RAPORU_2026-10-06.md) yazılmıştır.
+
+PowerBoard sağlayıcı test sınırı canonical API'ye uyarlandı. Web auth
+entegrasyonu yeni gerçek JSON modülüne bağlandı. Integration ilk koşuda
+8/9, bu test bağlantısı düzeltildikten sonraki web_auth koşusu başarılıdır.
+Diğer çalışmalardaki 10 yeni test nihai 835 toplamına dahildir;
+bu modül test çalışmasının katkısına mal edilmez.
+
+```text
+python test/scripts/test_test_inventory.py
+python test/scripts/test_inventory.py --junit test/build/production-audit-2026-10-03/module-expansion-final-2026-10-06.xml
+```
+
+İlk komut envanter aracının 7 Python unittest'ini çalıştırır. Bunlar Unity
+sayısına eklenmez. İkinci komut repo kökünden tam envanteri raporlar;
+altı açık regresyon nedeniyle sıfır olmayan sonuç beklenir. Eksik/duplicate,
+stale suite ve count uyuşmazlığı da başarı sayılmaz. Tam koşunun JUnit kopyası
+başka tek paket koşularından önce saklanmalıdır. Eski başarılı test sayıları
+bu son başarısız koşunun yerine kullanılmamalıdır.
 
 ## 06.10.2026 SCP Powerboard tüketici doğrulaması
 
@@ -674,7 +849,8 @@ C:\Ruby34-x64\bin\ruby.exe -S ceedling "test:pattern[(test_rf_|test_fault_log|te
 ```
 
 20 seçili dosyada 319/319 test geçti; kanıt `build/scp-power-regression.log`.
-Bu seçili sonuç tam suite sonucu değildir. Navigation kaynak/gömülü sayfa ve web_auth entegrasyonu
+Bu seçili sonuç tam suite sonucu değildir; yukarıdaki GSM CESQ regresyonu
+ayrı açık bulgudur. Navigation kaynak/gömülü sayfa ve web_auth entegrasyonu
 ayrıca geçti. Hedefte sıkı 16 modül derlemesi ve Release link doğrulandı;
 fiziksel enerji kesintisi/Powerboard kabulü yapılmadı.
 
@@ -836,3 +1012,26 @@ ruby -S ceedling "test:pattern[(test_fault_log|test_iec104_event_log_shell|test_
 `build/rf-load-shell-regression.log`: 172/172 geçti; bütün depo suite
 sonucu değildir. Fixture güncellik kontrolü 14 CSV/175 çerçeve için
 geçti. Release 0 hata/0 uyarıyla tamamlandı; fiziksel kabul yapılmadı.
+
+## 06.10.2026 IEC104 olay günlüğü logging kapalı yapı
+
+`iec104/test_iec104_event_log.c` varsayılan NO_SHELL_LOG yapısını,
+`test_iec104_event_log_shell.c` gerçek shell çıktısını çalıştırır. İkisi
+`support/iec104_event_log_fixture.h` üzerinden aynı NOR modeli ve üretim
+spi_flash_log/CRC girişlerini kullanır. Algoritma taklit edilmez.
+
+En yeni gönderilmemiş kaydın yük/süre alanları, yeniden init, yanlış sıra
+onayı, aralığın tüketilmesi, NULL giriş ve yazma hatasında sıra/durumun
+korunması sınanır. Logging kapalı ilk derleme kullanılmayan `sent`
+değişkeninde hata verdi; hesap SHELL_LOG argümanına taşındıktan sonra
+iki yapı da geçti. Seçim:
+
+```text
+cd test
+ruby -S ceedling "test:pattern[(test_iec104_event_log|test_rf_events|test_fault_log|test_iec104_protocol_scenario)]"
+```
+
+`build/iec104-event-log-state-regression.log`: 95/95 geçti. Release
+0 hata/0 uyarıdır. HIL raporunu inceleme sırasında ayrıca simülatör
+self-test'i port açılmadan 57/57 geçti; bu sayılar fiziksel kabul veya
+tek bir birleşik test sayısı olarak sunulmamalıdır.
