@@ -206,7 +206,7 @@ void nvram_set_defaults(void)
             nvram.breaker.line[i].iec104.ariza_kalicimi[ph] = iec104_make_ioa_3byte(base_ioa + 20 + ph);
             nvram.breaker.line[i].iec104.anlik_akim[ph] = iec104_make_ioa_3byte(base_ioa + 30 + ph);
             nvram.breaker.line[i].iec104.enerji_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 40 + ph);
-            nvram.breaker.line[i].iec104.nominal_akim_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 50 + ph);
+            nvram.breaker.line[i].iec104.yuk_akimi_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 50 + ph);
             nvram.breaker.line[i].iec104.rf_haberlesme_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 60 + ph);
         }
 
@@ -226,7 +226,7 @@ void nvram_set_defaults(void)
         //   ariza_suresi R/S/T -> base + 12 / 13 / 14 (UINT16, ms)
         //   ariza_kalicimi      -> base + 15 / 16 / 17 (UINT16)
         //   enerji_varyok       -> base + 18 / 19 / 20 (UINT16)
-        //   nominal_akim_varyok -> base + 21 / 22 / 23 (UINT16)
+        //   yuk_akimi_varyok -> base + 21 / 22 / 23 (UINT16)
         //   rf_haberlesme_varyok-> base + 24 / 25 / 26 (UINT16)
         uint32_t base_addr = 40000U + (i * 100U);  // Line 0: 40000, Line 1: 40100, etc.
         for(uint32_t ph = 0U; ph < PHASE_MAX; ++ph)
@@ -236,7 +236,7 @@ void nvram_set_defaults(void)
             nvram.breaker.line[i].modbus.ariza_suresi[ph] = (uint16_t)(base_addr + 12 + ph);
             nvram.breaker.line[i].modbus.ariza_kalicimi[ph] = (uint16_t)(base_addr + 15 + ph);
             nvram.breaker.line[i].modbus.enerji_varyok[ph] = (uint16_t)(base_addr + 18 + ph);
-            nvram.breaker.line[i].modbus.nominal_akim_varyok[ph] = (uint16_t)(base_addr + 21 + ph);
+            nvram.breaker.line[i].modbus.yuk_akimi_varyok[ph] = (uint16_t)(base_addr + 21 + ph);
             nvram.breaker.line[i].modbus.rf_haberlesme_varyok[ph] = (uint16_t)(base_addr + 24 + ph);
 
             // Fault-log blocks are reserved (offsets 27..99) and not yet mapped.
@@ -389,10 +389,10 @@ void nvram_dump()
 		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.enerji_varyok[PHASE_L1]);
 		CSLOG_NODT("        - Phase S            : %u\r\n", nvram.breaker.line[i].modbus.enerji_varyok[PHASE_L2]);
 		CSLOG_NODT("        - Phase T            : %u\r\n", nvram.breaker.line[i].modbus.enerji_varyok[PHASE_L3]);
-		CSLOG_NODT("      Nominal Akim VarYok Addr:\r\n");
-		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.nominal_akim_varyok[PHASE_L1]);
-		CSLOG_NODT("        - Phase S            : %u\r\n", nvram.breaker.line[i].modbus.nominal_akim_varyok[PHASE_L2]);
-		CSLOG_NODT("        - Phase T            : %u\r\n", nvram.breaker.line[i].modbus.nominal_akim_varyok[PHASE_L3]);
+		CSLOG_NODT("      Yuk Akimi VarYok Addr:\r\n");
+		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.yuk_akimi_varyok[PHASE_L1]);
+		CSLOG_NODT("        - Phase S            : %u\r\n", nvram.breaker.line[i].modbus.yuk_akimi_varyok[PHASE_L2]);
+		CSLOG_NODT("        - Phase T            : %u\r\n", nvram.breaker.line[i].modbus.yuk_akimi_varyok[PHASE_L3]);
 		CSLOG_NODT("      RF Haberlesme VarYok Addr:\r\n");
 		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.rf_haberlesme_varyok[PHASE_L1]);
 		CSLOG_NODT("        - Phase S            : %u\r\n", nvram.breaker.line[i].modbus.rf_haberlesme_varyok[PHASE_L2]);

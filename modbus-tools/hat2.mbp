@@ -267,19 +267,19 @@
          <Cell idx="21">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat2 L1 Nominal Akım</Name>
+            <Name>Hat2 L1 Yük Akımı Var/Yok</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="22">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat2 L2 Nominal Akım</Name>
+            <Name>Hat2 L2 Yük Akımı Var/Yok</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="23">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
-            <Name>Hat2 L3 Nominal Akım</Name>
+            <Name>Hat2 L3 Yük Akımı Var/Yok</Name>
             <Font used="false"/>
          </Cell>
          <Cell idx="24">

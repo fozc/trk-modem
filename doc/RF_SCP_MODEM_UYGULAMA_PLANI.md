@@ -1196,6 +1196,76 @@ bunların eski dummy üreticisi korunur. BQ-15 ve K9 açıktır. Bu yeni IEC104
 adımı commit edilmedi; cihaz yükleme/reset veya dışarı mesaj gönderimi
 bu çalışmada yapılmadı.
 
+## Enerji göstergesi ve Modbus kalite bloğu — 06.10.2026
+
+`f352bed` sonrasında enerji/yük göstergelerinin eski breaker kaynağını
+okuduğu doğrulandı. R1 LIVE_DATA bit 0 enerji, bit 1 yük akımı bilgisidir;
+bit 1 nominal akım göstergesi olarak yorumlanmamalıdır. IEC104 enerji
+okuyucusu bit 0'a, mevcut alım zamanı ve IV/NT kalite mekanizmasına
+bağlandı. Bu kısmın gerçek model/okuyucu paketi 7/7 geçti.
+
+Kullanıcı Modbus geçersiz UINT16 davranışı için endüstri standardının
+esas alınmasını istedi. [Modbus Organization açıklaması](https://www.modbus.org/introduction-to-modbus)
+holding register'ın 16 bit olduğunu ve Boolean eşlemesinin cihaz haritasında
+açıklanacağını belirtir. `0xFFFF = geçersiz Boolean` genel Modbus standardı
+değildir. Modbus, IEC104 SIQ/QDS gibi her noktaya taşınan bir kalite alanı
+tanımlamaz. Aşağıdaki veri/kalite ayrımı kullanıcı onaylı ürün haritasıdır; Modbus
+standardının zorunlu bit haritası diye sunulmamalıdır.
+
+### Onaylanan davranış
+
+Enerji/yük değerleri mevcut adreslerde 0/1 kalmalıdır. Eski örnek varsa son bit
+korunur; kaynak hiç yoksa 0 döner. Bu 0 geçerli enerji yok anlamı taşımaz;
+istasyon değeri kullanmadan karşılık gelen kalite bitini okumalıdır.
+Anlık akımın daha önce onaylanan NaN davranışı ve RF tazelik göstergesi
+korunur. IEC104'te mevcut IV/NT bitleri kullanılır.
+
+| Alan | Uygulanan davranış |
+|---|---|
+| Yeni salt okunur kalite bloğu | 49500–49520, PDU 9500–9520; 7 ayar satırı × 3 faz |
+| İndeks | `49500 + 3 × satır_indeksi + faz_indeksi`; indeksler 0 tabanlı |
+| Bit 0 | Anlık akım geçerli: doğru eşleme, taze LIVE, sayısal RMS geçerli |
+| Bit 1 | Enerji göstergesi geçerli: doğru eşleme ve taze LIVE |
+| Bit 2 | Yük akımı göstergesi geçerli: doğru eşleme ve taze LIVE |
+| Bit 3–15 | Rezerve, 0 |
+| Saat örneği | Aynı FC03 yanıtındaki RF değer/kalite mevcut tek zaman örneğini kullanır |
+
+Kullanıcı 49500–49520 ayrı kalite bloğunu onayladı. GSM bloğu
+49400–49408'dedir. Yeni blok salt okunurdur; FC06 yazması reddedilir.
+Web ve sunucu yapılandırılabilir adreslerin bu blokla çakışmasını
+reddetmelidir; 49499'dan başlayan iki register'lık FLOAT32 de çakışır.
+Kalite adresleri sabittir; NVRAM'e yeni alan eklenmedi.
+
+Kalite ve değer farklı FC03 istekleriyle okunursa aralarında yeni LIVE
+gelmesi mümkündür. Tek zaman örneği kuralı yalnız aynı FC03 yanıtı
+için geçerlidir; ayrı istekler atomik bir görüntü olarak sunulmamalıdır.
+
+IEC104 ve sabit/yapılandırılabilir Modbus enerji alanları gerçek RF
+modelinin LIVE bit 0 kaynağına bağlandı. Geçersiz sayısal akım, enerji
+ve yük kalitesini bozmaz. Kullanıcı eski uyumluluğa gerek olmadığını ve
+dokümanın esas alınmasını tekrar belirtti. Eski nominal var/yok alanı
+`yuk_akimi_varyok` olarak adlandırıldı ve LIVE bit 1'e bağlandı.
+JSON anahtarları `IOA_*_YukAkimiVarYok` / `ADDR_*_YukAkimiVarYok`,
+ekran adı Yük Akımı Var/Yok oldu. Eski anahtar takma adı eklenmedi.
+Adresler, yapı boyutları ve alan sırası değişmedi. Koruma ayarı olan
+`SistemNominalAkimi` aynı anlamını korur. K9'un kalan alarm eşlemeleri
+bu adımın tamamlandığı gerekçesiyle kapatılmamalıdır.
+
+### Doğrulama ve sınırlar
+
+İlk enerji/kalite adımında 54/54 odaklı test geçti. Yük geçişiyle son
+seçili Ceedling koşusu 428/428, son IEC104 alt kümesi 72/72 geçti. Gerçek RF modelinin
+üretim FC03/IEC104 okuyucularındaki taze, eski, eksik ve geçersiz RMS
+akışları; salt okunur blok ve adres çakışması sınandı. Kaynak ve gömülü
+web sayfasının doğrulaması ve gerçek HTTP handler paketi geçti.
+RF izleme ekranı enerji/yük bitlerini iki ayrı satırda gösterir;
+eski, eksik veya geçersiz Flags durumunda var/yok yerine — gösterilmelidir.
+Ham Flags teşhis satırı ayrıca korunur. İki dil ve kaynak/gömülü sayfa
+testleri bu davranışı doğrular.
+NVRAM integration 433/433 kontrolü geçti. 22 modül sıkı ARM/C11 uyarılarıyla
+derlendi; CubeIDE Release 0 hata ve 0 uyarıyla tamamlandı. Bu sonuçlar
+fiziksel RF/seri port kabulü değildir.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Değişiklik |
@@ -1219,3 +1289,4 @@ bu çalışmada yapılmadı.
 | 06.10.2026 | 0.17 | Powerboard commit 179205b; K5 kararı, ayrı RF web Kaydet/Uygula/durum/iptal ve 378/378 ilgili test |
 | 06.10.2026 | 0.18 | RF web commit ba578b9; mevcut Modbus akım/RF alanlarının SCP kaynağı, NaN tercihi ve 411/411 ilgili test |
 | 06.10.2026 | 0.19 | IEC104 canlı akım/RF kaynağı, kullanıcı onaylı RTU alım zamanı, BQ-15 ve 418/418 ilgili test |
+| 06.10.2026 | 0.20 | Enerji/yük için SCP bit 0/1, onaylı 49500–49520 kalite bloğu, yeni yük adları, adres çakışması koruması ve 428/428 ilgili test |

@@ -223,6 +223,64 @@ static void check_mh_restart_does_not_reuse_dummy_or_old_rf_value(void)
 }
 
 
+static void check_energy_and_quality_use_the_same_real_live_sample(void)
+{
+    const rf_scp_live_t sample = {.source = 5U, .seq = 1U,
+        .uptime_sec = 10U, .current_amps = 1.25F, .flags = 1U};
+
+    read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 21U);
+    TEST_ASSERT_EQUAL_UINT16(0U, word(0U));
+    TEST_ASSERT_EQUAL_UINT16(0U, word(20U));
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, NULL));
+    read_regs(MODBUS_OFF_ENERJI_VARYOK, 1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, word(0U));
+    read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 1U);
+    TEST_ASSERT_EQUAL_UINT16(7U, word(0U));
+    tick += 30000U;
+    read_regs(MODBUS_OFF_ENERJI_VARYOK, 1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, word(0U));
+    read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 1U);
+    TEST_ASSERT_EQUAL_UINT16(0U, word(0U));
+    live(-1.0F);
+    read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 1U);
+    TEST_ASSERT_EQUAL_UINT16(6U, word(0U));
+}
+
+static void check_load_indicator_uses_mh_flag(void)
+{
+    rf_scp_live_t sample = {.source = 5U, .seq = 1U,
+        .uptime_sec = 10U, .current_amps = -1.0F, .flags = 2U};
+
+    read_regs(MODBUS_OFF_YUK_VARYOK, 1U);
+    TEST_ASSERT_EQUAL_UINT16(0U, word(0U));
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, NULL));
+    read_regs(MODBUS_OFF_YUK_VARYOK, 1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, word(0U));
+    read_regs(MODBUS_OFF_ENERJI_VARYOK, 1U);
+    TEST_ASSERT_EQUAL_UINT16(0U, word(0U));
+    read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 1U);
+    TEST_ASSERT_EQUAL_UINT16(6U, word(0U));
+    sample.current_amps = 100.0F;
+    sample.flags = 1U;
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, NULL));
+    read_regs(MODBUS_OFF_YUK_VARYOK, 1U);
+    TEST_ASSERT_EQUAL_UINT16(0U, word(0U));
+}
+
+static void check_quality_block_is_read_only_and_bounds_preserve_value(void)
+{
+    uint16_t value = 0xA55AU;
+
+    TEST_ASSERT_FALSE(modbus_rf_stats_read(49499U, tick, &value));
+    TEST_ASSERT_FALSE(modbus_rf_stats_read(49521U, tick, &value));
+    TEST_ASSERT_EQUAL_HEX16(0xA55AU, value);
+    TEST_ASSERT_FALSE(modbus_rf_stats_read(49500U, tick, NULL));
+    modbus_config_get_addr_modem_reset_StopIgnore();
+    /* Even a bad preexisting configuration cannot turn quality into reset. */
+    TEST_ASSERT_EQUAL_INT(MODBUS_REG_ERR_ADDRESS,
+                          fc06_write_callback(49500U, 1U));
+}
+
 #endif
 
 /*** end of file ***/

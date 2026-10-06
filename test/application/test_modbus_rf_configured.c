@@ -10,6 +10,7 @@
 
 #include "unity.h"
 #include "rf.h"
+#include "modbus_rf_stats.h"
 #include "mock_rf_inventory.h"
 #include "mock_bsp.h"
 #include "mock_modbus_config.h"
@@ -32,7 +33,9 @@ void setUp(void)
     static const modbus_line_config_t config =
     {
         .anlik_akim = {40006U, 0U, 0U},
-        .rf_haberlesme_varyok = {40024U, 0U, 0U}
+        .rf_haberlesme_varyok = {40024U, 0U, 0U},
+        .enerji_varyok = {40018U, 0U, 0U},
+        .yuk_akimi_varyok = {40021U, 0U, 0U}
     };
     reset_fixture();
     modbus_get_line_config_IgnoreAndReturn(&config);
@@ -65,6 +68,21 @@ void test_both_float_words_use_the_same_age_check_at_timeout_boundary(void)
 void test_mh_restart_does_not_reuse_dummy_or_old_rf_value(void)
 {
     check_mh_restart_does_not_reuse_dummy_or_old_rf_value();
+}
+
+void test_energy_and_quality_are_separate_in_configurable_map(void)
+{
+    check_energy_and_quality_use_the_same_real_live_sample();
+}
+
+void test_quality_block_cannot_be_changed_by_configurable_reset_address(void)
+{
+    check_quality_block_is_read_only_and_bounds_preserve_value();
+}
+
+void test_load_indicator_uses_mh_flag_in_configurable_map(void)
+{
+    check_load_indicator_uses_mh_flag();
 }
 
 /*** end of file ***/

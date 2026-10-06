@@ -50,7 +50,7 @@ const summarize = b => {
 // ---------- mock data ----------
 const now = () => Math.floor(Date.now() / 1000);
 
-const iecKeys = ['IOA_R_ArizaAkimi','IOA_S_ArizaAkimi','IOA_T_ArizaAkimi','IOA_R_ArizaSuresi','IOA_S_ArizaSuresi','IOA_T_ArizaSuresi','IOA_R_ArizaTuru','IOA_S_ArizaTuru','IOA_T_ArizaTuru','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_NominalAkimVarYok','IOA_S_NominalAkimVarYok','IOA_T_NominalAkimVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok'];
+const iecKeys = ['IOA_R_ArizaAkimi','IOA_S_ArizaAkimi','IOA_T_ArizaAkimi','IOA_R_ArizaSuresi','IOA_S_ArizaSuresi','IOA_T_ArizaSuresi','IOA_R_ArizaTuru','IOA_S_ArizaTuru','IOA_T_ArizaTuru','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_YukAkimiVarYok','IOA_S_YukAkimiVarYok','IOA_T_YukAkimiVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok'];
 const iecHat = {
   inUse: arr8(i => i < 4 ? 1 : 0),
   TemporaryFaultBase: arr8(i => 100000 + i * 1000),

@@ -23,6 +23,7 @@ TEST_SOURCE_FILE("power_board_scp.c")
 #include "mock_modbus_gsm_stats.h"
 #include "mock_breaker.h"
 #include "mock_rf.h"
+#include "mock_modbus_rf_stats.h"
 #include "mock_nvram.h"
 #include "modbus_rtu_slave.h"
 #include "modbus_power_stats.h"
@@ -123,6 +124,7 @@ static uint16_t response_register(size_t index)
 
 void setUp(void)
 {
+    modbus_rf_stats_read_IgnoreAndReturn(false);
     power_board_control_init_Ignore();
     fake_tick = 0U;
     response_len = 0U;

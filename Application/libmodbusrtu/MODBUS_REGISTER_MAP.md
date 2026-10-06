@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.8 |
-| Tarih | 2026-10-04 |
+| Dokuman surumu | 1.9 |
+| Tarih | 2026-10-06 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -184,9 +184,9 @@ bkz. 5.3.
 | 18 | 40018 | 18 | enerji_varyok | L1 | UINT16 | 0/1 |
 | 19 | 40019 | 19 | enerji_varyok | L2 | UINT16 | 0/1 |
 | 20 | 40020 | 20 | enerji_varyok | L3 | UINT16 | 0/1 |
-| 21 | 40021 | 21 | nominal_akim_varyok | L1 | UINT16 | 0/1 |
-| 22 | 40022 | 22 | nominal_akim_varyok | L2 | UINT16 | 0/1 |
-| 23 | 40023 | 23 | nominal_akim_varyok | L3 | UINT16 | 0/1 |
+| 21 | 40021 | 21 | yuk_akimi_varyok | L1 | UINT16 | 0/1 |
+| 22 | 40022 | 22 | yuk_akimi_varyok | L2 | UINT16 | 0/1 |
+| 23 | 40023 | 23 | yuk_akimi_varyok | L3 | UINT16 | 0/1 |
 | 24 | 40024 | 24 | rf_haberlesme_varyok | L1 | UINT16 | 0/1 |
 | 25 | 40025 | 25 | rf_haberlesme_varyok | L2 | UINT16 | 0/1 |
 | 26 | 40026 | 26 | rf_haberlesme_varyok | L3 | UINT16 | 0/1 |
@@ -218,8 +218,13 @@ kararları kullanmaz. Bu kural diğer telemetri bloklarına ortak bir
 snapshot (anlık kopya) eklendiği anlamına gelmez. Etkin olmayan Modbus
 satırı ve rezerve adreslerdeki mevcut 0 davranışı korunur (§5.1).
 
-Arıza, enerji ve nominal/yük akımı alanlarının tümünün SCP'ye bağlandığı
-bu adımla söylenmemelidir. Bu alanlar sonraki eşleme kapsamındadır.
+Enerji göstergesi LIVE_DATA `Status_Flags` bit 0, yük akımı göstergesi
+bit 1 kaynağını kullanmalıdır. İkisi UINT16 0/1 değeridir. Modem bu
+bitleri RMS veya nominal koruma ayarından yeniden hesaplamamalıdır.
+Değerlerin geçerliliği §7.5 kalite bloğundan okunmalıdır. Son canlı
+örnek eskiyse son bit korunur, hiç yoksa 0 döner; kalite=0 durumundaki
+değer geçerli yok bilgisi olarak kullanılmamalıdır. Kalan arıza/alarm
+eşlemelerinin tamamlandığı bu geçişten çıkarılmamalıdır.
 
 ### 5.3 Tam Alt Adres Dizini (Tum Fiderler, Kayit Bazinda)
 
@@ -252,9 +257,9 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 | 40018 | 18 | enerji_varyok | L1 | - | UINT16 |
 | 40019 | 19 | enerji_varyok | L2 | - | UINT16 |
 | 40020 | 20 | enerji_varyok | L3 | - | UINT16 |
-| 40021 | 21 | nominal_akim_varyok | L1 | - | UINT16 |
-| 40022 | 22 | nominal_akim_varyok | L2 | - | UINT16 |
-| 40023 | 23 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40021 | 21 | yuk_akimi_varyok | L1 | - | UINT16 |
+| 40022 | 22 | yuk_akimi_varyok | L2 | - | UINT16 |
+| 40023 | 23 | yuk_akimi_varyok | L3 | - | UINT16 |
 | 40024 | 24 | rf_haberlesme_varyok | L1 | - | UINT16 |
 | 40025 | 25 | rf_haberlesme_varyok | L2 | - | UINT16 |
 | 40026 | 26 | rf_haberlesme_varyok | L3 | - | UINT16 |
@@ -284,9 +289,9 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 | 40118 | 118 | enerji_varyok | L1 | - | UINT16 |
 | 40119 | 119 | enerji_varyok | L2 | - | UINT16 |
 | 40120 | 120 | enerji_varyok | L3 | - | UINT16 |
-| 40121 | 121 | nominal_akim_varyok | L1 | - | UINT16 |
-| 40122 | 122 | nominal_akim_varyok | L2 | - | UINT16 |
-| 40123 | 123 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40121 | 121 | yuk_akimi_varyok | L1 | - | UINT16 |
+| 40122 | 122 | yuk_akimi_varyok | L2 | - | UINT16 |
+| 40123 | 123 | yuk_akimi_varyok | L3 | - | UINT16 |
 | 40124 | 124 | rf_haberlesme_varyok | L1 | - | UINT16 |
 | 40125 | 125 | rf_haberlesme_varyok | L2 | - | UINT16 |
 | 40126 | 126 | rf_haberlesme_varyok | L3 | - | UINT16 |
@@ -316,9 +321,9 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 | 40218 | 218 | enerji_varyok | L1 | - | UINT16 |
 | 40219 | 219 | enerji_varyok | L2 | - | UINT16 |
 | 40220 | 220 | enerji_varyok | L3 | - | UINT16 |
-| 40221 | 221 | nominal_akim_varyok | L1 | - | UINT16 |
-| 40222 | 222 | nominal_akim_varyok | L2 | - | UINT16 |
-| 40223 | 223 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40221 | 221 | yuk_akimi_varyok | L1 | - | UINT16 |
+| 40222 | 222 | yuk_akimi_varyok | L2 | - | UINT16 |
+| 40223 | 223 | yuk_akimi_varyok | L3 | - | UINT16 |
 | 40224 | 224 | rf_haberlesme_varyok | L1 | - | UINT16 |
 | 40225 | 225 | rf_haberlesme_varyok | L2 | - | UINT16 |
 | 40226 | 226 | rf_haberlesme_varyok | L3 | - | UINT16 |
@@ -348,9 +353,9 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 | 40318 | 318 | enerji_varyok | L1 | - | UINT16 |
 | 40319 | 319 | enerji_varyok | L2 | - | UINT16 |
 | 40320 | 320 | enerji_varyok | L3 | - | UINT16 |
-| 40321 | 321 | nominal_akim_varyok | L1 | - | UINT16 |
-| 40322 | 322 | nominal_akim_varyok | L2 | - | UINT16 |
-| 40323 | 323 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40321 | 321 | yuk_akimi_varyok | L1 | - | UINT16 |
+| 40322 | 322 | yuk_akimi_varyok | L2 | - | UINT16 |
+| 40323 | 323 | yuk_akimi_varyok | L3 | - | UINT16 |
 | 40324 | 324 | rf_haberlesme_varyok | L1 | - | UINT16 |
 | 40325 | 325 | rf_haberlesme_varyok | L2 | - | UINT16 |
 | 40326 | 326 | rf_haberlesme_varyok | L3 | - | UINT16 |
@@ -380,9 +385,9 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 | 40418 | 418 | enerji_varyok | L1 | - | UINT16 |
 | 40419 | 419 | enerji_varyok | L2 | - | UINT16 |
 | 40420 | 420 | enerji_varyok | L3 | - | UINT16 |
-| 40421 | 421 | nominal_akim_varyok | L1 | - | UINT16 |
-| 40422 | 422 | nominal_akim_varyok | L2 | - | UINT16 |
-| 40423 | 423 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40421 | 421 | yuk_akimi_varyok | L1 | - | UINT16 |
+| 40422 | 422 | yuk_akimi_varyok | L2 | - | UINT16 |
+| 40423 | 423 | yuk_akimi_varyok | L3 | - | UINT16 |
 | 40424 | 424 | rf_haberlesme_varyok | L1 | - | UINT16 |
 | 40425 | 425 | rf_haberlesme_varyok | L2 | - | UINT16 |
 | 40426 | 426 | rf_haberlesme_varyok | L3 | - | UINT16 |
@@ -412,9 +417,9 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 | 40518 | 518 | enerji_varyok | L1 | - | UINT16 |
 | 40519 | 519 | enerji_varyok | L2 | - | UINT16 |
 | 40520 | 520 | enerji_varyok | L3 | - | UINT16 |
-| 40521 | 521 | nominal_akim_varyok | L1 | - | UINT16 |
-| 40522 | 522 | nominal_akim_varyok | L2 | - | UINT16 |
-| 40523 | 523 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40521 | 521 | yuk_akimi_varyok | L1 | - | UINT16 |
+| 40522 | 522 | yuk_akimi_varyok | L2 | - | UINT16 |
+| 40523 | 523 | yuk_akimi_varyok | L3 | - | UINT16 |
 | 40524 | 524 | rf_haberlesme_varyok | L1 | - | UINT16 |
 | 40525 | 525 | rf_haberlesme_varyok | L2 | - | UINT16 |
 | 40526 | 526 | rf_haberlesme_varyok | L3 | - | UINT16 |
@@ -444,9 +449,9 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 | 40618 | 618 | enerji_varyok | L1 | - | UINT16 |
 | 40619 | 619 | enerji_varyok | L2 | - | UINT16 |
 | 40620 | 620 | enerji_varyok | L3 | - | UINT16 |
-| 40621 | 621 | nominal_akim_varyok | L1 | - | UINT16 |
-| 40622 | 622 | nominal_akim_varyok | L2 | - | UINT16 |
-| 40623 | 623 | nominal_akim_varyok | L3 | - | UINT16 |
+| 40621 | 621 | yuk_akimi_varyok | L1 | - | UINT16 |
+| 40622 | 622 | yuk_akimi_varyok | L2 | - | UINT16 |
+| 40623 | 623 | yuk_akimi_varyok | L3 | - | UINT16 |
 | 40624 | 624 | rf_haberlesme_varyok | L1 | - | UINT16 |
 | 40625 | 625 | rf_haberlesme_varyok | L2 | - | UINT16 |
 | 40626 | 626 | rf_haberlesme_varyok | L3 | - | UINT16 |
@@ -459,10 +464,10 @@ Durum register'lari 0/1 mantiksal degerdir:
 |---|---|---|
 | ariza_kalicimi | Gecici / ariza yok | Kalici ariza |
 | enerji_varyok | (uygulama tanimli) | (uygulama tanimli) |
-| nominal_akim_varyok | (uygulama tanimli) | (uygulama tanimli) |
+| yuk_akimi_varyok | (uygulama tanimli) | (uygulama tanimli) |
 | rf_haberlesme_varyok | RF haberlesme var | RF haberlesme yok |
 
-> Not: enerji_varyok / nominal_akim_varyok alanlarinin 0/1 polaritesi cihaz
+> Not: enerji_varyok / yuk_akimi_varyok alanlarinin 0/1 polaritesi cihaz
 > uygulamasina gore netlestirilmeli ve bu tabloya islenmelidir.
 
 ---
@@ -731,14 +736,55 @@ modul: `Application/modbus_gsm_stats.c`.
 - `modbus-tools/gsm_stats.mbp` durum/kusak/hata/soket alanlarini "Normal",
   "2G", "Hata Yok", "Dinliyor" gibi metinlerle gosterir (value-name eslemesi).
 
-### 7.5 Toplu Okuma (FC03)
+### 7.5 RF kalite bloğu (49500 / base-0 9500)
+
+Amaç: anlık akım, enerji ve yük göstergelerinin geçerliliğini taşımak.
+Kaynak `Application/modbus_rf_stats.c`; 21 UINT16 register salt okunurdur.
+Adres formülü `49500 + 3 × satır_indeksi + faz_indeksi` olmalıdır.
+İndeksler 0 tabanlıdır; satır ayar sırası, fazlar L1/L2/L3 sırasıdır.
+
+| Ayar satırı | L1 | L2 | L3 | Base-0 aralığı |
+|---:|---:|---:|---:|---|
+| 1 | 49500 | 49501 | 49502 | 9500–9502 |
+| 2 | 49503 | 49504 | 49505 | 9503–9505 |
+| 3 | 49506 | 49507 | 49508 | 9506–9508 |
+| 4 | 49509 | 49510 | 49511 | 9509–9511 |
+| 5 | 49512 | 49513 | 49514 | 9512–9514 |
+| 6 | 49515 | 49516 | 49517 | 9515–9517 |
+| 7 | 49518 | 49519 | 49520 | 9518–9520 |
+
+| Bit | 1 anlamı |
+|---:|---|
+| 0 | Anlık akım geçerli: doğru eşleme, taze LIVE, sayısal RMS geçerli |
+| 1 | Enerji göstergesi geçerli: doğru eşleme ve taze LIVE |
+| 2 | Yük akımı göstergesi geçerli: doğru eşleme ve taze LIVE |
+| 3–15 | Rezerve, 0 olmalıdır |
+
+Taze geçerli RMS için kalite 7, taze geçersiz RMS için 6, eksik/eski
+örnek veya etkin olmayan Modbus satırı için 0 olur. Enerji/yük durum
+bitinin 0 olması kalite bitini sıfırlamaz; kalite değer değil geçerlilik
+taşır. RF tazelik göstergesi (§5.2.1) ayrı değerlendirilmelidir.
+
+Bu ürün haritası kullanıcı kararıdır; Modbus'un zorunlu kalite bitleri
+olarak sunulmamalıdır. Genel geçersiz Boolean için 0xFFFF tanımı yoktur
+([Modbus Organization açıklaması](https://www.modbus.org/introduction-to-modbus)).
+İstemci saklanan Boolean değeri kullanmadan kaliteyi okumalıdır.
+Farklı FC03 istekleri arasına yeni LIVE gelebilir; ayrı yanıtların
+atomik bir görüntü olduğu varsayılmamalıdır.
+
+FC06 bu bloğa yazmayı reddeder. Web ve sunucu yapılandırılabilir
+adreslerin bu blokla çakışmasını reddetmelidir; iki register'lık
+FLOAT32'nin ikinci parçası da denetlenmelidir. NVRAM'e alan eklenmez.
+
+### 7.6 Toplu Okuma (FC03)
 
 | Blok | Address (base-0) | Quantity |
 |---|---:|---:|
 | Sistem istatistik | 9000 | 17 |
-| Guc karti telemetri | 9200 | 32 |
+| Guc karti telemetri | 9200 | 38 |
 | BMS telemetri | 9300 | 79 |
 | GSM durumu | 9400 | 9 |
+| RF kalite | 9500 | 21 |
 
 > UINT32 (ABCD) alanlari icin master tarafinda "32-bit Unsigned" ve big-endian
 > (ABCD) word order secilmelidir (bolum 4.1).
@@ -857,3 +903,4 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 | 1.7 | 2026-10-03 | 49009 reset_reason ham CSR yerine mevcut reset_source_flag_t bitmask anlamına geçirildi; adresler ve register genişlikleri korundu. |
 
 | 1.8 | 2026-10-04 | Cihaz adresi 0 sunucuda reddedildi; pasif fider ve ayrılmış offset 27..99 için sıfır yanıtının anlamı açıklandı. |
+| 1.9 | 2026-10-06 | SCP enerji/yük göstergeleri; yük alanı adları; 49500–49520 salt okunur kalite bloğu ve adres çakışması koruması. |

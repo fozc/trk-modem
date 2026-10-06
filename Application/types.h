@@ -2,7 +2,8 @@
  * types.h
  *
  *  Created on: 11 Agu 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef TYPES_H_
@@ -34,7 +35,7 @@ typedef struct
 	ioa_3byte_t ariza_akimi;          //m_me_tf_1
 	ioa_3byte_t ariza_suresi;         //m_me_tf_1
 	ioa_3byte_t enerji_varyok;        //m_sp_tb_1
-	ioa_3byte_t nominal_akim_varyok;  //m_sp_tb_1
+	ioa_3byte_t yuk_akimi_varyok;  //m_sp_tb_1
 
 }__attribute__((packed)) iec104_fault_log_config_t;
 
@@ -51,7 +52,7 @@ typedef struct
 	ioa_3byte_t anlik_akim[PHASE_MAX];           //m_me_tf_1
 	ioa_3byte_t ariza_kalicimi[PHASE_MAX];       //m_sp_tb_1
 	ioa_3byte_t enerji_varyok[PHASE_MAX];        //m_sp_tb_1
-	ioa_3byte_t nominal_akim_varyok[PHASE_MAX];  //m_sp_tb_1
+	ioa_3byte_t yuk_akimi_varyok[PHASE_MAX];  //m_sp_tb_1
 	ioa_3byte_t rf_haberlesme_varyok[PHASE_MAX]; //m_sp_tb_1
 
 	ioa_3byte_t m_me_tf_1_ioa[PHASE_MAX]; //Faz akim bilgisi
@@ -94,7 +95,7 @@ typedef struct
 	uint16_t ariza_akimi;
 	uint16_t ariza_suresi;
 	uint16_t enerji_varyok;
-	uint16_t nominal_akim_varyok;
+	uint16_t yuk_akimi_varyok;
 
 }__attribute__((packed)) modbus_fault_log_config_t;
 
@@ -105,7 +106,7 @@ typedef struct
 	uint16_t ariza_kalicimi[PHASE_MAX];
 	uint16_t anlik_akim[PHASE_MAX]; 
 	uint16_t enerji_varyok[PHASE_MAX];
-	uint16_t nominal_akim_varyok[PHASE_MAX];
+	uint16_t yuk_akimi_varyok[PHASE_MAX];
 	uint16_t rf_haberlesme_varyok[PHASE_MAX];
 
     modbus_fault_log_config_t temporary_fault[PHASE_MAX]; // 15 kayit icin baz adres
@@ -146,14 +147,14 @@ typedef struct
 	float   ariza_suresi;         //m_me_tf_1
 	uint8_t ariza_kalicimi;       //m_sp_tb_1
 	uint8_t enerji_varyok;        //m_sp_tb_1
-	uint8_t nominal_akim_varyok;  //m_sp_tb_1
+	uint8_t yuk_akimi_varyok;  //m_sp_tb_1
 	uint8_t rf_haberlesme_varyok; //m_sp_tb_1
 	cp56time2a_t tm_ariza_akimi;
 	cp56time2a_t tm_anlik_akim;
 	cp56time2a_t tm_ariza_suresi;
 	cp56time2a_t tm_ariza_kalicimi;
 	cp56time2a_t tm_enerji_varyok;
-	cp56time2a_t tm_nominal_akim_varyok;
+	cp56time2a_t tm_yuk_akimi_varyok;
 	cp56time2a_t tm_rf_haberlesme_varyok;
 }phase_data_t;
 

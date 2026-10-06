@@ -21,6 +21,7 @@
 #include "iec104_config.h"
 #include "modbus_config.h"
 #include "modbus_process.h"
+#include "modbus_rf_stats.h"
 #include "rf_config.h"
 #include "rf.h"
 #include "system_status.h"
@@ -886,12 +887,12 @@ static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
             if (!parse_uint32_array(str, hat->ioa_s_enerji_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_EnerjiVarYok")) {
             if (!parse_uint32_array(str, hat->ioa_t_enerji_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_R_NominalAkimVarYok")) {
-            if (!parse_uint32_array(str, hat->ioa_r_nominal_akim_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_S_NominalAkimVarYok")) {
-            if (!parse_uint32_array(str, hat->ioa_s_nominal_akim_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_T_NominalAkimVarYok")) {
-            if (!parse_uint32_array(str, hat->ioa_t_nominal_akim_varyok, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "IOA_R_YukAkimiVarYok")) {
+            if (!parse_uint32_array(str, hat->ioa_r_yuk_akimi_varyok, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "IOA_S_YukAkimiVarYok")) {
+            if (!parse_uint32_array(str, hat->ioa_s_yuk_akimi_varyok, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "IOA_T_YukAkimiVarYok")) {
+            if (!parse_uint32_array(str, hat->ioa_t_yuk_akimi_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_RfhabVarYok")) {
             if (!parse_uint32_array(str, hat->ioa_r_rfhab_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_RfhabVarYok")) {
@@ -926,9 +927,9 @@ static const char * const iec_address_keys[] =
     "IOA_R_EnerjiVarYok",
     "IOA_S_EnerjiVarYok",
     "IOA_T_EnerjiVarYok",
-    "IOA_R_NominalAkimVarYok",
-    "IOA_S_NominalAkimVarYok",
-    "IOA_T_NominalAkimVarYok",
+    "IOA_R_YukAkimiVarYok",
+    "IOA_S_YukAkimiVarYok",
+    "IOA_T_YukAkimiVarYok",
     "IOA_R_RfhabVarYok",
     "IOA_S_RfhabVarYok",
     "IOA_T_RfhabVarYok",
@@ -1029,9 +1030,9 @@ static bool validate_iec_addresses(const jiec_config_t *config)
         config->line.ioa_r_enerji_varyok,
         config->line.ioa_s_enerji_varyok,
         config->line.ioa_t_enerji_varyok,
-        config->line.ioa_r_nominal_akim_varyok,
-        config->line.ioa_s_nominal_akim_varyok,
-        config->line.ioa_t_nominal_akim_varyok,
+        config->line.ioa_r_yuk_akimi_varyok,
+        config->line.ioa_s_yuk_akimi_varyok,
+        config->line.ioa_t_yuk_akimi_varyok,
         config->line.ioa_r_rfhab_varyok,
         config->line.ioa_s_rfhab_varyok,
         config->line.ioa_t_rfhab_varyok
@@ -1281,12 +1282,12 @@ static bool parse_modbus_line_config(const char **str, jmodbus_line_config_t *ha
             if (!parse_uint32_array(str, hat->addr_s_enerji_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_T_EnerjiVarYok")) {
             if (!parse_uint32_array(str, hat->addr_t_enerji_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_R_NominalAkimVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_r_nominal_akim_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_S_NominalAkimVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_s_nominal_akim_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_T_NominalAkimVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_t_nominal_akim_varyok, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "ADDR_R_YukAkimiVarYok")) {
+            if (!parse_uint32_array(str, hat->addr_r_yuk_akimi_varyok, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "ADDR_S_YukAkimiVarYok")) {
+            if (!parse_uint32_array(str, hat->addr_s_yuk_akimi_varyok, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "ADDR_T_YukAkimiVarYok")) {
+            if (!parse_uint32_array(str, hat->addr_t_yuk_akimi_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_RfhabVarYok")) {
             if (!parse_uint32_array(str, hat->addr_r_rfhab_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_RfhabVarYok")) {
@@ -1306,6 +1307,13 @@ static bool parse_modbus_line_config(const char **str, jmodbus_line_config_t *ha
 /* Validate addresses before any 32-bit JSON value is stored in 16 bits. */
 static bool validate_modbus_addresses(const jmodbus_configs_t *config)
 {
+    if (((MODBUS_RF_STATS_ADDR_BASE <= config->addr_aku_uyarisi) &&
+         (MODBUS_RF_STATS_ADDR_LAST >= config->addr_aku_uyarisi)) ||
+        ((MODBUS_RF_STATS_ADDR_BASE <= config->addr_modem_reset) &&
+         (MODBUS_RF_STATS_ADDR_LAST >= config->addr_modem_reset)))
+    {
+        return false;
+    }
     if ((UINT16_MAX < config->addr_aku_uyarisi) ||
         (UINT16_MAX < config->addr_modem_reset))
     {
@@ -1329,9 +1337,9 @@ static bool validate_modbus_addresses(const jmodbus_configs_t *config)
         config->line.addr_r_enerji_varyok,
         config->line.addr_s_enerji_varyok,
         config->line.addr_t_enerji_varyok,
-        config->line.addr_r_nominal_akim_varyok,
-        config->line.addr_s_nominal_akim_varyok,
-        config->line.addr_t_nominal_akim_varyok,
+        config->line.addr_r_yuk_akimi_varyok,
+        config->line.addr_s_yuk_akimi_varyok,
+        config->line.addr_t_yuk_akimi_varyok,
         config->line.addr_r_rfhab_varyok,
         config->line.addr_s_rfhab_varyok,
         config->line.addr_t_rfhab_varyok
@@ -1360,6 +1368,11 @@ static bool validate_modbus_addresses(const jmodbus_configs_t *config)
             const uint32_t length = ((field < 3U) ||
                 ((9U <= field) && (field < 12U))) ? 2U : 1U;
             const uint32_t last = first + length - 1U;
+            if ((first <= MODBUS_RF_STATS_ADDR_LAST) &&
+                (MODBUS_RF_STATS_ADDR_BASE <= last))
+            {
+                return false;
+            }
             if ((UINT16_MAX < last) ||
                 ((first <= config->addr_aku_uyarisi) &&
                  (config->addr_aku_uyarisi <= last)) ||
@@ -2188,23 +2201,23 @@ int parse_iec_config(const char *json_str, jiec_config_t *iec) {
     }
     CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_NominalAkimVarYok: [");
+    CSLOG_NODT("[JSON]   Hatlar.IOA_R_YukAkimiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_r_nominal_akim_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_r_yuk_akimi_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_NominalAkimVarYok: [");
+    CSLOG_NODT("[JSON]   Hatlar.IOA_S_YukAkimiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_s_nominal_akim_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_s_yuk_akimi_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_NominalAkimVarYok: [");
+    CSLOG_NODT("[JSON]   Hatlar.IOA_T_YukAkimiVarYok: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_t_nominal_akim_varyok[i]);
+        CSLOG_NODT("%lu", iec->line.ioa_t_yuk_akimi_varyok[i]);
         if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
     }
     CSLOG_NODT("]\r\n");
@@ -2469,9 +2482,9 @@ int set_iec_config(const jiec_config_t *config)
 		line.enerji_varyok[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_enerji_varyok[i]);
 		line.enerji_varyok[PHASE_L3] = iec104_make_ioa_3byte(config->line.ioa_t_enerji_varyok[i]);
 		
-		line.nominal_akim_varyok[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_nominal_akim_varyok[i]);
-		line.nominal_akim_varyok[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_nominal_akim_varyok[i]);
-		line.nominal_akim_varyok[PHASE_L3] = iec104_make_ioa_3byte(config->line.ioa_t_nominal_akim_varyok[i]);
+		line.yuk_akimi_varyok[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_yuk_akimi_varyok[i]);
+		line.yuk_akimi_varyok[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_yuk_akimi_varyok[i]);
+		line.yuk_akimi_varyok[PHASE_L3] = iec104_make_ioa_3byte(config->line.ioa_t_yuk_akimi_varyok[i]);
 		
 		line.rf_haberlesme_varyok[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_rfhab_varyok[i]);
 		line.rf_haberlesme_varyok[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_rfhab_varyok[i]);
@@ -2546,9 +2559,9 @@ int set_modbus_config(const jmodbus_configs_t *config)
 		line.enerji_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_enerji_varyok[i];
 		line.enerji_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_enerji_varyok[i];
 		line.enerji_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_enerji_varyok[i];
-		line.nominal_akim_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_nominal_akim_varyok[i];
-		line.nominal_akim_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_nominal_akim_varyok[i];
-		line.nominal_akim_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_nominal_akim_varyok[i];
+		line.yuk_akimi_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_yuk_akimi_varyok[i];
+		line.yuk_akimi_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_yuk_akimi_varyok[i];
+		line.yuk_akimi_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_yuk_akimi_varyok[i];
 		line.rf_haberlesme_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_rfhab_varyok[i];
 		line.rf_haberlesme_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_rfhab_varyok[i];
 		line.rf_haberlesme_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_rfhab_varyok[i];
@@ -2568,4 +2581,3 @@ int set_modbus_config(const jmodbus_configs_t *config)
 
 	return -1;
 }
-
