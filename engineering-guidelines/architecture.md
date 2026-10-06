@@ -136,7 +136,7 @@ Kaynak: [üretim raporu §9.1](../URETIM_HAZIRLIK_RAPORU_2026-10.md).
 RFWU v2 uygulanmıştır; cihaz başı anahtar kullanıcı kararıyla ertelidir.
 Güvenli nonce yolundaki RNG hatası BSP erişilebilirlik fallback'i ile
 aşılmamalıdır. Kaynak: üretim raporu §9.1 ve
-[RFWU planı](../RFWU_GUVENLIK_DUZELTME_PLANI_2026-10.md).
+[güncel üretim raporu §10.3](../URETIM_HAZIRLIK_RAPORU_2026-10.md#103-korunan-kararlar-ve-taşınan-kanıt-özeti).
 Yeni protokol davranışı için D06/G03 uygulanır.
 
 ## A09. Kaynak ve değişiklik sınırı
@@ -152,7 +152,7 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 |---|---|
 | Dummy üreticiler korunur | Gerçek veri/altyapı henüz yoktur. Dummy kaldırılmaz; veri kaynağı bulgusu tamamlandı sayılmaz. Üretim raporu §9.3/§9.29. |
 | #if 0 blokları korunur | Kullanıcı açıkça kaldırılmasını istemedikçe kod temizliği kapsamında silinmez. Kök AGENTS.md. |
-| Contiki ve ST/CubeMX uyarı düzeltmeleri kapsam dışıdır | 8 Contiki, 5 ST driver, 1 Core tanısı kullanıcı kararıyla bırakılmıştır. Uyarı susturma veya vendor yamasıyla gizlenmez. [Uyarı değerlendirmesi](../DERLEYICI_UYARILARI_DEGERLENDIRME_2026-10-03.md), kapsam dışındaki 14 uyarı. |
+| Contiki ve ST/CubeMX uyarı düzeltmeleri kapsam dışıdır | 8 Contiki, 5 ST driver, 1 Core tanısı kullanıcı kararıyla bırakılmıştır. Uyarı susturma veya vendor yamasıyla gizlenmez. [güncel warning kararı §10.3](../URETIM_HAZIRLIK_RAPORU_2026-10.md#103-korunan-kararlar-ve-taşınan-kanıt-özeti), kapsam dışındaki 14 uyarı. |
 | Lifetime mevcut NVRAM alanında kalır | 25 saatte bir ve mevcut periyodik reset öncesinde sync vardır. Ayrı Flash alanı/migration veya her reset için flush yetkisi verilmemiştir. Üretim raporu §9.1. |
 | Random altyapısı BSP'dedir | HTTP token doğrudan bsp_random_word kullanır; fallback bu API içindedir. HAL başlangıcı main/CubeMX'tedir. Erişilebilirlik fallback'i güvenli entropy sayılmaz. Üretim raporu §9.1. |
 | Geliştirme anahtarları şimdilik Git'te kalır | Anahtarlar otomatik silinmez/taşınmaz veya geçmiş yeniden yazılmaz. Saha öncesi yeni üretim anahtarları hazırlanıp doğrulanmalıdır. [keys/README.md](../keys/README.md), üretim raporu §9.5. |
