@@ -178,6 +178,17 @@ boşalmasıyla 90 s'lik salt-okuma gözlem yapıldı
   UNKNOWN` olarak loglanıyor (RF log isim tablosu eksikliği gerçek
   hub'la da görünür).
 
+**RTU-tek-restart boşluğu (yeni bulgu):** 23:49:37'de modem sıfırlandı
+(elog: `RESET_CAUSE PIN`) ve MH ayakta + envanteri yüklü kaldığı için
+BOOT bir daha gelmedi; DUT `MH SCP major: 0, Envanter: BEKLIYOR`
+süresiz kaldı (hat, GET_STATUS ve 0xE1 çalışmaya devam etti). Spec
+§1.10 yalnız MH-restart'ı kapsıyor; RTU'nun tek başına resetlenmesi
+tanımsız. BOLATeX'e sorulmalı: DUT, yanıt veren hub'a envanteri BOOT
+beklemeden yeniden yükleyebilmeli mi? Kurtarma: MH'yi resetlemek —
+23:55:35'te doğrulandı: BOOT -> TIME_SYNC (ACK 6 ms) -> 6 girdi (18 ms
+aralıklarla) -> END -> "envanter yuklendi" -> 0x40, toplam 153 ms;
+`MH SCP major: 1, Envanter: YUKLU`, `hub up=3s fw=6dc02267`.
+
 Bu gözlem salt okumadır; simülatör süitinin gerçek hub'la eşdeğer
 kabulü değildir (plan §1). Konsol komut çıktıları (`rf status`,
 `pwrboard show`) bu pencerede GSM yoğunluğu nedeniyle alınamadı;
