@@ -72,7 +72,15 @@ async function checkPage(html, label) {
         assert.ok(!rfMonitor.includes('LQI'));
         assert.ok(!rfMonitor.includes('undefined'));
         assert.ok(rfMonitor.includes(language === 'tr'
-            ? 'Açma kondansatörü' : 'Trip capacitor'));
+              ? 'Açma kondansatörü' : 'Trip capacitor'));
+        const applied = run(`buildRfGroupStatus({State:'applied',Line:1,
+            GroupId:7,MatchesDesired:true,HasReport:false})`);
+        assert.ok(applied.includes(language === 'tr'
+            ? 'Uygulandı ve CRC doğrulandı' : 'Applied and CRC verified'));
+        const changed = run(`buildRfGroupStatus({State:'applied',Line:1,
+            GroupId:7,MatchesDesired:false,HasReport:false})`);
+        assert.ok(changed.includes(language === 'tr'
+            ? 'istenen ayar değişti' : 'desired settings have changed'));
           const missingPower = run(`renderBoard({BatterySOC:null,
               BatterySOH:null,BatteryTemp:null,ChargePertance:null,
               ChargeState:null,HeaterState:null,HeaterPower:null})`);
@@ -422,7 +430,54 @@ async function checkPage(html, label) {
         document.querySelector = originalQuery;
         document.querySelectorAll = originalQueryAll;
     }
-    console.log('PASS:', label, '- navigation, faults, languages, all config saves, device cache/failure');
+    let rfPosts = 0;
+    const rfRequests = [];
+    context.fetch = async (url, options = {}) => {
+        rfRequests.push(url);
+        if (options.method === 'POST') rfPosts++;
+        return {ok: true, status: 200, json: async () => options.method === 'POST'
+            ? {started: true} : {State: 'checking', Line: 1, GroupId: 7,
+                HasReport: false, MatchesDesired: true}};
+    };
+    run("pageCache.rf={inUse:[true]};dirtyPages.rf=new Set();loading=false;");
+    document.getElementById('rf-apply-line').value = '1';
+    document.getElementById('rf-apply-group').value = '7';
+    run("dirtyPages.rf.add('unsaved')");
+    await run('applyRfConfig()');
+    assert.equal(rfPosts, 0, 'unsaved settings must block apply');
+    run('dirtyPages.rf.clear()');
+    document.getElementById('rf-apply-group').value = '';
+    await run('applyRfConfig()');
+    assert.equal(rfPosts, 0, 'empty group ID must not become zero');
+    document.getElementById('rf-apply-group').value = '256';
+    await run('applyRfConfig()');
+    assert.equal(rfPosts, 0);
+    document.getElementById('rf-apply-group').value = '7';
+    await run('applyRfConfig()');
+    assert.equal(rfPosts, 1);
+    assert.ok(rfRequests.includes('/config/rf/apply/1/7'));
+    assert.ok(rfRequests.includes('/status/rf-group'));
+    assert.ok(!rfRequests.includes('/config/rf'), 'apply must not save again');
+    await run('abortRfConfig()');
+    assert.equal(rfPosts, 2);
+    assert.ok(rfRequests.includes('/config/rf/abort'));
+    run("pageCache.rfGroup={State:'applied',MatchesDesired:true}");
+    context.fetch = async () => ({ok: true, status: 200,
+        json: async () => ({success: true})});
+    await run("savePage('rf')");
+    assert.equal(run('pageCache.rfGroup'), undefined,
+        'saving desired settings must invalidate the old application status');
+    let resolveStatus;
+    context.fetch = async () => ({ok: true, status: 200,
+        json: () => new Promise(resolve => {resolveStatus = resolve;})});
+    const pendingStatus = run('readRfGroupStatus()');
+    await new Promise(resolve => setImmediate(resolve));
+    run("pageCache.rf={inUse:[true]};invalidateRfGroupStatus()");
+    resolveStatus({State: 'applied', MatchesDesired: true});
+    await pendingStatus;
+    assert.equal(run('pageCache.rfGroup'), undefined,
+        'a late status response for older desired settings must be ignored');
+    console.log('PASS:', label, '- navigation, RF save/apply, faults, languages, config saves, device cache/failure');
 
 }
 

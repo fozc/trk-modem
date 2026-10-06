@@ -83,6 +83,25 @@ static bool can_start(void)
     }
 }
 
+bool rf_group_matches_config(void)
+{
+    if ((0U == group.status.line) ||
+        (MAX_POWER_LINE_COUNT < group.status.line))
+    {
+        return false;
+    }
+    const rf_feeder_t *feeder =
+        rf_store_get((feeder_id_t)(group.status.line - 1U));
+
+    return (NULL != feeder) && feeder->in_use &&
+        (feeder->config.fider_id == group.status.feeder) &&
+        (feeder->config.zone_id == group.zone) &&
+        (rf_config_writable_crc(&feeder->config) == group.status.expected_crc) &&
+        (0 == memcmp(feeder->r_eui64, group.status.members[0], 8U)) &&
+        (0 == memcmp(feeder->s_eui64, group.status.members[1], 8U)) &&
+        (0 == memcmp(feeder->t_eui64, group.status.members[2], 8U));
+}
+
 static bool bindings_match(const rf_group_t *job)
 {
     for (size_t index = 0U; index < 3U; index++)
@@ -122,6 +141,7 @@ bool rf_group_start(size_t line_index, uint8_t group_id)
     (void)memcpy(candidate.status.members[1], feeder->s_eui64, 8U);
     (void)memcpy(candidate.status.members[2], feeder->t_eui64, 8U);
     candidate.status.feeder = feeder->config.fider_id;
+    candidate.status.line = (uint8_t)(line_index + 1U);
     if (!rf_inventory_epoch_ready(candidate.status.feeder))
     {
         return false;

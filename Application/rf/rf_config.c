@@ -182,9 +182,9 @@ uint16_t rf_config_writable_crc(const rf_feeder_config_t *blk)
 /* ---------------------------------------------------------------------------
  * RAM SSOT store + staging (plan Faz 1).
  *
- * Operasyonel SSOT RAM'de tutulur; NVRAM kopyasi (line[i].rf) last-known
- * aynasidir. RF operasyonu bu senkrona bagimli degildir; yalniz cihaz
- * erisilemediginde acilis fallback'i olarak kullanilir.
+ * Desired settings live in RAM and the NVRAM line[i].rf mirror. Save
+ * persists the desired settings; group APPLIED is a separate runtime
+ * result and never overwrites this store (user decision Oct 6, 2026).
  * --------------------------------------------------------------------------- */
 
 static rf_feeder_t rf_ram[MAX_POWER_LINE_COUNT];
@@ -206,9 +206,7 @@ void rf_store_init(void)
 {
     for (int i = 0; i < MAX_POWER_LINE_COUNT; i++)
     {
-        /* NVRAM last-known aynasi: gecerli cihaz erisimi yokken acilis
-         * degeri. Cihazdan okuma (SCP fazinda) geldiginde onun sonucu bu
-         * yuklemenin yerine gecer. */
+        /* Restore desired settings; this does not prove RF application. */
         rf_ram[i] = breaker_config->line[i].rf;
     }
     rf_ram_initialized = true;
@@ -217,7 +215,7 @@ void rf_store_init(void)
 
 int rf_store_sync(void)
 {
-    /* RAM -> NVRAM aynasi (last-known kopya). */
+    /* Persist desired settings independently of remote APPLIED. */
     for (int i = 0; i < MAX_POWER_LINE_COUNT; i++)
     {
         breaker_config->line[i].rf = rf_ram[i];

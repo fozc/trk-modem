@@ -1,5 +1,9 @@
-/**
- * @file http_handlers.h
+/*
+ * http_handlers.h
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
  * @brief HTTP endpoint handlers for smart breaker API
  * 
  * Implements all HTTP endpoints:
@@ -273,6 +277,9 @@ void handle_get_rf_discovery_json(void);
  * @param json_body JSON request body
  */
 void handle_post_rf_config_json(const char *json_body);
+void handle_get_rf_group_status_json(void);
+void handle_post_rf_apply(const char *suffix);
+void handle_post_rf_abort(void);
 
 /**
  * @brief Handle GET /r?ayiriciRFMonitor
@@ -432,4 +439,3 @@ void handle_get_web_shell(void);
 #endif
 
 #endif /* HTTP_HANDLERS_H_ */
-

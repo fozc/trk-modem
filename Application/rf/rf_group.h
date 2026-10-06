@@ -36,6 +36,7 @@ typedef struct
     rf_group_state_t state;
     uint8_t group_id;
     uint8_t feeder;
+    uint8_t line;
     uint8_t writes_acked;
     uint16_t expected_crc;
     bool has_report;
@@ -50,6 +51,7 @@ void rf_group_hub_restarted(void);
 /* Snapshot the existing store; no NVRAM changes or automatic restart. */
 bool rf_group_start(size_t line_index, uint8_t group_id);
 bool rf_group_get_status(rf_group_status_t *out);
+bool rf_group_matches_config(void);
 void rf_group_process(uint32_t now_ms);
 bool rf_group_handle_status(const rf_scp_message_t *message);
 

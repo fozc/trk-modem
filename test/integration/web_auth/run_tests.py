@@ -441,9 +441,80 @@ int main(void)
 """
 (audit/'board_signal_repro.c').write_text(board_code, encoding='utf8')
 
+group_code = r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+#include <stdio.h>
+#include "rf_group_web.h"
+#include "rf_group.h"
+static char canvas[514], output[512];
+static struct { char *tx_buffer; int tx_buffer_size; } handler_state;
+static int response_status, output_length;
+static uint32_t apply_calls, abort_calls;
+static bool accepts_apply, accepts_abort;
+static rf_group_status_t group;
+bool rf_group_start(size_t line, uint8_t id)
+{ assert(line == 2U && id == 7U); apply_calls++; return accepts_apply; }
+bool rf_group_get_status(rf_group_status_t *out)
+{ *out = group; return true; }
+bool rf_group_matches_config(void) { return false; }
+bool rf_group_abort(void) { abort_calls++; return accepts_abort; }
+static void http_send_json(const char *data, int length)
+{ assert(length >= 0 && (size_t)length < sizeof(output));
+  memcpy(output, data, (size_t)length); output[length] = '\0';
+  output_length = length; response_status = 200; }
+static void http_send_error(int status, const char *text)
+{ (void)text; response_status = status; }
+'''
+for name in ['handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort']:
+ group_code += extract('Application/web-server/http_handlers.c',name) + '\n'
+group_code += r'''
+int main(void)
+{
+ memset(canvas, '*', sizeof(canvas));
+ handler_state.tx_buffer = canvas + 1; handler_state.tx_buffer_size = 512;
+ group.state = RF_GROUP_APPLIED; group.line = 3U; group.feeder = 1U;
+ group.has_report = true; group.expected_crc = 0x096DU;
+ group.report.config_crc = 0x096DU;
+ handle_get_rf_group_status_json();
+ assert(response_status == 200 && output_length == (int)strlen(output));
+ assert(strstr(output, "\"MatchesDesired\":false") != NULL);
+ assert(apply_calls == 0U && abort_calls == 0U);
+ assert(canvas[0] == '*' && canvas[513] == '*');
+ handler_state.tx_buffer_size = 8;
+ handle_get_rf_group_status_json(); assert(response_status == 500);
+ handler_state.tx_buffer_size = 512;
+ handle_post_rf_apply("3/256"); assert(response_status == 400);
+ assert(apply_calls == 0U);
+ handle_post_rf_apply("3/7"); assert(response_status == 409);
+ accepts_apply = true;
+ handle_post_rf_apply("3/7"); assert(response_status == 200);
+ assert(strcmp(output, "{\"started\":true}") == 0 && output_length == 16);
+ handle_post_rf_abort(); assert(response_status == 409);
+ accepts_abort = true;
+ handle_post_rf_abort(); assert(response_status == 200 && abort_calls == 2U);
+ return 0;
+}
+'''
+(audit/'rf_group_handlers_repro.c').write_text(group_code, encoding='utf8')
+
 outputs=[]
-for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro','board_signal_repro']:
+for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro','board_signal_repro','rf_group_handlers_repro']:
  extra=[str(root/'Application/libs/xprintf.c'),'-I'+str(root/'Application/libs'),'-lm'] if name in ['http_lengths_repro', 'board_signal_repro'] else []
+ if name == 'rf_group_handlers_repro':
+  extra += [str(root/'Application/web-server/rf_group_web.c'),
+            str(root/'Application/libs/xprintf.c'),
+            '-I'+str(root/'Application/libs'),
+            '-I'+str(root/'Application/rf'),
+            '-I'+str(root/'Application/libscp'),
+            '-I'+str(root/'Application/gsm'),
+            '-I'+str(root/'Application/cslog'),
+            '-I'+str(root/'Application/libefw'),
+            '-I'+str(root/'contiki-kernel'),
+            '-I'+str(root/'test/support')]
  if name == 'board_signal_repro':
   extra += [str(root/'Application/web-server/system_status_json.c'),
             '-I'+str(root/'Application/gsm'),
@@ -474,3 +545,5 @@ for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','htt
  print(run.stdout)
  if run.returncode: raise SystemExit(run.returncode)
 (audit/'web-auth-integration-repro.log').write_text('\n'.join(outputs),encoding='utf8')
+
+print("PASS: RF group handlers preserve stored/applied distinction and explicit actions")
