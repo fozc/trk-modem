@@ -862,68 +862,14 @@ void handle_get_iec_config_json(void)
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
 
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_ArizaAkimi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_ArizaAkimi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_ArizaAkimi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_ArizaSuresi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_ArizaSuresi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_ArizaSuresi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_ArizaTuru\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_ArizaTuru\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_ArizaTuru\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_AnlikAkim\":[");
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
@@ -1082,15 +1028,6 @@ void handle_post_iec_config_json(const char *json_body)
         }
         if (line && line->in_use) {
             config.line.in_use[i] = true;
-            config.line.ioa_r_ariza_akimi[i] = iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L1]);
-            config.line.ioa_s_ariza_akimi[i] = iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L2]);
-            config.line.ioa_t_ariza_akimi[i] = iec104_ioa_3byte_to_uint32(line->ariza_akimi[PHASE_L3]);
-            config.line.ioa_r_ariza_suresi[i] = iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L1]);
-            config.line.ioa_s_ariza_suresi[i] = iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L2]);
-            config.line.ioa_t_ariza_suresi[i] = iec104_ioa_3byte_to_uint32(line->ariza_suresi[PHASE_L3]);
-            config.line.ioa_r_ariza_turu[i] = iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L1]);
-            config.line.ioa_s_ariza_turu[i] = iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L2]);
-            config.line.ioa_t_ariza_turu[i] = iec104_ioa_3byte_to_uint32(line->ariza_kalicimi[PHASE_L3]);
             config.line.ioa_r_anlik_akim[i] = iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L1]);
             config.line.ioa_s_anlik_akim[i] = iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L2]);
             config.line.ioa_t_anlik_akim[i] = iec104_ioa_3byte_to_uint32(line->anlik_akim[PHASE_L3]);
@@ -1173,68 +1110,14 @@ void handle_get_modbus_config_json(void)
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_ArizaAkimi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_akimi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_ArizaAkimi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_akimi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_ArizaAkimi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_akimi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_ArizaSuresi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_suresi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_ArizaSuresi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_suresi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_ArizaSuresi\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_suresi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_ArizaTuru\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_kalicimi[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_ArizaTuru\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_kalicimi[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_ArizaTuru\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->ariza_kalicimi[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_AnlikAkim\":[");
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
@@ -1372,15 +1255,6 @@ void handle_post_modbus_config_json(const char *json_body)
         const modbus_line_config_t *line = modbus_get_line_config(i);
         if (line && line->in_use) {
             config.line.in_use[i] = true;
-            config.line.addr_r_ariza_akimi[i] = line->ariza_akimi[PHASE_L1];
-            config.line.addr_s_ariza_akimi[i] = line->ariza_akimi[PHASE_L2];
-            config.line.addr_t_ariza_akimi[i] = line->ariza_akimi[PHASE_L3];
-            config.line.addr_r_ariza_suresi[i] = line->ariza_suresi[PHASE_L1];
-            config.line.addr_s_ariza_suresi[i] = line->ariza_suresi[PHASE_L2];
-            config.line.addr_t_ariza_suresi[i] = line->ariza_suresi[PHASE_L3];
-            config.line.addr_r_ariza_turu[i] = line->ariza_kalicimi[PHASE_L1];
-            config.line.addr_s_ariza_turu[i] = line->ariza_kalicimi[PHASE_L2];
-            config.line.addr_t_ariza_turu[i] = line->ariza_kalicimi[PHASE_L3];
             config.line.addr_r_anlik_akim[i] = line->anlik_akim[PHASE_L1];
             config.line.addr_s_anlik_akim[i] = line->anlik_akim[PHASE_L2];
             config.line.addr_t_anlik_akim[i] = line->anlik_akim[PHASE_L3];

@@ -58,7 +58,7 @@ const uint32_t fault_log_feeder_addresses[MAX_POWER_LINE_COUNT] = {
  * ===================================================================== */
 
 #define FAULT_LOG_MAGIC          0x54524B46U   /* "TRKF" */
-#define FAULT_LOG_SCHEMA_VERSION 2U
+#define FAULT_LOG_SCHEMA_VERSION 3U
 
 #define FAULT_LOG_SLOT_A 0U
 #define FAULT_LOG_SLOT_B 1U

@@ -52,10 +52,7 @@ typedef struct
     int (*send)(const uint8_t *data, uint16_t length);
     void (*on_event)(iec104_event_t evt);
 
-    int (*get_ariza_akimi)(uint32_t power_line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp);
-    int (*get_ariza_suresi)(uint32_t power_line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp);
     int (*get_anlik_akim)(uint32_t power_line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp);
-    int (*get_ariza_kalicimi)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
     int (*get_enerji_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
     int (*get_yuk_akimi_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
     int (*get_rf_haberlesme_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
