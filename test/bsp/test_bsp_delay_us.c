@@ -71,10 +71,16 @@ void tearDown(void)
 static void assert_delay(uint32_t us, uint32_t expected_chunks,
                          uint32_t expected_last_us)
 {
+    /* CI host ABI is 32-bit (gcc -m32): Unity 64-bit assert macros are
+     * disabled there, so the 64-bit accumulator is compared in halves. */
+    const uint64_t expected_ticks = (uint64_t)us * TEST_TICKS_PER_US;
+
     bsp_delay_us(us);
     TEST_ASSERT_EQUAL_UINT32(expected_chunks, chunk_count);
-    TEST_ASSERT_EQUAL_UINT64((uint64_t)us * TEST_TICKS_PER_US,
-                             total_ticks);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)(expected_ticks >> 32),
+                             (uint32_t)(total_ticks >> 32));
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)expected_ticks,
+                             (uint32_t)total_ticks);
     TEST_ASSERT_EQUAL_UINT32(expected_last_us * TEST_TICKS_PER_US - 1U,
                              last_load);
     TEST_ASSERT_EQUAL_UINT32(0U, registers.CTRL);
