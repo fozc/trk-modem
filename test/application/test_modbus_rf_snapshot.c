@@ -76,4 +76,18 @@ void test_load_indicator_uses_mh_flag_in_fixed_map(void)
     check_load_indicator_uses_mh_flag();
 }
 
+void test_retired_fault_summary_offsets_are_reserved_zero(void)
+{
+    read_regs(0U, 6U);
+    for (size_t index = 0U; 6U > index; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT16(0U, word(index));
+    }
+    read_regs(12U, 6U);
+    for (size_t index = 0U; 6U > index; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT16(0U, word(index));
+    }
+}
+
 /*** end of file ***/

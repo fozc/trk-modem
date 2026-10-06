@@ -233,47 +233,7 @@ static bool iec104_periodic_send(void)
 	return true;
 }
 
-static int read_ariza_akimi(uint32_t line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp)
-{
-	*value = 0;
-	*quality = (qds_t){0};
-	*timestamp = (cp56time2a_t){0};
 
-	if(phase >= PHASE_MAX){
-		return -1;
-	}
-
-	const feeder_data_t *feeder = breaker_get_feeder_data(line_index);
-	if(feeder == NULL){
-		return -1;
-	}
-
-	*value = feeder->phase[phase].ariza_akimi;
-	*timestamp = feeder->phase[phase].tm_ariza_akimi;
-	*quality = (qds_t){0}; //TODO: Quality bilgisini ekle
-	return 0;
-}
-
-static int read_ariza_suresi(uint32_t line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp)
-{
-	*value = 0;
-	*quality = (qds_t){0};
-	*timestamp = (cp56time2a_t){0};
-
-	if(phase >= PHASE_MAX){
-		return -1;
-	}
-
-	const feeder_data_t *feeder = breaker_get_feeder_data(line_index);
-	if(feeder == NULL){
-		return -1;
-	}
-
-	*value = feeder->phase[phase].ariza_suresi;
-	*timestamp = feeder->phase[phase].tm_ariza_suresi;
-	*quality = (qds_t){0}; //TODO: Quality bilgisini ekle
-	return 0;
-}
  
 
 static int read_anlik_akim(uint32_t line_index, uint8_t phase, float *value,
@@ -310,25 +270,6 @@ static int read_anlik_akim(uint32_t line_index, uint8_t phase, float *value,
     return 0;
 }
 
-static int read_ariza_kalicimi(uint32_t line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp)
-{
-	*value = (siq_t){.invalid = 1};
-	*timestamp = (cp56time2a_t){0};
-
-	if(phase >= PHASE_MAX){
-		return -1;
-	}
-
-	const feeder_data_t *feeder = breaker_get_feeder_data(line_index);
-	if(feeder == NULL){
-		return -1;
-	}
-
-	value->spi = feeder->phase[phase].ariza_kalicimi & 0x01U;
-	value->invalid = 0; //TODO: Quality bilgisini ekle
-	*timestamp = feeder->phase[phase].tm_ariza_kalicimi;
-	return 0;
-}
 
 static int read_rf_flag(uint32_t line_index, uint8_t phase,
                         uint8_t mask, siq_t *value, cp56time2a_t *timestamp)
@@ -420,10 +361,7 @@ PROCESS_THREAD(iec104_process, ev, data)
 	  iec104_init(&(iec104_io_t){
 	      .send = iec104_send,
 	    .on_event = iec104_application_event_handler,
-	    .get_ariza_akimi = read_ariza_akimi,
-	    .get_ariza_suresi = read_ariza_suresi,
 	    .get_anlik_akim = read_anlik_akim,
-	    .get_ariza_kalicimi = read_ariza_kalicimi,
 	    .get_enerji_varyok = read_enerji_varyok,
 	    .get_yuk_akimi_varyok = read_yuk_akimi_varyok,
 	    .get_rf_haberlesme_varyok = read_rf_haberlesme_varyok

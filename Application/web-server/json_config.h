@@ -27,15 +27,6 @@ typedef struct
     uint32_t temporary_fault_base[MAX_LINE_COUNT];
     uint32_t permanent_fault_base[MAX_LINE_COUNT];
 
-    uint32_t ioa_r_ariza_akimi[MAX_LINE_COUNT];     
-    uint32_t ioa_s_ariza_akimi[MAX_LINE_COUNT];    
-    uint32_t ioa_t_ariza_akimi[MAX_LINE_COUNT];    
-    uint32_t ioa_r_ariza_suresi[MAX_LINE_COUNT];   
-    uint32_t ioa_s_ariza_suresi[MAX_LINE_COUNT];   
-    uint32_t ioa_t_ariza_suresi[MAX_LINE_COUNT];   
-    uint32_t ioa_r_ariza_turu[MAX_LINE_COUNT];    
-    uint32_t ioa_s_ariza_turu[MAX_LINE_COUNT];    
-    uint32_t ioa_t_ariza_turu[MAX_LINE_COUNT];    
     uint32_t ioa_r_anlik_akim[MAX_LINE_COUNT];    
     uint32_t ioa_s_anlik_akim[MAX_LINE_COUNT];    
     uint32_t ioa_t_anlik_akim[MAX_LINE_COUNT];    
@@ -78,15 +69,6 @@ typedef struct
  {
     bool in_use[MAX_LINE_COUNT];                // Hat kullaniliyor mu
 
-    uint32_t addr_r_ariza_akimi[MAX_LINE_COUNT];     
-    uint32_t addr_s_ariza_akimi[MAX_LINE_COUNT];    
-    uint32_t addr_t_ariza_akimi[MAX_LINE_COUNT];    
-    uint32_t addr_r_ariza_suresi[MAX_LINE_COUNT];   
-    uint32_t addr_s_ariza_suresi[MAX_LINE_COUNT];   
-    uint32_t addr_t_ariza_suresi[MAX_LINE_COUNT];   
-    uint32_t addr_r_ariza_turu[MAX_LINE_COUNT];    
-    uint32_t addr_s_ariza_turu[MAX_LINE_COUNT];    
-    uint32_t addr_t_ariza_turu[MAX_LINE_COUNT];    
     uint32_t addr_r_anlik_akim[MAX_LINE_COUNT];    
     uint32_t addr_s_anlik_akim[MAX_LINE_COUNT];    
     uint32_t addr_t_anlik_akim[MAX_LINE_COUNT];    

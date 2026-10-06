@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.31
+**Sürüm:** 1.32
 **Tarih:** 2026-10-06
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -656,6 +656,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-06 | 1.29 | Modbus sabit/yapılandırılabilir akım ve RF kaynağı; 30 seçili dosyada 411/411 test |
 | 2026-10-06 | 1.30 | IEC104 RTU alım zamanı ve kalite; gerçek RX ile 31 seçili dosyada 418/418 test |
 | 2026-10-06 | 1.31 | SCP enerji/yük, yeni alan adları ve RF kalite bloğu; 428/428 seçili Ceedling, web ve NVRAM doğrulaması |
+| 2026-10-06 | 1.32 | Anlık arıza alanlarının kaldırılması; doğrudan olay yük biti, liste IOA hazırlığı ve 432/432 ilgili regresyon |
 
 ## 06.10.2026 SCP Powerboard tüketici doğrulaması
 
@@ -779,3 +780,24 @@ kontrol geçti; alan adları değişirken kayıt yerleşiminin korunması
 doğrulandı. `integration/web_auth` içindeki `make run` ve web navigation
 geçti. Bu sayıların hiçbiri bütün depo test sonucu olarak sunulmamalıdır.
 22 modül sıkı ARM/C11 ve Release link geçti; fiziksel kabul yapılmadı.
+
+## 06.10.2026 Anlık arıza alanlarının kaldırılması
+
+Kullanıcı yalnız geçici/kalıcı listelerin kalmasını istedi. Mevcut RF,
+IEC104, Modbus ve JSON seçimiyle 177/177 ilgili test geçti. Geniş seçim
+`build/rf-fault-lists-regression.log` içinde 432/432'dir. Yeni testler
+gerçek GI group 1 isteğinde yalnız üç faz akımını, kaldırılan Modbus
+offsetlerinde reserved sıfırı ve ilk liste IOA'sından hazırlanan gerçek
+IEC104 gönderimini sınar. Gönderim biçimi hazırlanan paketin
+06.10.2026 kullanıcı commit talebiyle onaylanmıştır; testler bu
+kararın teknik davranışını doğrular.
+
+Olay fixture'ı yakalanmış örnekteki ofset 13 bitini fault/replay/online
+gönderim sınırlarında doğrudan karşılaştırır. Önceki ters dönüşüm 27
+olay testinin 17'sinde gösterildi. Kayıt sürümü 3 testi geçerli CRC'li
+eski sürüm 2 görüntüsünün yeni yük anlamıyla kullanılmadığını doğrular.
+
+Web navigation kaynak/gömülü sayfada iki dilde 14 IEC104 ve 12 Modbus
+canlı ayar adresini doğrular; eski arıza alanları yoktur. HTTP handler,
+NVRAM 307 kontrol ve NOR arıza saklama 53 kontrol geçti. 22 modül sıkı
+ARM/C11 ve Release 0 hata/0 uyarıyla geçti. Fiziksel kabul yapılmadı.

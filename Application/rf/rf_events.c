@@ -264,9 +264,9 @@ static bool build_fault(const rf_scp_event_t *event, fault_log_t *record)
             record->fault_duration_ms = event->duration_ms;
             record->info.feeder = (uint8_t)(index & 0x07U);
             record->info.phase = (uint8_t)((event->phase - 1U) & 0x03U);
-            /* Old list stores below-load, R1 stores load-present. */
+            /* R1 event byte 13 and LIVE bit 1 both mean load present. */
             record->info.nominal_current_status =
-                (0U == event->nominal_current_status) ? 1U : 0U;
+                (0U != event->nominal_current_status);
             record->info.power_status = (0U != event->energy_status);
             record->info.type = (3U != event->event);
             return true;

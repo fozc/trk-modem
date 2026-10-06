@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.9 |
+| Dokuman surumu | 1.10 |
 | Tarih | 2026-10-06 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
@@ -169,18 +169,18 @@ bkz. 5.3.
 
 | Offset | Mantiksal | Base-0 | Alan | Faz | Tip | Birim/Anlam |
 |---:|---:|---:|---|:---:|---|---|
-| 0  | 40000 | 0  | ariza_akimi | L1 | FLOAT32 | Ariza akimi (A) |
-| 2  | 40002 | 2  | ariza_akimi | L2 | FLOAT32 | Ariza akimi (A) |
-| 4  | 40004 | 4  | ariza_akimi | L3 | FLOAT32 | Ariza akimi (A) |
+| 0  | 40000 | 0  | reserved | L1 | UINT16 x2 | 0; geçerli arıza alanı değildir |
+| 2  | 40002 | 2  | reserved | L2 | UINT16 x2 | 0; geçerli arıza alanı değildir |
+| 4  | 40004 | 4  | reserved | L3 | UINT16 x2 | 0; geçerli arıza alanı değildir |
 | 6  | 40006 | 6  | anlik_akim | L1 | FLOAT32 | Anlik akim (A) |
 | 8  | 40008 | 8  | anlik_akim | L2 | FLOAT32 | Anlik akim (A) |
 | 10 | 40010 | 10 | anlik_akim | L3 | FLOAT32 | Anlik akim (A) |
-| 12 | 40012 | 12 | ariza_suresi | L1 | UINT16 | Ariza suresi (ms) |
-| 13 | 40013 | 13 | ariza_suresi | L2 | UINT16 | Ariza suresi (ms) |
-| 14 | 40014 | 14 | ariza_suresi | L3 | UINT16 | Ariza suresi (ms) |
-| 15 | 40015 | 15 | ariza_kalicimi | L1 | UINT16 | 0/1 (bkz. 5.4) |
-| 16 | 40016 | 16 | ariza_kalicimi | L2 | UINT16 | 0/1 |
-| 17 | 40017 | 17 | ariza_kalicimi | L3 | UINT16 | 0/1 |
+| 12 | 40012 | 12 | reserved | L1 | UINT16 | 0; geçerli arıza alanı değildir |
+| 13 | 40013 | 13 | reserved | L2 | UINT16 | 0; geçerli arıza alanı değildir |
+| 14 | 40014 | 14 | reserved | L3 | UINT16 | 0; geçerli arıza alanı değildir |
+| 15 | 40015 | 15 | reserved | L1 | UINT16 | 0; geçerli arıza alanı değildir |
+| 16 | 40016 | 16 | reserved | L2 | UINT16 | 0; geçerli arıza alanı değildir |
+| 17 | 40017 | 17 | reserved | L3 | UINT16 | 0; geçerli arıza alanı değildir |
 | 18 | 40018 | 18 | enerji_varyok | L1 | UINT16 | 0/1 |
 | 19 | 40019 | 19 | enerji_varyok | L2 | UINT16 | 0/1 |
 | 20 | 40020 | 20 | enerji_varyok | L3 | UINT16 | 0/1 |
@@ -192,10 +192,16 @@ bkz. 5.3.
 | 26 | 40026 | 26 | rf_haberlesme_varyok | L3 | UINT16 | 0/1 |
 
 - **Canli veri blogu**: offset 0..26 (toplam **27 register**), bitisik.
-- FLOAT32 degerler cift adrese hizalanmistir (offset 0,2,4,6,8,10); her
+- FLOAT32 degerler cift adrese hizalanmistir (offset 6,8,10); her
   FLOAT32 alan iki register kaplar (yuksek kelime once, bkz. 4.1).
 - Offset 27..99 araligi ileride kullanim icin **rezerve** (arz/ariza kayit
   bloklari) edilmistir; bu surumde tanimsizdir.
+
+06.10.2026 kullanıcı kararıyla anlık arıza akımı/süresi/tipi alanları
+kaldırıldı. Offset 0–5 ve 12–17 ayrılmıştır ve 0 döner; arıza bilgisi
+olarak kullanılmamalıdır. Kalan canlı alanların adresleri değişmez.
+Geçici/kalıcı arıza listeleri web ve IEC104 üzerinden korunur. Modbus
+liste blokları bu adımda eklenmedi; offset 27–99 hâlâ ayrılmıştır.
 
 ### 5.2.1 SCP canlı akım ve RF haberleşme kaynağı
 
@@ -236,24 +242,24 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 
 | Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
 |---:|---:|---|:---:|:---:|---|
-| 40000 | 0 | ariza_akimi | L1 | yuksek | FLOAT32 |
-| 40001 | 1 | ariza_akimi | L1 | dusuk | FLOAT32 |
-| 40002 | 2 | ariza_akimi | L2 | yuksek | FLOAT32 |
-| 40003 | 3 | ariza_akimi | L2 | dusuk | FLOAT32 |
-| 40004 | 4 | ariza_akimi | L3 | yuksek | FLOAT32 |
-| 40005 | 5 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40000 | 0 | reserved | L1 | yuksek | UINT16 |
+| 40001 | 1 | reserved | L1 | dusuk | UINT16 |
+| 40002 | 2 | reserved | L2 | yuksek | UINT16 |
+| 40003 | 3 | reserved | L2 | dusuk | UINT16 |
+| 40004 | 4 | reserved | L3 | yuksek | UINT16 |
+| 40005 | 5 | reserved | L3 | dusuk | UINT16 |
 | 40006 | 6 | anlik_akim | L1 | yuksek | FLOAT32 |
 | 40007 | 7 | anlik_akim | L1 | dusuk | FLOAT32 |
 | 40008 | 8 | anlik_akim | L2 | yuksek | FLOAT32 |
 | 40009 | 9 | anlik_akim | L2 | dusuk | FLOAT32 |
 | 40010 | 10 | anlik_akim | L3 | yuksek | FLOAT32 |
 | 40011 | 11 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40012 | 12 | ariza_suresi | L1 | - | UINT16 |
-| 40013 | 13 | ariza_suresi | L2 | - | UINT16 |
-| 40014 | 14 | ariza_suresi | L3 | - | UINT16 |
-| 40015 | 15 | ariza_kalicimi | L1 | - | UINT16 |
-| 40016 | 16 | ariza_kalicimi | L2 | - | UINT16 |
-| 40017 | 17 | ariza_kalicimi | L3 | - | UINT16 |
+| 40012 | 12 | reserved | L1 | - | UINT16 |
+| 40013 | 13 | reserved | L2 | - | UINT16 |
+| 40014 | 14 | reserved | L3 | - | UINT16 |
+| 40015 | 15 | reserved | L1 | - | UINT16 |
+| 40016 | 16 | reserved | L2 | - | UINT16 |
+| 40017 | 17 | reserved | L3 | - | UINT16 |
 | 40018 | 18 | enerji_varyok | L1 | - | UINT16 |
 | 40019 | 19 | enerji_varyok | L2 | - | UINT16 |
 | 40020 | 20 | enerji_varyok | L3 | - | UINT16 |
@@ -268,24 +274,24 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 
 | Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
 |---:|---:|---|:---:|:---:|---|
-| 40100 | 100 | ariza_akimi | L1 | yuksek | FLOAT32 |
-| 40101 | 101 | ariza_akimi | L1 | dusuk | FLOAT32 |
-| 40102 | 102 | ariza_akimi | L2 | yuksek | FLOAT32 |
-| 40103 | 103 | ariza_akimi | L2 | dusuk | FLOAT32 |
-| 40104 | 104 | ariza_akimi | L3 | yuksek | FLOAT32 |
-| 40105 | 105 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40100 | 100 | reserved | L1 | yuksek | UINT16 |
+| 40101 | 101 | reserved | L1 | dusuk | UINT16 |
+| 40102 | 102 | reserved | L2 | yuksek | UINT16 |
+| 40103 | 103 | reserved | L2 | dusuk | UINT16 |
+| 40104 | 104 | reserved | L3 | yuksek | UINT16 |
+| 40105 | 105 | reserved | L3 | dusuk | UINT16 |
 | 40106 | 106 | anlik_akim | L1 | yuksek | FLOAT32 |
 | 40107 | 107 | anlik_akim | L1 | dusuk | FLOAT32 |
 | 40108 | 108 | anlik_akim | L2 | yuksek | FLOAT32 |
 | 40109 | 109 | anlik_akim | L2 | dusuk | FLOAT32 |
 | 40110 | 110 | anlik_akim | L3 | yuksek | FLOAT32 |
 | 40111 | 111 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40112 | 112 | ariza_suresi | L1 | - | UINT16 |
-| 40113 | 113 | ariza_suresi | L2 | - | UINT16 |
-| 40114 | 114 | ariza_suresi | L3 | - | UINT16 |
-| 40115 | 115 | ariza_kalicimi | L1 | - | UINT16 |
-| 40116 | 116 | ariza_kalicimi | L2 | - | UINT16 |
-| 40117 | 117 | ariza_kalicimi | L3 | - | UINT16 |
+| 40112 | 112 | reserved | L1 | - | UINT16 |
+| 40113 | 113 | reserved | L2 | - | UINT16 |
+| 40114 | 114 | reserved | L3 | - | UINT16 |
+| 40115 | 115 | reserved | L1 | - | UINT16 |
+| 40116 | 116 | reserved | L2 | - | UINT16 |
+| 40117 | 117 | reserved | L3 | - | UINT16 |
 | 40118 | 118 | enerji_varyok | L1 | - | UINT16 |
 | 40119 | 119 | enerji_varyok | L2 | - | UINT16 |
 | 40120 | 120 | enerji_varyok | L3 | - | UINT16 |
@@ -300,24 +306,24 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 
 | Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
 |---:|---:|---|:---:|:---:|---|
-| 40200 | 200 | ariza_akimi | L1 | yuksek | FLOAT32 |
-| 40201 | 201 | ariza_akimi | L1 | dusuk | FLOAT32 |
-| 40202 | 202 | ariza_akimi | L2 | yuksek | FLOAT32 |
-| 40203 | 203 | ariza_akimi | L2 | dusuk | FLOAT32 |
-| 40204 | 204 | ariza_akimi | L3 | yuksek | FLOAT32 |
-| 40205 | 205 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40200 | 200 | reserved | L1 | yuksek | UINT16 |
+| 40201 | 201 | reserved | L1 | dusuk | UINT16 |
+| 40202 | 202 | reserved | L2 | yuksek | UINT16 |
+| 40203 | 203 | reserved | L2 | dusuk | UINT16 |
+| 40204 | 204 | reserved | L3 | yuksek | UINT16 |
+| 40205 | 205 | reserved | L3 | dusuk | UINT16 |
 | 40206 | 206 | anlik_akim | L1 | yuksek | FLOAT32 |
 | 40207 | 207 | anlik_akim | L1 | dusuk | FLOAT32 |
 | 40208 | 208 | anlik_akim | L2 | yuksek | FLOAT32 |
 | 40209 | 209 | anlik_akim | L2 | dusuk | FLOAT32 |
 | 40210 | 210 | anlik_akim | L3 | yuksek | FLOAT32 |
 | 40211 | 211 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40212 | 212 | ariza_suresi | L1 | - | UINT16 |
-| 40213 | 213 | ariza_suresi | L2 | - | UINT16 |
-| 40214 | 214 | ariza_suresi | L3 | - | UINT16 |
-| 40215 | 215 | ariza_kalicimi | L1 | - | UINT16 |
-| 40216 | 216 | ariza_kalicimi | L2 | - | UINT16 |
-| 40217 | 217 | ariza_kalicimi | L3 | - | UINT16 |
+| 40212 | 212 | reserved | L1 | - | UINT16 |
+| 40213 | 213 | reserved | L2 | - | UINT16 |
+| 40214 | 214 | reserved | L3 | - | UINT16 |
+| 40215 | 215 | reserved | L1 | - | UINT16 |
+| 40216 | 216 | reserved | L2 | - | UINT16 |
+| 40217 | 217 | reserved | L3 | - | UINT16 |
 | 40218 | 218 | enerji_varyok | L1 | - | UINT16 |
 | 40219 | 219 | enerji_varyok | L2 | - | UINT16 |
 | 40220 | 220 | enerji_varyok | L3 | - | UINT16 |
@@ -332,24 +338,24 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 
 | Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
 |---:|---:|---|:---:|:---:|---|
-| 40300 | 300 | ariza_akimi | L1 | yuksek | FLOAT32 |
-| 40301 | 301 | ariza_akimi | L1 | dusuk | FLOAT32 |
-| 40302 | 302 | ariza_akimi | L2 | yuksek | FLOAT32 |
-| 40303 | 303 | ariza_akimi | L2 | dusuk | FLOAT32 |
-| 40304 | 304 | ariza_akimi | L3 | yuksek | FLOAT32 |
-| 40305 | 305 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40300 | 300 | reserved | L1 | yuksek | UINT16 |
+| 40301 | 301 | reserved | L1 | dusuk | UINT16 |
+| 40302 | 302 | reserved | L2 | yuksek | UINT16 |
+| 40303 | 303 | reserved | L2 | dusuk | UINT16 |
+| 40304 | 304 | reserved | L3 | yuksek | UINT16 |
+| 40305 | 305 | reserved | L3 | dusuk | UINT16 |
 | 40306 | 306 | anlik_akim | L1 | yuksek | FLOAT32 |
 | 40307 | 307 | anlik_akim | L1 | dusuk | FLOAT32 |
 | 40308 | 308 | anlik_akim | L2 | yuksek | FLOAT32 |
 | 40309 | 309 | anlik_akim | L2 | dusuk | FLOAT32 |
 | 40310 | 310 | anlik_akim | L3 | yuksek | FLOAT32 |
 | 40311 | 311 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40312 | 312 | ariza_suresi | L1 | - | UINT16 |
-| 40313 | 313 | ariza_suresi | L2 | - | UINT16 |
-| 40314 | 314 | ariza_suresi | L3 | - | UINT16 |
-| 40315 | 315 | ariza_kalicimi | L1 | - | UINT16 |
-| 40316 | 316 | ariza_kalicimi | L2 | - | UINT16 |
-| 40317 | 317 | ariza_kalicimi | L3 | - | UINT16 |
+| 40312 | 312 | reserved | L1 | - | UINT16 |
+| 40313 | 313 | reserved | L2 | - | UINT16 |
+| 40314 | 314 | reserved | L3 | - | UINT16 |
+| 40315 | 315 | reserved | L1 | - | UINT16 |
+| 40316 | 316 | reserved | L2 | - | UINT16 |
+| 40317 | 317 | reserved | L3 | - | UINT16 |
 | 40318 | 318 | enerji_varyok | L1 | - | UINT16 |
 | 40319 | 319 | enerji_varyok | L2 | - | UINT16 |
 | 40320 | 320 | enerji_varyok | L3 | - | UINT16 |
@@ -364,24 +370,24 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 
 | Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
 |---:|---:|---|:---:|:---:|---|
-| 40400 | 400 | ariza_akimi | L1 | yuksek | FLOAT32 |
-| 40401 | 401 | ariza_akimi | L1 | dusuk | FLOAT32 |
-| 40402 | 402 | ariza_akimi | L2 | yuksek | FLOAT32 |
-| 40403 | 403 | ariza_akimi | L2 | dusuk | FLOAT32 |
-| 40404 | 404 | ariza_akimi | L3 | yuksek | FLOAT32 |
-| 40405 | 405 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40400 | 400 | reserved | L1 | yuksek | UINT16 |
+| 40401 | 401 | reserved | L1 | dusuk | UINT16 |
+| 40402 | 402 | reserved | L2 | yuksek | UINT16 |
+| 40403 | 403 | reserved | L2 | dusuk | UINT16 |
+| 40404 | 404 | reserved | L3 | yuksek | UINT16 |
+| 40405 | 405 | reserved | L3 | dusuk | UINT16 |
 | 40406 | 406 | anlik_akim | L1 | yuksek | FLOAT32 |
 | 40407 | 407 | anlik_akim | L1 | dusuk | FLOAT32 |
 | 40408 | 408 | anlik_akim | L2 | yuksek | FLOAT32 |
 | 40409 | 409 | anlik_akim | L2 | dusuk | FLOAT32 |
 | 40410 | 410 | anlik_akim | L3 | yuksek | FLOAT32 |
 | 40411 | 411 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40412 | 412 | ariza_suresi | L1 | - | UINT16 |
-| 40413 | 413 | ariza_suresi | L2 | - | UINT16 |
-| 40414 | 414 | ariza_suresi | L3 | - | UINT16 |
-| 40415 | 415 | ariza_kalicimi | L1 | - | UINT16 |
-| 40416 | 416 | ariza_kalicimi | L2 | - | UINT16 |
-| 40417 | 417 | ariza_kalicimi | L3 | - | UINT16 |
+| 40412 | 412 | reserved | L1 | - | UINT16 |
+| 40413 | 413 | reserved | L2 | - | UINT16 |
+| 40414 | 414 | reserved | L3 | - | UINT16 |
+| 40415 | 415 | reserved | L1 | - | UINT16 |
+| 40416 | 416 | reserved | L2 | - | UINT16 |
+| 40417 | 417 | reserved | L3 | - | UINT16 |
 | 40418 | 418 | enerji_varyok | L1 | - | UINT16 |
 | 40419 | 419 | enerji_varyok | L2 | - | UINT16 |
 | 40420 | 420 | enerji_varyok | L3 | - | UINT16 |
@@ -396,24 +402,24 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 
 | Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
 |---:|---:|---|:---:|:---:|---|
-| 40500 | 500 | ariza_akimi | L1 | yuksek | FLOAT32 |
-| 40501 | 501 | ariza_akimi | L1 | dusuk | FLOAT32 |
-| 40502 | 502 | ariza_akimi | L2 | yuksek | FLOAT32 |
-| 40503 | 503 | ariza_akimi | L2 | dusuk | FLOAT32 |
-| 40504 | 504 | ariza_akimi | L3 | yuksek | FLOAT32 |
-| 40505 | 505 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40500 | 500 | reserved | L1 | yuksek | UINT16 |
+| 40501 | 501 | reserved | L1 | dusuk | UINT16 |
+| 40502 | 502 | reserved | L2 | yuksek | UINT16 |
+| 40503 | 503 | reserved | L2 | dusuk | UINT16 |
+| 40504 | 504 | reserved | L3 | yuksek | UINT16 |
+| 40505 | 505 | reserved | L3 | dusuk | UINT16 |
 | 40506 | 506 | anlik_akim | L1 | yuksek | FLOAT32 |
 | 40507 | 507 | anlik_akim | L1 | dusuk | FLOAT32 |
 | 40508 | 508 | anlik_akim | L2 | yuksek | FLOAT32 |
 | 40509 | 509 | anlik_akim | L2 | dusuk | FLOAT32 |
 | 40510 | 510 | anlik_akim | L3 | yuksek | FLOAT32 |
 | 40511 | 511 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40512 | 512 | ariza_suresi | L1 | - | UINT16 |
-| 40513 | 513 | ariza_suresi | L2 | - | UINT16 |
-| 40514 | 514 | ariza_suresi | L3 | - | UINT16 |
-| 40515 | 515 | ariza_kalicimi | L1 | - | UINT16 |
-| 40516 | 516 | ariza_kalicimi | L2 | - | UINT16 |
-| 40517 | 517 | ariza_kalicimi | L3 | - | UINT16 |
+| 40512 | 512 | reserved | L1 | - | UINT16 |
+| 40513 | 513 | reserved | L2 | - | UINT16 |
+| 40514 | 514 | reserved | L3 | - | UINT16 |
+| 40515 | 515 | reserved | L1 | - | UINT16 |
+| 40516 | 516 | reserved | L2 | - | UINT16 |
+| 40517 | 517 | reserved | L3 | - | UINT16 |
 | 40518 | 518 | enerji_varyok | L1 | - | UINT16 |
 | 40519 | 519 | enerji_varyok | L2 | - | UINT16 |
 | 40520 | 520 | enerji_varyok | L3 | - | UINT16 |
@@ -428,24 +434,24 @@ satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
 
 | Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
 |---:|---:|---|:---:|:---:|---|
-| 40600 | 600 | ariza_akimi | L1 | yuksek | FLOAT32 |
-| 40601 | 601 | ariza_akimi | L1 | dusuk | FLOAT32 |
-| 40602 | 602 | ariza_akimi | L2 | yuksek | FLOAT32 |
-| 40603 | 603 | ariza_akimi | L2 | dusuk | FLOAT32 |
-| 40604 | 604 | ariza_akimi | L3 | yuksek | FLOAT32 |
-| 40605 | 605 | ariza_akimi | L3 | dusuk | FLOAT32 |
+| 40600 | 600 | reserved | L1 | yuksek | UINT16 |
+| 40601 | 601 | reserved | L1 | dusuk | UINT16 |
+| 40602 | 602 | reserved | L2 | yuksek | UINT16 |
+| 40603 | 603 | reserved | L2 | dusuk | UINT16 |
+| 40604 | 604 | reserved | L3 | yuksek | UINT16 |
+| 40605 | 605 | reserved | L3 | dusuk | UINT16 |
 | 40606 | 606 | anlik_akim | L1 | yuksek | FLOAT32 |
 | 40607 | 607 | anlik_akim | L1 | dusuk | FLOAT32 |
 | 40608 | 608 | anlik_akim | L2 | yuksek | FLOAT32 |
 | 40609 | 609 | anlik_akim | L2 | dusuk | FLOAT32 |
 | 40610 | 610 | anlik_akim | L3 | yuksek | FLOAT32 |
 | 40611 | 611 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40612 | 612 | ariza_suresi | L1 | - | UINT16 |
-| 40613 | 613 | ariza_suresi | L2 | - | UINT16 |
-| 40614 | 614 | ariza_suresi | L3 | - | UINT16 |
-| 40615 | 615 | ariza_kalicimi | L1 | - | UINT16 |
-| 40616 | 616 | ariza_kalicimi | L2 | - | UINT16 |
-| 40617 | 617 | ariza_kalicimi | L3 | - | UINT16 |
+| 40612 | 612 | reserved | L1 | - | UINT16 |
+| 40613 | 613 | reserved | L2 | - | UINT16 |
+| 40614 | 614 | reserved | L3 | - | UINT16 |
+| 40615 | 615 | reserved | L1 | - | UINT16 |
+| 40616 | 616 | reserved | L2 | - | UINT16 |
+| 40617 | 617 | reserved | L3 | - | UINT16 |
 | 40618 | 618 | enerji_varyok | L1 | - | UINT16 |
 | 40619 | 619 | enerji_varyok | L2 | - | UINT16 |
 | 40620 | 620 | enerji_varyok | L3 | - | UINT16 |
@@ -463,12 +469,11 @@ Durum register'lari 0/1 mantiksal degerdir:
 | Alan | 0 | 1 |
 |---|---|---|
 | ariza_kalicimi | Gecici / ariza yok | Kalici ariza |
-| enerji_varyok | (uygulama tanimli) | (uygulama tanimli) |
-| yuk_akimi_varyok | (uygulama tanimli) | (uygulama tanimli) |
-| rf_haberlesme_varyok | RF haberlesme var | RF haberlesme yok |
+| enerji_varyok | Enerji yok | Enerji var |
+| yuk_akimi_varyok | Yük akımı yok | Yük akımı var |
+| rf_haberlesme_varyok | Güncel canlı bağlantı yok | Güncel canlı bağlantı var |
 
-> Not: enerji_varyok / yuk_akimi_varyok alanlarinin 0/1 polaritesi cihaz
-> uygulamasina gore netlestirilmeli ve bu tabloya islenmelidir.
+> Enerji/yük değerleri yalnız §7.5 kalite biti 1 iken kullanılmalıdır.
 
 ---
 
@@ -904,3 +909,5 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 
 | 1.8 | 2026-10-04 | Cihaz adresi 0 sunucuda reddedildi; pasif fider ve ayrılmış offset 27..99 için sıfır yanıtının anlamı açıklandı. |
 | 1.9 | 2026-10-06 | SCP enerji/yük göstergeleri; yük alanı adları; 49500–49520 salt okunur kalite bloğu ve adres çakışması koruması. |
+
+| 1.10 | 2026-10-06 | Anlık arıza alanları kaldırıldı; offset 0–5/12–17 ayrıldı. Durum polariteleri SCP ile eşitlendi. |

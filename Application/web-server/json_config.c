@@ -857,24 +857,6 @@ static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
         } else if (match_key(str, "PermanentFaultBase")) {
             if (!parse_uint32_array(str, hat->permanent_fault_base,
                                     MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_R_ArizaAkimi")) {
-            if (!parse_uint32_array(str, hat->ioa_r_ariza_akimi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_S_ArizaAkimi")) {
-            if (!parse_uint32_array(str, hat->ioa_s_ariza_akimi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_T_ArizaAkimi")) {
-            if (!parse_uint32_array(str, hat->ioa_t_ariza_akimi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_R_ArizaSuresi")) {
-            if (!parse_uint32_array(str, hat->ioa_r_ariza_suresi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_S_ArizaSuresi")) {
-            if (!parse_uint32_array(str, hat->ioa_s_ariza_suresi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_T_ArizaSuresi")) {
-            if (!parse_uint32_array(str, hat->ioa_t_ariza_suresi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_R_ArizaTuru")) {
-            if (!parse_uint32_array(str, hat->ioa_r_ariza_turu, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_S_ArizaTuru")) {
-            if (!parse_uint32_array(str, hat->ioa_s_ariza_turu, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "IOA_T_ArizaTuru")) {
-            if (!parse_uint32_array(str, hat->ioa_t_ariza_turu, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_AnlikAkim")) {
             if (!parse_uint32_array(str, hat->ioa_r_anlik_akim, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_AnlikAkim")) {
@@ -912,15 +894,6 @@ static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
 static char iec_address_error[192];
 static const char * const iec_address_keys[] =
 {
-    "IOA_R_ArizaAkimi",
-    "IOA_S_ArizaAkimi",
-    "IOA_T_ArizaAkimi",
-    "IOA_R_ArizaSuresi",
-    "IOA_S_ArizaSuresi",
-    "IOA_T_ArizaSuresi",
-    "IOA_R_ArizaTuru",
-    "IOA_S_ArizaTuru",
-    "IOA_T_ArizaTuru",
     "IOA_R_AnlikAkim",
     "IOA_S_AnlikAkim",
     "IOA_T_AnlikAkim",
@@ -953,9 +926,9 @@ static void format_iec_address_field(char *text, uint16_t field_id)
     {
         const uint32_t index = (uint32_t)field_id - 2U;
         (void)xsnprintf(text, 64U, "Hatlar.%s[%lu] (feeder %lu)",
-            iec_address_keys[index % 23U],
-            (unsigned long)(index / 23U),
-            (unsigned long)((index / 23U) + 1U));
+            iec_address_keys[index % 14U],
+            (unsigned long)(index / 14U),
+            (unsigned long)((index / 14U) + 1U));
     }
 }
 
@@ -1015,15 +988,6 @@ static bool validate_iec_addresses(const jiec_config_t *config)
     iec_address_error[0] = '\0';
     const uint32_t *points[] =
     {
-        config->line.ioa_r_ariza_akimi,
-        config->line.ioa_s_ariza_akimi,
-        config->line.ioa_t_ariza_akimi,
-        config->line.ioa_r_ariza_suresi,
-        config->line.ioa_s_ariza_suresi,
-        config->line.ioa_t_ariza_suresi,
-        config->line.ioa_r_ariza_turu,
-        config->line.ioa_s_ariza_turu,
-        config->line.ioa_t_ariza_turu,
         config->line.ioa_r_anlik_akim,
         config->line.ioa_s_anlik_akim,
         config->line.ioa_t_anlik_akim,
@@ -1048,7 +1012,7 @@ static bool validate_iec_addresses(const jiec_config_t *config)
     }
     for (size_t line = 0U; line < MAX_ARRAYS; line++)
     {
-        const uint16_t line_id = (uint16_t)(2U + (line * 23U));
+        const uint16_t line_id = (uint16_t)(2U + (line * 14U));
         const uint32_t bases[] =
         {
             config->line.temporary_fault_base[line],
@@ -1061,7 +1025,7 @@ static bool validate_iec_addresses(const jiec_config_t *config)
             {
                 char field[64];
                 format_iec_address_field(field,
-                    (uint16_t)(line_id + 21U + base));
+                    (uint16_t)(line_id + 12U + base));
                 (void)xsnprintf(iec_address_error, sizeof(iec_address_error),
                                "Invalid IOA base: %s", field);
                 return false;
@@ -1089,10 +1053,10 @@ static bool validate_iec_addresses(const jiec_config_t *config)
         /* Match the existing getter's additional feeder offset exactly. */
         if (!add_iec_ioa_range(ranges, &count,
                 temp_base + ((uint32_t)line * temp_length), temp_length,
-                (uint16_t)(line_id + 21U)) ||
+                (uint16_t)(line_id + 12U)) ||
             !add_iec_ioa_range(ranges, &count,
                 perm_base + ((uint32_t)line * perm_length), perm_length,
-                (uint16_t)(line_id + 22U)))
+                (uint16_t)(line_id + 13U)))
         {
             return false;
         }
@@ -1252,24 +1216,6 @@ static bool parse_modbus_line_config(const char **str, jmodbus_line_config_t *ha
     while (!is_object_end(str)) {
         if (match_key(str, "inUse")) {
             if (!parse_bool_array(str, hat->in_use, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_R_ArizaAkimi")) {
-            if (!parse_uint32_array(str, hat->addr_r_ariza_akimi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_S_ArizaAkimi")) {
-            if (!parse_uint32_array(str, hat->addr_s_ariza_akimi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_T_ArizaAkimi")) {
-            if (!parse_uint32_array(str, hat->addr_t_ariza_akimi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_R_ArizaSuresi")) {
-            if (!parse_uint32_array(str, hat->addr_r_ariza_suresi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_S_ArizaSuresi")) {
-            if (!parse_uint32_array(str, hat->addr_s_ariza_suresi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_T_ArizaSuresi")) {
-            if (!parse_uint32_array(str, hat->addr_t_ariza_suresi, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_R_ArizaTuru")) {
-            if (!parse_uint32_array(str, hat->addr_r_ariza_turu, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_S_ArizaTuru")) {
-            if (!parse_uint32_array(str, hat->addr_s_ariza_turu, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_T_ArizaTuru")) {
-            if (!parse_uint32_array(str, hat->addr_t_ariza_turu, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_R_AnlikAkim")) {
             if (!parse_uint32_array(str, hat->addr_r_anlik_akim, MAX_ARRAYS)) return false;
         } else if (match_key(str, "ADDR_S_AnlikAkim")) {
@@ -1322,15 +1268,6 @@ static bool validate_modbus_addresses(const jmodbus_configs_t *config)
 
     const uint32_t *addresses[] =
     {
-        config->line.addr_r_ariza_akimi,
-        config->line.addr_s_ariza_akimi,
-        config->line.addr_t_ariza_akimi,
-        config->line.addr_r_ariza_suresi,
-        config->line.addr_s_ariza_suresi,
-        config->line.addr_t_ariza_suresi,
-        config->line.addr_r_ariza_turu,
-        config->line.addr_s_ariza_turu,
-        config->line.addr_t_ariza_turu,
         config->line.addr_r_anlik_akim,
         config->line.addr_s_anlik_akim,
         config->line.addr_t_anlik_akim,
@@ -1365,8 +1302,7 @@ static bool validate_modbus_addresses(const jmodbus_configs_t *config)
                 continue;
             }
             /* Fault/current measurements are FLOAT32, all others one word. */
-            const uint32_t length = ((field < 3U) ||
-                ((9U <= field) && (field < 12U))) ? 2U : 1U;
+            const uint32_t length = (field < 3U) ? 2U : 1U;
             const uint32_t last = first + length - 1U;
             if ((first <= MODBUS_RF_STATS_ADDR_LAST) &&
                 (MODBUS_RF_STATS_ADDR_BASE <= last))
@@ -1391,8 +1327,7 @@ static bool validate_modbus_addresses(const jmodbus_configs_t *config)
                 {
                     continue;
                 }
-                const uint32_t prev_length = ((prev_field < 3U) ||
-                    ((9U <= prev_field) && (prev_field < 12U))) ? 2U : 1U;
+                const uint32_t prev_length = (prev_field < 3U) ? 2U : 1U;
                 if ((first <= (prev_first + prev_length - 1U)) &&
                     (prev_first <= last))
                 {
@@ -2096,68 +2031,14 @@ int parse_iec_config(const char *json_str, jiec_config_t *iec) {
     }
     CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaAkimi: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_r_ariza_akimi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaAkimi: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_s_ariza_akimi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaAkimi: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_t_ariza_akimi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaSuresi: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_r_ariza_suresi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaSuresi: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_s_ariza_suresi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaSuresi: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_t_ariza_suresi[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_R_ArizaTuru: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_r_ariza_turu[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_S_ArizaTuru: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_s_ariza_turu[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
-    CSLOG_NODT("[JSON]   Hatlar.IOA_T_ArizaTuru: [");
-    for (int i = 0; i < MAX_ARRAYS; i++) {
-        CSLOG_NODT("%lu", iec->line.ioa_t_ariza_turu[i]);
-        if (i < MAX_ARRAYS - 1) CSLOG_NODT(", ");
-    }
-    CSLOG_NODT("]\r\n");
     
     CSLOG_NODT("[JSON]   Hatlar.IOA_R_AnlikAkim: [");
     for (int i = 0; i < MAX_ARRAYS; i++) {
@@ -2462,17 +2343,8 @@ int set_iec_config(const jiec_config_t *config)
 		}
 
     	line.in_use = true;
-		line.ariza_akimi[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_ariza_akimi[i]);
-		line.ariza_akimi[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_ariza_akimi[i]);
-		line.ariza_akimi[PHASE_L3] = iec104_make_ioa_3byte(config->line.ioa_t_ariza_akimi[i]);
 		
-		line.ariza_suresi[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_ariza_suresi[i]);
-		line.ariza_suresi[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_ariza_suresi[i]);
-		line.ariza_suresi[PHASE_L3] = iec104_make_ioa_3byte(config->line.ioa_t_ariza_suresi[i]);
 		
-		line.ariza_kalicimi[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_ariza_turu[i]);
-		line.ariza_kalicimi[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_ariza_turu[i]);
-		line.ariza_kalicimi[PHASE_L3] = iec104_make_ioa_3byte(config->line.ioa_t_ariza_turu[i]);
 		
 		line.anlik_akim[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_anlik_akim[i]);
 		line.anlik_akim[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_anlik_akim[i]);
@@ -2544,15 +2416,6 @@ int set_modbus_config(const jmodbus_configs_t *config)
 		}
 
 		line.in_use = true;
-		line.ariza_akimi[PHASE_L1] = (uint16_t)config->line.addr_r_ariza_akimi[i];
-		line.ariza_akimi[PHASE_L2] = (uint16_t)config->line.addr_s_ariza_akimi[i];
-		line.ariza_akimi[PHASE_L3] = (uint16_t)config->line.addr_t_ariza_akimi[i];
-		line.ariza_suresi[PHASE_L1] = (uint16_t)config->line.addr_r_ariza_suresi[i];
-		line.ariza_suresi[PHASE_L2] = (uint16_t)config->line.addr_s_ariza_suresi[i];
-		line.ariza_suresi[PHASE_L3] = (uint16_t)config->line.addr_t_ariza_suresi[i];
-		line.ariza_kalicimi[PHASE_L1] = (uint16_t)config->line.addr_r_ariza_turu[i];
-		line.ariza_kalicimi[PHASE_L2] = (uint16_t)config->line.addr_s_ariza_turu[i];
-		line.ariza_kalicimi[PHASE_L3] = (uint16_t)config->line.addr_t_ariza_turu[i];
 		line.anlik_akim[PHASE_L1] = (uint16_t)config->line.addr_r_anlik_akim[i];
 		line.anlik_akim[PHASE_L2] = (uint16_t)config->line.addr_s_anlik_akim[i];
 		line.anlik_akim[PHASE_L3] = (uint16_t)config->line.addr_t_anlik_akim[i];

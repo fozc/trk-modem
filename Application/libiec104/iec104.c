@@ -74,17 +74,11 @@ static uint8_t response_originator_address = 0;
 
 void iec104_send_periodic_update(void);
 bool iec104_send_phase_currents(cause_of_transmission_t cause);
-bool iec104_send_fault_currents(cause_of_transmission_t cause);
-bool iec104_send_fault_durations(cause_of_transmission_t cause);
-bool iec104_send_fault_types(cause_of_transmission_t cause);
 bool iec104_send_energy_states(cause_of_transmission_t cause);
 bool iec104_send_load_current_states(cause_of_transmission_t cause);
 bool iec104_send_rf_communication_states(cause_of_transmission_t cause);
 /* Feeder+phase filtreli alternatifler (henuz kullanilmiyor) */
 void iec104_send_phase_currents_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
-void iec104_send_fault_currents_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
-void iec104_send_fault_durations_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
-void iec104_send_fault_types_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
 void iec104_send_energy_states_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
 void iec104_send_load_current_states_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
 void iec104_send_rf_communication_states_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
@@ -538,9 +532,7 @@ bool iec104_interrogation_send_group1(void)
 {
     CSLOG("Sending all objects for interrogation group 1...\r\n");
 
-    bool complete = iec104_send_fault_currents(COT_INTERROGATED_GROUP1);
-    complete = iec104_send_fault_durations(COT_INTERROGATED_GROUP1) && complete;
-    complete = iec104_send_phase_currents(COT_INTERROGATED_GROUP1) && complete;
+    bool complete = iec104_send_phase_currents(COT_INTERROGATED_GROUP1);
 
     return complete;
 }
@@ -576,9 +568,7 @@ bool iec104_interrogation_send_all_objects(void)
 	//Cevaplar COT_INTERROGATED_STATION 20 ile gonderilir, 21 grup sorgulama olur sa duruma bakalim!
     CSLOG("Sending all objects for interrogation...\r\n");
 
-    bool complete = iec104_send_fault_currents(COT_INTERROGATED_STATION);
-    complete = iec104_send_fault_durations(COT_INTERROGATED_STATION) && complete;
-    complete = iec104_send_phase_currents(COT_INTERROGATED_STATION) && complete;
+    bool complete = iec104_send_phase_currents(COT_INTERROGATED_STATION);
 
     complete = iec104_send_energy_states(COT_INTERROGATED_STATION) && complete;
     complete = iec104_send_load_current_states(COT_INTERROGATED_STATION) && complete;
@@ -1651,6 +1641,42 @@ void iec104_send_M_ME_TF_1(cot_t cot, ioa_3byte_t ioa, float value, qds_t qualit
  * iyidir; k-pencere on kontrolu bunu sadece pencere icin kapatir,
  * TX kuyrugu icin kapatilamaz.
  * --------------------------------------------------------------- */
+static ioa_3byte_t fault_record_ioa(const fault_log_t *record, uint8_t field)
+{
+    const uint32_t feeder = record->info.feeder;
+    const uint8_t phase = record->info.phase;
+    const bool permanent = (FAULT_LOG_TYPE_PERMANENT == record->info.type);
+    switch (field)
+    {
+        case TEMPORARY_FAULT_FIELD_AKIM:
+            return permanent ?
+                iec104_get_feeder_permanent_fault_ariza_akimi_ioa(
+                    feeder, phase, 0U) :
+                iec104_get_feeder_temporary_fault_ariza_akimi_ioa(
+                    feeder, phase, 0U);
+        case TEMPORARY_FAULT_FIELD_SURE:
+            return permanent ?
+                iec104_get_feeder_permanent_fault_ariza_suresi_ioa(
+                    feeder, phase, 0U) :
+                iec104_get_feeder_temporary_fault_ariza_suresi_ioa(
+                    feeder, phase, 0U);
+        case TEMPORARY_FAULT_FIELD_ENERJI:
+            return permanent ?
+                iec104_get_feeder_permanent_fault_enerji_varyok_ioa(
+                    feeder, phase, 0U) :
+                iec104_get_feeder_temporary_fault_enerji_varyok_ioa(
+                    feeder, phase, 0U);
+        case TEMPORARY_FAULT_FIELD_YUK_AKIMI:
+            return permanent ?
+                iec104_get_feeder_permanent_fault_yuk_akimi_varyok_ioa(
+                    feeder, phase, 0U) :
+                iec104_get_feeder_temporary_fault_yuk_akimi_varyok_ioa(
+                    feeder, phase, 0U);
+        default:
+            return iec104_make_ioa_3byte(0U);
+    }
+}
+
 bool iec104_emit_evtlog_record(const fault_log_t *record)
 {
     if (NULL == record)
@@ -1692,7 +1718,6 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
         return false;
     }
 
-    const uint8_t phase = record->info.phase;
 
     /* ASDU 1 - M_ME_TF_1: ariza akimi + ariza suresi (2 obje) */
     iec104_package_t pkt;
@@ -1710,12 +1735,12 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
 
     m_me_tf_1_t *me = (m_me_tf_1_t *)&pkt.data[DATA_START_IDX];
 
-    me[0].ioa       = line->iec104.ariza_akimi[phase];
+    me[0].ioa       = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_AKIM);
     me[0].value     = fault_log_current_amps(record);
     me[0].quality   = (qds_t){0};
     me[0].timestamp = record->tm;
 
-    me[1].ioa       = line->iec104.ariza_suresi[phase];
+    me[1].ioa       = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_SURE);
     me[1].value     = (float)record->fault_duration_ms;
     me[1].quality   = (qds_t){0};
     me[1].timestamp = record->tm;
@@ -1725,32 +1750,27 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
         return false;
     }
 
-    /* ASDU 2 - M_SP_TB_1: kalici ariza + enerji + yuk akimi (3 obje) */
+    /* ASDU 2 - M_SP_TB_1: history energy and load state (2 objects). */
     const size_t sp_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
-                          + (sizeof(m_sp_tb_1_t) * 3U);
+                          + (sizeof(m_sp_tb_1_t) * 2U);
 
     memset(&pkt, 0, sp_len + 2U);
 
     pkt.frame.apci.start_char  = IEC104_START_BYTE;
-    pkt.frame.apci.apdu_length = (uint8_t)((sizeof(m_sp_tb_1_t) * 3U) + 10U);
+    pkt.frame.apci.apdu_length = (uint8_t)((sizeof(m_sp_tb_1_t) * 2U) + 10U);
     pkt.frame.apci.i_frame     = make_iframe_control(send_sn, receive_sn);
     pkt.frame.asdu_header      = make_asdu_header(M_SP_TB_1,
         (cot_t){.cause = COT_SPONTANEOUS, .pn_bit = 0, .test_bit = 0},
-        config.originator_address, config.common_address, 3U, 0U);
+        config.originator_address, config.common_address, 2U, 0U);
 
     m_sp_tb_1_t *sp = (m_sp_tb_1_t *)&pkt.data[DATA_START_IDX];
 
-    sp[0].ioa       = line->iec104.ariza_kalicimi[phase];
-    sp[0].siq       = make_siq(record->info.type, 0U);
+    sp[0].ioa = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_ENERJI);
+    sp[0].siq = make_siq(record->info.power_status, 0U);
     sp[0].timestamp = record->tm;
-
-    sp[1].ioa       = line->iec104.enerji_varyok[phase];
-    sp[1].siq       = make_siq(record->info.power_status, 0U);
+    sp[1].ioa = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_YUK_AKIMI);
+    sp[1].siq = make_siq(record->info.nominal_current_status, 0U);
     sp[1].timestamp = record->tm;
-
-    sp[2].ioa       = line->iec104.yuk_akimi_varyok[phase];
-    sp[2].siq       = make_siq(record->info.nominal_current_status, 0U);
-    sp[2].timestamp = record->tm;
 
     return iec104_send((uint8_t *)&pkt, sp_len + 2U);
 }
@@ -2046,240 +2066,8 @@ bool iec104_send_phase_currents(cause_of_transmission_t cause)
     return (sent >= obj_count);
 }
 
-bool iec104_send_fault_currents(cause_of_transmission_t cause)
-{
-    CSLOG("Sending fault currents\r\n");
 
-    uint8_t active_powerline_count = breaker_get_active_powerline_count();
 
-    if (active_powerline_count == 0)
-    {
-        CSLOG("No active power lines, skipping\r\n");
-        return true;
-    }
-
-    // IEC 104 APDU max 253 byte, ASDU header 10 byte
-    // Max obje sayisi: (253 - 10) / sizeof(m_me_tf_1_t)
-    const uint8_t max_objs_per_packet = (253 - 10) / sizeof(m_me_tf_1_t);
-
-    // (maks 8 hat * 3 faz = 24 obje)
-    m_me_tf_1_t objects[MAX_POWER_LINE_COUNT * 3];
-    uint8_t obj_count = 0;
-
-    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
-    {
-        const power_line_t *line = breaker_get_power_line_by_idx(power_line);
-
-        if (line == NULL || !line->iec104.in_use) {
-            continue;
-        }
-
-        for (uint8_t phase = 0U; phase < 3; phase++)
-        {
-            float value;
-            qds_t quality;
-            cp56time2a_t timestamp;
-
-            iec_io.get_ariza_akimi(power_line, phase, &value, &quality, &timestamp);
-
-            objects[obj_count].ioa = line->iec104.ariza_akimi[phase];
-            objects[obj_count].value = value;
-            objects[obj_count].quality = quality;
-            objects[obj_count].timestamp = timestamp;
-            obj_count++;
-        }
-    }
-
-    // Paketlere bol ve gonder
-    uint8_t sent = 0;
-    while (sent < obj_count)
-    {
-        uint8_t batch = obj_count - sent;
-        if (batch > max_objs_per_packet) {
-            batch = max_objs_per_packet;
-        }
-
-        iec104_package_t pkt;
-        const uint8_t apdu_len = (uint8_t)((sizeof(m_me_tf_1_t) * batch) + 10U); // ASDU header + batch * object size
-        const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_me_tf_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
-
-        memset(&pkt, 0, total_len);
-
-        pkt.frame.apci.start_char = IEC104_START_BYTE;
-        pkt.frame.apci.apdu_length = apdu_len;
-        pkt.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
-        pkt.frame.asdu_header = make_asdu_header(M_ME_TF_1,
-            (cot_t){.cause = cause, .pn_bit = 0, .test_bit = 0},
-            config.originator_address, config.common_address, batch, 0);
-
-        memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
-
-        CSLOG("Sending fault currents: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
-            break;
-        }
-
-        sent += batch;
-    }
-
-    return (sent >= obj_count);
-}
-
-bool iec104_send_fault_durations(cause_of_transmission_t cause)
-{
-    CSLOG("Sending fault durations\r\n");
-
-    uint8_t active_powerline_count = breaker_get_active_powerline_count();
-
-    if (active_powerline_count == 0)
-    {
-        CSLOG("No active power lines, skipping\r\n");
-        return true;
-    }
-
-    // IEC 104 APDU max 253 byte, ASDU header 10 byte
-    // Max obje sayisi: (253 - 10) / sizeof(m_me_tf_1_t)
-    const uint8_t max_objs_per_packet = (253 - 10) / sizeof(m_me_tf_1_t);
-
-    // (maks 8 hat * 3 faz = 24 obje)
-    m_me_tf_1_t objects[MAX_POWER_LINE_COUNT * 3];
-    uint8_t obj_count = 0;
-
-    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
-    {
-        const power_line_t *line = breaker_get_power_line_by_idx(power_line);
-
-        if (line == NULL || !line->iec104.in_use) {
-            continue;
-        }
-
-        for (uint8_t phase = 0U; phase < 3; phase++)
-        {
-            float value;
-            qds_t quality;
-            cp56time2a_t timestamp;
-
-            iec_io.get_ariza_suresi(power_line, phase, &value, &quality, &timestamp);
-
-            objects[obj_count].ioa = line->iec104.ariza_suresi[phase];
-            objects[obj_count].value = value;
-            objects[obj_count].quality = quality;
-            objects[obj_count].timestamp = timestamp;
-            obj_count++;
-        }
-    }
-
-    // Paketlere bol ve gonder
-    uint8_t sent = 0;
-    while (sent < obj_count)
-    {
-        uint8_t batch = obj_count - sent;
-        if (batch > max_objs_per_packet) {
-            batch = max_objs_per_packet;
-        }
-
-        iec104_package_t pkt;
-        const uint8_t apdu_len = (uint8_t)((sizeof(m_me_tf_1_t) * batch) + 10U); // ASDU header + batch * object size
-        const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_me_tf_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
-
-        memset(&pkt, 0, total_len);
-
-        pkt.frame.apci.start_char = IEC104_START_BYTE;
-        pkt.frame.apci.apdu_length = apdu_len;
-        pkt.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
-        pkt.frame.asdu_header = make_asdu_header(M_ME_TF_1,
-            (cot_t){.cause = cause, .pn_bit = 0, .test_bit = 0},
-            config.originator_address, config.common_address, batch, 0);
-
-        memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
-
-        CSLOG("Sending fault durations: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
-            break;
-        }
-
-        sent += batch;
-    }
-
-    return (sent >= obj_count);
-}
-
-bool iec104_send_fault_types(cause_of_transmission_t cause)
-{
-    CSLOG("Sending fault types\r\n");
-
-    uint8_t active_powerline_count = breaker_get_active_powerline_count();
-
-    if (active_powerline_count == 0)
-    {
-        CSLOG("No active power lines, skipping\r\n");
-        return true;
-    }
-
-    // IEC 104 APDU max 253 byte, ASDU header 10 byte
-    // Max obje sayisi: (253 - 10) / sizeof(m_sp_tb_1_t)
-    const uint8_t max_objs_per_packet = (253 - 10) / sizeof(m_sp_tb_1_t);
-
-    // (maks 8 hat * 3 faz = 24 obje)
-    m_sp_tb_1_t objects[MAX_POWER_LINE_COUNT * 3];
-    uint8_t obj_count = 0;
-
-    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
-    {
-        const power_line_t *line = breaker_get_power_line_by_idx(power_line);
-
-        if (line == NULL || !line->iec104.in_use) {
-            continue;
-        }
-
-        for (uint8_t phase = 0U; phase < 3; phase++)
-        {
-        	siq_t siq;
-            cp56time2a_t timestamp;
-
-            iec_io.get_ariza_kalicimi(power_line, phase, &siq, &timestamp);
-
-            objects[obj_count].ioa = line->iec104.ariza_kalicimi[phase];
-            objects[obj_count].siq = siq;
-            objects[obj_count].timestamp = timestamp;
-            obj_count++;
-        }
-    }
-
-    // Paketlere bol ve gonder
-    uint8_t sent = 0;
-    while (sent < obj_count)
-    {
-        uint8_t batch = obj_count - sent;
-        if (batch > max_objs_per_packet) {
-            batch = max_objs_per_packet;
-        }
-
-        iec104_package_t pkt;
-        const uint8_t apdu_len = (uint8_t)((sizeof(m_sp_tb_1_t) * batch) + 10U); // ASDU header + batch * object size
-        const size_t total_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t) + (sizeof(m_sp_tb_1_t) * batch); // Start char ve length byte APDU uzunluguna dahil edilmez
-
-        memset(&pkt, 0, total_len);
-
-        pkt.frame.apci.start_char = IEC104_START_BYTE;
-        pkt.frame.apci.apdu_length = apdu_len;
-        pkt.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
-        pkt.frame.asdu_header = make_asdu_header(M_SP_TB_1,
-            (cot_t){.cause = cause, .pn_bit = 0, .test_bit = 0},
-            config.originator_address, config.common_address, batch, 0);
-
-        memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
-
-        CSLOG("Sending fault types: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
-            break;
-        }
-
-        sent += batch;
-    }
-
-    return (sent >= obj_count);
-}
 
 bool iec104_send_energy_states(cause_of_transmission_t cause)
 {

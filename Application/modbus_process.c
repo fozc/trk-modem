@@ -236,29 +236,6 @@ static uint16_t modbus_rf_flag(uint32_t line_index, uint8_t phase, uint8_t mask)
             (0U != (data.live.flags & mask))) ? 1U : 0U;
 }
 
-/**
- * @brief Encode a fault duration (milliseconds) into one holding register.
- *
- * The duration is an unsigned 16-bit millisecond count. Negative inputs clamp
- * to 0 and values beyond UINT16_MAX clamp to UINT16_MAX.
- *
- * @param[in] value_ms Fault duration in milliseconds.
- * @return The clamped UINT16 register value.
- */
-static uint16_t modbus_encode_duration_ms(float value_ms)
-{
-    if (value_ms <= 0.0f) {
-        return 0U;
-    }
-
-    float rounded = value_ms + 0.5f;
-
-    if (rounded >= (float)UINT16_MAX) {
-        return (uint16_t)UINT16_MAX;
-    }
-
-    return (uint16_t)rounded;
-}
 
 /**
  * @brief Test whether an address lies within the per-line register space.
@@ -278,42 +255,31 @@ static bool modbus_addr_in_line_space(uint16_t reg_addr)
  * Maps an offset within a line block (0..MODBUS_LINE_ADDR_STRIDE-1) to the
  * matching phase field. FLOAT32 fields span two registers (high word first).
  *
- * @param[in]  p_data  Live feeder data for the resolved line.
  * @param[in]  offset  Register offset from the line base.
  * @param[out] p_value Destination for the resolved value on a match.
  * @return true if the offset maps to a live field, false for reserved gaps.
  */
-static bool modbus_resolve_offset(const feeder_data_t *p_data,
-                                  uint32_t line_index,
+static bool modbus_resolve_offset(uint32_t line_index,
                                   uint16_t offset,
                                   uint16_t *p_value)
 {
     bool matched = true;
 
-    if (offset < MODBUS_OFF_ANLIK_AKIM) 
+    if (offset < MODBUS_OFF_ANLIK_AKIM)
     {
-        uint16_t rel = offset - MODBUS_OFF_ARIZA_AKIMI;
-        uint8_t  ph  = (uint8_t)(rel / MODBUS_FLOAT_REG_PER_PHASE);
-        bool     high = ((rel % MODBUS_FLOAT_REG_PER_PHASE) == 0U);
-        *p_value = modbus_float_to_word(p_data->phase[ph].ariza_akimi, high);
-    } 
-    else if (offset < MODBUS_OFF_ARIZA_SURESI) 
+        *p_value = 0U;
+    }
+    else if (offset < MODBUS_OFF_ARIZA_SURESI)
     {
         uint16_t rel = (uint16_t)(offset - MODBUS_OFF_ANLIK_AKIM);
         uint8_t  ph  = (uint8_t)(rel / MODBUS_FLOAT_REG_PER_PHASE);
         bool     high = ((rel % MODBUS_FLOAT_REG_PER_PHASE) == 0U);
         *p_value = modbus_rf_current_word(line_index, ph, high);
     } 
-    else if (offset < MODBUS_OFF_ARIZA_KALICIMI) 
+    else if (offset < MODBUS_OFF_ENERJI_VARYOK)
     {
-        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ARIZA_SURESI);
-        *p_value = modbus_encode_duration_ms(p_data->phase[ph].ariza_suresi);
-    } 
-    else if (offset < MODBUS_OFF_ENERJI_VARYOK) 
-    {
-        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ARIZA_KALICIMI);
-        *p_value = (uint16_t)p_data->phase[ph].ariza_kalicimi;
-    } 
+        *p_value = 0U;
+    }
     else if (offset < MODBUS_OFF_YUK_VARYOK)
     {
         uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ENERJI_VARYOK);
@@ -363,13 +329,8 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
         return false;
     }
 
-    const feeder_data_t *p_data = breaker_get_feeder_data(line);
+    return modbus_resolve_offset(line, offset, p_value);
 
-    if (p_data == NULL) {
-        return false;
-    }
-
-    return modbus_resolve_offset(p_data, line, offset, p_value);
 }
 
 #else /* MODBUS_USE_FIXED_ADDR_MAP == 0 : configurable NVRAM address map */
@@ -379,9 +340,8 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
  *
  * Walks every in-use power line and phase, comparing the requested address
  * against the per-field Modbus addresses held in configuration. Float fields
- * (fault/instant current) occupy two registers: the configured address carries
- * the high word and address+1 the low word (big-endian, ABCD). Fault duration is
- * an UINT16 millisecond count; the remaining status fields are passed through.
+ * (instant current) occupy two registers: the configured address carries
+ * the high word and address+1 the low word (big-endian, ABCD).
  * A configured address of 0 is treated as unmapped and never matches.
  *
  * @param[in]  reg_addr Requested holding-register address.
@@ -396,26 +356,12 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
         }
 
         const modbus_line_config_t *p_cfg = modbus_get_line_config(line);
-        const feeder_data_t        *p_data = breaker_get_feeder_data(line);
 
-        if ((p_cfg == NULL) || (p_data == NULL)) {
+        if (NULL == p_cfg) {
             continue;
         }
 
         for (uint8_t ph = 0U; ph < PHASE_MAX; ph++) {
-            const phase_data_t *p_phase = &p_data->phase[ph];
-
-            /* ariza_akimi: FLOAT32 across two registers (high at addr, low at addr+1). */
-            if (p_cfg->ariza_akimi[ph] != 0U) {
-                if (reg_addr == p_cfg->ariza_akimi[ph]) {
-                    *p_value = modbus_float_to_word(p_phase->ariza_akimi, true);
-                    return true;
-                }
-                if (reg_addr == (uint16_t)(p_cfg->ariza_akimi[ph] + 1U)) {
-                    *p_value = modbus_float_to_word(p_phase->ariza_akimi, false);
-                    return true;
-                }
-            }
 
             /* anlik_akim: FLOAT32 across two registers (high at addr, low at addr+1). */
             if (p_cfg->anlik_akim[ph] != 0U) {
@@ -429,15 +375,6 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
                 }
             }
 
-            /* ariza_suresi: UINT16 millisecond count (single register). */
-            if ((p_cfg->ariza_suresi[ph] != 0U) && (reg_addr == p_cfg->ariza_suresi[ph])) {
-                *p_value = modbus_encode_duration_ms(p_phase->ariza_suresi);
-                return true;
-            }
-            if ((p_cfg->ariza_kalicimi[ph] != 0U) && (reg_addr == p_cfg->ariza_kalicimi[ph])) {
-                *p_value = (uint16_t)p_phase->ariza_kalicimi;
-                return true;
-            }
             if ((p_cfg->enerji_varyok[ph] != 0U) && (reg_addr == p_cfg->enerji_varyok[ph])) {
                 *p_value = modbus_rf_flag(line, ph, 1U);
                 return true;

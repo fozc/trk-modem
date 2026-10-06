@@ -291,10 +291,7 @@ static const iec104_io_t test_io = {
     .send     = fake_send,
     .on_event = fake_on_event,
 
-    .get_ariza_akimi           = fake_get_measured,
-    .get_ariza_suresi          = fake_get_measured,
     .get_anlik_akim            = fake_get_measured,
-    .get_ariza_kalicimi        = fake_get_state,
     .get_enerji_varyok         = fake_get_state,
     .get_yuk_akimi_varyok   = fake_get_state,
     .get_rf_haberlesme_varyok  = fake_get_state,
@@ -1589,6 +1586,56 @@ void test_fault_ioa_getters_match_reserved_window_boundaries(void)
                 iec104_get_feeder_permanent_fault_yuk_akimi_varyok_ioa(
                     feeder, 2U, 14U)));
     }
+}
+
+void test_event_replay_preserves_load_present_bit_on_wire(void)
+{
+    for (uint8_t load = 0U; 2U > load; load++)
+    {
+        setup(12U, 8U);
+        start_link();
+        fault_log_t record = {0};
+        iec104_line_config_t line = {0};
+        line.temporary_fault = iec104_make_ioa_3byte(100000U);
+        line.permanent_fault = iec104_make_ioa_3byte(200000U);
+        TEST_ASSERT_TRUE(iec104_set_line_config(0U, &line));
+        record.info.nominal_current_status = (0U != load);
+        record.info.power_status = 1U;
+        record.info.type = (0U != load);
+        TEST_ASSERT_TRUE(iec104_emit_evtlog_record(&record));
+        TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, tx_log[1][6]);
+        TEST_ASSERT_EQUAL_UINT8(2U, tx_log[1][7] & 0x7FU);
+        const size_t ioa_offset = DATA_START_IDX + sizeof(m_sp_tb_1_t);
+        const uint32_t ioa = (uint32_t)tx_log[1][ioa_offset] |
+            ((uint32_t)tx_log[1][ioa_offset + 1U] << 8U) |
+            ((uint32_t)tx_log[1][ioa_offset + 2U] << 16U);
+        TEST_ASSERT_EQUAL_UINT32((0U == load) ? 100003U : 200003U, ioa);
+        const size_t load_offset = DATA_START_IDX +
+            sizeof(m_sp_tb_1_t) + offsetof(m_sp_tb_1_t, siq);
+        TEST_ASSERT_EQUAL_UINT8(load, tx_log[1][load_offset] & 1U);
+    }
+    TEST_ASSERT_FALSE(iec104_emit_evtlog_record(NULL));
+}
+
+void test_group_one_emits_only_phase_currents_without_fault_summary(void)
+{
+    setup(12U, 8U);
+    start_link();
+    mock_breaker_set_line_in_use(0U, true);
+    uint8_t frame[16];
+    build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS, QOI_GROUP_1);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    uint8_t objects = 0U;
+    for (size_t index = 0U; index < tx_count; index++)
+    {
+        if (M_ME_TF_1 == tx_log[index][6])
+        {
+            objects = (uint8_t)(objects + (tx_log[index][7] & 0x7FU));
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT8(3U, objects);
 }
 
 /*** end of file ***/
