@@ -967,24 +967,24 @@ void handle_get_iec_config_json(void)
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_NominalAkimVarYok\":[");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_R_YukAkimiVarYok\":[");
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->yuk_akimi_varyok[PHASE_L1]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_NominalAkimVarYok\":[");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_S_YukAkimiVarYok\":[");
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->yuk_akimi_varyok[PHASE_L2]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_NominalAkimVarYok\":[");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"IOA_T_YukAkimiVarYok\":[");
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const iec104_line_config_t *line = iec104_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->yuk_akimi_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
@@ -1097,9 +1097,9 @@ void handle_post_iec_config_json(const char *json_body)
             config.line.ioa_r_enerji_varyok[i] = iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L1]);
             config.line.ioa_s_enerji_varyok[i] = iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L2]);
             config.line.ioa_t_enerji_varyok[i] = iec104_ioa_3byte_to_uint32(line->enerji_varyok[PHASE_L3]);
-            config.line.ioa_r_nominal_akim_varyok[i] = iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L1]);
-            config.line.ioa_s_nominal_akim_varyok[i] = iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L2]);
-            config.line.ioa_t_nominal_akim_varyok[i] = iec104_ioa_3byte_to_uint32(line->nominal_akim_varyok[PHASE_L3]);
+            config.line.ioa_r_yuk_akimi_varyok[i] = iec104_ioa_3byte_to_uint32(line->yuk_akimi_varyok[PHASE_L1]);
+            config.line.ioa_s_yuk_akimi_varyok[i] = iec104_ioa_3byte_to_uint32(line->yuk_akimi_varyok[PHASE_L2]);
+            config.line.ioa_t_yuk_akimi_varyok[i] = iec104_ioa_3byte_to_uint32(line->yuk_akimi_varyok[PHASE_L3]);
             config.line.ioa_r_rfhab_varyok[i] = iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L1]);
             config.line.ioa_s_rfhab_varyok[i] = iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L2]);
             config.line.ioa_t_rfhab_varyok[i] = iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L3]);
@@ -1278,24 +1278,24 @@ void handle_get_modbus_config_json(void)
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_NominalAkimVarYok\":[");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_YukAkimiVarYok\":[");
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->nominal_akim_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->yuk_akimi_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_NominalAkimVarYok\":[");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_YukAkimiVarYok\":[");
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->nominal_akim_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->yuk_akimi_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_NominalAkimVarYok\":[");
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_YukAkimiVarYok\":[");
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
         const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->nominal_akim_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->yuk_akimi_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
     
@@ -1387,9 +1387,9 @@ void handle_post_modbus_config_json(const char *json_body)
             config.line.addr_r_enerji_varyok[i] = line->enerji_varyok[PHASE_L1];
             config.line.addr_s_enerji_varyok[i] = line->enerji_varyok[PHASE_L2];
             config.line.addr_t_enerji_varyok[i] = line->enerji_varyok[PHASE_L3];
-            config.line.addr_r_nominal_akim_varyok[i] = line->nominal_akim_varyok[PHASE_L1];
-            config.line.addr_s_nominal_akim_varyok[i] = line->nominal_akim_varyok[PHASE_L2];
-            config.line.addr_t_nominal_akim_varyok[i] = line->nominal_akim_varyok[PHASE_L3];
+            config.line.addr_r_yuk_akimi_varyok[i] = line->yuk_akimi_varyok[PHASE_L1];
+            config.line.addr_s_yuk_akimi_varyok[i] = line->yuk_akimi_varyok[PHASE_L2];
+            config.line.addr_t_yuk_akimi_varyok[i] = line->yuk_akimi_varyok[PHASE_L3];
             config.line.addr_r_rfhab_varyok[i] = line->rf_haberlesme_varyok[PHASE_L1];
             config.line.addr_s_rfhab_varyok[i] = line->rf_haberlesme_varyok[PHASE_L2];
             config.line.addr_t_rfhab_varyok[i] = line->rf_haberlesme_varyok[PHASE_L3];

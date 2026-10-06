@@ -64,10 +64,10 @@ static void breaker_shell_dump_line(uint32_t line_index)
           (unsigned)p_feeder->phase[PHASE_L1].enerji_varyok,
           (unsigned)p_feeder->phase[PHASE_L2].enerji_varyok,
           (unsigned)p_feeder->phase[PHASE_L3].enerji_varyok);
-    SHELL_LOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "nominal_akim_varyok",
-          (unsigned)p_feeder->phase[PHASE_L1].nominal_akim_varyok,
-          (unsigned)p_feeder->phase[PHASE_L2].nominal_akim_varyok,
-          (unsigned)p_feeder->phase[PHASE_L3].nominal_akim_varyok);
+    SHELL_LOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "yuk_akimi_varyok",
+          (unsigned)p_feeder->phase[PHASE_L1].yuk_akimi_varyok,
+          (unsigned)p_feeder->phase[PHASE_L2].yuk_akimi_varyok,
+          (unsigned)p_feeder->phase[PHASE_L3].yuk_akimi_varyok);
     SHELL_LOG("[BREAKER] %-22s | %10u | %10u | %10u\r\n", "rf_haberlesme_varyok",
           (unsigned)p_feeder->phase[PHASE_L1].rf_haberlesme_varyok,
           (unsigned)p_feeder->phase[PHASE_L2].rf_haberlesme_varyok,

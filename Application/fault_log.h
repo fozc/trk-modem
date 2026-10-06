@@ -45,7 +45,7 @@ typedef struct
 	{
 		uint8_t feeder : 3;              // 0: Feeder 1, 6: Feeder 7
 		uint8_t phase : 2;               // 0: L1, 1: L2, 2: L3
-		uint8_t nominal_current_status : 1; // 0: Normal, 1: Below nominal
+		uint8_t nominal_current_status : 1; // RF: 1 = load current present
 		uint8_t power_status : 1;           // 0: Off, 1: On
 		uint8_t type : 1;                   // 0: Temporary, 1: Permanent
 	} __attribute__((packed)) info;

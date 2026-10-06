@@ -12,6 +12,7 @@
 #include "modbus_power_stats.h"
 #include "modbus_bms_stats.h"
 #include "modbus_gsm_stats.h"
+#include "modbus_rf_stats.h"
 #include "breaker.h"
 #include "rf.h"
 #include "bsp.h"
@@ -64,7 +65,7 @@
 #define MODBUS_OFF_ARIZA_SURESI     12U   /* UINT16  x3 phases -> 12..14 */
 #define MODBUS_OFF_ARIZA_KALICIMI   15U   /* UINT16  x3 phases -> 15..17 */
 #define MODBUS_OFF_ENERJI_VARYOK    18U   /* UINT16  x3 phases -> 18..20 */
-#define MODBUS_OFF_NOMINAL_VARYOK   21U   /* UINT16  x3 phases -> 21..23 */
+#define MODBUS_OFF_YUK_VARYOK   21U   /* UINT16  x3 phases -> 21..23 */
 #define MODBUS_OFF_RF_VARYOK        24U   /* UINT16  x3 phases -> 24..26 */
 #define MODBUS_OFF_LIVE_END         27U   /* first reserved offset       */
 #define MODBUS_FLOAT_REG_PER_PHASE  2U    /* registers per FLOAT32 phase */
@@ -226,6 +227,15 @@ static uint16_t modbus_rf_online(uint32_t line_index, uint8_t phase)
                              rf_sample_ms, &data) && data.is_online) ? 1U : 0U;
 }
 
+static uint16_t modbus_rf_flag(uint32_t line_index, uint8_t phase, uint8_t mask)
+{
+    rf_phase_data_t data;
+
+    return (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
+                             rf_sample_ms, &data) && data.has_live &&
+            (0U != (data.live.flags & mask))) ? 1U : 0U;
+}
+
 /**
  * @brief Encode a fault duration (milliseconds) into one holding register.
  *
@@ -304,15 +314,15 @@ static bool modbus_resolve_offset(const feeder_data_t *p_data,
         uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ARIZA_KALICIMI);
         *p_value = (uint16_t)p_data->phase[ph].ariza_kalicimi;
     } 
-    else if (offset < MODBUS_OFF_NOMINAL_VARYOK) 
+    else if (offset < MODBUS_OFF_YUK_VARYOK)
     {
         uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ENERJI_VARYOK);
-        *p_value = (uint16_t)p_data->phase[ph].enerji_varyok;
+        *p_value = modbus_rf_flag(line_index, ph, 1U);
     } 
     else if (offset < MODBUS_OFF_RF_VARYOK) 
     {
-        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_NOMINAL_VARYOK);
-        *p_value = (uint16_t)p_data->phase[ph].nominal_akim_varyok;
+        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_YUK_VARYOK);
+        *p_value = modbus_rf_flag(line_index, ph, 2U);
     } 
     else if (offset < MODBUS_OFF_LIVE_END) 
     {
@@ -429,11 +439,11 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
                 return true;
             }
             if ((p_cfg->enerji_varyok[ph] != 0U) && (reg_addr == p_cfg->enerji_varyok[ph])) {
-                *p_value = (uint16_t)p_phase->enerji_varyok;
+                *p_value = modbus_rf_flag(line, ph, 1U);
                 return true;
             }
-            if ((p_cfg->nominal_akim_varyok[ph] != 0U) && (reg_addr == p_cfg->nominal_akim_varyok[ph])) {
-                *p_value = (uint16_t)p_phase->nominal_akim_varyok;
+            if ((p_cfg->yuk_akimi_varyok[ph] != 0U) && (reg_addr == p_cfg->yuk_akimi_varyok[ph])) {
+                *p_value = modbus_rf_flag(line, ph, 2U);
                 return true;
             }
             if ((p_cfg->rf_haberlesme_varyok[ph] != 0U) && (reg_addr == p_cfg->rf_haberlesme_varyok[ph])) {
@@ -468,6 +478,11 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
  */
 static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_value)
 {
+    /* Reserve the fixed quality block before configurable global fields. */
+    if (modbus_rf_stats_read(reg_addr, rf_sample_ms, p_value))
+    {
+        return MODBUS_REG_OK;
+    }
     /* Global status/command registers. */
     if (reg_addr == modbus_config_get_addr_aku_uyarisi()) {
         /* TODO: bind to the real battery-warning source once available. */
@@ -539,6 +554,11 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
  */
 static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value)
 {
+    if ((MODBUS_RF_STATS_ADDR_BASE <= reg_addr) &&
+        (MODBUS_RF_STATS_ADDR_LAST >= reg_addr))
+    {
+        return MODBUS_REG_ERR_ADDRESS;
+    }
     CSLOG("FC06 Request - Addr: %d, Value: 0x%04X (%d)\r\n", reg_addr, value, value);
 
     /* Only the modem-reset command register is writable. */

@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.30
+**Sürüm:** 1.31
 **Tarih:** 2026-10-06
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -655,6 +655,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-06 | 1.28 | RF web Kaydet/Uygula/durum/iptal, gerçek HTTP yetki yolu ve 24 seçili dosyada 378/378 test |
 | 2026-10-06 | 1.29 | Modbus sabit/yapılandırılabilir akım ve RF kaynağı; 30 seçili dosyada 411/411 test |
 | 2026-10-06 | 1.30 | IEC104 RTU alım zamanı ve kalite; gerçek RX ile 31 seçili dosyada 418/418 test |
+| 2026-10-06 | 1.31 | SCP enerji/yük, yeni alan adları ve RF kalite bloğu; 428/428 seçili Ceedling, web ve NVRAM doğrulaması |
 
 ## 06.10.2026 SCP Powerboard tüketici doğrulaması
 
@@ -757,3 +758,24 @@ bağlantılarını ayırır; model/okuyucu algoritmasını taklit etmez.
 Son Modbus seçiminde `test_iec104` yeni paketi zaten içerir: 31 seçili
 dosyada 418/418 geçti (`build/iec104-rf-live-regression.log`). 21 modül sıkı
 ARM/C11 ve Release link geçti. Bu, fiziksel RF/ölçüm gecikmesi kabulü değildir.
+
+## 06.10.2026 SCP enerji/yük ve Modbus kalite doğrulaması
+
+`application/test_iec104_rf_live.c` 8 test, sabit ve yapılandırılabilir
+Modbus RF paketleri 8'er test çalıştırır. Gerçek RF cache ve üretim
+okuyucuları LIVE bit 0/1'i, bağımsız RMS geçerliliğini, eksik/eski
+örneği ve salt okunur kalite bloğunu sınar. JSON bounds paketi
+49500–49520 ile alan/global adres çakışmasını, FLOAT32 ikinci
+register'ı dahil, kaydetmeden reddetmeyi doğrular. Web navigation
+kaynak ve gömülü sayfanın aynı doğrulamasını çalıştırır.
+RF monitoründe enerji/yük satırlarının bit 0/1'i doğrudan gösterdiği,
+eski/eksik/geçersiz Flags değerinin — olarak sunulduğu iki dilde sınanır.
+
+Önceki Modbus RF komutuyla 428/428 seçili Ceedling testi geçti:
+`build/rf-energy-load-regression.log`. Son IEC104 fonksiyon adı
+düzenlemesinden sonra `ceedling "test:pattern[test_iec104]"` 72/72 geçti.
+NVRAM integration (`integration/nvram` içinde `make run`) 433/433
+kontrol geçti; alan adları değişirken kayıt yerleşiminin korunması
+doğrulandı. `integration/web_auth` içindeki `make run` ve web navigation
+geçti. Bu sayıların hiçbiri bütün depo test sonucu olarak sunulmamalıdır.
+22 modül sıkı ARM/C11 ve Release link geçti; fiziksel kabul yapılmadı.

@@ -112,7 +112,7 @@ static void generate_dummy_test_data(void)
 			dummy_feeder.phase[phase].anlik_akim = 0.5f + (float)(line_idx*10 + phase);
 			dummy_feeder.phase[phase].ariza_kalicimi = 1;
 			dummy_feeder.phase[phase].enerji_varyok = 0;
-			dummy_feeder.phase[phase].nominal_akim_varyok = 1;
+			dummy_feeder.phase[phase].yuk_akimi_varyok = 1;
 			dummy_feeder.phase[phase].rf_haberlesme_varyok = 0;
 
 			dummy_feeder.phase[phase].tm_ariza_akimi = timestamp;
@@ -120,7 +120,7 @@ static void generate_dummy_test_data(void)
 			dummy_feeder.phase[phase].tm_anlik_akim = timestamp;
 			dummy_feeder.phase[phase].tm_ariza_kalicimi = timestamp;
 			dummy_feeder.phase[phase].tm_enerji_varyok = timestamp;
-			dummy_feeder.phase[phase].tm_nominal_akim_varyok = timestamp;
+			dummy_feeder.phase[phase].tm_yuk_akimi_varyok = timestamp;
 			dummy_feeder.phase[phase].tm_rf_haberlesme_varyok = timestamp;
 		}
 
@@ -330,46 +330,49 @@ static int read_ariza_kalicimi(uint32_t line_index, uint8_t phase, siq_t *value,
 	return 0;
 }
 
-static int read_enerji_varyok(uint32_t line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp)
+static int read_rf_flag(uint32_t line_index, uint8_t phase,
+                        uint8_t mask, siq_t *value, cp56time2a_t *timestamp)
 {
-	*value = (siq_t){.invalid = 1};
-	*timestamp = (cp56time2a_t){0};
+    if ((NULL == value) || (NULL == timestamp))
+    {
+        return -1;
+    }
+    *value = (siq_t){.invalid = 1U};
+    *timestamp = (cp56time2a_t){.iv_bit = 1U};
+    if ((MAX_POWER_LINE_COUNT <= line_index) || (PHASE_MAX <= phase))
+    {
+        return -1;
+    }
+    rf_phase_data_t data;
 
-	if(phase >= PHASE_MAX){
-		return -1;
-	}
-
-	const feeder_data_t *feeder = breaker_get_feeder_data(line_index);
-	if(feeder == NULL){
-		return -1;
-	}
-
-	value->spi = feeder->phase[phase].enerji_varyok & 0x01U;
-	value->invalid = 0; //TODO: Quality bilgisini ekle
-	*timestamp = feeder->phase[phase].tm_enerji_varyok;
-	
-	return 0;
+    if (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
+                         HAL_GetTick(), &data) && data.has_live)
+    {
+        *timestamp = data.received_time;
+        *value = (siq_t){0};
+        if (0U != (data.live.flags & mask))
+        {
+            value->spi = 1U;
+        }
+        if (!data.is_online)
+        {
+            value->invalid = 1U;
+            value->not_topical = 1U;
+        }
+    }
+    return 0;
 }
 
-static int read_nominal_akim_varyok(uint32_t line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp)
+static int read_enerji_varyok(uint32_t line_index, uint8_t phase,
+                              siq_t *value, cp56time2a_t *timestamp)
 {
-	*value = (siq_t){.invalid = 1};
-	*timestamp = (cp56time2a_t){0};	
+    return read_rf_flag(line_index, phase, 1U, value, timestamp);
+}
 
-	if(phase >= PHASE_MAX){
-
-		return -1;
-	}
-
-	const feeder_data_t *feeder = breaker_get_feeder_data(line_index);
-	if(feeder == NULL){
-		return -1;
-	}
-
-	value->spi = feeder->phase[phase].nominal_akim_varyok & 0x01U;
-	value->invalid = 0; //TODO: Quality bilgisini ekle
-	*timestamp = feeder->phase[phase].tm_nominal_akim_varyok;
-	return 0;
+static int read_yuk_akimi_varyok(uint32_t line_index, uint8_t phase,
+                                siq_t *value, cp56time2a_t *timestamp)
+{
+    return read_rf_flag(line_index, phase, 2U, value, timestamp);
 }
 
 static int read_rf_haberlesme_varyok(uint32_t line_index, uint8_t phase,
@@ -422,7 +425,7 @@ PROCESS_THREAD(iec104_process, ev, data)
 	    .get_anlik_akim = read_anlik_akim,
 	    .get_ariza_kalicimi = read_ariza_kalicimi,
 	    .get_enerji_varyok = read_enerji_varyok,
-	    .get_nominal_akim_varyok = read_nominal_akim_varyok,
+	    .get_yuk_akimi_varyok = read_yuk_akimi_varyok,
 	    .get_rf_haberlesme_varyok = read_rf_haberlesme_varyok
 	  },
 	  &iec104_config);

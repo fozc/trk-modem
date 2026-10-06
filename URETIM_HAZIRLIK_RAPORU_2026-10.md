@@ -2649,3 +2649,51 @@ Enerji/nominal-yük/kalan alarm eşlemeleri tamamlanmadı; dummy producer
 korunur. BQ-15/K9/G-01 açık. Host sonucu fiziksel ölçüm/RF gecikmesi kabulü
 değildir. Bu adımda commit, cihaz yükleme/reset veya dışarı mesaj gönderimi
 olmadı. Ayrıntılar uygulama planı 0.19'da kaydedildi.
+
+### 10.27. SCP enerji/yük ve Modbus kalite bloğu — 06.10.2026
+
+**Kanıt:** `f352bed` sonrasında IEC104 enerji/nominal okuyucuları ve
+sabit/yapılandırılabilir Modbus göstergeleri breaker verisini okuyordu.
+R1 LIVE_DATA `Status_Flags` bit 0 enerji, bit 1 yük akımı bilgisidir.
+R1 olayındaki `nominal_current_status` da yük var anlamındadır; eski
+"nominal altı" yorumu kullanılmamalıdır.
+
+**Karar ve değişiklik:** kullanıcı 49500–49520 ayrı kalite bloğunu ve
+eski uyumluluk yerine dokümanın esas alınmasını onayladı. Enerji/yük
+üretim okuyucuları gerçek RF cache kaynağına bağlandı. RMS'ten veya
+koruma nominal ayarından bu bitler hesaplanmaz. Nominal gösterge
+alanları `yuk_akimi_varyok`, JSON ve ekran karşılıkları yük akımı oldu.
+Adresler, NVRAM alan sırası ve boyutları korundu; koruma nominal ayarı
+değişmedi. Eski JSON anahtarlarına takma ad eklenmedi.
+
+Kalite bit 0 akım, bit 1 enerji, bit 2 yük geçerliliğidir. Taze geçerli
+RMS=7, taze geçersiz RMS=6, eksik/eski/etkin olmayan satır=0 olur.
+Değerin yok biti ile geçerliliği ayrıdır. Mevcut Boolean son biti
+korur; örnek yoksa 0 olur. İstemci kalite=0 değerini kullanmamalıdır.
+IEC104 eski örnekte IV/NT, eksik örnekte IV ve alım zamanı IV kullanır.
+FC06 kalite yazmasını reddeder. Web ve sunucu yeni blokla çakışan
+adresleri, FLOAT32 ikinci register'ı dahil, kaydetmeden reddeder.
+
+**Doğrulama:** gerçek model/FC03/IEC104 okuyucuları ve donanım sınırı
+mock'ları ile 428/428 seçili Ceedling testi geçti. Son IEC104 fonksiyon
+adı düzenlemesinden sonra 72/72 alt küme tekrar geçti. Kaynak/gömülü
+web navigation, gerçek HTTP handler paketi ve NVRAM integration
+433/433 kontrolü geçti. 22 modül sıkı ARM/C11 ile derlendi; Release
+0 hata ve 0 uyarıyla tamamlandı. NVRAM 2476 B, CRC offset 2472 B
+assert'ları hedef derlemesinde korundu.
+
+**Kanıt yolları:** `test/build/rf-energy-load-regression.log`,
+`test/build/rf-energy-load-iec-final.log`,
+`build/rf-energy-load-strict.log`, `build/rf-energy-load-nvram.log`,
+`build/rf-energy-load-web-auth.log`,
+`build/rf-energy-load-release-final.log`.
+
+RF web monitoründe enerji/yük iki ayrı satırdır; eski/eksik/geçersiz
+Flags için — gösterilir. Kaynak/gömülü sayfa iki dilde sınandı.
+Bit anlamları dokümanda açık olduğundan yeni BOLATeX sorusu oluşturulmadı;
+Modbus/web kalite tercihi soru belgesindeki RTU kararlarına işlendi.
+
+**Sınırlar:** farklı FC03 istekleri arasında yeni LIVE gelebilir;
+ayrı değer/kalite yanıtları atomik görüntü değildir. Fiziksel RF/seri
+port kabulü veya cihaz yüklemesi yapılmadı. Kalan arıza/alarm eşlemeleri
+ve BOLATeX soruları bu adımla kapatılmaz. Dummy producer silinmedi.

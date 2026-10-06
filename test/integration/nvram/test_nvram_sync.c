@@ -448,7 +448,7 @@ static void test_factory_register_addresses_are_unchanged(void)
             {
                 line->ariza_akimi[phase], line->anlik_akim[phase],
                 line->ariza_suresi[phase], line->ariza_kalicimi[phase],
-                line->enerji_varyok[phase], line->nominal_akim_varyok[phase],
+                line->enerji_varyok[phase], line->yuk_akimi_varyok[phase],
                 line->rf_haberlesme_varyok[phase]
             };
             const uint32_t iec_fields[] =
@@ -458,7 +458,7 @@ static void test_factory_register_addresses_are_unchanged(void)
                 iec104_ioa_3byte_to_uint32(iec->ariza_kalicimi[phase]),
                 iec104_ioa_3byte_to_uint32(iec->anlik_akim[phase]),
                 iec104_ioa_3byte_to_uint32(iec->enerji_varyok[phase]),
-                iec104_ioa_3byte_to_uint32(iec->nominal_akim_varyok[phase]),
+                iec104_ioa_3byte_to_uint32(iec->yuk_akimi_varyok[phase]),
                 iec104_ioa_3byte_to_uint32(iec->rf_haberlesme_varyok[phase])
             };
             for (size_t field = 0U; field < 7U; field++)
