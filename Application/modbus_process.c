@@ -15,6 +15,7 @@
 #include "modbus_rf_stats.h"
 #include "breaker.h"
 #include "rf.h"
+#include "rf_hil_transport.h"
 #include "bsp.h"
 #include "reboot.h"
 #include "rtc.h"
@@ -84,8 +85,11 @@ static modbus_poll_result_t modbus_poll(modbus_slave_t *slave)
 }
 
 /* Baud rate currently active on UART4; skips a redundant BRR write when the
- * stored value already matches (115200 is the CubeMX MX_UART4_Init default). */
+ * stored value already matches (115200 is the CubeMX MX_UART4_Init default).
+ * HIL bench build: UART4 carries SCP, the Modbus baud state is unused. */
+#if !RF_SCP_OVER_MODBUS_PORT
 static uint32_t active_baud = 115200U;
+#endif
 
 /*
  * Modbus response transmit method (compile-time selectable):
@@ -528,6 +532,11 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
  */
 static void modbus_uart_apply_baudrate(void)
 {
+#if RF_SCP_OVER_MODBUS_PORT
+    /* HIL bench build: UART4 belongs to the SCP transport at 230400;
+     * a stale web save of the Modbus config must not reprogram it. */
+    return;
+#else
     const modbus_configs_t *cfg = nvram_get_modbus_config();
 
     if ((cfg->baud_rate != 0U) && (cfg->baud_rate != active_baud))
@@ -552,6 +561,7 @@ static void modbus_uart_apply_baudrate(void)
         active_baud = cfg->baud_rate;
         CSLOG_WARN("MODBUS: UART baudrate set to %u\r\n", active_baud);
     }
+#endif /* !RF_SCP_OVER_MODBUS_PORT */
 }
 
 PROCESS(modbus_process, "modbus_process");

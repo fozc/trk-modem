@@ -20,6 +20,7 @@
 #include "rf_scp.h"
 #include "rf_comm.h"
 #include "rf_event_log.h"
+#include "rf_hil_transport.h"
 #include "rf_shell.h"
 #include "rf_uart_bridge.h"
 #include "elog.h"
@@ -301,7 +302,9 @@ __attribute__ ((noreturn)) void app_main(void)
 	iec104_elog_shell_init();
 	xmodem_app_init();
 	app_ipc_init();
+#if !RF_SCP_OVER_MODBUS_PORT
 	modbus_process_init();
+#endif
 
 	breaker_init();
 	iec104_process_init();
