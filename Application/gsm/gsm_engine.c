@@ -41,6 +41,7 @@
 #include <gsm_types.h>
 #include "gsm_engine.h"
 #include "gsm_info.h"
+#include "gsm_signal_led.h"
 #include "at_engine2.h"
 #include <string.h>
 
@@ -2499,7 +2500,6 @@ int32_t gsm_COPS_state_cb(void)
 			{
 				uint8_t tech = (uint8_t)(rx.buff[index + 1] - 48);
 				const char *access_tech_str = "";
-				led_gsm_mode_t signal_led_mode = LED_GSM_OFF;
 
 				switch (tech)
 				{
@@ -2538,33 +2538,10 @@ int32_t gsm_COPS_state_cb(void)
 					break;
 				}
 
-				switch (tech)
-				    {
-				        case GSM_ACCESS_TECH_GSM:
-				        case GSM_ACCESS_TECH_GSM_COMPACT:
-				        case GSM_ACCESS_TECH_GSM_EGPRS:
-				        	signal_led_mode = gsm_info_get_signal_quality_2G() < 10 ? LED_GSM_2G_WEAK : LED_GSM_2G;
-				        	break;
-				        case GSM_ACCESS_TECH_UTRAN:
-				        case GSM_ACCESS_TECH_UTRAN_HSDPA:
-				        case GSM_ACCESS_TECH_UTRAN_HSUPA:
-				        case GSM_ACCESS_TECH_UTRAN_HSDPA_HSUPA:
-				        case GSM_ACCESS_TECH_UTRAN_HSPA_PLUS:
-				        	signal_led_mode = gsm_info_get_signal_quality_3G() < 10 ? LED_GSM_3G_WEAK : LED_GSM_3G;
-				        	break;
-
-				        case GSM_ACCESS_TECH_E_UTRAN:
-				        case GSM_ACCESS_TECH_E_UTRAN_CA:
-				        	signal_led_mode = gsm_info_get_signal_quality_4G() < 10 ? LED_GSM_4G_WEAK : LED_GSM_4G;
-				        	break;
-
-				        default:
-				        	break;
-				    }
-
 				CSLOG("Access Technology: %s\r\n", access_tech_str);
 				gsm_info_set_access_technology(tech);
-				led_driver_set_gsm_mode(signal_led_mode);
+                /* Share CESQ validity, fallback and strength thresholds. */
+                gsm_signal_led_update();
 			}
 		}
 
