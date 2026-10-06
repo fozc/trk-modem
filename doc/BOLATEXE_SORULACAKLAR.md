@@ -1,6 +1,6 @@
 # BOLATeX'e sorulacak RF-SCP konuları
 
-**Sürüm:** 0.9
+**Sürüm:** 0.10
 
 **Tarih:** 06.10.2026
 
@@ -443,7 +443,40 @@ bu sorunun cevabına kadar eklenmeyecektir. Mevcut terminal yolu değiştirilmed
 
 **Cevap:** Bekleniyor. Belge henüz BOLATeX'e gönderilmemiştir.
 
-## RTU tarafında alınmış kararlar
+## BQ-17 — RTU tek başına yeniden başladığında yeniden kurulum yolu
+
+**Kaynak:** R1 §1.1, §1.10 ve §4.3 (BOOT_NOTIFY kurallari).
+
+**Kanit:** 06.10.2026 gece bench gozlemi: modem PIN resetle yeniden
+basladi (elog kaydi 23:49:37), MH ayakta ve envanteri yuklu kaldigi
+icin BOOT tekrari gelmedi (BOOT yalniz envanter bosken tekrarlar,
+§4.3). RTU tarafinde `MH SCP major: 0, Envanter: BEKLIYOR` suresiz
+kaldi; GET_STATUS canliligi ve 0xE1 ozetleri calismaya devam etti,
+TIME_SYNC/olay cekme/grup islemleri kapaldi. Kurtarmanin bugunku yolu
+MH'yi resetlemek: 23:55:35'te dogrulandi (BOOT -> TIME_SYNC -> 6 girdi
+-> END, 153 ms; `Envanter: YUKLU`).
+
+**Sorular:**
+
+1. RTU yeniden baslatildiginda kendini yeniden kurmasi icin BOOT
+   disinda bir yol tanimlanmali midir? Oneri: GET_STATUS yaniti alinan
+   hub'a RTU, canlilik basariliyken saati ve envanteri yeniden
+   gonderebilsin; ya da MH, tanidik bir RTU'nun poll'una yeniden BOOT
+   gonderebilsin.
+2. RTU-restart sonrasinda MH'nin sessiz kalmasi mi beklenir, yoksa
+   §1.10'daki üçlü bildirimden bir kismini tekrarlamasi mi
+   onerilir?
+3. RTU-restart aninda MH'de suren bir config grubu nasil
+   yorumlanmalidir (FAILED sebep 8 yalniz MH-restart icin tanimlidir)?
+
+**Mevcut uygulama:** RTU BOOT bekler; canlilik poll'u calisir ancak
+envanter/saat/olay cekme/grup islemleri BOOT gelene kadar kapali
+kalir. Kurtarma icin MH'nin resetlenmesi gerekir (bench'te
+dogrulandi). Bu davranis üretici onayi olarak sunulamaz.
+
+**Cevap:** Bekleniyor. Belge henüz BOLATeX'e gönderilmemiştir.
+
+## RTU tarafinda alinan kararlar
 
 Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararları
 [uygulama planında](RF_SCP_MODEM_UYGULAMA_PLANI.md) tutulur.
@@ -481,3 +514,4 @@ protokol cevabı bu ürün kararının yerine geçmez.
 | 06.10.2026 | 0.7 | Enerji/yük bitlerinin doğrudan kullanımı ve ayrı Modbus/web kalite tercihi RTU kararı olarak kaydedildi; yeni protokol sorusu oluşmadı |
 | 06.10.2026 | 0.8 | Anlık arıza göstergelerinin kaldırılması RTU kararı olarak eklendi; olay yük biti ters dönüşümü hata olarak düzeltildi, üretici sorusu değildir |
 | 06.10.2026 | 0.9 | BQ-16 operatör onayının kaynağı/kanalı, MH/AY iletimi ve canlı veri koşulu; kullanıcı yeni web API'sini cevap gelene kadar bekletti |
+| 07.10.2026 | 0.10 | BQ-17 RTU-tek-restart yeniden kurulum yolu eklendi (bench gözlemi: MH ayaktayken RTU reseti süresiz BEKLIYOR bırakıyor; kurtarma MH reseti) |
