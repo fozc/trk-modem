@@ -28,6 +28,8 @@ typedef struct
 {
     uint8_t eui64[8];
     rf_scp_live_t live;
+    /* RTU acceptance time, not an AY measurement timestamp. */
+    cp56time2a_t received_time;
     rf_scp_trip_t trip;
     uint32_t last_live_ms;
     uint32_t last_trip_ms;
@@ -54,7 +56,9 @@ typedef struct
 /** Volatile state initialization at RTU startup. */
 void rf_init(void);
 void rf_hub_restarted(void);
-bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms);
+/* NULL received_time records an unknown clock (IV=1). */
+bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms,
+                     const cp56time2a_t *received_time);
 bool rf_handle_trip(const rf_scp_trip_t *trip, uint32_t now_ms);
 bool rf_handle_anomaly(const rf_scp_anomaly_t *report);
 

@@ -93,7 +93,8 @@ void rf_hub_restarted(void)
     }
 }
 
-bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms)
+bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms,
+                     const cp56time2a_t *received_time)
 {
     if ((NULL == live) || (6U < live->state) || (100U < live->log_pending))
     {
@@ -132,6 +133,8 @@ bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms)
                           (live->seq != data->live.seq) &&
                           (live->uptime_sec == data->live.uptime_sec);
     data->live = *live;
+    data->received_time = (NULL != received_time) ? *received_time :
+                         (cp56time2a_t){.iv_bit = 1U};
     data->last_live_ms = now_ms;
     data->has_live = true;
     data->current_valid = isfinite(live->current_amps) &&

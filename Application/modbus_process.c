@@ -13,6 +13,7 @@
 #include "modbus_bms_stats.h"
 #include "modbus_gsm_stats.h"
 #include "breaker.h"
+#include "rf.h"
 #include "bsp.h"
 #include "reboot.h"
 #include "rtc.h"
@@ -22,7 +23,9 @@
 #include "contiki.h"
 #include "contiki_process.h"
 #include "main.h"
+#include "stm32u3xx_hal.h"
 #include <string.h>
+#include <math.h>
 
 /*
  * Per-line register address space. Each power line owns a contiguous block of
@@ -68,6 +71,16 @@
 
 /* Modbus slave instance for the UART4 bus. Kept private so the ISR stays trivial. */
 static modbus_slave_t s_modbus;
+/* All FC03 callbacks run synchronously in cooperative process context.
+ * Keep one age-check time for both words and all RF fields in a response.
+ */
+static uint32_t rf_sample_ms;
+
+static modbus_poll_result_t modbus_poll(modbus_slave_t *slave)
+{
+    rf_sample_ms = HAL_GetTick();
+    return libmodbusrtu_modbus_process(slave);
+}
 
 /* Baud rate currently active on UART4; skips a redundant BRR write when the
  * stored value already matches (115200 is the CubeMX MX_UART4_Init default). */
@@ -190,6 +203,29 @@ static uint16_t modbus_float_to_word(float value, bool want_high_word)
     return (uint16_t)(bits & 0xFFFFU);
 }
 
+static uint16_t modbus_rf_current_word(uint32_t line_index, uint8_t phase,
+                                       bool high_word)
+{
+    rf_phase_data_t data;
+    float current = NAN;
+
+    if (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
+                         rf_sample_ms, &data) && data.has_live &&
+        data.is_online && data.current_valid)
+    {
+        current = data.live.current_amps;
+    }
+    return modbus_float_to_word(current, high_word);
+}
+
+static uint16_t modbus_rf_online(uint32_t line_index, uint8_t phase)
+{
+    rf_phase_data_t data;
+
+    return (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
+                             rf_sample_ms, &data) && data.is_online) ? 1U : 0U;
+}
+
 /**
  * @brief Encode a fault duration (milliseconds) into one holding register.
  *
@@ -238,6 +274,7 @@ static bool modbus_addr_in_line_space(uint16_t reg_addr)
  * @return true if the offset maps to a live field, false for reserved gaps.
  */
 static bool modbus_resolve_offset(const feeder_data_t *p_data,
+                                  uint32_t line_index,
                                   uint16_t offset,
                                   uint16_t *p_value)
 {
@@ -255,7 +292,7 @@ static bool modbus_resolve_offset(const feeder_data_t *p_data,
         uint16_t rel = (uint16_t)(offset - MODBUS_OFF_ANLIK_AKIM);
         uint8_t  ph  = (uint8_t)(rel / MODBUS_FLOAT_REG_PER_PHASE);
         bool     high = ((rel % MODBUS_FLOAT_REG_PER_PHASE) == 0U);
-        *p_value = modbus_float_to_word(p_data->phase[ph].anlik_akim, high);
+        *p_value = modbus_rf_current_word(line_index, ph, high);
     } 
     else if (offset < MODBUS_OFF_ARIZA_KALICIMI) 
     {
@@ -280,7 +317,7 @@ static bool modbus_resolve_offset(const feeder_data_t *p_data,
     else if (offset < MODBUS_OFF_LIVE_END) 
     {
         uint8_t ph = (uint8_t)(offset - MODBUS_OFF_RF_VARYOK);
-        *p_value = (uint16_t)p_data->phase[ph].rf_haberlesme_varyok;
+        *p_value = modbus_rf_online(line_index, ph);
     } 
     else 
     {
@@ -322,7 +359,7 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
         return false;
     }
 
-    return modbus_resolve_offset(p_data, offset, p_value);
+    return modbus_resolve_offset(p_data, line, offset, p_value);
 }
 
 #else /* MODBUS_USE_FIXED_ADDR_MAP == 0 : configurable NVRAM address map */
@@ -373,11 +410,11 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
             /* anlik_akim: FLOAT32 across two registers (high at addr, low at addr+1). */
             if (p_cfg->anlik_akim[ph] != 0U) {
                 if (reg_addr == p_cfg->anlik_akim[ph]) {
-                    *p_value = modbus_float_to_word(p_phase->anlik_akim, true);
+                    *p_value = modbus_rf_current_word(line, ph, true);
                     return true;
                 }
                 if (reg_addr == (uint16_t)(p_cfg->anlik_akim[ph] + 1U)) {
-                    *p_value = modbus_float_to_word(p_phase->anlik_akim, false);
+                    *p_value = modbus_rf_current_word(line, ph, false);
                     return true;
                 }
             }
@@ -400,7 +437,7 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
                 return true;
             }
             if ((p_cfg->rf_haberlesme_varyok[ph] != 0U) && (reg_addr == p_cfg->rf_haberlesme_varyok[ph])) {
-                *p_value = (uint16_t)p_phase->rf_haberlesme_varyok;
+                *p_value = modbus_rf_online(line, ph);
                 return true;
             }
         }
@@ -594,7 +631,7 @@ PROCESS_THREAD(modbus_process, ev, data)
 		    ((ev == PROCESS_EVENT_TIMER) && (data == &rx_timer)))
 		{
 			// Try to frame and process the buffered bytes.
-			modbus_poll_result_t result = libmodbusrtu_modbus_process(&s_modbus);
+			modbus_poll_result_t result = modbus_poll(&s_modbus);
 
 			if (result == MODBUS_POLL_HANDLED)
 			{
@@ -678,4 +715,3 @@ void modbus_process_isr_rx_timeout(void)
 	process_poll(&modbus_process);
 }
 #endif
-

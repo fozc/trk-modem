@@ -648,8 +648,18 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         case RF_SCP_CMD_LIVE_DATA:
-            (void)rf_handle_live(&message.body.live, HAL_GetTick());
+        {
+            cp56time2a_t received_time = {.iv_bit = 1U};
+
+            if (rtc_hw_is_valid())
+            {
+                const bsp_rtc_t rtc = bsp_get_datetime();
+                received_time = cp56time2a_from_rtc(&rtc);
+            }
+            (void)rf_handle_live(&message.body.live, HAL_GetTick(),
+                                &received_time);
             break;
+        }
 
         case RF_SCP_CMD_TRIP_NOTIFY:
             (void)rf_handle_trip(&message.body.trip, HAL_GetTick());
