@@ -22,11 +22,13 @@ TEST_SOURCE_FILE("power_board_scp.c")
 #include "mock_modbus_bms_stats.h"
 #include "mock_modbus_gsm_stats.h"
 #include "mock_breaker.h"
+#include "mock_rf.h"
 #include "mock_nvram.h"
 #include "modbus_rtu_slave.h"
 #include "modbus_power_stats.h"
 
 #define MODBUS_TX_USE_DMA 0
+uint32_t HAL_GetTick(void);
 #include "../../Application/modbus_process.c"
 
 static modbus_slave_t receiver;

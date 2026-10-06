@@ -197,6 +197,30 @@ bkz. 5.3.
 - Offset 27..99 araligi ileride kullanim icin **rezerve** (arz/ariza kayit
   bloklari) edilmistir; bu surumde tanimsizdir.
 
+### 5.2.1 SCP canlı akım ve RF haberleşme kaynağı
+
+06.10.2026 kullanıcı kararıyla mevcut anlık akım adresleri FLOAT32 olarak
+SCP `Live_Irms` değerini A biriminde taşır. RF haberleşme adresleri aynı
+atanmış EUI/fazın son LIVE_DATA tazeliğini gösterir. Bu geçiş sabit ve
+NVRAM üzerinden yapılandırılan adres haritalarında geçerlidir; adresler
+ve yüksek word (16 bit parça) önce sırası değişmez.
+
+Etkin Modbus satırında, atanmış fazın canlı akımı hiç yoksa, MH restart'ı
+ile geçersiz olmuşsa, 30 s eskiyse veya ölçüm negatif/NaN/Inf ise FLOAT32
+NaN döner. NaN sıfır akım diye yorumlanmamalıdır. RF haberleşme 1=son LIVE
+verisi güncel, 0=güncel canlı bağlantı bilgisi yok şeklindedir. Geçersiz
+akım örneği alındığında RF bağlantısı güncelse RF alanı 1 kalır; akım
+geçerliliği ve haberleşme durumu karıştırılmamalıdır.
+
+Aynı FC03 yanıtındaki RF alanları tek alım zamanı örneğiyle değerlendirilir.
+30 s sınırında FLOAT32'nin yüksek/düşük register'ları farklı tazelik
+kararları kullanmaz. Bu kural diğer telemetri bloklarına ortak bir
+snapshot (anlık kopya) eklendiği anlamına gelmez. Etkin olmayan Modbus
+satırı ve rezerve adreslerdeki mevcut 0 davranışı korunur (§5.1).
+
+Arıza, enerji ve nominal/yük akımı alanlarının tümünün SCP'ye bağlandığı
+bu adımla söylenmemelidir. Bu alanlar sonraki eşleme kapsamındadır.
+
 ### 5.3 Tam Alt Adres Dizini (Tum Fiderler, Kayit Bazinda)
 
 Asagida 7 fiderin canli veri blogundaki **tum register'lar** tek tek

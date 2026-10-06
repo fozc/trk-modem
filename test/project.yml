@@ -137,6 +137,15 @@
       test_modbus_power_snapshot_scenario:
         - -flto
         - -O2
+      test_modbus_rf_snapshot:
+        - -flto
+        - -O2
+      test_modbus_rf_configured:
+        - -flto
+        - -O2
+      test_iec104_rf_live:
+        - -flto
+        - -O2
       test_rf_error_retry_scenario:
         - -flto
         - -O2

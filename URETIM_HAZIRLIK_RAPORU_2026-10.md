@@ -2591,3 +2591,61 @@ K5 ürün kararı kapandı; K9 adresleri, BOLATeX soruları ve G-01 açık kalı
 Yeni EUI/atama Kaydet'i MH envanter ACK'i sayılmaz; Uygula eşleşmeyen üyeyle
 başlamaz. Fiziksel RF/AY/enerji kesintisi kabulü, cihaz yükleme/reset veya
 bu yeni web adımının commit'i yapılmadı. Ayrıntılar uygulama planı 0.17'de.
+
+### 10.25. Modbus canlı akım/RF kaynağı — 06.10.2026
+
+RF web adımı ba578b9 commit'ine alındı. Sonraki kaynak incelemesi,
+iec104_process_init → generate_dummy_test_data → breaker faz verisi ve
+Modbus fixed/configurable reader yollarını doğruladı. Kullanıcı mevcut
+akım adreslerinde eksik/eski/geçersiz veriye NaN, RF durumuna ayrı gösterim
+kararını verdi. İki alan gerçek rf_get_phase_data kaynağına bağlandı.
+Dummy üretici diğer alanlar için korunur; yeni okuyucular ona dönmez.
+
+Cooperative FC03 işleminde RF alanları tek HAL zaman örneği kullanır;
+30 s sınırında FLOAT32'nin iki word'ü farklı tazelik kararına düşmez.
+Library API, adres ve NVRAM değişikliği yoktur. Pasif/rezerve satırın 0
+kuralları korunur. Modbus haritası §5.2.1 tek veri sözleşmesidir.
+
+Gerçek RF cache/FC03 ile fixed/configured 5'er yeni test, Powerboard 6
+regresyonuyla 16/16 geçti. 30 seçili dosya 411/411 geçti; çalışma ağacındaki
+başka Modbus testlerini de içerir, tam suite sonucu değildir. Envanter/
+store/hardware sınırı taklit edilir; RF/Modbus algoritması gerçek kodudur.
+Yanlış dummy yerine gerçek akım, NaN/yaş, ölçüm geçersizken RF'nin güncel
+kalması, MH restart ve iki word sınırı test edildi. 20 modül sıkı C11/ARM
+ve Release link geçti; text/data/bss 314224/504/126952 B, diğer eşzamanlı
+çalışmaları da içerir. Kanıt test/build/modbus-rf-focused.log,
+test/build/modbus-rf-regression.log, build/modbus-rf-strict.log,
+build/modbus-rf-release.log.
+
+IEC104 canlı veri timestamp tercihi soruldu; henüz ikinci cevap yoktur.
+IEC104 okuyucuları, enerji/nominal/yük ve kalan alarm eşlemeleri bu adımda
+bağlanmadı. Geçici/kalıcı arıza kaydı aktarımı önceki kapsamıyla korunur.
+K9/BOLATeX ve G-01 açık; fiziksel RF/IRQ/cihaz kabulü, yükleme/reset ve
+bu yeni Modbus adımının commit'i yapılmadı.
+
+### 10.26. IEC104 canlı veri RTU alım zamanı — 06.10.2026
+
+Kullanıcı LIVE_DATA için şimdilik RTU alım saatini onayladı ve BOLATeX'e
+sorulmasını istedi. RF dispatch geçerli paketi işlerken RTC'yi bir kez
+saklar; RTC geçersizse CP56 IV=1'dir. IEC104 akım/RF okuyucuları gerçek
+RF cache ve saklanan zamanı kullanır. Geç sorgu/RTC düzeltmesi eski örneği
+yeniden zamanlandırmaz. Ölçüm/RTC kalitesi ve RF tazeliği ayrıdır.
+Olay kaydının kaynak zamanı, adres ve NVRAM düzeni değişmez. BQ-15 soru
+listesine eklendi; üretici cevabı veya gönderilmiş mesaj sayılmadı.
+
+Gerçek model/kayıtlı okuyucular için 5, gerçek RX/COBS/codec için 2 yeni
+test; 31 seçili dosyada 418/418 geçti. Eksik/eski/geçersiz ölçüm, iyi RF
+ile bozuk akım ayrımı, geç okuma, yanlış parametre, geçersiz RTC, sonradan
+RTC düzeltmesi ve hatalı pakette önceki zamanın korunması sınandı.
+Clock/envanter/store/hardware sınırları taklit edilir; algoritma gerçek
+koddur. 21 modül sıkı C11/ARM ve Release link geçti: text/data/bss
+314472/504/127048 B. RF alım metadata RAM farkı +96 B; diğer eşzamanlı
+çalışmalar da linke dahildir. Init/HAL macro çakışması include sırasıyla
+çözüldü; HAL/vendor kaynakları değiştirilmedi.
+Kanıt test/build/iec104-rf-live-regression.log,
+build/iec104-rf-live-strict.log ve build/iec104-rf-live-release.log.
+
+Enerji/nominal-yük/kalan alarm eşlemeleri tamamlanmadı; dummy producer
+korunur. BQ-15/K9/G-01 açık. Host sonucu fiziksel ölçüm/RF gecikmesi kabulü
+değildir. Bu adımda commit, cihaz yükleme/reset veya dışarı mesaj gönderimi
+olmadı. Ayrıntılar uygulama planı 0.19'da kaydedildi.
