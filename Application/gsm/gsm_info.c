@@ -1,6 +1,9 @@
 /*
  * gsm_info.c
  *
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
+ *
  * Centralised storage for GSM module runtime information.
  */
 
@@ -452,7 +455,7 @@ void gsm_info_get_cesq_report(gsm_cesq_report_t *p)
     /* 2G - rxlev (guc, dBm):  dBm = deger - 111  */
     p->rxlev.raw  = s_info.signal_quality_2G;
     p->rxlev.unit = GSM_CESQ_UNIT_DBM;
-    if (s_info.signal_quality_2G != 99U)
+    if (s_info.signal_quality_2G <= GSM_CESQ_RXLEV_MAX)
     {
         p->rxlev.available = true;
         p->rxlev.physical  = (int16_t)(((int16_t)s_info.signal_quality_2G - 111) * 10);
@@ -468,7 +471,7 @@ void gsm_info_get_cesq_report(gsm_cesq_report_t *p)
     /* 2G - ber (kalite, RXQUAL 0-7; 0 en iyi) */
     p->ber.raw  = s_info.ber;
     p->ber.unit = GSM_CESQ_UNIT_NONE;
-    if (s_info.ber != 99U)
+    if (s_info.ber <= GSM_CESQ_BER_MAX)
     {
         p->ber.available = true;
         p->ber.physical  = (int16_t)s_info.ber;
@@ -482,7 +485,7 @@ void gsm_info_get_cesq_report(gsm_cesq_report_t *p)
     /* 3G - rscp (guc, dBm):  dBm = deger - 121  */
     p->rscp.raw  = s_info.signal_quality_3G;
     p->rscp.unit = GSM_CESQ_UNIT_DBM;
-    if (s_info.signal_quality_3G != 255U)
+    if (s_info.signal_quality_3G <= GSM_CESQ_RSCP_MAX)
     {
         p->rscp.available = true;
         p->rscp.physical  = (int16_t)(((int16_t)s_info.signal_quality_3G - 121) * 10);
@@ -498,7 +501,7 @@ void gsm_info_get_cesq_report(gsm_cesq_report_t *p)
     /* 3G - ecno (kalite, dB):  dB = deger*0.5 - 24.5  =>  x10: deger*5 - 245  */
     p->ecno.raw  = s_info.ecno;
     p->ecno.unit = GSM_CESQ_UNIT_DB;
-    if (s_info.ecno != 255U)
+    if (s_info.ecno <= GSM_CESQ_ECNO_MAX)
     {
         p->ecno.available = true;
         p->ecno.physical  = (int16_t)(((int16_t)s_info.ecno * 5) - 245);
@@ -514,7 +517,7 @@ void gsm_info_get_cesq_report(gsm_cesq_report_t *p)
     /* 4G - rsrq (kalite, dB):  dB = deger*0.5 - 20  =>  x10: deger*5 - 200  */
     p->rsrq.raw  = s_info.rsrq;
     p->rsrq.unit = GSM_CESQ_UNIT_DB;
-    if (s_info.rsrq != 255U)
+    if (s_info.rsrq <= GSM_CESQ_RSRQ_MAX)
     {
         p->rsrq.available = true;
         p->rsrq.physical  = (int16_t)(((int16_t)s_info.rsrq * 5) - 200);
@@ -530,7 +533,7 @@ void gsm_info_get_cesq_report(gsm_cesq_report_t *p)
     /* 4G - rsrp (guc, dBm):  dBm = deger - 141  */
     p->rsrp.raw  = s_info.signal_quality_4G;
     p->rsrp.unit = GSM_CESQ_UNIT_DBM;
-    if (s_info.signal_quality_4G != 255U)
+    if (s_info.signal_quality_4G <= GSM_CESQ_RSRP_MAX)
     {
         p->rsrp.available = true;
         p->rsrp.physical  = (int16_t)(((int16_t)s_info.signal_quality_4G - 141) * 10);
@@ -544,15 +547,15 @@ void gsm_info_get_cesq_report(gsm_cesq_report_t *p)
     }
 
     /* Aktif teknoloji onceligi: 4G (rsrp) > 3G (rscp) > 2G (rxlev) */
-    if (s_info.signal_quality_4G != 255U)
+    if (p->rsrp.available)
     {
         p->active_technology = "4G / LTE";
     }
-    else if (s_info.signal_quality_3G != 255U)
+    else if (p->rscp.available)
     {
         p->active_technology = "3G / WCDMA";
     }
-    else if (s_info.signal_quality_2G != 99U)
+    else if (p->rxlev.available)
     {
         p->active_technology = "2G / GSM";
     }

@@ -22,6 +22,8 @@
 #include "xscanf.h"
 #include <string.h>
 #include "xprintf.h"
+#include "gsm_signal_led.h"
+TEST_SOURCE_FILE("gsm_signal_led.c")
 
 /* Keep the actual callbacks and IPv4 parser in this scenario. */
 #include "../../Application/gsm/gsm_engine.c"
@@ -31,6 +33,17 @@ static const char *response_text;
 /* Match the AT motor's actual allocation and NUL-termination contract. */
 static uint8_t response_buffer[1280];
 static at_engine_result_t response_result;
+static uint32_t signal_apply_calls;
+static gsm_signal_tech_t signal_tech;
+static gsm_signal_level_t signal_level;
+
+/* Observe the real classifier's hardware output boundary. */
+void gsm_signal_led_apply(gsm_signal_tech_t tech, gsm_signal_level_t level)
+{
+    signal_apply_calls++;
+    signal_tech = tech;
+    signal_level = level;
+}
 
 static at_engine_result_t get_result(int call_count)
 {
@@ -54,6 +67,9 @@ void setUp(void)
     memset(&gsm_info, 0, sizeof(gsm_info));
     at_engine_get_response_Stub(get_response);
     response_result = AT_ENGINE_RESULT_OK;
+    signal_apply_calls = 0U;
+    signal_tech = GSM_SIGNAL_TECH_NONE;
+    signal_level = GSM_SIGNAL_LEVEL_NONE;
     at_engine_get_result_Stub(get_result);
     bsp_get_tick_IgnoreAndReturn(100U);
     gsm_socket_set_state_Ignore();
@@ -419,4 +435,100 @@ void test_si_all_missing_final_field_is_not_a_valid_socket_record(void)
     TEST_ASSERT_EQUAL_INT(GSM_ERROR, gsm_si_all_cb());
     TEST_ASSERT_FALSE(gsm.si_info[3].is_valid);
     TEST_ASSERT_EQUAL_UINT32(0U, gsm.si_info[3].ack_waiting);
+}
+
+static void set_signal_readings(uint8_t rxlev, uint8_t rscp, uint8_t rsrp)
+{
+    gsm_info_get_signal_quality_2G_IgnoreAndReturn(rxlev);
+    gsm_info_get_signal_quality_3G_IgnoreAndReturn(rscp);
+    gsm_info_get_signal_quality_4G_IgnoreAndReturn(rsrp);
+}
+
+void test_cops_reserved_and_unknown_power_do_not_drive_a_normal_signal_led(void)
+{
+    static const struct
+    {
+        const char *response;
+        uint8_t rat;
+    } cases[] = {
+        {"\r\n+COPS: 0,0,\"OP\",0\r\n\r\nOK\r\n", 0U},
+        {"\r\n+COPS: 0,0,\"OP\",2\r\n\r\nOK\r\n", 2U},
+        {"\r\n+COPS: 0,0,\"OP\",7\r\n\r\nOK\r\n", 7U}
+    };
+    for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++)
+    {
+        response_text = cases[i].response;
+        set_signal_readings(64U, 97U, 98U);
+        gsm_info_set_access_technology_Expect(cases[i].rat);
+        signal_apply_calls = 0U;
+        TEST_ASSERT_EQUAL_INT(GSM_COPS_AUTOMOATIC_MODE, gsm_COPS_state_cb());
+        TEST_ASSERT_EQUAL_UINT32(1U, signal_apply_calls);
+        TEST_ASSERT_EQUAL(GSM_SIGNAL_TECH_NONE, signal_tech);
+        TEST_ASSERT_EQUAL(GSM_SIGNAL_LEVEL_NONE, signal_level);
+    }
+    set_signal_readings(99U, 255U, 255U);
+    gsm_info_set_access_technology_Expect(7U);
+    signal_apply_calls = 0U;
+    TEST_ASSERT_EQUAL_INT(GSM_COPS_AUTOMOATIC_MODE, gsm_COPS_state_cb());
+    TEST_ASSERT_EQUAL_UINT32(1U, signal_apply_calls);
+    TEST_ASSERT_EQUAL(GSM_SIGNAL_TECH_NONE, signal_tech);
+}
+
+void test_cops_uses_valid_cesq_fallback_without_changing_reported_rat(void)
+{
+    response_text = "\r\n+COPS: 0,0,\"OP\",7\r\n\r\nOK\r\n";
+    set_signal_readings(63U, 40U, 98U);
+    gsm_info_set_access_technology_Expect(7U);
+    TEST_ASSERT_EQUAL_INT(GSM_COPS_AUTOMOATIC_MODE, gsm_COPS_state_cb());
+    TEST_ASSERT_EQUAL_UINT32(1U, signal_apply_calls);
+    TEST_ASSERT_EQUAL(GSM_SIGNAL_TECH_3G, signal_tech);
+    TEST_ASSERT_EQUAL(GSM_SIGNAL_LEVEL_FAIR, signal_level);
+    set_signal_readings(63U, 97U, 255U);
+    gsm_info_set_access_technology_Expect(7U);
+    TEST_ASSERT_EQUAL_INT(GSM_COPS_AUTOMOATIC_MODE, gsm_COPS_state_cb());
+    TEST_ASSERT_EQUAL_UINT32(2U, signal_apply_calls);
+    TEST_ASSERT_EQUAL(GSM_SIGNAL_TECH_2G, signal_tech);
+    TEST_ASSERT_EQUAL(GSM_SIGNAL_LEVEL_EXCELLENT, signal_level);
+}
+
+void test_cops_valid_lte_uses_common_strength_boundaries_and_priority(void)
+{
+    static const uint8_t values[] = {0U, 24U, 25U, 48U, 49U, 72U, 73U, 97U};
+    static const gsm_signal_level_t levels[] = {
+        GSM_SIGNAL_LEVEL_WEAK, GSM_SIGNAL_LEVEL_WEAK,
+        GSM_SIGNAL_LEVEL_FAIR, GSM_SIGNAL_LEVEL_FAIR,
+        GSM_SIGNAL_LEVEL_GOOD, GSM_SIGNAL_LEVEL_GOOD,
+        GSM_SIGNAL_LEVEL_EXCELLENT, GSM_SIGNAL_LEVEL_EXCELLENT
+    };
+    response_text = "\r\n+COPS: 0,0,\"OP\",7\r\n\r\nOK\r\n";
+    for (size_t i = 0U; i < sizeof(values); i++)
+    {
+        set_signal_readings(63U, 96U, values[i]);
+        gsm_info_set_access_technology_Expect(7U);
+        signal_apply_calls = 0U;
+        TEST_ASSERT_EQUAL_INT(GSM_COPS_AUTOMOATIC_MODE, gsm_COPS_state_cb());
+        TEST_ASSERT_EQUAL_UINT32(1U, signal_apply_calls);
+        TEST_ASSERT_EQUAL(GSM_SIGNAL_TECH_4G, signal_tech);
+        TEST_ASSERT_EQUAL(levels[i], signal_level);
+    }
+}
+
+void test_cops_without_rat_preserves_led_and_reports_operator_mode(void)
+{
+    response_text = "\r\n+COPS: 0,0,\"OP\"\r\n\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT(GSM_COPS_AUTOMOATIC_MODE, gsm_COPS_state_cb());
+    TEST_ASSERT_EQUAL_UINT32(0U, signal_apply_calls);
+    response_text = "\r\n+COPS: 2\r\n\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT(GSM_COPS_DEREGISTER_MODE, gsm_COPS_state_cb());
+    TEST_ASSERT_EQUAL_UINT32(0U, signal_apply_calls);
+}
+
+void test_cops_error_and_timeout_do_not_update_rat_or_led(void)
+{
+    response_text = "\r\nERROR\r\n";
+    response_result = AT_ENGINE_RESULT_ERROR;
+    TEST_ASSERT_EQUAL_INT(GSM_ERROR, gsm_COPS_state_cb());
+    response_result = AT_ENGINE_RESULT_TIMEOUT;
+    TEST_ASSERT_EQUAL_INT(GSM_TIMEOUT, gsm_COPS_state_cb());
+    TEST_ASSERT_EQUAL_UINT32(0U, signal_apply_calls);
 }
