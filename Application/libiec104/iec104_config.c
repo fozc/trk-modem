@@ -2,7 +2,8 @@
  * iec104_config.c
  *
  *  Created on: Jan 31, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "iec104_config.h"
 #include "nvram.h"
@@ -299,9 +300,9 @@ ioa_3byte_t iec104_get_feeder_temporary_fault_enerji_varyok_ioa(uint32_t feeder_
     return iec104_get_temporary_fault_field_ioa(feeder_id, phase, fault_index, TEMPORARY_FAULT_FIELD_ENERJI);
 }
 
-ioa_3byte_t iec104_get_feeder_temporary_fault_nominal_akim_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index)
+ioa_3byte_t iec104_get_feeder_temporary_fault_yuk_akimi_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index)
 {
-    return iec104_get_temporary_fault_field_ioa(feeder_id, phase, fault_index, TEMPORARY_FAULT_FIELD_NOMINAL_AKIM);
+    return iec104_get_temporary_fault_field_ioa(feeder_id, phase, fault_index, TEMPORARY_FAULT_FIELD_YUK_AKIMI);
 }
  
 #define PERMANENT_FAULT_IOAS_PER_PHASE  (PERMANENT_FAULT_COUNT * PERMANENT_FAULT_FIELDS_PER_RECORD)
@@ -359,8 +360,8 @@ ioa_3byte_t iec104_get_feeder_permanent_fault_enerji_varyok_ioa(uint32_t feeder_
     return iec104_get_permanent_fault_field_ioa(feeder_id, phase, fault_index, PERMANENT_FAULT_FIELD_ENERJI);
 }
 
-ioa_3byte_t iec104_get_feeder_permanent_fault_nominal_akim_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index)
+ioa_3byte_t iec104_get_feeder_permanent_fault_yuk_akimi_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index)
 {
-    return iec104_get_permanent_fault_field_ioa(feeder_id, phase, fault_index, PERMANENT_FAULT_FIELD_NOMINAL_AKIM);
+    return iec104_get_permanent_fault_field_ioa(feeder_id, phase, fault_index, PERMANENT_FAULT_FIELD_YUK_AKIMI);
 }
  

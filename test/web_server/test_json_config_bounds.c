@@ -242,9 +242,9 @@ void test_all_modbus_line_address_fields_check_16_bit_boundary(void)
         "ADDR_R_EnerjiVarYok",
         "ADDR_S_EnerjiVarYok",
         "ADDR_T_EnerjiVarYok",
-        "ADDR_R_NominalAkimVarYok",
-        "ADDR_S_NominalAkimVarYok",
-        "ADDR_T_NominalAkimVarYok",
+        "ADDR_R_YukAkimiVarYok",
+        "ADDR_S_YukAkimiVarYok",
+        "ADDR_T_YukAkimiVarYok",
         "ADDR_R_RfhabVarYok",
         "ADDR_S_RfhabVarYok",
         "ADDR_T_RfhabVarYok"
@@ -341,9 +341,9 @@ static void enable_valid_lines(void)
         iec.line.ioa_r_enerji_varyok,
         iec.line.ioa_s_enerji_varyok,
         iec.line.ioa_t_enerji_varyok,
-        iec.line.ioa_r_nominal_akim_varyok,
-        iec.line.ioa_s_nominal_akim_varyok,
-        iec.line.ioa_t_nominal_akim_varyok,
+        iec.line.ioa_r_yuk_akimi_varyok,
+        iec.line.ioa_s_yuk_akimi_varyok,
+        iec.line.ioa_t_yuk_akimi_varyok,
         iec.line.ioa_r_rfhab_varyok,
         iec.line.ioa_s_rfhab_varyok,
         iec.line.ioa_t_rfhab_varyok
@@ -441,9 +441,9 @@ void test_iec_all_point_fields_check_range_and_uniqueness(void)
         iec.line.ioa_r_enerji_varyok,
         iec.line.ioa_s_enerji_varyok,
         iec.line.ioa_t_enerji_varyok,
-        iec.line.ioa_r_nominal_akim_varyok,
-        iec.line.ioa_s_nominal_akim_varyok,
-        iec.line.ioa_t_nominal_akim_varyok,
+        iec.line.ioa_r_yuk_akimi_varyok,
+        iec.line.ioa_s_yuk_akimi_varyok,
+        iec.line.ioa_t_yuk_akimi_varyok,
         iec.line.ioa_r_rfhab_varyok,
         iec.line.ioa_s_rfhab_varyok,
         iec.line.ioa_t_rfhab_varyok
@@ -560,9 +560,9 @@ void test_all_modbus_address_categories_reject_cross_feeder_duplicates(void)
         config.line.addr_r_enerji_varyok,
         config.line.addr_s_enerji_varyok,
         config.line.addr_t_enerji_varyok,
-        config.line.addr_r_nominal_akim_varyok,
-        config.line.addr_s_nominal_akim_varyok,
-        config.line.addr_t_nominal_akim_varyok,
+        config.line.addr_r_yuk_akimi_varyok,
+        config.line.addr_s_yuk_akimi_varyok,
+        config.line.addr_t_yuk_akimi_varyok,
         config.line.addr_r_rfhab_varyok,
         config.line.addr_s_rfhab_varyok,
         config.line.addr_t_rfhab_varyok
@@ -575,6 +575,26 @@ void test_all_modbus_address_categories_reject_cross_feeder_duplicates(void)
         TEST_ASSERT_EQUAL_INT(0, parse_modbus_config("{}", &config));
         addresses[field][1] = 0U;
     }
+}
+
+void test_modbus_rf_quality_block_rejects_overlapping_address_ranges(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 1U;
+    config.baud_rate = 9600U;
+    config.line.in_use[0] = true;
+    config.line.addr_r_enerji_varyok[0] = 49500U;
+    TEST_ASSERT_EQUAL_INT(0, parse_modbus_config("{}", &config));
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    config.line.addr_r_enerji_varyok[0] = 0U;
+    config.line.addr_r_anlik_akim[0] = 49499U;
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    config.line.addr_r_anlik_akim[0] = 0U;
+    config.addr_modem_reset = 49520U;
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    config.addr_modem_reset = 0U;
+    config.addr_aku_uyarisi = 49500U;
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
 }
 
 /*** end of file ***/

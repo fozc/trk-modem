@@ -2,7 +2,8 @@
  * iec104_config.h
  *
  *  Created on: Jan 31, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef LIBIEC104_IEC104_CONFIG_H_
@@ -18,14 +19,14 @@
 #define TEMPORARY_FAULT_FIELD_AKIM          0U
 #define TEMPORARY_FAULT_FIELD_SURE          1U
 #define TEMPORARY_FAULT_FIELD_ENERJI        2U
-#define TEMPORARY_FAULT_FIELD_NOMINAL_AKIM  3U
+#define TEMPORARY_FAULT_FIELD_YUK_AKIMI  3U
 
 #define PERMANENT_FAULT_COUNT              15U
 #define PERMANENT_FAULT_FIELDS_PER_RECORD   4U
 #define PERMANENT_FAULT_FIELD_AKIM          0U
 #define PERMANENT_FAULT_FIELD_SURE          1U
 #define PERMANENT_FAULT_FIELD_ENERJI        2U
-#define PERMANENT_FAULT_FIELD_NOMINAL_AKIM  3U
+#define PERMANENT_FAULT_FIELD_YUK_AKIMI  3U
 
 // Basic Functions
 int iec104_config_sync(void);
@@ -108,14 +109,14 @@ ioa_3byte_t iec104_get_feeder_temporary_fault_base_ioa(uint32_t feeder_id, uint8
 ioa_3byte_t iec104_get_feeder_temporary_fault_ariza_akimi_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
 ioa_3byte_t iec104_get_feeder_temporary_fault_ariza_suresi_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
 ioa_3byte_t iec104_get_feeder_temporary_fault_enerji_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
-ioa_3byte_t iec104_get_feeder_temporary_fault_nominal_akim_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
+ioa_3byte_t iec104_get_feeder_temporary_fault_yuk_akimi_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
 
 // Permanent Fault IOA Access
 ioa_3byte_t iec104_get_feeder_permanent_fault_base_ioa(uint32_t feeder_id, uint8_t phase);
 ioa_3byte_t iec104_get_feeder_permanent_fault_ariza_akimi_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
 ioa_3byte_t iec104_get_feeder_permanent_fault_ariza_suresi_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
 ioa_3byte_t iec104_get_feeder_permanent_fault_enerji_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
-ioa_3byte_t iec104_get_feeder_permanent_fault_nominal_akim_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
+ioa_3byte_t iec104_get_feeder_permanent_fault_yuk_akimi_varyok_ioa(uint32_t feeder_id, uint8_t phase, uint8_t fault_index);
 
 
 

@@ -296,7 +296,7 @@ static const iec104_io_t test_io = {
     .get_anlik_akim            = fake_get_measured,
     .get_ariza_kalicimi        = fake_get_state,
     .get_enerji_varyok         = fake_get_state,
-    .get_nominal_akim_varyok   = fake_get_state,
+    .get_yuk_akimi_varyok   = fake_get_state,
     .get_rf_haberlesme_varyok  = fake_get_state,
 };
 
@@ -1582,11 +1582,11 @@ void test_fault_ioa_getters_match_reserved_window_boundaries(void)
                     feeder, 0U, 0U)));
         TEST_ASSERT_EQUAL_UINT32(100179U + feeder * 1180U,
             iec104_ioa_3byte_to_uint32(
-                iec104_get_feeder_temporary_fault_nominal_akim_varyok_ioa(
+                iec104_get_feeder_temporary_fault_yuk_akimi_varyok_ioa(
                     feeder, 2U, 14U)));
         TEST_ASSERT_EQUAL_UINT32(200179U + feeder * 1180U,
             iec104_ioa_3byte_to_uint32(
-                iec104_get_feeder_permanent_fault_nominal_akim_varyok_ioa(
+                iec104_get_feeder_permanent_fault_yuk_akimi_varyok_ioa(
                     feeder, 2U, 14U)));
     }
 }

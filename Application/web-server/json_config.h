@@ -42,9 +42,9 @@ typedef struct
     uint32_t ioa_r_enerji_varyok[MAX_LINE_COUNT]; 
     uint32_t ioa_s_enerji_varyok[MAX_LINE_COUNT]; 
     uint32_t ioa_t_enerji_varyok[MAX_LINE_COUNT]; 
-    uint32_t ioa_r_nominal_akim_varyok[MAX_LINE_COUNT]; 
-    uint32_t ioa_s_nominal_akim_varyok[MAX_LINE_COUNT]; 
-    uint32_t ioa_t_nominal_akim_varyok[MAX_LINE_COUNT]; 
+    uint32_t ioa_r_yuk_akimi_varyok[MAX_LINE_COUNT];
+    uint32_t ioa_s_yuk_akimi_varyok[MAX_LINE_COUNT];
+    uint32_t ioa_t_yuk_akimi_varyok[MAX_LINE_COUNT];
     uint32_t ioa_r_rfhab_varyok[MAX_LINE_COUNT];    
     uint32_t ioa_s_rfhab_varyok[MAX_LINE_COUNT];    
     uint32_t ioa_t_rfhab_varyok[MAX_LINE_COUNT];    
@@ -93,9 +93,9 @@ typedef struct
     uint32_t addr_r_enerji_varyok[MAX_LINE_COUNT]; 
     uint32_t addr_s_enerji_varyok[MAX_LINE_COUNT]; 
     uint32_t addr_t_enerji_varyok[MAX_LINE_COUNT]; 
-    uint32_t addr_r_nominal_akim_varyok[MAX_LINE_COUNT]; 
-    uint32_t addr_s_nominal_akim_varyok[MAX_LINE_COUNT]; 
-    uint32_t addr_t_nominal_akim_varyok[MAX_LINE_COUNT]; 
+    uint32_t addr_r_yuk_akimi_varyok[MAX_LINE_COUNT];
+    uint32_t addr_s_yuk_akimi_varyok[MAX_LINE_COUNT];
+    uint32_t addr_t_yuk_akimi_varyok[MAX_LINE_COUNT];
     uint32_t addr_r_rfhab_varyok[MAX_LINE_COUNT];    
     uint32_t addr_s_rfhab_varyok[MAX_LINE_COUNT];    
     uint32_t addr_t_rfhab_varyok[MAX_LINE_COUNT];  

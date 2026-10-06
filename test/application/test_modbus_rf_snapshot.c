@@ -10,6 +10,7 @@
 
 #include "unity.h"
 #include "rf.h"
+#include "modbus_rf_stats.h"
 #include "mock_rf_inventory.h"
 #include "mock_bsp.h"
 #include "mock_modbus_config.h"
@@ -58,6 +59,21 @@ void test_both_float_words_use_the_same_age_check_at_timeout_boundary(void)
 void test_mh_restart_does_not_reuse_dummy_or_old_rf_value(void)
 {
     check_mh_restart_does_not_reuse_dummy_or_old_rf_value();
+}
+
+void test_energy_and_quality_are_separate_and_preserve_last_value(void)
+{
+    check_energy_and_quality_use_the_same_real_live_sample();
+}
+
+void test_fixed_quality_block_is_read_only_and_has_checked_bounds(void)
+{
+    check_quality_block_is_read_only_and_bounds_preserve_value();
+}
+
+void test_load_indicator_uses_mh_flag_in_fixed_map(void)
+{
+    check_load_indicator_uses_mh_flag();
 }
 
 /*** end of file ***/

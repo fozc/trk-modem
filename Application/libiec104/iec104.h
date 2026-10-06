@@ -2,7 +2,8 @@
  * iec104.h
  *
  *  Created on: 26 Tem 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef IEC104_H_
@@ -56,7 +57,7 @@ typedef struct
     int (*get_anlik_akim)(uint32_t power_line_index, uint8_t phase, float *value, qds_t *quality, cp56time2a_t *timestamp);
     int (*get_ariza_kalicimi)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
     int (*get_enerji_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
-    int (*get_nominal_akim_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
+    int (*get_yuk_akimi_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
     int (*get_rf_haberlesme_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
 
 }iec104_io_t;

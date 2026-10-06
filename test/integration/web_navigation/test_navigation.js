@@ -61,13 +61,28 @@ async function checkPage(html, label) {
         run(`LNG = '${language}';`);
         const rfMonitor = run(`buildRfMonitorTable({Phases:[
             {HasData:true,Eui64:'00124B0038C9F1CB',Online:true,
-             Live:{RSSI:-128,Temp:300,Irms:1.25,VTrip:32,VRec:13},
+             Live:{RSSI:-128,Temp:300,Irms:1.25,VTrip:32,VRec:13,Flags:2},
              TripFailedAlarm:true,TripFailureLatched:true},
             {HasData:false},{HasData:false}]})`);
         assert.ok(rfMonitor.includes('00124B0038C9F1CB'));
         assert.ok(rfMonitor.includes('-128'));
         assert.ok(rfMonitor.includes('300'));
         assert.ok(rfMonitor.includes('1.250'));
+        const energyLabel = language === 'tr' ? 'Enerji Var/Yok' : 'Energy Present';
+        const loadLabel = language === 'tr' ? 'Yük Akımı Var/Yok' : 'Load Current Present';
+        assert.ok(rfMonitor.includes(`<td>${energyLabel}</td><td>0</td>`));
+        assert.ok(rfMonitor.includes(`<td>${loadLabel}</td><td>1</td>`));
+        for (const phase of [
+            '{HasData:true,Online:false,Live:{Flags:3}}',
+            '{HasData:true,Online:true,Live:null}',
+            '{HasData:true,Online:true,Live:{Flags:null}}',
+            '{HasData:true,Online:true,Live:{Flags:256}}',
+            '{HasData:false,Online:true,Live:{Flags:3}}'
+        ]) {
+            const unavailable = run(`buildRfMonitorTable({Phases:[${phase}]})`);
+            assert.ok(unavailable.includes(`<td>${energyLabel}</td><td>—</td>`));
+            assert.ok(unavailable.includes(`<td>${loadLabel}</td><td>—</td>`));
+        }
         assert.ok(!rfMonitor.includes('5V DC'));
         assert.ok(!rfMonitor.includes('LQI'));
         assert.ok(!rfMonitor.includes('undefined'));
@@ -366,6 +381,15 @@ async function checkPage(html, label) {
             b.dataset.i = '0';
         }
         b.dataset.key = originalKey;
+        if (page === 'modbus') {
+            a.value = '49499';
+            b.value = '200';
+            c.value = '300';
+            await run("savePage('modbus')");
+            assert.equal(posts, 0, 'FLOAT32 crossing RF quality must block POST');
+            assert.ok(a.error.textContent.includes('49500'));
+            assert.equal(a.classList.contains('invalid'), true);
+        }
         a.value = '100';
         b.value = '102';
         if (page === 'modbus') {

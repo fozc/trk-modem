@@ -78,7 +78,7 @@ bool iec104_send_fault_currents(cause_of_transmission_t cause);
 bool iec104_send_fault_durations(cause_of_transmission_t cause);
 bool iec104_send_fault_types(cause_of_transmission_t cause);
 bool iec104_send_energy_states(cause_of_transmission_t cause);
-bool iec104_send_nominal_current_states(cause_of_transmission_t cause);
+bool iec104_send_load_current_states(cause_of_transmission_t cause);
 bool iec104_send_rf_communication_states(cause_of_transmission_t cause);
 /* Feeder+phase filtreli alternatifler (henuz kullanilmiyor) */
 void iec104_send_phase_currents_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
@@ -86,7 +86,7 @@ void iec104_send_fault_currents_for(uint8_t feeder_id, uint8_t phase, cause_of_t
 void iec104_send_fault_durations_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
 void iec104_send_fault_types_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
 void iec104_send_energy_states_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
-void iec104_send_nominal_current_states_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
+void iec104_send_load_current_states_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
 void iec104_send_rf_communication_states_for(uint8_t feeder_id, uint8_t phase, cause_of_transmission_t cause);
 
 void iec104_tick(void)
@@ -550,7 +550,7 @@ bool iec104_interrogation_send_group2(void)
     CSLOG("Sending all objects for interrogation group 2...\r\n");
 
     bool complete = iec104_send_energy_states(COT_INTERROGATED_GROUP2);
-    complete = iec104_send_nominal_current_states(COT_INTERROGATED_GROUP2) && complete;
+    complete = iec104_send_load_current_states(COT_INTERROGATED_GROUP2) && complete;
     complete = iec104_send_rf_communication_states(COT_INTERROGATED_GROUP2) && complete;
 
     return complete;
@@ -581,7 +581,7 @@ bool iec104_interrogation_send_all_objects(void)
     complete = iec104_send_phase_currents(COT_INTERROGATED_STATION) && complete;
 
     complete = iec104_send_energy_states(COT_INTERROGATED_STATION) && complete;
-    complete = iec104_send_nominal_current_states(COT_INTERROGATED_STATION) && complete;
+    complete = iec104_send_load_current_states(COT_INTERROGATED_STATION) && complete;
     complete = iec104_send_rf_communication_states(COT_INTERROGATED_STATION) && complete;
 
     return complete;
@@ -1631,7 +1631,7 @@ void iec104_send_M_ME_TF_1(cot_t cot, ioa_3byte_t ioa, float value, qds_t qualit
  * COT_SPONTANEOUS ile canli ariza noktalarina gonderir: olay aninda
  * gonderilemeyen spontane bildirimin sonradan tekrar gonderilmesi
  * (store-and-forward, sartname 2.2.4.2). Iki ASDU: M_ME_TF_1 (akim +
- * sure) ve M_SP_TB_1 (kalici ariza + enerji + nominal akim).
+ * sure) ve M_SP_TB_1 (kalici ariza + enerji + yuk akimi).
  *
  * Donus degeri semantigi (replay kilitlenmemesi icin kritik):
  *   false - yalnizca tasiyica/gonderme eksikligi (link kapali, k-
@@ -1725,7 +1725,7 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
         return false;
     }
 
-    /* ASDU 2 - M_SP_TB_1: kalici ariza + enerji + nominal akim (3 obje) */
+    /* ASDU 2 - M_SP_TB_1: kalici ariza + enerji + yuk akimi (3 obje) */
     const size_t sp_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
                           + (sizeof(m_sp_tb_1_t) * 3U);
 
@@ -1748,7 +1748,7 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
     sp[1].siq       = make_siq(record->info.power_status, 0U);
     sp[1].timestamp = record->tm;
 
-    sp[2].ioa       = line->iec104.nominal_akim_varyok[phase];
+    sp[2].ioa       = line->iec104.yuk_akimi_varyok[phase];
     sp[2].siq       = make_siq(record->info.nominal_current_status, 0U);
     sp[2].timestamp = record->tm;
 
@@ -2358,9 +2358,9 @@ bool iec104_send_energy_states(cause_of_transmission_t cause)
     return (sent >= obj_count);
 }
 
-bool iec104_send_nominal_current_states(cause_of_transmission_t cause)
+bool iec104_send_load_current_states(cause_of_transmission_t cause)
 {
-    CSLOG("Sending nominal current states\r\n");
+    CSLOG("Sending load current states\r\n");
 
     uint8_t active_powerline_count = breaker_get_active_powerline_count();
 
@@ -2406,9 +2406,9 @@ bool iec104_send_nominal_current_states(cause_of_transmission_t cause)
         	siq_t siq;
             cp56time2a_t timestamp;
 
-            iec_io.get_nominal_akim_varyok(power_line, phase, &siq, &timestamp);
+            iec_io.get_yuk_akimi_varyok(power_line, phase, &siq, &timestamp);
 
-            objects[obj_count].ioa = line->iec104.nominal_akim_varyok[phase];
+            objects[obj_count].ioa = line->iec104.yuk_akimi_varyok[phase];
             objects[obj_count].siq = siq;
             objects[obj_count].timestamp = timestamp;
             obj_count++;
@@ -2438,7 +2438,7 @@ bool iec104_send_nominal_current_states(cause_of_transmission_t cause)
 
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
 
-        CSLOG("Sending nominal current states: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
+        CSLOG("Sending load current states: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
         if (!iec104_send((uint8_t *)&pkt, apdu_len + 2)) {
             break;
         }
@@ -2541,7 +2541,7 @@ typedef enum
 
 typedef enum 
 {
-    FAULT_SP_FIELD_NOMINAL_AKIM,
+    FAULT_SP_FIELD_YUK_AKIMI,
     FAULT_SP_FIELD_ENERJI_VARYOK,
 } fault_sp_field_t;
 
@@ -2670,19 +2670,19 @@ static bool send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
             ioa_3byte_t ioa;
             if (log_type == FAULT_LOG_TYPE_TEMPORARY)
             {
-                ioa = (field == FAULT_SP_FIELD_NOMINAL_AKIM)
-                    ? iec104_get_feeder_temporary_fault_nominal_akim_varyok_ioa(feeder_id, phase_id, index)
+                ioa = (field == FAULT_SP_FIELD_YUK_AKIMI)
+                    ? iec104_get_feeder_temporary_fault_yuk_akimi_varyok_ioa(feeder_id, phase_id, index)
                     : iec104_get_feeder_temporary_fault_enerji_varyok_ioa(feeder_id, phase_id, index);
             } 
             else 
             {
-                ioa = (field == FAULT_SP_FIELD_NOMINAL_AKIM)
-                    ? iec104_get_feeder_permanent_fault_nominal_akim_varyok_ioa(feeder_id, phase_id, index)
+                ioa = (field == FAULT_SP_FIELD_YUK_AKIMI)
+                    ? iec104_get_feeder_permanent_fault_yuk_akimi_varyok_ioa(feeder_id, phase_id, index)
                     : iec104_get_feeder_permanent_fault_enerji_varyok_ioa(feeder_id, phase_id, index);
             }
 
             objects[obj_count].ioa       = ioa;
-            objects[obj_count].siq       = (siq_t){.spi = (field == FAULT_SP_FIELD_NOMINAL_AKIM)
+            objects[obj_count].siq       = (siq_t){.spi = (field == FAULT_SP_FIELD_YUK_AKIMI)
                                            ? log.info.nominal_current_status
                                            : log.info.power_status};
             objects[obj_count].timestamp = log.tm;
@@ -2759,7 +2759,7 @@ static bool emit_feeder_faults(uint8_t feeder_id, phase_id_t phase, fault_log_ty
                 break;
             case 2U:
                 step_done = send_fault_sp_tb_1(feeder_id, phase, log_type,
-                    FAULT_SP_FIELD_NOMINAL_AKIM, cause, &state->obj_index);
+                    FAULT_SP_FIELD_YUK_AKIMI, cause, &state->obj_index);
                 break;
             case 3U:
                 step_done = send_fault_sp_tb_1(feeder_id, phase, log_type,

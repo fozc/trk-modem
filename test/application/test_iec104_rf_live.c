@@ -177,4 +177,75 @@ void test_missing_source_and_invalid_arguments_never_report_dummy_data(void)
     TEST_ASSERT_EQUAL_INT(-1, read_rf_haberlesme_varyok(0U, 0U, NULL, &time));
 }
 
+void test_energy_uses_live_flag_and_keeps_receive_time_when_stale(void)
+{
+    const cp56time2a_t received = receipt();
+    rf_scp_live_t sample = {.source = 5U, .seq = 1U, .uptime_sec = 10U,
+        .current_amps = 1.25F, .flags = 1U};
+    siq_t value;
+    cp56time2a_t time;
+
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
+    TEST_ASSERT_EQUAL_INT(0, read_enerji_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.spi);
+    TEST_ASSERT_EQUAL_UINT8(0U, value.invalid);
+    TEST_ASSERT_EQUAL_MEMORY(&received, &time, sizeof(time));
+    tick = 30000U;
+    TEST_ASSERT_EQUAL_INT(0, read_enerji_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.spi);
+    TEST_ASSERT_EQUAL_UINT8(1U, value.invalid);
+    TEST_ASSERT_EQUAL_UINT8(1U, value.not_topical);
+    TEST_ASSERT_EQUAL_MEMORY(&received, &time, sizeof(time));
+    sample.flags = 0x80U;
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
+    TEST_ASSERT_EQUAL_INT(0, read_enerji_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(0U, value.spi);
+    TEST_ASSERT_EQUAL_UINT8(0U, value.invalid);
+}
+
+void test_missing_energy_is_invalid_and_bad_arguments_preserve_outputs(void)
+{
+    siq_t value;
+    cp56time2a_t time;
+
+    TEST_ASSERT_EQUAL_INT(0, read_enerji_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.invalid);
+    TEST_ASSERT_EQUAL_UINT8(1U, time.iv_bit);
+    value.spi = 1U;
+    TEST_ASSERT_EQUAL_INT(-1, read_enerji_varyok(0U, 0U, &value, NULL));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.spi);
+    TEST_ASSERT_EQUAL_INT(-1, read_enerji_varyok(7U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.invalid);
+}
+
+void test_load_uses_mh_flag_independently_of_energy_and_rms(void)
+{
+    const cp56time2a_t received = receipt();
+    rf_scp_live_t sample = {.source = 5U, .seq = 1U, .uptime_sec = 10U,
+        .current_amps = -1.0F, .flags = 2U};
+    siq_t value;
+    cp56time2a_t time;
+
+    TEST_ASSERT_EQUAL_INT(0, read_yuk_akimi_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.invalid);
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
+    TEST_ASSERT_EQUAL_INT(0, read_yuk_akimi_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.spi);
+    TEST_ASSERT_EQUAL_UINT8(0U, value.invalid);
+    TEST_ASSERT_EQUAL_MEMORY(&received, &time, sizeof(time));
+    TEST_ASSERT_EQUAL_INT(0, read_enerji_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(0U, value.spi);
+    tick = 30000U;
+    TEST_ASSERT_EQUAL_INT(0, read_yuk_akimi_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.invalid);
+    TEST_ASSERT_EQUAL_UINT8(1U, value.not_topical);
+    TEST_ASSERT_EQUAL_INT(-1, read_yuk_akimi_varyok(0U, 0U, &value, NULL));
+    sample.current_amps = 100.0F;
+    sample.flags = 1U;
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
+    TEST_ASSERT_EQUAL_INT(0, read_yuk_akimi_varyok(0U, 0U, &value, &time));
+    TEST_ASSERT_EQUAL_UINT8(0U, value.spi);
+    TEST_ASSERT_EQUAL_UINT8(0U, value.invalid);
+}
+
 /*** end of file ***/
