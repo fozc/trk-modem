@@ -28,6 +28,7 @@
 #include "modbus_process.h"
 #include "rf_uart_bridge.h"
 #include "shell.h"
+#include "rf_hil_transport.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -350,8 +351,10 @@ void USART1_IRQHandler(void)
 void USART3_IRQHandler(void)
 {
   /* USER CODE BEGIN USART3_IRQn 0 */
+#if !RF_SCP_OVER_MODBUS_PORT
 	uint32_t isrflags = READ_REG(USART3->ISR);
 	uint32_t cr1its   = READ_REG(USART3->CR1);
+#endif
 
 	/* --- Error flags: clear unconditionally --- */
 	if (LL_USART_IsActiveFlag_PE(USART3))  { LL_USART_ClearFlag_PE(USART3);  }
@@ -361,6 +364,9 @@ void USART3_IRQHandler(void)
 	if (LL_USART_IsActiveFlag_ORE(USART3)) { LL_USART_ClearFlag_ORE(USART3); }
 
 	/* --- RF module RX --- */
+#if !RF_SCP_OVER_MODBUS_PORT
+	/* HIL bench build: USART3 RF dispatch compiled out; SCP lives on
+	 * UART4 (see rf_hil_transport.h) and the real hub is ignored. */
 	if (LL_USART_IsActiveFlag_RXNE_RXFNE(USART3)
 		&& (cr1its & USART_CR1_RXNEIE_RXFNEIE))
 	{
@@ -379,6 +385,7 @@ void USART3_IRQHandler(void)
 			}
 		}
 	}
+#endif /* !RF_SCP_OVER_MODBUS_PORT */
   /* USER CODE END USART3_IRQn 0 */
   /* USER CODE BEGIN USART3_IRQn 1 */
 
@@ -391,6 +398,31 @@ void USART3_IRQHandler(void)
 void UART4_IRQHandler(void)
 {
   /* USER CODE BEGIN UART4_IRQn 0 */
+#if RF_SCP_OVER_MODBUS_PORT
+	/* HIL bench build: UART4 carries SCP toward the PC simulator; the
+	 * Modbus slave RX path is not compiled (rf_hil_transport.h). Own
+	 * RS-485 echo frames are dropped later by the SCP DST check. */
+	uint32_t isrflags = READ_REG(UART4->ISR);
+	uint32_t cr1its   = READ_REG(UART4->CR1);
+
+	if (LL_USART_IsActiveFlag_PE(UART4))  { LL_USART_ClearFlag_PE(UART4);  }
+	if (LL_USART_IsActiveFlag_FE(UART4))  { LL_USART_ClearFlag_FE(UART4);  }
+	if (LL_USART_IsActiveFlag_NE(UART4))  { LL_USART_ClearFlag_NE(UART4);  }
+	if (LL_USART_IsActiveFlag_RTO(UART4)) { LL_USART_ClearFlag_RTO(UART4); }
+	if (LL_USART_IsActiveFlag_ORE(UART4)) { LL_USART_ClearFlag_ORE(UART4); }
+
+	if (LL_USART_IsActiveFlag_RXNE_RXFNE(UART4)
+		&& (cr1its & USART_CR1_RXNEIE_RXFNEIE))
+	{
+		uint8_t rx_byte = LL_USART_ReceiveData8(UART4);
+
+		if (!(isrflags & (USART_ISR_FE | USART_ISR_PE)))
+		{
+			void rf_comm_rx_interrupt_handler(uint8_t data);
+			rf_comm_rx_interrupt_handler(rx_byte);
+		}
+	}
+#else
 	uint32_t isrflags = READ_REG(UART4->ISR);
 	uint32_t cr1its   = READ_REG(UART4->CR1);
 
@@ -423,6 +455,7 @@ void UART4_IRQHandler(void)
 		modbus_process_isr_rx_timeout();
 	}
 #endif
+#endif /* RF_SCP_OVER_MODBUS_PORT */
   /* USER CODE END UART4_IRQn 0 */
   HAL_UART_IRQHandler(&huart4);
   /* USER CODE BEGIN UART4_IRQn 1 */

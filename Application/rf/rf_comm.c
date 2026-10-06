@@ -38,13 +38,22 @@
 #include "rf_log.h"
 #include "rf_uart_bridge.h"
 #include "rtc.h"
+#include "rf_hil_transport.h"
+#include "gpio_defs.h"
 #include "cp56time2a.h"
 
 /* ======================================================================
  * Configuration
  * ====================================================================== */
 
+#if RF_SCP_OVER_MODBUS_PORT
+/* HIL bench build: SCP on UART4 (Modbus RS-485 connector, PC simulator
+ * as MH); USART3 stays silent. See rf_hil_transport.h. */
+#define RF_UART_PORT              UART_4
+#define RF_UART_BAUDRATE          230400U
+#else
 #define RF_UART_PORT              UART_3
+#endif
 #define RF_RX_BUFF_SIZE           1024U
 #define RF_SCP_TIMEOUT_MS         100U
 
@@ -181,6 +190,13 @@ static void rf_comm_transmit(const uint8_t *frame, size_t frame_len)
 
 #ifdef RF_SIMULATOR
     bms_send_buff(frame, frame_len);
+#elif RF_SCP_OVER_MODBUS_PORT
+    /* RS-485 half duplex: hold MODBUS_OE during the whole frame so the
+     * transceiver drives the bus, release after TC. Blocking, like the
+     * Modbus TX path; frame bursts are <= 256 B (~11 ms at 230400). */
+    uart_send_buffer_rs485(RF_UART_PORT, MODBUS_OE_BSP_GPIO,
+                           MODBUS_OE_BSP_PIN, true, frame,
+                           (uint16_t)frame_len);
 #else
     uart_send_buffer(RF_UART_PORT, (const char *)frame, (int)frame_len);
 #endif
@@ -910,6 +926,11 @@ void rf_comm_init(uint8_t device_address)
         return;
     }
 
+#if RF_SCP_OVER_MODBUS_PORT
+    /* UART4 comes up at the CubeMX Modbus default (115200); SCP line
+     * rate is 230400. Reprogram while idle, before RX starts. */
+    uart_set_baudrate(RF_UART_PORT, RF_UART_BAUDRATE);
+#endif
     uart_set_rx_interrupt(RF_UART_PORT, UART_RX_INT_ENABLE);
 
     process_start(&rf_comm_process, NULL);
