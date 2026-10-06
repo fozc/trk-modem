@@ -14,6 +14,8 @@
 #include "stm32u3xx_ll_lpuart.h"
 #endif
 
+#include <stddef.h>
+
 typedef struct {
     USART_TypeDef *instance;
 } uart_hw_map_t;
