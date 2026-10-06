@@ -8,8 +8,9 @@ tamamlandı. RF web monitorü güncel modele geçti. Altıncı adımda otomatik
 olay çekme, 8 KB ham kayıt ve mevcut geçici/kalıcı arıza listesine aktarım
 bağlandı. IEC104 spontane/replay aktarımı eklendi. 101/105'in belirsiz
 geç kayıt davranışı BOLATeX cevabını bekliyor. Normal grup ayarı sıralayıcısı
-ve sonuç doğrulaması eklendi; COMMIT öncesi belirsiz temizleme, kalıcılık
-ürün kararı henüz tamamlanmadı. Powerboard özet/alarm tüketicileri SCP
+ve sonuç doğrulaması eklendi; COMMIT öncesi belirsiz temizleme BOLATeX
+cevabını bekliyor. İstenen ayarın Kaydet ile kalıcı tutulması ve Uygula
+işleminin ayrı olması kullanıcı kararıyla netleştirildi. Powerboard özet/alarm tüketicileri SCP
 kaynağına geçirildi. Powerboard müşteri ayar/komut servisi ve ham teşhis
 bağlandı; BOLATeX teyitleri ve kalan ürün bağlantıları açıktır.
 
@@ -205,7 +206,7 @@ yüzde hedefi veya fiziksel doğrulama sayılmaz.
 | K2 | [KARAR: 2026-10-05] Önce RF-SCP servisleri ve shell, ardından web/IEC104/Modbus bağlantıları | Kullanıcı uygulama sırasını ve R1 uygulamasını onayladı; ilk dört adım tamamlandı | 5, 6, 10 |
 | K3 | [KARAR: 2026-10-05] RTU gönderdiğinde veya kayıt yaptığında olay tüketilebilir | Karşı taraf ACK'i ayrıca beklenmez. Başarılı gönderim ya da başarılı kalıcı kayıt doğrulanmadan `0x46` gönderilmez; yalnız RAM kopyası kalıcı kayıt sayılmaz | 6 |
 | K4 | Kullanıcı eski yapının R1'e uymasını istedi. Wire kayıt modeli 60 B R1 düzenini esas alır. Tüm olayların kalıcı saklanması ve üst protokol eşlemesi henüz kararlaştırılmadı | Arıza dışındaki olaylar da çözülür; mevcut dar arıza modeli wire sözleşmesi olarak kullanılmaz. Flash yerleşimi ve migration ayrı karar olarak açık kalır | 6, 10 |
-| K5 | İstenen ayar NVRAM'e ne zaman yazılacak; APPLIED sonrası mı, daha önce desired (istenen) olarak mı? PARTIAL_COMMIT'te otomatik yeniden uygulama mı, operatör kararı mı? | İstenen/uygulanan ayrımı açık gösterilsin; kontrolsüz otomatik yeniden uygulama yapılmasın | 7 |
+| K5 | [KARAR: 2026-10-06] Kaydet istenen ayarı hemen NVRAM’e yazar; Uygula ayrı başlatılır. APPLIED ayrı RAM işlem sonucudur. PARTIAL/FAILED otomatik yeniden uygulanmaz | NVRAM düzeni değişmez; reset sonrasında istenen ayar yüklenir, uygulanmış sonucu varsayılmaz | 7, 10 |
 | K6 | [KARAR: 2026-10-05] Kullanıcı, geçersiz RTC'de saatin atlanıp envanterin yüklenmesini; saat geçerli olunca eşitlenmesini seçti | Uygulandı. Uyumlu BOOT/major ve boş/kısmi envanter durumu R1'e göre işlenir; sonraki saat ACK'i envanteri yeniden başlatmaz | 4 |
 | K7 | Başlangıç zamanları ve retry sayısının anlamı | R1 §6.2; 'yineleme' ek retry olarak açık tanımlansın. Canlı veri kaybı 30 s, TIME_SYNC 1 saat, bildirim telafisi için LOG_HEAD 60 s önerisi | 3–6 |
 | K8 | Discovery atama/silme ve MH değişimi/epoch tetiklemesi | Operatörün mevcut envanter atamasıyla güncelleme; otomatik faz/fider ataması yok. MH değişimi operatör bildirimiyle EPOCH_REFRESH | 4, 7 |
@@ -1014,6 +1015,89 @@ uygulaması sınanmadı. Commit veya cihaz yükleme/reset yapılmadı.
 BQ-08/BQ-12–14, K5/K9 ve fiziksel kabul açık kalır. Web/Modbus ayar yazma
 arayüzü, yeni alarm IOA'ları ve otomatik akü değişimi tetikleyicisi eklenmedi.
 
+## RF web Kaydet/Uygula bağlantısı — 06.10.2026
+
+### Amaç ve kullanım yeri
+
+Powerboard değişiklikleri `179205b` commit'ine alındı. Ardından RF ayar
+ekranı mevcut grup servisine bağlandı. Kullanıcı K5 için istenen ayarın
+Kaydet ile hemen NVRAM'e yazılmasını, Uygula'nın ayrı başlatılmasını ve
+PARTIAL/FAILED sonucunda otomatik tekrar yapılmamasını onayladı.
+
+### Kurallar
+
+Kaydet mevcut staging/parse/commit/`rf_store_sync` yolunu kullanır;
+uygulama başlatmaz. Uygula formdaki geçici değişikliği değil, store'daki
+istenen ayarı snapshot (anlık kopya) olarak alır. Kaydedilmemiş değişiklik
+ve boş/aralık dışı grup kimliği web'de gönderimden önce reddedilir.
+Yeni grup kimliği operatör tarafından verilmelidir; MH'de kullanılmış
+kimlik mevcut preflight (ön kontrol) ile reddedilir.
+
+Grup servisi üç aynı WRITE, COMMIT ve sonuç/CRC doğrulamasını korur.
+HTTP `started=true` yalnız yerel işlemin başlatılmasıdır; uygulanmış
+sonucu sayılmamalıdır. Uygulama/iptal POST uçları mevcut admin kontrolünden
+geçer. Durum GET'i oturum açmış izleme kullanıcısına açıktır; GET ayar
+uygulayamaz. Başlatılamayan işlem 409, biçim/aralık hatası 400 döndürür.
+
+Grup durumuna bir tabanlı store satırı ve `MatchesDesired` eklendi.
+Karşılaştırma hedef fider/bölge, üç EUI ve writable CRC üzerinden yapılır.
+Önceki snapshot APPLIED iken istenen ayar değişirse eski APPLIED sonucu
+korunur, eşleşme false olur; ekran bunun önceki ayara ait olduğunu söyler.
+Kaydet/yeniden oku web durum önbelleğini temizler. Eski ayar nesnesi için
+başlamış ve geç dönmüş GET cevabı yeni durum önbelleğini dolduramaz.
+
+APPLIED yalnız RAM işlem sonucudur; istenen ayarı veya NVRAM'i değiştirmez.
+Reset sonrası eski APPLIED sonucu geri yüklenmez ve otomatik uygulama
+başlatılmaz. Tek grup servisi son işlemi gösterir; her fider için kalıcı
+uygulama geçmişi eklenmedi. NVRAM şeması ve SCP wire biçimi değişmedi.
+
+### Kullanım
+
+1. RF ayarını okuyup düzenleyin ve Kaydet ile saklayın.
+2. Uygulama kartından etkin ayar satırını ve yeni grup kimliğini seçin.
+3. Uygula ile başlatın; Yenile ile yerel sonucu ve son MH raporunu okuyun.
+4. APPLIED ve CRC doğrulaması görülmeden ayırıcıların ayarı uyguladığı
+   söylenmemelidir. İptal mevcut grup servisi kurallarını kullanır;
+   BQ-11 açıkken bilinmeyen COMMIT öncesi kimlikle ABORT gönderilmez.
+
+Yeni EUI/atama/bölge kaydı, MH'nin ACK verilmiş envanterinin aynı üyeleri
+bildirdiği anlamına gelmez. Uygula bunu denetler; eşleşmeyen envanterle
+ayar göndermez. Bu adım Kaydet'e otomatik envanter yükleme eklememiştir.
+
+### API
+
+| Yol | Kullanım |
+|---|---|
+| GET `/status/rf-group` | Son yerel işlem: State, Line, Feeder, GroupId, WritesAcked, ExpectedCRC, MatchesDesired; HasReport ve son MHState/MemberBitmap/Reason/ReportedCRC/Attempts |
+| POST `/config/rf/apply/<satır>/<group_id>` | Store satırı 1–7, yeni group_id 0–255; request body kullanılmaz |
+| POST `/config/rf/abort` | Mevcut işlemi mevcut iptal kurallarıyla sonlandırmayı başlatır |
+
+Satır store indeksidir; SCP fider kimliğiyle aynı sayı olmak zorunda değildir.
+Durum ekranında bu ikisi karıştırılmamalıdır. Ayrı arka plan web poll'ü
+veya HTTP üzerinden otomatik yeniden uygulama eklenmemiştir.
+
+### Doğrulama ve sınırlar
+
+RF grup/adaptör/yetki paketleri 32/32; 24 ilgili Ceedling dosyası 378/378
+geçti. Gerçek grup servisi ve CSV APPLIED raporu gerçek JSON'a bağlandı;
+istenen ayar değişince eski APPLIED/eşleşme ayrımı ve NVRAM'e tekrar yazmama
+sınandı. Gerçek HTTP router auth/admin/GET sınırları, handler yanıtları,
+hatalı/taşan satır ve grup kimliği, küçük buffer, Kaydet/Uygula ayrımı,
+boş kimlik, geç web yanıtı ve kaynak/gömülü Türkçe/İngilizce ekran sınandı.
+Transport/NVRAM ve HTTP sınırları test çiftleridir; grup ve JSON algoritması
+taklit edilmemiştir.
+
+19 modül Cortex-M33/C11 sıkı uyarılar/-Werror ile geçti; Release link
+başarılıdır: text/data/bss 314144/504/126952 B. Eşzamanlı diğer kullanıcı
+çalışmalarını da içerir. Kanıtlar `test/build/rf-group-web-regression.log`,
+`build/rf-group-web-auth.log`, `build/rf-group-web-strict.log`,
+`build/rf-group-web-release.log`, `build/rf-group-web-final-build.log`.
+Seçili sonuç tam suite veya fiziksel RF/AY kabulü değildir.
+
+Bu web adımı henüz commit edilmedi. K9 yeni alarm adresleri, BOLATeX
+soruları ve fiziksel kabul açık kalır; K5 kalıcılık seçimi artık açık değildir.
+Cihaz yükleme/reset veya fiziksel ayar gönderimi yapılmadı.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Değişiklik |
@@ -1034,3 +1118,4 @@ arayüzü, yeni alarm IOA'ları ve otomatik akü değişimi tetikleyicisi eklenm
 | 06.10.2026 | 0.14 | Normal grup/kimlik/CRC sıralayıcısı, epoch bekleme ve shell akışı; 283/283 ilgili regresyon |
 | 06.10.2026 | 0.15 | SCP Powerboard modeli, tüketiciler, 38 register haritası ve 319/319 ilgili test |
 | 06.10.2026 | 0.16 | Powerboard E5–E8 kontrol/shell, uygulama doğrulaması, BQ-12–14 ve 343/343 ilgili test |
+| 06.10.2026 | 0.17 | Powerboard commit 179205b; K5 kararı, ayrı RF web Kaydet/Uygula/durum/iptal ve 378/378 ilgili test |

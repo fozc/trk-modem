@@ -1,5 +1,9 @@
-/**
- * @file http_server.c
+/*
+ * http_server.c
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
  * @brief Main HTTP server implementation
  * 
  * Coordinates all HTTP modules:
@@ -143,6 +147,12 @@ static void route_and_handle_request(http_request_t *request)
             return;
         }
 
+        if (0 == strcmp(request->path, "/status/rf-group"))
+        {
+            handle_get_rf_group_status_json();
+            return;
+        }
+
         if (strcmp(request->path, "/discovery/rf") == 0) {
             handle_get_rf_discovery_json();
             return;
@@ -276,6 +286,18 @@ static void route_and_handle_request(http_request_t *request)
 
         if (strcmp(request->path, "/config/modbus") == 0) {
         	handle_post_modbus_config_json(request->body);
+            return;
+        }
+
+        if (0 == strncmp(request->path, "/config/rf/apply/", 17U))
+        {
+            handle_post_rf_apply(request->path + 17U);
+            return;
+        }
+
+        if (0 == strcmp(request->path, "/config/rf/abort"))
+        {
+            handle_post_rf_abort();
             return;
         }
 

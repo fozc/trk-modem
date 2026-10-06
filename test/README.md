@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.27
+**Sürüm:** 1.28
 **Tarih:** 2026-10-06
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -652,6 +652,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-06 | 1.25 | Grup sıralayıcısı/CRC/kimlik/epoch/shell; 16 ilgili dosyada 283/283 test |
 | 2026-10-06 | 1.26 | SCP Powerboard modeli/JSON/FC03/RX, 20 seçili dosyada 319/319 test |
 | 2026-10-06 | 1.27 | Powerboard E5–E8 servis/shell ve örnek akışlar, 21 seçili dosyada 343/343 test |
+| 2026-10-06 | 1.28 | RF web Kaydet/Uygula/durum/iptal, gerçek HTTP yetki yolu ve 24 seçili dosyada 378/378 test |
 
 ## 06.10.2026 SCP Powerboard tüketici doğrulaması
 
@@ -707,3 +708,22 @@ derleme/link uyarı ve hata vermedi; clean/Debug veya fiziksel LED testi değild
 Kanıt kökü build/production-audit-2026-10-03/: cops-led-before-2026-10-06.log,
 cops-led-all-host-2026-10-06.log/.xml, cops-led-final-2026-10-06.log ve
 cops-led-release-2026-10-06.log. Yeni API/state/queue eklenmedi. Commit yoktur.
+
+## 06.10.2026 RF web Kaydet/Uygula doğrulaması
+
+Yeni `web_server/test_rf_group_web.c` web adaptörü giriş/JSON sınırlarını,
+`web_server/test_http_rf_group_routes.c` gerçek HTTP router auth/admin ve
+GET davranışını sınar. RF grup paketinde gerçek APPLIED → JSON → değişen
+istenen ayar akışı çalışır. Web navigation kaynak/gömülü sayfada Kaydet ile
+Uygula'nın ayrı olduğunu, kaydedilmemiş/boş kimlik girişini ve geç durum
+yanıtının yeni önbelleği bozmadığını doğrular. web_auth gerçek handler
+fonksiyonlarını ve gerçek JSON adaptörünü çalıştırır.
+
+```text
+cd test
+ruby -S ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log_sequence_wrap|test_iec104|test_power_board|test_system_status|test_modbus_power_snapshot|test_http_rf_group_routes|test_json_config_bounds)]"
+```
+
+24 seçili dosyada 378/378 geçti; kanıt `build/rf-group-web-regression.log`.
+RF grup/adaptör/yetki alt kümesi 32/32'dir. Host sonuç fiziksel AY kabulü
+sayılmaz. 19 modül sıkı ARM/C11 ile ve Release link başarıyla doğrulandı.

@@ -1,6 +1,6 @@
 # BOLATeX'e sorulacak RF-SCP konuları
 
-**Sürüm:** 0.4
+**Sürüm:** 0.5
 
 **Tarih:** 06.10.2026
 
@@ -394,11 +394,12 @@ Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararlar�
 | HEAD sorgusu | 60 s RTU poll tercihi; dokümanda zorunlu RTU süresi değildir |
 | Tekrar kayıt | Restart/kayıp tüketme sonucunda kopya mümkündür; kalıcı tekilleştirme garantisi yoktur |
 | Sahadaki eski biçim | Saha cihazı yoktur; eski RF model/JSON/görüntü migration'ı istenmemiştir |
+| RF ayar kalıcılığı | 06.10.2026: Kaydet istenen ayarı NVRAM’e yazar; Uygula ayrı, APPLIED RAM durumudur; PARTIAL/FAILED otomatik tekrarlanmaz |
 | Ayarsız Powerboard ayarı | Kapasite/C-oranı için MH kayıt ve yankı kabulü ayrı gösterilir; uygulanmış sayılmaz. Ayarsız periyot BQ-14 cevabını bekler |
 
-İstenen ayarın NVRAM'e kaydedilme zamanı, PARTIAL_COMMIT'te otomatik tekrar
-ve yeni IOA/Modbus adresleri RTU ürün kararlarıdır; BOLATeX'in protokol
-cevabı bu ürün kararlarının yerine geçmez. Bu konular plan K5/K9'da açıktır.
+K5 kalıcılık/otomatik tekrar tercihi kullanıcı kararıyla netleşmiştir.
+Yeni IOA/Modbus adresleri K9’da RTU ürün kararı olarak açıktır; BOLATeX’in
+protokol cevabı bu ürün kararının yerine geçmez.
 
 ## Değişiklik geçmişi
 
@@ -408,3 +409,4 @@ cevabı bu ürün kararlarının yerine geçmez. Bu konular plan K5/K9'da açık
 | 05.10.2026 | 0.2 | BQ-10 arıza sınıflaması/sayaçlar ve BQ-11 COMMIT öncesi ABORT kimliği eklendi |
 | 06.10.2026 | 0.3 | BQ-11'in normal grup/COMMIT sonrası ABORT uygulama durumu güncellendi; soru açık kaldı |
 | 06.10.2026 | 0.4 | BQ-12 ayarsız ayar doğrulaması, BQ-13 E7 bitiş ayrımı ve BQ-14 periyot b7 koruması |
+| 06.10.2026 | 0.5 | K5 Kaydet/Uygula kalıcılık tercihi RTU kullanıcı kararı olarak kaydedildi; protokol soruları açık kaldı |

@@ -36,6 +36,8 @@
 #include "rf_discovery.h"
 #include "rf_json.h"
 #include "rf_monitor_json.h"
+#include "rf_group_web.h"
+#include "rf_group.h"
 #include "system_status_json.h"
 #include "gsm_engine.h"
 #include "gsm_info.h"
@@ -1512,8 +1514,52 @@ void handle_get_rf_config_json(void)
     http_send_json(buf, pos);
 }
 
+void handle_get_rf_group_status_json(void)
+{
+    size_t length;
+
+    if ((0 >= handler_state.tx_buffer_size) ||
+        !rf_group_status_json_build(handler_state.tx_buffer,
+            (size_t)handler_state.tx_buffer_size, &length))
+    {
+        http_send_error(500, "RF group status buffer too small");
+        return;
+    }
+    http_send_json(handler_state.tx_buffer, (int)length);
+}
+
+void handle_post_rf_apply(const char *suffix)
+{
+    const rf_web_apply_result_t result = rf_web_start_apply(suffix);
+
+    switch (result)
+    {
+        case RF_WEB_APPLY_STARTED:
+            http_send_json("{\"started\":true}", 16);
+            break;
+        case RF_WEB_APPLY_NOT_STARTED:
+            http_send_error(409, "RF apply not started: check members, "
+                "inventory, epoch, hub and fresh group ID");
+            break;
+        case RF_WEB_APPLY_INVALID:
+        default:
+            http_send_error(400, "Expected store line 1..7/group ID 0..255");
+            break;
+    }
+}
+
+void handle_post_rf_abort(void)
+{
+    if (!rf_group_abort())
+    {
+        http_send_error(409, "RF abort not started: check current group state");
+        return;
+    }
+    http_send_json("{\"started\":true}", 16);
+}
+
 /**
- * @brief Handle POST /w?ayiriciRFConfig - Write RF configuration from JSON (14 array format)
+ * @brief Save the desired RF settings; application is a separate request.
  */
 void handle_post_rf_config_json(const char *json_body)
 {

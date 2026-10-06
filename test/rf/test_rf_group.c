@@ -11,6 +11,7 @@
 #include "unity.h"
 #include "rf_group.h"
 #include "rf_config.h"
+#include "rf_group_web.h"
 #include "rf_nvram_fake.h"
 #include "mock_rf_comm.h"
 #include "mock_rf_inventory.h"
@@ -22,6 +23,8 @@ TEST_SOURCE_FILE("rf_config.c")
 TEST_SOURCE_FILE("rf_nvram_fake.c")
 TEST_SOURCE_FILE("rf_scp_codec.c")
 TEST_SOURCE_FILE("rf_scp.c")
+TEST_SOURCE_FILE("rf_group_web.c")
+TEST_SOURCE_FILE("xprintf.c")
 
 static uint32_t tick;
 static bool transport_free;
@@ -254,6 +257,18 @@ void test_captured_group_is_written_three_times_and_verified_after_commit(void)
     TEST_ASSERT_EQUAL_HEX16(0x096DU, status().expected_crc);
     TEST_ASSERT_TRUE(rf_group_handle_status(&report));
     TEST_ASSERT_EQUAL_INT(RF_GROUP_APPLIED, status().state);
+    TEST_ASSERT_EQUAL_INT(0, rf_nvram_fake_sync_count());
+    char json[512];
+    size_t length;
+
+    TEST_ASSERT_TRUE(rf_group_status_json_build(json, sizeof(json), &length));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"State\":\"applied\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"MatchesDesired\":true"));
+    feeder.config.nominal_current = 9.0F;
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_TRUE(rf_group_status_json_build(json, sizeof(json), &length));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"State\":\"applied\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"MatchesDesired\":false"));
     TEST_ASSERT_EQUAL_INT(0, rf_nvram_fake_sync_count());
 }
 
@@ -598,6 +613,18 @@ void test_status_poll_waits_five_seconds_across_tick_wrap(void)
     rf_group_process(tick);
     TEST_ASSERT_EQUAL_UINT32(6U, request_count);
     TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_STATUS_GET, requests[5].cmd);
+}
+
+void test_changed_desired_settings_do_not_match_the_started_snapshot(void)
+{
+    TEST_ASSERT_FALSE(rf_group_matches_config());
+    TEST_ASSERT_TRUE(rf_group_start(2U, 7U));
+    TEST_ASSERT_EQUAL_UINT8(3U, status().line);
+    TEST_ASSERT_TRUE(rf_group_matches_config());
+    feeder.config.nominal_current = 9.0F;
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_FALSE(rf_group_matches_config());
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_CHECKING, status().state);
 }
 
 /*** end of file ***/
