@@ -2464,3 +2464,98 @@ içerir. Loglar build/scp-group-service-strict.log,
 build/scp-group-service-release.log, build/scp-group-service-final-build.log.
 Yeni commit veya cihaz yükleme/reset yapılmadı. BOLATeX soruları,
 Powerboard tüketici geçişi ve fiziksel kabul açık; G-01 kapanmadı.
+
+### 10.21. SCP Powerboard tüketicileri — 06.10.2026
+
+Mevcut `app_main` eski I²C Powerboard process'ini başlatıyordu;
+`system_status` ve `modbus_power_stats` bu kaynağı okuyordu. Kullanıcının
+MH üzerinden SCP kararıyla E1/E3 için tek `power_board_scp` modeli eklendi.
+Gerçek RF dispatch modele bağlıdır. Sistem/web/Modbus/shell aynı modeli
+okur; eski process artık başlatılmaz. Kaynak dosyaları, GPIO power-panic
+ve kapalı BMS reader korunmuştur.
+
+Kullanıcı 49200 tabanında 38 register yeni SCP haritasını onayladı.
+Birim/kalite tanımları Modbus haritası §7.2'de, model/alarm/günlük sınırları
+[uygulama planındaki Powerboard bölümünde](doc/RF_SCP_MODEM_UYGULAMA_PLANI.md#powerboard-tüketici-geçişi--06102026)
+kaydedildi. Modbus Poll dosyası da güncellendi. 30 s yerel eskime RTU
+tercihidir; eski ham değer kalite bitleriyle korunur, web geçersiz değeri
+boş gösterir. SCP'de olmayan ısıtıcı/panel akımı/ortam sıcaklığı uydurulmaz.
+E1 mask telafisi ve E3 32 bit alarm/RESET/son nefes oturumu olay günlüğüne
+bağlandı; ham bildirim sayısı benzersiz kesinti sayısı değildir.
+
+20 ilgili Ceedling dosyasında 319/319 geçti. Gerçek RX wire örnekleri,
+model, JSON ve FC03 yanıtı sınandı; hardware/elog sınırları taklit edildi.
+14 CSV/175 frame fixture kontrolü, web navigation kaynak/gömülü ve web_auth
+paketleri geçti. 16 Cortex-M33 modülü sıkı C11 uyarılar/-Werror ile geçti;
+Release link başarılıdır: text/data/bss 307400/504/126792 B; eşzamanlı
+diğer değişiklikler de dahildir. Kanıt `test/build/scp-power-regression.log`,
+`build/scp-power-strict.log`, `build/scp-power-final-build.log`,
+`build/scp-power-web-auth.log`. Bu seçili test sonucu tam suite geçişi olarak yorumlanmaz.
+
+E5–E8 ayar/sonuç/ham telemetri bağlantıları, BQ-08 ve K9 adres seçimi
+henüz tamamlanmadı. Fiziksel UART/RF/enerji kesintisi kabulü yapılmadı;
+G-01 kapatılmadı. Bu adımda commit veya cihaz yükleme/reset yapılmadı.
+
+### 10.22. SCP Powerboard ayar ve komut servisi — 06.10.2026
+
+Mevcut codec E5–E8'i doğruluyordu; ürün kontrol tüketicisi yoktu.
+Eski Powerboard shell ayarı I²C STATBLK gölgesine yüzde C-oranı/tcal
+ile yazıyordu. Yeni `power_board_control` mevcut SCP request/retry
+mekanizmasını kullanır. E5 GET/GEN ve yalnız müşteri maskeli SET,
+20–32 s sonra yankı/E1 doğrulaması, E6 kabul ile E7 sonucu ayrımı,
+iptal akıbeti ve E8 ham teşhis shell'e bağlandı. Yeni NVRAM alanı yoktur;
+kalıcı CFG2 MH'dedir. Normal kapasite/C-oranı uygulanmadan, ret veya
+belirsiz yazımdan sonra akü değişti komutu gönderilmez.
+
+Ayarsız değer doğrulaması, E7 FF bekleme/bitiş ayrımı ve ayarsız periyot
+b7 koruması BQ-12–14'e eklendi. Kullanıcı ayarsız kapasite/C-oranı için
+ayrı yankı kabulü sonucunu; ayarsız periyodu cevap gelene kadar kapatmayı
+onayladı. Otomatik yeni 05 gönderimi veya belgesiz üst timeout eklenmedi.
+Ayrıntılı durum/shell kuralları uygulama planındaki Powerboard kontrol
+bölümündedir. E8 ölçüm/karar kaynağı yapılmadı; BQ-08 açık kalır.
+
+Yeni paket 22/22, 21 ilgili Ceedling dosyası 343/343 geçti.
+Üretim servis/codec ve gerçek RF RX dispatch çalıştırıldı; transport/E1
+snapshot sınırı taklit edildi. PWRB_03/04 örnekleri kullanıldı; E8 örneği
+bulunmadığından 96/95 bayt sentetik sınır testleri eklendi. İlk yazım,
+mask/GEN, yankı retleri, stale E1, birlikte kapasite/oran, belirsiz SET,
+erken sonuç, iptal sonrası geç sonuç, BOOT ve tick wrap kapsandı.
+
+18 Cortex-M33/C11 modülü sıkı uyarılar/-Werror ile geçti; CubeIDE yeni
+kaynakları managed build'e aldı, Release link başarılıdır. Kanıt
+`test/build/scp-power-control-regression.log`,
+`build/scp-power-control-strict.log`, `build/scp-power-control-release.log`,
+`build/scp-power-control-final-build.log`. Son link text/data/bss
+311164/504/126952 B; eşzamanlı diğer değişiklikler de dahildir. Web navigation
+kaynak/gömülü ve web_auth entegrasyonu geçti. Seçili sonuç tam suite geçişi
+olarak yorumlanmaz; fiziksel güç kartı uygulaması/enerji kesintisi kabulü
+sınanmadı. BOLATeX soruları/K5/K9 ve G-01 açık. Bu adımda commit veya
+cihaz yükleme/reset yapılmadı.
+
+### 10.23. CESQ düzeltmesinin COPS LED tüketicisine uygulanması — 06.10.2026
+
+Kullanıcı CESQ range/report/LED sınıflandırıcısını düzeltmiştir. İncelemede
+COPS callback'inin raw değeri yalnız 10 ile kıyaslayıp LED'e doğrudan
+normal mod yazdığı ikinci üretim yolu bulundu. Callback init ve periodic
+COPS sorgularında erişilebilirdir. Kullanıcı bu yolun da düzeltilmesini onayladı.
+
+Üretim gsm_engine.c içinde ikinci LED switch'i kaldırıldı; mevcut
+metadata setter'dan sonra gsm_signal_led_update çağrılır. Ortak 4G/3G/2G
+validity, fallback ve strength eşikleri kullanılır. RAT metadata ve COPS
+mode dönüşleri korunur; eksik RAT/ERROR/timeout davranışına dokunulmaz.
+Yeni state/queue/API eklenmedi; kullanıcının CESQ düzeltmesi korunur.
+
+Gerçek COPS callback'i ve gerçek classifier ile beş Unity testi eklendi.
+Output hook yalnız donanım sınırını ayırır. Düzeltme öncesi 33 testte üç
+başarısızlık; düzeltme sonrası ve direct LED write'ı reddeden son koşuda
+33/33 görüldü. Tam Ceedling 875/875, 9 integration paketi geçti. Tam JUnit
+saklandı ve test_inventory complete/zero failure verdi. ARM Release değişen
+kaynağı yeniden derledi/link etti; uyarı/hata yok. Fiziksel LED/cihaz, clean
+Debug, paket self-check veya yükleme bu adımda yapılmadı. Commit yoktur.
+
+Kanıt kökü test/build/production-audit-2026-10-03/: cops-led-before-2026-10-06.log,
+cops-led-all-host-2026-10-06.log/.xml, cops-led-final-2026-10-06.log,
+cops-led-inventory-2026-10-06.md ve cops-led-release-2026-10-06.log.
+§10.20 ve modül kapsam raporundaki altı eski CESQ regresyonu artık kapalıdır;
+eski başarısız sayılar yalnız ilk tespit koşusunu anlatır. Eşzamanlı başka
+modül değişiklikleri bu düzeltmenin katkısı olarak sayılmaz.

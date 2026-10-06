@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.25
+**Sürüm:** 1.27
 **Tarih:** 2026-10-06
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -650,3 +650,60 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-05 | 1.23 | Grup bloğu capture/target/CRC/invalid/alias testleri; 253/253 ilgili test, 433 NVRAM kontrolü |
 | 2026-10-05 | 1.24 | Shell CFG_STATUS_GET ve 256/256 ilgili regresyon; BQ-10/BQ-11 teyit notları |
 | 2026-10-06 | 1.25 | Grup sıralayıcısı/CRC/kimlik/epoch/shell; 16 ilgili dosyada 283/283 test |
+| 2026-10-06 | 1.26 | SCP Powerboard modeli/JSON/FC03/RX, 20 seçili dosyada 319/319 test |
+| 2026-10-06 | 1.27 | Powerboard E5–E8 servis/shell ve örnek akışlar, 21 seçili dosyada 343/343 test |
+
+## 06.10.2026 SCP Powerboard tüketici doğrulaması
+
+`power_board/test_power_board_scp.c` gerçek modeli ve codec'i çalıştırır;
+`application/test_system_status.c` gerçek JSON çıktısını da doğrular.
+`application/test_modbus_power_snapshot_scenario.c` gerçek SCP modeliyle
+FC03 üzerinden 38 register yanıtını, signed/32 bit alanları, eskime,
+yok veri ve adres/NULL sınırlarını sınar. RF haberleşme paketinde örnek E1/E3
+wire verileri gerçek ring/COBS/parser/dispatch yolundan geçirilir.
+
+```text
+cd test
+C:\Ruby34-x64\bin\ruby.exe -S ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log_sequence_wrap|test_iec104|test_power_board|test_system_status|test_modbus_power_snapshot)]"
+```
+
+20 seçili dosyada 319/319 test geçti; kanıt `build/scp-power-regression.log`.
+Bu seçili sonuç tam suite sonucu değildir. Navigation kaynak/gömülü sayfa ve web_auth entegrasyonu
+ayrıca geçti. Hedefte sıkı 16 modül derlemesi ve Release link doğrulandı;
+fiziksel enerji kesintisi/Powerboard kabulü yapılmadı.
+
+## 06.10.2026 Powerboard ayar/komut doğrulaması
+
+`power_board/test_power_board_control.c` üretim servisi ve codec ile 22
+senaryoyu çalıştırır. Transport ve E1 snapshot sınırı taklit edilir;
+CFG2/sonuç algoritması taklit edilmez. PWRB_03/04 örnekleri, E7 RX dispatch,
+E8 için sentetik 96 bayt ve kısa blok ret testi eklenmiştir. Ayarsız ayar,
+GEN çatışması, ilk yazım, 20/32 s bekleme, yankı/E1 doğrulaması, erken sonuç,
+iptal akıbeti, timeout, BOOT ve tick wrap sınanır.
+
+Önceki bölümün seçili Ceedling komutu yeni paketi de içerir: 21 dosyada
+343/343 geçti. Kanıt `build/scp-power-control-regression.log`.
+18 modül sıkı Cortex-M33/C11 ile geçti; Release link başarılıdır.
+Bu sonuç tam suite veya fiziksel Powerboard uygulama kabulü değildir.
+
+## COPS LED yolunun ortak CESQ sınıflandırmasına bağlanması — 06.10.2026
+
+Gerçek gsm_COPS_state_cb artık LED sürücüsüne doğrudan yazmaz; mevcut
+gsm_signal_led_update çağrısıyla ortak valid range, 4G/3G/2G önceliği ve
+strength eşiklerini kullanır. COPS'un bildirdiği RAT metadata'sı korunur.
+Geçersiz/sentinel tüm güçler NONE olur; geçerli alt teknolojiye fallback
+çalışır. RAT bulunmayan yanıt, ERROR ve timeout LED'i değiştirmez.
+
+Mevcut GSM response paketine beş Unity testi eklendi. Gerçek callback,
+gerçek sınıflandırıcı ve yalnız output hook/test clock/state sınırları
+kullanılır. Önceki 33 testten üçü başarısızdı; düzeltme sonrası paket 33/33
+geçti. Son testler doğrudan led_driver_set_gsm_mode çağrısını da CMock ile
+reddeder. 2G/3G/4G reserved/sentinel, geçerli LTE endpoint ve eşik çiftleri,
+fallback, metadata, eksik RAT, ERROR/timeout sınanır.
+
+Tam Ceedling 875/875 ve integration 9/9 geçti. Saklanan JUnit envanteri
+tamdır. Son stricter callback koşusu da 33/33 geçti. ARM Release gsm_engine.c
+derleme/link uyarı ve hata vermedi; clean/Debug veya fiziksel LED testi değildir.
+Kanıt kökü build/production-audit-2026-10-03/: cops-led-before-2026-10-06.log,
+cops-led-all-host-2026-10-06.log/.xml, cops-led-final-2026-10-06.log ve
+cops-led-release-2026-10-06.log. Yeni API/state/queue eklenmedi. Commit yoktur.

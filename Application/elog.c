@@ -515,6 +515,16 @@ const char *elog_info_to_text(const elog_entry_t *entry)
                       info[0], info[1], info[2], info[3], info[4]);
             break;
 
+        case ELOG_PWR_SCP_ALARM:
+            xsnprintf(text, sizeof(text),
+                      "SCP %02X code=%u state=%u seq=%u active="
+                      "%02X%02X%02X%02X prev=%02X%02X%02X%02X session=%u",
+                      info[0], info[1], info[2], info[3],
+                      info[11], info[10], info[9], info[8],
+                      info[15], info[14], info[13], info[12],
+                      (0xE1U == info[0]) ? info[5] : info[7]);
+            break;
+
         case ELOG_BAT_STATE:
             if (info[1] == 0U)  /* state change */
             {

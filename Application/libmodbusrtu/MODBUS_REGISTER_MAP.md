@@ -514,59 +514,82 @@ bildirildiğini gösterir. Hangi nedenlerin bildirilebildiği MCU’nun
 reset bilgisine ve mevcut `reset_source` decoder’ına bağlıdır.
 
 
-### 7.2 Guc Karti (PowerBoard) Telemetri Blogu (49200 / base-0 9200)
+### 7.2 Güç kartı SCP özeti (49200 / base-0 9200)
 
-PowerBoard'dan I2C yardimci (slave) uzerinden ~1 sn'de bir gelen telemetri:
-batarya/PV/DC gerilimleri, sarj/bus akimlari, sicakliklar, SoC/SoH ve BQ
-fault/alarm bitleri. 32 register (49200..49231).
+[KARAR: 2026-10-06] Kullanıcı 49200 tabanında yeni SCP haritasını onayladı.
+38 register, 49200..49237. Eski I2C/BQ/XSUM/latch alanları bu blokta yoktur.
+Kaynak R1 0xE1/0xE3; E8 düzeni doğrulanmadan eski decoder kullanılmaz.
 
-| Mantiksal | Base-0 | Alan | Tip | Birim/Anlam |
+| Mantıksal | Base-0 | Alan | Tip | Birim / anlam |
 |---:|---:|---|---|---|
-| 49200 | 9200 | valid | UINT16 | 1 = checksum gecerli, 0 = hatali |
-| 49201 | 9201 | prot_ver | UINT16 | Protokol surumu |
-| 49202 | 9202 | seq | UINT16 | Ornek sayaci (wrap) |
-| 49203 | 9203 | rec_flag | UINT16 | REC_FLAG bitfield |
-| 49204 | 9204 | blk_xsum | UINT16 | Alinan checksum byte |
-| 49205 | 9205 | sys_state | UINT16 | SYS_STATE |
-| 49206 | 9206 | sys_fault | UINT16 | SYS_FAULT (BQ FAULT0 aynasi) |
-| 49207 | 9207 | sys_flags | UINT16 | SYS_FLAGS (canli alarmlar) |
-| 49208 | 9208 | soh_x10 | UINT16 | Batarya sagligi %, x10 (1000 = 100.0%) |
-| 49209 | 9209 | soc_x10 | UINT16 | Sarj durumu %, x10 (1000 = 100.0%) |
-| 49210 | 9210 | vbat_mv | UINT16 | Batarya gerilimi (mV) |
-| 49211 | 9211 | vpv_mv | UINT16 | PV gerilimi (mV) |
-| 49212 | 9212 | vdc_mv | UINT16 | DC gerilimi (mV) |
-| 49213 | 9213 | ichg_ma | UINT16 | Sarj akimi (mA) |
-| 49214 | 9214 | ibat_ma | INT16 | Batarya akimi (mA, +sarj / -desarj) |
-| 49215 | 9215 | ibus_ma | INT16 | Bus akimi (mA, isaretli) |
-| 49216 | 9216 | board_temp_c | INT16 | Kart NTC sicakligi (°C) |
-| 49217 | 9217 | batt_temp_x10 | INT16 | Batarya NTC x10 (°C, -9990 = olcum yok) |
-| 49218 | 9218 | batt_ts | UINT16 | JEITA bolge (0..4) |
-| 49219 | 9219 | chg_stat | UINT16 | Sarj fazi (0..7) |
-| 49220 | 9220 | chg_phase | UINT16 | Sarj fazi (ayna) |
-| 49221 | 9221 | batt_cap_ah | UINT16 | Aktif kapasite (Ah) |
-| 49222 | 9222 | bq_fault0 | UINT16 | BQ REG20 raw |
-| 49223 | 9223 | bq_fault1 | UINT16 | BQ REG21 raw |
-| 49224 | 9224 | alarm_live | UINT16 | Canli alarm bitleri |
-| 49225 | 9225 | alarm_latch | UINT16 | Latch'li alarm bitleri |
-| 49226 | 9226 | pwr_io | UINT16 | GPIO aynasi |
-| 49227 | 9227 | bq_vsys_mv | UINT16 | BQ VSYS (mV) |
-| 49228 | 9228 | bq_vbus_mv | UINT16 | BQ VBUS (mV) |
-| 49229 | 9229 | bq_vac1_mv | UINT16 | BQ VAC1 = DC giris (mV) |
-| 49230 | 9230 | bq_vac2_mv | UINT16 | BQ VAC2 = PV giris (mV) |
-| 49231 | 9231 | bq_tdie_c | INT16 | BQ die sicakligi (°C) |
+| 49200 | 9200 | has_summary | UINT16 | SCP özeti alınmış: 0/1 |
+| 49201 | 9201 | valid_fields | UINT16 | Alan geçerlilik bit maskesi; aşağıdaki tablo |
+| 49202 | 9202 | seq | UINT16 | E1 sayaç, 0..255 |
+| 49203 | 9203 | flags | UINT16 | E1 durum baytının ham değeri |
+| 49204 | 9204 | flags2 | UINT16 | E1 durum2 ham değeri |
+| 49205 | 9205 | telemetry_age_sec | UINT16 | Bildirilmiş yaş + RTU alım yaşı; 255 doygun |
+| 49206 | 9206 | source | UINT16 | 0 akü, 1 PV, 2 DC, 3 belirsiz, 4 akımsız giriş, 255 bilinmiyor |
+| 49207 | 9207 | charge_phase | UINT16 | 0 yok, 1 ön şarj, 2 CC, 3 CV, 4 tamamlama, 5 tamam |
+| 49208 | 9208 | session | UINT16 | PWRB oturum, 1..255; 0 yok |
+| 49209 | 9209 | pv_mv | UINT16 | mV |
+| 49210 | 9210 | dc_mv | UINT16 | mV |
+| 49211 | 9211 | input_ma | INT16 | mA |
+| 49212 | 9212 | system_mv | UINT16 | mV |
+| 49213 | 9213 | battery_mv | UINT16 | mV |
+| 49214 | 9214 | battery_ma | INT16 | mA; + şarj, - deşarj |
+| 49215 | 9215 | input_power_10mw | INT16 | 10 mW |
+| 49216 | 9216 | battery_power_10mw | INT16 | 10 mW; + şarj |
+| 49217 | 9217 | system_power_10mw | INT16 | 10 mW; negatif tüketim |
+| 49218 | 9218 | soc_tenths | INT16 | %0,1; negatif değer korunur |
+| 49219 | 9219 | soh_percent | UINT16 | % |
+| 49220 | 9220 | battery_temperature | INT16 | derece C; -128 geçersiz |
+| 49221 | 9221 | board_temperature | INT16 | derece C; -128 geçersiz |
+| 49222 | 9222 | capacity_ah | UINT16 | Ah; 7 + ayar kaynağı yoksa bilinmiyor |
+| 49223 | 9223 | charge_rate_permille | UINT16 | Binde C |
+| 49224 | 9224 | last_gasp_count | UINT16 | MH bildirim sayacı; gerçek kesinti sayısı değildir |
+| 49225 | 9225 | active_alarms_hi | UINT16 | Güncel E1/E3 maskesi, üst word |
+| 49226 | 9226 | active_alarms_lo | UINT16 | Güncel maske, alt word |
+| 49227 | 9227 | soc_flags | UINT16 | E1 soc_capa ham değeri |
+| 49228 | 9228 | alarm_seq | UINT16 | Son E3 sayaç |
+| 49229 | 9229 | suppressed | UINT16 | Son E3 bastırılmış kenar sayısı |
+| 49230 | 9230 | has_last_gasp | UINT16 | Son nefes görüldü: 0/1 |
+| 49231 | 9231 | last_gasp_cancelled | UINT16 | Aynı oturum son nefesi iptal edildi: 0/1 |
+| 49232 | 9232 | last_gasp_session | UINT16 | Son nefes PWRB oturumu |
+| 49233 | 9233 | last_gasp_cause | UINT16 | 1 ani düşüm, 2 öngörülen kesinti |
+| 49234 | 9234 | summary_age_ms_hi | UINT16 | RTU alım yaşı, üst word |
+| 49235 | 9235 | summary_age_ms_lo | UINT16 | RTU alım yaşı, alt word; özet yoksa UINT32_MAX |
+| 49236 | 9236 | supported_summary_version | UINT16 | Desteklenen E1 yerleşimi: 1 |
+| 49237 | 9237 | map_version | UINT16 | Bu register düzeni: 1 |
 
-- **Isaretli (INT16) alanlar:** `ibat_ma`, `ibus_ma`, `board_temp_c`,
-  `batt_temp_x10`, `bq_tdie_c` - iki-tumleyen (two's complement) olarak
-  yayinlanir; master taraf signed 16-bit olarak okumalidir.
-- `soc_x10` (49209) kaynakta isaretli bir alandir; negatif degerler yayinda
-  0 olarak kirpilir (negatif SoC gorulmez).
-- `valid` (49200) = 0 ise checksum eslesmedi; alanlar yine de decode edilir ama
-  guvenilir kabul edilmez.
-- `batt_temp_x10` (49217) olcum yok durumunda -9990 sentinel degeri doner
-  (PowerBoard sozlesmesi, `doc/PowerBoard_I2C_Protocol.md` 0x24 BATT_TEMP).
-- `*_x10` alanlari 10 ile olceklidir (100.0% -> 1000).
-- Sicaklik/sentinel degerleri icin bkz. PowerBoard sozlesmesi
-  (`doc/PowerBoard_I2C_Protocol.md`).
+İşaretli değerler two's complement (ikiye tümleyen) olarak taşınmalıdır;
+negatif SOC sıfıra kırpılmamalıdır. 32 bit alanlar high word first (üst word
+önce) birleştirilmelidir. Ham sayısal değer geçerlilik maskesi olmadan karar
+verisi sayılmamalıdır. Bayat son değerler tanı için korunur; sıfırlanmaz.
+
+| Bit | Geçerlilik / anlam |
+|---:|---|
+| 0 | Güncel geçerli E1 özeti |
+| 1 | PV/DC/akü gerilimleri |
+| 2 | Denetleyici: ibus/vsys/ibat temel geçerliliği |
+| 3 | Eşleşmiş güç ölçümü: pin/pbat |
+| 4 | psys ölçülmüş |
+| 5 | SOC geçerli; ayrıca bit 14 gerekir |
+| 6 | SOC mutlak referanslı; 0 göreli |
+| 7 | SoH geçerli |
+| 8 | Akü sıcaklığı geçerli |
+| 9 | Kart sıcaklığı geçerli |
+| 10 | Şarj fazı geçerli |
+| 11 | Kapasite biliniyor |
+| 12 | Kaynak bilgisi geçerli |
+| 13 | Alarm maskesi güncel |
+| 14 | Deşarj ölçümü eksik değil; ibat/pbat/SOC için de gerekir |
+| 15 | Şarj yorumu geçerli; flags b7:6: 1 yok, 2 var, 3 çelişkili |
+
+Yeni E1 30 s gelmezse ölçüm maskesi kaldırılır; E3 ölçüm yaşını yenilemez.
+Bu süre RTU tercihidir. MH BOOT ölçümleri geçersiz kılar; RESET alarmları
+sıfırlar. Ölçüm alanları ayrı değerlendirilir: denetleyici bayatken ADC
+gerilimleri geçerli kalabilir. POWER/SYSTEM_POWER bitleri ilgili ölçüm
+bloğunun eşleşmesini ve psys durumunu ayrıca gerektirir.
 
 ### 7.3 BMS Telemetri Blogu (49300 / base-0 9300)
 

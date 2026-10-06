@@ -389,6 +389,8 @@ board_code = r"""
 #include <string.h>
 #include <stdio.h>
 #include "system_status.h"
+#include "system_status_json.h"
+#include "gsm_info.h"
 #include "xprintf.h"
 #define CSLOG(...) ((void)0)
 #define CSLOG_ERR(...) ((void)0)
@@ -397,13 +399,16 @@ static char canvas[4098];
 static struct { char *tx_buffer; int tx_buffer_size; } handler_state;
 static uint8_t rxlev, rscp, rsrp, rsrq, creg, cgreg, cereg;
 const system_status_t *system_status_get(void) { return &board; }
-static uint8_t gsm_info_get_signal_quality_2G(void) { return rxlev; }
-static uint8_t gsm_info_get_signal_quality_3G(void) { return rscp; }
-static uint8_t gsm_info_get_signal_quality_4G(void) { return rsrp; }
-static uint8_t gsm_info_get_4G_rsrq(void) { return rsrq; }
-static uint8_t gsm_info_get_creg(void) { return creg; }
-static uint8_t gsm_info_get_cgreg(void) { return cgreg; }
-static uint8_t gsm_info_get_cereg(void) { return cereg; }
+uint8_t gsm_info_get_signal_quality_2G(void) { return rxlev; }
+uint8_t gsm_info_get_signal_quality_3G(void) { return rscp; }
+uint8_t gsm_info_get_signal_quality_4G(void) { return rsrp; }
+uint8_t gsm_info_get_4G_rsrq(void) { return rsrq; }
+gsm_net_reg_state_t gsm_info_get_creg(void)
+{ return (gsm_net_reg_state_t)creg; }
+gsm_net_reg_state_t gsm_info_get_cgreg(void)
+{ return (gsm_net_reg_state_t)cgreg; }
+gsm_net_reg_state_t gsm_info_get_cereg(void)
+{ return (gsm_net_reg_state_t)cereg; }
 static void http_send_error(int code, const char *message)
 { (void)code; (void)message; assert(false); }
 static void http_send_json(const char *data, int length)
@@ -439,6 +444,16 @@ int main(void)
 outputs=[]
 for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro','board_signal_repro']:
  extra=[str(root/'Application/libs/xprintf.c'),'-I'+str(root/'Application/libs'),'-lm'] if name in ['http_lengths_repro', 'board_signal_repro'] else []
+ if name == 'board_signal_repro':
+  extra += [str(root/'Application/web-server/system_status_json.c'),
+            '-I'+str(root/'Application/gsm'),
+            '-I'+str(root/'Application/rf'),
+            '-I'+str(root/'Application/power_board'),
+            '-I'+str(root/'Application/cslog'),
+            '-I'+str(root/'Application/libscp'),
+            '-I'+str(root/'Application/libefw'),
+            '-I'+str(root/'contiki-kernel'),
+            '-I'+str(root/'test/support')]
  run=subprocess.run([args.cc,'-std=c11','-O0','-I'+str(root/'Application/web-server'),'-I'+str(root/'Application/bsp'),'-I'+str(root/'Application'),str(audit/(name+'.c')),*extra,'-o',str(audit/(name+'.exe'))],capture_output=True,text=True)
  if run.returncode: print(run.stderr);raise SystemExit(run.returncode)
  run=subprocess.run([str(audit/(name+'.exe'))],capture_output=True,text=True)

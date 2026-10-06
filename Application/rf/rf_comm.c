@@ -31,6 +31,8 @@
 #include "rf.h"
 #include "rf_events.h"
 #include "rf_group.h"
+#include "power_board_scp.h"
+#include "power_board_control.h"
 #include "rf_inventory.h"
 #include "rf_discovery.h"
 #include "rf_log.h"
@@ -604,6 +606,8 @@ static void handle_boot_notify(const scp_packet_t *pkt)
     }
     rf_events_init();
     rf_group_hub_restarted();
+    power_board_scp_hub_restarted();
+    power_board_control_hub_restarted();
     if (major != RF_SCP_MAJOR_EXPECTED)
     {
         CSLOG_WARN("[RF] BOOT_NOTIFY scp_major=%u (beklenen %u) - uyari, "
@@ -661,6 +665,22 @@ static void handle_proactive(const scp_packet_t *pkt)
 
         case RF_SCP_CMD_CFG_STATUS_NOTIFY:
             (void)rf_group_handle_status(&message);
+            break;
+
+        case RF_SCP_CMD_PWR_SUMMARY:
+            (void)power_board_handle_summary(&message, HAL_GetTick());
+            break;
+
+        case RF_SCP_CMD_PWR_ALARM:
+            (void)power_board_handle_alarm(&message, HAL_GetTick());
+            break;
+
+        case RF_SCP_CMD_PWR_RESULT:
+            (void)power_board_handle_command_result(&message);
+            break;
+
+        case RF_SCP_CMD_PWR_TELEMETRY:
+            (void)power_board_handle_raw(&message);
             break;
 
         default:    /* MISRA 16.4 - S3-S5'te yeni case'ler gelecek */
@@ -804,6 +824,8 @@ static void rf_comm_periodic_jobs(void)
     rf_inventory_continue();
     rf_group_process(HAL_GetTick());
     rf_events_process(HAL_GetTick());
+    power_board_scp_process(HAL_GetTick());
+    power_board_control_process(HAL_GetTick());
 
     /* Periyodik GET_STATUS (canlilik) */
     if (!liveness_timer_started)
