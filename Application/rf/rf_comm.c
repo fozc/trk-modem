@@ -70,7 +70,6 @@
 /** TIME_SYNC uses the same 500 ms / 3 extra retries as inventory. */
 
 /** BOOT_NOTIFY scp_major beklenen deger */
-#define RF_SCP_MAJOR_EXPECTED     1U
 
 #define RF_TIME_SYNC_PERIOD_S     3600U
 

@@ -391,7 +391,7 @@ bool rf_get_anomaly(uint8_t source, uint8_t path, rf_anomaly_data_t *out)
     return true;
 }
 
-bool rf_ack_stored_alarm(const uint8_t eui64[8])
+bool rf_ack_stored_alarm(const uint8_t *eui64)
 {
     if ((NULL == eui64) || rf_eui64_is_zero(eui64))
     {

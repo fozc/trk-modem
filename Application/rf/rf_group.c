@@ -67,10 +67,14 @@ static bool can_start(void)
         case RF_GROUP_IDLE:
         case RF_GROUP_APPLIED:
         case RF_GROUP_FAILED:
-        case RF_GROUP_ID_IN_USE:
         case RF_GROUP_CANCELLED:
         case RF_GROUP_RESTARTED:
             return !group.command_pending;
+        case RF_GROUP_ID_IN_USE:
+            return !group.command_pending &&
+                (!group.status.has_report ||
+                 ((1U != group.status.report.state) &&
+                  (2U != group.status.report.state)));
         case RF_GROUP_MISMATCH:
             return !group.command_pending && group.status.has_report &&
                    (3U == group.status.report.state) &&
@@ -242,7 +246,23 @@ bool rf_group_handle_status(const rf_scp_message_t *message)
             group.status.state = RF_GROUP_UNCERTAIN;
             break;
     }
+    if ((3U == message->body.config.state) ||
+        (4U == message->body.config.state))
+    {
+        rf_inventory_config_finished(group.status.feeder,
+            (3U == message->body.config.state) ? 0U :
+                                                message->body.config.reason);
+    }
     return true;
+}
+
+static bool handle_status_response(const scp_packet_t *packet)
+{
+    rf_scp_message_t message;
+
+    return (NULL != packet) &&
+        (RF_CMD_OK == rf_scp_decode_message(packet, &message)) &&
+        rf_group_handle_status(&message);
 }
 
 static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
@@ -272,6 +292,7 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
                                  RF_GROUP_WRITING : RF_GROUP_ID_IN_USE;
             group.status.report = message.body.config;
             group.status.has_report = true;
+            group.poll_ms = HAL_GetTick();
         }
         else
         {
@@ -279,10 +300,20 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
         }
         return;
     }
+    if (RF_GROUP_ID_IN_USE == state)
+    {
+        /* A failed probe does not prove that the observed peer stopped. */
+        if (SCP_CMD_OK == result)
+        {
+            (void)handle_status_response(packet);
+        }
+        return;
+    }
     if ((RF_SCP_CMD_CFG_ABORT == group.pending_command) &&
         (SCP_CMD_OK == result))
     {
         group.status.state = RF_GROUP_CANCELLED;
+        rf_inventory_config_finished(group.status.feeder, 10U);
         return;
     }
     if ((RF_GROUP_APPLIED == state) || (RF_GROUP_FAILED == state) ||
@@ -316,9 +347,7 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
     {
         group.status.state = RF_GROUP_CANCELLED;
     }
-    else if ((NULL == packet) ||
-             (RF_CMD_OK != rf_scp_decode_message(packet, &message)) ||
-             !rf_group_handle_status(&message))
+    else if (!handle_status_response(packet))
     {
         group.status.state = RF_GROUP_UNCERTAIN;
     }
@@ -413,7 +442,10 @@ void rf_group_process(uint32_t now_ms)
             }
             break;
         case RF_GROUP_WAITING:
-            if (GROUP_STATUS_PERIOD_MS <= (uint32_t)(now_ms - group.poll_ms))
+        case RF_GROUP_ID_IN_USE:
+            if (rf_group_is_active() &&
+                (GROUP_STATUS_PERIOD_MS <=
+                 (uint32_t)(now_ms - group.poll_ms)))
             {
                 if (send_request(RF_SCP_CMD_CFG_STATUS_GET))
                 {

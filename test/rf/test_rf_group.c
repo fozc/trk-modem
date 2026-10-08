@@ -31,6 +31,7 @@ TEST_SOURCE_FILE("xprintf.c")
 static uint32_t tick;
 static bool transport_free;
 static bool inventory_loaded;
+static bool inventory_active;
 static bool binding_valid;
 static bool accept_request;
 static bool epoch_ready;
@@ -57,6 +58,12 @@ static bool is_loaded(int call_count)
 {
     (void)call_count;
     return inventory_loaded;
+}
+
+static bool is_inventory_active(int call_count)
+{
+    (void)call_count;
+    return inventory_active;
 }
 
 static bool is_epoch_ready(uint8_t fider, int call_count)
@@ -230,6 +237,7 @@ void setUp(void)
     tick = 0U;
     transport_free = true;
     inventory_loaded = true;
+    inventory_active = false;
     binding_valid = true;
     accept_request = true;
     epoch_ready = true;
@@ -239,8 +247,10 @@ void setUp(void)
     scp_is_free_StubWithCallback(is_free);
     scp_send_request_StubWithCallback(send_request);
     rf_inventory_is_loaded_StubWithCallback(is_loaded);
+    rf_inventory_is_active_StubWithCallback(is_inventory_active);
     rf_inventory_epoch_ready_StubWithCallback(is_epoch_ready);
     rf_inventory_get_binding_StubWithCallback(get_binding);
+    rf_inventory_config_finished_Ignore();
 }
 
 void tearDown(void)
@@ -950,6 +960,112 @@ void test_transport_busy_waits_without_starting_or_losing_targets(void)
     rf_apply_process();
     TEST_ASSERT_EQUAL_INT(RF_GROUP_CHECKING, status().state);
     TEST_ASSERT_EQUAL_UINT8(1U, status().group_id);
+}
+
+void test_inventory_upload_or_drain_blocks_save_before_nvram(void)
+{
+    inventory_active = true;
+    TEST_ASSERT_FALSE(rf_apply_can_save());
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_BUSY, rf_apply_save());
+    TEST_ASSERT_EQUAL_INT(0, rf_nvram_fake_sync_count());
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    inventory_active = false;
+    TEST_ASSERT_TRUE(rf_apply_can_save());
+}
+
+static void start_active_peer(void)
+{
+    TEST_ASSERT_TRUE(rf_group_start(2U, 7U));
+    rf_group_process(tick);
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK,
+        .data_len = 8U, .data = {7U, 1U, 7U}};
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_TRUE(rf_group_is_active());
+}
+
+void test_lost_peer_terminal_notify_is_recovered_by_status_poll(void)
+{
+    start_active_peer();
+    TEST_ASSERT_FALSE(rf_group_start(2U, 8U));
+    tick = 4999U;
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+    tick = 5000U;
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, request_count);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_STATUS_GET, requests[1].cmd);
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK,
+        .data_len = 8U, .data = {7U, 3U, 7U}};
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_FALSE(rf_group_is_active());
+    TEST_ASSERT_TRUE(rf_apply_can_save());
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_ID_IN_USE, status().state);
+    TEST_ASSERT_EQUAL_size_t(2U, request_count);
+}
+
+void test_only_a_matched_local_terminal_report_notifies_epoch_maintenance(void)
+{
+    write_three_and_commit();
+    ack();
+    rf_scp_message_t report = captured_report(1U);
+    report.body.config.state = 4U;
+    report.body.config.reason = 5U;
+    rf_inventory_config_finished_Expect(status().feeder, 5U);
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    TEST_ASSERT_FALSE(rf_group_handle_status(&report));
+}
+
+void test_failed_peer_poll_keeps_the_lock_and_retries_later(void)
+{
+    start_active_peer();
+    tick = 5000U;
+    rf_group_process(tick);
+    reply(SCP_CMD_TIMEOUT, NULL);
+    TEST_ASSERT_TRUE(rf_group_is_active());
+    TEST_ASSERT_FALSE(rf_apply_can_save());
+    tick = 10000U;
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(3U, request_count);
+    scp_packet_t wrong = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK,
+        .data_len = 8U, .data = {8U, 3U, 7U}};
+    reply(SCP_CMD_OK, &wrong);
+    TEST_ASSERT_TRUE(rf_group_is_active());
+    TEST_ASSERT_EQUAL_UINT8(7U, status().report.group_id);
+}
+
+void test_batch_reports_start_rejection_without_losing_saved_settings(void)
+{
+    char json[768];
+    size_t length = 0U;
+    inventory_loaded = false;
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOP_START_REJECTED,
+                           batch_status().stop_reason);
+    TEST_ASSERT_TRUE(rf_group_status_json_build(json, sizeof(json), &length));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"StopReason\":\"start_rejected\""));
+    TEST_ASSERT_EQUAL_INT(1, rf_nvram_fake_sync_count());
+}
+
+void test_batch_reports_peer_and_restart_reasons(void)
+{
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    rf_group_process(tick);
+    scp_packet_t peer = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK,
+        .data_len = 8U, .data = {1U, 1U, 7U}};
+    reply(SCP_CMD_OK, &peer);
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOP_PEER_ACTIVE, batch_status().stop_reason);
+    rf_group_hub_restarted();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_hub_restarted();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOP_HUB_RESTARTED,
+                           batch_status().stop_reason);
 }
 
 /*** end of file ***/

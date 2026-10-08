@@ -12,6 +12,7 @@
 #include "rf_config.h"
 #include "rf_group.h"
 #include "rf_comm.h"
+#include "rf_inventory.h"
 #include <stddef.h>
 
 /* Cooperative context only. Web is the sole production settings writer
@@ -43,12 +44,14 @@ void rf_apply_hub_restarted(void)
     if (rf_apply_is_running())
     {
         batch.state = RF_APPLY_STOPPED;
+        batch.stop_reason = RF_APPLY_STOP_HUB_RESTARTED;
     }
 }
 
 bool rf_apply_can_save(void)
 {
-    return !rf_apply_is_running() && !rf_group_is_active();
+    return !rf_apply_is_running() && !rf_group_is_active() &&
+           !rf_inventory_is_active();
 }
 
 void rf_apply_get_status(rf_apply_status_t *out)
@@ -96,6 +99,7 @@ static void start_next_group(void)
     if (UINT8_MAX <= checked_ids)
     {
         batch.state = RF_APPLY_STOPPED;
+        batch.stop_reason = RF_APPLY_STOP_ID_EXHAUSTED;
         return;
     }
     if (0U == next_group_id)
@@ -109,6 +113,7 @@ static void start_next_group(void)
     if (!rf_group_start((size_t)batch.line - 1U, current_group_id))
     {
         batch.state = RF_APPLY_STOPPED;
+        batch.stop_reason = RF_APPLY_STOP_START_REJECTED;
         return;
     }
     batch.group_started = true;
@@ -129,6 +134,7 @@ void rf_apply_process(void)
             (status.group_id != current_group_id))
         {
             batch.state = RF_APPLY_STOPPED;
+            batch.stop_reason = RF_APPLY_STOP_STATE_CHANGED;
             return;
         }
         switch (status.state)
@@ -143,6 +149,7 @@ void rf_apply_process(void)
                 if (rf_group_is_active())
                 {
                     batch.state = RF_APPLY_STOPPED;
+                    batch.stop_reason = RF_APPLY_STOP_PEER_ACTIVE;
                     return;
                 }
                 batch.group_started = false;
@@ -155,6 +162,7 @@ void rf_apply_process(void)
                 return;
             default:
                 batch.state = RF_APPLY_STOPPED;
+                batch.stop_reason = RF_APPLY_STOP_GROUP_ERROR;
                 return;
         }
     }
@@ -181,6 +189,7 @@ bool rf_apply_abort(void)
     if (rf_apply_is_running() && !batch.group_started)
     {
         batch.state = RF_APPLY_STOPPED;
+        batch.stop_reason = RF_APPLY_STOP_CANCELLED;
         return true;
     }
     if (!rf_group_abort())
@@ -190,6 +199,7 @@ bool rf_apply_abort(void)
     if (rf_apply_is_running())
     {
         batch.state = RF_APPLY_STOPPED;
+        batch.stop_reason = RF_APPLY_STOP_CANCELLED;
     }
     return true;
 }

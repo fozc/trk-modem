@@ -28,6 +28,7 @@ extern "C" {
 #define RF_SCP_ADDR_BROADCAST   0x00U   /* Only valid in DST; no reply     */
 #define RF_SCP_ADDR_HUB         0x01U   /* Modem_RF_Hub (peer)             */
 #define RF_SCP_ADDR_RTU         0x02U   /* STM32 RTU (this node)           */
+#define RF_SCP_MAJOR_EXPECTED   1U
 
 /* ---------------------------------------------------------------------------
  * Command codes (R0 section 3) - grow phase by phase
