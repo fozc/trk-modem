@@ -26,7 +26,7 @@ if args.clean:
 audit.mkdir(parents=True, exist_ok=True)
 def extract(path,name):
     source=(root/path).read_text(encoding='utf-8-sig')
-    match=re.search(r'^(?:static )?(?:(?:bool|void|int|uint32_t) |const char \*)'+name+r'\([^;]*?\)\n\{.*?\n\}',source,re.M|re.S)
+    match=re.search(r'^(?:static )?(?:__attribute__\(\(noinline\)\) )?(?:(?:bool|void|int|uint32_t) |const char \*)'+name+r'\([^;]*?\)\n\{.*?\n\}',source,re.M|re.S)
     if not match: raise RuntimeError(name)
     return match.group(0)
 preamble=r'''
@@ -477,6 +477,7 @@ group_code = r'''
 #include "rf_group_web.h"
 #include "rf_group.h"
 #include "rf_apply.h"
+#include "rf_inventory.h"
 #include "json_config.h"
 static char canvas[514], output[512];
 static struct { char *tx_buffer; int tx_buffer_size; } handler_state;
@@ -492,6 +493,8 @@ bool rf_group_matches_config(void) { return false; }
 bool rf_apply_abort(void) { abort_calls++; return accepts_abort; }
 void rf_apply_get_status(rf_apply_status_t *out)
 { *out = (rf_apply_status_t){.state=RF_APPLY_RUNNING,.targets=5U}; }
+void rf_inventory_get_wait(rf_inventory_wait_t *out)
+{ *out = (rf_inventory_wait_t){.reason="none"}; }
 static bool can_save, parses, stages;
 static uint32_t parse_calls, commit_calls, save_calls, stage_aborts;
 static rf_apply_save_result_t save_result;
@@ -520,7 +523,7 @@ static void http_send_json(const char *data, int length)
 static void http_send_error(int status, const char *text)
 { (void)text; response_status = status; }
 '''
-for name in ['handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort','handle_post_rf_config_json']:
+for name in ['parse_rf_settings','handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort','handle_post_rf_config_json']:
  group_code += extract('Application/web-server/http_handlers.c',name) + '\n'
 group_code += r'''
 int main(void)
