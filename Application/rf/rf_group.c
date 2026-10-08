@@ -137,11 +137,14 @@ static bool bindings_match(const rf_group_t *job)
 bool rf_group_start(size_t line_index, uint8_t group_id)
 {
     rf_group_t candidate = {0};
+    const bool retry_write = (RF_GROUP_UNCERTAIN == group.status.state) &&
+        group.write_sent && !group.commit_sent && !group.command_pending;
 
     /* BOLATeX BQ-11: group id zero is not a valid commit identity; every
      * COMMIT must carry a fresh non-zero value. */
     if ((0U == group_id) || (MAX_POWER_LINE_COUNT <= line_index) ||
-        !can_start() || !scp_is_free() || !rf_inventory_is_loaded() ||
+        (!can_start() && !retry_write) || !scp_is_free() ||
+        !rf_inventory_is_loaded() ||
         !rf_comm_can_load_inventory())
     {
         return false;
@@ -186,7 +189,28 @@ bool rf_group_start(size_t line_index, uint8_t group_id)
     candidate.block.phase_id = 0U;
     candidate.status.expected_crc = rf_config_writable_crc(&candidate.block);
     candidate.status.group_id = group_id;
-    candidate.status.state = RF_GROUP_CHECKING;
+    if (retry_write)
+    {
+        /* BQ-11: rewrite the same frozen members/block before COMMIT.
+         * Reuse the checked ID: it has not been committed to the MH yet.
+         * Keep the lock if the operator selects any other job or settings.
+         */
+        if ((candidate.status.line != group.status.line) ||
+            (group_id != group.status.group_id) ||
+            (candidate.zone != group.zone) ||
+            (0 != memcmp(candidate.status.members, group.status.members,
+                         sizeof(group.status.members))) ||
+            (0 != memcmp(&candidate.block, &group.block, sizeof(group.block))))
+        {
+            return false;
+        }
+        candidate.status.state = RF_GROUP_WRITING;
+        candidate.write_sent = true;
+    }
+    else
+    {
+        candidate.status.state = RF_GROUP_CHECKING;
+    }
     group = candidate;
     return true;
 }

@@ -204,8 +204,15 @@ static rf_scp_message_t captured_report(uint8_t state)
     return (rf_scp_message_t){0};
 }
 
+static void inventory_wait(rf_inventory_wait_t *out, int call_count)
+{
+    (void)call_count;
+    *out = (rf_inventory_wait_t){.reason = "none"};
+}
+
 void setUp(void)
 {
+    rf_inventory_get_wait_StubWithCallback(inventory_wait);
     const size_t count = sizeof(rf_scp_vectors) /
                          sizeof(rf_scp_vectors[0]);
     size_t members = 0U;
@@ -290,7 +297,7 @@ void test_captured_group_is_written_three_times_and_verified_after_commit(void)
     TEST_ASSERT_TRUE(rf_group_handle_status(&report));
     TEST_ASSERT_EQUAL_INT(RF_GROUP_APPLIED, status().state);
     TEST_ASSERT_EQUAL_INT(0, rf_nvram_fake_sync_count());
-    char json[512];
+    char json[768];
     size_t length;
 
     TEST_ASSERT_TRUE(rf_group_status_json_build(json, sizeof(json), &length));
@@ -474,7 +481,7 @@ void test_partial_failure_keeps_member_bitmap_without_auto_reapply(void)
     TEST_ASSERT_EQUAL_UINT32(5U, request_count);
 }
 
-void test_failed_write_locks_new_groups_without_guessing_abort_identity(void)
+void test_failed_write_locks_other_ids_without_guessing_abort_identity(void)
 {
     TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
     unused_group();
@@ -486,6 +493,90 @@ void test_failed_write_locks_new_groups_without_guessing_abort_identity(void)
     rf_group_hub_restarted();
     TEST_ASSERT_EQUAL_INT(RF_GROUP_RESTARTED, status().state);
     TEST_ASSERT_TRUE(rf_group_start(2U, 2U));
+}
+
+void test_uncertain_write_explicit_retry_rewrites_all_frozen_members(void)
+{
+    for (size_t failed_member = 0U; failed_member < 3U; failed_member++)
+    {
+        rf_group_init();
+        request_count = 0U;
+        TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
+        unused_group();
+        for (size_t index = 0U; index < failed_member; index++)
+        {
+            rf_group_process(tick);
+            ack();
+        }
+        rf_group_process(tick);
+        reply(SCP_CMD_TIMEOUT, NULL);
+        const size_t retry_first = request_count;
+        const scp_packet_t frozen = requests[1];
+
+        rf_group_process(tick + 10000U);
+        TEST_ASSERT_EQUAL_UINT32(retry_first, request_count);
+        TEST_ASSERT_FALSE(rf_apply_can_save());
+        TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
+        TEST_ASSERT_EQUAL_UINT8(0U, status().writes_acked);
+        for (size_t index = 0U; index < 3U; index++)
+        {
+            rf_group_process(tick);
+            TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_WRITE,
+                                  requests[retry_first + index].cmd);
+            TEST_ASSERT_EQUAL_MEMORY(bindings[index].eui64,
+                                     requests[retry_first + index].data, 8U);
+            TEST_ASSERT_EQUAL_MEMORY(&frozen.data[8],
+                &requests[retry_first + index].data[8], 96U);
+            ack();
+        }
+        rf_group_process(tick);
+        TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_COMMIT,
+                              requests[request_count - 1U].cmd);
+        ack();
+        rf_scp_message_t report = captured_report(3U);
+        TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+        TEST_ASSERT_EQUAL_INT(RF_GROUP_APPLIED, status().state);
+    }
+}
+
+void test_uncertain_write_retry_rejects_changed_settings_and_keeps_job(void)
+{
+    TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
+    unused_group();
+    rf_group_process(tick);
+    reply(SCP_CMD_TIMEOUT, NULL);
+    const rf_group_status_t previous = status();
+
+    TEST_ASSERT_TRUE(rf_store_set(3U, &feeder));
+    TEST_ASSERT_FALSE(rf_group_start(3U, 1U));
+    feeder.config.ia_threshold += 1.0F;
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_FALSE(rf_group_start(2U, 1U));
+    feeder.config.ia_threshold -= 1.0F;
+    feeder.config.fider_id = 2U;
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_FALSE(rf_group_start(2U, 1U));
+    feeder.config.fider_id = previous.feeder;
+    feeder.config.zone_id++;
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_FALSE(rf_group_start(2U, 1U));
+    feeder.config.zone_id--;
+    feeder.r_eui64[7] ^= 1U;
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_FALSE(rf_group_start(2U, 1U));
+    rf_group_status_t current = status();
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &current, sizeof(current));
+    TEST_ASSERT_EQUAL_UINT32(2U, request_count);
+}
+
+void test_uncertain_commit_cannot_use_precommit_write_retry(void)
+{
+    write_three_and_commit();
+    reply(SCP_CMD_TIMEOUT, NULL);
+    TEST_ASSERT_FALSE(rf_group_start(2U, 1U));
+    TEST_ASSERT_FALSE(rf_group_start(2U, 2U));
+    TEST_ASSERT_EQUAL_UINT32(5U, request_count);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_UNCERTAIN, status().state);
 }
 
 void test_accepted_commit_can_be_aborted_but_rejection_is_not_cancellation(void)

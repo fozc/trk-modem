@@ -28,6 +28,8 @@ bool rf_events_inventory_allowed(void);
 void rf_events_request_drain(void);
 bool rf_events_drain_complete(uint32_t *total);
 void rf_events_finish_drain(void);
+/* Current local work blocking the inventory drain, not a new retry policy. */
+const char *rf_events_drain_reason(void);
 
 
 #endif /* RF_EVENTS_H */

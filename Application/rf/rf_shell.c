@@ -159,6 +159,10 @@ static int rf_shell_status(int argc, char **argv)
               (unsigned)rf_comm_get_hub_major());
     SHELL_LOG("Envanter: %s\r\n",
               inventory_status_name(rf_inventory_get_status()));
+    rf_inventory_wait_t wait;
+    rf_inventory_get_wait(&wait);
+    SHELL_LOG("Inventory wait: %s total_ms=%u reason_ms=%u\r\n",
+              wait.reason, (unsigned)wait.total_ms, (unsigned)wait.reason_ms);
     SHELL_LOG("Kesif kuyrugu: %u cihaz\r\n",
              (unsigned)rf_discovery_get_count());
 
@@ -449,7 +453,9 @@ static int rf_shell_config_apply(int argc, char **argv)
         !rf_group_start((size_t)line - 1U, group_id))
     {
         SHELL_LOG("Config not started: check members, inventory, epoch "
-                  "wait and current operation\r\n");
+                  "wait and current operation\r\n"
+                  "Uncertain WRITE before COMMIT: retry unchanged line "
+                  "with the same group ID\r\n");
         return -1;
     }
     SHELL_LOG("Config queued; use rf cfg-state for the verified result\r\n");

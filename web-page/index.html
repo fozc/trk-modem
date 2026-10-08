@@ -302,12 +302,17 @@ Object.assign(I18N.tr,{rfStatusReading:'RF uygulama durumu okunuyor...',rfStatus
 
 Object.assign(I18N.en,{rfStopStorage:'Saved to the primary copy; backup failed. RF application was not started. Save again to repair and apply.',rfStopInventory:'Inventory did not complete. Check the result before saving again.',rfInventoryPending:'Draining old records and updating the inventory; settings have not been sent yet.',rfSaveNone:'No active feeders. Settings will be saved and previous assignments will be removed if needed. Continue?'});
 Object.assign(I18N.tr,{rfStopStorage:'Ana kopyaya kaydedildi; yedek kayıt başarısız. RF uygulaması başlamadı. Onarmak ve uygulamak için yeniden Kaydet seçin.',rfStopInventory:'Envanter tamamlanamadı. Yeniden kaydetmeden önce sonucu kontrol edin.',rfInventoryPending:'Eski kayıtlar boşaltılıyor ve envanter güncelleniyor; ayarlar henüz gönderilmedi.',rfSaveNone:'Etkin fider yok. Ayarlar kaydedilecek; varsa eski ayırıcı atamaları kaldırılacak. Onaylıyor musunuz?'});
+Object.assign(I18N.tr,{rfWait_checking:'Bekleme koşulları kontrol ediliyor',rfWaitTotal:'Toplam bekleme',rfWaitCurrent:'Bu nedende bekleme',rfWait_ay_logs:'AY kayıtları',rfWait_mh_records:'MH kayıtlarının boşaltılması',rfWait_storage:'RTU kalıcı kayıt yazımı',rfWait_mh_degraded:'MH kayıt servisi kullanılamıyor',rfWait_alarm:'RTU alarm kuyruğu',rfWait_scp:'SCP hattı meşgul',rfWait_hub_ready:'MH hazır olması bekleniyor'});
+Object.assign(I18N.en,{rfWait_checking:'Checking drain conditions',rfWaitTotal:'Total wait',rfWaitCurrent:'Wait for this reason',rfWait_ay_logs:'AY records',rfWait_mh_records:'Draining MH records',rfWait_storage:'RTU persistent storage',rfWait_mh_degraded:'MH event store unavailable',rfWait_alarm:'RTU alarm queue',rfWait_scp:'SCP transport busy',rfWait_hub_ready:'Waiting for MH readiness'});
 function buildRfGroupStatus(group){
   if(!group)return '<div class="empty">'+esc(t('stNotRead'))+'</div>';
   const keys={idle:'rfGroupIdle',checking:'rfGroupChecking',writing:'rfGroupWriting',committing:'rfGroupCommitting',waiting:'rfGroupWaiting',applied:'rfGroupApplied',failed:'rfGroupFailed',uncertain:'rfGroupUncertain',id_in_use:'rfGroupIdUsed',mismatch:'rfGroupMismatch',aborting:'rfGroupAborting',cancelled:'rfGroupCancelled',restarted:'rfGroupRestarted'};
   let title=t(keys[group.State]||'rfGroupUnknown');
   if(group.State==='applied'&&!group.MatchesDesired)title=t('rfGroupChanged');
   let html='';
+    if(group.WaitReason&&group.WaitReason!=='none'){
+      html+='<p class="hint">'+esc(t('rfWait_'+group.WaitReason))+'<br>'+esc(t('rfWaitTotal'))+': '+Math.floor(group.WaitTotalMs/1000)+' s<br>'+esc(t('rfWaitCurrent'))+': '+Math.floor(group.WaitReasonMs/1000)+' s</p>';
+    }
   if(group.BatchState&&group.BatchState!=='idle'){
     const batchKeys={running:'rfBatchRunning',complete:'rfBatchComplete',stopped:'rfBatchStopped'};
     html+='<p><strong>'+esc(t(batchKeys[group.BatchState]||'rfGroupUnknown'))+'</strong></p>';

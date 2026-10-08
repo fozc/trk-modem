@@ -1,6 +1,6 @@
 # BOLATeX'e RF-SCP soruları ve RTU uygulama bildirimleri
 
-**Sürüm:** 0.16
+**Sürüm:** 0.18
 
 **Tarih:** 08.10.2026
 
@@ -295,7 +295,12 @@ tam envanter yüklenir. Tam başarıdan sonra ayar sırası başlar. Yükleme
 kısmi/hatalı kalırsa ayarlar gönderilmez; sonraki Kaydet eksik envanteri
 yeniden yükler. Yalnız koruma eşiği değiştiğinde envanter yüklenmez.
 Tüm fiderler kapatıldığında eski envanter boşaltılıp kaldırılır.
-Envanter servisi iptal desteklemediğinden bu aşamada web İptal kapalıdır.
+Kullanıcı kararıyla envanter boşaltma aşamasında İptal kapalıdır. Bekleme
+nedeni, toplam süre ve mevcut nedende geçen süre RTU RAM'inde tutulur;
+web yenilemesi bunları sıfırlamaz. RTU kayıt yazımı/alarm kuyruğu ve SCP
+meşguliyeti de görünürdür. Süre aşımı kayıt tüketimini veya yeni envanter
+gönderimini zorlamaz. RTU restart'ı süreleri sıfırlar; kalıcı zaman kaydı
+eklenmedi.
 
 Bölge değişikliğinde §4.3'teki MH yeniden başlatma kuralı geçerlidir.
 MH'nin ilk geçerli envanter girdisi bölgeyi belirler; aynı açılışta farklı
@@ -308,6 +313,15 @@ NVRAM RF görüntüsü korunur. Ana A kopyası doğrulanıp yedek B başarısız
 olursa yeni ayar korunur; web yedek kayıt hatasını bildirir. Bu durumda
 envanter/ayar gönderimi başlamaz. Operatör yeniden Kaydet seçtiğinde
 mevcut NVRAM onarımı tamamlanır ve uygulama akışı başlatılabilir.
+
+**COMMIT öncesi toparlanma (BQ-11):** WRITE yanıtı kaybolduktan sonra
+operatör aynı satırı ve aynı, henüz COMMIT edilmemiş grup kimliğini seçerek
+üç üyeyi baştan yazabilir. RTU üç EUI, bölge ve yazılabilir bloğun ilk işle
+birebir aynı olduğunu ve kabul edilmiş envanterle eşleştiğini denetler.
+COMMIT sonrası belirsizlik bu yolla yeniden başlatılmaz. Otomatik tekrar,
+bilinmeyen kimlikle ABORT veya başka fidere temizlik uygulanmaz. Bu yol
+mevcut konsol komutundadır; web Kaydet kilidi korunur. Son grup kimliğinin
+RTU restart'ı boyunca kalıcılığına ilişkin Bildirim 1 sınırı değişmedi.
 
 ### Bildirim 9 — MH değişimi bakımında tek EPOCH tekrarı (BQ-07)
 
@@ -408,3 +422,7 @@ Flash arızası/enerji kesintisi testi yapılmadı.
 | 08.10.2026 | 0.14 | Tek başına gönderilecek belge: dört açık soru öne alındı; on ayrıntılı bildirim aynı dosyaya taşındı; cevaplanmış sorular özetlendi, diğer rapor bağımlılıkları kaldırıldı. |
 | 08.10.2026 | 0.15 | Bildirim 8: web atama değişikliğinde boşaltma/envanter/ayar sırası ve kalıcı kayıt hata ayrımı eklendi. |
 | 08.10.2026 | 0.16 | Gerçek web/MH test kapsamı ve §4.3 bölge değişikliği için MH reset kuralı eklendi. |
+
+| 08.10.2026 | 0.17 | Bildirim 8: BQ-11 aynı üyelerle açık WRITE yeniden denemesi ve sınırları eklendi. |
+
+| 08.10.2026 | 0.18 | Bildirim 8: iptal olmadan RTU RAM bekleme nedeni ve süre gösterimi. |

@@ -1653,3 +1653,61 @@ aynı açılışta farklı bölge ERROR 0x02 döner. Web Kaydet otomatik MH rese
 yapmaz. Yeni bölgeyle ilk envanter yüklenirken etkin girdiler aynı bölgeyi
 taşımalıdır. Bu kural BOLATeX sorular/bildirimler belgesi 0.16 Bildirim 8'de
 aynı dosyadan gönderilecek şekilde açıklandı; yeni BQ açılmadı.
+
+
+## COMMIT öncesi WRITE toparlanması — 08.10.2026
+
+**Amaç:** BQ-11 cevabına göre, WRITE yanıtı kaybolduğunda aynı işi
+operatörün yeniden başlatmasını sağlamak.
+
+**Kullanım yeri:** `rf cfg-state` sonucu UNCERTAIN ise ve COMMIT henüz
+gönderilmediyse `rf cfg-apply <satır> <aynı grup kimliği>` kullanılmalıdır.
+Kimlik ilk denemede kontrol edilmiş, henüz COMMIT ile MH'ye tanıtılmamıştır.
+Üç EUI, bölge, satır ve yazılabilir blok ilk denemeyle aynı olmalıdır.
+Envanter/EPOCH/taşıma kontrolleri de sağlanınca üç WRITE baştan gönderilir;
+ardından COMMIT ve normal sonuç doğrulaması çalışır.
+
+Otomatik tekrar veya sonraki fidere geçiş yapılmaz. Web Kaydet kilidi
+korunur; yeni web API'si eklenmedi. COMMIT gönderildiyse bu yol kapalıdır.
+Bilinmeyen kimlikle ABORT gönderilmez. Başka fidere geçmek için üreticinin
+özel temizlik tarifi bu çalışmada uygulanmadı. Durmuş web sırası yeniden
+başlatılmaz; mevcut konsol komutu yalnız seçilen grubu tekrar dener.
+
+**Doğrulama:** Merkezi `test_rf_group` her üç WRITE konumunda timeout,
+değişmiş ayar/üye/bölge/satır reddi ve COMMIT sonrası kilidi sınar.
+`test_rf_group` ve gerçek taşıma/envanter senaryosu birlikte 199/199 geçti.
+ARM Release derlemesi geçti. Fiziksel AY kabulü bu turda yapılmadı.
+
+Envanter gönderim logu RTU satırını `satir`, protokoldeki gerçek Fider_ID'yi
+`fider` olarak gösterir. Hata logundaki eski satır değeri de `satir` adıyla
+belirtilir; paket içeriği değişmez.
+
+
+## Envanter bekleme bilgisi — 08.10.2026
+
+**Amaç:** Eski kayıtlar boşaltılırken bekleme nedenini ve süresini göstermek.
+**Kullanım yeri:** RF uygulama durum kartı ve konsoldaki `rf status`.
+
+DRAINING başlangıcı, mevcut neden ve nedenin başlangıcı RTU RAM'inde
+saklanmalıdır. Sayfa yenileme ve durum sorgusu başlangıç zamanlarını
+değiştirmemelidir. Durum yanıtında `WaitReason`, `WaitTotalMs` ve
+`WaitReasonMs` alanları bulunur; web süreleri saniye olarak gösterir.
+Toplam süre neden değişince korunur, neden süresi sıfırdan başlar.
+Web mevcut elle Yenile akışını kullanır; yeni otomatik sorgu eklenmedi.
+
+Nedenler: koşul kontrolü, canlı AY kayıtları, MH kayıtlarının boşaltılması,
+RTU kalıcı kayıt yazımı, MH kayıt servisi sorunu, RTU alarm kuyruğu,
+SCP meşguliyeti ve MH hazır olma koşulu. Aynı anda birden çok engel varsa
+mevcut işlem sırasındaki ilk engel gösterilir. Kayıt yazımı ifadesi hem
+çalışan yazımı hem mevcut yeniden deneme beklemesini kapsar; yeni hata
+veya tekrar algoritması değildir.
+
+İptal ve süreye bağlı zorunlu ilerleme eklenmemelidir. DRAINING bittiğinde
+bekleme alanları none/0 olur. RTU restart'ında süreler sıfırlanır; RTC,
+NVRAM veya ek Flash yazımı kullanılmaz. Süreler mevcut 32 bit milisaniye
+tick farkıdır; tek taşma boyunca hesap doğrudur, 49,7 günü aşan bir
+bekleme için sınırsız süre sayacı değildir.
+
+Merkezi regresyonlar gerçek envanter girişini kullanarak sorguların
+süreyi korumasını, neden değişimini, reseti ve tick taşmasını sınar.
+JSON alanları ve kaynak/gömülü web gösterimi ayrıca doğrulanır.
