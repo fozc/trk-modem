@@ -290,4 +290,14 @@ void test_cp56time2a_diff_reaches_signed_32_bit_limits(void)
         cp56time2a_diff_ms(&start, &negative_limit));
 }
 
+void test_large_date_differences_saturate_instead_of_overflowing(void)
+{
+    const cp56time2a_t before = cp56time2a_make(0U, 0U, 0U,
+                                              1U, 1U, 1U, 0U);
+    const cp56time2a_t after = cp56time2a_make(0U, 0U, 0U,
+                                             1U, 1U, 1U, 99U);
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, cp56time2a_diff_ms(&after, &before));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, cp56time2a_diff_ms(&before, &after));
+}
+
 /*** end of file ***/

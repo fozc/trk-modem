@@ -1,8 +1,8 @@
 # BOLATeX'e sorulacak RF-SCP konuları
 
-**Sürüm:** 0.10
+**Sürüm:** 0.12
 
-**Tarih:** 06.10.2026
+**Tarih:** 07.10.2026
 
 ## Amaç
 
@@ -11,8 +11,14 @@ metin arasındaki farkları BOLATeX'e sorulabilecek biçimde toplamak.
 
 ## Kullanım yeri
 
-BOLATeX ile teknik görüşme ve cevap takibinde kullanılır. Bu belge henüz
-gönderilmemiştir. Sorular protokol değişikliği veya uygulama onayı değildir.
+BOLATeX ile teknik görüşme ve cevap takibinde kullanılır. BQ-01–16 için
+[R0](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) ve
+[Ek-1](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) yanıtları alınmıştır.
+Yeni BQ-17–20 henüz gönderilmemiştir. Sorular protokol değişikliği veya
+uygulama onayı değildir. Yanıtların mevcut koda uygulanma durumu
+[kontrol belgesinde](RF_SCP_BOLATEX_YANIT_KONTROLU.md) tutulur.
+Eski “Mevcut uygulama” paragrafları sorunun yazıldığı zamanki kanıttır;
+bugünkü durum için kontrol belgesi esas alınmalıdır.
 Referans [SCP arayüz belgesi R1](BOLATeX_Teslim4_R1_RTU_Arayuzu_MD/MH_STM32_RTU_SCP_Arayuzu_R1.md);
 künyedeki MH/AY firmware `6dc02267`, PWRB firmware `915bb945` esas alınır.
 Örnekler [Ornek_SCP_Akislari](BOLATeX_Teslim4_R1_RTU_Arayuzu_MD/Ornek_SCP_Akislari/BENIOKU.md)
@@ -42,7 +48,7 @@ klasöründendir. Gerçek cihaz davranışı bu çalışmada ölçülmemiştir.
 
 ### BQ-01 — Geç gelen 101/105 kaydı ve alarmın çözülmesi
 
-**Durum:** [AÇIK] Alarm olay bağlantısı cevap gelene kadar bekletiliyor.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.5 LIVE_DATA ve §4.8 olay 101/105.
 
@@ -67,11 +73,11 @@ açılıştan da, AY restart sonrası başka açılıştan da olabilir.
 alarm takibi korunuyor; belirsiz geç kayıt için yeni latch davranışı
 uygulanmadı. Otomatik çözülme veya operatör onayı önerisi kesinleşmedi.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-02 — head=tail durumunda dolu ve boş halkanın ayrımı
 
-**Durum:** [AÇIK] Mevcut RTU kabulü var; MH davranışı doğrulanmadı.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.6 LOG_READ_HEAD, LOG_AVAILABLE_NOTIFY.
 
@@ -91,11 +97,11 @@ total ve tail verir. pending yalnız kaybolabilen bildirimdedir. free_slots
 Aynı head için pending=100 bildirimi varsa dolu halka okunuyor. Yaklaşık
 free_slots kesin tüketme kararı için kullanılmıyor.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-03 — Üzerine yazılan yuva ve CONSUME güvenliği
 
-**Durum:** [AÇIK] Yerel depolama beklemesi için kontrol uygulanmış durumda.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.6 halka dolunca en eski kaydın üzerine yazılması ve
 LOG_CONSUME_TO'nun yalnız indeks taşıması.
@@ -117,11 +123,11 @@ yeni kayıtlar yazar; eski yuva ezilir. Halka sarınca indeks yeniden 36 olur.
 durum değişmişse eski CONSUME yerine güncel tail'den tekrar başlanır.
 Bu iki SCP isteği arasında atomik işlem garantisi sağlamaz.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-04 — Örnek bildirim ACK'i ve paket zaman sırası
 
-**Durum:** [AÇIK] RTU beklentisi metne göre uygulanıyor.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §2.2/§4.6/§6.2 ve AY_05b_olay_kaydi_cekme.csv.
 
@@ -140,11 +146,11 @@ CONSUME isteği de RANGE yanıtından önce zamanlanmış görünür.
 örneklerle yapılıyor; işlem testleri HEAD yanıtı → RANGE yanıtı → CONSUME
 sırasıyla yürütülüyor. Kaynak CSV değiştirilmedi.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-05 — Depo sıfırlanması ve total/wrap sayaçları
 
-**Durum:** [AÇIK] İlk güncel HEAD yeniden başlangıç için esas alınıyor.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.6 LOG_READ_HEAD ve depo sıfırlanması.
 
@@ -163,11 +169,11 @@ MH açılışta biçimlendirme yaparsa ilk olay 138 olur.
 kaydı korunuyor. Depo silinmişken eski yuvayı tüketmek için otomatik
 varsayım yapılmıyor.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-06 — PARTIAL_COMMIT olay 122'sinin işlemle eşlenmesi
 
-**Durum:** [AÇIK] Grup işlemi sonrası doğrulama için gerekli.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.9 sebep 6 sonrası doğrulama ve §4.7/§4.8 olay 122.
 
@@ -185,11 +191,11 @@ taşımaz; yalnız fider/faz/zaman/açılış/uptime alanlarıyla eşleme gereki
 **Mevcut uygulama:** Eski 122, güncel grubun APPLIED kanıtı sayılmıyor.
 Ham kayıt korunuyor; bu özel doğrulama henüz bağlanmadı.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-07 — MH değişiminden sonra EPOCH_REFRESH tamamlanması
 
-**Durum:** [AÇIK] Operatörün mevcut epoch komutu kullanılabilir.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.3 EPOCH_REFRESH ve önerilen yaklaşık 30 s bekleme.
 
@@ -203,11 +209,11 @@ Ham kayıt korunuyor; bu özel doğrulama henüz bağlanmadı.
 **Mevcut uygulama:** ACK kesin tamamlanma sayılmıyor. Otomatik MH değişimi
 çıkarımı yapılmıyor; envanterden sonra operatör epoch yenileyebiliyor.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-08 — PWRB 0xE8 ham telemetri biçimi
 
-**Durum:** [AÇIK] Güç kartı tüketici geçişinde gerekli.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §5, PWR_TELEMETRY 96 B big-endian ham blok.
 
@@ -220,11 +226,11 @@ Ham kayıt korunuyor; bu özel doğrulama henüz bağlanmadı.
 **Mevcut uygulama:** 96 B ham veri korunuyor. Eski I²C decoder'ının aynı
 biçimi çözdüğü varsayılmıyor; PWR_SUMMARY'nin tanımlı alanları ayrı çözülüyor.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-09 — Envanter değişiminden sonra eski olayın ayırıcı kimliği
 
-**Durum:** [AÇIK] Geç alarm ve olay 122 eşlemesini etkiliyor.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.3 EUI-64 envanteri ve §4.7 olay kaydı.
 
@@ -247,11 +253,11 @@ Eski 101/105'in yeni ayırıcıda alarm açması veya eski 122'nin yeni grup
 başarısı sayılması uygulanmadı. BQ-01 ve BQ-06 cevaplarıyla birlikte
 ele alınmalıdır.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-10 — Geçici ve kalıcı arızanın tanımı ve olay eşlemesi
 
-**Durum:** [AÇIK] Kullanıcı BOLATeX'in sınıflamayı netleştirmesini istedi.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.7 arıza alanları, §4.8 olay tablosu ve
 total_permanent_faults / total_temporary_faults sayaçları.
@@ -287,11 +293,11 @@ Cevap geldikten sonra enum notu, liste/IEC104 yönlendirmesi ve Ceedling
 beklentileri birlikte gözden geçirilmelidir. BQ-01'deki alarm davranışı
 bu sınıflama tablosunun yerine geçmez.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ### BQ-11 — COMMIT öncesi yarım WRITE grubunun ABORT kimliği
 
-**Durum:** [AÇIK] Grup sıralayıcısının hata temizliğini etkiliyor.
+**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
 
 **Kaynak:** R1 §4.9 CFG_WRITE / CFG_COMMIT / CFG_ABORT.
 
@@ -317,7 +323,7 @@ Yarım WRITE sonucu belirsizse yeni grup kilitlidir. Mevcut group_id için
 STATUS_GET normal sorgu olarak kullanılabilir. Bunlar COMMIT öncesi
 kimlik sorusunu çözülmüş saydırmaz.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ## BQ-12 — Ayarsız kapasite/C-oranı yazımının uygulama doğrulaması
 
@@ -337,7 +343,7 @@ sonuç nasıl adlandırılmalıdır?
 kabulü ayrı gösterilir; bu yazıma `APPLIED` denmez. İlk yazımda gerçek
 kapasite zorunluluğu korunur. Otomatik akü değişti komutu gönderilmez.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ## BQ-13 — E7 sonuç bekleme ile yanıtsız bitişin ayrılması
 
@@ -359,7 +365,7 @@ Otomatik yeniden 05 gönderimi veya tahmini bitiş süresi eklenmedi.
 İptal ACK'i sayaçların sıfırlanmadığını kanıtlamaz; ayrı akıbet bildirimi
 aynı SIRA ile izlenir.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ## BQ-14 — Ayarsız telemetri periyodu ve b7 koruması
 
@@ -378,7 +384,7 @@ yalnız 1–10 s periyot yazmaktadır. b7 korunur, b6=0'dır. Ayarsız periyot
 yazımı açıklama bekler. Genel codec'in ham teşhis yeteneği bu servis
 kararının yerine geçmez.
 
-**Cevap:** Bekleniyor.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ## BQ-15 — LIVE_DATA için ölçüm zamanı ve RTU alım zamanı
 
@@ -410,7 +416,7 @@ Sonraki sorgu/RTC düzeltmesi eski kaydı yeniden zamanlandırmaz. Ölçüm
 kalitesi ve zamanın IV bilgisi ayrı tutulur. Bu tercih BOLATeX cevabı
 değildir; kaynak olay kayıtlarının zamanını değiştirmez.
 
-**Cevap:** Bekleniyor. Bu soru listesi henüz gönderilmemiştir.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ## BQ-16 — Operatör onayı hangi taraftan gelmelidir?
 
@@ -441,7 +447,7 @@ kontrol eder. Bu yol üreticinin belirlediği onay kanalı olarak sunulmamalıd�
 06.10.2026 kullanıcı kararıyla yeni faz bazlı web düğmesi/yazma API'si
 bu sorunun cevabına kadar eklenmeyecektir. Mevcut terminal yolu değiştirilmedi.
 
-**Cevap:** Bekleniyor. Belge henüz BOLATeX'e gönderilmemiştir.
+**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
 
 ## BQ-17 — RTU tek başına yeniden başladığında yeniden kurulum yolu
 
@@ -476,6 +482,88 @@ dogrulandi). Bu davranis üretici onayi olarak sunulamaz.
 
 **Cevap:** Bekleniyor. Belge henüz BOLATeX'e gönderilmemiştir.
 
+## BQ-18 — Normal sayaç taşması ile depo resetinin ayrımı
+
+**Durum:** [AÇIK] R0 BQ-05 karşılaştırması uygulanıyor.
+
+**Kaynak:** R0 BQ-05, total u32 ve wrap u16.
+
+**Kanıt:** wrap 65535→0 olduğunda `total − (wrap × 100 + head)`
+değişir. total UINT32_MAX→0 olduğunda total küçülür. Verilen iki
+reset koşulu normal taşmada da doğru olur.
+
+**Sorular:** Normal taşmayı reset uyarısından ayırmak için hangi modüler
+karşılaştırma kullanılmalıdır? Bu geçişte eski batch bırakılıp güncel
+tail'den devam edilmesi yeterli midir?
+
+**Mevcut uygulama:** Verilen koşul aynen uygulanır; eski tüketme cursor'u
+bırakılır. Normal taşma için özel kurtarma algoritması eklenmemiştir.
+
+**Cevap:** Bekleniyor.
+
+## BQ-19 — Boot counter sıfırken alarm olayının tekilleştirilmesi
+
+**Durum:** [AÇIK] Ham kayıt ve alarm tekilleştirmesinin kapsamı ayrılmalıdır.
+
+**Kaynak:** R0 BQ-03 tekilleştirme önerisi ve Ek-1 BQ-16 zorunlu alarm kuralı.
+
+**Kanıt:** R0 ham kayıt için boot_counter=0 iken tekilleştirme yapmayın
+diyor. Ek-1, onaylanmış 101/105'in kopyasıyla alarmın yeniden açılmamasını
+istiyor. Aynı dört alan farklı açılışlarda aynı olabilir; mevcut LIVE
+açılış sayacı taşımaz.
+
+**Sorular:** Boot counter=0 olan 101/105 için alarm düzeyinde dört alan
+eşleşmesi kullanılmalı mıdır? Farklı açılışın aynı alanlı kaydı nasıl
+ayrılmalıdır? RTU restart sonrası onay bilgisinin korunmasında üreticinin
+önerdiği kayıt ufku var mıdır?
+
+**Mevcut uygulama:** Ham kayıtlar korunur. Son 128 alarm kimliği/EUI RAM'de
+tutulur; RTU startup sıfırlar. Tam veya kalıcı tekilleştirme garantisi verilmez.
+
+**Cevap:** Bekleniyor.
+
+## BQ-20 — Eksik olay dizisi ve fazlar arası geç gelen kayıt
+
+**Durum:** [AÇIK] BQ-10 sınıf tablosu alınmıştır; eksik dizi sınırı açık kalmıştır.
+
+**Kaynak:** R0 BQ-10 ve BQ-03 halkanın eski kaydı kaybedebilmesi.
+
+**Kanıt:** RTU bir 3 kaydını çektiğinde önceki 6/100/101/117 halkadan
+silinmiş olabilir. Aynı açmanın diğer fazındaki 1/7 daha sonra MH'ye
+gelebilir. HEAD boş olması yalnız MH'de o anda kayıt olmadığı anlamındadır.
+
+**Sorular:** Önceki dizi yokken 3 sınıflandırılmadan yalnız ham olay olarak
+saklanmalı mıdır? Diğer fazın 1/7 kaydı için garanti edilen aktarım sırası
+veya süre sınırı var mıdır? 100/101'in tek kalıcı arıza olduğuna karar
+vermek için hangi kapanış ölçütü kullanılmalıdır?
+
+**Mevcut uygulama:** Dizi sınıflaması ve ayrı fider sayımı uygulanmıştır.
+Eksik dizi/saat kanıtı yoksa kesin sayım yapılmaz. Faz listelerindeki
+geçmiş sonuçlar sonradan gelen başka faz nedeniyle silinmez; ayrıntı
+bildirim taslağındadır.
+
+**Cevap:** Bekleniyor.
+
+## BOLATeX'e bildirilecek yeni RTU ürün kararları
+
+07.10.2026 kullanıcı yanıtlarıyla altı tercih uygulanmıştır. Bunlar
+üretici cevabı değildir. Ayrıntılı bildirim taslağı
+[uygulama raporu bölüm 7](../BOLATEX_YANIT_UYGULAMA_RAPORU_2026-10-07.md#7-bolatexe-bildirilecek-rtu-ürün-kararları--07102026)
+içindedir; dış kanaldan gönderilmemiştir.
+
+- BQ-11: son group_id/fider kalıcılığı şimdilik ertelenir; RTU startup
+  sıfırlar. BQ-17'deki süren MH işi sorusu bu tercihle birlikte ele alınmalıdır.
+- BQ-10: 4/5→3 arada 6 yoksa yalnız ham olaydır. Faz listeleri korunur,
+  fider sayımı ayrıdır. Sayaçlar bu RTU oturumunda işlenen kayıtlar içindir.
+- BQ-09: envanter değişimi eski AY/MH günlükleri boşaltıldıktan sonra
+  yapılır. Total sınırı RAM'dedir; R1'in sonradan gelen eski etiket
+  belirsizliği çözülmüş sayılmaz.
+- BQ-16: operatör yerine kalıcı kayıt servisi otomatik teslim alma
+  onayı verir. SCADA alarm noktası ve kalıcı gönderilmedi/replay kaydı
+  eklenmiştir; SCP onay/Trip_Failed temizleme komutu üretilmez.
+- BQ-19: son 128 alarm kimliği/EUI RAM'de tutulur; MH restart ile
+  korunur, RTU restart ile sıfırlanır. Ham kayıt tekilleştirilmez.
+
 ## RTU tarafinda alinan kararlar
 
 Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararları
@@ -486,16 +574,16 @@ Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararlar�
 | Geçersiz RTC | TIME_SYNC atlanır, envanter yüklenir; saat geçerli olunca eşitlenir |
 | Tüketme koşulu | Başarılı kalıcı kayıt veya RTU gönderimi yeterlidir; remote ACK ayrıca beklenmez |
 | Ham günlük | Ayrı 8 KB; tam 60 B paket korunur, eski arıza alanları tutulur |
-| Arıza sınıflaması | Olay 1/7 kalıcı, 3 geçici RTU kabulüdür; BQ-10 teyidi beklenir. Süre uint32_t olur |
+| Arıza sınıflaması | Süre uint32_t olur. Dizi sınıflaması, ayrı fider sayımı ve 4/5→3 ham-olay tercihi uygulandı; eksik dizi BQ-20 sınırı sürer |
 | HEAD sorgusu | 60 s RTU poll tercihi; dokümanda zorunlu RTU süresi değildir |
 | Tekrar kayıt | Restart/kayıp tüketme sonucunda kopya mümkündür; kalıcı tekilleştirme garantisi yoktur |
 | Sahadaki eski biçim | Saha cihazı yoktur; eski RF model/JSON/görüntü migration'ı istenmemiştir |
 | RF ayar kalıcılığı | 06.10.2026: Kaydet istenen ayarı NVRAM’e yazar; Uygula ayrı, APPLIED RAM durumudur; PARTIAL/FAILED otomatik tekrarlanmaz |
-| IEC104 canlı veri zamanı | Şimdilik RTU alım saati; RTC geçersizse IV=1. Ölçüm zamanı diye sunulmaz; BQ-15 teyidi beklenir |
+| IEC104 canlı veri zamanı | RTU alım saati; RTC geçersizse IV=1. BQ-15 bu zamanın kullanılmasını doğruladı; saat kaynağı RTU alımı olarak belirtilir |
 | Enerji/yük ve kalite | LIVE bit 0 enerji, bit 1 yük akımı olarak aynen kullanılır. Eski nominal gösterge adları tutulmaz. Modbus 49500–49520 kalite bloğu RTU ürün kararıdır; bit 0 akım, bit 1 enerji, bit 2 yük geçerliliği taşır. Web eski/eksik örnekte var/yok yerine — gösterir. Bu tercihler BOLATeX standardı olarak sunulmamalıdır |
 | Arıza göstergeleri | 06.10.2026 kullanıcı kararı: anlık arıza akımı/süresi/tipi alanları kaldırılır; geçici/kalıcı arıza listeleri kalır. Olay ofset 13 `nominal_current_status`, dokümandaki yük var anlamıyla doğrudan saklanır; ters çevrilmez. IEC104 spontane/replay ilk liste kaydı IOA'larından kendi olay zamanıyla gönderilir; hazırlanan paket 06.10.2026 kullanıcı commit talebiyle onaylandı |
-| Operatör onayı kanalı | 06.10.2026 kullanıcı kararı: onayın nereden gelmesi gerektiği BOLATeX'e BQ-16 olarak sorulur; yeni web düğmesi/yazma API'si cevap bekler. Mevcut terminal komutu değişmez |
-| Ayarsız Powerboard ayarı | Kapasite/C-oranı için MH kayıt ve yankı kabulü ayrı gösterilir; uygulanmış sayılmaz. Ayarsız periyot BQ-14 cevabını bekler |
+| Operatör onayı kanalı | 07.10.2026: kalıcı kayıt/gönderim kuyruğu sonrasında RTU otomatik onaylar. Manuel onay kaldırıldı; SCP temizleme/onay komutu üretilmez. Faz başına SCADA alarm IOA'sı ve 128 kimlik RAM sınırı uygulandı |
+| Ayarsız Powerboard ayarı | Kapasite 7–54 Ah; ayarsız seçenek yok. C-oranı ayarsızsa yankı kabulü ayrı sonuçtur. BQ-14 mevcut 1–10 s periyot tercihini uygun buldu |
 
 K5 kalıcılık/otomatik tekrar tercihi kullanıcı kararıyla netleşmiştir.
 Yeni IOA/Modbus adresleri K9’da RTU ürün kararı olarak açıktır; BOLATeX’in
@@ -515,3 +603,6 @@ protokol cevabı bu ürün kararının yerine geçmez.
 | 06.10.2026 | 0.8 | Anlık arıza göstergelerinin kaldırılması RTU kararı olarak eklendi; olay yük biti ters dönüşümü hata olarak düzeltildi, üretici sorusu değildir |
 | 06.10.2026 | 0.9 | BQ-16 operatör onayının kaynağı/kanalı, MH/AY iletimi ve canlı veri koşulu; kullanıcı yeni web API'sini cevap gelene kadar bekletti |
 | 07.10.2026 | 0.10 | BQ-17 RTU-tek-restart yeniden kurulum yolu eklendi (bench gözlemi: MH ayaktayken RTU reseti süresiz BEKLIYOR bırakıyor; kurtarma MH reseti) |
+| 07.10.2026 | 0.11 | BQ-01–16 yanıt alındı kaydı; uygulama kontrolü; BQ-18 normal sayaç taşması, BQ-19 boot sıfırken alarm tekilleştirme, BQ-20 eksik/geç olay dizisi |
+
+| 07.10.2026 | 0.12 | Altı kullanıcı kararı ve BOLATeX'e bildirim taslağı; son grup kalıcılığı ertelendi, otomatik kayıt onayı ve SCADA alarm gönderimi uygulandı |

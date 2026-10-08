@@ -102,6 +102,16 @@ bool rf_group_matches_config(void)
         (0 == memcmp(feeder->t_eui64, group.status.members[2], 8U));
 }
 
+bool rf_group_is_active(void)
+{
+    if ((RF_GROUP_ID_IN_USE == group.status.state) && group.status.has_report &&
+        ((1U == group.status.report.state) || (2U == group.status.report.state)))
+    {
+        return true;
+    }
+    return !can_start();
+}
+
 static bool bindings_match(const rf_group_t *job)
 {
     for (size_t index = 0U; index < 3U; index++)
@@ -124,8 +134,10 @@ bool rf_group_start(size_t line_index, uint8_t group_id)
 {
     rf_group_t candidate = {0};
 
-    if ((MAX_POWER_LINE_COUNT <= line_index) || !can_start() ||
-        !scp_is_free() || !rf_inventory_is_loaded() ||
+    /* BOLATeX BQ-11: group id zero is not a valid commit identity; every
+     * COMMIT must carry a fresh non-zero value. */
+    if ((0U == group_id) || (MAX_POWER_LINE_COUNT <= line_index) ||
+        !can_start() || !scp_is_free() || !rf_inventory_is_loaded() ||
         !rf_comm_can_load_inventory())
     {
         return false;
@@ -177,7 +189,8 @@ bool rf_group_start(size_t line_index, uint8_t group_id)
 
 bool rf_group_handle_status(const rf_scp_message_t *message)
 {
-    if ((NULL == message) || !group.commit_sent ||
+    if ((NULL == message) ||
+        (!group.commit_sent && (RF_GROUP_ID_IN_USE != group.status.state)) ||
         !(((RF_SCP_CMD_CFG_STATUS_NOTIFY == message->cmd) &&
            (SCP_TYPE_SET == message->type)) ||
           ((RF_SCP_CMD_CFG_STATUS_GET == message->cmd) &&
@@ -194,6 +207,13 @@ bool rf_group_handle_status(const rf_scp_message_t *message)
     {
         return false;
     }
+    if (RF_GROUP_ID_IN_USE == group.status.state)
+    {
+        /* Observe the existing MH job, never apply it to this unsent job. */
+        group.status.report = message->body.config;
+        group.status.has_report = true;
+        return true;
+    }
     group.group_known = true;
     group.status.report = message->body.config;
     group.status.has_report = true;
@@ -202,9 +222,7 @@ bool rf_group_handle_status(const rf_scp_message_t *message)
         case 1U:
         case 2U:
             /* Delayed progress must not undo a terminal result. */
-            if ((RF_GROUP_APPLIED != group.status.state) &&
-                (RF_GROUP_FAILED != group.status.state) &&
-                (RF_GROUP_COMMITTING != group.status.state) &&
+            if ((RF_GROUP_COMMITTING != group.status.state) &&
                 (RF_GROUP_ABORTING != group.status.state))
             {
                 group.status.state = RF_GROUP_WAITING;
@@ -252,6 +270,8 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
         {
             group.status.state = (0U == message.body.config.state) ?
                                  RF_GROUP_WRITING : RF_GROUP_ID_IN_USE;
+            group.status.report = message.body.config;
+            group.status.has_report = true;
         }
         else
         {

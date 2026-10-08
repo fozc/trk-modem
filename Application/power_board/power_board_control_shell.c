@@ -44,6 +44,9 @@ static const char *command_state_name(power_command_state_t state)
         case POWER_COMMAND_REJECTED: return "rejected";
         case POWER_COMMAND_UNCERTAIN: return "outcome unknown; query result";
         case POWER_COMMAND_RESTARTED: return "MH restarted";
+        case POWER_COMMAND_NO_RESPONSE: return "finished without result";
+        case POWER_COMMAND_CANCELLED: return "cancelled; counters preserved";
+        case POWER_COMMAND_CANCEL_NO_EFFECT: return "cancel had no effect";
         default: return "unknown";
     }
 }

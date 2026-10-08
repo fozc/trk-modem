@@ -5,7 +5,7 @@
 | Rapor tarihi | 06.10.2026 (gün sonu kapanışı) |
 | Kapsam | RF hub (MH) simülatörü ve HIL test süütünün 06.10.2026 tarihindeki tüm koşuları, düzeltmeleri ve sonuçları |
 | Dayanak plan | `RF_HUB_SIM_HIL_TEST_PLANI_2026-10-06.md` v1.2 |
-| Sonuç | Kapanış koşusu **26/26 PASS (exit=0)**; donanımsız self-test **57/57**; üretim bulgu adayı 2, doğrulanmış olumlu davranış 8 |
+| Sonuç | Seçili uygulanmış bench vakaları **26/26 PASS (exit=0)**; donanımsız self-test **57/57**. Ertelenmiş senaryolar ve üretim UART3 kabulü bu sonuçta yoktur |
 | Cihaz durumu | HIL bench imajı yüklü (`RF_SCP_OVER_MODBUS_PORT=1` derlemesi); üretime dönüş = 0 ile derle + xmodem |
 
 ## 1. Amaç ve kullanım yeri
@@ -37,9 +37,11 @@ onların yerine geçmez, üst özetidir.
 - **DUT RF store'u**: web API üzerinden fider 1-2 x 3 faz dolduruldu
   (EUI `00124B0038C9F1x/2x/3A`, zone 1); `configure_dut.py` bu akışı
   kalıcılaştırır. Parola IP'den türetilir (`admin<son oktet+1>`).
-- **Çalışır imaj kanıtı**: her koşunun manifestinde `observed_hub_fw`;
-  kapanış koşusunda `SIM-T4R1` (simülatör telde yanıt veriyor = HIL
-  taşıması etkin).
+- **Peer yanıtı kanıtı**: `observed_hub_fw=SIM-T4R1`, MH simülatörünün
+  yanıt verdiğini gösterir. DUT build/CRC/profil kimliğinin kanıtı değildir.
+  Tarihsel manifestteki profil 0, kaynak varsayılanından alınmıştır;
+  rapordaki bench profil 1 ile aynı kanıt sayılmamalıdır. Ayrıntı ve
+  07.10.2026 yazılım düzeltmesi [bağımsız değerlendirmededir](RF_HIL_DEGERLENDIRME_2026-10-06.md).
 
 ## 3. Donanımsız doğrulama (port açılmadan)
 
@@ -66,12 +68,12 @@ yapıldığını gösterir.
 | 20261006-201011 | 26 | PASS=23 FAIL=3 | v1.2 süiti ilk koşu; g3/g4 (konsol desen + kapasite-doğrulama zinciri), d6 (kurulum yarışı) |
 | 20261006-202929–211538 (9 koşu) | 1-3 | karışık | g3/g4/d6/h7 tekil düzeltme ve doğrulama koşuları |
 | 20261006-205735 | 26 | PASS=25 FAIL=1 | a1: çalışır-imaj sondası vaka başlangıcını blokladı (harness); sonda engellemesiz yapıldı |
-| **20261006-211601** | **26** | **PASS=26 (exit=0)** | **Kapanış koşusu — plan v1.2 kapsamı tam geçiş** |
+| **20261006-211601** | **26** | **PASS=26 (exit=0)** | **Kapanış — seçili uygulanmış bench vakalarının geçişi** |
 
 Not: `203959` koşusu da 25/26'dır (h7'nin zamanlama kırılganlığı
-dönemi); ayrıntılar koşu raporundadır. Hata sınıflaması: günün tüm
-FAIL'leri harness/timing kaynaklı çıktı; **DUT kaynaklı tek kalıcı
-başarısızlık yok** (bkz. §5-6).
+dönemi); ayrıntılar koşu raporundadır. §6, izlenen harness/timing
+düzeltmelerini açıklar. Kapanışın seçili vakalarında FAIL yoktur;
+günün tüm önceki FAIL izleri bağımsız olarak yeniden sınıflandırılmadı.
 
 ## 5. DUT davranış doğrulamaları (telde kanıtlı)
 
@@ -130,6 +132,11 @@ başarısızlık yok** (bkz. §5-6).
    isimleri "UNKNOWN" görünüyor (rf log isim tablosu eksiki; kozmetik).
 
 ## 8. Kalış ve sonraki adımlar
+
+07.10.2026: login whitespace ve komut adı bulguları yazılımda düzeltildi.
+İmaj/profil ve DEFERRED başarı kapıları da düzeltildi. Yeni firmware ile
+fiziksel koşu yapılmadı; tarihsel PASS kayıtları yeni yazılımın testi
+olarak kullanılmamalıdır. Güncel durum bağımsız değerlendirme v1.1'dedir.
 
 - Kayıtlı ertelenmiş vakalar: soak profili (gerçek 60/120 s grup
   bütçeleri, 60 s olay yoklaması, saatlik TIME_SYNC statik kontrol),

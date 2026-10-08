@@ -328,7 +328,10 @@ static void enable_valid_lines(void)
         iec.line.ioa_t_yuk_akimi_varyok,
         iec.line.ioa_r_rfhab_varyok,
         iec.line.ioa_s_rfhab_varyok,
-        iec.line.ioa_t_rfhab_varyok
+        iec.line.ioa_t_rfhab_varyok,
+        iec.line.ioa_r_trip_failed,
+        iec.line.ioa_s_trip_failed,
+        iec.line.ioa_t_trip_failed
     };
     for (size_t i = 0U; i < MAX_ARRAYS; i++)
     {
@@ -559,6 +562,32 @@ void test_modbus_rf_quality_block_rejects_overlapping_address_ranges(void)
     config.addr_modem_reset = 0U;
     config.addr_aku_uyarisi = 49500U;
     TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+}
+
+void test_trip_failure_ioas_parse_validate_and_reach_the_saved_line(void)
+{
+    enable_valid_lines();
+    iec104_set_line_config_StopIgnore();
+    iec104_set_line_config_StubWithCallback(capture_line);
+    iec104_config_set_StubWithCallback(capture_iec);
+    iec104_config_get_IgnoreAndReturn(NULL);
+    iec104_config_sync_ExpectAndReturn(0);
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config(
+        "{\"Hatlar\":{\"IOA_R_TripFailed\":[500000],"
+        "\"IOA_S_TripFailed\":[500001],\"IOA_T_TripFailed\":[500002]}}", &iec));
+    TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
+    TEST_ASSERT_EQUAL_UINT32(500000U,
+        iec104_ioa_3byte_to_uint32(saved_line.trip_failed[PHASE_L1]));
+    TEST_ASSERT_EQUAL_UINT32(500002U,
+        iec104_ioa_3byte_to_uint32(saved_line.trip_failed[PHASE_L3]));
+    const iec104_line_config_t before = saved_line;
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config(
+        "{\"Hatlar\":{\"IOA_R_TripFailed\":[1000]}}", &iec));
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    TEST_ASSERT_EQUAL_MEMORY(&before, &saved_line, sizeof(saved_line));
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config(
+        "{\"Hatlar\":{\"IOA_R_TripFailed\":[16777216]}}", &iec));
+    TEST_ASSERT_EQUAL_MEMORY(&before, &saved_line, sizeof(saved_line));
 }
 
 /*** end of file ***/

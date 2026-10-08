@@ -1,7 +1,7 @@
 # Test Altyapısı
 
-**Sürüm:** 1.34
-**Tarih:** 2026-10-06
+**Sürüm:** 1.36
+**Tarih:** 2026-10-07
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
@@ -67,6 +67,15 @@ ruby test/run_all.rb clean
 ```
 
 ## Yeni test ekleme
+
+RF-SCP kayıt/onay regresyonları merkezi Ceedling paketindedir:
+`rf/test_rf_faults.c` dizi ve fider sayımını,
+`rf/test_rf_events.c` kayıt/128 kimlik/otomatik onay/boşaltmayı,
+`iec104/test_iec104_event_log.c` karma fault/alarm kalıcılığını,
+`iec104/test_iec104_replay_scenario.c` gerçek replay (yeniden gönderim)
+sürecini sınar. Son test, değiştirilmemiş Contiki scheduler'ını host
+wrapper ile derler; vendor conversion uyarılarının yerel istisnası
+production replay kontrollerine uygulanmaz. Fiziksel zamanlama kanıtı değildir.
 
 Saf hesaplama, codec veya modül senaryoları `test/<modül>/` altında Unity
 testi olarak eklenmelidir. Donanım ve komşu modül çağrıları CMock ya da küçük
@@ -806,6 +815,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 | 2026-10-06 | 1.32 | Anlık arıza alanlarının kaldırılması; doğrudan olay yük biti, liste IOA hazırlığı ve 432/432 ilgili regresyon |
 | 2026-10-06 | 1.33 | Gerçek arıza/IEC104 günlük shell çıktısı testleri; 172/172 ilgili regresyon ve 175 çerçeve fixture kontrolü |
 | 2026-10-06 | 1.34 | Logging açık/kapalı olay günlüğü, gönderim durumu ve hata koruması; 95/95 ilgili test |
+| 2026-10-07 | 1.35 | HIL login/komut adı ve imaj/profil/başarı kapıları; web auth, 79 RF, 57 sim ve 9 kanıt kapısı testi |
 
 ## 06.10.2026 modül test genişletmesi
 
@@ -1035,3 +1045,18 @@ ruby -S ceedling "test:pattern[(test_iec104_event_log|test_rf_events|test_fault_
 0 hata/0 uyarıdır. HIL raporunu inceleme sırasında ayrıca simülatör
 self-test'i port açılmadan 57/57 geçti; bu sayılar fiziksel kabul veya
 tek bir birleşik test sayısı olarak sunulmamalıdır.
+
+## 07.10.2026 HIL yazılım bulguları
+
+Web auth integration, gerçek login handler/yardımcılarını çalıştırır.
+Whitespace/alan sırası/ASCII escape ve bozuk/uzun/NUL girişte oturumun
+korunması sınanır; mevcut token/lockout testleri de geçer.
+
+`integration/rf_hil/run_tests.py`, 57 simülatör testini ve yeni
+`system/rf_hil/test_hil_identity.py` içindeki 9 testi çalıştırır. Gerçek
+runner'da eksik/yanlış/değişen imaj, profil, boş/ertelenmiş veya tekrarlı
+seçim sınanır. Üretim status callback'i gerçek boot header'ıyla 0/1 host
+C derlemesinde doğrulanır. Serial/console sınırları test çiftidir.
+
+RF gerçek SCP RX paketi 79/79 ve Release 0 hata/0 uyarıyla geçti.
+Fiziksel HIL veya yükleme yapılmadı; yeni imajla yeniden koşu gerekir.

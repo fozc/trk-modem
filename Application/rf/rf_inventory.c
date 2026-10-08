@@ -32,6 +32,11 @@
 #include "rf_scp.h"
 #include "rf_log.h"
 #include "rf_discovery.h"
+#include "rf_events.h"
+#include "rf_alarm.h"
+#include "rf_faults.h"
+#include "rf.h"
+#include "rf_group.h"
 #include "contiki.h"
 #include "timer.h"
 #include "stm32u3xx_hal.h"
@@ -65,9 +70,21 @@ static bool epoch_waiting[4];
 static uint32_t epoch_started_ms[4];
 static uint8_t epoch_feeder;
 static scp_cmd_done_fn_t epoch_done;
+static bool waiting_live;
+static bool update_pending;
+static bool update_sent;
+static rf_inventory_status_t before_drain;
+static bool has_boundary;
+static uint32_t boundary_total;
+static uint32_t uploaded_bindings;
+
+static void begin_upload(void);
+static bool send_update(void);
 
 _Static_assert(MAX_POWER_LINE_COUNT >= 7,
                "MH inventory supports seven feeder IDs");
+_Static_assert(MAX_POWER_LINE_COUNT * 3U <= 32U,
+               "Accepted inventory bitmap must fit a word");
 
 /* ======================================================================
  * Index helpers
@@ -170,6 +187,20 @@ static void on_end_done(scp_cmd_result_t result, const scp_packet_t *rsp)
 
     if (SCP_CMD_OK == result)
     {
+        for (size_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
+        {
+            for (size_t phase = 0U; phase < 3U; phase++)
+            {
+                const size_t bit = feeder * 3U + phase;
+                if (0U == (uploaded_bindings & (UINT32_C(1) << bit)))
+                {
+                    rf_faults_reset_phase((uint8_t)(feeder + 1U),
+                                           (uint8_t)(phase + 1U));
+                    (void)memset(&bindings[feeder][phase], 0,
+                                  sizeof(bindings[feeder][phase]));
+                }
+            }
+        }
         if (0U == sent_count)
         {
             inventory_status = (0U == skipped_count)
@@ -285,13 +316,31 @@ static void send_next(void)
  * Public API
  * ====================================================================== */
 
-void rf_inventory_start(void)
+bool rf_inventory_start(void)
 {
-    if (rf_inventory_is_active() || !rf_comm_can_load_inventory())
+    if (rf_inventory_is_active() || !rf_comm_can_load_inventory() ||
+        !rf_events_inventory_allowed() || rf_group_is_active())
     {
-        return;   /* zaten calisiyor */
+        return false;
     }
 
+    if (rf_inventory_is_loaded())
+    {
+        before_drain = inventory_status;
+        inventory_status = RF_INVENTORY_DRAINING;
+        waiting_live = true;
+        update_pending = false;
+        upload_timer_started = false;
+        return true;
+    }
+    begin_upload();
+    return true;
+}
+
+static void begin_upload(void)
+{
+    rf_hub_restarted();
+    uploaded_bindings = 0U;
     inventory_status = RF_INVENTORY_LOADING;
     feeder_index = 0U;
     phase_index  = 0U;
@@ -312,11 +361,80 @@ bool rf_inventory_is_loaded(void)
 
 bool rf_inventory_is_active(void)
 {
-    return (RF_INVENTORY_LOADING == inventory_status);
+    return (RF_INVENTORY_LOADING == inventory_status) ||
+           (RF_INVENTORY_DRAINING == inventory_status);
+}
+
+static bool live_logs_empty(uint32_t now_ms)
+{
+    for (uint8_t feeder = 1U; 4U >= feeder; feeder++)
+    {
+        for (uint8_t phase = 1U; 3U >= phase; phase++)
+        {
+            rf_phase_data_t data;
+            const uint8_t source = (uint8_t)((feeder << 2U) | phase);
+            if (rf_get_source_data(source, now_ms, &data) && data.is_online &&
+                (0U != data.live.log_pending))
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static void continue_drain(void)
+{
+    if (!live_logs_empty(HAL_GetTick()))
+    {
+        waiting_live = true;
+        return;
+    }
+    if (waiting_live)
+    {
+        waiting_live = false;
+        rf_events_request_drain();
+        return;
+    }
+    uint32_t total;
+    if (!rf_alarm_is_idle() || !rf_events_drain_complete(&total) ||
+        !scp_is_free() || !rf_comm_can_load_inventory())
+    {
+        return;
+    }
+    if (update_pending)
+    {
+        if (!send_update())
+        {
+            return;
+        }
+    }
+    else
+    {
+        begin_upload();
+    }
+    boundary_total = total;
+    has_boundary = true;
+    rf_events_finish_drain();
+}
+
+bool rf_inventory_get_boundary(uint32_t *total)
+{
+    if ((NULL == total) || !has_boundary)
+    {
+        return false;
+    }
+    *total = boundary_total;
+    return true;
 }
 
 void rf_inventory_continue(void)
 {
+    if (RF_INVENTORY_DRAINING == inventory_status)
+    {
+        continue_drain();
+        return;
+    }
     if (rf_inventory_is_active() && upload_timer_started &&
         timer_expired(&upload_timer))
     {
@@ -334,6 +452,12 @@ void rf_inventory_continue(void)
 
 void rf_inventory_reset(void)
 {
+    const scp_cmd_done_fn_t pending_done =
+        (update_pending && !update_sent) ? update_done : NULL;
+    if (NULL != pending_done)
+    {
+        update_done = NULL;
+    }
     (void)memset(epoch_waiting, 0, sizeof(epoch_waiting));
     (void)memset(bindings, 0, sizeof(bindings));
     inventory_status = RF_INVENTORY_IDLE;
@@ -343,6 +467,14 @@ void rf_inventory_reset(void)
     skipped_count = 0U;
     inventory_zone_set = false;
     upload_timer_started = false;
+    update_pending = false;
+    update_sent = false;
+    waiting_live = false;
+    has_boundary = false;
+    if (NULL != pending_done)
+    {
+        pending_done(SCP_CMD_RESTARTED, NULL);
+    }
 }
 
 void rf_inventory_request_sent(uint8_t cmd)
@@ -380,6 +512,23 @@ void rf_inventory_record_ack(const scp_packet_t *request)
     {
         return;
     }
+    if ((RF_SCP_CMD_INVENTORY_SET == request->cmd) &&
+        (RF_INVENTORY_LOADING == inventory_status))
+    {
+        const uint32_t bit = ((uint32_t)body[1] - 1U) * 3U + body[2] - 1U;
+        uploaded_bindings |= UINT32_C(1) << bit;
+    }
+    if (0U < body[1])
+    {
+        const rf_inventory_entry_t *current =
+            &bindings[(size_t)body[1] - 1U][(size_t)body[2] - 1U];
+        if (!rf_eui64_is_zero(current->eui64) &&
+            ((current->zone != body[0]) ||
+             (0 != memcmp(current->eui64, &body[3], 8U))))
+        {
+            rf_faults_reset_phase(body[1], body[2]);
+        }
+    }
     /* Same EUI moves to its new assignment; deletion is idempotent. */
     for (size_t line = 0U; line < MAX_POWER_LINE_COUNT; line++)
     {
@@ -387,6 +536,11 @@ void rf_inventory_record_ack(const scp_packet_t *request)
         {
             if (0 == memcmp(bindings[line][phase].eui64, &body[3], 8U))
             {
+                if ((body[1] != line + 1U) || (body[2] != phase + 1U))
+                {
+                    rf_faults_reset_phase((uint8_t)(line + 1U),
+                                           (uint8_t)(phase + 1U));
+                }
                 (void)memset(&bindings[line][phase], 0,
                               sizeof(bindings[line][phase]));
             }
@@ -402,6 +556,18 @@ void rf_inventory_record_ack(const scp_packet_t *request)
         entry->phase = body[2];
         (void)memcpy(entry->eui64, &body[3], 8U);
         entry->channel = body[11];
+        entry->line_index = UINT8_MAX;
+        for (size_t line = 0U; line < MAX_POWER_LINE_COUNT; line++)
+        {
+            const rf_feeder_t *desired = rf_store_get((feeder_id_t)line);
+            if ((NULL != desired) && desired->in_use &&
+                (desired->config.zone_id == body[0]) &&
+                (desired->config.fider_id == body[1]))
+            {
+                entry->line_index = (uint8_t)line;
+                break;
+            }
+        }
     }
 }
 
@@ -410,7 +576,7 @@ bool rf_inventory_get_binding(uint8_t source, rf_inventory_entry_t *out)
     uint8_t feeder = (source >> 2U) & 0x07U;
     uint8_t phase = source & 0x03U;
 
-    if ((NULL == out) || (0U == feeder) || (0U == phase))
+    if ((NULL == out) || (0U == feeder) || (4U < feeder) || (0U == phase))
     {
         return false;
     }
@@ -431,6 +597,16 @@ static void on_update_done(scp_cmd_result_t result,
     scp_cmd_done_fn_t done = update_done;
 
     update_done = NULL;
+    update_pending = false;
+    update_sent = false;
+    if (SCP_CMD_RESTARTED != result)
+    {
+        inventory_status = before_drain;
+    }
+    if (SCP_CMD_OK != result)
+    {
+        has_boundary = false;
+    }
     if (SCP_CMD_OK == result)
     {
         (void)rf_discovery_remove(pending_update.eui64);
@@ -444,10 +620,14 @@ static void on_update_done(scp_cmd_result_t result,
 bool rf_inventory_update(const rf_inventory_entry_t *entry,
                           scp_cmd_done_fn_t done)
 {
-    uint8_t body[12];
-
     if ((NULL == entry) || !rf_inventory_is_loaded() ||
-        !rf_comm_can_load_inventory() || !scp_is_free())
+        !rf_comm_can_load_inventory() || !scp_is_free() || rf_group_is_active())
+    {
+        return false;
+    }
+    if ((7U < entry->zone) || (4U < entry->feeder) ||
+        (1U > entry->phase) || (3U < entry->phase) ||
+        rf_eui64_is_zero(entry->eui64))
     {
         return false;
     }
@@ -455,6 +635,21 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
     {
         return false;
     }
+    pending_update = *entry;
+    update_done = done;
+    before_drain = inventory_status;
+    inventory_status = RF_INVENTORY_DRAINING;
+    waiting_live = true;
+    update_pending = true;
+    update_sent = false;
+    upload_timer_started = false;
+    return true;
+}
+
+static bool send_update(void)
+{
+    const rf_inventory_entry_t *entry = &pending_update;
+    uint8_t body[12];
     body[0] = entry->zone;
     body[1] = entry->feeder;
     body[2] = entry->phase;
@@ -466,8 +661,7 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
     {
         return false;
     }
-    pending_update = *entry;
-    update_done = done;
+    update_sent = true;
     return true;
 }
 
@@ -480,7 +674,7 @@ bool rf_inventory_epoch_ready(uint8_t feeder)
     const size_t index = (size_t)feeder - 1U;
 
     if (epoch_waiting[index] &&
-        (30000U <= (uint32_t)(HAL_GetTick() - epoch_started_ms[index])))
+        (90000U <= (uint32_t)(HAL_GetTick() - epoch_started_ms[index])))
     {
         epoch_waiting[index] = false;
     }
@@ -508,9 +702,17 @@ static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *p
 bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done)
 {
     if ((1U > feeder) || (4U < feeder) || !rf_inventory_is_loaded() ||
-        !rf_comm_can_load_inventory())
+        !rf_comm_can_load_inventory() || rf_group_is_active())
     {
         return false;
+    }
+    /* BQ-07: the MH uses one RF network; pace different feeders too. */
+    for (uint8_t current = 1U; 4U >= current; current++)
+    {
+        if (!rf_inventory_epoch_ready(current))
+        {
+            return false;
+        }
     }
     if (!scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_EPOCH_REFRESH,
                           &feeder, 1U, 1000U, 1U, on_epoch_refresh_done))

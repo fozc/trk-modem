@@ -40,6 +40,10 @@ typedef struct
     uint32_t ioa_s_rfhab_varyok[MAX_LINE_COUNT];    
     uint32_t ioa_t_rfhab_varyok[MAX_LINE_COUNT];    
 
+    uint32_t ioa_r_trip_failed[MAX_LINE_COUNT];
+    uint32_t ioa_s_trip_failed[MAX_LINE_COUNT];
+    uint32_t ioa_t_trip_failed[MAX_LINE_COUNT];
+
 } jiec_line_config_t;
 
 // Ana IEC Config yapisi

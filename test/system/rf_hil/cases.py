@@ -352,10 +352,21 @@ def d4(ctx):
               if r.get("kind") == "reply" and
               bytes.fromhex(r["data_hex"])[0:1] == b"\x06"]
     tc.expect(err606, "ERROR 0x06 (bozuk yuva) gorulmedi")
+    # Exclude the BQ-03 boot-protect no-op consume (0x46 at initial tail
+    # before any 0x44 pull); only pulls advance past the bad slot.
     consumes = [struct.unpack("<H", bytes.fromhex(r["data_hex"]))[0]
                 for r in tc.rx_requests(0x46)]
-    tc.expect(consumes and min(consumes) >= 1,
-              "imlec ileri tasinmadi: %s" % consumes)
+    pull_consumes = []
+    seen_pull = False
+    for r in tc.rx:
+        if r["cmd"] == 0x44:
+            seen_pull = True
+        if r["cmd"] == 0x46 and seen_pull:
+            pull_consumes.append(
+                struct.unpack("<H", bytes.fromhex(r["data_hex"]))[0])
+    tc.expect(pull_consumes and min(pull_consumes) >= 1,
+              "imlec ileri tasinmadi: %s (boot-protect no-op haric)" %
+              pull_consumes)
     tc.expect(_left_zero(tc), "left=0'a ulasilmadi")
     return "slot skipped; consumes=%s" % consumes
 

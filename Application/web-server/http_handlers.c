@@ -272,6 +272,206 @@ static void login_lock_reset(void)
  * POST HANDLERS
  * ============================================================================ */
 
+static const char *skip_login_whitespace(const char *cursor)
+{
+    while ((' ' == *cursor) || ('\t' == *cursor) ||
+           ('\r' == *cursor) || ('\n' == *cursor))
+    {
+        cursor++;
+    }
+    return cursor;
+}
+
+static bool read_login_ascii_escape(const char **cursor, char *value)
+{
+    uint16_t code = 0U;
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        const char digit = **cursor;
+        uint16_t nibble;
+        if (('0' <= digit) && ('9' >= digit))
+        {
+            nibble = (uint16_t)(digit - '0');
+        }
+        else if (('a' <= digit) && ('f' >= digit))
+        {
+            nibble = (uint16_t)(digit - 'a' + 10);
+        }
+        else if (('A' <= digit) && ('F' >= digit))
+        {
+            nibble = (uint16_t)(digit - 'A' + 10);
+        }
+        else
+        {
+            return false;
+        }
+        code = (uint16_t)((code << 4U) | nibble);
+        (*cursor)++;
+    }
+    /* Credential identifiers/passwords are ASCII; reject embedded NUL. */
+    if ((0U == code) || (0x7FU < code))
+    {
+        return false;
+    }
+    *value = (char)code;
+    return true;
+}
+
+static bool read_login_string(const char **cursor, char *output,
+                              size_t capacity)
+{
+    const char *input = *cursor;
+    size_t length = 0U;
+    if ('"' != *input++)
+    {
+        return false;
+    }
+    while (('"' != *input) && ('\0' != *input))
+    {
+        char value = *input++;
+        if ('\\' == value)
+        {
+            value = *input++;
+            switch (value)
+            {
+                case '"': case '\\': case '/': break;
+                case 'n': value = '\n'; break;
+                case 'r': value = '\r'; break;
+                case 't': value = '\t'; break;
+                case 'b': value = '\b'; break;
+                case 'f': value = '\f'; break;
+                case 'u':
+                    if (!read_login_ascii_escape(&input, &value))
+                    {
+                        return false;
+                    }
+                    break;
+                default: return false;
+            }
+        }
+        else if ((unsigned char)value < 0x20U)
+        {
+            return false;
+        }
+        else
+        {
+            /* An ordinary JSON string byte. */
+        }
+        if (capacity <= length + 1U)
+        {
+            return false;
+        }
+        output[length++] = value;
+    }
+    if ('"' != *input)
+    {
+        return false;
+    }
+    output[length] = '\0';
+    *cursor = input + 1U;
+    return true;
+}
+
+static bool parse_login_credentials(const char *body, char *username,
+                                     size_t username_size, char *password,
+                                     size_t password_size)
+{
+    const char *cursor = skip_login_whitespace(body);
+    bool has_username = false;
+    bool has_password = false;
+    if ('{' != *cursor++)
+    {
+        return false;
+    }
+    for (;;)
+    {
+        char key[32];
+        char value[64];
+        cursor = skip_login_whitespace(cursor);
+        if (!read_login_string(&cursor, key, sizeof(key)))
+        {
+            return false;
+        }
+        cursor = skip_login_whitespace(cursor);
+        if (':' != *cursor++)
+        {
+            return false;
+        }
+        cursor = skip_login_whitespace(cursor);
+        if (!read_login_string(&cursor, value, sizeof(value)))
+        {
+            return false;
+        }
+        if (0 == strcmp(key, "username"))
+        {
+            if (has_username || (username_size <= strlen(value)))
+            {
+                return false;
+            }
+            (void)memcpy(username, value, strlen(value) + 1U);
+            has_username = true;
+        }
+        else if (0 == strcmp(key, "password"))
+        {
+            if (has_password || (password_size <= strlen(value)))
+            {
+                return false;
+            }
+            (void)memcpy(password, value, strlen(value) + 1U);
+            has_password = true;
+        }
+        else
+        {
+            /* Unknown string fields do not supply credentials. */
+        }
+        cursor = skip_login_whitespace(cursor);
+        if ('}' == *cursor)
+        {
+            return has_username && has_password &&
+                ('\0' == *skip_login_whitespace(cursor + 1U));
+        }
+        if (',' != *cursor++)
+        {
+            return false;
+        }
+    }
+}
+
+static void create_login_session(const char *username)
+{
+    login_lock_reset();
+
+    uint32_t tx_bytes = 0U;
+    uint32_t rx_bytes = 0U;
+    gsm_get_rxtx_counters(&tx_bytes, &rx_bytes);
+    bsp_random_fallback_seed(bsp_get_tick(), tx_bytes, rx_bytes);
+
+    char new_token[HTTP_SESSION_TOKEN_SIZE];
+    if (!http_session_token_generate(new_token))
+    {
+        static const char error_response[] =
+            "{\"success\":false,\"error\":\"Token unavailable\"}";
+        http_send_response(503, NULL, "application/json",
+            error_response, (int)(sizeof(error_response) - 1U));
+        return;
+    }
+    /* Replace the role and token only after token generation completes. */
+    strncpy(handler_state.username, username,
+            sizeof(handler_state.username) - 1U);
+    handler_state.username[sizeof(handler_state.username) - 1U] = '\0';
+    memcpy(handler_state.session_token, new_token, sizeof(new_token));
+    handler_state.last_activity_tick = bsp_get_tick();
+    handler_state.is_authenticated = true;
+    CSLOG("[HTTP] Session authenticated\r\n");
+
+    char *buf = handler_state.tx_buffer;
+    size_t pos = xsnprintf(buf,
+                          (unsigned int)handler_state.tx_buffer_size,
+                          "{\"success\":true,\"token\":\"%s\",\"role\":\"%s\"}",
+                          handler_state.session_token, handler_state.username);
+    http_send_json(buf, (int)pos);
+}
+
 /**
  * @brief Handle POST /auth/login - Simple IP-based authentication
  */
@@ -299,24 +499,9 @@ void handle_post_login(const char *json_body)
     char username[32] = {0};
     char password[64] = {0};
     
-    /* Simple JSON parsing using strstr */
-    const char *user_start = strstr(json_body, "\"username\":\"");
-    const char *pass_start = strstr(json_body, "\"password\":\"");
-    
-    if (user_start && pass_start) {
-        user_start += 12; /* Skip \"username\":" */
-        const char *user_end = strchr(user_start, '\"');
-        if (user_end && (size_t)(user_end - user_start) < sizeof(username)) {
-            strncpy(username, user_start, (size_t)(user_end - user_start));
-        }
-        
-        pass_start += 12; /* Skip \"password\":" */
-        const char *pass_end = strchr(pass_start, '\"');
-        if (pass_end && (size_t)(pass_end - pass_start) < sizeof(password)) {
-            strncpy(password, pass_start, (size_t)(pass_end - pass_start));
-        }
-    }
-    
+    const bool parsed = parse_login_credentials(json_body, username,
+        sizeof(username), password, sizeof(password));
+
     CSLOG("[HTTP] Login attempt - Username: %s\r\n", username);
     
     /* Get device IP address */
@@ -343,9 +528,9 @@ void handle_post_login(const char *json_body)
     
     /* Validate credentials */
     bool valid = false;
-    if (strcmp(username, USER_ROLE_ADMIN) == 0 && strcmp(password, expected_admin_pass) == 0) {
+    if (parsed && strcmp(username, USER_ROLE_ADMIN) == 0 && strcmp(password, expected_admin_pass) == 0) {
         valid = true;
-    } else if (strcmp(username, USER_ROLE_USER) == 0 && strcmp(password, expected_user_pass) == 0) {
+    } else if (parsed && strcmp(username, USER_ROLE_USER) == 0 && strcmp(password, expected_user_pass) == 0) {
         valid = true;
     } else {
         CSLOG_ERR("[HTTP] Login failed - Invalid credentials\r\n");
@@ -355,37 +540,7 @@ void handle_post_login(const char *json_body)
 
     /* Send response */
     if (valid) {
-        login_lock_reset();
-
-        uint32_t tx_bytes = 0U;
-        uint32_t rx_bytes = 0U;
-        gsm_get_rxtx_counters(&tx_bytes, &rx_bytes);
-        bsp_random_fallback_seed(bsp_get_tick(), tx_bytes, rx_bytes);
-
-        char new_token[HTTP_SESSION_TOKEN_SIZE];
-        if (!http_session_token_generate(new_token))
-        {
-            static const char error_response[] =
-                "{\"success\":false,\"error\":\"Token unavailable\"}";
-            http_send_response(503, NULL, "application/json",
-                error_response, (int)(sizeof(error_response) - 1U));
-            return;
-        }
-        /* Replace the role and token only after token generation completes. */
-        strncpy(handler_state.username, username,
-                sizeof(handler_state.username) - 1U);
-        handler_state.username[sizeof(handler_state.username) - 1U] = '\0';
-        memcpy(handler_state.session_token, new_token, sizeof(new_token));
-        handler_state.last_activity_tick = bsp_get_tick();
-        handler_state.is_authenticated = true;
-        CSLOG("[HTTP] Session authenticated\r\n");
-
-        char *buf = handler_state.tx_buffer;
-        size_t pos = xsnprintf(buf,
-                              (unsigned int)handler_state.tx_buffer_size,
-                              "{\"success\":true,\"token\":\"%s\",\"role\":\"%s\"}",
-                              handler_state.session_token, handler_state.username);
-        http_send_json(buf, (int)pos);
+        create_login_session(username);
     } else {
         const char *error_response = "{\"success\":false,\"error\":\"Invalid credentials\"}";
         http_send_json(error_response, (int)strlen(error_response));
@@ -953,6 +1108,30 @@ void handle_get_iec_config_json(void)
         const iec104_line_config_t *line = iec104_get_line_config(i);
         pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L3]) : 0, (i < MAX_ARRAYS - 1) ? "," : "");
     }
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],\"IOA_R_TripFailed\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++)
+    {
+        const iec104_line_config_t *line = iec104_get_line_config(i);
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+            "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->trip_failed[PHASE_L1]) : 0U,
+            (i < MAX_ARRAYS - 1U) ? "," : "");
+    }
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],\"IOA_S_TripFailed\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++)
+    {
+        const iec104_line_config_t *line = iec104_get_line_config(i);
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+            "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->trip_failed[PHASE_L2]) : 0U,
+            (i < MAX_ARRAYS - 1U) ? "," : "");
+    }
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],\"IOA_T_TripFailed\":[");
+    for (uint32_t i = 0U; i < MAX_ARRAYS; i++)
+    {
+        const iec104_line_config_t *line = iec104_get_line_config(i);
+        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+            "%lu%s", line ? iec104_ioa_3byte_to_uint32(line->trip_failed[PHASE_L3]) : 0U,
+            (i < MAX_ARRAYS - 1U) ? "," : "");
+    }
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "]");
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     
@@ -1040,6 +1219,10 @@ void handle_post_iec_config_json(const char *json_body)
             config.line.ioa_r_rfhab_varyok[i] = iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L1]);
             config.line.ioa_s_rfhab_varyok[i] = iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L2]);
             config.line.ioa_t_rfhab_varyok[i] = iec104_ioa_3byte_to_uint32(line->rf_haberlesme_varyok[PHASE_L3]);
+            config.line.ioa_r_trip_failed[i] = iec104_ioa_3byte_to_uint32(line->trip_failed[PHASE_L1]);
+            config.line.ioa_s_trip_failed[i] = iec104_ioa_3byte_to_uint32(line->trip_failed[PHASE_L2]);
+            config.line.ioa_t_trip_failed[i] = iec104_ioa_3byte_to_uint32(line->trip_failed[PHASE_L3]);
+
         } else {
             config.line.in_use[i] = false;
         }

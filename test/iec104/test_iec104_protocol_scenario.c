@@ -297,7 +297,7 @@ static const iec104_io_t test_io = {
     .get_rf_haberlesme_varyok  = fake_get_state,
 };
 
-static void setup(uint8_t k_max, uint8_t w_max)
+static void setup_mode(uint8_t k_max, uint8_t w_max, bool alarms)
 {
     iec104_config_t cfg;
 
@@ -319,7 +319,14 @@ static void setup(uint8_t k_max, uint8_t w_max)
     cfg.originator_address = 0U;
     cfg.common_address     = TEST_COMMON_ADDRESS;
 
-    iec104_init(&test_io, &cfg);
+    iec104_io_t io = test_io;
+    io.get_trip_failed = alarms ? fake_get_state : NULL;
+    iec104_init(&io, &cfg);
+}
+
+static void setup(uint8_t k_max, uint8_t w_max)
+{
+    setup_mode(k_max, w_max, false);
 }
 
 /* Brings the link up, acknowledges the end-of-init frame so the send window
@@ -1636,6 +1643,87 @@ void test_group_one_emits_only_phase_currents_without_fault_summary(void)
         }
     }
     TEST_ASSERT_EQUAL_UINT8(3U, objects);
+}
+
+void test_alarm_event_uses_configured_ioa_value_quality_and_original_time(void)
+{
+    setup(2U, 2U);
+    iec104_line_config_t line = {0};
+    line.trip_failed[PHASE_L2] = iec104_make_ioa_3byte(123456U);
+    TEST_ASSERT_TRUE(iec104_set_line_config(0U, &line));
+    iec104_event_record_t record = {.kind = IEC104_EVENT_TRIP_FAILURE,
+        .payload.alarm = {.feeder = 0U, .phase = PHASE_L2, .active = 1U}};
+    record.payload.alarm.time =
+        cp56time2a_make(12345U, 0U, 12U, 7U, 3U, 10U, 26U);
+    TEST_ASSERT_FALSE(iec104_emit_event_record(&record));
+    start_link();
+    TEST_ASSERT_TRUE(iec104_emit_event_record(&record));
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, tx_log[0][6]);
+    TEST_ASSERT_EQUAL_UINT8(1U, tx_log[0][7] & 0x7FU);
+    const m_sp_tb_1_t *object =
+        (const m_sp_tb_1_t *)&tx_log[0][DATA_START_IDX];
+    TEST_ASSERT_EQUAL_UINT32(123456U,
+        iec104_ioa_3byte_to_uint32(object->ioa));
+    TEST_ASSERT_EQUAL_UINT8(1U, object->siq.spi);
+    TEST_ASSERT_EQUAL_UINT8(0U, object->siq.invalid);
+    TEST_ASSERT_EQUAL_MEMORY(&record.payload.alarm.time,
+                             &object->timestamp, sizeof(object->timestamp));
+    record.payload.alarm.active = 0U;
+    record.payload.alarm.time.iv_bit = 1U;
+    TEST_ASSERT_TRUE(iec104_emit_event_record(&record));
+    object = (const m_sp_tb_1_t *)&tx_log[1][DATA_START_IDX];
+    TEST_ASSERT_EQUAL_UINT8(0U, object->siq.spi);
+    TEST_ASSERT_EQUAL_UINT8(1U, object->siq.invalid);
+    TEST_ASSERT_FALSE(iec104_emit_event_record(&record)); /* k window full. */
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+}
+
+void test_alarm_event_transport_failure_and_missing_ioa_are_not_sent(void)
+{
+    setup(12U, 8U);
+    start_link();
+    iec104_event_record_t record = {.kind = IEC104_EVENT_TRIP_FAILURE,
+        .payload.alarm = {.feeder = 0U, .phase = PHASE_L1, .active = 1U}};
+    TEST_ASSERT_FALSE(iec104_emit_event_record(&record));
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    iec104_line_config_t line = {0};
+    line.trip_failed[PHASE_L1] = iec104_make_ioa_3byte(1070U);
+    TEST_ASSERT_TRUE(iec104_set_line_config(0U, &line));
+    transport_budget = 0;
+    TEST_ASSERT_FALSE(iec104_emit_event_record(&record));
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_k());
+    TEST_ASSERT_FALSE(iec104_emit_event_record(NULL));
+}
+
+void test_current_rf_alarm_snapshot_reserves_the_whole_k_window(void)
+{
+    setup_mode(1U, 1U, true);
+    start_link();
+    enable_all_lines();
+    TEST_ASSERT_FALSE(iec104_send_rf_communication_states(COT_SPONTANEOUS));
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    setup_mode(2U, 2U, true);
+    start_link();
+    for (uint8_t feeder = 0U; MAX_POWER_LINE_COUNT > feeder; feeder++)
+    {
+        iec104_line_config_t line = {.in_use = 1U};
+        for (size_t phase = 0U; PHASE_MAX > phase; phase++)
+        {
+            line.rf_haberlesme_varyok[phase] =
+                iec104_make_ioa_3byte(1060U + feeder * 100U + (uint32_t)phase);
+            line.trip_failed[phase] =
+                iec104_make_ioa_3byte(1070U + feeder * 100U + (uint32_t)phase);
+        }
+        TEST_ASSERT_TRUE(iec104_set_line_config(feeder, &line));
+    }
+    TEST_ASSERT_TRUE(iec104_send_rf_communication_states(COT_SPONTANEOUS));
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(22U, tx_log[0][7] & 0x7FU);
+    TEST_ASSERT_EQUAL_UINT8(20U, tx_log[1][7] & 0x7FU);
+    const m_sp_tb_1_t *object =
+        (const m_sp_tb_1_t *)&tx_log[0][DATA_START_IDX + sizeof(m_sp_tb_1_t)];
+    TEST_ASSERT_EQUAL_UINT32(1070U, iec104_ioa_3byte_to_uint32(object->ioa));
 }
 
 /*** end of file ***/

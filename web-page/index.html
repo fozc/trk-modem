@@ -89,7 +89,7 @@ tRefreshErr:'Refresh error: ',tNoData:'No data',tTargetNotFound:'Target field no
 iecTitle:'IEC104 Configuration',iecSub:'IEC 60870-5-104 communication configuration',genSettings:'General Settings',iecGenSub:'IEC 60870-5-104 communication parameters',
 fTempBase:'Temporary Fault Base IOA',fPermBase:'Permanent Fault Base IOA',faultAddressNote:'Each fault base uses 180 addresses, with feeder index (0..6) × 180 added. See the IEC104 address guide.',errAddressConflict:'Address overlaps with {field}',errRegisterConflict:'Register {address} is also used by {field}',errAddressRange:'Address range exceeds {max}',fPort:'Port',fPeriodic:'Periodic Send (s)',fOrigAddr:'Originator Address',fCommonAddr:'Common Address',fSboTo:'SBO Timeout (s)',fSboEn:'SBO Enable',fAkuIOA:'Battery Warning IOA',fResetIOA:'Modem Reboot IOA',
 feeders:'Feeders',iecFeedSub:'Select a feeder to edit its IOA addresses',
-catAkim:'Fault Current',catSure:'Fault Duration',catTuru:'Fault Type',catAnlik:'Load Current',catEnerji:'Energy Present',catLoad:'Load Current Present',catRf:'RF Comm Status',
+catAkim:'Fault Current',catSure:'Fault Duration',catTuru:'Fault Type',catAnlik:'Load Current',catEnerji:'Energy Present',catLoad:'Load Current Present',catRf:'RF Comm Status',catTripFailed:'Trip failure alarm',
 modTitle:'Modbus Configuration',modSub:'Modbus RTU configuration',modGenSub:'Modbus RTU parameters',fDevId:'Device ID',fBaud:'Baud Rate',fLastErr:'Last Error Code',fLastErrT:'Last Error Time',modFeedSub:'Select a feeder to edit its register addresses',
 rfTitle:'RF Configuration',rfSub:'Feeder configuration with L1 / L2 / L3 phase settings',rfCard:'RF Feeders Configuration',
 rfCardSub:'Feeder IDs 1\u20134 are configurable. Feeder ID 0 means unprovisioned (device stays out of RF coordination).',
@@ -134,7 +134,7 @@ tRefreshErr:'Yenileme hatası: ',tNoData:'Veri yok',tTargetNotFound:'Hedef alan 
 iecTitle:'IEC104 Yapılandırması',iecSub:'IEC 60870-5-104 haberleşme yapılandırması',genSettings:'Genel Ayarlar',iecGenSub:'IEC 60870-5-104 haberleşme parametreleri',
 fTempBase:'Geçici Arıza Taban IOA',fPermBase:'Kalıcı Arıza Taban IOA',faultAddressNote:'Her arıza tabanı 180 adres kullanır; fider indeksi (0..6) × 180 eklenir. IEC104 adres rehberine bakınız.',errAddressConflict:'{field} ile adres çakışıyor',errRegisterConflict:'{address} register adresi {field} ile ortak kullanılıyor',errAddressRange:'Adres aralığı {max} sınırını aşıyor',fPort:'Port',fPeriodic:'Periyodik Gönderim (s)',fOrigAddr:'Gönderici Adresi (Originator)',fCommonAddr:'Ortak Adres (CA)',fSboTo:'SBO Zaman Aşımı (s)',fSboEn:'SBO Etkin',fAkuIOA:'Akü Uyarısı IOA',fResetIOA:'Modem Yeniden Başlatma IOA',
 feeders:'Fiderler',iecFeedSub:'Düzenlenecek fiderin IOA adreslerini seçin',
-catAkim:'Arıza Akımı',catSure:'Arıza Süresi',catTuru:'Arıza Tipi',catAnlik:'Anlık Akım',catEnerji:'Enerji Var/Yok',catLoad:'Yük Akımı Var/Yok',catRf:'RF Haberleşme Durumu',
+catAkim:'Arıza Akımı',catSure:'Arıza Süresi',catTuru:'Arıza Tipi',catAnlik:'Anlık Akım',catEnerji:'Enerji Var/Yok',catLoad:'Yük Akımı Var/Yok',catRf:'RF Haberleşme Durumu',catTripFailed:'Açma başarısızlığı alarmı',
 modTitle:'Modbus Yapılandırması',modSub:'Modbus RTU yapılandırması',modGenSub:'Modbus RTU parametreleri',fDevId:'Cihaz Adresi (ID)',fBaud:'Baud Hızı',fLastErr:'Son Hata Kodu',fLastErrT:'Son Hata Zamanı',modFeedSub:'Düzenlenecek fiderin register adreslerini seçin',
 rfTitle:'RF Yapılandırması',rfSub:'L1 / L2 / L3 faz ayarlarıyla fider yapılandırması',rfCard:'RF Fider Yapılandırması',
 rfCardSub:'Fider 1\u20134 yapılandırılabilir. Fider No 0, provizyonsuz demektir (cihaz RF koordinasyonuna katılmaz).',
@@ -270,7 +270,7 @@ function renderIec104(d){
   s+='</div></div></div>';
   s+='<div class="card">'+sectionHead(t('feeders'),'iec104',t('iecFeedSub'))+'<div class="card-body">';
   s+=feederTabs('selectIecTab');
-  const cats=[['AnlikAkim','catAnlik'],['EnerjiVarYok','catEnerji'],['YukAkimiVarYok','catLoad'],['RfhabVarYok','catRf']];
+  const cats=[['AnlikAkim','catAnlik'],['EnerjiVarYok','catEnerji'],['YukAkimiVarYok','catLoad'],['RfhabVarYok','catRf'],['TripFailed','catTripFailed']];
   const phs=[['R','L1'],['S','L2'],['T','L3']];
   for(let i=0;i<FEEDER_COUNT;i++){s+=paneOpen('iec',i)+feederCheck('iec',i,t('useFeeder'),h.inUse?.[i])+'<div class="grid g2">'+feederField('iec','TemporaryFaultBase',i,t('fTempBase'),h.TemporaryFaultBase?.[i],1,16777215)+feederField('iec','PermanentFaultBase',i,t('fPermBase'),h.PermanentFaultBase?.[i],1,16777215)+'</div><p>'+esc(t('faultAddressNote'))+'</p><div class="grid g3 gt" style="margin-top:8px;align-items:start">';phs.forEach(p=>{s+='<div><div class="phase-head">'+esc(t('phase'))+p[1]+'</div><div class="grid" style="gap:8px">';cats.forEach(c=>s+=feederField('iec','IOA_'+p[0]+'_'+c[0],i,t(c[1]),h['IOA_'+p[0]+'_'+c[0]]?.[i],1,16777215));s+='</div></div>'});s+='</div></div>'}
   s+='</div></div></div>';return s;
@@ -453,7 +453,7 @@ const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],
   }}else if(page==='device'){[['dev-WebArayuzuPortu',1,65535],['dev-SimKartPin',0,9999],['dev-NtpServerPortu',1,65535],['dev-TimeZone',-12,14],['dev-PeriyodikModemResetPeriyodu',0,720],['dev-WebIlkVeriZamanAsimi',0,3600],['dev-WebBostaKalmaZamanAsimi',0,3600],['dev-IEC104IlkVeriZamanAsimi',0,3600],['dev-IEC104BostaKalmaZamanAsimi',0,3600]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false})}if(!ok)toast(t('tFixVal'),'err');return ok};
 const validationEl=(el,min,max)=>{el.classList.remove('invalid');const err=el.closest?.('.field')?.querySelector('.err');if(err)err.textContent='';const n=Number(el.value);if(el.value===''||!Number.isInteger(n)||n<min||n>max){addressError(el,t('range')+min+' .. '+max);return false}return true};
 
-function extractPage(page){if(page==='iec104'){const d={};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','TemporaryFaultBase','PermanentFaultBase','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_YukAkimiVarYok','IOA_S_YukAkimiVarYok','IOA_T_YukAkimiVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
+function extractPage(page){if(page==='iec104'){const d={};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','TemporaryFaultBase','PermanentFaultBase','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_YukAkimiVarYok','IOA_S_YukAkimiVarYok','IOA_T_YukAkimiVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok','IOA_R_TripFailed','IOA_S_TripFailed','IOA_T_TripFailed'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
   if(page==='modbus'){const d={CihazID:getInt('mod-CihazID'),BaudRate:getInt('mod-BaudRate')},h={};const keys=['inUse','ADDR_R_AnlikAkim','ADDR_S_AnlikAkim','ADDR_T_AnlikAkim','ADDR_R_EnerjiVarYok','ADDR_S_EnerjiVarYok','ADDR_T_EnerjiVarYok','ADDR_R_YukAkimiVarYok','ADDR_S_YukAkimiVarYok','ADDR_T_YukAkimiVarYok','ADDR_R_RfhabVarYok','ADDR_S_RfhabVarYok','ADDR_T_RfhabVarYok'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="mod"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hat=h;return d}
   if(page==='rf'){const d={};const iKeys=['HatID','ZoneID','SetEdilebilirAcmaArizaSayisi','OluHatAkimiDogrulamaSuresi','YenilenmeSifirlamaSuresi'];const fKeys=['SistemNominalAkimi','SetEdilebilirActirmaEsikAkimi','ArtimliAkimEsigi','HatKopukHatBosta'];const sKeys=['R_DEVICEID','S_DEVICEID','T_DEVICEID'];['inUse','CalismaModu','HatFrekansi',...iKeys,...fKeys,...sKeys].forEach(k=>d[k]=[]);
     for(let i=0;i<FEEDER_COUNT;i++){d.inUse[i]=getBool('rf-inUse-'+i);d.CalismaModu[i]=getInt('rf-CalismaModu-'+i);d.HatFrekansi[i]=getInt('rf-HatFrekansi-'+i);iKeys.forEach(k=>d[k][i]=getInt('rf-'+k+'-'+i));fKeys.forEach(k=>d[k][i]=getFloat('rf-'+k+'-'+i));sKeys.forEach(k=>d[k][i]=getText('rf-'+k+'-'+i).trim().toUpperCase())}return d}
@@ -476,10 +476,11 @@ function selectFaultFeeder(i){faultFeeder=i;renderPage('iec-faults')}
 async function readRfFeeder(i){if(loading)return;try{showLoad();const r=await api('/monitor/rf/'+i);hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const d=r.data?.lines?.[0]||r.lines?.[0]||r.data||r;if(!pageCache.rfmon)pageCache.rfmon=[];pageCache.rfmon[i]=d;renderPage('rfmon');const card=$('rfmon-'+i);if(card){const body=card.querySelector('.card-body');body.innerHTML=buildRfMonitorTable(d)}toast(tf('tFeedRead',{n:i+1}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}}
 function rfLiveFlag(phase,mask){
   const flags=phase?.Live?.Flags;
-  return phase?.HasData&&phase.Online===true&&Number.isInteger(flags)&&flags>=0&&flags<=255?((flags&mask)!==0?1:0):null;
+  return phase?.HasData&&phase.Online===true&&phase.UptimeStalled!==true&&Number.isInteger(flags)&&flags>=0&&flags<=255?((flags&mask)!==0?1:0):null;
 }
 function buildRfMonitorTable(d){
   const phases=d.Phases||[];
+  const counts=d.FaultCountsSinceStartup;
   const fields=[
     ['Eui64','EUI-64',''],['Online',(LNG==='tr'?'RF haberleşmesi':'RF online'),''],
     ['Live.Seq','SEQ',''],['Live.Uptime',(LNG==='tr'?'Çalışma süresi':'Uptime'),'s'],
@@ -506,12 +507,21 @@ function buildRfMonitorTable(d){
     ['AnomalyTrip.Window',(LNG==='tr'?'Açma anomali penceresi':'Trip anomaly window'),''],
     ['AnomalyTrip.Total',(LNG==='tr'?'Açma anomali toplamı':'Trip anomaly total'),'']
   ];
-  let html='<div class="table-wrap"><table class="phase-table"><thead><tr><th>'+esc(t('thParam'))+'</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
+  const maintenance=phases.some(p=>p?.UptimeStalled===true||p?.Live?.FsmError===true);
+  let html=maintenance?'<p class="muted">'+esc(LNG==='tr'?'Bakım gerekli: uptime ilerlemiyor veya FSM hata bildirimi var.':'Maintenance required: stalled uptime or FSM error reported.')+'</p>':'';
+  html+='<div class="table-wrap"><table class="phase-table"><thead><tr><th>'+esc(t('thParam'))+'</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
+  if(counts){
+    const n=k=>Number.isInteger(counts[k])&&counts[k]>=0?counts[k]:'—';
+    const note=LNG==='tr'?`Fider sayımı (bu RTU oturumunda işlenen): kalıcı ${n('Permanent')}, geçici ${n('Temporary')}, belirsiz ${n('Uncertain')}`:`Feeder counts processed in this RTU session: permanent ${n('Permanent')}, temporary ${n('Temporary')}, uncertain ${n('Uncertain')}`;
+    html='<p>'+esc(note)+'</p>'+html;
+  }
   for(const [key,label,unit,precision,mask] of fields){
     html+='<tr><td>'+esc(label)+'</td>';
     for(let index=0;index<3;index++){
       const phase=phases[index];
-      const value=mask?rfLiveFlag(phase,mask):phase?.HasData?key.split('.').reduce((v,k)=>v?.[k],phase):null;
+      const measurement=['Live.Irms','Live.VTrip','Live.VRec','Live.Temp'].includes(key);
+      const unavailable=measurement&&(phase?.Online!==true||phase?.UptimeStalled===true);
+      const value=unavailable?null:mask?rfLiveFlag(phase,mask):phase?.HasData?key.split('.').reduce((v,k)=>v?.[k],phase):null;
       const shown=value==null?'—':typeof value==='boolean'?(value?'1':'0'):typeof value==='string'?value:fmt(value,unit,precision);
       html+='<td>'+esc(shown)+'</td>';
     }

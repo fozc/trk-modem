@@ -12,11 +12,14 @@
 #include <stdint.h>
 #include "types.h"
 
-/* Provisional RTU event mapping; vendor confirmation is tracked in BQ-10. */
+/* BOLATeX BQ-10 sequence classification lives in rf_faults.c.
+ * A phase-list entry count is not a feeder-level opening count. */
 typedef enum
 {
-    FAULT_LOG_TYPE_TEMPORARY = 0, /* RF event 3: fault cleared itself. */
-    FAULT_LOG_TYPE_PERMANENT = 1  /* RF events 1 and 7: disconnector opened. */
+    /* RF 3 after 6; exclude sequences ending in 100/101/117. */
+    FAULT_LOG_TYPE_TEMPORARY = 0,
+    /* RF 1/7; 100/101 only without 1/7; 117 has no assigned feeder. */
+    FAULT_LOG_TYPE_PERMANENT = 1
 }fault_log_type_t;
 
 

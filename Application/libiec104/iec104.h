@@ -17,6 +17,7 @@
 #include "cp56time2a.h"
 #include "types.h"
 #include "fault_log.h"
+#include "iec104_event_log.h"
 
 #define SBO_SELECT_TIMEOUT 60 // seconds
 #define PERIODIC_SEND_INTERVAL 60
@@ -56,6 +57,8 @@ typedef struct
     int (*get_enerji_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
     int (*get_yuk_akimi_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
     int (*get_rf_haberlesme_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
+    int (*get_trip_failed)(uint32_t power_line_index, uint8_t phase,
+                           siq_t *value, cp56time2a_t *timestamp);
 
 }iec104_io_t;
 
@@ -95,6 +98,8 @@ void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt);
 /* Olay gunlugu replay yayimcisi: tek ariza kaydini kaydin kendi zaman
  * etiketiyle COT_SPONTANEOUS olarak canli ariza noktalarina gonderir. */
 bool iec104_emit_evtlog_record(const fault_log_t *record);
+bool iec104_emit_event_record(const iec104_event_record_t *record);
+bool iec104_send_rf_communication_states(cause_of_transmission_t cause);
 
 
 void iec104_interrogation_send_m_sp_tb_1_objects(const ioa_3byte_t *ioas, const siq_t *states);

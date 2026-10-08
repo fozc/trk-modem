@@ -17,6 +17,7 @@
 #include "rf_dummy.h"
 #include "rf_monitor_json.h"
 #include "mock_rf_events.h"
+#include "mock_rf_alarm.h"
 #include "mock_rf_group.h"
 #include "mock_power_board_scp.h"
 #include "mock_power_board_control.h"
@@ -24,6 +25,7 @@
 #include <string.h>
 
 TEST_SOURCE_FILE("rf_scp_codec.c")
+TEST_SOURCE_FILE("rf_faults.c")
 TEST_SOURCE_FILE("rf_discovery.c")
 TEST_SOURCE_FILE("ring_buff.c")
 TEST_SOURCE_FILE("cp56time2a.c")
@@ -168,9 +170,59 @@ static void deliver_response(uint8_t type, uint8_t error)
     scp_on_response(&packet);
 }
 
+static bool allow_inventory;
+static bool group_active;
+static bool events_drained;
+static uint32_t drained_total;
+
+static bool inventory_allowed(int call_count)
+{
+    (void)call_count;
+    return allow_inventory;
+}
+
+static bool config_active(int call_count)
+{
+    (void)call_count;
+    return group_active;
+}
+
+static bool drained_events(uint32_t *total, int call_count)
+{
+    (void)call_count;
+    if (events_drained)
+    {
+        *total = drained_total;
+    }
+    return events_drained;
+}
+
+static bool protect_inventory(int call_count)
+{
+    (void)call_count;
+    /* This suite tests the boot/time bridge. Actual HEAD/CONSUME
+     * protection is exercised by test_rf_events. */
+    rf_inventory_start();
+    return true;
+}
+
 void setUp(void)
 {
+    rf_alarm_init_Ignore();
+    rf_alarm_live_Ignore();
+    rf_alarm_process_Ignore();
+    rf_alarm_is_idle_IgnoreAndReturn(true);
+    rf_events_request_drain_Ignore();
+    rf_events_finish_drain_Ignore();
+    allow_inventory = true;
+    group_active = false;
+    events_drained = true;
+    drained_total = 0U;
+    rf_events_drain_complete_StubWithCallback(drained_events);
+    rf_events_inventory_allowed_StubWithCallback(inventory_allowed);
+    rf_group_is_active_StubWithCallback(config_active);
     rf_events_init_Ignore();
+    rf_events_boot_protect_StubWithCallback(protect_inventory);
     rf_group_init_Ignore();
     power_board_scp_hub_restarted_Ignore();
     power_board_control_hub_restarted_Ignore();
@@ -1053,6 +1105,18 @@ void test_inventory_waits_for_existing_command_without_skipping_device(void)
     TEST_ASSERT_EQUAL_UINT8(1U, transmitted.data[2]);
 }
 
+static bool start_update(const rf_inventory_entry_t *entry,
+                          scp_cmd_done_fn_t done)
+{
+    if (!rf_inventory_update(entry, done))
+    {
+        return false;
+    }
+    rf_inventory_continue();
+    rf_inventory_continue();
+    return true;
+}
+
 void test_update_assignment_deletion_and_failed_ack_preserve_discovery(void)
 {
     rf_inventory_entry_t entry =
@@ -1060,25 +1124,25 @@ void test_update_assignment_deletion_and_failed_ack_preserve_discovery(void)
         .zone = 0U, .feeder = 1U, .phase = 2U,
         .eui64 = {0xAAU}, .channel = 7U
     };
-    TEST_ASSERT_FALSE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_FALSE(start_update(&entry, command_done));
     rf_inventory_start();
     complete_inventory();
     TEST_ASSERT_TRUE(rf_discovery_report(entry.eui64, -75));
-    TEST_ASSERT_TRUE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
     TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
     TEST_ASSERT_EQUAL_UINT8(2U, transmitted.data[2]);
     TEST_ASSERT_EQUAL_UINT8(7U, transmitted.data[11]);
     deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
     TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
-    TEST_ASSERT_TRUE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
     deliver_response(SCP_TYPE_ACK, 0U);
     TEST_ASSERT_EQUAL_UINT8(0U, rf_discovery_get_count());
     entry.feeder = 0U;
-    TEST_ASSERT_TRUE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
     TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[1]);
     deliver_response(SCP_TYPE_ACK, 0U);
     entry.zone = 1U;
-    TEST_ASSERT_FALSE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_FALSE(start_update(&entry, command_done));
 }
 
 void test_epoch_requires_inventory_and_feeder_range(void)
@@ -1214,7 +1278,7 @@ void test_boot_during_update_preserves_discovery_and_reports_restart(void)
     rf_inventory_start();
     complete_inventory();
     TEST_ASSERT_TRUE(rf_discovery_report(entry.eui64, -75));
-    TEST_ASSERT_TRUE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
     notify_boot(1U);
     TEST_ASSERT_EQUAL_INT(SCP_CMD_RESTARTED, done_result);
     TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
@@ -1368,6 +1432,7 @@ void test_desired_store_change_does_not_relabel_old_hub_measurements(void)
     load_one_phase();
     scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
     packet.data[0] = 5U;
+    packet.data[29] = 0U; /* No AY backlog in this move test. */
     inject_packet(&packet);
     feeder.r_eui64[0] = 0x22U;
     rf_phase_data_t data;
@@ -1379,7 +1444,7 @@ void test_desired_store_change_does_not_relabel_old_hub_measurements(void)
     {
         .zone = 0U, .feeder = 1U, .phase = 1U, .eui64 = {0x22U}
     };
-    TEST_ASSERT_TRUE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
     deliver_response(SCP_TYPE_ACK, 0U);
     TEST_ASSERT_FALSE(rf_get_source_data(5U, fake_tick, &data));
     inject_packet(&packet);
@@ -1426,12 +1491,23 @@ void test_trip_failed_clears_only_with_advancing_uptime_in_same_boot(void)
 
     TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
     TEST_ASSERT_TRUE(data.trip_failed);
-    TEST_ASSERT_FALSE(rf_ack_trip_failure(5U));
+    TEST_ASSERT_TRUE(rf_ack_trip_failure(5U));
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failed);
+    TEST_ASSERT_FALSE(data.trip_failure_latched);
     packet.data[28] = 0U;
     inject_packet(&packet);
     TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
     TEST_ASSERT_TRUE(data.trip_failed);
     put_u32(&packet.data[5], 110U);
+    inject_packet(&packet);
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failed);
+    packet.data[28] = 1U;
+    put_u32(&packet.data[5], 120U);
+    inject_packet(&packet);
+    packet.data[28] = 0U;
+    put_u32(&packet.data[5], 130U);
     inject_packet(&packet);
     TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
     TEST_ASSERT_FALSE(data.trip_failed);
@@ -1449,7 +1525,7 @@ void test_operator_ack_clears_restart_latch_only_after_zero_live_flag(void)
     packet.data[28] = 1U;
     put_u32(&packet.data[5], 100U);
     inject_packet(&packet);
-    TEST_ASSERT_FALSE(rf_ack_trip_failure(5U));
+    TEST_ASSERT_TRUE(rf_ack_trip_failure(5U));
 
     /* A reboot retains the failure until the operator acknowledges it. */
     packet.data[28] = 0U;
@@ -1488,11 +1564,11 @@ void test_ay_restart_keeps_trip_failure_until_operator_acknowledgement(void)
     TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
     TEST_ASSERT_TRUE(data.trip_failed);
     TEST_ASSERT_TRUE(data.trip_failure_latched);
-    char *args[] = {"alarm-ack", "1", "1"};
-    TEST_ASSERT_EQUAL_INT(0, rf_shell_alarm_ack(3, args));
+    char *args[] = {"rf", "alarm-ack", "1", "1"};
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_command(4, args));
     TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
-    TEST_ASSERT_FALSE(data.trip_failed);
-    TEST_ASSERT_FALSE(data.trip_failure_latched);
+    TEST_ASSERT_TRUE(data.trip_failed);
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
 }
 
 void test_hub_restart_invalidates_freshness_but_preserves_ay_failure(void)
@@ -1748,14 +1824,14 @@ void test_ack_moves_and_deletes_the_effective_eui_binding(void)
     TEST_ASSERT_EQUAL_UINT8(0x11U, entry.eui64[0]);
     rf_inventory_entry_t moved = entry;
     moved.phase = 2U;
-    TEST_ASSERT_TRUE(rf_inventory_update(&moved, command_done));
+    TEST_ASSERT_TRUE(start_update(&moved, command_done));
     TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &entry));
     TEST_ASSERT_FALSE(rf_inventory_get_binding(6U, &entry));
     deliver_response(SCP_TYPE_ACK, 0U);
     TEST_ASSERT_FALSE(rf_inventory_get_binding(5U, &entry));
     TEST_ASSERT_TRUE(rf_inventory_get_binding(6U, &entry));
     moved.feeder = 0U;
-    TEST_ASSERT_TRUE(rf_inventory_update(&moved, command_done));
+    TEST_ASSERT_TRUE(start_update(&moved, command_done));
     deliver_response(SCP_TYPE_ACK, 0U);
     TEST_ASSERT_FALSE(rf_inventory_get_binding(6U, &entry));
 }
@@ -1765,6 +1841,7 @@ void test_same_eui_move_preserves_its_latched_failure(void)
     load_one_phase();
     scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
     packet.data[0] = 5U;
+    packet.data[29] = 0U; /* No AY backlog in this move test. */
     put_u32(&packet.data[5], 100U);
     packet.data[28] = 1U;
     inject_packet(&packet);
@@ -1775,7 +1852,7 @@ void test_same_eui_move_preserves_its_latched_failure(void)
     {
         .zone = 0U, .feeder = 1U, .phase = 2U, .eui64 = {0x11U}
     };
-    TEST_ASSERT_TRUE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
     deliver_response(SCP_TYPE_ACK, 0U);
     packet.data[0] = 6U;
     put_u32(&packet.data[5], 10U);
@@ -1795,7 +1872,7 @@ void test_failed_update_does_not_replace_the_effective_ack_identity(void)
     {
         .zone = 0U, .feeder = 1U, .phase = 1U, .eui64 = {0x22U}
     };
-    TEST_ASSERT_TRUE(rf_inventory_update(&entry, command_done));
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
     deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
     TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &entry));
     TEST_ASSERT_EQUAL_UINT8(0x11U, entry.eui64[0]);
@@ -1990,7 +2067,7 @@ void test_config_status_shell_accepts_protocol_id_endpoints(void)
     TEST_ASSERT_TRUE(scp_is_free());
 }
 
-void test_epoch_ack_blocks_configuration_for_thirty_seconds_across_tick_wrap(void)
+void test_epoch_ack_paces_feeders_for_ninety_seconds_across_tick_wrap(void)
 {
     rf_inventory_start();
     complete_inventory();
@@ -2001,9 +2078,10 @@ void test_epoch_ack_blocks_configuration_for_thirty_seconds_across_tick_wrap(voi
     TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
     TEST_ASSERT_FALSE(rf_inventory_epoch_ready(1U));
     TEST_ASSERT_TRUE(rf_inventory_epoch_ready(2U));
-    fake_tick = 28999U;
+    TEST_ASSERT_FALSE(rf_inventory_refresh_epoch(2U, command_done));
+    fake_tick = 88999U;
     TEST_ASSERT_FALSE(rf_inventory_epoch_ready(1U));
-    fake_tick = 29000U;
+    fake_tick = 89000U;
     TEST_ASSERT_TRUE(rf_inventory_epoch_ready(1U));
     TEST_ASSERT_FALSE(rf_inventory_epoch_ready(0U));
     TEST_ASSERT_FALSE(rf_inventory_epoch_ready(5U));
@@ -2252,6 +2330,82 @@ void test_invalid_clock_live_wire_keeps_iv_and_bad_packet_preserves_timestamp(vo
     inject_packet(&packet);
     TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
     TEST_ASSERT_EQUAL_MEMORY(&received, &data.received_time, sizeof(received));
+}
+
+
+void test_update_waits_for_live_logs_and_mh_drain_before_changing_binding(void)
+{
+    load_one_phase();
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    packet.data[0] = 5U;
+    packet.data[29] = 5U;
+    inject_packet(&packet);
+    const rf_inventory_entry_t replacement =
+    {
+        .zone = 0U, .feeder = 1U, .phase = 1U, .eui64 = {0x22U}
+    };
+    const uint32_t before = transmit_calls;
+    TEST_ASSERT_TRUE(rf_inventory_update(&replacement, command_done));
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_DRAINING, rf_inventory_get_status());
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    packet.data[29] = 0U;
+    put_u32(&packet.data[5], 1500U);
+    inject_packet(&packet);
+    rf_events_request_drain_StopIgnore();
+    rf_events_request_drain_Expect();
+    rf_inventory_continue();
+    events_drained = false;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    rf_inventory_entry_t accepted;
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &accepted));
+    TEST_ASSERT_EQUAL_UINT8(0x11U, accepted.eui64[0]);
+    events_drained = true;
+    drained_total = 4321U;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    uint32_t boundary = 0U;
+    TEST_ASSERT_TRUE(rf_inventory_get_boundary(&boundary));
+    TEST_ASSERT_EQUAL_UINT32(4321U, boundary);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &accepted));
+    TEST_ASSERT_EQUAL_UINT8(0x11U, accepted.eui64[0]);
+    TEST_ASSERT_FALSE(rf_inventory_get_boundary(&boundary));
+}
+
+void test_silent_device_skips_live_log_wait_but_still_requires_mh_drain(void)
+{
+    load_one_phase();
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    packet.data[0] = 5U;
+    packet.data[29] = 5U;
+    inject_packet(&packet);
+    fake_tick = 30000U;
+    const rf_inventory_entry_t replacement =
+    {
+        .zone = 0U, .feeder = 1U, .phase = 1U, .eui64 = {0x22U}
+    };
+    TEST_ASSERT_TRUE(rf_inventory_update(&replacement, command_done));
+    rf_events_request_drain_StopIgnore();
+    rf_events_request_drain_Expect();
+    events_drained = false;
+    rf_inventory_continue();
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_DRAINING, rf_inventory_get_status());
+    TEST_ASSERT_TRUE(scp_is_free());
+}
+
+void test_manual_inventory_cannot_bypass_boot_protection_or_active_config(void)
+{
+    allow_inventory = false;
+    TEST_ASSERT_FALSE(rf_inventory_start());
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
+    allow_inventory = true;
+    group_active = true;
+    TEST_ASSERT_FALSE(rf_inventory_start());
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_IDLE, rf_inventory_get_status());
 }
 
 /*** end of file ***/

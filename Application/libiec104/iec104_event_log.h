@@ -14,11 +14,39 @@
 
 #include "fault_log.h"
 
+typedef enum
+{
+    IEC104_EVENT_FAULT = 0,
+    IEC104_EVENT_TRIP_FAILURE = 1
+} iec104_event_kind_t;
+
+typedef struct
+{
+    cp56time2a_t time;
+    uint8_t feeder;
+    uint8_t phase;
+    uint8_t active;
+} __attribute__((packed)) iec104_alarm_record_t;
+
+typedef struct
+{
+    uint8_t kind;
+    union
+    {
+        fault_log_t fault;
+        iec104_alarm_record_t alarm;
+    } payload;
+    uint32_t crc;
+} __attribute__((packed)) iec104_event_record_t;
+
+_Static_assert(sizeof(iec104_event_record_t) == 25U,
+               "IEC event payload must be 25 bytes");
+
 /* ---------------------------------------------------------------------------
  * Kapasite (hesap iec104_event_log.c icinde, spi_flash_log sabitlerinden):
- *   entry = LOG_ENTRY_OVERHEAD(4) + sizeof(fault_log_t)(20) = 24 bytes
- *   sector = 4096 / 24 = 170 records
- *   8 sectors: 1360 records before erase, 1190 kept during rotation
+ *   entry = LOG_ENTRY_OVERHEAD(4) + sizeof(iec104_event_record_t)(25) = 29 bytes
+ *   sector = 4096 / 29 = 141 records
+ *   8 sectors: 1128 records before erase, 987 kept during rotation
  *
  * NOT: bu baslik spi_flash_log.h'i include etmez; kapasite makrolari .c
  * icinde kalir ve flash log kutuphanesi tuketicilere tasinmaz.
@@ -37,6 +65,9 @@ bool iec104_event_log_init(void);
  * @param[out] seq_out Kayda atanan seq (NULL olabilir).
  */
 bool iec104_event_log_add(const fault_log_t *entry, uint16_t *seq_out);
+/* Alarm records use the same durable queue and unsent sequence range. */
+bool iec104_event_log_add_alarm(const iec104_alarm_record_t *entry,
+                               uint16_t *seq_out);
 
 /**
  * Gonderilmemis kayit sayisi.
@@ -44,11 +75,13 @@ bool iec104_event_log_add(const fault_log_t *entry, uint16_t *seq_out);
 uint16_t iec104_event_log_get_unsent_count(void);
 
 /**
+ * Reads the typed fault/alarm payload of the newest unsent record.
  * Gonderilmemis kayitlarin EN YENISINI okur (sartname 2.2.4.2: yeniden
  * eskiye gonderim). Her mark_sent sonrasi bir sonraki (daha eski) kaydi verir.
  * CRC'si bozuk slotlari spi_flash_log atlar; tek bozuk kayit yayimi kilitlemez.
  */
-bool iec104_event_log_read_newest_unsent(fault_log_t *out, uint16_t *seq_out);
+bool iec104_event_log_read_newest_unsent(iec104_event_record_t *out,
+                                        uint16_t *seq_out);
 
 /**
  * Kaydi gonderildi olarak isaretler (yalnizca RAM).

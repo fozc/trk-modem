@@ -10,6 +10,8 @@
 
 #include "rf_monitor_json.h"
 #include "rf.h"
+#include "rf_config.h"
+#include "rf_faults.h"
 #include "xprintf.h"
 #include <math.h>
 #include <string.h>
@@ -181,6 +183,27 @@ static void emit_phase(json_writer_t *writer, size_t line, size_t phase,
     append(writer, "}");
 }
 
+static void emit_fault_counts(json_writer_t *writer, size_t line)
+{
+    const rf_feeder_t *feeder = rf_store_get((feeder_id_t)line);
+    rf_fault_stats_t count;
+    if ((NULL == feeder) || !feeder->in_use ||
+        (0U == feeder->config.fider_id) ||
+        !rf_faults_get_stats(feeder->config.zone_id,
+                             feeder->config.fider_id, &count))
+    {
+        append(writer, ",\"FaultCountsSinceStartup\":null");
+        return;
+    }
+    append(writer, ",\"FaultCountsSinceStartup\":{\"Permanent\":");
+    char text[16];
+    (void)xsnprintf(text, sizeof(text), "%u", (unsigned)count.permanent);
+    append(writer, text);
+    emit_u32(writer, "Temporary", count.temporary);
+    emit_u32(writer, "Uncertain", count.uncertain);
+    append(writer, "}");
+}
+
 bool rf_json_monitor_build(char *buffer, size_t capacity, int32_t line_filter,
                             uint32_t now_ms, size_t *length)
 {
@@ -215,7 +238,14 @@ bool rf_json_monitor_build(char *buffer, size_t capacity, int32_t line_filter,
             }
             emit_phase(&writer, line, phase, now_ms);
         }
-        append(&writer, "]}");
+        append(&writer, "]");
+        /* Per-feeder reads carry counters. Keep the bulk 21-phase
+         * response within the existing HTTP buffer. */
+        if (0 <= line_filter)
+        {
+            emit_fault_counts(&writer, line);
+        }
+        append(&writer, "}");
     }
     append(&writer, "]}");
     if (writer.failed)

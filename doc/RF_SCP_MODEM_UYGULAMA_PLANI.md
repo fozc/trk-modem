@@ -1,7 +1,7 @@
 # RF-SCP R1 modem uygulama planı
 
 **Tarih:** 05.10.2026
-**Son güncelleme:** 06.10.2026
+**Son güncelleme:** 07.10.2026
 **Durum:** Kullanıcı R1 davranışlarının uygulanmasını onayladı.
 İlk beş adımın codec, istek, açılış/envanter ve canlı veri servisleri
 tamamlandı. RF web monitorü güncel modele geçti. Altıncı adımda otomatik
@@ -12,7 +12,10 @@ ve sonuç doğrulaması eklendi; COMMIT öncesi belirsiz temizleme BOLATeX
 cevabını bekliyor. İstenen ayarın Kaydet ile kalıcı tutulması ve Uygula
 işleminin ayrı olması kullanıcı kararıyla netleştirildi. Powerboard özet/alarm tüketicileri SCP
 kaynağına geçirildi. Powerboard müşteri ayar/komut servisi ve ham teşhis
-bağlandı; BOLATeX teyitleri ve kalan ürün bağlantıları açıktır.
+bağlandı; kalan ürün bağlantıları açıktır. BQ-01–16 yanıtları alınmıştır.
+Yukarıdaki ve tarihli uygulama bölümlerindeki “cevap bekleniyor” ifadeleri
+geçmiş durumu anlatır. Bugünkü karşılaştırma ve tamamlanmamış işler
+[BOLATeX yanıt kontrolünde](RF_SCP_BOLATEX_YANIT_KONTROLU.md) tutulur.
 
 ## Amaç
 
@@ -1344,6 +1347,58 @@ edilen fixture ile eşleştiğini doğruladı. CubeIDE Release 0 hata ve
 onay kanalı ve diğer BOLATeX cevapları beklenmeye devam eder; bu gösterim
 hataları üreticiye sorulacak yeni bir protokol belirsizliği değildir.
 
+## IEC104 olay günlüğü ve HIL değerlendirmesi — 06.10.2026
+
+Günlük gösterimi/BQ-16 paketi `4844932` commit'iyle kaydedildi.
+Ardından logging kapalı test yapısında `visit_dump()` içindeki yalnız
+çıktı için hesaplanan `sent` değişkeninin kullanılmadığı doğrulandı.
+Hesap SHELL_LOG argümanına taşındı; logging kapalıyken hesap da derlemeden
+çıkar. Log açık çıktısı, kayıt ve gönderim kuralları değişmez.
+
+Yeni `iec104/test_iec104_event_log.c`, gerçek Flash log/CRC ile
+gönderilmemiş kayıtların en yeniden okunmasını, yanlış sıra onayının
+aralığı değiştirmemesini, yeniden init sonrası kaydın korunmasını,
+NULL giriş ve yazma hatasında sıra/durumun korunmasını sınar. Shell
+açık/kapalı paketler ortak NOR fixture kullanır. 95/95 ilgili test ve
+Release 0 hata/0 uyarıyla geçti; fiziksel kabul yapılmadı.
+
+HIL raporu, kapanış manifesti/izleri ve test planı karşılaştırıldı.
+[Ayrı değerlendirme](../RF_HIL_DEGERLENDIRME_2026-10-06.md), 26/26
+seçili bench PASS kaydını ve tekrar geçirilen 57/57 self-test'i doğrular.
+Manifestin kaynak varsayılanı profil 0 ile rapordaki bench profil 1
+ayrımı, çalışan DUT imaj kimliği eksikliği ve ertelenmiş kapsam nedeniyle
+bu sonuç tüm planın/üretim UART3 hattının kabulü sayılmamalıdır. Login
+whitespace ve komut adı bulguları kaynakta doğrulandı; bu adımda düzeltilmedi.
+
+## HIL yazılım bulgularının düzeltilmesi — 07.10.2026
+
+Kullanıcı gerekli HIL düzeltmelerini istedi. Login whitespace/alan
+sırası/ASCII escape ayrıştırması ve RF komut adları düzeltildi; mevcut
+oturum/token/lockout ve SCP tel kuralları korunur.
+
+Runner, seçilen EFW dosyası/profil ile kurulu DUT metadata'sını vaka
+öncesi/sonrası eşleştirir. Eksik/yanlış kimlik ve seçilen ertelenmiş
+kontrol başarı sayılmaz. Artifact SHA-256, beklenen/gözlenen kimlik ve
+repository bilgileri ayrıdır; eski koşu manifestleri değiştirilmedi.
+
+Web auth, 79 RF Ceedling, 57 simülatör ve 9 HIL kapı testi geçti;
+Release 0 hata/0 uyarıdır. Yeni imajla fiziksel tekrar gerekir; yükleme
+yapılmadı. Durum/kullanım [HIL değerlendirmesi v1.1](../RF_HIL_DEGERLENDIRME_2026-10-06.md)
+içindedir. Yeni operatör onay kanalı seçilmedi; BQ-16 açık kalır.
+
+## 07.10.2026 kullanıcı kararlarının uygulanması
+
+Son grup bilgisi RTU startup sırasında sıfırlanır; NVRAM'e eklenmez.
+Dizi sınıflaması, ayrı fider sayımı, envanter drain ön kontrolü ve
+kalıcı kayıt sonrası otomatik alarm onayı uygulanmıştır. Kullanıcı
+onayıyla faz başına SCADA açma başarısızlığı IOA'sı ve fault/alarm
+kalıcı replay biçimi eklenmiştir. Ham günlük 8 KB olarak kalır.
+
+Eski tarihli manuel onay/kullanıcı kararı bekleme paragrafları önceki
+durumu anlatır. Güncel ürün kararları ve üreticiye bildirilecek sınırlar
+[uygulama raporu bölüm 7](../BOLATEX_YANIT_UYGULAMA_RAPORU_2026-10-07.md#7-bolatexe-bildirilecek-rtu-ürün-kararları--07102026)
+içinde tutulur. Dış kanaldan gönderim ve fiziksel HIL yapılmadı.
+
 ## Değişiklik geçmişi
 
 | Tarih | Sürüm | Değişiklik |
@@ -1371,3 +1426,8 @@ hataları üreticiye sorulacak yeni bir protokol belirsizliği değildir.
 | 06.10.2026 | 0.21 | Commit 1692957; kullanıcı anlık arıza alanlarını kaldırdı, olay yük biti doğrudan kayıt düzeltmesi ve liste adresinden gönderim hazırlığı |
 | 06.10.2026 | 0.22 | Arıza paketi commit 4578ada; BQ-16 operatör onay kaynağı sorusu, yeni web API'sinin bekletilmesi ve mevcut servisin 79/79 testi |
 | 06.10.2026 | 0.23 | Arıza/IEC104 günlük çıktılarında doğrudan yük biti, iki hata testi, 172/172 ilgili regresyon, 175 paket fixture ve Release doğrulaması |
+| 06.10.2026 | 0.24 | Commit 4844932; logging kapalı olay günlüğü düzeltmesi, ortak fixture ile 95/95 test ve HIL sonuçlarının bağımsız değerlendirmesi |
+| 07.10.2026 | 0.25 | HIL-01–04 yazılım düzeltmeleri, login ve DUT kimlik/profil/başarı kapıları; host/Release doğrulaması |
+| 07.10.2026 | 0.26 | R0/Ek-1 karşılaştırması, doğrulanmış RF/Powerboard/kalite düzeltmeleri ve refactor; 274 Ceedling, 62 simülatör, web ve Release doğrulaması; kalan ürün kararları ayrı kontrol belgesinde |
+
+| 07.10.2026 | 0.27 | Altı kullanıcı kararı; son grup sıfırlama, dizi/fider sayımı, inventory drain, otomatik kayıt onayı ve SCADA alarm noktaları |
