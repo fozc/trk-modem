@@ -317,6 +317,38 @@ void test_not_available_waits_then_uses_new_seq_with_shared_budget(void)
     TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
 }
 
+static void command_done_with_followup(scp_cmd_result_t result,
+                                        const scp_packet_t *packet)
+{
+    TEST_ASSERT_EQUAL_INT(SCP_CMD_OK, result);
+    TEST_ASSERT_NOT_NULL(packet);
+    const scp_packet_t response = *packet;
+    command_done(result, packet);
+    if (1U == done_calls)
+    {
+        TEST_ASSERT_TRUE(scp_is_free());
+        TEST_ASSERT_TRUE(scp_send_command(SCP_TYPE_GET,
+            RF_SCP_CMD_GET_STATUS, NULL, 0U, 500U, 0U, command_done));
+        TEST_ASSERT_EQUAL_MEMORY(&response, packet, sizeof(response));
+    }
+}
+
+void test_validated_response_callback_can_send_followup_without_losing_packet(void)
+{
+    TEST_ASSERT_TRUE(scp_send_command(SCP_TYPE_GET, RF_SCP_CMD_GET_STATUS,
+        NULL, 0U, 500U, 0U, command_done_with_followup));
+    const uint8_t first_seq = transmitted.seq;
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
+    TEST_ASSERT_FALSE(scp_is_free());
+    TEST_ASSERT_EQUAL_UINT32(2U, transmit_calls);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)(first_seq + 1U), transmitted.seq);
+    TEST_ASSERT_EQUAL_UINT8(first_seq, done_packet.seq);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_UINT32(2U, done_calls);
+    TEST_ASSERT_TRUE(scp_is_free());
+}
+
 void test_timeout_already_retries_identical_packet_and_sequence(void)
 {
     TEST_ASSERT_TRUE(scp_send_command(SCP_TYPE_GET, RF_SCP_CMD_GET_STATUS,
