@@ -16,6 +16,7 @@
 
 static breaker_t fake_breaker;
 static int sync_count;
+static int sync_result;
 
 breaker_t *nvram_get_breaker_rw(void)
 {
@@ -26,7 +27,7 @@ int nvram_sync(bool crc_no_check)
 {
     (void)crc_no_check;
     sync_count++;
-    return 0;
+    return sync_result;
 }
 
 int rf_nvram_fake_sync_count(void)
@@ -38,6 +39,12 @@ void rf_nvram_fake_reset(void)
 {
     (void)memset(&fake_breaker, 0, sizeof(fake_breaker));
     sync_count = 0;
+    sync_result = 0;
+}
+
+void rf_nvram_fake_set_sync_result(int result)
+{
+    sync_result = result;
 }
 
 /*** end of file ***/

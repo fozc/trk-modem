@@ -56,6 +56,11 @@ void test_user_cannot_apply_or_abort_but_can_read_group_status(void)
     http_handlers_is_admin_ExpectAndReturn(false);
     http_send_error_Expect(403, "Admin role required");
     route_and_handle_request(&request);
+    request.path = "/config/rf";
+    http_handlers_is_authenticated_ExpectAndReturn(true);
+    http_handlers_is_admin_ExpectAndReturn(false);
+    http_send_error_Expect(403, "Admin role required");
+    route_and_handle_request(&request);
     request.method = HTTP_METHOD_GET;
     request.path = "/status/rf-group";
     http_handlers_is_authenticated_ExpectAndReturn(true);
@@ -63,7 +68,7 @@ void test_user_cannot_apply_or_abort_but_can_read_group_status(void)
     route_and_handle_request(&request);
 }
 
-void test_admin_apply_and_abort_route_to_explicit_actions(void)
+void test_admin_save_abort_and_retired_apply_route_to_handlers(void)
 {
     http_request_t request = {.method = HTTP_METHOD_POST};
 
@@ -76,6 +81,12 @@ void test_admin_apply_and_abort_route_to_explicit_actions(void)
     http_handlers_is_authenticated_ExpectAndReturn(true);
     http_handlers_is_admin_ExpectAndReturn(true);
     handle_post_rf_abort_Expect();
+    route_and_handle_request(&request);
+    request.path = "/config/rf";
+    request.body = "{}";
+    http_handlers_is_authenticated_ExpectAndReturn(true);
+    http_handlers_is_admin_ExpectAndReturn(true);
+    handle_post_rf_config_json_Expect("{}");
     route_and_handle_request(&request);
 }
 

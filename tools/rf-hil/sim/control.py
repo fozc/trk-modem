@@ -22,6 +22,7 @@ def make_eui(line, phase):
 # knobs the control channel may set on the hub model (defensive list)
 HUB_KNOBS = (
     "fw_label", "sched_active", "live_period_s", "live_enabled",
+    "log_bell_enabled",
     "pwr_enabled", "cfg_delivered_ms", "cfg_applied_ms",
     "cfg_force_fail_reason", "cfg_no_deliver", "cfg_no_apply",
     "cfg_delivered_fail_ms", "cfg_applied_fail_ms",
@@ -50,7 +51,8 @@ def dispatch_action(hub, faults, lock, req):
                            code=int(req.get("code", 1)),
                            line=int(req.get("line", 1)),
                            zone=req.get("zone"),
-                           phase=req.get("phase"))
+                           phase=req.get("phase"),
+                           boot_counter=int(req.get("boot_counter", 7)))
             return {"ok": True, "pending": hub.pending_count()}
         if action == "inject_trip":
             hub.inject_trip(int(req["line"]), int(req["phase"]),

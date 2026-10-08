@@ -393,6 +393,32 @@ class IdempotencyTests(unittest.TestCase):
 
 class EventRingTests(unittest.TestCase):
 
+    def test_disabled_bell_keeps_event_available_for_poll(self):
+        h = HubHarness()
+        h.hub.log_bell_enabled = False
+        h.hub.add_events(1)
+        self.assertEqual([], h.notifies(0x47))
+        self.assertEqual(1, h.hub.pending_count())
+        h.request(0x40, sc.TYPE_GET, b"", seq=1)
+        reply = h.replies()[-1]
+        self.assertEqual(sc.TYPE_ACK, reply.type)
+
+    def test_injected_boot_counter_is_encoded_with_valid_crc(self):
+        h = HubHarness()
+        h.hub.add_events(1, code=101, boot_counter=1234)
+        record = h.hub.slots[0]
+        self.assertEqual(1234, struct.unpack_from("<H", record, 49)[0])
+        self.assertEqual(sc.crc16_ccitt_false(record[:58]),
+                         struct.unpack_from("<H", record, 58)[0])
+
+    def test_invalid_boot_counter_preserves_ring(self):
+        h = HubHarness()
+        for value in (-1, 65536):
+            with self.assertRaises(ValueError):
+                h.hub.add_events(1, boot_counter=value)
+        self.assertEqual(0, h.hub.total)
+        self.assertEqual(0, h.hub.pending_count())
+
     def test_stale_cursor_can_consume_records_not_read_by_rtu(self):
         h = HubHarness()
         upload_inventory(h)

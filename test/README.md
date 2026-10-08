@@ -1060,3 +1060,26 @@ C derlemesinde doğrulanır. Serial/console sınırları test çiftidir.
 
 RF gerçek SCP RX paketi 79/79 ve Release 0 hata/0 uyarıyla geçti.
 Fiziksel HIL veya yükleme yapılmadı; yeni imajla yeniden koşu gerekir.
+
+## 08.10.2026 RF HIL kabul kontrolleri
+
+Merkezi `integration/rf_hil/run_tests.py` paketi simülatör self-test,
+imaj/profil kimliği ve `test_hil_assertions.py` negatif kabul testlerini
+birlikte çalıştırır. Bu üç paket port açmaz.
+
+Alarm HIL testleri yalnız çıktıdaki alan adını değil kalıcı IEC104 alarm
+kaydını, gerçek latch değerini ve kalıcı faz arıza sayacındaki değişimi
+denetler. 101, aynı açma önceden bilinmiyorsa kalıcı arıza ve alarmdır;
+105 yalnız alarmdır. Konsol `(zaman, metin)` satırları doğru ayrılır.
+Başlangıçtaki boş CONSUME, sonraki bekleyen kayıtları başarı saydıramaz.
+
+`cases_recovery.py` kayıp LOG_AVAILABLE sonrası periyodik okuma, sabit
+uptime'da ölçüm kalitesi ve COMMIT sırasında MH restart senaryolarını
+tanımlar. `d5_wrap_during_read` uzun süreli HIL testi hâlâ ertelenmiştir.
+Simülatör `add_events` eyleminde isteğe bağlı `boot_counter` alır;
+varsayılan 7 korunur. Ayrı AY açılışları açıkça farklı kimlikle üretilir.
+`log_bell_enabled=false` kayıtları koruyup bildirimleri susturur.
+
+Donanım koşuları ve ilk başarısız izler `build/rf-hil-2026-10-08-*`
+altındadır. Sayısal sonuç ve kalan fiziksel sınırlar üretim hazırlık
+raporunun ilgili bölümünde tutulur; ilk koşu raporları sonradan değiştirilmez.

@@ -462,6 +462,14 @@ TIME_SYNC/olay cekme/grup islemleri kapaldi. Kurtarmanin bugunku yolu
 MH'yi resetlemek: 23:55:35'te dogrulandi (BOOT -> TIME_SYNC -> 6 girdi
 -> END, 153 ms; `Envanter: YUKLU`).
 
+**08.10.2026 ek kanıt:** Gerçek MH GET_STATUS firmware kimliği `6dc02267`,
+BOOT major 1. RTU profil 0 imajı yeniden yüklendiğinde major 0 / BEKLIYOR
+durumu sürerken Powerboard E1 geliyordu. Kullanıcının bağımsız MH reseti
+sonrasında BOOT, TIME_SYNC, HEAD/CONSUME koruması ve altı envanter ACK'i
+tamamlandı; durum YUKLU oldu. Son sürümle yeniden kurulum sınırı devam
+etmektedir. İzler `build/rf-production-restored-2026-10-08.log` ve
+`build/rf-real-hub-start-2026-10-08.log` içindedir.
+
 **Sorular:**
 
 1. RTU yeniden baslatildiginda kendini yeniden kurmasi icin BOOT

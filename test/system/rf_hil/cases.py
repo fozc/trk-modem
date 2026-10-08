@@ -239,6 +239,10 @@ def c2(ctx):
     tc = refresh(ctx)
     after_stop = [r for r in tc.tx_frames(0x11) if r.get("kind") == "notify"]
     tc.expect(len(after_stop) > 0, "once canli veri akmaliydi")
+    offline = ctx.console.send_and_wait(
+        "rf live 1 1", r"RF YOK, has_live=1", timeout_s=10)
+    tc.expect(offline, "DUT did not report offline after LIVE timeout")
+    ctx.evidence.append(offline[1])
     # after disable no more LIVE notifications
     ctx.sim.call(do="set_knob", name="live_enabled", value=True)
     return "live stopped after t=25; console tail captured"
@@ -296,12 +300,11 @@ def d1(ctx):
 
 def _left_zero(tc):
     acks = [r for r in tc.tx_frames(0x46) if r.get("kind") == "reply"]
-    for ack in acks:
+    for ack in reversed(acks):
         data = bytes.fromhex(ack["data_hex"])
         if len(data) >= 4:
             _, left = struct.unpack("<HH", data[0:4])
-            if left == 0:
-                return True
+            return left == 0
     return False
 
 
@@ -425,6 +428,8 @@ def e1(ctx):
               (crc, expected))
     out = ctx.console.send_and_wait(r"rf cfg-state", r"APPLIED|state|durum",
                                     timeout_s=8)
+    tc.expect(out and "state=APPLIED" in out[1],
+              "DUT did not confirm APPLIED")
     body2 = ctx.console.drain(2.0)
     ctx.evidence += body2[:15]
     return "group 7 APPLIED crc=0x%04X" % crc
@@ -501,7 +506,7 @@ def e6(ctx):
 # ----------------------------------------------------------------------
 
 @case("f1_epoch_refresh",
-      "rf epoch 1: 0x2A ACK; 15 s penceresinde ikinci cagri 0x03",
+      "rf epoch 1: 0x2A ACK; 90 s bekleme sirasinda ikinci istek engellenir",
       scenario={"steps": [{"at_s": 0.5, "do": "boot"}]})
 def f1(ctx):
     ctx.console.send("rf log verbose")
@@ -512,7 +517,7 @@ def f1(ctx):
     time.sleep(0.3)
     ctx.console.send("rf epoch 1")
     time.sleep(3.0)
-    ctx.console.send("rf epoch 1")   # inside the 15 s broadcast window
+    ctx.console.send("rf epoch 1")   # inside the RTU's 90 s wait
     time.sleep(3.0)
     tc = refresh(ctx)
     epochs = tc.rx_requests(0x2A)
@@ -649,20 +654,18 @@ def h4(ctx):
       "Bilinmeyen CMD'li istek-disi SET: DUT yok saymali (yanit yok)",
       scenario={"steps": [{"at_s": 0.5, "do": "boot"}]})
 def h6(ctx):
-    # send a spontaneous SET with a reserved-band cmd via inject hook:
-    # the sim exposes it through the generic notify path
     ctx.console.send("rf log verbose")
     wait_upload_complete(ctx)
-    # 0x60 is reserved band; the DUT must silently ignore it
-    ctx.sim.call(do="inject_anomaly", src=0x01, state=1)  # sanity flow
-    result = ctx.sim.call(do="set_knob", name="sched_active", value=1)
-    # direct unknown proactive: use ping-like path via notify cmd 0x60
-    # (no dedicated action; emulate by injecting anomaly first, then
-    # assert the console shows no ERROR/protocol complaint)
-    time.sleep(5.0)
-    out = ConsoleChecks(ctx.console.new_lines())
-    out.assert_not_contains(r"ERROR 0x01|ERR_UNKNOWN")
-    return "unknown-cmd tolerance observed (weak check)"
+    ctx.sim.call(do="raw_notify", cmd=0x60, data_hex="0102")
+    time.sleep(6.0)
+    tc = refresh(ctx)
+    tc.expect(tc.tx_frames(0x60, kind="notify"), "Unknown SET not injected")
+    tc.expect(not tc.rx_requests(0x60), "DUT replied to unknown notification")
+    online = ctx.console.send_and_wait(
+        "rf live 1 1", r"RF VAR, has_live=1", timeout_s=10)
+    tc.expect(online, "RF stopped after unknown notification")
+    ctx.evidence.append(online[1])
+    return "Unknown SET ignored without reply; LIVE remains online"
 
 
 # ----------------------------------------------------------------------
@@ -699,12 +702,10 @@ def i1(ctx):
 # Plan v1.2 additions register their cases on import.
 import cases_v12  # noqa: E402,F401  (registers into CASES above)
 import cases_bq   # noqa: E402,F401  (BOLATeX R0 answer cases)
+import cases_recovery  # noqa: E402,F401 (recovery and quality cases)
 
 PLANNED = {
-    "d2_lost_bell_60s_poll": "0x47 kaybi -> 60 s periyodik 0x40 (soak)",
     "d5_wrap_during_read": "okuma sirasinda halka sarmasi (soak)",
-    "e5_reboot_mid_cfg": "konfig ortasinda hub reset -> RESTARTED",
-    "c3_stale_uptime": "artmayan uptime (BOLATeX'e bildirim kasidi)",
 }
 
 

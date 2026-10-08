@@ -2,67 +2,79 @@
 """BOLATeX R0 answer HIL cases: BQ-01 alarm-from-record, BQ-11 gid-zero
 rejection, discovery flow, late reply, Trip_Failed latch."""
 
-import struct
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from cases import (case, wait_upload_complete, refresh, _left_zero,   # noqa: E402
-                   any_retry, ConsoleChecks)
-from cases_v12 import _wait_group_state                              # noqa: E402
+from cases import case, wait_upload_complete, refresh, any_retry  # noqa: E402
+
+
+def read_trip_state(ctx, line, phase=1):
+    reply = ctx.console.send_and_wait(
+        "rf live %d %d" % (line, phase),
+        r"trip_failed=([01]), latched=([01])", timeout_s=10)
+    assert reply, "RF phase state missing"
+    ctx.evidence.append(reply[1])
+    return tuple(int(value) for value in reply[2].groups())
+
+
+def read_permanent_count(ctx, line):
+    reply = ctx.console.send_and_wait(
+        "fltlog dump %d" % line,
+        r"Phase 1 - PERMANENT FAULTS \(total: (\d+),", timeout_s=10)
+    assert reply, "Permanent fault count missing"
+    ctx.evidence.append(reply[1])
+    return int(reply[2].group(1))
+
+
+def check_alarm_event(ctx, code, line, permanent_delta):
+    wait_upload_complete(ctx)
+    before = read_permanent_count(ctx, line)
+    seq_reply = ctx.console.send_and_wait(
+        "iec104evtlog status", r"next_seq\s*:\s*(\d+)", timeout_s=10)
+    assert seq_reply, "IEC104 log sequence missing"
+    first_seq = int(seq_reply[2].group(1)) & 0xFFFF
+    # Separate simulated AY openings even when the MH process restarts.
+    boot_counter = int(time.time()) & 0xFFFF
+    ctx.sim.call(do="add_events", count=1, code=code, line=line, phase=1,
+                 boot_counter=boot_counter)
+    deadline = time.monotonic() + 75
+    while time.monotonic() < deadline:
+        refresh(ctx)
+        if ctx.sim.call(do="status")["state"]["ring"]["pending"] == 0:
+            break
+        time.sleep(0.5)
+    else:
+        raise AssertionError("Injected event was not consumed")
+    tc = refresh(ctx)
+    tc.expect(tc.rx_requests(0x44), "Injected event has no RANGE read")
+    # A boot no-op CONSUME cannot satisfy the pending check above.
+    assert read_permanent_count(ctx, line) == before + permanent_delta
+    reply = ctx.console.send_and_wait(
+        "iec104evtlog dump %d 65534" % first_seq,
+        r"seq=\d+ alarm F%d Ph1 active=1" % line, timeout_s=10)
+    assert reply, "Injected alarm missing from persistent IEC104 log"
+    ctx.evidence.append(reply[1])
+    # Receipt acknowledgement clears the latch, not a live failure.
+    assert read_trip_state(ctx, line)[1] == 0, "Stored alarm still latched"
+    return "%d persisted, acknowledged; permanent delta=%d" % (
+        code, permanent_delta)
 
 
 @case("bq01_alarm_from_101",
-      "BQ-01: kayit deposundan gelen 101 acma-basarisizlik alarmi acar; "
-      "kayit fault listesine girmez",
-      scenario={"steps": [{"at_s": 0.5, "do": "boot"},
-                          {"at_s": 12.0, "do": "add_events", "count": 1,
-                           "code": 101, "line": 1}]})
+      "101: persistent alarm and permanent phase fault, then receipt ack",
+      scenario={"steps": [{"at_s": 0.5, "do": "boot"}]})
 def bq01_alarm_101(ctx):
-    ctx.console.send("rf log on")
-    wait_upload_complete(ctx)
-    time.sleep(30.0)  # allow the pull to complete
-    tc = refresh(ctx)
-    ranges = tc.rx_requests(0x44)
-    tc.expect(ranges, "0x44 cekme yok - 101 kaydi alinmadi")
-    consumes = tc.rx_requests(0x46)
-    tc.expect(consumes, "0x46 consume yok")
-    tc.expect(_left_zero(tc), "left=0'a ulasilmadi")
-    # alarm must be visible via rf live command
-    got = ctx.console.send_and_wait(
-        "rf live 1 1", r"Trip_Failed|trip_failed|alarm|Alarm|latched",
-        timeout_s=10)
-    assert got, "rf live ciktisinda alarm gorunmuyor"
-    body = ctx.console.drain(2.0)
-    ctx.evidence += body[:10]
-    # 101 must NOT be in the fault list (it is alarm-only per BQ-10)
-    elog = ctx.console.send_and_wait(
-        "elog dump 5", r"elog|TS:|CONFIG|EVENT", timeout_s=8)
-    if elog:
-        body2 = ctx.console.drain(2.0)
-        ctx.evidence += body2[:5]
-    return "101 alarm opened; consume=%d" % len(consumes)
+    return check_alarm_event(ctx, 101, 1, 1)
 
 
 @case("bq01_alarm_from_105",
-      "BQ-01: 105 kaydi da alarm acar (ayni yol)",
-      scenario={"steps": [{"at_s": 0.5, "do": "boot"},
-                          {"at_s": 12.0, "do": "add_events", "count": 1,
-                           "code": 105, "line": 2}]})
+      "105: persistent alarm only, then receipt ack",
+      scenario={"steps": [{"at_s": 0.5, "do": "boot"}]})
 def bq01_alarm_105(ctx):
-    ctx.console.send("rf log on")
-    wait_upload_complete(ctx)
-    time.sleep(30.0)
-    tc = refresh(ctx)
-    ranges = tc.rx_requests(0x44)
-    tc.expect(ranges, "0x44 cekme yok - 105 kaydi alinmadi")
-    got = ctx.console.send_and_wait(
-        "rf live 2 1", r"Trip_Failed|trip_failed|alarm|Alarm|latched",
-        timeout_s=10)
-    assert got, "rf live 2/1 ciktisinda alarm gorunmuyor"
-    return "105 alarm opened (line 2)"
+    return check_alarm_event(ctx, 105, 2, 0)
 
 
 @case("bq11_gid_zero_reject",
@@ -75,15 +87,16 @@ def bq11_gid_zero(ctx):
     time.sleep(0.3)
     ctx.console.send("admin")
     time.sleep(0.3)
-    ctx.console.send("rf cfg-apply 1 0")
+    rejected = ctx.console.send_and_wait(
+        "rf cfg-apply 1 0", r"Config not started", timeout_s=10)
+    assert rejected, "DUT did not reject group id zero"
     time.sleep(5.0)
     body = ctx.console.drain(2.0)
-    ctx.evidence += [l for l in body if l.strip()][:8]
+    ctx.evidence += [text for _, text in body if text.strip()][:8]
     tc = refresh(ctx)
     writes = tc.rx_requests(0x22)
     tc.expect(not writes,
               "group_id=0 ile 0x22 gonderildi: %d istek" % len(writes))
-    out = ConsoleChecks(ctx.console.all_lines()[-100:])
     return "gid=0 rejected; 0x22 count=%d" % len(writes)
 
 
@@ -92,7 +105,7 @@ def bq11_gid_zero(ctx):
       "devam eder",
       scenario={"steps": [{"at_s": 0.5, "do": "boot"}]})
 def h5(ctx):
-    ctx.console.send("rf log on")
+    ctx.console.send("rf log verbose")
     wait_upload_complete(ctx)
     ctx.sim.call(do="fault", action="delay_next", args={"ms": 700})
     time.sleep(25.0)
@@ -108,7 +121,7 @@ def h5(ctx):
 
 
 @case("c4_trip_failed_latch",
-      "Trip_Failed 1'e set edilir; restart'ta latch olur; ack ile kapanir",
+      "Trip_Failed=1 persists after receipt ack; advancing LIVE 0 clears it",
       scenario={"steps": [{"at_s": 0.5, "do": "boot"},
                           {"at_s": 15.0, "do": "live_value",
                            "line": 1, "phase": 1,
@@ -117,17 +130,12 @@ def c4(ctx):
     ctx.console.send("rf log on")
     wait_upload_complete(ctx)
     time.sleep(18.0)  # let live data flow with trip_failed=1
-    # alarm visible
-    got = ctx.console.send_and_wait(
-        "rf live 1 1", r"Trip_Failed|trip_failed|alarm|Alarm",
-        timeout_s=10)
-    assert got, "Trip_Failed=1 alarm olarak gorunmuyor"
+    assert read_trip_state(ctx, 1) == (1, 0), "Ongoing alarm not acknowledged"
     # clear the flag (uptime advances)
     ctx.sim.call(do="live_value", line=1, phase=1,
                  values={"trip_failed": 0, "uptime_s": 120})
     time.sleep(8.0)
-    body = ctx.console.drain(2.0)
-    ctx.evidence += body[:8]
+    assert read_trip_state(ctx, 1) == (0, 0), "Live clear did not close alarm"
     return "Trip_Failed set/clear cycle verified"
 
 

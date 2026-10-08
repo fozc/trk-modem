@@ -1,7 +1,7 @@
 # RF-SCP R1 modem uygulama planı
 
 **Tarih:** 05.10.2026
-**Son güncelleme:** 07.10.2026
+**Son güncelleme:** 08.10.2026
 **Durum:** Kullanıcı R1 davranışlarının uygulanmasını onayladı.
 İlk beş adımın codec, istek, açılış/envanter ve canlı veri servisleri
 tamamlandı. RF web monitorü güncel modele geçti. Altıncı adımda otomatik
@@ -9,8 +9,8 @@ olay çekme, 8 KB ham kayıt ve mevcut geçici/kalıcı arıza listesine aktarı
 bağlandı. IEC104 spontane/replay aktarımı eklendi. 101/105'in belirsiz
 geç kayıt davranışı BOLATeX cevabını bekliyor. Normal grup ayarı sıralayıcısı
 ve sonuç doğrulaması eklendi; COMMIT öncesi belirsiz temizleme BOLATeX
-cevabını bekliyor. İstenen ayarın Kaydet ile kalıcı tutulması ve Uygula
-işleminin ayrı olması kullanıcı kararıyla netleştirildi. Powerboard özet/alarm tüketicileri SCP
+cevabını bekliyor. İstenen ayarın Kaydet ile kalıcı tutulması ve ardından tüm etkin
+fiderlere sırayla uygulanması 08.10.2026 kullanıcı kararıdır. Powerboard özet/alarm tüketicileri SCP
 kaynağına geçirildi. Powerboard müşteri ayar/komut servisi ve ham teşhis
 bağlandı; kalan ürün bağlantıları açıktır. BQ-01–16 yanıtları alınmıştır.
 Yukarıdaki ve tarihli uygulama bölümlerindeki “cevap bekleniyor” ifadeleri
@@ -1020,6 +1020,10 @@ arayüzü, yeni alarm IOA'ları ve otomatik akü değişimi tetikleyicisi eklenm
 
 ## RF web Kaydet/Uygula bağlantısı — 06.10.2026
 
+Bu bölüm tarihsel uygulama kaydıdır. Güncel web davranışı için
+[08.10.2026 Kaydet akışı](#rf-web-kaydet-onayı-ve-sıralı-uygulama--08102026)
+esas alınmalıdır.
+
 ### Amaç ve kullanım yeri
 
 Powerboard değişiklikleri `179205b` commit'ine alındı. Ardından RF ayar
@@ -1431,3 +1435,76 @@ içinde tutulur. Dış kanaldan gönderim ve fiziksel HIL yapılmadı.
 | 07.10.2026 | 0.26 | R0/Ek-1 karşılaştırması, doğrulanmış RF/Powerboard/kalite düzeltmeleri ve refactor; 274 Ceedling, 62 simülatör, web ve Release doğrulaması; kalan ürün kararları ayrı kontrol belgesinde |
 
 | 07.10.2026 | 0.27 | Altı kullanıcı kararı; son grup sıfırlama, dizi/fider sayımı, inventory drain, otomatik kayıt onayı ve SCADA alarm noktaları |
+| 08.10.2026 | 0.28 | Kaydet onayından sonra tüm etkin fiderlere sıralı RF uygulaması, otomatik grup kimliği ve ayrı Uygula yolunun kaldırılması |
+
+## RF web Kaydet onayı ve sıralı uygulama — 08.10.2026
+
+**Amaç:** Operatörün tek Kaydet onayıyla ayarları saklayıp tüm etkin
+fiderlere uygulamasını sağlar. Bu bölüm sürüm 0.28 kararını açıklar.
+
+**Kullanım yeri:** Web RF ayar ekranı, `rf_apply` ve mevcut `rf_group`.
+
+### Kurallar
+
+1. Kaydet öncesinde tüm etkin ayar satırları ve fider kimlikleri onay
+   ekranında gösterilmelidir. Değişmeyen etkin fiderler de kapsanmalıdır.
+   İptal seçilirse kayıt ve RF gönderimi yapılmamalıdır. Etkin fider yoksa
+   yalnız kayıt yapılacağı açıkça gösterilmelidir.
+2. Parse ve staging (geçici kayıt) başarılı olduktan sonra NVRAM sync
+   tamamlanmalıdır. Sync hatasında RF uygulaması başlatılmamalıdır.
+   Mevcut kayıt davranışında RAM'e alınan ayar korunur; bu durum başarılı
+   kalıcı kayıt olarak gösterilmemelidir.
+3. `rf_apply` etkin store satırlarını küçük bir RAM bitmap'iyle sıraya
+   almalıdır. Her turda en çok bir grup başlatılmalıdır. Web bağlantısı
+   kapansa da firmware işlemi sürdürmelidir. RF store'unun tek üretim
+   yazarı web handler'ıdır; sıra çalışırken yeni Kaydet parse öncesinde
+   reddedilmelidir. Shell grubu çalışan web sırasını değiştirememelidir.
+4. Grup kimliği 1–255 aralığında otomatik seçilmelidir. Mevcut MH ön
+   kontrolü korunmalıdır. Terminal durumdaki kullanılmış kimlik atlanmalı;
+   aktif/belirsiz MH işi varsa sıra durdurulmalıdır. Bir fider için en
+   fazla 255 farklı kimlik sorgulanmalıdır. Kimlik araması ayar WRITE
+   işleminin retry (yeniden deneme) bütçesini değiştirmemelidir.
+5. Her fider mevcut `rf_group` üzerinden üç WRITE, COMMIT ve üye bitmap'i
+   ile writable CRC doğrulamasını kullanmalıdır. Yalnız doğrulanmış
+   APPLIED sonrasında sonraki fider başlatılmalıdır.
+6. FAILED, kısmi sonuç, CRC uyuşmazlığı, UNCERTAIN veya MH restart
+   sırasında sıra durdurulmalıdır. Geç gelen APPLIED sonucu durmuş sırayı
+   kendiliğinden sürdürmemelidir. Yeni Kaydet onayı tüm etkin fiderleri
+   yeniden kapsamalıdır; mevcut grup kilidi çözülmeden yeni Kaydet
+   kabul edilmemelidir. RTU reset sonrası sıra veya başarı geri
+   yüklenmemelidir. NVRAM düzeni değiştirilmemelidir.
+7. Web'de ayrı Uygula veya Yalnız kaydet seçeneği sunulmamalıdır. Durum
+   ekranı tamamlanan, işlem gören ve uygulanmayan satırları ayrı
+   göstermelidir. Kaydet başarılı yanıtı RF başarı kanıtı sayılmamalıdır.
+   Durum RF sayfasında beş saniyede bir okunmalıdır. Kesin toplam süre
+   gösterilmemelidir. İptal mevcut grup iptal koşullarını korumalıdır.
+
+### API
+
+| Yol | Kullanım |
+|---|---|
+| POST `/config/rf` | Mevcut JSON ayar gövdesini doğrular, kaydeder ve tüm etkin fiderleri sıraya alır; aktif/çözümlenmemiş işlem 409, parse hatası 400, sync hatası 500 |
+| GET `/status/rf-group` | Mevcut grup alanlarına BatchState, Targets, Applied, BatchLine, GroupStarted ve SaveBlocked eklenir |
+| POST `/config/rf/abort` | Bekleyen sırayı durdurur; başlamış grupta mevcut izinli ABORT koşullarını kullanır |
+| POST `/config/rf/apply/<satır>/<group_id>` | Ayrı web uygulaması kaldırılmıştır; 410 döner |
+
+Targets/Applied bitmap'lerinde bit 0 store satırı 1'dir; bit 6 satır 7'dir.
+BatchLine bir tabanlı store satırıdır. GroupStarted false ise mevcut
+tek grup raporu bu sıranın o satırına ait sonuç olarak kullanılmamalıdır.
+ACK envanteri, EUI/bölge eşleşmesi ve epoch koşulları mevcut grup
+servisinde korunur. Kaydet otomatik envanter yüklemez.
+
+### Doğrulama ve sınırlar
+
+Gerçek `rf_apply`, `rf_group`, store ve codec aynı Ceedling senaryosunda
+çalışır. Donanım/NVRAM ve transport (taşıma) sınırları test çiftidir.
+Kaydet hatası, boş hedef, değişmeyen tüm etkin fiderler, sıra, ikinci
+fider hatası, kimlik çakışması/tükenmesi, busy, belirsiz WRITE, geç APPLIED,
+iptal ve reset sonrası otomatik başlamama sınanır. HTTP handler paketinde
+parse/store servis sınırları test çiftidir; gerçek handler gövdesi sınanır.
+Kaynak ve gömülü web sayfasında onay/iptal, POST hedefi, busy kilidi,
+hata sonrası düzenlemenin korunması ve geç durum cevabı sınanır.
+
+Güncel komutlar, sonuçlar ve fiziksel kabul sınırları üretim raporu
+§10.36'da tutulur. Host sonucu fiziksel RF teslim süresi veya ayırıcı
+uygulaması kanıtı değildir.

@@ -75,6 +75,7 @@ class IdentityTests(unittest.TestCase):
         replies = iter(("RTU image: crc=0x12345678 size=100 git=abcdef0 profile=1",
                         "RTU image: crc=0x99999999 size=100 git=abcdef0 profile=1"))
         session = SimpleNamespace(send_and_wait=lambda *a, **k: (0, next(replies), None),
+                                  send=lambda line: None,
                                   all_lines=lambda: [], close=lambda: None)
         sim = SimpleNamespace(start=lambda: None, close=lambda: None,
                               call=lambda **k: dict(state={}))
@@ -101,6 +102,7 @@ class IdentityTests(unittest.TestCase):
                                console="fake")
         text = "RTU image: crc=0x12345678 size=100 git=abcdef0 profile=1"
         session = SimpleNamespace(send_and_wait=lambda *a, **k: (0, text, None),
+                                  send=lambda line: None,
                                   all_lines=lambda: [], close=lambda: None)
         sim = SimpleNamespace(start=lambda: None, close=lambda: None,
                               call=lambda **k: dict(state={}))

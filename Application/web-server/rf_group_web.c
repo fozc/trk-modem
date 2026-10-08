@@ -5,59 +5,14 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * Adapt web apply requests and report verified RF group state.
+ * Report verified RF group and save/application sequence state.
  */
 
 #include "rf_group_web.h"
 #include "rf_group.h"
+#include "rf_apply.h"
 #include "modem_types.h"
 #include "xprintf.h"
-
-static bool parse_byte(const char **cursor, uint8_t *value)
-{
-    const char *text = *cursor;
-    uint16_t number = 0U;
-
-    if (('0' > *text) || ('9' < *text))
-    {
-        return false;
-    }
-    do
-    {
-        if (25U < number)
-        {
-            return false;
-        }
-        number = (uint16_t)(number * 10U + (uint16_t)(*text - '0'));
-        if (255U < number)
-        {
-            return false;
-        }
-        text++;
-    } while (('0' <= *text) && ('9' >= *text));
-    *value = (uint8_t)number;
-    *cursor = text;
-    return true;
-}
-
-rf_web_apply_result_t rf_web_start_apply(const char *suffix)
-{
-    uint8_t line;
-    uint8_t group_id;
-
-    if ((NULL == suffix) || !parse_byte(&suffix, &line) ||
-        (0U == line) || (MAX_POWER_LINE_COUNT < line) || ('/' != *suffix))
-    {
-        return RF_WEB_APPLY_INVALID;
-    }
-    suffix++;
-    if (!parse_byte(&suffix, &group_id) || ('\0' != *suffix))
-    {
-        return RF_WEB_APPLY_INVALID;
-    }
-    return rf_group_start((size_t)line - 1U, group_id) ?
-        RF_WEB_APPLY_STARTED : RF_WEB_APPLY_NOT_STARTED;
-}
 
 static const char *state_name(rf_group_state_t state)
 {
@@ -83,6 +38,8 @@ static const char *state_name(rf_group_state_t state)
 bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
 {
     rf_group_status_t group;
+    rf_apply_status_t batch;
+    const char *batch_name;
 
     if ((NULL == buffer) || (NULL == length) || (0U == capacity) ||
         (UINT32_MAX < capacity))
@@ -95,11 +52,21 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
     {
         return false;
     }
+    rf_apply_get_status(&batch);
+    switch (batch.state)
+    {
+        case RF_APPLY_RUNNING: batch_name = "running"; break;
+        case RF_APPLY_COMPLETE: batch_name = "complete"; break;
+        case RF_APPLY_STOPPED: batch_name = "stopped"; break;
+        default: batch_name = "idle"; break;
+    }
     const uint32_t count = xsnprintf(buffer, (unsigned int)capacity,
         "{\"State\":\"%s\",\"Line\":%u,\"Feeder\":%u,\"GroupId\":%u,"
         "\"WritesAcked\":%u,\"ExpectedCRC\":%u,\"MatchesDesired\":%s,"
         "\"HasReport\":%s,\"MHState\":%u,\"MemberBitmap\":%u,"
-        "\"Reason\":%u,\"ReportedCRC\":%u,\"Attempts\":%u}",
+        "\"Reason\":%u,\"ReportedCRC\":%u,\"Attempts\":%u,"
+        "\"BatchState\":\"%s\",\"Targets\":%u,\"Applied\":%u,"
+        "\"BatchLine\":%u,\"GroupStarted\":%s,\"SaveBlocked\":%s}",
         state_name(group.state), (unsigned)group.line, (unsigned)group.feeder,
         (unsigned)group.group_id, (unsigned)group.writes_acked,
         (unsigned)group.expected_crc,
@@ -107,7 +74,10 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         group.has_report ? "true" : "false",
         (unsigned)group.report.state, (unsigned)group.report.member_bitmap,
         (unsigned)group.report.reason, (unsigned)group.report.config_crc,
-        (unsigned)group.report.attempts);
+        (unsigned)group.report.attempts, batch_name,
+        (unsigned)batch.targets, (unsigned)batch.applied,
+        (unsigned)batch.line, batch.group_started ? "true" : "false",
+        rf_apply_can_save() ? "false" : "true");
 
     if ((size_t)count >= capacity - 1U)
     {

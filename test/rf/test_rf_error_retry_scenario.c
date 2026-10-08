@@ -19,6 +19,7 @@
 #include "mock_rf_events.h"
 #include "mock_rf_alarm.h"
 #include "mock_rf_group.h"
+#include "mock_rf_apply.h"
 #include "mock_power_board_scp.h"
 #include "mock_power_board_control.h"
 #include "../fixtures/rf_scp_vectors.h"
@@ -224,6 +225,10 @@ void setUp(void)
     rf_events_init_Ignore();
     rf_events_boot_protect_StubWithCallback(protect_inventory);
     rf_group_init_Ignore();
+    rf_apply_init_Ignore();
+    rf_apply_process_Ignore();
+    rf_apply_hub_restarted_Ignore();
+    rf_apply_is_running_IgnoreAndReturn(false);
     power_board_scp_hub_restarted_Ignore();
     power_board_control_hub_restarted_Ignore();
     power_board_control_process_Ignore();
@@ -2107,6 +2112,15 @@ void test_group_apply_shell_validates_arguments_and_passes_store_line_index(void
     rf_group_start_ExpectAndReturn(2U, 7U, true);
     TEST_ASSERT_EQUAL_INT(0, rf_shell_config_apply(3, valid));
     rf_group_start_ExpectAndReturn(2U, 7U, false);
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_apply(3, valid));
+}
+
+void test_shell_cannot_replace_a_running_web_apply_batch(void)
+{
+    char *valid[] = {"cfg-apply", "3", "7"};
+
+    rf_apply_is_running_StopIgnore();
+    rf_apply_is_running_ExpectAndReturn(true);
     TEST_ASSERT_EQUAL_INT(-1, rf_shell_config_apply(3, valid));
 }
 
