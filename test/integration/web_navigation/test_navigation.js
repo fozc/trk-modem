@@ -122,7 +122,8 @@ async function checkPage(html, label) {
               ? 'Sabit akım' : 'Constant current');
           const powerRows = run(`renderBoard({DcVoltaji:12500,
               GirisAkimi:420,GirisGucu:865,AkuGucu:-120,Kaynak:1,
-              TelemetriYasi:3,AlarmMaskesi:0x00089001})`);
+              TelemetriYasi:3,AlarmMaskesi:0x00089001,
+              KartDurum:0x27,KartDurum2:0xD8})`);
           assert.ok(powerRows.includes('12500'));
           assert.ok(powerRows.includes('420'));
           assert.ok(powerRows.includes('86.5'));
@@ -133,11 +134,24 @@ async function checkPage(html, label) {
           assert.ok(powerRows.includes('>3 s<'));
           const powerNulls = run(`renderBoard({DcVoltaji:null,
               GirisAkimi:null,GirisGucu:null,AkuGucu:null,Kaynak:null,
-              TelemetriYasi:null,AlarmMaskesi:null})`);
+              TelemetriYasi:null,AlarmMaskesi:null,KartDurum:null,
+              KartDurum2:null})`);
           assert.ok(powerNulls.includes('>-<'));
           assert.ok(!powerNulls.includes('NaN'));
           assert.equal(run('formatAlarmMask(0)'),
               language === 'tr' ? 'Alarm yok' : 'No alarms');
+          assert.ok(powerRows.includes(language === 'tr'
+              ? 'Şarj verisi bayat' : 'Charger data stale'));
+          assert.ok(powerRows.includes(language === 'tr'
+              ? 'MH bağlantısı: kalıcı kapalı' : 'MH link: closed'));
+          assert.ok(powerRows.includes(language === 'tr'
+              ? 'Ayar kaynağı: servis' : 'Setting source: service'));
+          assert.ok(powerRows.includes(language === 'tr'
+              ? 'Psys ölçümü: başlangıç' : 'Psys measurement: initial'));
+          assert.ok(powerRows.includes(language === 'tr'
+              ? 'Kart ölçümü bayat' : 'Board measurement stale'));
+          assert.ok(powerRows.includes(language === 'tr'
+              ? 'Ayar doğrulama: ret bildirdi' : 'Setting verify: rejected'));
           for (let csq = 0; csq <= 31; csq++) {
             const board = run(`renderBoard({GsmSig: ${csq}})`);
             assert.ok(board.includes(run("t('fSignal')")));

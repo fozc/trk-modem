@@ -41,6 +41,8 @@ typedef struct
     int16_t battery_power_10mw; // aku gucu (10 mW, + sarj)
     uint8_t power_source;       // 0 aku/1 PV/2 DC/3 belirsiz/4 giris var/255 bilinmiyor
     uint8_t telemetry_age;      // son gecerli telemetriden gecen sure (s)
+    uint8_t board_flags;        // 0xE1 durum bayraklari (R1 5.2)
+    uint8_t board_flags2;       // 0xE1 durum2 bayraklari (R1 5.2)
     uint32_t alarm_mask;        // etkin seviye alarmlarinin bit maskesi
     int8_t gsm_signal;       // GSM Sinyal Gucu (dBm)
     uint8_t gsm_rat;         // GSM RAT
