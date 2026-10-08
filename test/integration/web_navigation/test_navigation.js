@@ -40,11 +40,12 @@ async function checkPage(html, label) {
         addEventListener() {},
         body: element(), documentElement: {}
     };
+    const scheduledTimers = [];
     const context = vm.createContext({
         document, console,
         localStorage: {getItem: () => 'tr', setItem() {}},
         sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
-        setTimeout: () => 1, clearTimeout() {}, AbortController,
+        setTimeout: (callback, delay) => {scheduledTimers.push({callback, delay});return 1;}, clearTimeout() {}, AbortController,
         fetch: async () => ({ok: true, status: 200, json: async () => ({})})
     });
     const script = html.match(/<script[^>]*>([\s\S]*?)<\/script>/i)[1];
@@ -593,6 +594,17 @@ async function checkPage(html, label) {
     await document.getElementById('okConfirm').onclick();
     assert.equal(run("hasDirty('rf')"), true, 'failed save must preserve edits');
     assert.equal(rfPosts, 2);
+    // Opening RF and saving must not read application status automatically.
+    let automaticStatusReads = 0;
+    context.fetch = async url => {
+        if (url === '/status/rf-group') automaticStatusReads++;
+        return {ok:true,status:200,json:async()=>({success:true})};
+    };
+    run("renderPage('rf',pageCache.rf)");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(automaticStatusReads,0,'opening RF must not refresh status');
+    await run("savePageData('rf',{inUse:[true]})");
+    assert.equal(automaticStatusReads,0,'save must leave status for manual refresh');
     // RF refresh must acknowledge a successful read even if state is unchanged.
     let abortPosts=0;
     context.fetch=async(url,options={})=>{
@@ -600,7 +612,10 @@ async function checkPage(html, label) {
             text:async()=> 'RF abort not started: check current group state'};}
         return {ok:true,status:200,json:async()=>({State:'idle',BatchState:'idle',SaveBlocked:false})};
     };
+    scheduledTimers.length=0;
     await run('readRfGroupStatus(true)');
+    assert.ok(!scheduledTimers.some(timer=>timer.delay===5000),
+        'manual refresh must not schedule another RF status read');
     assert.ok(document.getElementById('rf-status-read').textContent.includes(run("t('rfStatusUpdated')")),
         'successful refresh needs visible feedback');
     assert.equal(document.getElementById('rf-abort').disabled,true,
@@ -614,13 +629,22 @@ async function checkPage(html, label) {
     };
     await run('abortRfConfig()');
     assert.equal(abortPosts,1);
-    assert.ok(notices.some(item=>item.innerHTML.includes('RF abort not started: check current group state')),
+    assert.ok(notices.some(item=>item.textContent.includes('RF abort not started: check current group state')),
         '409 must preserve the server explanation');
     context.fetch=async()=>({ok:true,status:200,json:async()=>({State:'failed',BatchState:'stopped',GroupStarted:true,Targets:1,BatchLine:1,SaveBlocked:false,StopReason:'group_error'})});
     await run('readRfGroupStatus(true)');
     assert.ok(document.getElementById('rf-group-status').innerHTML.includes(run("t('rfBatchStopped')")));
     assert.equal(document.getElementById('rf-abort').disabled,true);
     assert.equal(document.getElementById('save-rf').disabled,false);
+
+    const lastRfStatus=run('JSON.stringify(pageCache.rfGroup)');
+    context.fetch=async()=>({ok:false,status:500});
+    await run('readRfGroupStatus(true)');
+    assert.ok(document.getElementById('rf-status-read').textContent.includes('HTTP 500'));
+    assert.equal(run('JSON.stringify(pageCache.rfGroup)'),lastRfStatus);
+    assert.equal(document.getElementById('rf-status-refresh').disabled,false);
+    run('hideLoad()');
+    assert.equal(document.getElementById('rf-abort').disabled,true);
 
     let resolveStatus;
     context.fetch = async () => ({ok: true, status: 200,
@@ -632,6 +656,8 @@ async function checkPage(html, label) {
     await pendingStatus;
     assert.equal(run('pageCache.rfGroup'), undefined,
         'a late status response for older desired settings must be ignored');
+    assert.equal(document.getElementById('rf-status-refresh').disabled,false,
+        'invalidated old reads must not leave refresh locked');
     console.log('PASS:', label, '- navigation, RF confirmed save/sequence, faults, languages, config saves, device cache/failure');
 
 }
