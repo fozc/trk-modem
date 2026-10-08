@@ -589,6 +589,11 @@ async function checkPage(html, label) {
     await run("savePageData('rf',{inUse:[true]})");
     assert.ok(notices.at(-1).textContent.includes('yedek kayıt başarısız'));
     rfWarning = undefined;
+    const timedWait = run("buildRfGroupStatus({State:'idle',BatchState:'running',InventoryPending:true,WaitReason:'storage',WaitTotalMs:125000,WaitReasonMs:7000})");
+    assert.ok(timedWait.includes('125 s'));
+    assert.ok(timedWait.includes('7 s'));
+    assert.ok(!timedWait.includes('rfWait_storage'));
+    assert.equal(run("buildRfGroupStatus({State:'idle',BatchState:'running',InventoryPending:true,WaitReason:'storage',WaitTotalMs:125000,WaitReasonMs:7000})"),timedWait);
     const inventoryProgress = run("buildRfGroupStatus({State:'idle',BatchState:'running',InventoryPending:true})");
     assert.ok(inventoryProgress.includes('Eski kayıtlar boşaltılıyor'));
     assert.equal(run("rfCanAbort({BatchState:'running',InventoryPending:true})"), false);

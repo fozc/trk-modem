@@ -12,6 +12,7 @@
 #include "rf_group_web.h"
 #include "mock_rf_group.h"
 #include "mock_rf_apply.h"
+#include "mock_rf_inventory.h"
 #include <string.h>
 
 TEST_SOURCE_FILE("xprintf.c")
@@ -24,8 +25,16 @@ static void batch_status(rf_apply_status_t *out, int call_count)
         .group_started = true};
 }
 
+static void inventory_wait(rf_inventory_wait_t *out, int call_count)
+{
+    (void)call_count;
+    *out = (rf_inventory_wait_t){.reason = "storage",
+        .total_ms = 125000U, .reason_ms = 7000U};
+}
+
 void setUp(void)
 {
+    rf_inventory_get_wait_StubWithCallback(inventory_wait);
     rf_apply_get_status_StubWithCallback(batch_status);
     rf_apply_can_save_IgnoreAndReturn(false);
 }
@@ -46,7 +55,7 @@ static bool get_status(rf_group_status_t *out, int call_count)
 
 void test_applied_snapshot_is_distinct_from_changed_desired_settings(void)
 {
-    char buffer[512];
+    char buffer[768];
     size_t length = 0U;
 
     rf_group_get_status_StubWithCallback(get_status);
@@ -60,6 +69,9 @@ void test_applied_snapshot_is_distinct_from_changed_desired_settings(void)
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BatchState\":\"running\""));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Targets\":68,\"Applied\":4"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"SaveBlocked\":true"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"WaitReason\":\"storage\""));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"WaitTotalMs\":125000"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"WaitReasonMs\":7000"));
     TEST_ASSERT_EQUAL_size_t(strlen(buffer), length);
 }
 

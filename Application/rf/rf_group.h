@@ -48,7 +48,10 @@ typedef struct
 void rf_group_init(void);
 void rf_group_hub_restarted(void);
 
-/* Snapshot the existing store; no NVRAM changes or automatic restart. */
+/* Snapshot the existing store; no NVRAM changes or automatic restart.
+ * After an uncertain pre-COMMIT WRITE, explicitly start the same line/ID
+ * with unchanged members/block to rewrite all three members (BQ-11).
+ */
 bool rf_group_start(size_t line_index, uint8_t group_id);
 bool rf_group_get_status(rf_group_status_t *out);
 bool rf_group_matches_config(void);
@@ -57,7 +60,7 @@ void rf_group_process(uint32_t now_ms);
 bool rf_group_handle_status(const rf_scp_message_t *message);
 
 /* Allowed only after this COMMIT's group identity is known to the MH.
- * Pre-COMMIT cleanup remains blocked pending BOLATeX question BQ-11.
+ * Pre-COMMIT ABORT is unsupported by the current MH (BQ-11).
  * A job with no transmitted WRITE can be cancelled locally, without ABORT.
  */
 bool rf_group_abort(void);

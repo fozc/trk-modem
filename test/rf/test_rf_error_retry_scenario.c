@@ -213,6 +213,7 @@ void setUp(void)
     rf_alarm_live_Ignore();
     rf_alarm_process_Ignore();
     rf_alarm_is_idle_IgnoreAndReturn(true);
+    rf_events_drain_reason_IgnoreAndReturn("mh_records");
     rf_events_request_drain_Ignore();
     rf_events_finish_drain_Ignore();
     allow_inventory = true;
@@ -2346,6 +2347,72 @@ void test_invalid_clock_live_wire_keeps_iv_and_bad_packet_preserves_timestamp(vo
     TEST_ASSERT_EQUAL_MEMORY(&received, &data.received_time, sizeof(received));
 }
 
+
+void test_drain_wait_keeps_ram_times_across_reads_and_reason_changes(void)
+{
+    load_one_phase();
+    fake_tick = 1000U;
+    const rf_inventory_entry_t replacement =
+    {
+        .zone = 0U, .feeder = 1U, .phase = 1U, .eui64 = {0x22U}
+    };
+    TEST_ASSERT_TRUE(rf_inventory_update(&replacement, command_done));
+    rf_inventory_wait_t wait;
+    rf_inventory_get_wait(NULL);
+    rf_inventory_get_wait(&wait);
+    TEST_ASSERT_EQUAL_STRING("checking", wait.reason);
+    TEST_ASSERT_EQUAL_UINT32(0U, wait.total_ms);
+    rf_inventory_continue();
+    events_drained = false;
+    fake_tick = 2000U;
+    rf_inventory_continue();
+    rf_inventory_get_wait(&wait);
+    TEST_ASSERT_EQUAL_STRING("mh_records", wait.reason);
+    TEST_ASSERT_EQUAL_UINT32(1000U, wait.total_ms);
+    TEST_ASSERT_EQUAL_UINT32(1000U, wait.reason_ms);
+    fake_tick = 4000U;
+    rf_inventory_get_wait(&wait);
+    TEST_ASSERT_EQUAL_UINT32(3000U, wait.total_ms);
+    TEST_ASSERT_EQUAL_UINT32(3000U, wait.reason_ms);
+    rf_events_drain_reason_IgnoreAndReturn("storage");
+    rf_inventory_continue();
+    fake_tick = 5000U;
+    rf_inventory_get_wait(&wait);
+    TEST_ASSERT_EQUAL_STRING("storage", wait.reason);
+    TEST_ASSERT_EQUAL_UINT32(4000U, wait.total_ms);
+    TEST_ASSERT_EQUAL_UINT32(1000U, wait.reason_ms);
+    rf_inventory_continue();
+    rf_inventory_get_wait(&wait);
+    TEST_ASSERT_EQUAL_UINT32(1000U, wait.reason_ms);
+    rf_alarm_is_idle_IgnoreAndReturn(false);
+    rf_inventory_continue();
+    fake_tick = 5500U;
+    rf_inventory_get_wait(&wait);
+    TEST_ASSERT_EQUAL_STRING("alarm", wait.reason);
+    TEST_ASSERT_EQUAL_UINT32(4500U, wait.total_ms);
+    TEST_ASSERT_EQUAL_UINT32(500U, wait.reason_ms);
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_DRAINING, rf_inventory_get_status());
+    rf_inventory_reset();
+    rf_inventory_get_wait(&wait);
+    TEST_ASSERT_EQUAL_STRING("none", wait.reason);
+    TEST_ASSERT_EQUAL_UINT32(0U, wait.total_ms);
+}
+
+void test_drain_wait_uses_unsigned_tick_difference_across_wrap(void)
+{
+    load_one_phase();
+    fake_tick = UINT32_MAX - 1000U;
+    const rf_inventory_entry_t replacement =
+    {
+        .zone = 0U, .feeder = 1U, .phase = 1U, .eui64 = {0x22U}
+    };
+    TEST_ASSERT_TRUE(rf_inventory_update(&replacement, command_done));
+    fake_tick = 999U;
+    rf_inventory_wait_t wait;
+    rf_inventory_get_wait(&wait);
+    TEST_ASSERT_EQUAL_UINT32(2000U, wait.total_ms);
+    TEST_ASSERT_EQUAL_UINT32(2000U, wait.reason_ms);
+}
 
 void test_update_waits_for_live_logs_and_mh_drain_before_changing_binding(void)
 {

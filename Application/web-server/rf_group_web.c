@@ -11,6 +11,7 @@
 #include "rf_group_web.h"
 #include "rf_group.h"
 #include "rf_apply.h"
+#include "rf_inventory.h"
 #include "modem_types.h"
 #include "xprintf.h"
 
@@ -57,6 +58,7 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
 {
     rf_group_status_t group;
     rf_apply_status_t batch;
+    rf_inventory_wait_t wait;
     const char *batch_name;
 
     if ((NULL == buffer) || (NULL == length) || (0U == capacity) ||
@@ -71,6 +73,7 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         return false;
     }
     rf_apply_get_status(&batch);
+    rf_inventory_get_wait(&wait);
     switch (batch.state)
     {
         case RF_APPLY_RUNNING: batch_name = "running"; break;
@@ -85,7 +88,8 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         "\"Reason\":%u,\"ReportedCRC\":%u,\"Attempts\":%u,"
         "\"BatchState\":\"%s\",\"Targets\":%u,\"Applied\":%u,"
         "\"BatchLine\":%u,\"GroupStarted\":%s,\"SaveBlocked\":%s,"
-        "\"InventoryPending\":%s,\"StopReason\":\"%s\"}",
+        "\"InventoryPending\":%s,\"StopReason\":\"%s\","
+        "\"WaitReason\":\"%s\",\"WaitTotalMs\":%u,\"WaitReasonMs\":%u}",
         state_name(group.state), (unsigned)group.line, (unsigned)group.feeder,
         (unsigned)group.group_id, (unsigned)group.writes_acked,
         (unsigned)group.expected_crc,
@@ -98,7 +102,8 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         (unsigned)batch.line, batch.group_started ? "true" : "false",
         rf_apply_can_save() ? "false" : "true",
         batch.inventory_pending ? "true" : "false",
-        stop_reason_name(batch.stop_reason));
+        stop_reason_name(batch.stop_reason), wait.reason,
+        (unsigned)wait.total_ms, (unsigned)wait.reason_ms);
 
     if ((size_t)count >= capacity - 1U)
     {
