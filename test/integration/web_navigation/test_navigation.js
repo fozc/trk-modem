@@ -130,7 +130,15 @@ async function checkPage(html, label) {
           assert.ok(powerRows.includes('-12.0'));
           assert.ok(powerRows.includes(language === 'tr'
               ? 'PV (güneş)' : 'PV (solar)'));
-          assert.ok(powerRows.includes('0x00089001 (4)'));
+          for (const name of language === 'tr'
+              ? ['Akü kritik düşük', 'Ölçüm bayat',
+                 'Şarj denetleyicisi okunamıyor', 'Kart komutlara kapalı']
+              : ['Battery critically low', 'Measurement stale',
+                 'Charger unreadable', 'Board not accepting commands']) {
+            assert.ok(powerRows.includes(name), name);
+          }
+          assert.ok(powerRows.includes(language === 'tr'
+              ? '4 etkin — 0x00089001' : '4 active — 0x00089001'));
           assert.ok(powerRows.includes('>3 s<'));
           const powerNulls = run(`renderBoard({DcVoltaji:null,
               GirisAkimi:null,GirisGucu:null,AkuGucu:null,Kaynak:null,
@@ -141,17 +149,18 @@ async function checkPage(html, label) {
           assert.equal(run('formatAlarmMask(0)'),
               language === 'tr' ? 'Alarm yok' : 'No alarms');
           assert.ok(powerRows.includes(language === 'tr'
-              ? 'Şarj verisi bayat' : 'Charger data stale'));
+              ? 'Şarj denetleyicisi güncel değil' : 'Charger data stale'));
           assert.ok(powerRows.includes(language === 'tr'
-              ? 'MH bağlantısı: kalıcı kapalı' : 'MH link: closed'));
+              ? 'MH–kart bağlantısı: devre dışı' : 'MH link: disabled'));
           assert.ok(powerRows.includes(language === 'tr'
               ? 'Ayar kaynağı: servis' : 'Setting source: service'));
           assert.ok(powerRows.includes(language === 'tr'
-              ? 'Psys ölçümü: başlangıç' : 'Psys measurement: initial'));
+              ? 'Sistem gücü ölçümü: hazırlanıyor'
+              : 'System power measurement: initializing'));
           assert.ok(powerRows.includes(language === 'tr'
-              ? 'Kart ölçümü bayat' : 'Board measurement stale'));
+              ? 'Kart ölçümü güncel değil' : 'Board measurement stale'));
           assert.ok(powerRows.includes(language === 'tr'
-              ? 'Ayar doğrulama: ret bildirdi' : 'Setting verify: rejected'));
+              ? 'Ayar doğrulama: reddedildi' : 'Setting verification: rejected'));
           for (let csq = 0; csq <= 31; csq++) {
             const board = run(`renderBoard({GsmSig: ${csq}})`);
             assert.ok(board.includes(run("t('fSignal')")));
@@ -584,6 +593,35 @@ async function checkPage(html, label) {
     await document.getElementById('okConfirm').onclick();
     assert.equal(run("hasDirty('rf')"), true, 'failed save must preserve edits');
     assert.equal(rfPosts, 2);
+    // RF refresh must acknowledge a successful read even if state is unchanged.
+    let abortPosts=0;
+    context.fetch=async(url,options={})=>{
+        if(options.method==='POST'){abortPosts++;return {ok:false,status:409,
+            text:async()=> 'RF abort not started: check current group state'};}
+        return {ok:true,status:200,json:async()=>({State:'idle',BatchState:'idle',SaveBlocked:false})};
+    };
+    await run('readRfGroupStatus(true)');
+    assert.ok(document.getElementById('rf-status-read').textContent.includes(run("t('rfStatusUpdated')")),
+        'successful refresh needs visible feedback');
+    assert.equal(document.getElementById('rf-abort').disabled,true,
+        'idle has no job to cancel');
+    await run('abortRfConfig()');
+    assert.equal(abortPosts,0,'idle cancel must not send POST');
+    context.fetch=async(url,options={})=>{
+        if(options.method==='POST'){abortPosts++;return {ok:false,status:409,
+            text:async()=> 'RF abort not started: check current group state'};}
+        return {ok:true,status:200,json:async()=>({State:'waiting',BatchState:'running',GroupStarted:true,SaveBlocked:true})};
+    };
+    await run('abortRfConfig()');
+    assert.equal(abortPosts,1);
+    assert.ok(notices.some(item=>item.innerHTML.includes('RF abort not started: check current group state')),
+        '409 must preserve the server explanation');
+    context.fetch=async()=>({ok:true,status:200,json:async()=>({State:'failed',BatchState:'stopped',GroupStarted:true,Targets:1,BatchLine:1,SaveBlocked:false,StopReason:'group_error'})});
+    await run('readRfGroupStatus(true)');
+    assert.ok(document.getElementById('rf-group-status').innerHTML.includes(run("t('rfBatchStopped')")));
+    assert.equal(document.getElementById('rf-abort').disabled,true);
+    assert.equal(document.getElementById('save-rf').disabled,false);
+
     let resolveStatus;
     context.fetch = async () => ({ok: true, status: 200,
         json: () => new Promise(resolve => {resolveStatus = resolve;})});
