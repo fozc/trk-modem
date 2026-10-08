@@ -295,6 +295,10 @@ static int read_rf_flag(uint32_t line_index, uint8_t phase,
         {
             value->spi = 1U;
         }
+        if (data.uptime_stalled)
+        {
+            value->invalid = 1U;
+        }
         if (!data.is_online)
         {
             value->invalid = 1U;
@@ -348,6 +352,26 @@ static int read_rf_haberlesme_varyok(uint32_t line_index, uint8_t phase,
     return 0;
 }
 
+static int read_trip_failed(uint32_t line_index, uint8_t phase,
+                            siq_t *value, cp56time2a_t *timestamp)
+{
+    if ((NULL == value) || (NULL == timestamp) ||
+        (MAX_POWER_LINE_COUNT <= line_index) || (PHASE_MAX <= phase))
+    {
+        return -1;
+    }
+    *value = (siq_t){.invalid = 1U};
+    *timestamp = (cp56time2a_t){.iv_bit = 1U};
+    rf_phase_data_t data;
+    if (rf_get_phase_data(line_index, (phase_id_t)phase, HAL_GetTick(), &data))
+    {
+        *timestamp = data.has_live ? data.received_time : cp56time2a_now();
+        *value = (siq_t){.spi = data.trip_failed,
+                         .invalid = timestamp->iv_bit};
+    }
+    return 0;
+}
+
 PROCESS(iec104_process, "iec104_process");
 PROCESS_THREAD(iec104_process, ev, data)
 {
@@ -364,7 +388,8 @@ PROCESS_THREAD(iec104_process, ev, data)
 	    .get_anlik_akim = read_anlik_akim,
 	    .get_enerji_varyok = read_enerji_varyok,
 	    .get_yuk_akimi_varyok = read_yuk_akimi_varyok,
-	    .get_rf_haberlesme_varyok = read_rf_haberlesme_varyok
+	    .get_rf_haberlesme_varyok = read_rf_haberlesme_varyok,
+        .get_trip_failed = read_trip_failed
 	  },
 	  &iec104_config);
 

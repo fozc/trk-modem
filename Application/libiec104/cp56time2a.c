@@ -2,7 +2,8 @@
  * cp56time2a.c
  *
  *  Created on: Mar 8, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "cp56time2a.h"
 #include <string.h>
@@ -278,9 +279,17 @@ int32_t cp56time2a_diff_ms(const cp56time2a_t *t1_ptr, const cp56time2a_t *t2_pt
     const int32_t ms1      = (int32_t)cp56time2a_to_total_ms(t1_ptr);
     const int32_t ms2      = (int32_t)cp56time2a_to_total_ms(t2_ptr);
 
-    /* day_diff * 86400000 can overflow int32 for large day ranges.
-     * This is accurate for ~24 day range (INT32_MAX / 86400000 ≈ 24.8). */
-    return day_diff * INT32_C(86400000) + (ms1 - ms2);
+    const int64_t difference = (int64_t)day_diff * INT64_C(86400000) +
+                               (int64_t)ms1 - (int64_t)ms2;
+    if (INT32_MAX < difference)
+    {
+        return INT32_MAX;
+    }
+    if (INT32_MIN > difference)
+    {
+        return INT32_MIN;
+    }
+    return (int32_t)difference;
 }
 
 /* ================================================================== */
@@ -389,4 +398,3 @@ void cp56time2a_print(const cp56time2a_t *ts_ptr)
           ts_ptr->hour, ts_ptr->minute, sec, ms,
           ts_ptr->iv_bit, ts_ptr->su_bit, ts_ptr->dow);
 }
-

@@ -27,7 +27,7 @@ bool modbus_rf_stats_read(uint16_t reg_addr, uint32_t now_ms, uint16_t *value)
     *value = 0U;
     if (modbus_is_line_in_use((uint32_t)line) &&
         rf_get_phase_data(line, phase, now_ms, &data) &&
-        data.has_live && data.is_online)
+        data.has_live && data.is_online && !data.uptime_stalled)
     {
         *value = MODBUS_RF_ENERGY_VALID | MODBUS_RF_LOAD_VALID;
         if (data.current_valid)

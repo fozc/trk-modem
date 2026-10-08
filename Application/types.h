@@ -50,7 +50,7 @@ typedef struct
 	ioa_3byte_t reserved_fault_current[PHASE_MAX]; /* Retired live field. */
 	ioa_3byte_t reserved_fault_duration[PHASE_MAX]; /* Retired live field. */
 	ioa_3byte_t anlik_akim[PHASE_MAX];           //m_me_tf_1
-	ioa_3byte_t reserved_fault_type[PHASE_MAX]; /* Retired live field. */
+	ioa_3byte_t trip_failed[PHASE_MAX]; /* SCP trip-failure alarm, M_SP_TB_1. */
 	ioa_3byte_t enerji_varyok[PHASE_MAX];        //m_sp_tb_1
 	ioa_3byte_t yuk_akimi_varyok[PHASE_MAX];  //m_sp_tb_1
 	ioa_3byte_t rf_haberlesme_varyok[PHASE_MAX]; //m_sp_tb_1
@@ -66,6 +66,9 @@ typedef struct
 
 	uint8_t in_use;
 }__attribute__((packed)) iec104_line_config_t;
+
+_Static_assert(offsetof(iec104_line_config_t, trip_failed) == 27U,
+               "Trip-failure IOAs must reuse the retired reserved slot");
 
 typedef struct
 {
@@ -210,7 +213,7 @@ typedef struct
  *  NOT: gelistirme sirasindaki v2/v3 kuyruk eklemeleri (rf_log_level,
  *  iec104_log_level) uretime/saha cihazi olmadigi icin v1'e indirildi;
  *  ilk cikistan sonraki her layout degisikligi bump + migration ister. */
-#define NVRAM_SCHEMA_VERSION  2U
+#define NVRAM_SCHEMA_VERSION  3U
 
 /* IEC104 olay gunlugu replay durumu. Gonderilmemis kayitlar her zaman tek
  * parca bir seq araligi olusturur: replay yeniden eskiye gider, hat acikken

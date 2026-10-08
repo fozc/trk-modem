@@ -1,5 +1,7 @@
 /**
  * @file  power_board.c
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  * @brief PowerBoard I2C-slave protocol: telemetry/power/lastgasp decode,
  *        restore/statblk publish, REC handshake and shell.
  *
@@ -710,7 +712,9 @@ void power_board_init(void)
      * "unconfigured" and "configured the same" are indistinguishable. */
     pb_statblk_publish_default();
 
-    i2c_slave_init();
+    /* BOLATeX RF-SCP answer (BQ-08 ek not): power data flows via MH/SCP
+     * only; the direct-I2C slave listener stays off and the I2C3 pins
+     * remain high-impedance (see main.c USER CODE 2). */
 
     process_start(&power_board_process, NULL);
 

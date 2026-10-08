@@ -68,8 +68,24 @@ bool rf_get_phase_data(size_t line_index, phase_id_t phase, uint32_t now_ms,
                         rf_phase_data_t *out);
 bool rf_get_anomaly(uint8_t source, uint8_t path, rf_anomaly_data_t *out);
 
-/** Operator acknowledgement cannot clear an asserted live Trip_Failed. */
+/** BQ-16: offline/event-only acknowledgement is allowed. A fresh asserted
+ * live flag leaves the alarm acknowledged and ongoing (latch=false). */
 bool rf_ack_trip_failure(uint8_t source);
+/* Receipt service may finish storage while the MH inventory is absent.
+ * Acknowledge only the exact saved device identity, never its replacement. */
+bool rf_ack_stored_alarm(const uint8_t eui64[8]);
+
+/** BOLATeX BQ-01: open the trip-failure alarm from a stored event record
+ * (101 or 105) regardless of when the record arrives. The alarm stays
+ * open until a same-opening live 1 -> 0 transition or acknowledgement.
+ * Last LIVE zero alone is not evidence that the failure was resolved. */
+bool rf_open_trip_failure_alarm(uint8_t zone, uint8_t feeder,
+                                uint8_t phase);
+
+/* Called after durable raw storage. Acknowledged duplicate events do not
+ * reopen an alarm. True means durable acknowledgement is needed.
+ * The last 128 identities are kept until RTU restart. */
+bool rf_handle_alarm_event(const rf_scp_event_t *event);
 
 #endif /* RF_H_ */
 

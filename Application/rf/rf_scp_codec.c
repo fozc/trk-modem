@@ -304,12 +304,12 @@ static bool valid_power_config(const uint8_t *data)
     {
         return false;
     }
-    if ((0U != (mask & 0x2000U)) && (0U != capacity) && (255U != capacity)
-        && ((7U > capacity) || (54U < capacity)))
+    if ((0U != (mask & 0x2000U)) &&
+        ((7U > capacity) || (54U < capacity)))
     {
         return false;
     }
-    if ((0U != (mask & 0x4000U)) && (0U != period) && (255U != period))
+    if (0U != (mask & 0x4000U))
     {
         return (0U == (period & 0x40U)) && (0U < (period & 0x3FU))
             && (10U >= (period & 0x3FU));
@@ -426,7 +426,13 @@ static rf_cmd_status_t incoming_length(const scp_packet_t *packet)
         case RF_SCP_CMD_CFG_STATUS_NOTIFY:
             length = 8U; notification = true; break;
         case RF_SCP_CMD_CFG_STATUS_GET: length = 8U; break;
-        case RF_SCP_CMD_LOG_READ_HEAD: length = 10U; break;
+        case RF_SCP_CMD_LOG_READ_HEAD:
+            if (10U > packet->data_len)
+            {
+                return RF_CMD_ERR_LEN;
+            }
+            length = packet->data_len;
+            break;
         case RF_SCP_CMD_LOG_CONSUME_TO: length = 4U; break;
         case RF_SCP_CMD_LOG_AVAILABLE:
             length = 4U; notification = true; break;
@@ -573,7 +579,7 @@ static rf_cmd_status_t decode_notifications(const scp_packet_t *packet,
         case RF_SCP_CMD_LOG_AVAILABLE:
             out->body.log_available.pending = scp_unpack_u16(data);
             out->body.log_available.head = scp_unpack_u16(&data[2]);
-            if ((100U < out->body.log_available.pending) ||
+            if ((100U <= out->body.log_available.pending) ||
                 (100U <= out->body.log_available.head))
             {
                 return RF_CMD_ERR_PARAM;
@@ -674,7 +680,7 @@ static rf_cmd_status_t decode_log(const scp_packet_t *packet,
             out->body.log_consume.tail = scp_unpack_u16(data);
             out->body.log_consume.left = scp_unpack_u16(&data[2]);
             return ((100U > out->body.log_consume.tail) &&
-                    (100U >= out->body.log_consume.left))
+                    (100U > out->body.log_consume.left))
                  ? RF_CMD_OK : RF_CMD_ERR_PARAM;
         case RF_SCP_CMD_LOG_READ_RECORD:
         case RF_SCP_CMD_LOG_READ_RANGE:

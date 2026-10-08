@@ -219,7 +219,11 @@ class HubModel:
         return self.consumed % HUB_SLOTS
 
     def pending_count(self):
-        return self.total - self.consumed
+        # BOLATeX BQ-02: the ring holds at most HUB_SLOTS - 1 unconsumed
+        # records; the writer advances tail when it would reach the oldest
+        # unconsumed slot, so head == tail is always empty.
+        pending = self.total - self.consumed
+        return min(pending, HUB_SLOTS - 1)
 
     # ------------------------------------------------------------------
     # request dispatch
@@ -540,7 +544,7 @@ class HubModel:
             if code == 7:
                 fc = 0
             rec = self.build_event_record(code, zone, line, ph, fc)
-            if self.pending_count() >= HUB_SLOTS:
+            if self.pending_count() >= HUB_SLOTS - 1:
                 self.consumed += 1  # oldest unconsumed slot is lost
             self.slots[self.head()] = rec
             self.total += 1
@@ -641,18 +645,14 @@ class HubModel:
                 self.reply_error(pkt, sc.ERR_BUSY)
             return
         index = struct.unpack("<H", pkt.data)[0]
-        if index > HUB_SLOTS:
+        if index >= HUB_SLOTS:
             if answered:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
-        cur_idx = self.tail()
-        steps = (index - cur_idx) % HUB_SLOTS  # 0..99
-        if steps > min(self.pending_count(), HUB_SLOTS - 1):
-            # backwards or beyond head -> ERROR 0x02 (spec 4.6)
-            if answered:
-                self.reply_error(pkt, sc.ERR_INVALID_PARAM)
-            return
-        self.consumed += steps
+        # BQ-03: current firmware accepts a slot without an ordinal guard.
+        # Re-anchor the absolute tail surrogate to the resulting wire ring.
+        # Rejecting an old cursor belongs to the planned MH release.
+        self.consumed = self.total - ((self.head() - index) % HUB_SLOTS)
         self.note("log_consume", index=index, tail=self.tail(),
                   left=self.pending_count())
         if answered:
@@ -704,6 +704,7 @@ class HubModel:
         if group is None or group["state"] != GROUP_IDLE:
             group = self._new_group()
             self.group = group
+            self.group_history.clear()  # BQ-11: first WRITE drops old job.
         if eui not in group["members"] and len(group["members"]) >= 3:
             if answered:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)  # 4th EUI
@@ -802,7 +803,9 @@ class HubModel:
         group_id = pkt.data[0]
         group = self.group
         body = None
-        if group is not None and group["id"] == group_id and \
+        if group_id == 0 and (group is None or group["state"] == GROUP_IDLE):
+            body = bytes(8)  # Pre-COMMIT members have no queryable identity.
+        elif group is not None and group["id"] == group_id and \
                 group["state"] != GROUP_IDLE:
             body = self._group_status_body(group)
         elif group_id in self.group_history:
@@ -957,11 +960,16 @@ class HubModel:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
         if komut == 0x00:
+            was_pending = self.cmd_pending
             self.cmd_pending = False
-            self.cmd_state = {"komut": 0, "sira": 0, "sonuc": 0xFF,
-                              "yayin": 0, "durum": 0}
+            if was_pending:
+                # Deterministic bench outcome: cancel before applying.
+                # Firmware tests also exercise b1 / delayed outcomes.
+                self.cmd_state.update(sonuc=0xFF, yayin=0, durum=0x04)
             if answered:
                 self.reply(pkt, bytes([0x00, 0x00]))
+            if was_pending:
+                self._notify_pwr_result("cancelled before applying")
             return
         if self.cmd_pending:
             if answered:
@@ -978,6 +986,13 @@ class HubModel:
         self.note("pwr_command", komut=komut, sira=sira)
         if answered:
             self.reply(pkt, bytes([komut, sira]))
+        self._notify_pwr_result("pwr command started")
+
+    def _notify_pwr_result(self, note):
+        state = self.cmd_state
+        body = bytes([state["komut"], state["sira"], state["sonuc"],
+                      state["yayin"], state["durum"]])
+        self.notify(0xE7, body, note=note)
 
     def _finish_pwr_command(self):
         komut = self.cmd_state["komut"]
@@ -986,12 +1001,11 @@ class HubModel:
             sonuc = 0x02  # PARAM invalid
         self.cmd_state["sonuc"] = sonuc
         self.cmd_pending = False
+        if sonuc == 0xFF:
+            self.cmd_state["yayin"] = 2  # BQ-13 terminal no-response report.
         if sonuc == 0x00 and komut == 0x05:
             self.cmd_state["durum"] |= 0x08  # b3: applied + verified
-        body = bytes([self.cmd_state["komut"], self.cmd_state["sira"],
-                      self.cmd_state["sonuc"], self.cmd_state["yayin"],
-                      self.cmd_state["durum"]])
-        self.notify(0xE7, body, note="pwr_result sonuc=0x%02X" % sonuc)
+        self._notify_pwr_result("pwr_result sonuc=0x%02X" % sonuc)
 
     def _h_pwr_result_get(self, pkt, answered):
         if pkt.type != sc.TYPE_GET or pkt.data:
@@ -1037,9 +1051,14 @@ class HubModel:
         group = self.group
         if group is not None and group["state"] in (GROUP_STAGED,
                                                     GROUP_DELIVERED):
+            self.group_history.clear()
+            group["id"] = 0  # BQ-11: current MH loses the running group ID.
             group["state"] = GROUP_FAILED
             group["reason"] = 8  # MODEM_REBOOT
             self.group_history[group["id"]] = self._group_status_body(group)
+        elif group is not None and group["state"] == GROUP_IDLE:
+            self.group = None  # Pre-COMMIT staging is volatile.
+            self.group_history.clear()
         self.notify(0x12, bytes([0xFF, 2]) + struct.pack("<HI", 0, 0) +
                     b"\x00\x00", note="anomaly reset")
         self.notify(0xE3, bytes([1, (self.pwr_alarm_sayac + 1) & 0xFF, 0,

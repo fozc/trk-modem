@@ -38,7 +38,7 @@ void tearDown(void)
 void test_newest_unsent_records_keep_payload_and_survive_reinitialization(void)
 {
     fault_log_t record = {0};
-    fault_log_t stored;
+    iec104_event_record_t stored;
     uint16_t first_seq;
     uint16_t second_seq;
     uint16_t seq;
@@ -51,8 +51,8 @@ void test_newest_unsent_records_keep_payload_and_survive_reinitialization(void)
     TEST_ASSERT_EQUAL_UINT16(2U, iec104_event_log_get_unsent_count());
     TEST_ASSERT_TRUE(iec104_event_log_read_newest_unsent(&stored, &seq));
     TEST_ASSERT_EQUAL_UINT16(second_seq, seq);
-    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, stored.fault_duration_ms);
-    TEST_ASSERT_EQUAL_UINT8(0U, stored.info.nominal_current_status);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, stored.payload.fault.fault_duration_ms);
+    TEST_ASSERT_EQUAL_UINT8(0U, stored.payload.fault.info.nominal_current_status);
     iec104_event_log_mark_sent(first_seq);
     TEST_ASSERT_EQUAL_UINT16(2U, iec104_event_log_get_unsent_count());
     iec104_event_log_mark_sent(second_seq);
@@ -60,8 +60,8 @@ void test_newest_unsent_records_keep_payload_and_survive_reinitialization(void)
     TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
     TEST_ASSERT_TRUE(iec104_event_log_read_newest_unsent(&stored, &seq));
     TEST_ASSERT_EQUAL_UINT16(first_seq, seq);
-    TEST_ASSERT_EQUAL_UINT32(65536U, stored.fault_duration_ms);
-    TEST_ASSERT_EQUAL_UINT8(1U, stored.info.nominal_current_status);
+    TEST_ASSERT_EQUAL_UINT32(65536U, stored.payload.fault.fault_duration_ms);
+    TEST_ASSERT_EQUAL_UINT8(1U, stored.payload.fault.info.nominal_current_status);
     iec104_event_log_mark_sent(first_seq);
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
     TEST_ASSERT_FALSE(iec104_event_log_read_newest_unsent(&stored, &seq));
@@ -81,6 +81,48 @@ void test_invalid_input_and_failed_write_preserve_unsent_state_and_sequence(void
     TEST_ASSERT_EQUAL_UINT16(123U, seq);
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
     TEST_ASSERT_EQUAL_UINT8(0U, replay_state.has_unsent);
+}
+
+void test_mixed_alarm_and_fault_records_survive_restart_and_replay_newest_first(void)
+{
+    const fault_log_t fault = {.fault_duration_ms = 70000U};
+    const iec104_alarm_record_t alarm = {.feeder = 2U, .phase = 1U,
+        .active = 1U, .time = {.iv_bit = 1U}};
+    uint16_t fault_seq;
+    uint16_t alarm_seq;
+    TEST_ASSERT_TRUE(iec104_event_log_add(&fault, &fault_seq));
+    TEST_ASSERT_TRUE(iec104_event_log_add_alarm(&alarm, &alarm_seq));
+    TEST_ASSERT_EQUAL_INT(0, iec104_event_log_sync());
+    TEST_ASSERT_TRUE(iec104_event_log_init());
+    iec104_event_record_t record;
+    uint16_t seq;
+    TEST_ASSERT_TRUE(iec104_event_log_read_newest_unsent(&record, &seq));
+    TEST_ASSERT_EQUAL_UINT16(alarm_seq, seq);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_EVENT_TRIP_FAILURE, record.kind);
+    TEST_ASSERT_EQUAL_MEMORY(&alarm, &record.payload.alarm, sizeof(alarm));
+    iec104_event_log_mark_sent(seq);
+    TEST_ASSERT_TRUE(iec104_event_log_read_newest_unsent(&record, &seq));
+    TEST_ASSERT_EQUAL_UINT16(fault_seq, seq);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_EVENT_FAULT, record.kind);
+    TEST_ASSERT_EQUAL_UINT32(70000U, record.payload.fault.fault_duration_ms);
+    iec104_event_log_mark_sent(seq);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+}
+
+void test_alarm_records_cross_nor_pages_and_reject_invalid_input(void)
+{
+    iec104_alarm_record_t alarm = {.active = 1U};
+    for (uint32_t index = 0U; 20U > index; index++)
+    {
+        TEST_ASSERT_TRUE(iec104_event_log_add_alarm(&alarm, NULL));
+    }
+    TEST_ASSERT_EQUAL_UINT16(20U, iec104_event_log_get_unsent_count());
+    alarm.active = 2U;
+    uint16_t seq = 42U;
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm(&alarm, &seq));
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm(NULL, &seq));
+    TEST_ASSERT_EQUAL_UINT16(42U, seq);
+    TEST_ASSERT_EQUAL_UINT16(20U, iec104_event_log_get_unsent_count());
 }
 
 /*** end of file ***/

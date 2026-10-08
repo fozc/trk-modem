@@ -1775,6 +1775,57 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
     return iec104_send((uint8_t *)&pkt, sp_len + 2U);
 }
 
+static bool emit_alarm_record(const iec104_alarm_record_t *record)
+{
+    if (!link_active || (k_counter >= config.k_max))
+    {
+        return false;
+    }
+    if ((MAX_POWER_LINE_COUNT <= record->feeder) ||
+        (PHASE_MAX <= record->phase) || (1U < record->active))
+    {
+        return true;
+    }
+    const power_line_t *line = breaker_get_power_line_by_idx(record->feeder);
+    if ((NULL == line) ||
+        (0U == iec104_ioa_3byte_to_uint32(line->iec104.trip_failed[record->phase])))
+    {
+        return false;
+    }
+    iec104_package_t packet = {0};
+    const size_t length = sizeof(apci_header_t) +
+        sizeof(asdu_header_t) + sizeof(m_sp_tb_1_t);
+    packet.frame.apci.start_char = IEC104_START_BYTE;
+    packet.frame.apci.apdu_length = (uint8_t)(length - 2U);
+    packet.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+    packet.frame.asdu_header = make_asdu_header(M_SP_TB_1,
+        (cot_t){.cause = COT_SPONTANEOUS}, config.originator_address,
+        config.common_address, 1U, 0U);
+    m_sp_tb_1_t *object = (m_sp_tb_1_t *)&packet.data[DATA_START_IDX];
+    object->ioa = line->iec104.trip_failed[record->phase];
+    object->siq = (siq_t){.spi = (0U != record->active),
+                         .invalid = record->time.iv_bit};
+    object->timestamp = record->time;
+    return iec104_send((const uint8_t *)&packet, length);
+}
+
+bool iec104_emit_event_record(const iec104_event_record_t *record)
+{
+    if (NULL == record)
+    {
+        return false;
+    }
+    switch (record->kind)
+    {
+        case IEC104_EVENT_FAULT:
+            return iec104_emit_evtlog_record(&record->payload.fault);
+        case IEC104_EVENT_TRIP_FAILURE:
+            return emit_alarm_record(&record->payload.alarm);
+        default:
+            return true;
+    }
+}
+
 void iec104_send_C_SC_NA_1(cot_t cot, ioa_3byte_t ioa, sco_command_state_t scs, qualifier_of_command_t qu, se_bit_t se_bit)
 {
     iec104_package_t pkt;
@@ -2237,46 +2288,16 @@ bool iec104_send_load_current_states(cause_of_transmission_t cause)
     return (sent >= obj_count);
 }
 
-bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
+static bool send_rf_state_objects(cause_of_transmission_t cause,
+                                  const m_sp_tb_1_t *objects, uint8_t obj_count)
 {
-    CSLOG("Sending RF communication states\r\n");
-
-    uint8_t active_powerline_count = breaker_get_active_powerline_count();
-
-    if (active_powerline_count == 0)
+    const uint8_t max_objs_per_packet = (253U - 10U) / sizeof(m_sp_tb_1_t);
+    /* Reserve enough k-window capacity for the entire state snapshot. */
+    const uint32_t packets = ((uint32_t)obj_count + max_objs_per_packet - 1U) /
+                              max_objs_per_packet;
+    if ((uint32_t)k_counter + packets > config.k_max)
     {
-        CSLOG("No active power lines, skipping\r\n");
-        return true;
-    }
-
-    // IEC 104 APDU max 253 byte, ASDU header 10 byte
-    // Max obje sayisi: (253 - 10) / sizeof(m_sp_tb_1_t)
-    const uint8_t max_objs_per_packet = (253 - 10) / sizeof(m_sp_tb_1_t);
-
-    // (maks 8 hat * 3 faz = 24 obje)
-    m_sp_tb_1_t objects[MAX_POWER_LINE_COUNT * 3];
-    uint8_t obj_count = 0;
-
-    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
-    {
-        const power_line_t *line = breaker_get_power_line_by_idx(power_line);
-
-        if (line == NULL || !line->iec104.in_use) {
-            continue;
-        }
-
-        for (uint8_t phase = 0U; phase < 3; phase++)
-        {
-        	siq_t siq;
-            cp56time2a_t timestamp;
-
-            iec_io.get_rf_haberlesme_varyok(power_line, phase, &siq, &timestamp);
-
-            objects[obj_count].ioa = line->iec104.rf_haberlesme_varyok[phase];
-            objects[obj_count].siq = siq;
-            objects[obj_count].timestamp = timestamp;
-            obj_count++;
-        }
+        return false;
     }
 
     // Paketlere bol ve gonder
@@ -2312,6 +2333,61 @@ bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
     }
 
     return (sent >= obj_count);
+}
+
+bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
+{
+    CSLOG("Sending RF communication states\r\n");
+
+    uint8_t active_powerline_count = breaker_get_active_powerline_count();
+
+    if (active_powerline_count == 0)
+    {
+        CSLOG("No active power lines, skipping\r\n");
+        return true;
+    }
+
+    // IEC 104 APDU max 253 byte, ASDU header 10 byte
+    // Max obje sayisi: (253 - 10) / sizeof(m_sp_tb_1_t)
+
+    // (maks 8 hat * 3 faz = 24 obje)
+    m_sp_tb_1_t objects[MAX_POWER_LINE_COUNT * 3U * 2U];
+    uint8_t obj_count = 0;
+
+    for (uint32_t power_line = 0U; power_line < MAX_POWER_LINE_COUNT; power_line++)
+    {
+        const power_line_t *line = breaker_get_power_line_by_idx(power_line);
+
+        if (line == NULL || !line->iec104.in_use) {
+            continue;
+        }
+
+        for (uint8_t phase = 0U; phase < 3; phase++)
+        {
+        	siq_t siq;
+            cp56time2a_t timestamp;
+
+            iec_io.get_rf_haberlesme_varyok(power_line, phase, &siq, &timestamp);
+
+            objects[obj_count].ioa = line->iec104.rf_haberlesme_varyok[phase];
+            objects[obj_count].siq = siq;
+            objects[obj_count].timestamp = timestamp;
+            obj_count++;
+            if (NULL != iec_io.get_trip_failed)
+            {
+                siq = (siq_t){.invalid = 1U};
+                timestamp = (cp56time2a_t){.iv_bit = 1U};
+                (void)iec_io.get_trip_failed(power_line, phase,
+                                             &siq, &timestamp);
+                objects[obj_count].ioa = line->iec104.trip_failed[phase];
+                objects[obj_count].siq = siq;
+                objects[obj_count].timestamp = timestamp;
+                obj_count++;
+            }
+        }
+    }
+
+    return send_rf_state_objects(cause, objects, obj_count);
 }
 
 

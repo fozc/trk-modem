@@ -14,9 +14,12 @@ SELFTEST = TEST_ROOT / "system" / "rf_hil" / "test_sim_selftest.py"
 
 
 def main():
-    result = subprocess.run([sys.executable, str(SELFTEST)],
-                            timeout=300)
-    return result.returncode
+    tests = [SELFTEST, TEST_ROOT / "system/rf_hil/test_hil_identity.py"]
+    for test in tests:
+        result = subprocess.run([sys.executable, str(test)], timeout=300)
+        if result.returncode:
+            return result.returncode
+    return 0
 
 
 if __name__ == "__main__":

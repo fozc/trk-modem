@@ -7,7 +7,7 @@
  *
  * Envanter push siralayici: rf_store'daki atanmis cihazlari hub'a
  * tanitir (0x04 x N + 0x05 END). Komut mekanizmasini (rf_comm) kullanir;
- * kendi ic durumu bir imlectir (feeder x phase), state-machine degil.
+ * Live changes drain the old event queues before uploading.
  */
 
 #ifndef RF_RF_INVENTORY_H_
@@ -21,8 +21,10 @@
 extern "C" {
 #endif
 
-/** Envanter push'u baslat: store'u tara, her cihaz icin 0x04, sonunda 0x05. */
-void rf_inventory_start(void);
+/** Queue a full upload. False means BOOT protection, active configuration
+ * or another inventory operation blocks it. Existing assignments first
+ * enter DRAINING; cold BOOT upload starts after its protection handshake. */
+bool rf_inventory_start(void);
 
 typedef enum
 {
@@ -31,7 +33,8 @@ typedef enum
     RF_INVENTORY_EMPTY,
     RF_INVENTORY_PARTIAL,
     RF_INVENTORY_READY,
-    RF_INVENTORY_ERROR
+    RF_INVENTORY_ERROR,
+    RF_INVENTORY_DRAINING
 } rf_inventory_status_t;
 
 typedef struct
@@ -41,6 +44,7 @@ typedef struct
     uint8_t phase;
     uint8_t eui64[8];
     uint8_t channel;
+    uint8_t line_index; /* Accepted RTU row; UINT8_MAX if not mapped. */
 } rf_inventory_entry_t;
 
 /** Clear volatile upload state when BOOT invalidates the hub inventory. */
@@ -66,6 +70,7 @@ bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done);
 
 /* Minimum local wait after an acknowledged epoch refresh; not RF proof. */
 bool rf_inventory_epoch_ready(uint8_t feeder);
+bool rf_inventory_get_boundary(uint32_t *total);
 
 /** True for accepted nonempty READY/PARTIAL inventory, false for EMPTY. */
 bool rf_inventory_is_loaded(void);

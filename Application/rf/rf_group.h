@@ -52,6 +52,7 @@ void rf_group_hub_restarted(void);
 bool rf_group_start(size_t line_index, uint8_t group_id);
 bool rf_group_get_status(rf_group_status_t *out);
 bool rf_group_matches_config(void);
+bool rf_group_is_active(void);
 void rf_group_process(uint32_t now_ms);
 bool rf_group_handle_status(const rf_scp_message_t *message);
 

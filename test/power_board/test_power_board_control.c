@@ -238,27 +238,32 @@ void test_period_write_preserves_hidden_bit_and_changes_only_customer_byte(void)
                            control_status().last_rejected);
 }
 
-void test_capacity_waits_for_32_seconds_echo_and_matching_summary(void)
+void test_capacity_waits_for_36_seconds_echo_and_new_matching_summary(void)
 {
     start_capacity();
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_ECHO,
                           control_status().settings_state);
-    tick = 31999U;
+    tick = 35999U;
     power_board_control_process(tick);
     TEST_ASSERT_EQUAL_size_t(2U, request_count);
-    tick = 32000U;
+    tick = 36000U;
     power.summary.flags2 = 0x40U;
     power_board_control_process(tick);
     config_reply(8U, true, 0U, 0U);
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_APPLY,
                           control_status().settings_state);
     TEST_ASSERT_FALSE(power_board_battery_replaced());
-    power.summary.flags2 = 0U;
+    power.summary.flags2 = 0x20U; /* Current limiting is not rejection. */
     power.summary.capacity_ah = 12U;
     power_board_control_process(tick);
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_APPLY,
                           control_status().settings_state);
     power.summary.capacity_ah = 24U;
+    power.received_age_ms = 1U;
+    power_board_control_process(tick);
+    TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_APPLY,
+                          control_status().settings_state);
+    power.received_age_ms = 0U;
     power_board_control_process(tick);
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_APPLIED,
                           control_status().settings_state);
@@ -268,7 +273,7 @@ void test_capacity_waits_for_32_seconds_echo_and_matching_summary(void)
 void test_missing_echo_needs_explicit_read_and_never_polls_each_tick(void)
 {
     start_capacity();
-    tick = 32000U;
+    tick = 36000U;
     power_board_control_process(tick);
     config_reply(8U, false, 0U, 0U);
     for (uint8_t index = 0U; index < 10U; index++)
@@ -285,14 +290,14 @@ void test_missing_echo_needs_explicit_read_and_never_polls_each_tick(void)
 void test_echo_rejection_and_changed_gen_are_not_success(void)
 {
     start_capacity();
-    tick = 32000U;
+    tick = 36000U;
     power_board_control_process(tick);
     config_reply(8U, true, 0U, 0x20U);
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_REJECTED,
                           control_status().settings_state);
     TEST_ASSERT_FALSE(power_board_battery_replaced());
     start_capacity();
-    tick += 32000U;
+    tick += 36000U;
     power_board_control_process(tick);
     config_reply(9U, true, 0U, 0U);
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_CONFLICT,
@@ -351,7 +356,7 @@ void test_gen_conflict_does_not_blindly_resend_set(void)
 void test_failed_verification_read_preserves_stored_state_and_allows_query(void)
 {
     start_capacity();
-    tick = 32000U;
+    tick = 36000U;
     power_board_control_process(tick);
     reply(SCP_CMD_TIMEOUT, NULL);
     power_board_control_process(tick);
@@ -380,17 +385,17 @@ void test_write_timeout_is_unknown_and_does_not_send_battery_command(void)
     TEST_ASSERT_EQUAL_size_t(2U, request_count);
 }
 
-void test_unset_battery_setting_is_echo_accepted_without_applied_claim(void)
+void test_unset_rate_is_echo_accepted_without_applied_claim(void)
 {
     const power_settings_request_t request =
     {
-        .mask = POWER_SETTING_CAPACITY, .capacity_ah = 0U
+        .mask = POWER_SETTING_RATE, .rate_permille = 0U
     };
 
     TEST_ASSERT_TRUE(power_board_write_settings(&request));
     config_reply(7U, true, 0U, 0U);
     write_ack(8U);
-    tick = 32000U;
+    tick = 36000U;
     power_board_control_process(tick);
     config_reply(8U, true, 0U, 0U);
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_ECHO_ACCEPTED,
@@ -407,20 +412,25 @@ void test_battery_replacement_waits_for_matching_result_not_ack(void)
                           control_status().command_state);
     TEST_ASSERT_FALSE(power_board_battery_replaced());
     result_report(41U, 0U, 0U);
-    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_ACCEPTED,
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED,
                           control_status().command_state);
+    TEST_ASSERT_EQUAL_UINT8(41U, control_status().result_seq);
     result_report(42U, 0U, 8U);
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED,
                           control_status().command_state);
 }
 
-void test_result_before_ack_is_correlated_after_ack(void)
+void test_result_before_ack_is_not_completion_evidence(void)
 {
     TEST_ASSERT_TRUE(power_board_battery_replaced());
     result_report(42U, 0U, 8U);
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_SENDING,
                           control_status().command_state);
     command_ack(5U, 42U);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_ACCEPTED,
+                          control_status().command_state);
+    TEST_ASSERT_FALSE(control_status().has_result);
+    result_report(43U, 0U, 8U);
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED,
                           control_status().command_state);
 }
@@ -432,13 +442,21 @@ void test_cancel_ack_does_not_claim_that_battery_counters_were_preserved(void)
     TEST_ASSERT_TRUE(power_board_cancel_command());
     TEST_ASSERT_EQUAL_UINT8(0U, requests[1].data[0]);
     command_ack(0U, 0U);
-    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_MONITORING,
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_UNCERTAIN,
                           control_status().command_state);
-    result_report(42U, 255U, 2U);
+    power_board_control_process(tick);
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_PWR_RESULT, requests[2].cmd);
+    const scp_packet_t packet =
+    {
+        .src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_PWR_RESULT, .type = SCP_TYPE_ACK,
+        .data_len = 5U, .data = {5U, 42U, 255U, 0U, 2U}
+    };
+    reply(SCP_CMD_OK, &packet);
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_MONITORING,
                           control_status().command_state);
     result_report(42U, 255U, 4U);
-    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_UNCERTAIN,
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_CANCELLED,
                           control_status().command_state);
     result_report(42U, 255U, 8U);
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED,
@@ -455,9 +473,9 @@ void test_command_rejection_and_no_reply_are_not_success(void)
     TEST_ASSERT_TRUE(power_board_battery_replaced());
     command_ack(5U, 43U);
     result_report(43U, 255U, 0U);
-    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_ACCEPTED,
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_NO_RESPONSE,
                           control_status().command_state);
-    TEST_ASSERT_FALSE(power_board_battery_replaced());
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
 }
 
 void test_restart_clears_reports_and_ends_pending_jobs(void)
@@ -586,7 +604,7 @@ void test_verification_delay_crosses_tick_wrap_and_waits_for_transport(void)
 {
     tick = UINT32_MAX - 1000U;
     start_capacity();
-    tick += 31999U;
+    tick += 35999U;
     power_board_control_process(tick);
     TEST_ASSERT_EQUAL_size_t(2U, request_count);
     tick++;
@@ -631,6 +649,10 @@ void test_invalid_input_busy_transport_and_unknown_hub_start_no_request(void)
     };
 
     TEST_ASSERT_FALSE(power_board_write_settings(NULL));
+    TEST_ASSERT_FALSE(power_board_write_settings(&request));
+    request.capacity_ah = 0U;
+    TEST_ASSERT_FALSE(power_board_write_settings(&request));
+    request.capacity_ah = 255U;
     TEST_ASSERT_FALSE(power_board_write_settings(&request));
     request.capacity_ah = 24U;
     request.mask = 0x0004U;
@@ -708,6 +730,72 @@ void test_shell_rejects_invalid_values_and_exposes_only_customer_commands(void)
     TEST_ASSERT_EQUAL_size_t(0U, request_count);
     TEST_ASSERT_EQUAL_INT(0, power_board_control_shell(4, valid));
     TEST_ASSERT_EQUAL_size_t(1U, request_count);
+}
+
+void test_unset_rate_still_verifies_real_capacity(void)
+{
+    const power_settings_request_t desired_settings =
+    {
+        .mask = POWER_SETTING_CAPACITY | POWER_SETTING_RATE,
+        .capacity_ah = 24U, .rate_permille = 255U
+    };
+    TEST_ASSERT_TRUE(power_board_write_settings(&desired_settings));
+    config_reply(7U, true, 0U, 0U);
+    write_ack(8U);
+    tick = 36000U;
+    power.summary.capacity_ah = 12U;
+    power_board_control_process(tick);
+    config_reply(8U, true, 0U, 0U);
+    TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_APPLY,
+                          control_status().settings_state);
+    power.summary.capacity_ah = 24U;
+    power_board_control_process(tick);
+    TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_ECHO_ACCEPTED,
+                          control_status().settings_state);
+}
+
+void test_get_ff_with_two_transmissions_waits_until_five_minutes(void)
+{
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(5U, 42U);
+    scp_packet_t packet =
+    {
+        .src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_PWR_RESULT, .type = SCP_TYPE_ACK,
+        .data_len = 5U, .data = {5U, 43U, 255U, 2U, 0U}
+    };
+    tick = 299999U;
+    TEST_ASSERT_TRUE(power_board_read_command_result());
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_ACCEPTED,
+                          control_status().command_state);
+    tick++;
+    TEST_ASSERT_TRUE(power_board_read_command_result());
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_NO_RESPONSE,
+                          control_status().command_state);
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+}
+
+void test_cancel_get_reports_ineffective_cancel_without_waiting_for_outcome(void)
+{
+    TEST_ASSERT_TRUE(power_board_cancel_command());
+    command_ack(0U, 0U);
+    TEST_ASSERT_FALSE(power_board_read_settings());
+    power_board_control_process(tick);
+    const scp_packet_t packet =
+    {
+        .src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_PWR_RESULT, .type = SCP_TYPE_ACK,
+        .data_len = 5U, .data = {5U, 42U, 0U, 1U, 0U}
+    };
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_CANCEL_NO_EFFECT,
+                          control_status().command_state);
+    const size_t before = request_count;
+    power_board_control_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, request_count);
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
 }
 
 /*** end of file ***/

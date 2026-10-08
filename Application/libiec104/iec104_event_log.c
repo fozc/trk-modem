@@ -5,7 +5,7 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * IEC 104 ariza olaylarinin kalici gunlugu.
+ * Persistent IEC104 fault and trip-failure alarm records.
  *
  * Depolama spi_flash_log'a birakilmistir (append-only halka, iki asamali
  * yazim, torn-slot tespiti, ertelenmis erase). Bu modul yalnizca iki sey
@@ -42,13 +42,13 @@
 
 /* Kapasite sabitleri (spi_flash_log sabitlerinden turetilmis hali; yalnizca
  * bu modulun ici icin - bkz. basliktaki NOT). */
-#define IEC104_EVTLOG_ENTRY_SIZE   (LOG_ENTRY_OVERHEAD + sizeof(fault_log_t))
+#define IEC104_EVTLOG_ENTRY_SIZE   (LOG_ENTRY_OVERHEAD + sizeof(iec104_event_record_t))
 #define IEC104_EVTLOG_PER_SECTOR   (LOG_SECTOR_SIZE / IEC104_EVTLOG_ENTRY_SIZE)
 #define IEC104_EVTLOG_MAX_ENTRIES  ((IEC104_EVTLOG_SECTOR_COUNT - 1U) * IEC104_EVTLOG_PER_SECTOR)
 
 /* ---------------------------------------------------------- derleme kontrolleri */
-_Static_assert(sizeof(fault_log_t) == 20U,
-               "fault_log_t layout degisti - evtlog kapasitesi ve flash haritasi gecersiz");
+_Static_assert(sizeof(iec104_event_record_t) == 25U,
+               "IEC event layout changed; recheck log capacity");
 _Static_assert(IEC104_EVTLOG_SECTOR_COUNT >= LOG_MIN_SECTOR_COUNT,
                "evtlog icin en az LOG_MIN_SECTOR_COUNT sektor gerekir");
 _Static_assert(IEC104_EVTLOG_SECTOR_SIZE == LOG_SECTOR_SIZE,
@@ -109,10 +109,10 @@ static uint16_t seq_prev(uint16_t seq)
 
 /* ---------------------------------------------------------- kayit CRC'si */
 
-static uint32_t record_calc_crc(const fault_log_t *r)
+static uint32_t record_calc_crc(const iec104_event_record_t *r)
 {
     crc32_t c = crc32_init();
-    c = crc32_update(c, r, sizeof(fault_log_t) - sizeof(r->crc));
+    c = crc32_update(c, r, sizeof(iec104_event_record_t) - sizeof(r->crc));
     return crc32_finalize(c);
 }
 
@@ -137,6 +137,22 @@ static void unsent_extend(uint16_t seq)
 
 /* ---------------------------------------------------------- public API */
 
+typedef struct
+{
+    const iec104_event_record_t *record;
+    uint16_t seq;
+    bool matched;
+} write_readback_t;
+
+static void verify_write(const void *payload, uint32_t length,
+                          uint32_t seq, void *context)
+{
+    write_readback_t *readback = context;
+    readback->matched = (sizeof(*readback->record) == length) &&
+        (readback->seq == seq) &&
+        (0 == memcmp(payload, readback->record, length));
+}
+
 bool iec104_event_log_init(void)
 {
     iec104_event_log_shell_init();
@@ -144,7 +160,7 @@ bool iec104_event_log_init(void)
     const log_config_t cfg = {
         .base_addr    = IEC104_EVTLOG_ADDR,
         .sector_count = IEC104_EVTLOG_SECTOR_COUNT,
-        .payload_size = sizeof(fault_log_t),
+        .payload_size = sizeof(iec104_event_record_t),
         .ops = {
             .read         = evtlog_flash_read,
             .program      = evtlog_flash_program,
@@ -172,35 +188,56 @@ bool iec104_event_log_init(void)
     return true;
 }
 
-bool iec104_event_log_add(const fault_log_t *entry, uint16_t *seq_out)
+static bool add_record(iec104_event_record_t *record, uint16_t *seq_out)
 {
-    if (!s_initialized || (NULL == entry))
+    if (!s_initialized)
     {
         return false;
     }
-
-    /* CRC'yi burada hesaplariz; cagiranin bunu bilmesi beklenmez. */
-    fault_log_t record = *entry;
-    record.crc = record_calc_crc(&record);
-
-    if (LOG_OK != log_write(&s_log, &record))
+    record->crc = record_calc_crc(record);
+    if (LOG_OK != log_write(&s_log, record))
     {
-        CSLOG_ERR("evtlog: log_write basarisiz\r\n");
         return false;
     }
-
     s_write_gen++;
-
     const uint16_t seq = seq_prev((uint16_t)log_get_next_seq(&s_log));
-
+    log_page_ctx_t page = {0};
+    write_readback_t readback = {.record = record, .seq = seq};
+    if ((LOG_OK != log_read_last(&s_log, 1U, verify_write, &readback, &page)) ||
+        !readback.matched)
+    {
+        return false;
+    }
     unsent_extend(seq);
-
     if (NULL != seq_out)
     {
         *seq_out = seq;
     }
-
     return true;
+}
+
+bool iec104_event_log_add(const fault_log_t *entry, uint16_t *seq_out)
+{
+    if (NULL == entry)
+    {
+        return false;
+    }
+    iec104_event_record_t record = {.kind = IEC104_EVENT_FAULT};
+    record.payload.fault = *entry;
+    return add_record(&record, seq_out);
+}
+
+bool iec104_event_log_add_alarm(const iec104_alarm_record_t *entry,
+                               uint16_t *seq_out)
+{
+    if ((NULL == entry) || (MAX_POWER_LINE_COUNT <= entry->feeder) ||
+        (PHASE_MAX <= entry->phase) || (1U < entry->active))
+    {
+        return false;
+    }
+    iec104_event_record_t record = {.kind = IEC104_EVENT_TRIP_FAILURE};
+    record.payload.alarm = *entry;
+    return add_record(&record, seq_out);
 }
 
 uint16_t iec104_event_log_get_unsent_count(void)
@@ -225,7 +262,7 @@ uint16_t iec104_event_log_get_unsent_count(void)
 /* log_read_last() ziyaretcisi: bir kaydi disari tasir. */
 typedef struct
 {
-    fault_log_t *out;
+    iec104_event_record_t *out;
     uint16_t     seq;
     bool         valid;
 } evtlog_visit_t;
@@ -234,17 +271,18 @@ static void visit_one(const void *payload, uint32_t payload_size, uint32_t seq, 
 {
     evtlog_visit_t *v = (evtlog_visit_t *)user_ctx;
 
-    if (payload_size != sizeof(fault_log_t))
+    if (payload_size != sizeof(iec104_event_record_t))
     {
         return;
     }
 
-    (void)memcpy(v->out, payload, sizeof(fault_log_t));
-    v->seq   = (uint16_t)seq;
-    v->valid = true;
+    (void)memcpy(v->out, payload, sizeof(iec104_event_record_t));
+    v->seq = (uint16_t)seq;
+    v->valid = (IEC104_EVENT_TRIP_FAILURE >= v->out->kind) &&
+               (v->out->crc == record_calc_crc(v->out));
 }
 
-bool iec104_event_log_read_newest_unsent(fault_log_t *out, uint16_t *seq_out)
+bool iec104_event_log_read_newest_unsent(iec104_event_record_t *out, uint16_t *seq_out)
 {
     if (!s_initialized || (NULL == out) || (0U == s_state->has_unsent))
     {
@@ -397,7 +435,7 @@ static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq,
     /* The dump caller supplies the range and output count. */
     evtlog_dump_range_t *range = (evtlog_dump_range_t *)user_ctx;
 
-    if ((payload_size != sizeof(fault_log_t)) ||
+    if ((payload_size != sizeof(iec104_event_record_t)) ||
         (seq < range->first_seq) || (seq > range->last_seq))
     {
         return;
@@ -405,8 +443,19 @@ static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq,
 
     range->printed_count++;
 
-    fault_log_t e;
-    (void)memcpy(&e, payload, sizeof(e));
+    iec104_event_record_t event;
+    (void)memcpy(&event, payload, sizeof(event));
+    if (IEC104_EVENT_TRIP_FAILURE == event.kind)
+    {
+        SHELL_LOG("  seq=%u alarm F%u Ph%u active=%u\r\n",
+                  (unsigned)seq,
+                  (unsigned)(event.payload.alarm.feeder + 1U),
+                  (unsigned)(event.payload.alarm.phase + 1U),
+                  (unsigned)event.payload.alarm.active);
+        return;
+    }
+    const fault_log_t e = event.payload.fault;
+    (void)e;
 
     SHELL_LOG("  seq=%5u sent=%u  F%u Ph%u %s  I=%.1fA  T=%ums  P=%s Load=%s  %02u-%02u-%04u %02u:%02u:%02u\r\n",
               (unsigned)seq,
@@ -438,7 +487,7 @@ static void evtlog_dump(uint16_t first_seq, uint16_t last_seq)
     evtlog_dump_range_t range = {first_seq, last_seq, 0U};
     SHELL_LOG("\r\n=== iec104_event_log ==============================================\r\n");
     SHELL_LOG("  kayit boyutu : %u bayt (entry %u)\r\n",
-              (unsigned)sizeof(fault_log_t), (unsigned)IEC104_EVTLOG_ENTRY_SIZE);
+              (unsigned)sizeof(iec104_event_record_t), (unsigned)IEC104_EVTLOG_ENTRY_SIZE);
     SHELL_LOG("  kapasite     : %u  (%u sektor x %u)\r\n",
               (unsigned)IEC104_EVTLOG_MAX_ENTRIES,
               (unsigned)IEC104_EVTLOG_SECTOR_COUNT,
@@ -550,7 +599,7 @@ static void visit_count(const void *payload, uint32_t payload_size, uint32_t seq
     (void)payload;
     (void)seq;
 
-    if (payload_size == sizeof(fault_log_t))
+    if (payload_size == sizeof(iec104_event_record_t))
     {
         (*(uint32_t *)user_ctx)++;
     }
@@ -577,7 +626,7 @@ static void evtlog_status(void)
     SHELL_LOG("\r\n=== iec104evtlog status ==================================\r\n");
     SHELL_LOG("  durum        : hazir\r\n");
     SHELL_LOG("  kayit boyutu : %u bayt (entry %u)\r\n",
-              (unsigned)sizeof(fault_log_t), (unsigned)IEC104_EVTLOG_ENTRY_SIZE);
+              (unsigned)sizeof(iec104_event_record_t), (unsigned)IEC104_EVTLOG_ENTRY_SIZE);
     SHELL_LOG("  kapasite     : %u  (%u sektor x %u)\r\n",
               (unsigned)IEC104_EVTLOG_MAX_ENTRIES,
               (unsigned)IEC104_EVTLOG_SECTOR_COUNT,
