@@ -16,6 +16,7 @@
 int rf_nvram_fake_sync_count(void);
 void rf_nvram_fake_reset(void);
 void rf_nvram_fake_set_sync_result(int result);
+void rf_nvram_fake_set_save_result(nvram_save_result_t result);
 
 #endif /* TEST_SUPPORT_RF_NVRAM_FAKE_H_ */
 

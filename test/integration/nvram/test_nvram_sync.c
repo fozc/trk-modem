@@ -21,6 +21,7 @@
 #include <stddef.h>
 
 #include "nvram.h"
+#include "rf_config.h"
 #include "crc32.h"
 #include "iec104_util.h"
 #include "mock_platform.h"
@@ -471,8 +472,64 @@ static void test_factory_register_addresses_are_unchanged(void)
     }
 }
 
+static void test_detailed_save_distinguishes_failed_and_primary_only(void)
+{
+    boot_virgin();
+    nvram_set_gsm_log_level(9U);
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_AFTER_ERASE);
+    check(NVRAM_SAVE_FAILED == nvram_save(false),
+          "detailed: failed A is not a verified new record");
+    check(NVRAM_SAVE_COMPLETE == nvram_save(false),
+          "detailed: retry repairs and saves both copies");
+    nvram_set_gsm_log_level(10U);
+    mock_fail_write(MOCK_SLOT_B, MOCK_FAIL_AFTER_ERASE);
+    check(NVRAM_SAVE_PRIMARY_ONLY == nvram_save(false),
+          "detailed: failed B distinguishes verified A");
+    check(10U == img(MOCK_SLOT_A)->gsm_log_level,
+          "detailed: verified A contains the new setting");
+    reboot();
+    check(10U == nvram_get_gsm_log_level(),
+          "detailed: reboot selects the new setting");
+    check(NVRAM_SAVE_COMPLETE == nvram_save(false),
+          "detailed: repaired copies are complete");
+}
+
+static void test_rf_staged_save_with_real_flash_failures(void)
+{
+    boot_virgin();
+    rf_store_init();
+    const rf_feeder_t previous = *rf_store_get(FEEDER_1);
+
+    check(rf_store_stage_begin(), "RF: staging begins");
+    rf_store_get_mutable(FEEDER_1)->config.ia_threshold = 27.0f;
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_AFTER_ERASE);
+    check(-1 == rf_store_sync(), "RF: A failure rejects candidate");
+    check(0 == memcmp(&previous, rf_store_get(FEEDER_1), sizeof(previous)),
+          "RF: A failure preserves published store");
+    check(0 == memcmp(&previous, &nvram_get_breaker_rw()->line[0].rf,
+                      sizeof(previous)), "RF: A failure restores mirror");
+    check(0 == nvram_sync(false), "RF: later unrelated save succeeds");
+    reboot();
+    rf_store_init();
+    check(0 == memcmp(&previous, rf_store_get(FEEDER_1), sizeof(previous)),
+          "RF: later save never persists rejected candidate");
+    check(rf_store_stage_begin(), "RF: second staging begins");
+    rf_store_get_mutable(FEEDER_1)->config.ia_threshold = 28.0f;
+    mock_fail_write(MOCK_SLOT_B, MOCK_FAIL_AFTER_ERASE);
+    check(1 == rf_store_sync(), "RF: B failure reports primary only");
+    check(28.0f == rf_store_get(FEEDER_1)->config.ia_threshold,
+          "RF: B failure retains verified candidate");
+    reboot();
+    rf_store_init();
+    check(28.0f == rf_store_get(FEEDER_1)->config.ia_threshold,
+          "RF: reboot agrees with primary-only result");
+    check(0 == rf_store_sync(), "RF: manual retry completes copies");
+}
+
 int main(void)
 {
+    test_rf_staged_save_with_real_flash_failures();
+    test_detailed_save_distinguishes_failed_and_primary_only();
     test_factory_register_addresses_are_unchanged();
     test_iec_default_address_regions();
     test_lifetime_persistence_boundary();

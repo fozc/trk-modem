@@ -669,7 +669,7 @@ int nvram_init(void)
 
 /* ---- Save ------------------------------------------------------------- */
 
-static int nvram_sync_locked(bool crc_no_check)
+static nvram_save_result_t nvram_sync_locked(bool crc_no_check)
 {
     nvram_slot_state_t a;
     nvram_slot_state_t b;
@@ -683,7 +683,7 @@ static int nvram_sync_locked(bool crc_no_check)
     {
         xcprintf(XCOLOR_RED,
                  "NVRAM: slot prepare FAILED - save rejected, good copy untouched.\r\n");
-        return -1;
+        return NVRAM_SAVE_FAILED;
     }
 
     if (!a.valid && !b.valid)
@@ -693,7 +693,7 @@ static int nvram_sync_locked(bool crc_no_check)
     else if (!crc_no_check && (ram_crc == nvram_persisted_crc))
     {
         /* Veri degismedi; slotlar Faz 1'de esitlendi - gereksiz yazma yok. */
-        return 0;
+        return NVRAM_SAVE_COMPLETE;
     }
     else if (a.valid && (a.crc == ram_crc))
     {
@@ -702,7 +702,7 @@ static int nvram_sync_locked(bool crc_no_check)
         nvram.crc = ram_crc;
         nvram.sequence = a.sequence;
         nvram_persisted_crc = ram_crc;
-        return 0;
+        return NVRAM_SAVE_COMPLETE;
     }
 
     /* Yeni goruntu: sequence YALNIZ gecerli flash goruntusunden uretilir -
@@ -736,7 +736,7 @@ static int nvram_sync_locked(bool crc_no_check)
     {
         xcprintf(XCOLOR_RED,
                  "NVRAM: slot A write FAILED - B keeps the last verified image.\r\n");
-        return -1;
+        return NVRAM_SAVE_FAILED;
     }
 
     /* B sonra: B silinirken A yeni goruntunun dogrulanmis kopyasini tasir. */
@@ -744,28 +744,33 @@ static int nvram_sync_locked(bool crc_no_check)
     {
         xcprintf(XCOLOR_RED,
                  "NVRAM: slot B write FAILED - A holds the new verified image.\r\n");
-        return -1;
+        return NVRAM_SAVE_PRIMARY_ONLY;
     }
 
     nvram_persisted_crc = nvram.crc;
-    return 0;
+    return NVRAM_SAVE_COMPLETE;
 }
 
-int nvram_sync(bool crc_no_check)
+nvram_save_result_t nvram_save(bool crc_no_check)
 {
-    int res;
+    nvram_save_result_t res;
 
     if (nvram_busy)
     {
         /* Ic ice lock yasak: tek sahip kurali. */
         CSLOG_ERR("NVRAM: sync re-entry rejected (save in progress).\r\n");
-        return -1;
+        return NVRAM_SAVE_FAILED;
     }
 
     nvram_busy = true;
     res = nvram_sync_locked(crc_no_check);
     nvram_busy = false;
     return res;
+}
+
+int nvram_sync(bool crc_no_check)
+{
+    return (NVRAM_SAVE_COMPLETE == nvram_save(crc_no_check)) ? 0 : -1;
 }
 
 bool nvram_is_busy(void)

@@ -93,7 +93,9 @@ rf_feeder_t* rf_store_get_mutable(feeder_id_t line_id);
 /** @brief Kaydi oldurucu sekilde guncelle (staging disinda, dikkatli). */
 bool rf_store_set(feeder_id_t line_id, const rf_feeder_t* cfg);
 
-/** @brief RAM store'u NVRAM aynasina yazip kalici hale getirir. */
+/* Save staging when active, otherwise the RAM store. A staged failure
+ * preserves the previous store and RF mirror. Returns 0 for both copies,
+ * 1 for verified primary only, -1 for failure without a verified new A. */
 int rf_store_sync(void);
 
 /** @brief Staging (atomik POST guncellemesi): parse oncesi cagrilir. */

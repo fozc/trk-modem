@@ -300,6 +300,8 @@ Object.assign(I18N.tr,{gPwrInfo:'Güç Kartı',fDcIn:'DC Girişi',fInCur:'Giriş
 Object.assign(I18N.en,{rfStatusReading:'Reading RF application status...',rfStatusUpdated:'RF status updated.',rfAbortNone:'No application can be cancelled in the current state.'});
 Object.assign(I18N.tr,{rfStatusReading:'RF uygulama durumu okunuyor...',rfStatusUpdated:'RF durumu g\u00fcncellendi.',rfAbortNone:'Bu durumda iptal edilebilecek bir uygulama yok.'});
 
+Object.assign(I18N.en,{rfStopStorage:'Saved to the primary copy; backup failed. RF application was not started. Save again to repair and apply.',rfStopInventory:'Inventory did not complete. Check the result before saving again.',rfInventoryPending:'Draining old records and updating the inventory; settings have not been sent yet.',rfSaveNone:'No active feeders. Settings will be saved and previous assignments will be removed if needed. Continue?'});
+Object.assign(I18N.tr,{rfStopStorage:'Ana kopyaya kaydedildi; yedek kayıt başarısız. RF uygulaması başlamadı. Onarmak ve uygulamak için yeniden Kaydet seçin.',rfStopInventory:'Envanter tamamlanamadı. Yeniden kaydetmeden önce sonucu kontrol edin.',rfInventoryPending:'Eski kayıtlar boşaltılıyor ve envanter güncelleniyor; ayarlar henüz gönderilmedi.',rfSaveNone:'Etkin fider yok. Ayarlar kaydedilecek; varsa eski ayırıcı atamaları kaldırılacak. Onaylıyor musunuz?'});
 function buildRfGroupStatus(group){
   if(!group)return '<div class="empty">'+esc(t('stNotRead'))+'</div>';
   const keys={idle:'rfGroupIdle',checking:'rfGroupChecking',writing:'rfGroupWriting',committing:'rfGroupCommitting',waiting:'rfGroupWaiting',applied:'rfGroupApplied',failed:'rfGroupFailed',uncertain:'rfGroupUncertain',id_in_use:'rfGroupIdUsed',mismatch:'rfGroupMismatch',aborting:'rfGroupAborting',cancelled:'rfGroupCancelled',restarted:'rfGroupRestarted'};
@@ -309,8 +311,9 @@ function buildRfGroupStatus(group){
   if(group.BatchState&&group.BatchState!=='idle'){
     const batchKeys={running:'rfBatchRunning',complete:'rfBatchComplete',stopped:'rfBatchStopped'};
     html+='<p><strong>'+esc(t(batchKeys[group.BatchState]||'rfGroupUnknown'))+'</strong></p>';
+    if(group.InventoryPending)html+='<p class="hint">'+esc(t('rfInventoryPending'))+'</p>';
     if(group.BatchState==='stopped'&&group.StopReason&&group.StopReason!=='none'){
-      const reasons={start_rejected:'rfStopStart',id_exhausted:'rfStopIds',group_error:'rfStopGroup',peer_active:'rfStopPeer',hub_restarted:'rfStopRestart',cancelled:'rfStopCancelled',state_changed:'rfStopChanged'};
+      const reasons={start_rejected:'rfStopStart',id_exhausted:'rfStopIds',group_error:'rfStopGroup',peer_active:'rfStopPeer',hub_restarted:'rfStopRestart',cancelled:'rfStopCancelled',state_changed:'rfStopChanged',storage:'rfStopStorage',inventory:'rfStopInventory'};
       html+='<p class="hint">'+esc(t(reasons[group.StopReason]||'rfGroupUnknown'))+'</p>';
     }
     for(let i=0;i<FEEDER_COUNT;i++)if(group.Targets&(1<<i)){
@@ -331,6 +334,7 @@ let rfStatusRequest=0;
 let rfStatusBusy=false;
 function rfCanAbort(group){
   if(!group)return false;
+  if(group.InventoryPending)return false;
   if(group.BatchState==='running'&&!group.GroupStarted)return true;
   return ['checking','waiting','uncertain','mismatch'].includes(group.State);
 }
@@ -377,7 +381,7 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
     s+=checkField('rf-inUse-'+i,t('useFeeder'),rows.inUse?.[i]);
     s+='<div id="rf-prov-'+i+'" class="empty" style="display:none;padding:8px;margin-top:8px">'+esc(t('rfProv'))+'</div>';
     s+='<div class="grid g3 gt" style="margin-top:8px">';
-    s+=numField('rf-HatID-'+i,t('fFeedId'),rows.HatID?.[i],0,7);
+    s+=numField('rf-HatID-'+i,t('fFeedId'),rows.HatID?.[i],0,4);
     s+=numField('rf-ZoneID-'+i,t('fZoneId'),rows.ZoneID?.[i],0,7);
     s+=selectFieldL('rf-CalismaModu-'+i,t('fWorkMode'),rows.CalismaModu?.[i],[[0,t('modeThreshold')],[1,'di/dt']]);
     floats.forEach(f=>s+=numField('rf-'+f[0]+'-'+i,t(f[1]),rows[f[0]]?.[i],f[2],f[3],false,'','any'));
@@ -450,7 +454,8 @@ async function savePageData(page,d){
     pageCache[page]={...pageCache[page],...d};
     if(page==='rf')invalidateRfGroupStatus();
     markOriginals($('body'));clearDirty(page);
-    toast(page==='rf'&&(d.root||d).inUse?.some(Boolean)?t('rfSavedApplying'):t('tSaveOk'),'ok');
+    if(page==='rf'&&r.warning==='backup_failed')toast(t('rfStopStorage'),'err');
+    else toast(page==='rf'&&(d.root||d).inUse?.some(Boolean)?t('rfSavedApplying'):t('tSaveOk'),'ok');
   }catch(e){hideLoad();if(page==='iec104'&&markIecServerErrors(e.message))toast(t('tFixVal'),'err');else toast(t('tSaveErr')+e.message,'err')}
 }
 const addressError=(el,message)=>{
@@ -520,7 +525,7 @@ const markIecServerErrors=message=>{
   if(first){selectIecTab(Number(first.dataset.i));first.focus()}
   return true;
 };
-const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',30,255],['iec-T1',30,255],['iec-T2',30,255],['iec-T3',30,255],['iec-K',64,255],['iec-W',32,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false;for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="mod"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="mod"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,65535))ok=false})}if(!validateAddresses(page))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,7],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',5,240],['ArtimliAkimEsigi',1,2200],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
+const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',30,255],['iec-T1',30,255],['iec-T2',30,255],['iec-T3',30,255],['iec-K',64,255],['iec-W',32,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false;for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="mod"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="mod"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,65535))ok=false})}if(!validateAddresses(page))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,4],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',5,240],['ArtimliAkimEsigi',1,2200],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
   for(let i=0;i<FEEDER_COUNT;i++){const cb=$('rf-inUse-'+i);const inUse=!cb||cb.checked;
     ['R_DEVICEID','S_DEVICEID','T_DEVICEID'].forEach(k=>{const el=$('rf-'+k+'-'+i);if(!el)return;const v=(el.value||'').trim();const err=$('err-rf-'+k+'-'+i);el.classList.remove('invalid');if(err)err.textContent='';if(v==='')return;
       if(!euiRe.test(v)){el.classList.add('invalid');if(err)err.textContent=t('errHex');ok=false}

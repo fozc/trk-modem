@@ -517,12 +517,14 @@ async function checkPage(html, label) {
         document.querySelectorAll = originalQueryAll;
     }
     let rfPosts = 0;
+    let rfWarning;
     const rfRequests = [];
     context.fetch = async (url, options = {}) => {
         rfRequests.push(url);
         if (options.method === 'POST') rfPosts++;
         return {ok: true, status: 200, json: async () => options.method === 'POST'
-            ? {success: true} : {State: 'idle', BatchState: 'idle', SaveBlocked: false}};
+            ? {success: true, warning: rfWarning}
+            : {State: 'idle', BatchState: 'idle', SaveBlocked: false}};
     };
     run("pageCache.rf={inUse:[true]};dirtyPages.rf=new Set();loading=false;curId='rf';");
     run("LNG='tr'");
@@ -536,6 +538,21 @@ async function checkPage(html, label) {
         input.value=String(value);
     }
     document.getElementById('rf-inUse-0').checked = true;
+    for (const value of [1, 4]) {
+        document.getElementById('rf-HatID-0').value = String(value);
+        assert.equal(run("validatePage('rf')"), true);
+    }
+    for (const value of [0, 5, 6, 7]) {
+        document.getElementById('rf-HatID-0').value = String(value);
+        assert.equal(run("validatePage('rf')"), false,
+            'active RF feeder must be in 1..4');
+    }
+    document.getElementById('rf-inUse-0').checked = false;
+    document.getElementById('rf-HatID-0').value = '0';
+    assert.equal(run("validatePage('rf')"), true,
+        'an inactive row may remain unassigned');
+    document.getElementById('rf-inUse-0').checked = true;
+    document.getElementById('rf-HatID-0').value = '1';
     for (const value of [1, 2200]) {
         document.getElementById('rf-ArtimliAkimEsigi-0').value = String(value);
         assert.equal(run("validatePage('rf')"), true);
@@ -564,7 +581,17 @@ async function checkPage(html, label) {
     assert.ok(rfRequests.includes('/config/rf'));
     assert.ok(!rfRequests.some(url => url.includes('/config/rf/apply/')));
     assert.ok(rfRequests.includes('/status/rf-group'));
+    rfWarning = 'backup_failed';
+    await run("savePageData('rf',{inUse:[true]})");
+    assert.ok(notices.at(-1).textContent.includes('yedek kayıt başarısız'));
+    rfWarning = undefined;
+    const inventoryProgress = run("buildRfGroupStatus({State:'idle',BatchState:'running',InventoryPending:true})");
+    assert.ok(inventoryProgress.includes('Eski kayıtlar boşaltılıyor'));
+    assert.equal(run("rfCanAbort({BatchState:'running',InventoryPending:true})"), false);
+    const storageStopped = run("buildRfGroupStatus({State:'idle',BatchState:'stopped',StopReason:'storage'})");
+    assert.ok(storageStopped.includes('RF uygulaması başlamadı'));
     const rfHtml = run('renderRf(pageCache.rf)');
+    assert.match(rfHtml, /id="rf-HatID-0"[^>]*min="0"[^>]*max="4"/);
     assert.ok(!rfHtml.includes('rf-apply-group'));
     assert.ok(!rfHtml.includes('applyRfConfig()'));
     const progress = run("buildRfGroupStatus({State:'failed',BatchState:'stopped',Targets:7,Applied:1,BatchLine:2,GroupStarted:true})");
@@ -581,7 +608,7 @@ async function checkPage(html, label) {
     assert.ok(!run("renderBoard({BatteryCapacityUnknown:null})").includes('Akü kapasitesi bilinmiyor'));
     context.fetch = async () => ({ok:true,status:200,json:async()=>({SaveBlocked:true,BatchState:'running'})});
     await run("savePage('rf')");
-    assert.equal(rfPosts, 1, 'busy operation must not save');
+    assert.equal(rfPosts, 2, 'busy operation must not save');
     assert.equal(document.getElementById('save-rf').disabled, true);
     run('hideLoad()');
     assert.equal(document.getElementById('save-rf').disabled, true);
@@ -593,7 +620,7 @@ async function checkPage(html, label) {
     await run("savePage('rf')");
     await document.getElementById('okConfirm').onclick();
     assert.equal(run("hasDirty('rf')"), true, 'failed save must preserve edits');
-    assert.equal(rfPosts, 2);
+    assert.equal(rfPosts, 3);
     // Opening RF and saving must not read application status automatically.
     let automaticStatusReads = 0;
     context.fetch = async url => {
