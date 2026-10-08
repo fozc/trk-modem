@@ -109,6 +109,8 @@ void setUp(void)
     fake_signal = 0U;
     fake_generation = NETWORK_GEN_UNKNOWN;
     telemetry_read_count = 0U;
+    fake_telemetry_age = 0U;
+    fake_alarm_mask = 0U;
     fake_valid_fields = UINT16_MAX;
     power_board_get_snapshot_StubWithCallback(get_telemetry_callback);
     digital_input_get_StubWithCallback(get_digital_input_callback);
@@ -161,6 +163,8 @@ void test_system_status_maps_all_external_inputs(void)
         .input_power_10mw = 5800,
         .battery_power_10mw = -1200,
         .source = 1U,
+        .flags = 0x27U,
+        .flags2 = 0xD8U,
     };
     fake_telemetry_age = 7U;
     fake_alarm_mask = 0x00089001U;
@@ -191,6 +195,8 @@ void test_system_status_maps_all_external_inputs(void)
     TEST_ASSERT_EQUAL_INT16(-1200, status->battery_power_10mw);
     TEST_ASSERT_EQUAL_UINT8(1U, status->power_source);
     TEST_ASSERT_EQUAL_UINT8(7U, status->telemetry_age);
+    TEST_ASSERT_EQUAL_UINT8(0x27U, status->board_flags);
+    TEST_ASSERT_EQUAL_UINT8(0xD8U, status->board_flags2);
     TEST_ASSERT_EQUAL_UINT32(0x00089001U, status->alarm_mask);
     TEST_ASSERT_EQUAL_INT8(19, status->gsm_signal);
     TEST_ASSERT_EQUAL_UINT8(NETWORK_GEN_4G, status->gsm_rat);
@@ -283,6 +289,8 @@ void test_power_board_extra_fields_json_gating(void)
     fake_telemetry.source = 1U;
     fake_telemetry_age = 7U;
     fake_alarm_mask = 0x00089001U;
+    fake_telemetry.flags = 0x27U;
+    fake_telemetry.flags2 = 0xD8U;
     const system_status_t *status = system_status_get();
 
     TEST_ASSERT_TRUE(system_status_json_build(status, buffer,
@@ -294,6 +302,8 @@ void test_power_board_extra_fields_json_gating(void)
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Kaynak\":null"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"TelemetriYasi\":null"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AlarmMaskesi\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"KartDurum\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"KartDurum2\":null"));
 
     fake_valid_fields = POWER_VALID_ADC | POWER_VALID_CHARGER |
                         POWER_VALID_POWER | POWER_VALID_SOURCE |
@@ -308,6 +318,8 @@ void test_power_board_extra_fields_json_gating(void)
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Kaynak\":1"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"TelemetriYasi\":7"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AlarmMaskesi\":561153"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"KartDurum\":39"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"KartDurum2\":216"));
 }
 
 void test_monitor_json_rejects_small_buffer_without_partial_response(void)

@@ -89,6 +89,8 @@ void system_status_update(void)
     system_status.battery_power_10mw = telemetry->battery_power_10mw;
     system_status.power_source = telemetry->source;
     system_status.telemetry_age = power.telemetry_age_sec;
+    system_status.board_flags = telemetry->flags;
+    system_status.board_flags2 = telemetry->flags2;
     system_status.alarm_mask = power.active_alarms;
     system_status.battery_voltage = telemetry->battery_mv;  // mV
     system_status.battery_current = telemetry->battery_ma;  // mA
