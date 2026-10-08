@@ -169,6 +169,9 @@ def run_case(name, spec, args, outdir):
         try:
             _observe_hub_version(session)
             _verify_running_dut(session, args, name, "before")
+            # NVRAM cslog master switch may be off after a reflash;
+            # without it all CSLOG RF frame output is suppressed.
+            session.send("cslog on")
             ctx = CaseContext(sim, session, case_dir, trace_path)
             try:
                 snapshots = {"start": _snapshot(sim)}
