@@ -327,7 +327,8 @@ bool rf_inventory_start(void)
         return false;
     }
 
-    if (rf_inventory_is_loaded())
+    if (rf_inventory_is_loaded() ||
+        (RF_INVENTORY_ERROR == inventory_status))
     {
         before_drain = inventory_status;
         inventory_status = RF_INVENTORY_DRAINING;
@@ -366,6 +367,64 @@ bool rf_inventory_is_active(void)
 {
     return (RF_INVENTORY_LOADING == inventory_status) ||
            (RF_INVENTORY_DRAINING == inventory_status);
+}
+
+bool rf_inventory_matches_config(void)
+{
+    size_t expected = 0U;
+    size_t accepted = 0U;
+
+    if ((RF_INVENTORY_READY != inventory_status) &&
+        (RF_INVENTORY_EMPTY != inventory_status))
+    {
+        return false;
+    }
+    for (size_t line = 0U; line < MAX_POWER_LINE_COUNT; line++)
+    {
+        const rf_feeder_t *feeder = rf_store_get((feeder_id_t)line);
+
+        if ((NULL == feeder) || !feeder->in_use)
+        {
+            continue;
+        }
+        if ((1U > feeder->config.fider_id) ||
+            (4U < feeder->config.fider_id))
+        {
+            return false;
+        }
+        const uint8_t *members[3] =
+            {feeder->r_eui64, feeder->s_eui64, feeder->t_eui64};
+
+        for (size_t phase = 0U; phase < 3U; phase++)
+        {
+            if (rf_eui64_is_zero(members[phase]))
+            {
+                continue;
+            }
+            const rf_inventory_entry_t *entry =
+                &bindings[(size_t)feeder->config.fider_id - 1U][phase];
+
+            if ((entry->zone != feeder->config.zone_id) ||
+                (entry->line_index != line) ||
+                (entry->channel != feeder->config.rf_channel) ||
+                (0 != memcmp(entry->eui64, members[phase], 8U)))
+            {
+                return false;
+            }
+            expected++;
+        }
+    }
+    for (size_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
+    {
+        for (size_t phase = 0U; phase < 3U; phase++)
+        {
+            if (!rf_eui64_is_zero(bindings[feeder][phase].eui64))
+            {
+                accepted++;
+            }
+        }
+    }
+    return expected == accepted;
 }
 
 static bool live_logs_empty(uint32_t now_ms)

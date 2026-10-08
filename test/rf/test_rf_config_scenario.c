@@ -404,4 +404,38 @@ void test_write_preparation_supports_alias_without_changing_source_on_failure(vo
     TEST_ASSERT_EQUAL_MEMORY(&previous, &ram, sizeof(ram));
 }
 
+void test_failed_staged_save_preserves_store_and_nvram_mirror(void)
+{
+    rf_store_init();
+    const rf_feeder_t previous = *rf_store_get(FEEDER_1);
+
+    TEST_ASSERT_TRUE(rf_store_stage_begin());
+    rf_store_get_mutable(FEEDER_1)->config.ia_threshold = 27.0f;
+    rf_nvram_fake_set_sync_result(-1);
+    TEST_ASSERT_EQUAL_INT(-1, rf_store_sync());
+    TEST_ASSERT_EQUAL_MEMORY(&previous, rf_store_get(FEEDER_1),
+                             sizeof(previous));
+    TEST_ASSERT_EQUAL_MEMORY(&previous,
+                             &nvram_get_breaker_rw()->line[0].rf,
+                             sizeof(previous));
+    TEST_ASSERT_TRUE(rf_store_stage_begin());
+    rf_store_stage_abort();
+}
+
+void test_primary_only_staged_save_publishes_the_persistent_candidate(void)
+{
+    rf_store_init();
+    TEST_ASSERT_TRUE(rf_store_stage_begin());
+    rf_store_get_mutable(FEEDER_1)->config.ia_threshold = 27.0f;
+    rf_nvram_fake_set_save_result(NVRAM_SAVE_PRIMARY_ONLY);
+    TEST_ASSERT_EQUAL_INT(1, rf_store_sync());
+    TEST_ASSERT_EQUAL_FLOAT(27.0f,
+                            rf_store_get(FEEDER_1)->config.ia_threshold);
+    TEST_ASSERT_EQUAL_MEMORY(rf_store_get(FEEDER_1),
+                             &nvram_get_breaker_rw()->line[0].rf,
+                             sizeof(rf_feeder_t));
+    rf_nvram_fake_set_save_result(NVRAM_SAVE_COMPLETE);
+    TEST_ASSERT_EQUAL_INT(0, rf_store_sync());
+}
+
 /*** end of file ***/

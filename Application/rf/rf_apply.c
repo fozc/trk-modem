@@ -44,6 +44,7 @@ void rf_apply_hub_restarted(void)
     if (rf_apply_is_running())
     {
         batch.state = RF_APPLY_STOPPED;
+        batch.inventory_pending = false;
         batch.stop_reason = RF_APPLY_STOP_HUB_RESTARTED;
     }
 }
@@ -68,9 +69,17 @@ rf_apply_save_result_t rf_apply_save(void)
     {
         return RF_APPLY_SAVE_BUSY;
     }
-    if (0 != rf_store_sync())
+    const int save_result = rf_store_sync();
+
+    if (0 > save_result)
     {
         return RF_APPLY_SAVE_ERROR;
+    }
+    if (0 < save_result)
+    {
+        batch = (rf_apply_status_t){.state = RF_APPLY_STOPPED,
+                                    .stop_reason = RF_APPLY_STOP_STORAGE};
+        return RF_APPLY_SAVE_PRIMARY_ONLY;
     }
     batch = (rf_apply_status_t){.state = RF_APPLY_RUNNING};
     checked_ids = 0U;
@@ -83,9 +92,25 @@ rf_apply_save_result_t rf_apply_save(void)
             batch.targets |= (uint8_t)(1U << index);
         }
     }
-    if (0U == batch.targets)
+    if (!rf_inventory_matches_config())
+    {
+        if (!rf_inventory_start())
+        {
+            batch.state = RF_APPLY_STOPPED;
+            batch.stop_reason = RF_APPLY_STOP_INVENTORY;
+        }
+        else
+        {
+            batch.inventory_pending = true;
+        }
+    }
+    else if (0U == batch.targets)
     {
         batch.state = RF_APPLY_COMPLETE;
+    }
+    else
+    {
+        /* Existing accepted assignments can be configured directly. */
     }
     return RF_APPLY_SAVE_OK;
 }
@@ -126,6 +151,20 @@ void rf_apply_process(void)
     if (!rf_apply_is_running())
     {
         return;
+    }
+    if (batch.inventory_pending)
+    {
+        if (rf_inventory_is_active())
+        {
+            return;
+        }
+        batch.inventory_pending = false;
+        if (!rf_inventory_matches_config())
+        {
+            batch.state = RF_APPLY_STOPPED;
+            batch.stop_reason = RF_APPLY_STOP_INVENTORY;
+            return;
+        }
     }
     if (batch.group_started)
     {
@@ -186,6 +225,11 @@ void rf_apply_process(void)
 
 bool rf_apply_abort(void)
 {
+    /* The inventory service owns draining/upload; it has no cancel API. */
+    if (batch.inventory_pending)
+    {
+        return false;
+    }
     if (rf_apply_is_running() && !batch.group_started)
     {
         batch.state = RF_APPLY_STOPPED;

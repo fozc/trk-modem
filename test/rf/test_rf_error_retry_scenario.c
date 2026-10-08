@@ -2484,4 +2484,95 @@ void test_failed_replacement_epoch_and_mh_boot_clear_retry_authorization(void)
     TEST_ASSERT_EQUAL_UINT32(before + 1U, transmit_calls);
 }
 
+void test_accepted_inventory_match_detects_assignment_changes_and_extra_members(void)
+{
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+    feeder.config.ia_threshold += 1.0f;
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+    feeder.r_eui64[0] ^= 0x80U;
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    feeder.r_eui64[0] ^= 0x80U;
+    feeder.config.zone_id++;
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    feeder.config.zone_id--;
+    feeder.config.rf_channel++;
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    feeder.config.rf_channel--;
+    feeder.config.fider_id = 4U;
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    feeder.config.fider_id = 1U;
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+    feeder.in_use = false;
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+}
+
+void test_failed_inventory_end_reloads_only_after_old_queue_drain(void)
+{
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    for (size_t step = 0U; step < MAX_POWER_LINE_COUNT * 3U; step++)
+    {
+        if (RF_SCP_CMD_INVENTORY_END == transmitted.cmd)
+        {
+            break;
+        }
+        deliver_response(SCP_TYPE_ACK, 0U);
+        rf_inventory_continue();
+    }
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_END, transmitted.cmd);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_ERROR, rf_inventory_get_status());
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    events_drained = false;
+    const uint32_t previous = transmit_calls;
+
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_DRAINING, rf_inventory_get_status());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(previous, transmit_calls);
+    events_drained = true;
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+}
+
+void test_full_inventory_change_preserves_old_binding_until_drain_and_ack(void)
+{
+    load_one_phase();
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    rf_inventory_entry_t accepted;
+
+    packet.data[0] = 5U;
+    packet.data[29] = 1U;
+    inject_packet(&packet);
+    feeder.r_eui64[0] = 0x22U;
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    const uint32_t before = transmit_calls;
+
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &accepted));
+    TEST_ASSERT_EQUAL_UINT8(0x11U, accepted.eui64[0]);
+    packet.data[29] = 0U;
+    put_u32(&packet.data[5], 1500U);
+    inject_packet(&packet);
+    rf_inventory_continue();
+    events_drained = false;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    events_drained = true;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x22U, transmitted.data[3]);
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &accepted));
+    TEST_ASSERT_EQUAL_UINT8(0x11U, accepted.eui64[0]);
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &accepted));
+    TEST_ASSERT_EQUAL_UINT8(0x22U, accepted.eui64[0]);
+}
+
 /*** end of file ***/

@@ -497,7 +497,7 @@ static uint32_t parse_calls, commit_calls, save_calls, stage_aborts;
 static rf_apply_save_result_t save_result;
 bool rf_apply_can_save(void) { return can_save; }
 rf_apply_save_result_t rf_apply_save(void)
-{ assert(commit_calls > 0U); save_calls++; return save_result; }
+{ assert(commit_calls == 0U); save_calls++; return save_result; }
 bool rf_store_stage_begin(void) { return stages; }
 void rf_store_stage_commit(void) { commit_calls++; }
 void rf_store_stage_abort(void) { stage_aborts++; }
@@ -552,10 +552,13 @@ int main(void)
  assert(stage_aborts == 1U && commit_calls == 0U && save_calls == 0U);
  parses = true; save_result = RF_APPLY_SAVE_ERROR;
  handle_post_rf_config_json("{}"); assert(response_status == 500);
- assert(commit_calls == 1U && save_calls == 1U);
+ assert(commit_calls == 0U && save_calls == 1U);
+ save_result = RF_APPLY_SAVE_PRIMARY_ONLY;
+ handle_post_rf_config_json("{}"); assert(response_status == 200);
+ assert(strstr(output,"\"warning\":\"backup_failed\"") != NULL);
  save_result = RF_APPLY_SAVE_OK;
  handle_post_rf_config_json("{}"); assert(response_status == 200);
- assert(commit_calls == 2U && save_calls == 2U);
+ assert(commit_calls == 0U && save_calls == 3U);
  assert(strstr(output,"\"success\":true") != NULL);
  handle_post_rf_abort(); assert(response_status == 409);
  accepts_abort = true;

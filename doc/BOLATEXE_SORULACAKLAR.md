@@ -1,616 +1,410 @@
-# BOLATeX'e sorulacak RF-SCP konuları
+# BOLATeX'e RF-SCP soruları ve RTU uygulama bildirimleri
 
-**Sürüm:** 0.12
+**Sürüm:** 0.16
 
-**Tarih:** 07.10.2026
+**Tarih:** 08.10.2026
+
+**Durum:** BQ-01–16 yanıtları alındı. BQ-17–20 açık. Bildirimler RTU tarafında uygulanan tercihleri anlatır.
 
 ## Amaç
 
-RTU uygulaması sırasında protokolde açık kalan noktaları ve örnek paketlerle
-metin arasındaki farkları BOLATeX'e sorulabilecek biçimde toplamak.
+RF-SCP entegrasyonunda kalan dört soruyu ve RTU tarafında uygulanan
+kararları tek belgede BOLATeX'e iletmek. Bu belge tek başına okunabilir;
+başka bir RTU raporunun veya uygulama planının eklenmesi gerekmez.
 
 ## Kullanım yeri
 
-BOLATeX ile teknik görüşme ve cevap takibinde kullanılır. BQ-01–16 için
-[R0](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) ve
-[Ek-1](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) yanıtları alınmıştır.
-Yeni BQ-17–20 henüz gönderilmemiştir. Sorular protokol değişikliği veya
-uygulama onayı değildir. Yanıtların mevcut koda uygulanma durumu
-[kontrol belgesinde](RF_SCP_BOLATEX_YANIT_KONTROLU.md) tutulur.
-Eski “Mevcut uygulama” paragrafları sorunun yazıldığı zamanki kanıttır;
-bugünkü durum için kontrol belgesi esas alınmalıdır.
-Referans [SCP arayüz belgesi R1](BOLATeX_Teslim4_R1_RTU_Arayuzu_MD/MH_STM32_RTU_SCP_Arayuzu_R1.md);
-künyedeki MH/AY firmware `6dc02267`, PWRB firmware `915bb945` esas alınır.
-Örnekler [Ornek_SCP_Akislari](BOLATeX_Teslim4_R1_RTU_Arayuzu_MD/Ornek_SCP_Akislari/BENIOKU.md)
-klasöründendir. Gerçek cihaz davranışı bu çalışmada ölçülmemiştir.
+BOLATeX ile teknik görüşme ve cevap takibi. Kaynaklar BOLATeX Teslim #4
+MH–STM32 RTU SCP Arayüzü R1, BOLATeX RF-SCP Soruları R0 yanıtı ve
+R0 Ek-1 yanıtıdır. R0/Ek-1 ile güncellenen davranışlar esas alınır.
+Planlanan üretici değişiklikleri mevcut firmware özelliği sayılmaz.
+
+08.10.2026 gerçek MH gözleminde GET_STATUS firmware kimliği `6dc02267`,
+BOOT SCP major değeri 1'dir. Powerboard `915bb945` kimliği R1 belgesinin
+referansıdır; burada Powerboard sürümünün ayrıca ölçüldüğü iddia edilmez.
+
+Bu belgedeki “RTU kararı” ifadeleri üretici yanıtı veya BOLATeX onayı
+olarak değerlendirilmemelidir. Uygulanan tercihler ve açık sınırlar
+bildirimler bölümünde tam olarak verilmiştir.
 
 ## Terimler
 
 | Terim | Anlam |
 |---|---|
-| RTU | Bu projedeki STM32 modem yazılımı |
-| MH | Modem üzerindeki RF hub |
-| AY | Ayırıcı |
+| RTU | STM32 üzerinde çalışan modem yazılımı |
+| MH — Modem Hub | Modem üzerindeki RF hub |
+| AY | Fiderin fazına atanmış ayırıcı |
+| EUI-64 | Ayırıcının 8 baytlık cihaz kimliği |
 | head / tail | Sonraki yazma yuvası / ilk tüketilmemiş yuva |
 | pending | Tüketilmemiş kayıt sayısı |
-| backlog | Birikmiş, henüz çekilmemiş kayıtlar |
-| epoch | MH değişimi sonrası yapılandırma için yenilenen ağ dönemi |
+| binding (kabul edilmiş atama) | MH'nin ACK verdiği bölge/fider/faz/EUI eşleşmesi |
+| epoch | MH değişimi bakımında yenilenen RF ağ dönemi |
+| APPLIED | MH sonucu, üye bitmap'i ve beklenen ayar CRC'siyle doğrulanan uygulama sonucu |
+| latch (tutulan alarm) | Kayıt ve onay tamamlanana kadar korunan alarm durumu |
+| replay (yeniden gönderim) | Kalıcı günlükteki gönderilmemiş kayıtların bağlantı sonrasında gönderilmesi |
+| IOA | IEC104 bilgi nesnesi adresi |
+| IV | Zamanın/ölçümün geçersiz olduğunu belirten kalite biti |
 
 ## Kurallar
 
-- BOLATeX cevabı, tarih ve ilgili firmware sürümüyle kaydedilmelidir.
-- Geçici RTU tercihi BOLATeX tarafından doğrulanmış davranış sayılmamalıdır.
-- Doküman tablosuyla örnek çelişiyorsa fark kayıt altına alınmalıdır.
-- Cevap uygulama davranışını değiştiriyorsa ilgili Ceedling testi ve plan
-  güncellenmelidir.
+- Her yanıt ilgili BQ kimliğiyle, tarih ve geçerli MH/AY/Powerboard
+  firmware sürümü belirtilerek verilmelidir.
+- Mevcut firmware davranışı ile planlanan değişiklik ayrı belirtilmelidir.
+- RTU ürün tercihi, üretici tarafından tanımlanmış protokol davranışı
+  olarak sunulmamalıdır.
+- Yanıtlanmış BQ-01–16 bu gönderimde yeniden sorulmamalıdır; bunlarla
+  ilişkili yeni belirsizlikler BQ-17–20 altında ele alınmalıdır.
+
+## Gönderimde beklenen geri dönüş
+
+1. BQ-17–20 için mevcut firmware davranışı ve önerilen RTU akışı.
+2. Bildirimlerde mevcut MH/AY davranışıyla çelişen bir tercih varsa
+   ilgili bildirim numarası ve değiştirilmesi gereken davranış.
+3. Yeni firmware gerektiren konularda sürüm ve geçiş kuralı.
 
 ## Açık sorular
 
-### BQ-01 — Geç gelen 101/105 kaydı ve alarmın çözülmesi
+### BQ-17 — RTU tek başına yeniden başladığında yeniden kurulum
 
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
+**Durum:** [AÇIK] Yanıt bekleniyor.
 
-**Kaynak:** R1 §4.5 LIVE_DATA ve §4.8 olay 101/105.
+**Kaynak:** R1 §1.1, §1.10 ve §4.3.
 
-**Kanıt:** Doküman aynı açılıştaki Trip_Failed 1→0 geçişini çözülme sayar;
-uptime sıfırlanırsa operatör onayı ister. Olayda 101 bulunup LIVE'da bayrak
-hiç 1 görülmemişse de başarısız açma kabul edilir. Olay kaydı boot_counter
-taşır; LIVE aynı açılış kimliğini taşımaz.
+**Kanıt:** MH ayakta ve envanteri yüklüyken yalnız RTU yeniden
+başlatıldığında MH tekrar BOOT göndermeyebiliyor. RTU, `MH SCP major: 0`
+ve `Envanter: BEKLIYOR` durumunda kalıyor. GET_STATUS ve Powerboard E1
+iletişimi devam ederken saat/yeniden envanter/olay çekme/grup işlemleri
+BOOT bekliyor. Bu durum 06.10.2026 bench gözleminden sonra 08.10.2026
+MH `6dc02267` sürümüyle de görüldü.
 
-**Örnek:** RTU önce Trip_Failed=0 olan LIVE alır; sonra eski 101/105 kaydını
-çeker. Olay uptime'ı 100 s, son LIVE uptime'ı 200 s olabilir. Son LIVE aynı
-açılıştan da, AY restart sonrası başka açılıştan da olabilir.
-
-**Sorular:**
-
-1. Geç gelen olay hangi durumda aktif alarm oluşturmalı, hangi durumda
-   yalnız olay geçmişinde kalmalıdır?
-2. LIVE'da 1→0 geçişi görülmediyse son 0 değeri çözülme kanıtı sayılır mı?
-3. Olay 101 için verilen özel kural aynı durumda 105 için de geçerli midir?
-4. LIVE'a boot_counter veya eşdeğer açılış kimliği eklenebilir mi?
-
-**Mevcut uygulama:** Ham 101/105 kaydı saklanıyor. LIVE üzerinden mevcut
-alarm takibi korunuyor; belirsiz geç kayıt için yeni latch davranışı
-uygulanmadı. Otomatik çözülme veya operatör onayı önerisi kesinleşmedi.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-### BQ-02 — head=tail durumunda dolu ve boş halkanın ayrımı
-
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
-
-**Kaynak:** R1 §4.6 LOG_READ_HEAD, LOG_AVAILABLE_NOTIFY.
-
-**Kanıt:** MH halkası 100 yuva olarak tanımlıdır. HEAD yalnız head, wrap,
-total ve tail verir. pending yalnız kaybolabilen bildirimdedir. free_slots
-§4.2'de yaklaşık değer olarak tanımlanır.
+Kullanıcının bağımsız MH reseti sonrasında BOOT, TIME_SYNC,
+HEAD/CONSUME koruması, altı envanter girdisi ve END tamamlandı;
+RTU durumu YUKLU oldu.
 
 **Sorular:**
 
-1. Tüketilmemiş 100 kayıt varsa head=tail oluşur mu; yoksa bir yuva boş
-   bırakılarak en çok 99 tüketilmemiş kayıt mı tutulur?
-2. pending=100 bildirimi kaybolmuşsa RTU yalnız HEAD ile dolu/boş ayrımını
-   nasıl yapmalıdır?
-3. HEAD'e pending veya açık full alanı eklenmesi gerekir mi?
+1. RTU yeniden başladıktan sonra MH BOOT göndermiyorsa hangi güvenli
+   yeniden kurulum yolu kullanılmalıdır? GET_STATUS cevabı alınan MH'ye
+   RTU saat ve envanter gönderebilir mi; protokol major bilgisi nasıl
+   güvenilir biçimde öğrenilmelidir?
+2. MH, yeniden başlayan RTU'nun poll'una BOOT veya başka bir kurulum
+   bildirimi göndermeli midir? Mevcut firmware'de böyle bir yol var mıdır?
+3. RTU restart anında MH'de süren bir config grubu nasıl sorgulanmalı ve
+   ele alınmalıdır? MH-restart için tanımlanan FAILED/8 burada geçerli midir?
+4. Son grup kimliği RTU restart'ında saklanmıyorsa güvenli sorgulama ve
+   yarım işlemden çıkış nasıl yapılmalıdır? Bildirim 1'deki tercihimiz
+   bu soruyla birlikte değerlendirilmelidir.
 
-**Mevcut uygulama:** Kullanıcı cevabıyla head=tail boş kabul ediliyor.
-Aynı head için pending=100 bildirimi varsa dolu halka okunuyor. Yaklaşık
-free_slots kesin tüketme kararı için kullanılmıyor.
+**Mevcut RTU davranışı:** Uyumlu BOOT beklenir; major sürümü tahmin eden
+bir fallback (alternatif kurtarma yolu) eklenmemiştir. Bağımsız MH reseti
+mevcut bench kurtarma yoludur; kalıcı çözüm olarak sunulmaz.
 
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
+### BQ-18 — Normal sayaç taşması ile olay deposu resetinin ayrımı
 
-### BQ-03 — Üzerine yazılan yuva ve CONSUME güvenliği
+**Durum:** [AÇIK] Yanıt bekleniyor.
 
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
+**Kaynak:** R0 BQ-05; HEAD içindeki total u32 ve wrap u16.
 
-**Kaynak:** R1 §4.6 halka dolunca en eski kaydın üzerine yazılması ve
-LOG_CONSUME_TO'nun yalnız indeks taşıması.
-
-**Örnek:** RTU tail=36'daki kaydı okur. Flash hatası nedeniyle beklerken MH
-yeni kayıtlar yazar; eski yuva ezilir. Halka sarınca indeks yeniden 36 olur.
-
-**Sorular:**
-
-1. Üzerine yazma sırasında MH tail'i tam olarak nasıl ilerletir?
-2. Eski indeksi taşıyan CONSUME isteği yeni kayıtları yanlışlıkla tüketebilir
-   mi; MH eski isteği hangi bilgiyle ayırır?
-3. HEAD kontrolünden CONSUME işlenmesine kadar yeni overwrite oluşursa
-   mevcut protokolün güvenli işlem sırası nedir?
-4. Beklenen wrap/total veya kayıt kimliğiyle koşullu tüketme desteklenmeli mi?
-
-**Mevcut uygulama:** Yerel yazma hatası nedeniyle beklenmişse tüketmeden
-önce HEAD tekrar çekilir. Tail ve total değişimiyle ezilmiş yuva denetlenir;
-durum değişmişse eski CONSUME yerine güncel tail'den tekrar başlanır.
-Bu iki SCP isteği arasında atomik işlem garantisi sağlamaz.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-### BQ-04 — Örnek bildirim ACK'i ve paket zaman sırası
-
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
-
-**Kaynak:** R1 §2.2/§4.6/§6.2 ve AY_05b_olay_kaydi_cekme.csv.
-
-**Kanıt:** CSV satır 2, 0x47 bildirimi için RTU ACK'i içerir. Metin bu
-bildirimlere yanıt verilmemesini ister. CSV'de RANGE isteği HEAD yanıtından,
-CONSUME isteği de RANGE yanıtından önce zamanlanmış görünür.
+**Kanıt:** R0'daki reset karşılaştırması uygulanmaktadır. Ancak wrap
+65535→0 olduğunda `total − (wrap × 100 + head)` değişir; total
+UINT32_MAX→0 olduğunda total küçülür. Normal taşma da reset koşulunu
+sağlayabilir.
 
 **Sorular:**
 
-1. ACK, eski RTU/MH sürümüne mi aittir, yoksa örnekten kaldırılmalı mıdır?
-2. Timestamp'ler gerçek hat sırasını mı, farklı tarafların kayıt zamanını mı
-   gösterir? Testte kullanılacak kesin nedensel sıra hangisidir?
-3. Künyedeki firmware için düzeltilmiş örnek paket seti paylaşılabilir mi?
+1. Normal taşmayı depo resetinden ayırmak için hangi modüler
+   karşılaştırma kullanılmalıdır?
+2. Bu geçişte eski RAM batch'ini (kayıt grubunu) bırakıp güncel tail'den
+   okumaya devam etmek yeterli midir? Özel CONSUME kuralı var mıdır?
 
-**Mevcut uygulama:** ACK üretilmiyor. Paket CRC/decode kontrolleri ham
-örneklerle yapılıyor; işlem testleri HEAD yanıtı → RANGE yanıtı → CONSUME
-sırasıyla yürütülüyor. Kaynak CSV değiştirilmedi.
+**Mevcut RTU davranışı:** Verilen reset koşulu uygulanır; eski tüketme
+imleci bırakılır ve güncel tail yeniden alınır. Normal taşma için yeni
+bir kurtarma algoritması eklenmemiştir.
 
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
+### BQ-19 — Boot counter sıfırken alarm tekilleştirmesi
 
-### BQ-05 — Depo sıfırlanması ve total/wrap sayaçları
+**Durum:** [AÇIK] Yanıt bekleniyor.
 
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
+**Kaynak:** R0 BQ-03 ile Ek-1 BQ-16.
 
-**Kaynak:** R1 §4.6 LOG_READ_HEAD ve depo sıfırlanması.
-
-**Kanıt:** total cihaz ömründeki toplam kayıt sayısı diye tanımlanır.
-Servis silmesinde head/wrap/tail sıfırlanır; total için aynı açıklama yoktur.
-MH açılışta biçimlendirme yaparsa ilk olay 138 olur.
-
-**Sorular:**
-
-1. Servis silmesinde ve MH biçimlendirmesinde total sıfırlanır mı?
-2. Normal MH restart'ında total ve wrap aynen korunur mu?
-3. total ve wrap taşması nasıl davranır; 138 olayı iki sıfırlama türünde de
-   üretilir mi?
-
-**Mevcut uygulama:** BOOT sonrası eski RAM imleci sürdürülmüyor. Ham 138
-kaydı korunuyor. Depo silinmişken eski yuvayı tüketmek için otomatik
-varsayım yapılmıyor.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-### BQ-06 — PARTIAL_COMMIT olay 122'sinin işlemle eşlenmesi
-
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
-
-**Kaynak:** R1 §4.9 sebep 6 sonrası doğrulama ve §4.7/§4.8 olay 122.
-
-**Kanıt:** Sorunlu bitmap üyesinin bu işleme ait 122 olayı varsa uygulamış
-sayılması istenir. Standart olay kaydı group_id veya uygulanan cfg_crc
-taşımaz; yalnız fider/faz/zaman/açılış/uptime alanlarıyla eşleme gerekir.
+**Kanıt:** R0, ham kayıt için boot_counter=0 iken tekilleştirme
+yapılmamasını ister. Ek-1 ise onaylanmış 101/105 kopyasının alarmı yeniden
+açmamasını ister. LIVE açılış sayacı taşımaz; farklı açılışların kayıt
+alanları aynı olabilir.
 
 **Sorular:**
 
-1. Backlog içindeki eski 122 ile güncel grubun 122 kaydı nasıl ayrılmalıdır?
-2. Saat geçersizken bu işlemle eşleme hangi alanlarla yapılmalıdır?
-3. 122'ye group_id/cfg_crc eklenebilir mi; olayın işleme kesin aidiyetini
-   sağlayan başka bir bilgi var mıdır?
+1. Boot counter=0 olan 101/105 için alarm düzeyinde event/boot_counter/
+   uptime/CRC eşleşmesi kullanılmalı mıdır?
+2. Farklı AY açılışlarından gelen aynı alanlı kayıt nasıl ayrılmalıdır?
+3. RTU restart sonrasında onay bilgisinin korunması için önerilen kayıt
+   kapsamı nedir? Bildirim 6'daki 128 kimlik/RAM tercihi için gerekli
+   bir alt sınır veya kalıcılık şartı var mıdır?
 
-**Mevcut uygulama:** Eski 122, güncel grubun APPLIED kanıtı sayılmıyor.
-Ham kayıt korunuyor; bu özel doğrulama henüz bağlanmadı.
+**Mevcut RTU davranışı:** Ham kayıtlar tekilleştirilmez. Son 128 alarm
+kimliği, EUI ve kabul edilmiş atamayla birlikte RAM'de tutulur. MH
+restart'ında korunur; RTU restart'ında sıfırlanır. Mutlak tekilleştirme
+veya kalıcı onay geçmişi garantisi verilmez.
 
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
+### BQ-20 — Eksik olay dizisi ve başka fazdan geç gelen kayıt
 
-### BQ-07 — MH değişiminden sonra EPOCH_REFRESH tamamlanması
+**Durum:** [AÇIK] Yanıt bekleniyor.
 
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
+**Kaynak:** R0 BQ-10 sınıflaması ve BQ-03 halka kayıp sınırı.
 
-**Kaynak:** R1 §4.3 EPOCH_REFRESH ve önerilen yaklaşık 30 s bekleme.
-
-**Sorular:**
-
-1. ACK yalnız kuyruğa alındığını gösteriyorsa, üç AY'nin epoch yenilediğine
-   dair kesin bildirim/alan var mıdır?
-2. 30 s sonrası yeni grup ayarı güvenle başlatılabilir mi; RF iletişimi
-   kesilirse bu süre tek başına yeterli midir?
-
-**Mevcut uygulama:** ACK kesin tamamlanma sayılmıyor. Otomatik MH değişimi
-çıkarımı yapılmıyor; envanterden sonra operatör epoch yenileyebiliyor.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-### BQ-08 — PWRB 0xE8 ham telemetri biçimi
-
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
-
-**Kaynak:** R1 §5, PWR_TELEMETRY 96 B big-endian ham blok.
+**Kanıt:** RTU bir 3 kaydını çekerken önceki 6/100/101/117 halkadan
+silinmiş olabilir. Aynı arızanın diğer fazındaki 1/7 daha sonra MH'ye
+gelebilir. HEAD'in boş olması, yalnız o anda MH'de bekleyen kayıt
+olmadığını gösterir.
 
 **Sorular:**
 
-1. Alan/ofset/tip/birim/geçerlilik tablosu ve blok sürümü paylaşılabilir mi?
-2. Eski doğrudan I²C bloğuyla birebir aynı düzen olduğu doğrulanıyor mu?
-3. Geçersiz/bayat alanlar, sentinel değerler ve blok içi CRC nasıl yorumlanır?
-
-**Mevcut uygulama:** 96 B ham veri korunuyor. Eski I²C decoder'ının aynı
-biçimi çözdüğü varsayılmıyor; PWR_SUMMARY'nin tanımlı alanları ayrı çözülüyor.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-### BQ-09 — Envanter değişiminden sonra eski olayın ayırıcı kimliği
-
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
-
-**Kaynak:** R1 §4.3 EUI-64 envanteri ve §4.7 olay kaydı.
-
-**Kanıt:** Canlı veri mevcut ACK envanteriyle EUI-64'e bağlanır. 60 B
-olay kaydında EUI-64 yoktur; zone/fider/faz vardır. Aynı fider/faz başka
-bir AY'ye atanmışken eski kayıt çekilebilir.
-
-**Sorular:**
-
-1. MH eski kaydın zone/fider/faz alanlarını kayıt anındaki haliyle mi
-   saklar; okuma anında güncel envanterle yeniden etiketler mi?
-2. AY değişimi sonrası eski 101/105 veya 122 kaydının yeni ayırıcıya
-   bağlanmasını önlemek için hangi kaynak kimliği kullanılmalıdır?
-3. Kayıt kaynağı EUI-64'ü ayrı metadata olarak alınabilir mi; envanter
-   değişiminde olay çekme için zorunlu işlem sırası var mıdır?
-
-**Mevcut uygulama:** Ham kayıt değiştirilmeden saklanır; Line_ID=0'a fider
-uydurulmaz. Mevcut arıza listesi devre/faz geçmişidir ve EUI taşımaz.
-Eski 101/105'in yeni ayırıcıda alarm açması veya eski 122'nin yeni grup
-başarısı sayılması uygulanmadı. BQ-01 ve BQ-06 cevaplarıyla birlikte
-ele alınmalıdır.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-### BQ-10 — Geçici ve kalıcı arızanın tanımı ve olay eşlemesi
-
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
-
-**Kaynak:** R1 §4.7 arıza alanları, §4.8 olay tablosu ve
-total_permanent_faults / total_temporary_faults sayaçları.
-
-**Kanıt:** Olay 1 açıkça kalıcı arıza açmasıdır. Olay 3 arızanın kesici
-açmadan kendiliğinden geçmesidir. Olay 7 başka fazın RF isteğiyle açmadır.
-4/5 arıza algılama/onaylama; 6 üst kesicinin açması; 100 açmanın iptali;
-101 açmanın yapılamaması; 105 açma sonrası akımın geri gelmesidir.
-Arıza ölçümleri taşıyan olay listesiyle geçici/kalıcı liste sınıflaması
-aynı şey olarak tanımlanmamıştır.
-
-**Sorular:**
-
-1. Geçici ve kalıcı arızanın kesin tanımı nedir? Ayrım arıza süresine,
-   hattın yeniden enerjilenmesine, arıza sayacına veya ayırıcının gerçekten
-   açmasına mı bağlıdır?
-2. Bütün event_trigger değerleri için geçici / kalıcı / yalnız olay veya
-   tanı sınıfını gösteren kesin tablo paylaşılabilir mi?
-3. 1 ve 7'nin kalıcı, 3'ün geçici listesine yazılması doğru mudur? Olay 7,
-   yerel fazda arıza olmasa da kalıcı arıza mı sayılmalıdır?
-4. 4/5 algılama, 6 kesici açması ve sonraki 1/3/7 kayıtları tek arızanın
-   aşamaları mıdır? Listede aynı arızanın iki kez sayılmasını önleyen
-   terminal (sonuç) olay hangisidir?
-5. 100/101/105 için arıza listesi ve açma başarısızlığı alarmı birlikte mi
-   tutulmalıdır; bu olaylar hangi arıza sayacını artırır?
-6. total_permanent_faults / total_temporary_faults hangi olayda artar?
-   Her kayıttaki değer olaydan önceki mi, sonraki mi sayaçtır?
-
-**Mevcut uygulama:** Kullanıcı onaylı geçici RTU eşlemesi 1/7 kalıcı ve
-3 geçicidir. Bu eşleme BOLATeX tarafından doğrulanmış sınıflama değildir.
-Diğer bütün olaylar tam ham günlükte korunur; yeni bir sınıf eklenmedi.
-Cevap geldikten sonra enum notu, liste/IEC104 yönlendirmesi ve Ceedling
-beklentileri birlikte gözden geçirilmelidir. BQ-01'deki alarm davranışı
-bu sınıflama tablosunun yerine geçmez.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-### BQ-11 — COMMIT öncesi yarım WRITE grubunun ABORT kimliği
-
-**Durum:** [KARAR: 2026-10-07] Yanıt alındı; uygulama durumu kontrol belgesindedir.
-
-**Kaynak:** R1 §4.9 CFG_WRITE / CFG_COMMIT / CFG_ABORT.
-
-**Kanıt:** WRITE yalnız EUI-64 ve 96 B blok taşır; group_id COMMIT ile
-verilir. COMMIT gelmeyen WRITE için MH'nin kendiliğinden timeout yapmadığı
-ve ABORT ile kapatılması gerektiği yazılıdır. ABORT group_id ister.
-
-**Sorular:**
-
-1. Birinci/ikinci WRITE sonrasında COMMIT gönderilemeden RTU vazgeçerse
-   ABORT hangi group_id ile gönderilmelidir?
-2. Henüz COMMIT ile tanıtılmamış yeni group_id, hazırlanan grubun ABORT'u
-   için kabul edilir mi; eski uygulanmış grup kimliğiyle ilişkisi nedir?
-3. RTU restart'ı veya kayıp WRITE ACK'i sonrası hazırlanmış üyeler/kimlik
-   nasıl sorgulanır; aynı üç EUI'ye yeniden WRITE ile devam etmek güvenli mi?
-4. Başka fidere geçmeden önce temizliğin tamamlandığı nasıl doğrulanır?
-
-**Mevcut uygulama:** Otomatik yarım grup temizliği uygulanmadı; bilinmeyen
-kimlikle ABORT veya dördüncü EUI ekleme yapılmıyor. 06.10.2026 normal grup
-sıralayıcısı eklendi. COMMIT kimliği ACK/durumla biliniyorsa operatör ABORT
-gönderebilir; WRITE henüz hiç gönderilmemişse yalnız yerel iş iptal edilir.
-Yarım WRITE sonucu belirsizse yeni grup kilitlidir. Mevcut group_id için
-STATUS_GET normal sorgu olarak kullanılabilir. Bunlar COMMIT öncesi
-kimlik sorusunu çözülmüş saydırmaz.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-## BQ-12 — Ayarsız kapasite/C-oranı yazımının uygulama doğrulaması
-
-**Kaynak:** R1 §5.4, ayarsız değer tablosu ve E1 ile uygulama doğrulaması.
-
-**Kanıt:** 0/255 yazımı kabul edilirken güç kartı çalışan kapasite/C-oranını
-korur. Aynı bölümde uygulama doğrulaması için E1 `cap_ah`, `crate_pm`
-alanlarının yazılan değere eşit olması istenir. Ayarsız yazımda bu eşitlik
-çalışan değerle sağlanamaz.
-
-**Sorular:** Ayarsız yazımın tamamlanması yalnız güncel GEN'e ait geçerli
-yankıyla mı doğrulanır? E1 `durum2` ve çalışan değeri için ayrıca hangi
-koşul aranmalıdır? Kapasite ayarsızken sonraki restart öncesi/sonrası
-sonuç nasıl adlandırılmalıdır?
-
-**Mevcut uygulama:** 06.10.2026 kullanıcı kararıyla MH kayıt ACK'i ve yankı
-kabulü ayrı gösterilir; bu yazıma `APPLIED` denmez. İlk yazımda gerçek
-kapasite zorunluluğu korunur. Otomatik akü değişti komutu gönderilmez.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-## BQ-13 — E7 sonuç bekleme ile yanıtsız bitişin ayrılması
-
-**Kaynak:** R1 §5.6 ve PWRB_04_komut.csv.
-
-**Kanıt:** Örnek önce `[05 01 FF 01 00]`, ardından ret sonucu
-`[05 01 02 01 00]` bildirir. İlk mesaj komut sürerken gelir. Metin,
-yanıtsız biten normal zincirde de SONUC=FF, yayin≥1 ve DURUM b2/b3=0
-bildirileceğini söyler. GET yalnız aynı beş baytı döndürür.
-
-**Sorular:** RTU aynı gövdeden zincirin hâlâ sürdüğünü veya yanıtsız
-bittiğini nasıl ayırmalıdır? Ayrı bit, bildirim sırası veya belgelenmiş
-üst bekleme süresi var mıdır? Kaybolan bitiş bildiriminden sonra GET
-ile bu ayrım kesin yapılabilir mi?
-
-**Mevcut uygulama:** FF ve b1/b2/b3 olmaması tamamlandı sayılmaz; komut
-beklemede tutulur. Operatör E7 GET ile sorgular veya E6 iptal gönderir.
-Otomatik yeniden 05 gönderimi veya tahmini bitiş süresi eklenmedi.
-İptal ACK'i sayaçların sıfırlanmadığını kanıtlamaz; ayrı akıbet bildirimi
-aynı SIRA ile izlenir.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-## BQ-14 — Ayarsız telemetri periyodu ve b7 koruması
-
-**Kaynak:** R1 §5.4, CFG2 bayt 14 ve ayarsız değer kuralları.
-
-**Kanıt:** 0/255 ayarsız periyot kabul edilir; güç kartı 1 s kullanır.
-Bayt 14 yazımında b7'nin GET'teki gibi korunması ve b6'nın 0 olması
-da istenir. 255 değeri b6'yı kurar; 0 değeri önceki b7=1 ise bu biti siler.
-
-**Sorular:** Ayarsız değer bütün bayta mı, periyot alt alanına mı uygulanır?
-Önceki b7=0/1 için ayarsız yazımın doğru SET baytı nedir? MH bu özel
-değerlerde b6/b7 kurallarını farklı mı değerlendirir?
-
-**Mevcut uygulama:** 06.10.2026 kullanıcı kararıyla müşteri kontrol servisi
-yalnız 1–10 s periyot yazmaktadır. b7 korunur, b6=0'dır. Ayarsız periyot
-yazımı açıklama bekler. Genel codec'in ham teşhis yeteneği bu servis
-kararının yerine geçmez.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-## BQ-15 — LIVE_DATA için ölçüm zamanı ve RTU alım zamanı
-
-**Kaynak:** R1 §4.5 LIVE_DATA, 33 baytlık gövde tablosu.
-
-**Kanıt:** LIVE_DATA ayırıcının uptime (çalışma süresi) ve sıra numarasını
-taşır; mutlak ölçüm zamanı veya ölçüm zamanı geçerlilik bilgisi yoktur.
-IEC104 zaman etiketli anlık akım/RF bilgisi yayımlarken bu zaman doğrudan
-paketten alınamaz. Olay kayıtlarının zaman/clock_quality alanı farklıdır;
-canlı ölçüm zamanı yerine kullanılamaz.
-
-**Sorular:**
-
-1. IEC104 canlı verisinde RTU'nun geçerli paketi işlediği alım saatinin
-   kullanılması uygun mudur? Bu saatin ölçüm zamanı olmadığı belirtilirse
-   ayrıca önerilen zaman/kalite işareti var mıdır?
-2. Ayırıcının gerçek ölçüm zamanı başka bir bilgiyle kesin elde edilebilir
-   mi? Uptime ile saat eşlemesi öneriliyorsa restart/senkronizasyon ve
-   belirsizliğin nasıl ele alınacağı nedir?
-3. Ölçüm ile RTU alımı arasındaki gecikme için belgelenmiş bir üst sınır
-   veya doğrulanabilir hata payı var mıdır? Tipik 5/10 s gönderim periyodu
-   kesin gecikme sınırı olarak kabul edilebilir mi?
-
-**Mevcut uygulama:** 06.10.2026 kullanıcı kararıyla şimdilik RTU alım saati
-kullanılır. Saat, geçerli LIVE_DATA'nın Contiki process bağlamında
-çözümlenmesi sırasında bir kez alınır; UART ISR'in ilk bayt saati veya
-ayırıcı ölçüm saati diye sunulmaz. RTC geçersizse CP56 IV=1 kaydedilir.
-Sonraki sorgu/RTC düzeltmesi eski kaydı yeniden zamanlandırmaz. Ölçüm
-kalitesi ve zamanın IV bilgisi ayrı tutulur. Bu tercih BOLATeX cevabı
-değildir; kaynak olay kayıtlarının zamanını değiştirmez.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-## BQ-16 — Operatör onayı hangi taraftan gelmelidir?
-
-**Kaynak:** R1 §4.5, `Trip_Failed` yorum tablosu; olay 101/105 ve
-§9 canlı veri/alarm eşleme tablosu.
-
-**Kanıt:** `Trip_Failed` 1→0 geçişinde uptime sıfırlandıysa alarmın
-operatör onayıyla kapanması istenir. Onayın hangi kullanıcı/merkezden,
-hangi arayüz üzerinden geldiği ve MH/AY'ye iletilip iletilmeyeceği
-tanımlanmamıştır. Bu konu, BQ-01'deki geç olayın alarm oluşturması
-sorusundan ayrıdır.
-
-**Sorular:**
-
-1. Onay RTU üzerindeki yerel web/terminal operatöründen mi, SCADA
-   merkezinden IEC104/Modbus üzerinden mi gelmelidir? İkisi de kullanılabilir
-   mi; yetkili onay kaynağı hangi taraftır?
-2. Onay yalnız RTU'nun tuttuğu alarmı mı kapatmalıdır, MH/AY'ye de
-   iletilmeli midir? İletim gerekiyorsa SCP komutu, alanları ve başarı
-   yanıtı nedir?
-3. Onay için son `Trip_Failed=0` yeterli midir, güncel LIVE alınması
-   da gerekli midir? RF bağlantısı yokken operatör onayı kabul edilebilir mi?
-
-**Mevcut uygulama:** `rf alarm-ack` terminal komutu RTU RAM alarmını
-onaylar; MH/AY'ye SCP komutu göndermez. Mevcut servis atanmış EUI kimliği,
-LIVE örneği, `Trip_Failed=0` ve latch (açık tutulan alarm) koşullarını
-kontrol eder. Bu yol üreticinin belirlediği onay kanalı olarak sunulmamalıdır.
-06.10.2026 kullanıcı kararıyla yeni faz bazlı web düğmesi/yazma API'si
-bu sorunun cevabına kadar eklenmeyecektir. Mevcut terminal yolu değiştirilmedi.
-
-**Cevap:** [Üretici yanıtı](BOLATeX_Yanit_RF-SCP_Sorulari_R0_Ek-1.md) alındı. [Uygulama kontrolü](RF_SCP_BOLATEX_YANIT_KONTROLU.md) esas alınmalıdır.
-
-## BQ-17 — RTU tek başına yeniden başladığında yeniden kurulum yolu
-
-**Kaynak:** R1 §1.1, §1.10 ve §4.3 (BOOT_NOTIFY kurallari).
-
-**Kanit:** 06.10.2026 gece bench gozlemi: modem PIN resetle yeniden
-basladi (elog kaydi 23:49:37), MH ayakta ve envanteri yuklu kaldigi
-icin BOOT tekrari gelmedi (BOOT yalniz envanter bosken tekrarlar,
-§4.3). RTU tarafinde `MH SCP major: 0, Envanter: BEKLIYOR` suresiz
-kaldi; GET_STATUS canliligi ve 0xE1 ozetleri calismaya devam etti,
-TIME_SYNC/olay cekme/grup islemleri kapaldi. Kurtarmanin bugunku yolu
-MH'yi resetlemek: 23:55:35'te dogrulandi (BOOT -> TIME_SYNC -> 6 girdi
--> END, 153 ms; `Envanter: YUKLU`).
-
-**08.10.2026 ek kanıt:** Gerçek MH GET_STATUS firmware kimliği `6dc02267`,
-BOOT major 1. RTU profil 0 imajı yeniden yüklendiğinde major 0 / BEKLIYOR
-durumu sürerken Powerboard E1 geliyordu. Kullanıcının bağımsız MH reseti
-sonrasında BOOT, TIME_SYNC, HEAD/CONSUME koruması ve altı envanter ACK'i
-tamamlandı; durum YUKLU oldu. Son sürümle yeniden kurulum sınırı devam
-etmektedir. İzler `build/rf-production-restored-2026-10-08.log` ve
-`build/rf-real-hub-start-2026-10-08.log` içindedir.
-
-**Sorular:**
-
-1. RTU yeniden baslatildiginda kendini yeniden kurmasi icin BOOT
-   disinda bir yol tanimlanmali midir? Oneri: GET_STATUS yaniti alinan
-   hub'a RTU, canlilik basariliyken saati ve envanteri yeniden
-   gonderebilsin; ya da MH, tanidik bir RTU'nun poll'una yeniden BOOT
-   gonderebilsin.
-2. RTU-restart sonrasinda MH'nin sessiz kalmasi mi beklenir, yoksa
-   §1.10'daki üçlü bildirimden bir kismini tekrarlamasi mi
-   onerilir?
-3. RTU-restart aninda MH'de suren bir config grubu nasil
-   yorumlanmalidir (FAILED sebep 8 yalniz MH-restart icin tanimlidir)?
-
-**Mevcut uygulama:** RTU BOOT bekler; canlilik poll'u calisir ancak
-envanter/saat/olay cekme/grup islemleri BOOT gelene kadar kapali
-kalir. Kurtarma icin MH'nin resetlenmesi gerekir (bench'te
-dogrulandi). Bu davranis üretici onayi olarak sunulamaz.
-
-**Cevap:** Bekleniyor. Belge henüz BOLATeX'e gönderilmemiştir.
-
-## BQ-18 — Normal sayaç taşması ile depo resetinin ayrımı
-
-**Durum:** [AÇIK] R0 BQ-05 karşılaştırması uygulanıyor.
-
-**Kaynak:** R0 BQ-05, total u32 ve wrap u16.
-
-**Kanıt:** wrap 65535→0 olduğunda `total − (wrap × 100 + head)`
-değişir. total UINT32_MAX→0 olduğunda total küçülür. Verilen iki
-reset koşulu normal taşmada da doğru olur.
-
-**Sorular:** Normal taşmayı reset uyarısından ayırmak için hangi modüler
-karşılaştırma kullanılmalıdır? Bu geçişte eski batch bırakılıp güncel
-tail'den devam edilmesi yeterli midir?
-
-**Mevcut uygulama:** Verilen koşul aynen uygulanır; eski tüketme cursor'u
-bırakılır. Normal taşma için özel kurtarma algoritması eklenmemiştir.
-
-**Cevap:** Bekleniyor.
-
-## BQ-19 — Boot counter sıfırken alarm olayının tekilleştirilmesi
-
-**Durum:** [AÇIK] Ham kayıt ve alarm tekilleştirmesinin kapsamı ayrılmalıdır.
-
-**Kaynak:** R0 BQ-03 tekilleştirme önerisi ve Ek-1 BQ-16 zorunlu alarm kuralı.
-
-**Kanıt:** R0 ham kayıt için boot_counter=0 iken tekilleştirme yapmayın
-diyor. Ek-1, onaylanmış 101/105'in kopyasıyla alarmın yeniden açılmamasını
-istiyor. Aynı dört alan farklı açılışlarda aynı olabilir; mevcut LIVE
-açılış sayacı taşımaz.
-
-**Sorular:** Boot counter=0 olan 101/105 için alarm düzeyinde dört alan
-eşleşmesi kullanılmalı mıdır? Farklı açılışın aynı alanlı kaydı nasıl
-ayrılmalıdır? RTU restart sonrası onay bilgisinin korunmasında üreticinin
-önerdiği kayıt ufku var mıdır?
-
-**Mevcut uygulama:** Ham kayıtlar korunur. Son 128 alarm kimliği/EUI RAM'de
-tutulur; RTU startup sıfırlar. Tam veya kalıcı tekilleştirme garantisi verilmez.
-
-**Cevap:** Bekleniyor.
-
-## BQ-20 — Eksik olay dizisi ve fazlar arası geç gelen kayıt
-
-**Durum:** [AÇIK] BQ-10 sınıf tablosu alınmıştır; eksik dizi sınırı açık kalmıştır.
-
-**Kaynak:** R0 BQ-10 ve BQ-03 halkanın eski kaydı kaybedebilmesi.
-
-**Kanıt:** RTU bir 3 kaydını çektiğinde önceki 6/100/101/117 halkadan
-silinmiş olabilir. Aynı açmanın diğer fazındaki 1/7 daha sonra MH'ye
-gelebilir. HEAD boş olması yalnız MH'de o anda kayıt olmadığı anlamındadır.
-
-**Sorular:** Önceki dizi yokken 3 sınıflandırılmadan yalnız ham olay olarak
-saklanmalı mıdır? Diğer fazın 1/7 kaydı için garanti edilen aktarım sırası
-veya süre sınırı var mıdır? 100/101'in tek kalıcı arıza olduğuna karar
-vermek için hangi kapanış ölçütü kullanılmalıdır?
-
-**Mevcut uygulama:** Dizi sınıflaması ve ayrı fider sayımı uygulanmıştır.
-Eksik dizi/saat kanıtı yoksa kesin sayım yapılmaz. Faz listelerindeki
-geçmiş sonuçlar sonradan gelen başka faz nedeniyle silinmez; ayrıntı
-bildirim taslağındadır.
-
-**Cevap:** Bekleniyor.
-
-## BOLATeX'e bildirilecek yeni RTU ürün kararları
-
-07.10.2026 kullanıcı yanıtlarıyla altı tercih uygulanmıştır. Bunlar
-üretici cevabı değildir. Ayrıntılı bildirim taslağı
-[uygulama raporu bölüm 7](../BOLATEX_YANIT_UYGULAMA_RAPORU_2026-10-07.md#7-bolatexe-bildirilecek-rtu-ürün-kararları--07102026)
-içindedir; dış kanaldan gönderilmemiştir.
-
-- BQ-11: son group_id/fider kalıcılığı şimdilik ertelenir; RTU startup
-  sıfırlar. BQ-17'deki süren MH işi sorusu bu tercihle birlikte ele alınmalıdır.
-- BQ-10: 4/5→3 arada 6 yoksa yalnız ham olaydır. Faz listeleri korunur,
-  fider sayımı ayrıdır. Sayaçlar bu RTU oturumunda işlenen kayıtlar içindir.
-- BQ-09: envanter değişimi eski AY/MH günlükleri boşaltıldıktan sonra
-  yapılır. Total sınırı RAM'dedir; R1'in sonradan gelen eski etiket
-  belirsizliği çözülmüş sayılmaz.
-- BQ-16: operatör yerine kalıcı kayıt servisi otomatik teslim alma
-  onayı verir. SCADA alarm noktası ve kalıcı gönderilmedi/replay kaydı
-  eklenmiştir; SCP onay/Trip_Failed temizleme komutu üretilmez.
-- BQ-19: son 128 alarm kimliği/EUI RAM'de tutulur; MH restart ile
-  korunur, RTU restart ile sıfırlanır. Ham kayıt tekilleştirilmez.
-
-## RTU tarafinda alinan kararlar
-
-Bu tercihler BOLATeX cevabı diye sunulmamalıdır. Bugünkü uygulama kararları
-[uygulama planında](RF_SCP_MODEM_UYGULAMA_PLANI.md) tutulur.
-
-| Konu | RTU kararı |
+1. Önceki dizi bilinmiyorsa 3, sınıflandırılmadan yalnız ham kayıt
+   olarak mı saklanmalıdır?
+2. Diğer fazın 1/7 kaydı için garanti edilen aktarım sırası veya süre
+   sınırı var mıdır?
+3. 100/101'in tek kalıcı arıza olduğuna karar vermek için hangi dizi
+   kapanış ölçütü kullanılmalıdır?
+4. Bildirim 3'teki faz listesini koruma ve fider sayımını ayrı tutma
+   yaklaşımı, geç/eksik kayıtta üretici beklentisini karşılıyor mu?
+
+**Mevcut RTU davranışı:** Kanıtı eksik olaylar ham günlükte korunur.
+Kesin aynı-arızaya ait olma kanıtı yoksa kesin fider toplamı üretilmez.
+Sonradan başka fazdan gelen kayıt yüzünden eski faz listesi kaydı silinmez.
+
+## RTU uygulama bildirimleri
+
+Aşağıdaki tercihler RTU tarafında uygulanmıştır. Bunlar BOLATeX cevabı
+olarak sunulmaz. Özellikle Bildirim 1 ve 5, üretici önerisinden ayrılan
+ürün tercihleridir; mevcut MH/AY davranışıyla çelişen yönleri belirtilmelidir.
+
+### Bildirim 1 — Son grup bilgisinin kalıcılığı (BQ-11/BQ-17)
+
+Son group_id/fider şimdilik NVRAM'e yazılmaz; RTU startup (başlangıç)
+sırasında sıfırlanır. Eski APPLIED sonucu geri yüklenmez. İstenen ayar
+NVRAM'de tutulmaya devam eder. Bu tercih, BQ-11'in son grup bilgisini
+kalıcı saklama önerisinin ertelenmesidir. RTU-only restart sonrası süren
+MH işi için güvenli yol BQ-17 kapsamında açık kalır.
+
+### Bildirim 2 — Kesici açmadan geçen arıza (BQ-10)
+
+4/5→3 dizisinde arada 6 yoksa kayıtlar yalnız ham olay geçmişinde kalır;
+geçici arıza listesine eklenmez. 6→3, kalıcı sonuç yoksa geçici arızadır.
+1/7 kalıcı faz sonucudur; 100/101 de kalıcı sonuç olarak değerlendirilir.
+Aynı açma için önceki 1/7 biliniyorsa 100/101 ikinci faz arızası olarak
+eklenmez. 105 yalnız alarmdır. Geçerli ham paket olay sınıfından bağımsız olarak ayrı korunur.
+
+### Bildirim 3 — Faz listeleri ve fider sayımı (BQ-10/BQ-20)
+
+Faz sonuçları mevcut geçici/kalıcı listelerde korunur. Güvenilir saat
+kalitesi ve eşleşme bulunduğunda aynı bölge/fiderin aynı sınıftaki
+1 saniye içindeki sonuçları fider sayımında birleştirilir. Saat kalitesi
+0/2 veya dizi/eşleşme kanıtı eksikse belirsiz sayım kullanılır.
+
+Sayaçlar RTU'nun mevcut çalışma oturumunda işlenen kayıtlara aittir;
+RTU restart'ında sıfırlanır. Fider sayımı mekanik kontak konumunu
+kanıtlamaz. Fidersiz 117, atanmış-olmayan ayrı sayımda ve ham günlükte
+kalır; bir fider/faz listesi uydurulmaz.
+
+100/101 önce gelip başka fazın 1/7'si sonra gelirse aynı sonuç için fider
+sayımı yeniden artırılmaz; daha önce saklanan faz sonucu silinmez.
+Eksik/geç dizinin kesin kapanış ölçütü BQ-20'de sorulmaktadır.
+
+### Bildirim 4 — Envanter değişimi ve eski olaylar (BQ-09)
+
+Online AY'lerin LIVE log_pending alanı sıfır olana kadar MH kayıt çekimi
+sürer. Offline AY canlı bekleme adımını tutmaz. MH halkası boşaltılır;
+taze HEAD cevabının total değeri değişim sınırı olarak RAM'de tutulur.
+Bekleyen alarmın kalıcı kaydı da tamamlandıktan sonra envanter değişir.
+
+Eski kabul edilmiş atamanın RTU satırı boşaltma sırasında korunur.
+Tek 0x06 güncelleme hatasında eski binding değişmez. Tam 0x04/0x05
+yükleme PARTIAL politikasını korur; toplu atomik rollback (geri alma)
+varsayılmaz. Aktif ayar işlemi, envanter yükleme/boşaltma ve tamamlanmamış
+BOOT koruması ilgili çakışan işlemleri engeller.
+
+Atama sonrasında gelen eski etiketli kaydın kimlik belirsizliği sürer.
+Sınırdan sonra gelmiş olması kaydın yeni AY'ye ait olduğunu kanıtlamaz;
+mevcut 60 bayt olayda EUI özeti varmış gibi davranılmaz.
+
+### Bildirim 5 — Alarmın kalıcı kayıt sonrası otomatik onayı (BQ-16)
+
+Alım onayı kaynağı operatör yerine RTU kalıcı kayıt servisidir. Alarm
+kalıcı IEC104 gönderim günlüğüne yazılıp gönderim/replay durumu
+senkronlandıktan sonra otomatik receipt acknowledgement (teslim alma
+onayı) verilir. Kalıcı yazım/senkronlama başarısızsa onay verilmez.
+
+Güncel LIVE Trip_Failed=1 ise alarm onaylanmış fakat etkin kalır. Yerel
+onay SCP komutu üretmez ve MH/AY bayrağını temizlemez. Manuel terminal
+onayı kaldırılmıştır. Bu ürün tercihi, BOLATeX'in operatör onayı
+anlatımının RTU tarafındaki uygulamasından ayrılır.
+
+### Bildirim 6 — Alarm kopyaları ve RAM kapsamı (BQ-19)
+
+Son 128 alarm kimliği RAM'de tutulur. Olay numarası, bölge/kaynak,
+boot_counter, uptime_sec, olay CRC'si ve kabul edilmiş EUI eşleşmesi
+kullanılır. Onaylanmış kopya yeniden alarm açmaz; ham 60 bayt yine saklanır.
+
+Bu geçmiş MH restart'ında korunur, RTU restart'ında sıfırlanır. 128
+sınırının dışı ve boot_counter=0 kimlik çakışması için mutlak garanti
+verilmez. Ham kayıtlar tekilleştirilmez; yeniden okuma/kayıp CONSUME
+sonucunda ham kopya oluşabilir.
+
+### Bildirim 7 — SCADA gönderimi, zaman ve kalite
+
+101/105 alarmı ve LIVE alarm geçişleri faz başına ayrı IEC104 M_SP_TB_1
+noktasına taşınır. Geçici/kalıcı arıza listeleri ayrıca gönderilir.
+Bağlantı açık ve yerel gönderim başarılıysa kayıt sent (gönderilmiş)
+işaretlenir. Bağlantı, TX veya k-window (gönderim penceresi) yetersizse
+unsent (gönderilmemiş) kalır; sonraki bağlantıda kalıcı replay gönderir.
+Replay sonunda güncel RF/alarm durumu tekrar yayımlanır.
+
+Yerel TX başarısı SCADA'nın uygulama düzeyindeki alarm kabulünü
+kanıtlamaz. MH CONSUME için SCADA kabulü ayrıca beklenmez; ilgili
+kalıcı ham/arıza/alarm ve gönderim kayıtlarının tamamlanması esas alınır.
+
+LIVE bildirimlerinde RTU alım zamanı kullanılır. RTC geçersizse IV=1'dir.
+Tarihsel olayın zamanı ve clock_quality bilgisi korunur; kalite 0 ise
+RTU işleme zamanı IV=1 ile türetilen listede/alarmda kullanılır. Ham olay
+paketi değiştirilmez. İlerlemeyen uptime ölçüm kalitesini düşürür;
+RF online bilgisi ayrı tutulur. FSM hata bayrağı tek başına bütün
+ölçümleri geçersiz yapmaz.
+
+Varsayılan alarm IOA'ları 1070/1071/1072 + 100×sıfır tabanlı RTU ayar
+satır indeksidir; webden değiştirilebilir. Modbus enerji/yük değeri 0/1,
+ayrı 49500–49520 kalite bloğu faz başına akım/enerji/yük geçerliliğidir;
+geçersiz akım NaN olur. Bunlar RTU ürün adresleridir; SCP wire adresleri
+veya BOLATeX standart adresleri olarak sunulmaz.
+
+### Bildirim 8 — Web Kaydet ve sıralı ayar uygulaması
+
+Operatör Kaydet onayı verdiğinde istenen ayar NVRAM'e yazılır. Kayıt
+başarısından sonra tüm etkin fiderler otomatik, sıfır olmayan grup
+kimliğiyle sırayla uygulanır. Ayrı Uygula/Yalnız kaydet seçeneği yoktur.
+Kayıt başarısı APPLIED anlamına gelmez; APPLIED üye bitmap'i ve beklenen
+writable (yazılabilir alan) CRC'siyle ayrıca doğrulanır.
+
+Hata veya belirsizlikte sıra durur. PARTIAL/FAILED ayar otomatik
+tekrarlanmaz; sebep 6 için aynı ayar ve yeni grup kimliğiyle manuel
+yeniden gönderim operatöre gösterilir.
+
+Kaydet sırasında istenen atama, MH'nin ACK ile kabul edilmiş envanteriyle
+karşılaştırılır. EUI-64, fider, bölge, RF channel (kanal), etkinlik veya RTU
+satırı değiştiyse Bildirim 4'teki eski kayıt boşaltması yapılır, ardından
+tam envanter yüklenir. Tam başarıdan sonra ayar sırası başlar. Yükleme
+kısmi/hatalı kalırsa ayarlar gönderilmez; sonraki Kaydet eksik envanteri
+yeniden yükler. Yalnız koruma eşiği değiştiğinde envanter yüklenmez.
+Tüm fiderler kapatıldığında eski envanter boşaltılıp kaldırılır.
+Envanter servisi iptal desteklemediğinden bu aşamada web İptal kapalıdır.
+
+Bölge değişikliğinde §4.3'teki MH yeniden başlatma kuralı geçerlidir.
+MH'nin ilk geçerli envanter girdisi bölgeyi belirler; aynı açılışta farklı
+bölge `ERROR 0x02` ile reddedilir. Web Kaydet MH'yi otomatik resetlemez.
+Yeni bölgeyle çalışmak için MH yeniden başlatılmalı ve etkin envanter
+girdileri aynı bölgeyi taşımalıdır. Bu ret üreticiye yeni bir soru değildir.
+
+Yeni ayar doğrulanmış Flash kopyasına yazılamazsa önceki RF RAM ayarı ve
+NVRAM RF görüntüsü korunur. Ana A kopyası doğrulanıp yedek B başarısız
+olursa yeni ayar korunur; web yedek kayıt hatasını bildirir. Bu durumda
+envanter/ayar gönderimi başlamaz. Operatör yeniden Kaydet seçtiğinde
+mevcut NVRAM onarımı tamamlanır ve uygulama akışı başlatılabilir.
+
+### Bildirim 9 — MH değişimi bakımında tek EPOCH tekrarı (BQ-07)
+
+MH kart değişimi BOOT'tan otomatik çıkarılmaz. Operatör mevcut
+`rf epoch N` ile fider bakımını açıkça başlatır. Başarılı EPOCH ACK'inden
+sonra en az 90 saniye beklenir; başka fiderin EPOCH'u da bu bekleme
+sınırını geçmeden gönderilmez. Sürenin dolması fiziksel RF tamamlanma
+kanıtı sayılmaz; sonraki uygulama sonucu ayrıca doğrulanır.
+
+Bu bakımdan sonraki ilk yerel yapılandırma FAILED/reason 5 verirse o
+fider için bir EPOCH tekrar edilir. Bu tekrar ayar işlemini yeniden
+başlatmaz; ayar sırası durmuş kalır. İlk başarılı sonuç, başka hata,
+rutin işlem veya ikinci başarısızlık yeni otomatik EPOCH başlatmaz.
+Tek bütçe fider bazındadır; yeniden kurulumda RAM yetkisi temizlenir.
+
+FAILED bitmapindeki sorunlu üyeler kabul edilmiş WRITE sırasındaki EUI
+listesiyle eşlenir; bitmap faz numarası olarak yorumlanmaz. İkinci
+başarısız uygulama operatör/BOLATeX incelemesi için açık kalır.
+
+### Bildirim 10 — Powerboard ayar tercihleri ve kayıt düzeni
+
+Powerboard tüketicileri SCP E1/E3 modelini kullanır; eski I²C process'i
+başlatılmaz. E8 ham telemetri korunur. Kapasite yazımı 7–54 Ah'tır;
+kapasite için ayarsız yazma seçeneği yoktur. C-oranı ayarsızsa yankı
+kabulü ile fiziksel uygulama doğrulaması ayrı sonuç gösterilir.
+Telemetri periyodu yazımı 1–10 s ile sınırlıdır; GET'teki b7 korunur,
+ayarsız periyot seçeneği açılmaz.
+
+Taze özette kapasite 7 Ah, durum2 b3:2=0 ve b6:4=3 birlikteyse kapasite
+bilinmiyor bakım uyarısı gösterilir. Eski/eksik veriyle uyarı üretilmez;
+kapasite doğrulanmadan akü-değişti komutu başlatılmaz.
+
+Tam 60 bayt RF olayı ayrı 8 KB ham günlükte saklanır. Mevcut faz arıza
+listeleri korunur; süre alanı 32 bit ms'ye genişletilmiştir. Yeni SCADA
+alarm IOA'ları emekli arıza-tipi adres alanını kullanır. NVRAM schema 3,
+boyut 2476 bayt ve CRC ofseti 2472'dir. Saha cihazı olmadığından eski
+schema için migration (veri taşıma) eklenmemiştir.
+
+Kalıcı IEC104 fault/alarm günlüğü 25 bayt payload (kayıt içeriği) ve
+29 bayt entry (günlük girdisi) kullanır. Mevcut 32 KB alan korunur:
+sektörde 141, sekiz sektörde 1128 kayıt; sektör dönüşünde 987 kayıt.
+Ham RF günlüğü 8 KB kalır; son değişikliklerde yeni Flash/linker alanı
+eklenmemiştir. Sonlu günlükler sınırsız arşiv garantisi vermez.
+
+## Yanıtlanmış BQ-01–16 özeti
+
+Bu konular için R0/Ek-1 cevapları alınmıştır. Aşağıdaki özet, açık
+soruların ve bildirimlerin bağlamıdır; yeni cevap talebi değildir.
+
+| BQ | Alınan cevabın konusu ve RTU durumu |
 |---|---|
-| Geçersiz RTC | TIME_SYNC atlanır, envanter yüklenir; saat geçerli olunca eşitlenir |
-| Tüketme koşulu | Başarılı kalıcı kayıt veya RTU gönderimi yeterlidir; remote ACK ayrıca beklenmez |
-| Ham günlük | Ayrı 8 KB; tam 60 B paket korunur, eski arıza alanları tutulur |
-| Arıza sınıflaması | Süre uint32_t olur. Dizi sınıflaması, ayrı fider sayımı ve 4/5→3 ham-olay tercihi uygulandı; eksik dizi BQ-20 sınırı sürer |
-| HEAD sorgusu | 60 s RTU poll tercihi; dokümanda zorunlu RTU süresi değildir |
-| Tekrar kayıt | Restart/kayıp tüketme sonucunda kopya mümkündür; kalıcı tekilleştirme garantisi yoktur |
-| Sahadaki eski biçim | Saha cihazı yoktur; eski RF model/JSON/görüntü migration'ı istenmemiştir |
-| RF ayar kalıcılığı | 06.10.2026: Kaydet istenen ayarı NVRAM’e yazar; Uygula ayrı, APPLIED RAM durumudur; PARTIAL/FAILED otomatik tekrarlanmaz |
-| IEC104 canlı veri zamanı | RTU alım saati; RTC geçersizse IV=1. BQ-15 bu zamanın kullanılmasını doğruladı; saat kaynağı RTU alımı olarak belirtilir |
-| Enerji/yük ve kalite | LIVE bit 0 enerji, bit 1 yük akımı olarak aynen kullanılır. Eski nominal gösterge adları tutulmaz. Modbus 49500–49520 kalite bloğu RTU ürün kararıdır; bit 0 akım, bit 1 enerji, bit 2 yük geçerliliği taşır. Web eski/eksik örnekte var/yok yerine — gösterir. Bu tercihler BOLATeX standardı olarak sunulmamalıdır |
-| Arıza göstergeleri | 06.10.2026 kullanıcı kararı: anlık arıza akımı/süresi/tipi alanları kaldırılır; geçici/kalıcı arıza listeleri kalır. Olay ofset 13 `nominal_current_status`, dokümandaki yük var anlamıyla doğrudan saklanır; ters çevrilmez. IEC104 spontane/replay ilk liste kaydı IOA'larından kendi olay zamanıyla gönderilir; hazırlanan paket 06.10.2026 kullanıcı commit talebiyle onaylandı |
-| Operatör onayı kanalı | 07.10.2026: kalıcı kayıt/gönderim kuyruğu sonrasında RTU otomatik onaylar. Manuel onay kaldırıldı; SCP temizleme/onay komutu üretilmez. Faz başına SCADA alarm IOA'sı ve 128 kimlik RAM sınırı uygulandı |
-| Ayarsız Powerboard ayarı | Kapasite 7–54 Ah; ayarsız seçenek yok. C-oranı ayarsızsa yankı kabulü ayrı sonuçtur. BQ-14 mevcut 1–10 s periyot tercihini uygun buldu |
+| 01 | Geç gelen 101/105 alarm kabulü; güncel uygulama Bildirim 5–7'de açıklandı. |
+| 02 | MH halkası en çok 99 bekleyen kayıt; head=tail boş halka. |
+| 03 | Açılışta HEAD/mevcut tail koruması; her CONSUME öncesi taze HEAD ve sıra kontrolü; ERROR 06/02 özel yolları. Atomik/koşullu tüketme gelecekteki değişiklik olarak tutulur. |
+| 04 | İstek dışı SET bildirimine ACK üretilmez; örnekler request/response neden sırasıyla değerlendirilir. |
+| 05 | Olay deposu resetinde total/konum karşılaştırması; normal taşma BQ-18'de açık. |
+| 06 | Kısmi uygulama olayı tek başına APPLIED kanıtı değildir; sebep 6'da aynı ayar/yeni kimlik yönlendirmesi. |
+| 07 | MH değişimi EPOCH'u ve 90 s/fiderler arası bekleme; tek istisna ilk FAILED/5 sonrası bir tekrar. Bildirim 9. |
+| 08 | Powerboard SCP kaynağı ve eski I²C yolunun kapalı tutulması. |
+| 09 | Atama değişiminden önce eski kayıtların boşaltılması; geç eski etiket belirsizliği sürer. Bildirim 4. |
+| 10 | Diziye göre geçici/kalıcı sınıflama, faz listeleri ve fider sayımı. Eksik/geç dizi BQ-20'de açık. |
+| 11 | Sıfır group_id COMMIT için kullanılmaz; hedef fider/üyeler doğrulanır. Son grup kalıcılığı önerisinin ertelenmesi Bildirim 1'de açıklandı. COMMIT öncesi ABORT gelecekteki MH özelliği sayılmaz. |
+| 12 | Kapasite/C-oranı için yankı ve taze E1 doğrulaması; kapasite-bilinmiyor bakım durumu. Bildirim 10. |
+| 13 | E6 ACK ile E7 sonuç ayrımı, CMD 05 eşlemesi, yanıtsız bitiş ve cancel sonrası GET. |
+| 14 | Periyot b7 korunur; normal 1–10 s tercihi kullanılır. |
+| 15 | LIVE alım zamanı ve kalite; sabit uptime'da geçersiz ölçüm. Bildirim 7. |
+| 16 | Alarm onayının kapsamı; otomatik RTU alım onayı ürün tercihi olarak Bildirim 5'te açıklandı. |
 
-K5 kalıcılık/otomatik tekrar tercihi kullanıcı kararıyla netleşmiştir.
-Yeni IOA/Modbus adresleri K9’da RTU ürün kararı olarak açıktır; BOLATeX’in
-protokol cevabı bu ürün kararının yerine geçmez.
+## Doğrulama ve sınırlar
+
+Merkezi birim testleri 1014/1014 geçti. Kaynak/gömülü web, gerçek HTTP
+handler kontrolleri, 26 modülün strict (sıkı uyarı kontrollü) Cortex-M33
+C11 derlemesi ve Release paket self-check'i geçti.
+
+Kayıtlı PC simülatörü HIL (donanımın test döngüsüne katılması) koşusunda
+35/35 vaka PASS; paket kimliği her vaka öncesi/sonrası doğrulandı. Gerçek
+MH ile BOOT, saat eşitleme, altı envanter girdisi ve Powerboard E1/E3
+iletişimi ayrıca gözlendi. Bu sonuçlar gerçek AY'nin RF LIVE/APPLIED veya
+fiziksel açma doğrulaması, SCADA uçtan uca kabulü ve enerji kesintisi
+kabulünün yerine geçmez. BQ-17–20 bu sonuçlarla kapanmış sayılmaz.
+
+08.10.2026 gerçek web/MH testinde EUI değişimi ve geri dönüşü, fider 1 → 4
+değişimi, yalnız akım eşiği değişimi ve hatalı bölge sonrası toparlanma
+izlendi. Envanter değişimlerinde taze HEAD, altı ACK ve END'den sonra
+WRITE/COMMIT başladı; yalnız eşik değişiminde envanter yüklenmedi.
+Bölge ret durumunda ayar gönderimi başlamadı. Yeni ayar grupları
+NOT_LIVE (reason=1) ile sonuçlandı; APPLIED elde edilmiş sayılmadı.
+Test sonunda 105 web form alanı taze cihaz okumasıyla başlangıç değerleriyle
+aynı bulundu. Kalıcı kayıt hata enjeksiyonu host testindedir; fiziksel
+Flash arızası/enerji kesintisi testi yapılmadı.
 
 ## Değişiklik geçmişi
 
-| Tarih | Sürüm | Etkilenen bölüm |
+| Tarih | Sürüm | Değişiklik |
 |---|---|---|
-| 05.10.2026 | 0.1 | Bugünkü RF-SCP incelemelerinden BQ-01–09 ve RTU kararları toplandı |
-| 05.10.2026 | 0.2 | BQ-10 arıza sınıflaması/sayaçlar ve BQ-11 COMMIT öncesi ABORT kimliği eklendi |
-| 06.10.2026 | 0.3 | BQ-11'in normal grup/COMMIT sonrası ABORT uygulama durumu güncellendi; soru açık kaldı |
-| 06.10.2026 | 0.4 | BQ-12 ayarsız ayar doğrulaması, BQ-13 E7 bitiş ayrımı ve BQ-14 periyot b7 koruması |
-| 06.10.2026 | 0.5 | K5 Kaydet/Uygula kalıcılık tercihi RTU kullanıcı kararı olarak kaydedildi; protokol soruları açık kaldı |
-| 06.10.2026 | 0.6 | BQ-15 canlı ölçüm zamanı/RTU alım zamanı ve kullanıcı geçici tercihi eklendi |
-| 06.10.2026 | 0.7 | Enerji/yük bitlerinin doğrudan kullanımı ve ayrı Modbus/web kalite tercihi RTU kararı olarak kaydedildi; yeni protokol sorusu oluşmadı |
-| 06.10.2026 | 0.8 | Anlık arıza göstergelerinin kaldırılması RTU kararı olarak eklendi; olay yük biti ters dönüşümü hata olarak düzeltildi, üretici sorusu değildir |
-| 06.10.2026 | 0.9 | BQ-16 operatör onayının kaynağı/kanalı, MH/AY iletimi ve canlı veri koşulu; kullanıcı yeni web API'sini cevap gelene kadar bekletti |
-| 07.10.2026 | 0.10 | BQ-17 RTU-tek-restart yeniden kurulum yolu eklendi (bench gözlemi: MH ayaktayken RTU reseti süresiz BEKLIYOR bırakıyor; kurtarma MH reseti) |
-| 07.10.2026 | 0.11 | BQ-01–16 yanıt alındı kaydı; uygulama kontrolü; BQ-18 normal sayaç taşması, BQ-19 boot sıfırken alarm tekilleştirme, BQ-20 eksik/geç olay dizisi |
-
-| 07.10.2026 | 0.12 | Altı kullanıcı kararı ve BOLATeX'e bildirim taslağı; son grup kalıcılığı ertelendi, otomatik kayıt onayı ve SCADA alarm gönderimi uygulandı |
+| 05–07.10.2026 | 0.1–0.12 | İlk sorular, BQ-01–16 cevap takibi, BQ-17–20 ve RTU kararları toplandı. |
+| 08.10.2026 | 0.13 | Web Kaydet/sıralı uygulama ve MH değişimine özel tek EPOCH tekrarının özeti eklendi. |
+| 08.10.2026 | 0.14 | Tek başına gönderilecek belge: dört açık soru öne alındı; on ayrıntılı bildirim aynı dosyaya taşındı; cevaplanmış sorular özetlendi, diğer rapor bağımlılıkları kaldırıldı. |
+| 08.10.2026 | 0.15 | Bildirim 8: web atama değişikliğinde boşaltma/envanter/ayar sırası ve kalıcı kayıt hata ayrımı eklendi. |
+| 08.10.2026 | 0.16 | Gerçek web/MH test kapsamı ve §4.3 bölge değişikliği için MH reset kuralı eklendi. |

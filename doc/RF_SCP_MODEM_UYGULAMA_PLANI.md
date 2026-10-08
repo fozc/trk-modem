@@ -1436,6 +1436,7 @@ içinde tutulur. Dış kanaldan gönderim ve fiziksel HIL yapılmadı.
 
 | 07.10.2026 | 0.27 | Altı kullanıcı kararı; son grup sıfırlama, dizi/fider sayımı, inventory drain, otomatik kayıt onayı ve SCADA alarm noktaları |
 | 08.10.2026 | 0.28 | Kaydet onayından sonra tüm etkin fiderlere sıralı RF uygulaması, otomatik grup kimliği ve ayrı Uygula yolunun kaldırılması |
+| 08.10.2026 | 0.29 | Analiz bulgularının düzeltülmesi (F-01…F-15) ve host + fiziksel cihaz doğrulaması; HIL `cfg_mute` knob'u |
 
 ## RF web Kaydet onayı ve sıralı uygulama — 08.10.2026
 
@@ -1509,6 +1510,76 @@ Güncel komutlar, sonuçlar ve fiziksel kabul sınırları üretim raporu
 §10.36'da tutulur. Host sonucu fiziksel RF teslim süresi veya ayırıcı
 uygulaması kanıtı değildir.
 
+## Analiz bulgularının kaynak teyidi ve düzeltmeleri — 08.10.2026
+
+**Amaç:** Web kaydı, envanter, grup sonucu ve MH değişimi bakımının hata
+yollarını son R1/BOLATeX kurallarıyla eşlemek.
+
+### Kurallar
+
+1. Envanter LOADING/DRAINING iken Kaydet parse ve kalıcı yazım öncesinde
+   reddedilmelidir. Sıra/grup kilitleri ayrıca korunmalıdır.
+2. Aktif ayarın tamamı kayıttan önce `rf_scp_validate_config` ile
+   doğrulanmalıdır. Web di/dt sınırı 1–2200 A/s, Ia alt sınırı en
+   büyüğü(5 A; nominal × 1,2) olmalıdır. Eski 0,001 toleransı kullanılmamalıdır.
+3. ID_IN_USE gözleminde aktif MH raporu, mevcut 5 s STATUS_GET yolu ile
+   yenilenmelidir. Hatalı/yanlış kimlikli cevap kilidi açmamalıdır.
+   Başka grubun terminal sonucu yerel APPLIED kabul edilmemelidir.
+4. MH kartı değişimi BOOT'tan otomatik çıkarılmamalıdır. Operatörün
+   `rf epoch N` bakım isteğinin başarılı ACK'i, yalnız o fiderin ilk
+   sonraki yapılandırması için tek tekrar yetkisi açmalıdır. Bu ilk
+   sonuç FAILED/5 ise bir EPOCH tekrar edilmelidir; ayar uygulaması
+   otomatik tekrarlanmamalıdır. Başka sonuçta veya ikinci başarısızlıkta
+   yeni otomatik EPOCH gönderilmemelidir. Önceki 90 s/fiderler arası
+   bekleme korunmalıdır. RAM bakım yetkisi yeniden kurulumda temizlenmelidir.
+5. Web, salt okunur `StopReason` ile sıranın neden durduğunu ve FAILED/6
+   için aynı ayar/yeni grup kimliği yönlendirmesini göstermelidir.
+6. Taze güç kartı özetindeki kapasite-bilinmiyor imzası bakım uyarısı
+   olarak gösterilmelidir. Eski/eksik veri bu uyarının kanıtı sayılmamalıdır.
+
+**Doğrulama:** Merkezi birim paketi 1002/1002, kaynak/gömülü web ve
+gerçek HTTP handler testleri geçti; 26 modül C11/Cortex-M33 strict
+derlemeden geçti. Yeni süreç, heap veya NVRAM/Flash alanı eklenmedi.
+Bulgu sınıflaması, ilk hata izleri ve fiziksel kanıt sınırları
+[analiz raporu v1.4](../RF_SCP_ENTEGRASYON_ANALIZ_RAPORU_2026-10-08.md)
+ile üretim raporu §10.38'de tutulur.
+
+## Analiz bulgularının düzeltülmesi ve cihaz doğrulaması — 08.10.2026
+
+**Amaç:** [Analiz raporunun](../RF_SCP_ENTEGRASYON_ANALIZ_RAPORU_2026-10-08.md)
+bulgularını (F-01…F-15) kapatmak ve düzeltmeleri host testlerinin yanında
+fiziksel cihazda doğrulamaktır.
+
+**Düzeltmeler (rapor F kodlarıyla):** F-01 `rf.h` pointer bildirimi (mock
+derleme hatası); F-02 ID_IN_USE gözleminde 5 s `0x28` poll'u ve aktif eş
+işi için `can_start` kilidi; F-04 Kaydet, envanter etkin iken 409 ile
+reddedilir; F-06 `rf_apply` durma nedeni ve JSON `StopReason`; F-07 geçersiz
+saatli `permanent_time` karşılaştırmadan atlanır; F-09
+`RF_SCP_MAJOR_EXPECTED` `rf_scp.h`'ye taşındı; F-10 ölü i18n anahtarları
+kaldırıldı; F-11 `rf_inventory_hub_replaced`/`config_finished` ile BQ-07
+tek `0x2A` tekrarı (yalnız açık MH bakımını izleyen ilk yapılandırmanın
+sebep 5'i kurar); F-12 sebep 6 yeniden gönderim yönlendirmesi; F-13
+kapasite-bilinmiyor bakım gösterimi; F-15 web parse aralıkları R1 §4.10'ya
+çekildi ve parse sonunda tüm blok `rf_scp_validate_config` ile doğrulanır.
+F-03, F-08 ve S-01 bilinçli olarak açık bırakıldı.
+
+**Doğrulama:** Tam birim paketi 1002/1002 ve web navigation (kaynak +
+gömülü) geçti. Cihaza `2b15743` imajı xmodem ile kuruldu ve
+doğrulandı; gerçek MH (`6dc02267`) ile BOOT zinciri ve envanter yükleme,
+web Kaydet akışı (WRITE×3 + COMMIT + FAILED/1), F-15 sınır ret/kabulleri,
+K5 reset davranışı ve elog izi sınandı. HIL bench (profil 1) 32/32 geçti
+(manifest `2b15743f`). F-02, simülatöre eklenen `cfg_mute` knob'u ile tel
+düzeyinde kanıtlandı: hiçbir `0x21` verilmezken DUT yalnız 5 s poll'u ile
+raporu APPLIED'a taşıdı. F-11 cihazda tek otomatik `0x2A` ve ikinci sebep
+5'te tekrar yok olarak ölçüldü. Cihaz üretim profil 0 imajına geri
+döndürüldü; AY'ler çevrimdışı olduğundan gerçek ayırıcı yolları HIL
+simülatörüyle doğrulandı.
+
+**Açık gözlem:** RTU tek başına resetlendiğinde MH BOOT tekrarı göndermez
+(R1 §4.3) ve RF hattı MH yeniden başlayana dek bekler; `rf inv` BOOT
+korumasına takılır. Bu davranış ürün kararı olarak izlenmeli, gerekirse
+BOLATeX'e bildirilmelidir.
+
 ## RF durum ekranı geri bildirimi — 08.10.2026
 
 **Amaç:** Yenile işleminin ve İptal ret durumunun operatör tarafından
@@ -1537,3 +1608,48 @@ açılışında ve Kaydet sonrasında durum sorgusu yapılmaz; Yenile bir kez
 okur ve yeni zamanlayıcı kurmaz. Kaydet/İptal öncesindeki kontroller
 ve İptal sonucunun okunması korunur. Kaynak ve gömülü web entegrasyon
 testleri bu davranışı doğrular; üretim raporu §10.42 ayrıntıları tutar.
+
+## Web atama değişikliği ve kalıcı kayıt sonucu — 08.10.2026
+
+**Amaç:** Kaydet işleminin istenen ayarı, kalıcı kaydı ve MH'nin kabul ettiği
+atamayı birlikte yönetmesini açıklar.
+
+**Kullanım yeri:** RF web yapılandırması, `rf_apply`, `rf_config`, `nvram`
+ve mevcut `rf_inventory` hizmeti.
+
+**Akış:** HTTP parser aday kopyaya yazar. `rf_store_sync`, adayı
+`nvram_save` sonucuna göre yayımlar. Başarısız kayıt önceki RF store ve
+NVRAM RF görüntüsünü korur. Yalnız A doğrulanmışsa web `backup_failed`
+uyarısı gösterir; RF uygulaması durur. Eski `nvram_sync` 0/-1 sözleşmesi,
+NVRAM şeması ve Flash düzeni korunur.
+
+Tam kayıttan sonra `rf_inventory_matches_config` kabul edilmiş atamayı
+karşılaştırır. Atama değişmişse mevcut kayıt boşaltma ve tam envanter
+hizmeti çalışır; yalnız tam kabulden sonra grup uygulaması başlar.
+Eşik değişikliğinde envanter yeniden yüklenmez. Kısmi/hatalı yükleme
+uygulamayı durdurur; yeniden Kaydet eksik envanteri atlamaz. Tüm atamalar
+kaldırıldığında EMPTY sonucu beklenir. Envanter aşamasında İptal kapalıdır.
+MH restart'ı eski uygulama sırasını durdurur.
+
+Üreticiye gönderilecek güncel davranış bildirimi
+[BOLATeX sorular ve bildirimler belgesi](BOLATEXE_SORULACAKLAR.md),
+Bildirim 4 ve 8 içindedir. BQ-17 beklemeye devam eder.
+Test kanıtı ve fiziksel kabul sınırı üretim raporu §10.43'tedir.
+
+## Gerçek web/MH doğrulaması — 08.10.2026
+
+**Amaç:** Önceki web kayıt ve envanter koordinasyonunun gerçek cihaz sonucunu
+belirtir. Kurulu profil 0 imajı EFW CRC/boyut/commit bilgisiyle eşleşti.
+
+EUI değişimi, geri dönüş ve fider 1 → 4 değişiminde taze HEAD ve tam
+altı envanter ACK'i/END ACK'inden sonra WRITE/COMMIT başladı. Yalnız
+Ia değişiminde envanter yüklenmedi. MH'nin reddettiği bölge değişiminde
+ayar gönderilmedi. Başlangıçtaki 105 form alanı taze okumayla geri doğrulandı.
+Gerçek AY üyeleri canlı olmadığından grup sonucu NOT_LIVE'dır; APPLIED
+kabulü yapılmış sayılmaz. Ham kanıt ve test sınırı üretim raporu §10.44'tedir.
+
+**Bölge değişikliği:** MH arayüz belgesi §4.3 gereği MH reseti ister;
+aynı açılışta farklı bölge ERROR 0x02 döner. Web Kaydet otomatik MH reseti
+yapmaz. Yeni bölgeyle ilk envanter yüklenirken etkin girdiler aynı bölgeyi
+taşımalıdır. Bu kural BOLATeX sorular/bildirimler belgesi 0.16 Bildirim 8'de
+aynı dosyadan gönderilecek şekilde açıklandı; yeni BQ açılmadı.

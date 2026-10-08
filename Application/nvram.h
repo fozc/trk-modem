@@ -2,7 +2,8 @@
  * nvram.h
  *
  *  Created on: 15 Agu 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef NVRAM_H_
@@ -54,6 +55,17 @@ void nvram_dump(void);
  * Donus -1: flash yazmasi basarisiz - RAM "kirli" kalir, boylece bir
  * sonraki nvram_sync(false) ayni veriyi yeniden dener. */
 int nvram_sync(bool crc_no_check);
+
+typedef enum
+{
+    NVRAM_SAVE_FAILED,
+    NVRAM_SAVE_PRIMARY_ONLY,
+    NVRAM_SAVE_COMPLETE
+} nvram_save_result_t;
+
+/* Detailed result of this save, including a verified A with failed B.
+ * The legacy nvram_sync still returns -1 unless both copies are ready. */
+nvram_save_result_t nvram_save(bool crc_no_check);
 
 /* Save/onarim sirasinda true: RAM goruntusu donuktur, setter'lar reddedilir.
  * Bu genel bir eszamanlilik kilidi DEGILDIR - tek islemcili, isbirlikci
@@ -149,3 +161,5 @@ const rfwu_nvram_t *nvram_get_rfwu(void);
 void                nvram_set_rfwu(const rfwu_nvram_t *p_rfwu);
 
 #endif /* NVRAM_H_ */
+
+/*** end of file ***/

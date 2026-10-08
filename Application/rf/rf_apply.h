@@ -26,6 +26,7 @@ typedef enum
 {
     RF_APPLY_SAVE_BUSY,
     RF_APPLY_SAVE_ERROR,
+    RF_APPLY_SAVE_PRIMARY_ONLY,
     RF_APPLY_SAVE_OK
 } rf_apply_save_result_t;
 
@@ -38,7 +39,9 @@ typedef enum
     RF_APPLY_STOP_PEER_ACTIVE,
     RF_APPLY_STOP_HUB_RESTARTED,
     RF_APPLY_STOP_CANCELLED,
-    RF_APPLY_STOP_STATE_CHANGED
+    RF_APPLY_STOP_STATE_CHANGED,
+    RF_APPLY_STOP_STORAGE,
+    RF_APPLY_STOP_INVENTORY
 } rf_apply_stop_reason_t;
 
 typedef struct
@@ -48,6 +51,7 @@ typedef struct
     uint8_t applied;
     uint8_t line;
     bool group_started;
+    bool inventory_pending;
     rf_apply_stop_reason_t stop_reason;
 } rf_apply_status_t;
 
