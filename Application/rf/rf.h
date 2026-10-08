@@ -73,7 +73,7 @@ bool rf_get_anomaly(uint8_t source, uint8_t path, rf_anomaly_data_t *out);
 bool rf_ack_trip_failure(uint8_t source);
 /* Receipt service may finish storage while the MH inventory is absent.
  * Acknowledge only the exact saved device identity, never its replacement. */
-bool rf_ack_stored_alarm(const uint8_t eui64[8]);
+bool rf_ack_stored_alarm(const uint8_t *eui64);
 
 /** BOLATeX BQ-01: open the trip-failure alarm from a stored event record
  * (101 or 105) regardless of when the record arrives. The alarm stays

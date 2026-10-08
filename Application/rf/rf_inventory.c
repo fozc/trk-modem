@@ -67,6 +67,9 @@ static struct timer upload_timer;
 static bool upload_timer_started;
 static rf_inventory_entry_t bindings[MAX_POWER_LINE_COUNT][3];
 static bool epoch_waiting[4];
+static bool epoch_first_config[4];
+static bool epoch_retry_pending[4];
+static bool epoch_for_replacement;
 static uint32_t epoch_started_ms[4];
 static uint8_t epoch_feeder;
 static scp_cmd_done_fn_t epoch_done;
@@ -428,6 +431,24 @@ bool rf_inventory_get_boundary(uint32_t *total)
     return true;
 }
 
+static void continue_epoch_retry(void)
+{
+    for (uint8_t feeder = 1U; 4U >= feeder; feeder++)
+    {
+        if (epoch_retry_pending[feeder - 1U])
+        {
+            if (rf_inventory_refresh_epoch(feeder, NULL))
+            {
+                epoch_retry_pending[feeder - 1U] = false;
+                CSLOG_WARN("[RF-INV] MH replacement: one epoch retry "
+                           "for feeder %u; config remains stopped\r\n",
+                           (unsigned)feeder);
+            }
+            return;
+        }
+    }
+}
+
 void rf_inventory_continue(void)
 {
     if (RF_INVENTORY_DRAINING == inventory_status)
@@ -448,6 +469,14 @@ void rf_inventory_continue(void)
     {
         send_next();
     }
+    else if (!rf_inventory_is_active())
+    {
+        continue_epoch_retry();
+    }
+    else
+    {
+        /* The accepted inventory/command must finish first. */
+    }
 }
 
 void rf_inventory_reset(void)
@@ -459,6 +488,9 @@ void rf_inventory_reset(void)
         update_done = NULL;
     }
     (void)memset(epoch_waiting, 0, sizeof(epoch_waiting));
+    (void)memset(epoch_first_config, 0, sizeof(epoch_first_config));
+    (void)memset(epoch_retry_pending, 0, sizeof(epoch_retry_pending));
+    epoch_for_replacement = false;
     (void)memset(bindings, 0, sizeof(bindings));
     inventory_status = RF_INVENTORY_IDLE;
     feeder_index = 0U;
@@ -692,7 +724,9 @@ static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *p
 
         epoch_started_ms[index] = HAL_GetTick();
         epoch_waiting[index] = true;
+        epoch_first_config[index] = epoch_for_replacement;
     }
+    epoch_for_replacement = false;
     if (NULL != done)
     {
         done(result, packet);
@@ -721,7 +755,35 @@ bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done)
     }
     epoch_feeder = feeder;
     epoch_done = done;
+    epoch_for_replacement = false;
     return true;
+}
+
+bool rf_inventory_hub_replaced(uint8_t feeder, scp_cmd_done_fn_t done)
+{
+    if (!rf_inventory_refresh_epoch(feeder, done))
+    {
+        return false;
+    }
+    epoch_first_config[feeder - 1U] = false;
+    epoch_retry_pending[feeder - 1U] = false;
+    epoch_for_replacement = true;
+    return true;
+}
+
+void rf_inventory_config_finished(uint8_t feeder, uint8_t reason)
+{
+    if ((1U > feeder) || (4U < feeder))
+    {
+        return;
+    }
+    const size_t index = (size_t)feeder - 1U;
+
+    if (epoch_first_config[index])
+    {
+        epoch_first_config[index] = false;
+        epoch_retry_pending[index] = (5U == reason);
+    }
 }
 
 /*** end of file ***/

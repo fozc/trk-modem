@@ -23,6 +23,8 @@
 
 TEST_SOURCE_FILE("iec104_util.c")
 TEST_SOURCE_FILE("xprintf.c")
+TEST_SOURCE_FILE("rf_scp_codec.c")
+TEST_SOURCE_FILE("rf_scp.c")
 
 static modem_config_t device;
 static jiec_config_t iec;

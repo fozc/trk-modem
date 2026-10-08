@@ -192,7 +192,7 @@ static int rf_shell_inv(int argc, char **argv)
 static int rf_shell_time(int argc, char **argv)
 {
     (void)argv;
-    if ((1 != argc) || (1U != rf_comm_get_hub_major()))
+    if ((1 != argc) || (RF_SCP_MAJOR_EXPECTED != rf_comm_get_hub_major()))
     {
         SHELL_LOG("Kullanim: rf time (uyumlu BOOT gerekli)\r\n");
         return -1;
@@ -229,7 +229,7 @@ static int rf_shell_epoch(int argc, char **argv)
     }
     uint8_t feeder = (uint8_t)(argv[1][0] - '0');
 
-    if (!rf_inventory_refresh_epoch(feeder, on_epoch_done))
+    if (!rf_inventory_hub_replaced(feeder, on_epoch_done))
     {
         SHELL_LOG("Epoch gonderilmedi: "
                   "envanter yuklu olmali, hat bos olmali\r\n");
@@ -504,7 +504,8 @@ static int rf_shell_command(int argc, char *argv[])
                  "  status : hub ve link durumu\r\n"
                  "  inv    : envanteri yeniden push et\r\n"
                  "  time   : saati esitle (envanteri yeniden yuklemez)\r\n"
-                 "  epoch N: MH degisimi sonrasi fider 1..4 epoch yenile\r\n"
+                 "  epoch N: MH degisimi bakimi; ilk TIMEOUT'ta tek "
+                 "epoch tekrari\r\n"
                  "  live F P: fider/faz canli veri ve alarm\r\n"
                  "  cfg-status N: MH group status (0..255)\r\n"
                  "  cfg-apply L N: apply stored line config with fresh ID\r\n"

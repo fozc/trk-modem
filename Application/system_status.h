@@ -48,6 +48,7 @@ typedef struct
     uint16_t power_valid_fields;
     bool board_temp_history_valid;
     uint8_t charge_verdict;
+    bool battery_capacity_unknown;
 } system_status_t;
 
 const system_status_t* system_status_get(void);

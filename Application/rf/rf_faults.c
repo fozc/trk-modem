@@ -150,7 +150,9 @@ static rf_fault_class_t classify_sequence(const rf_scp_event_t *event,
         case 4U:
         case 5U:
             if ((1U == event->clock_quality) && cp56time2a_is_valid(&time) &&
-                (!*permanent || (0 < cp56time2a_diff_ms(&time,
+                (!*permanent || !cp56time2a_is_valid(
+                    &permanent_time[event->zone][event->feeder - 1U]) ||
+                    (0 < cp56time2a_diff_ms(&time,
                     &permanent_time[event->zone][event->feeder - 1U]))))
             {
                 *permanent = false;
@@ -172,6 +174,8 @@ static rf_fault_class_t classify_sequence(const rf_scp_event_t *event,
         case 100U:
         case 101U:
             *permanent = true;
+            time.iv_bit = (1U != event->clock_quality) ||
+                          !cp56time2a_is_valid(&time);
             permanent_time[event->zone][event->feeder - 1U] = time;
             sequence->permanent = true;
             type = RF_FAULT_PERMANENT;

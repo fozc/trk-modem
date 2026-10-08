@@ -35,6 +35,22 @@ static const char *state_name(rf_group_state_t state)
     }
 }
 
+static const char *stop_reason_name(rf_apply_stop_reason_t reason)
+{
+    switch (reason)
+    {
+        case RF_APPLY_STOP_NONE: return "none";
+        case RF_APPLY_STOP_START_REJECTED: return "start_rejected";
+        case RF_APPLY_STOP_ID_EXHAUSTED: return "id_exhausted";
+        case RF_APPLY_STOP_GROUP_ERROR: return "group_error";
+        case RF_APPLY_STOP_PEER_ACTIVE: return "peer_active";
+        case RF_APPLY_STOP_HUB_RESTARTED: return "hub_restarted";
+        case RF_APPLY_STOP_CANCELLED: return "cancelled";
+        case RF_APPLY_STOP_STATE_CHANGED: return "state_changed";
+        default: return "unknown";
+    }
+}
+
 bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
 {
     rf_group_status_t group;
@@ -66,7 +82,8 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         "\"HasReport\":%s,\"MHState\":%u,\"MemberBitmap\":%u,"
         "\"Reason\":%u,\"ReportedCRC\":%u,\"Attempts\":%u,"
         "\"BatchState\":\"%s\",\"Targets\":%u,\"Applied\":%u,"
-        "\"BatchLine\":%u,\"GroupStarted\":%s,\"SaveBlocked\":%s}",
+        "\"BatchLine\":%u,\"GroupStarted\":%s,\"SaveBlocked\":%s,"
+        "\"StopReason\":\"%s\"}",
         state_name(group.state), (unsigned)group.line, (unsigned)group.feeder,
         (unsigned)group.group_id, (unsigned)group.writes_acked,
         (unsigned)group.expected_crc,
@@ -77,7 +94,8 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         (unsigned)group.report.attempts, batch_name,
         (unsigned)batch.targets, (unsigned)batch.applied,
         (unsigned)batch.line, batch.group_started ? "true" : "false",
-        rf_apply_can_save() ? "false" : "true");
+        rf_apply_can_save() ? "false" : "true",
+        stop_reason_name(batch.stop_reason));
 
     if ((size_t)count >= capacity - 1U)
     {

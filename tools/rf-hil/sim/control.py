@@ -26,7 +26,7 @@ HUB_KNOBS = (
     "pwr_enabled", "cfg_delivered_ms", "cfg_applied_ms",
     "cfg_force_fail_reason", "cfg_no_deliver", "cfg_no_apply",
     "cfg_delivered_fail_ms", "cfg_applied_fail_ms",
-    "cfg_report_crc_offset", "pwr_echo_delay_s", "pwr_result_delay_s",
+    "cfg_report_crc_offset", "cfg_mute", "pwr_echo_delay_s", "pwr_result_delay_s",
     "pwr_result_sonuc",
 )
 
