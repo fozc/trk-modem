@@ -289,10 +289,36 @@ static bool handle_status_response(const scp_packet_t *packet)
         rf_group_handle_status(&message);
 }
 
+/* Keep status decode scratch out of WRITE/COMMIT callback paths. */
+static __attribute__((noinline)) void check_group_response(
+    scp_cmd_result_t result, const scp_packet_t *packet)
+{
+    rf_scp_message_t message;
+    if ((SCP_CMD_ERR == result) && (NULL != packet) &&
+        (1U <= packet->data_len) &&
+        (RF_SCP_ERR_INVALID_PARAM == packet->data[0]))
+    {
+        group.status.state = RF_GROUP_WRITING;
+    }
+    else if ((SCP_CMD_OK == result) && (NULL != packet) &&
+             (RF_CMD_OK == rf_scp_decode_message(packet, &message)) &&
+             (group.status.group_id == message.body.config.group_id))
+    {
+        group.status.state = (0U == message.body.config.state) ?
+                             RF_GROUP_WRITING : RF_GROUP_ID_IN_USE;
+        group.status.report = message.body.config;
+        group.status.has_report = true;
+        group.poll_ms = HAL_GetTick();
+    }
+    else
+    {
+        group.status.state = RF_GROUP_UNCERTAIN;
+    }
+}
+
 static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
 {
     const rf_group_state_t state = group.status.state;
-    rf_scp_message_t message;
 
     group.command_pending = false;
     if (SCP_CMD_RESTARTED == result)
@@ -302,26 +328,7 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
     }
     if (RF_GROUP_CHECKING == state)
     {
-        if ((SCP_CMD_ERR == result) && (NULL != packet) &&
-            (1U <= packet->data_len) &&
-            (RF_SCP_ERR_INVALID_PARAM == packet->data[0]))
-        {
-            group.status.state = RF_GROUP_WRITING;
-        }
-        else if ((SCP_CMD_OK == result) && (NULL != packet) &&
-                 (RF_CMD_OK == rf_scp_decode_message(packet, &message)) &&
-                 (group.status.group_id == message.body.config.group_id))
-        {
-            group.status.state = (0U == message.body.config.state) ?
-                                 RF_GROUP_WRITING : RF_GROUP_ID_IN_USE;
-            group.status.report = message.body.config;
-            group.status.has_report = true;
-            group.poll_ms = HAL_GetTick();
-        }
-        else
-        {
-            group.status.state = RF_GROUP_UNCERTAIN;
-        }
+        check_group_response(result, packet);
         return;
     }
     if (RF_GROUP_ID_IN_USE == state)

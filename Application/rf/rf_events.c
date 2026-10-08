@@ -552,7 +552,8 @@ static void store_record(uint32_t now_ms)
     }
 }
 
-static void send_command(void)
+/* The packet local must not inflate the STORE/Flash branch of process. */
+static __attribute__((noinline)) void send_command(void)
 {
     scp_packet_t request = {.type = SCP_TYPE_GET};
 

@@ -1603,6 +1603,30 @@ void handle_post_rf_abort(void)
     http_send_json("{\"started\":true}", 16);
 }
 
+/* Release the form/log snapshot before NVRAM/Flash persistence. */
+static __attribute__((noinline)) bool parse_rf_settings(const char *json_body)
+{
+    jayirici_rf_config_t config;
+
+    if (!parse_rf_config(json_body, &config))
+    {
+        return false;
+    }
+    CSLOG("[HTTP] JSON parsed successfully\r\n");
+    for (size_t index = 0U; index < MAX_POWER_LINE_COUNT; index++)
+    {
+        if (config.in_use[index])
+        {
+            CSLOG("[HTTP] Line %u: HatID=%u, ZoneID=%u, "
+                  "EUI-64=[%s, %s, %s]\r\n",
+                  (unsigned)(index + 1U), config.hat_id[index],
+                  config.zone_id[index], config.r_eui64[index],
+                  config.s_eui64[index], config.t_eui64[index]);
+        }
+    }
+    return true;
+}
+
 /**
  * @brief Save desired RF settings and apply all active feeders in sequence.
  */
@@ -1625,7 +1649,6 @@ void handle_post_rf_config_json(const char *json_body)
     size_t body_len = strlen(json_body);
     CSLOG("[HTTP] JSON body length: %u bytes\r\n", (unsigned int)body_len);
     
-    jayirici_rf_config_t config;
 
     /* Staging: parse yarida kalirsa yarim yazma kalici store'a gecmez. */
     if (!rf_store_stage_begin()) {
@@ -1635,22 +1658,13 @@ void handle_post_rf_config_json(const char *json_body)
     }
 
     // Parse JSON - writes go to the staging copy via rf_store_get_mutable()
-    if (!parse_rf_config(json_body, &config)) {
+    if (!parse_rf_settings(json_body)) {
     	rf_store_stage_abort();
     	CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");
         http_send_error(400, "JSON parse error");
         return;
     }
 
-    CSLOG("[HTTP] JSON parsed successfully\r\n");
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
-        if (config.in_use[i]) {
-            CSLOG("[HTTP] Line %d: HatID=%u, ZoneID=%u, EUI-64=[%s, %s, %s]\r\n",
-                   i+1, config.hat_id[i], config.zone_id[i],
-                   config.r_eui64[i], config.s_eui64[i], config.t_eui64[i]);
-        }
-    }
-    
     /* Save the candidate before publishing it or starting RF operations. */
     const rf_apply_save_result_t result = rf_apply_save();
 

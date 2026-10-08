@@ -1711,3 +1711,25 @@ bekleme için sınırsız süre sayacı değildir.
 Merkezi regresyonlar gerçek envanter girişini kullanarak sorguların
 süreyi korumasını, neden değişimini, reseti ve tick taşmasını sınar.
 JSON alanları ve kaynak/gömülü web gösterimi ayrıca doğrulanır.
+
+
+## RF stack sınırları ve sadeleştirme — 08.10.2026
+
+**Amaç:** Büyük yerel packet/message tamponlarının başka işlem yolları
+boyunca stack'te tutulmasını azaltmak. **Kullanım yeri:** RF callback'leri,
+process ve kalıcı olay yazımı.
+
+PING ACK üretimi, response doğrulaması, grup kimlik kontrolü ve olay komut
+gönderimi ayrı noinline yardımcı sınırlarında tutulur. Yerel veriler
+statik RAM'e taşınmadı; kapasite/API/protokol davranışı değiştirilmedi.
+GCC 14.3.rel1 -Os ölçümü: RF process 312→64 B, response 272→24 B,
+grup callback'i 264→16 B, olay process'i 328→136 B. RF web Kaydet parse/log
+yardımcısına ayrıldı; kalıcı yazım yolundaki handler 800→24 B oldu. Kalıcı RF RAM 11.330 B
+olarak kaldı. Compiler değişiminde .su/assembly yeniden doğrulanmalıdır.
+
+Mevcut stack_monitor ile fiziksel kabul ayrıca yapılmalıdır. Fonksiyon
+frame boyutu tek başına tüm sistemin stack sınırını kanıtlamaz. UART RX
+halkası senkron Flash sırasında ayrıca dolabilir; yeni buffer veya DMA
+çözümü bu ölçüm olmadan eklenmemelidir. Tam Ceedling 1020/1020 ve son
+RF tekrar koşusu 431/431 geçti; dört üretim modülü C11 strict derlendi.
+Gerçek RF HTTP handler/staging/kayıt hata integration testleri de geçti.

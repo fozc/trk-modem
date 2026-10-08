@@ -409,9 +409,18 @@ static bool can_retry_error(const scp_packet_t *packet)
             (RF_SCP_CMD_PWR_TELEMETRY == packet->cmd));
 }
 
-void scp_on_response(const scp_packet_t *pkt)
+/* Release decode scratch before invoking a callback that may send or
+ * persist another packet. GCC inlining would keep it live in that path.
+ */
+static __attribute__((noinline)) bool response_is_valid(
+    const scp_packet_t *packet)
 {
     rf_scp_message_t message;
+    return RF_CMD_OK == rf_scp_decode_message(packet, &message);
+}
+
+void scp_on_response(const scp_packet_t *pkt)
+{
     scp_cmd_result_t   result;
 
     if ((NULL == pkt) || !cmd_ctx.busy || cmd_ctx.retry_pending ||
@@ -429,7 +438,7 @@ void scp_on_response(const scp_packet_t *pkt)
 				   pkt->cmd, pkt->seq);
         return;             /* baska istegin yanitina benziyor - atla */
     }
-    if (RF_CMD_OK != rf_scp_decode_message(pkt, &message))
+    if (!response_is_valid(pkt))
     {
         return;
     }
@@ -537,7 +546,8 @@ static void print_scp_packet(const scp_packet_t *pkt)
 }
 
 /** PING'e bostan ACK don (broadcast haric - R1 2.4) */
-static void reply_ping(const scp_packet_t *pkt)
+/* Keep the 250-byte ACK local out of the shared process stack frame. */
+static __attribute__((noinline)) void reply_ping(const scp_packet_t *pkt)
 {
     scp_packet_t ack;
 
@@ -669,6 +679,22 @@ static void handle_boot_notify(const scp_packet_t *pkt)
           (unsigned)major);
 }
 
+/* Capture reception time once; polling never retimestamps the sample. */
+static void handle_live_notification(const rf_scp_live_t *live)
+{
+    cp56time2a_t received_time = {.iv_bit = 1U};
+
+    if (rtc_hw_is_valid())
+    {
+        const bsp_rtc_t rtc = bsp_get_datetime();
+        received_time = cp56time2a_from_rtc(&rtc);
+    }
+    if (rf_handle_live(live, HAL_GetTick(), &received_time))
+    {
+        rf_alarm_live(live->source, &received_time);
+    }
+}
+
 /** Proaktik SET'ler - komut mekanizmasindan bagimsiz, her zaman islenir */
 static void handle_proactive(const scp_packet_t *pkt)
 {
@@ -697,21 +723,8 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         case RF_SCP_CMD_LIVE_DATA:
-        {
-            cp56time2a_t received_time = {.iv_bit = 1U};
-
-            if (rtc_hw_is_valid())
-            {
-                const bsp_rtc_t rtc = bsp_get_datetime();
-                received_time = cp56time2a_from_rtc(&rtc);
-            }
-            if (rf_handle_live(&message.body.live, HAL_GetTick(),
-                                &received_time))
-            {
-                rf_alarm_live(message.body.live.source, &received_time);
-            }
+            handle_live_notification(&message.body.live);
             break;
-        }
 
         case RF_SCP_CMD_TRIP_NOTIFY:
             (void)rf_handle_trip(&message.body.trip, HAL_GetTick());
@@ -745,8 +758,8 @@ static void handle_proactive(const scp_packet_t *pkt)
             (void)power_board_handle_raw(&message);
             break;
 
-        default:    /* MISRA 16.4 - S3-S5'te yeni case'ler gelecek */
-            CSLOG_WARN("[RF] proactive (henuz islenmiyor)\r\n");
+        default:    /* Validated notification without a consumer. */
+            CSLOG_WARN("[RF] notification has no consumer\r\n");
             break;
     }
 }
@@ -776,7 +789,7 @@ static void rf_comm_on_data_received(const scp_packet_t *pkt)
             reply_ping(pkt);
             break;
 
-        case SCP_TYPE_ACK:        // Requset cevaplari (GET, SET)
+        case SCP_TYPE_ACK:        /* Command replies (GET, SET). */
         case SCP_TYPE_ERROR:
         	scp_on_response(pkt);
             break;
@@ -924,7 +937,7 @@ PROCESS_THREAD(rf_comm_process, ev, data)
 
     etimer_set(&poll_timer, 10);
 
-    while (1)
+    for (;;)
     {
         PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&poll_timer));
         etimer_restart(&poll_timer);
