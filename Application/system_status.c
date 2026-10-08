@@ -83,6 +83,13 @@ void system_status_update(void)
     /* PB'de dogrudan PV akimi alani yok; panel akimi bilinmiyor (0). */
     system_status.panel_current = 0;
     system_status.panel_voltage = telemetry->pv_mv;  // mV
+    system_status.dc_voltage = telemetry->dc_mv;     // mV
+    system_status.input_current = telemetry->input_ma;   // mA
+    system_status.input_power_10mw = telemetry->input_power_10mw;
+    system_status.battery_power_10mw = telemetry->battery_power_10mw;
+    system_status.power_source = telemetry->source;
+    system_status.telemetry_age = power.telemetry_age_sec;
+    system_status.alarm_mask = power.active_alarms;
     system_status.battery_voltage = telemetry->battery_mv;  // mV
     system_status.battery_current = telemetry->battery_ma;  // mA
     system_status.battery_capacity        = telemetry->capacity_ah;  // Ah
