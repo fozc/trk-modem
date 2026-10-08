@@ -345,6 +345,8 @@ function updateRfSaveButton(){
   if(refresh)refresh.disabled=loading||rfStatusBusy;
 }
 async function readRfGroupStatus(manual=false){
+  if(loading||rfStatusBusy)return null;
+  showLoad();
   const desired=pageCache.rf,request=++rfStatusRequest;
   rfStatusBusy=true;updateRfSaveButton();
   const feedback=$('rf-status-read');if(feedback)feedback.textContent=t('rfStatusReading');
@@ -360,7 +362,8 @@ async function readRfGroupStatus(manual=false){
     if(request===rfStatusRequest){if(feedback)feedback.textContent=t('tReadErr')+e.message;toast(t('tReadErr')+e.message,'err')}
     return null;
   }finally{
-    if(request===rfStatusRequest){rfStatusBusy=false;updateRfSaveButton()}
+    if(request===rfStatusRequest)rfStatusBusy=false;
+    hideLoad();
   }
 }
 async function abortRfConfig(){
