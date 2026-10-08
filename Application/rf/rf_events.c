@@ -151,6 +151,19 @@ bool rf_events_drain_complete(uint32_t *total)
     return true;
 }
 
+const char *rf_events_drain_reason(void)
+{
+    if (EVENTS_STORE == state)
+    {
+        return "storage";
+    }
+    if (EVENTS_DEGRADED == state)
+    {
+        return "mh_degraded";
+    }
+    return "mh_records";
+}
+
 void rf_events_finish_drain(void)
 {
     drain_requested = false;

@@ -74,6 +74,10 @@ static uint32_t epoch_started_ms[4];
 static uint8_t epoch_feeder;
 static scp_cmd_done_fn_t epoch_done;
 static bool waiting_live;
+static uint32_t drain_started_ms;
+static uint32_t reason_started_ms;
+static const char *drain_reason = "none";
+
 static bool update_pending;
 static bool update_sent;
 static rf_inventory_status_t before_drain;
@@ -88,6 +92,37 @@ _Static_assert(MAX_POWER_LINE_COUNT >= 7,
                "MH inventory supports seven feeder IDs");
 _Static_assert(MAX_POWER_LINE_COUNT * 3U <= 32U,
                "Accepted inventory bitmap must fit a word");
+
+static void set_drain_reason(const char *reason)
+{
+    if (0 != strcmp(drain_reason, reason))
+    {
+        drain_reason = reason;
+        reason_started_ms = HAL_GetTick();
+    }
+}
+
+static void start_drain_timer(void)
+{
+    drain_started_ms = HAL_GetTick();
+    reason_started_ms = drain_started_ms;
+    drain_reason = "checking";
+}
+
+void rf_inventory_get_wait(rf_inventory_wait_t *out)
+{
+    if (NULL != out)
+    {
+        *out = (rf_inventory_wait_t){.reason = "none"};
+        if (RF_INVENTORY_DRAINING == rf_inventory_get_status())
+        {
+            const uint32_t now_ms = HAL_GetTick();
+            out->reason = drain_reason;
+            out->total_ms = now_ms - drain_started_ms;
+            out->reason_ms = now_ms - reason_started_ms;
+        }
+    }
+}
 
 /* ======================================================================
  * Index helpers
@@ -169,7 +204,7 @@ static void on_set_done(scp_cmd_result_t result, const scp_packet_t *rsp)
     else
     {
         skipped_count++;
-        CSLOG_WARN("[RF-INV] fider=%u faz=%u atlandi (hata)\r\n",
+        CSLOG_WARN("[RF-INV] satir=%u faz=%u atlandi (hata)\r\n",
                    (unsigned)(feeder_index + 1U),
                    (unsigned)(phase_index + 1U));
     }
@@ -298,8 +333,9 @@ static void send_next(void)
     {
         inventory_zone = body[0];
         inventory_zone_set = true;
-        CSLOG("[RF-INV] fider=%u faz=%u gonderiliyor (EUI=%02X..%02X)\r\n",
-              (unsigned)(feeder_index + 1U),
+        CSLOG("[RF-INV] satir=%u fider=%u faz=%u "
+              "gonderiliyor (EUI=%02X..%02X)\r\n",
+              (unsigned)(feeder_index + 1U), (unsigned)body[1],
               (unsigned)(phase_index + 1U),
               body[3], body[10]);
     }
@@ -332,6 +368,7 @@ bool rf_inventory_start(void)
     {
         before_drain = inventory_status;
         inventory_status = RF_INVENTORY_DRAINING;
+        start_drain_timer();
         waiting_live = true;
         update_pending = false;
         upload_timer_started = false;
@@ -450,18 +487,35 @@ static void continue_drain(void)
     if (!live_logs_empty(HAL_GetTick()))
     {
         waiting_live = true;
+        set_drain_reason("ay_logs");
         return;
     }
     if (waiting_live)
     {
         waiting_live = false;
         rf_events_request_drain();
+        set_drain_reason("mh_records");
         return;
     }
     uint32_t total;
-    if (!rf_alarm_is_idle() || !rf_events_drain_complete(&total) ||
-        !scp_is_free() || !rf_comm_can_load_inventory())
+    if (!rf_alarm_is_idle())
     {
+        set_drain_reason("alarm");
+        return;
+    }
+    if (!rf_events_drain_complete(&total))
+    {
+        set_drain_reason(rf_events_drain_reason());
+        return;
+    }
+    if (!scp_is_free())
+    {
+        set_drain_reason("scp");
+        return;
+    }
+    if (!rf_comm_can_load_inventory())
+    {
+        set_drain_reason("hub_ready");
         return;
     }
     if (update_pending)
@@ -730,6 +784,7 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
     update_done = done;
     before_drain = inventory_status;
     inventory_status = RF_INVENTORY_DRAINING;
+    start_drain_timer();
     waiting_live = true;
     update_pending = true;
     update_sent = false;

@@ -52,6 +52,17 @@ void rf_inventory_reset(void);
 
 rf_inventory_status_t rf_inventory_get_status(void);
 
+typedef struct
+{
+    const char *reason;
+    uint32_t total_ms;
+    uint32_t reason_ms;
+} rf_inventory_wait_t;
+
+/* RAM-only drain diagnostics; reads never restart the timers. */
+void rf_inventory_get_wait(rf_inventory_wait_t *out);
+
+
 /** Track transmitted upload requests for the documented 10 s gap. */
 void rf_inventory_request_sent(uint8_t cmd);
 

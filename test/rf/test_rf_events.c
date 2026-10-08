@@ -431,6 +431,7 @@ void test_failed_fault_sync_is_retried_without_appending_either_record(void)
     respond(&packet);
     sync_result = -1;
     rf_events_process(tick);
+    TEST_ASSERT_EQUAL_STRING("storage", rf_events_drain_reason());
     TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
     TEST_ASSERT_EQUAL_UINT32(1U, fault_writes);
     TEST_ASSERT_EQUAL_UINT32(2U, requests);
