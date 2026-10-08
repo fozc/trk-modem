@@ -1,5 +1,9 @@
 # Troika Smart Breaker Modem — Üretim Hazırlık Raporu (Production Readiness)
 
+**Güncel durum — 06.10.2026:** Tam Ceedling koşusunda 74 dosyada **875/875 test**, **9/9 integration paketi** geçti. CESQ ayrılmış raw değer sorunu kullanıcının aralık düzeltmesiyle kapandı; COPS'un LED sınıflandırmasını aşan ikinci yolu ortak sınıflandırmaya bağlandı (§10.23). ARM Release gsm_engine.c derleme/link uyarı ve hata vermedi. Fiziksel cihaz kabulü yapılmadı. Önceki inceleme ve test sayıları tarihsel kayıttır.
+
+**İlk inceleme künyesi — 02.10.2026:**
+
 | | |
 |---|---|
 | Rapor tarihi | 02.10.2026 |
@@ -2017,9 +2021,406 @@ testler tekrar çalıştırılmamıştır. CubeMX değişikliklerinin yalnız
 USER CODE alanlarında kaldığı kontrol edilmiştir. Fiziksel cihaz testi,
 cihaza yükleme ve push yapılmamıştır. Önceden izlenmeyen diğer belgeler
 commit kapsamına alınmamıştır.
+### 9.54 GSM #SI sabit parse penceresinin incelemesi — D10.15, 05.10.2026
+
+Kullanıcı datasheet üzerinden #SI yanıtını ve xscanf(ptr,64,...) sınırını
+kontrol etmeyi istemiştir. Üretim kodu değiştirilmemiştir.
+
+**Doküman sınırı:** Telit LE910R1 Download Zone sayfası güncel
+TC_LE910R1_AT_Commands_Reference_Guide_r8.pdf dosyasını listeler; download
+linki login sayfasına yönlenmiştir. Bu incelemede r8 içeriği okunmamıştır.
+Erişilebilen Telit LE9x0 AT Commands Reference Guide 80407ST10116A Rev.14.1
+(2017-05-14), sayfa 307–308 Socket Info #SI bölümünde bir connId ve dört
+sayaç alanı, connId=1..6 ve connId verilmezse altı soket satırı tanımlar.
+Bu eski belgenin applicability tablosu LE910R1'i içermez; R1'e özgü biçim,
+ek alan veya sayısal limit için birebir belge teyidi iddia edilmez.
+https://www.telit.com/le910r1-download-zone/
+https://multitech.com/wp-content/uploads/80407ST10116A_telit_le9x0_at_commands_r14_1.pdf
+
+**Mevcut kod:** gsm_si_all_cb() socket ID'den sonraki dört alanı %u32 ile
+okur. Kodun desteklediği uint32_t değerleri en fazla on ondalık hane
+olduğundan dört değer ve dört virgül en fazla 44 karakterdir; 64 pencere
+bu alanları kesmez. Bu 44 hesabı dokümanda ilan edilmiş counter bit-width
+iddiası değil, uygulamanın kabul ettiği tiplerden türetilmiştir. ConnId
+seçilmiş veya toplu #SI yanıtının tamamının 64 byte olması gerekmez:
+pencere her satırda connId'den sonraki alana uygulanır. Sonraki satırlar
+ayrı strstr aramasıyla bulunur.
+
+AT motoru 1280-byte response_buffer'ın son byte'ını NUL için ayırır,
+her alınan byte sonrası response_buffer[response_buffer_len]=0 yazar.
+Parser ve sayısal scanner NUL'da durur; tamamlanan normal modem yanıtında
+sabit 64, kısa son satırdan sonra sahte sayaç okunmasına neden olmamıştır.
+Sabit sınır gerçek rx.len üzerinden türetilmez; beklenmeyen çok uzun/bozuk
+bir yanıtın fiziksel tampon sonuna yakın #SI başlığı taşıması gibi durumlar
+bu normal-biçim hesabıyla güvenli ilan edilmez. Taşan pointer-end hesabının
+ve bozuk modem trafiğinin bütünü için ayrı sınır incelemesi gerekir.
+Bu turda fiziksel sınır dışı okuma veya sahada veri kesilmesi gösterilmemiştir.
+
+**Doğrulama:** test/gsm/test_gsm_response_scenario.c merkezi Ceedling
+paketine üç senaryo eklenmiştir. Gerçek gsm_engine.c/xscanf.c çalışır;
+AT response fake'i gerçek motorun 1280-byte allocation/NUL sözleşmesini
+kullanır. Telit eski rehberindeki altı-soket örneği altı geçerli kayıt
+üretir. Uygulamanın dört maksimum uint32_t alanı socket 4 üzerinde eksiksiz
+okunur; socket 4, socket 1–3'ün ayrı uint16 ACK sınırını bu hesapla
+karıştırmamak için seçilmiştir. Eksik son alan geçerli kayıt sayılmaz.
+Mevcut büyük sayaç ve dar ACK reddi testleri de korunur. Paket 28/28 geçti;
+log: test/build/production-audit-2026-10-03/si-window-review.log.
+
+**Sonuç/aksiyon:** Normal, mevcut kodun kabul ettiği #SI biçiminde 64
+pencerenin yetersizliği doğrulanmamıştır; bu nedenle parser davranışı
+veya fallback eklenmemiştir. Sabitin rx.len'den türetilmesi, özellikle
+bozuk/tampon sınırındaki yanıtlar için bir savunma iyileştirmesi olarak
+ayrı değerlendirilebilir. LE910R1 r8 erişimi sağlanınca sürüme özgü biçim
+karşılaştırılmalıdır. git diff --check geçti; ARM derlemesi ve cihaz testi
+tekrar çalıştırılmamış, commit yapılmamıştır.
+### 9.55 NULL string output koruması ve sonraki switch maddesi — 05.10.2026
+
+Kullanıcı xfputs NULL konusu için kararı ajana bırakıp sonraki bulguya
+geçilmesini istemiştir. Public string-output girişinde en küçük koruma
+seçilmiştir: xfputs() NULL metinde hiçbir çıktı üretmeden döner. xputs(NULL)
+ve xprintf_set_color(NULL) bu ortak sınır üzerinden güvenli no-op olur.
+Header'da sözleşme belirtilmiştir. Geçerli metin, renk ve output callback
+akışı korunur; reset/fallback/log eklenmemiştir. Mevcut üretim çağıranında
+NULL metin gözlenmediği için bu bir saha arızası düzeltmesi olarak sunulmaz.
+
+Merkezi test/libs/test_xsnprintf_format_scenario.c paketine bir senaryo
+ eklenmiştir. Gerçek xfputs/xputs/xprintf_set_color fonksiyonları NULL ile
+ çağrılır; callback'in hiç çağrılmadığı ve sonraki valid string'in normal
+ gönderildiği doğrulanır. Test gerçek xprintf.c çalıştırır; output callback
+ yalnız transport sınırını ayırır. Callback hedefi test sonunda geri yüklenir.
+
+- Tüm merkezi Ceedling paketi 524/524 geçti; atlanan test yok.
+- Formatter paketi 22/22 geçti. Son test karakter tip düzenlemesinden sonra
+  ilgili paket yeniden 22/22 geçmiştir; üretim kodu bu adımda değişmemiştir.
+- ARM Release incremental derlemesi ve raw-byte equality/ECDSA self-check
+  başarılı; logda warning/error yok. git diff --check geçti.
+
+Loglar test/build/production-audit-2026-10-03/ altında formatter-null-all.log,
+formatter-null-after.log ve formatter-null-release.log içindedir.
+Fiziksel cihaz testi, cihaza yükleme ve commit yapılmamıştır.
+
+**Sıradaki kalan D10.15 maddesi:** shell.c switch(esc_seq) ve history
+switch(special_chr) default kolu içermiyor. esc_seq başlangıcı 0, ESC ile
+1, sonraki adımlarla 2/3 ve bitişte 0'dır; mevcut geçerli akışta diğer state
+üretilmez. History bloğu mevcut konfigürasyonda etkin olarak doğrulanmamıştır.
+Bu, BARR/MISRA switch/default uyumu ve savunma kontrolü konusudur; gerçek
+bozuk state veya saha arızası gösterilmemiştir. Üretim switch'lerine henüz
+kod eklenmemiştir. History etkinleştirmesi ve ok tuşu flag maddesi önceki
+kullanıcı geçme kararları kapsamında ayrı kalır.
+## 10. Güncel üretim durumu ve bulgu tablosu
+
+**Sürüm:** 1.0 · **Tarih:** 05.10.2026.
+
+**Amaç:** Test envanterini, kapanış kanıtlarını ve kullanıcı ertelemelerini
+tek güncel değerlendirmede toplamak.
+
+**Kullanım yeri:** Sürüm hazırlığı, inceleme sırası ve cihaz kabul planı.
+
+**Kapsam:** Son commit `28ca789`, çalışma ağacındaki NULL koruması/#SI
+testleri ve yeni SHA-256/HMAC/AT sınır testleri. Eski bölümler tarihsel kayıttır; aşağıdaki durum tablosu güncel
+okuma noktasıdır. Bu konsolidasyon yeni bir tam kaynak/saha denetimi değildir.
+
+**Sonuç:** AT düzeltmesi kapalıdır (§10.14). CESQ aralık ve COPS LED yolu düzeltmeleri tam host koşusunda doğrulandı (§10.23). Seri üretim/saha kabulü henüz
+tamamlanmış değildir. Ertelenmiş bir madde kapalı sayılmamalıdır.
+
+### 10.1. Güncel test ve derleme kanıtı
+
+| Kontrol | Sonuç | Kanıt ve sınır |
+|---|---|---|
+| Merkezi Ceedling | 74 dosya, 875/875; failed/ignored=0 | cops-led-all-host-2026-10-06.log/.xml; COPS callback paketi 33/33 (§10.23) |
+| Merkezi integration | 9/9 paket geçti, 06.10.2026 | cops-led-all-host-2026-10-06.log |
+| Son ARM Release | gsm_engine.c yeniden derlendi ve link geçti; warning/error yok | cops-led-release-2026-10-06.log; incremental, clean/Debug/fiziksel kabul değildir |
+| Paket kontrolü | Raw-byte equality + ECDSA geçti | sring-package-final.log; raw-byte equality + ECDSA; cihazda kurulum/boot kanıtı değildir |
+| C++ başlık bağlantısı | C formatter ile link ve çağrı geçti | xprintf-linkage-review; bütün uygulamanın C++ build'i değildir |
+| Fiziksel cihaz/SCADA/OTA/güç kesintisi | Bu çalışma için yapılmadı | Host sonuçları bu kapıyı kapatmaz |
+
+Log kökü `test/build/production-audit-2026-10-03/`'tür. Tam test
+dosyaları ve güncel dar warning istisnaları [test/README.md](test/README.md)
+ve `test/project.yml` içinde tutulur. Eski 272/377/451 gibi sayılar yalnız
+ilgili tarihsel koşuya aittir; güncel toplamın yerine kullanılmamalıdır.
+
+### 10.2. Tek durum tablosu
+
+Tablo 152 tekil eski kimliği ve ilave güncel kabul kapılarını içerir.
+Eski raporda tekrar edilen üç başlık tek kimlik altında toplanmıştır.
+"Eski kayıt / yeniden kontrol yok" bir aktif bug kararı veya kapanış
+kararı değildir. Kapanış kaydına atıf, o tetikleyicinin bu konsolidasyonda
+yeniden fiziksel test edildiğini göstermez. Kısmi madde bütünüyle
+kapalı ilan edilmemelidir. Tarihsel başlıklardaki eski satır numaraları
+güncel konum olarak kullanılmamalıdır.
+
+| ID | Konu / tarihsel başlık | Güncel durum | Kanıt / kalan aksiyon |
+|---|---|---|---|
+| Y5.10 | [YÜKSEK] — STOPDT_ACT işlenmiyor: `link_active` true kalıyor — `iec104.c:751-755` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y5.6 | [YÜKSEK] — Çift TX yolu: fault süreçleri slot kuyruğunu atlayıp doğrudan sokete yazıyor — `iec104_application.c:106,176` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y5.7 | [YÜKSEK] — Host test paketi ölü: silinmiş modülü derliyor; protokol test kapsamı sıfır — `libiec104/test/Makefile:26` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y2.1 | [YÜKSEK] — `int_master_enable` ARM dalı kesmeleri kapatır (açması gerekirken); `int_master_read_and_disable` ARM dalı değer döndürmez — `contiki-kernel/sys/int-master.c:47-65` | Kapsam dışı | §9.3: Contiki ARM port incelemesi kullanıcı kararıyla kapsam dışında. |
+| Y2.2 | [YÜKSEK] — `.cproject` hiçbir uyarı bayrağı içermiyor — `.cproject:44-47,151-153` | Kısmi / süreç kapısı açık | §9.3 ve §10.3: Application warning düzeltmeleri tamam; tam zorunlu ARM warning ailesi/CI/14 kapsam dışı tanı ayrı. |
+| Y2.3 | [YÜKSEK] — `_Min_Heap_Size = 0x200` ve `_sbrk` derlemede mevcut — `STM32U375VETX_BOOT.ld:43-44`, `Core/Src/sysmem.c` | Aktif hata doğrulanmadı / korundu | §9.6: mevcut imajda allocation sembolü bulunmadı; 512-byte linker rezervi kullanıcı kararıyla korundu. |
+| Y2.4 | [YÜKSEK] — UART5 (BMS) ISR'i `bms_rx_buffer/bms_rx_index`'i `volatile` olmadan paylaşır; tüketici süreç kapalı ama RX kesmesi açık — `bms_reader.c:15-16,34-38`, `app_main.c:307-308` | Kısmi | §9.33: BMS RX paylaşımı/snapshot düzeltildi; reader etkinliği/hardware kararı ayrı. |
+| O2.5 | [ORTA] — Ölü HAL kodu ve HAL iç alan müdahalesi — `stm32u3xx_it.c:401` (return sonrası `HAL_UART_IRQHandler(&huart5)`), `:278-286` (`huart1.gState/TxISR` elle) | Geçildi | §9.41: ölü kod/legacy UART5 davranışı için kullanıcı sonraki maddeye geçti; değişiklik yapılmadı. |
+| O2.6 | [ORTA] — rtimer stub'ları her derlemede `#warning` üretir — `rtimer.c:64-71` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| O2.7 | [ORTA] — Release debug oturumu bootloader'sız kartta boot etmez; Debug launch ST-LINK seri no kilidi — `Release.launch:18,45`, `.launch:46-47` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D2.8 | [DÜŞÜK] — `CPU_CLOCK_FREQ_ = 550000000` (x86 kalıntısı, gerçek 96 MHz) — `platform-conf.h:10-11` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D2.9 | [DÜŞÜK] — `clock_delay_usec` boş stub — `clock.c:43-46` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D2.10 | [DÜŞÜK] — RAM2 (64 KB) hiçbir bölüme atanmamış; `_estack` RAM1 tepesi — `*_BOOT.ld:50` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D2.11 | [DÜŞÜK] — Kalp atışı süre yorumları yanlış — `app_main.c:75-79` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D2.12 | [DÜŞÜK] — Ana döngü WFI'siz %100 meşgul; UART/DMA kesmeleri NVIC 0, timebase TIM17 öncelik 15 — `app_main.c:313-319`, `stm32u3xx_hal_conf.h` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| K3.1 | [KRİTİK] — `time_service_tick` hiç çağrılmıyor — SBO select-timeout ölü; iki saat birbirine karışmış — `time_service.c:10,26`, `iec104.c:608,620` | Kısmi / tick düzeltildi | bsp_tick_handler time_service_tick çağırır; §1/§9.1 zaman tekilleştirme. SBO/kumanda etkinliği ayrı erteli kapıdır. |
+| K3.2 | [KRİTİK] — `lifetime` kalıcı hale hiç getirilmiyor — periyodik reset/enerji kesintisinde çalışma süresi sıfırlanıyor — `app_main.c:93-98`, `periodic_reset.c:43-49` | İstenen kapsam tamam | §9.1: lifetime mevcut NVRAM alanında, 25 saatte bir ve periyodik reset öncesi sync; her reset/power-cut için kayıpsızlık iddiası yok. |
+| K3.3 | [KRİTİK] — `boot_init()` çağrılmıyor — GSM/HTTP fw-update indirme hedefi statik varsayılan — `boot.c:29,81`, `gsm_firmware_update.c:33,142` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K3.4 | [KRİTİK] — `breaker_initialized` asla true olmuyor; SBO IOA eşleşmesi yorumda — `breaker.c:17,103,169-200` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| K3.5 | [KRİTİK] — XMODEM fw yazma yolunda erase/write dönüşleri yok sayılıyor + EWDT kick yok + eski imaj kuyruğu silinmiyor — `xmodem_process.c:130-131,177-178` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K3.6 | [KRİTİK] — `modem_config_set_imei` uzunluk kontrol etmeden 16 bayt kopyalıyor — `modem_config.c:305-310` | Güncel kaynakta düzeltilmiş | modem_config_set_imei NULL/boyut/NUL kontrolü yapar; modem_config test paketi geçti. Bu konsolidasyonda fiziksel IMEI yolu sınanmadı. |
+| Y3.7 | [YÜKSEK] — `nvram_sync` bloklayıcı (K11 güncel durum: sürüyor) — `nvram.c:447-463` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| Y3.8 | [YÜKSEK] — `life_timer` (uint32 ms) sarması epoch'u 49,7 gün geri sıçratıyor — `bsp.c:142-145,163` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| Y3.9 | [YÜKSEK] — `version.h` elle bakım ediliyor — `version.h:17-19` | Kısmi | §9.10: firmware endpoint fallback VERSION sabitlerinden; eski araçlar/build kimliği bütünlüğü ayrıca teyit edilmelidir. |
+| Y3.10 | [YÜKSEK] — Reset yollarında kritik durum flush'ı yok; ikinci erteli-reset isteği sessizce yok sayılır — `reboot.c:14-22`, `process.c:113-118` | Kısmi / açık kalan yol | §9.1/§9.3: periyodik reset sync var; genel reboot_system flush TODO ve ikinci reset isteği konusu ayrı. |
+| Y3.11 | [YÜKSEK] — `nvram_t` packed değil — CRC derleyici padding'ine bağımlı — `types.h:206-221`, `nvram.c:29-34` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| Y3.12 | [YÜKSEK] — IEC-104 default IOA ataması faz döngüsünde skaler alanı 3 kez eziyor — `nvram.c:130-131` | Düzeltildi | §9.1/§9.3: varsayılan IOA/sınır, config ve periyodik reset doğrulaması; mevcut ilgili Ceedling paketleri geçti. |
+| Y3.13 | [YÜKSEK] — `periodic_reset` periyot çarpımı taşabilir + setter üst sınırsız — `periodic_reset.c:34`, `modem_config.c:226-229` | Düzeltildi | §9.1/§9.3: varsayılan IOA/sınır, config ve periyodik reset doğrulaması; mevcut ilgili Ceedling paketleri geçti. |
+| Y3.14 | [YÜKSEK] — XMODEM `evt_pending` oku-sil yarışı — `xmodem.c:390-393` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D3.15 | [DÜŞÜK] — `IEC104_TEST` build'inde `nvram_test_fill` flash okumasıyla eziliyor — `nvram.c:376-384` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D3.16 | [DÜŞÜK] — Dağınık küçük sapmalar | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| K4.1 | [KRİTİK] — APN kimlikli `#SGACT` komutunda CR yanlış ofsete yazılıyor — GPRS aktivasyonu kimlik bilgisi konfigüre edilirse hiç çalışmaz — `gsm_engine.c:3022, 3380` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y4.2 | [YÜKSEK] — Uzun komutta 1 baytlık yığın taşması + yok sayılan gönderim hatası → 5 dakikalık GSM kilidi — `gsm_engine.c:2851,3380-3389`, `at_engine2.c:206-209` | Canlı yollar düzeltildi / latent kalıntı | §1 GSM kapanış kaydı: AT uzunluk/gönderim reddi korunur; çağrılmayan gsm_engine_send_at_cmd helper konusu ayrı. |
+| O4.3 | [ORTA] — Yanıt tamponu taşma tahliye yolu ölü kod (off-by-one) — `at_engine2.c:672-673, 754` | Düzeltildi | at_engine2.c response_buffer son byte NUL ve SIZE-1 tahliye yolu; §9.54 kaynak kontrolü. |
+| O4.4 | [ORTA] — Dialer yolu üç bağımsız nedenle ölü — `gsm_engine.c:3193-3200, 546-558`, `gsm_process.c:660` | Ertelendi | §9.16: dialer madde ertelemesi. |
+| O4.5 | [ORTA] — Ölü yardımcı fonksiyonlar geri bağlanırsa buffer underflow üretir — `gsm/utils.c:273-288, 350-366, 469` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| O4.6 | [ORTA] — `gsm_log_modem_event_with_arg` NULL işaretçiyi memcpy'ye geçirebilir — `gsm_log.c` | Düzeltildi / mevcut sınır | gsm_elog.c NULL/boş argüman reddi; güncel GSM incelemesi §9.43. |
+| D4.7 | [DÜŞÜK] — ~12 callback'te `case GSM_ERROR:` boş fallthrough (break yok) — `gsm_engine.c` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4.8 | [DÜŞÜK] — COPS parse'ında `rx.buff[index+7]` sınır kontrolü yok — `gsm_engine.c:2396` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4.9 | [DÜŞÜK] — Başlık/uygulama drift'i ve float timeout — `at_engine2.h/.c:970-1021, 220` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4.10 | [DÜŞÜK] — NTP/CCLK tarih parse'ında `ptr += 3` zinciri `rx.len`'e bağlı değil — `gsm_engine.c:1184-1202` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| K4b.1 | [KRİTİK] — `gsm_reset_process_old` IEC104 listener'ı temizlemiyor — modem reseti sonrası IEC104 kanalı kalıcı-sessiz kilitlenebiliyor, periodical bloke olabiliyor — `gsm_process.c:282-315` (yalnız `gsm.listener[GSM_LISTENER_WEB].state = GSM_LS_IDLE`) | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K4b.2 | [KRİTİK] — Firmware güncellemesi B bölmesine hedeflendiğinde ilk yazmada daima başarısız — `gsm_firmware_update.c:59` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| O4b.3 | [ORTA] — `gsm_wtd` yalnız "stuck-BUSY" yakalıyor; "stuck-FREE" kilitleri göremiyor — `gsm_wtd.c:154-162` | Düzeltildi | gsm_wtd liveness akışı; 4 Ceedling senaryosu, §9.43. |
+| O4b.4 | [ORTA] — Dialer `GSM_HES_GET_RES_DATA_MODE`: ele alınmayan sonuç değerleri motoru süresiz busy bırakıyor — `gsm_dialer_process.c:329-357` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4b.5 | [DÜŞÜK] — `gsm_init_next_step` vektör sonunu okuduktan sonra kontrol ediyor (latent OOB) — `gsm_init.c:137-156` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4b.6 | [DÜŞÜK] — İlk açılışta periodical zamanlayıcılar mutlak sabitle atanıyor — `gsm_process.c:621-624` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4b.7 | [DÜŞÜK] — `gsm at` yardım örneği bozuk komut üretir — `gsm_shell.c:81-104,600` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4b.8 | [DÜŞÜK] — `#HTTPRING` ayrıştırması ölü kod + taşma kusurları — `gsm_process.c:143-203` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4b.9 | [DÜŞÜK] — Socket istatistiğinde oturum kapanışı eksik — `gsm_listener_process.c:495-505` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4b.10 | [DÜŞÜK] — `socket_timer` ofset sözleşmesi iki dosyada tutarsız (WEB 17 sn vs makro 15 sn) — `gsm_engine.c:312/317` ↔ `gsm_listener_process.h` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4b.11 | [DÜŞÜK] — Dialer'da ölü koruma (`join_counter` artırılmıyor) ve anlamsız karşılaştırma (`gsm_network_timer < 10`) — `gsm_dialer_process.c:220,307` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D4b.12 | [DÜŞÜK] — Tick sarımı stili karışık: wrap-güvenli çıkarma ile mutlak `>=`/`<` yan yana — `gsm_process.c:636`, `gsm_listener_process.c:841` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| K5.1 | [KRİTİK] — Parçalı ilk APDU tamamen atılıyor (RX reassembly) — TCP segment sınırına denk gelen her kare desync üretir — `iec104.c:1248-1258` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K5.2 | [KRİTİK] — TX zinciri hata körlüğü: `io.send` dönüşü yok sayılıyor; slot dolunca kare düşer ama sayaçlar ilerler — `iec104.c:121-153`, `iec104_process.c:94-130` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K5.3 | [KRİTİK] — Buff yolu: sayaç artırımı yer kontrolünden ÖNCE; `k_max` denetimi yok — `iec104.c:2285-2308, 2411-2434` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K5.4 | [KRİTİK] — Uzunluk doğrulaması IOA 3 baytını saymıyor (off-by-3) — `iec104.c:1024-1036`, `iec104_data_types.h:98-99` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K5.5 | [KRİTİK] — C_CS_NA_1 ACT_CON master'ın kontrol alanını (N(S)/N(R)) aynen echo'luyor; IV denetimi teyitten sonra — `iec104.c:689-699` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y5.8 | [YÜKSEK] — `iec104log` shell komutu çakışması — event log'un arayüzü hiç kayda girmiyor — `iec104_log.c:493` vs `iec104_event_log.c:547` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y5.9 | [YÜKSEK] — Üretim init'inde koşulsuz dummy test verisi — `iec104_process.c:402, 63-91` | Ertelendi / üretim kapısı açık | §9.3/§9.29/§9.44: gerçek RF/ölçüm/arıza üreticisi kurulacak; dummy korunur. |
+| Y5.11 | [YÜKSEK] — C_DC_NA_1 "destekleniyor" listesinde ama handler'ı yok; C_SC_NA_1 hiç derlenmiyor — `iec104.c:21-30, 1038-1060` | Mevcut derleme için kapatıldı | §9.14: desteklenmeyen kontrol komutları reddedilir; gerçek SBO/kumanda zinciri açık. |
+| Y5.12 | [YÜKSEK] — iec104_log: kopuş nedeni hep aynı; connect tarafında flap süppresyonu yok — `iec104_log.c:112-148` | Kısmi | §1: disconnect reason parametreli; başlıktaki connect flap suppression alt koşulunun güncel kapanışı bu konsolidasyonda doğrulanmadı. |
+| O5.13 | [ORTA] — `siq.spi = (quality << 1) \| value` — 1-bit bitfield'a atama, quality sessizce düşer — `iec104.c:1355` | Önceki kapanış kaydı | Eski bulgu başlığındaki kapanış kaydı taşındı; bu turda yeniden fiziksel denetim yapılmış sayılmaz. |
+| O5.14 | [ORTA] — `close_socket_req` volatile değil — `gsm_engine.h:379` — **YANLIŞ POZİTİF, KAPATILDI** (bkz. §0; §4b'deki değerlendirme geçerlidir) | Önceki yanlış-pozitif kaydı | Eski bulgu başlığındaki kapanış kaydı taşındı; bu turda yeniden fiziksel denetim yapılmış sayılmaz. |
+| O5.15 | [ORTA] — libiec104 → uygulama katmanına sızıyor — `iec104.c:7-19` + 850/929/1288/1311 | Ertelendi / üretim kapısı açık | §9.3/§9.29/§9.44: gerçek RF/ölçüm/arıza üreticisi kurulacak; dummy korunur. |
+| O5.16 | [ORTA] — Ölü/bozuk kod parçaları — `iec104.c:159` (`i < length && i < length`), `862-871` (gövdesiz `% 0x7FFF` hatalı fonksiyon), `iec104_process.c:182` (bağlanmamış handler) | Önceki kapanış kaydı | Eski bulgu başlığındaki kapanış kaydı taşındı; bu turda yeniden fiziksel denetim yapılmış sayılmaz. |
+| O5.17 | [ORTA] — RX append kesmesi (L16) hâlâ açık — `iec104.c:1145-1148` | Önceki kapanış kaydı | Eski bulgu başlığındaki kapanış kaydı taşındı; bu turda yeniden fiziksel denetim yapılmış sayılmaz. |
+| K6.1 | [KRİTİK] — Parolalar cihazın kendi IP'sinden türetiliyor — kimlik doğrulama fiilen kamuya açık; brute-force koruması yok — `http_handlers.c:274-310` | Ertelendi / açık | §9.3: IP tabanlı parola korunur; cihaz kimliği kabulü açık. |
+| K6.2 | [KRİTİK] — Oturum tokeni öngörülebilir, konsola basılıyor, URL'de taşınıyor — `http_handlers.c:315-329` | Kısmi | §9.1: RNG token ve log gizleme düzeltildi; URL token/parola/cihaz kimliği sınırı devam eder. |
+| K6.3 | [KRİTİK] — RFWU: REBOOT/QUERY/ABORT komutları kimlik doğrulamasız — tekrarlanabilir uzaktan DoS — `raw_tcp_fw_update.c:384-404` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K6.4 | [KRİTİK] — RFWU paylaşılan anahtarı kaynakta gömülü (`"SMAR"`), değiştirme yolu yok; auth tokeni statik/replay edilebilir — `raw_tcp_fw_update.h:55`, `raw_tcp_fw_update.c:234-245` | Kısmi | §9.1 ve §10.3: RFWU v2 challenge/HMAC var; ortak anahtar ve cihaz başına izolasyon ertelemesi sürer. |
+| Y6.5 | [YÜKSEK] — GET yönlendirmesinde admin rol kontrolü yok — SIM PIN, APN şifresi, syslogs, faults ve **reboot** "user" rolüne açık — `http_server.c:105-218` vs `:243` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y6.6 | [YÜKSEK] — `pos += xsnprintf(...)` birikim deyimi yapısal olarak güvensiz; `/faults` işleyicisinde headroom yok — `http_handlers.c:1682-1690`, `xprintf.c:342-345,489` | Düzeltildi / testli | xsnprintf dönüş/sınır sözleşmesi, HTTP/config testleri; §9.1/§9.52. |
+| O6.7 | [ORTA] — POST /config/iec104 `ScadaIPAdresi` hiç parse edilmiyor — değişiklik sessizce kayboluyor — `json_config.c:1043-1047`, `http_handlers.c:747,961-964` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| O6.8 | [ORTA] — RF config doğrulaması JSON anahtar sırasına bağlı — `json_config.c:1234-1264` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| O6.9 | [ORTA] — Konsol günlüklerinde hassas veri — `json_config.c:1754-1757` (SIM PIN, APN şifresi), `http_handlers.c:491` (POST gövdesi), `http_response.c:125-131` (tüm yanıt gövdeleri) | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| O6.10 | [ORTA] — HTTP fw-update: chunk checksum opsiyonel, uygulamada final doğrulama yok — `http_handlers.c:1909-1913, 2025-2028`, `gsm_firmware_update.c:86-107` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| O6.11 | [ORTA] — FW yazma sınır sabiti A bölmesine sabit — hedef B seçilirse ilk chunk'ta red — `gsm_firmware_update.c:59` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D6.12 | [DÜŞÜK] — Content-Length işaretli int taşması (UB) — `http_request_parser.c:196-207` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D6.13 | [DÜŞÜK] — >2047 baytlık TCP segmenti tümüyle düşürülür — `gsm_http_server.c:72-87` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D6.14 | [DÜŞÜK] — TX ring dolunca yanıt Content-Length sonrası sessizce kesilir; index.html 16 KB ring'e ~15,6 KB ile sınıra yakın — `gsm_http_server.c:99-111` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D6.15 | [DÜŞÜK] — Query parametre `strstr` alt diz eşleşmesi; `strtoul` stdlib — `http_server.c:304-317` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D6.16 | [DÜŞÜK] — Keep-alive pipeline ikinci istek atılır — `http_server.c:462-465` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D6.17 | [DÜŞÜK] — `stdio.h` include + sınırsız `xsprintf` (256 B stack) — `web_server.c:10`, `http_response.c:112` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| Y6b.1 | [YÜKSEK] — Baud değişimi iletim/DMA aktifken ön koşulsuz uygulanıyor — `modbus_process.c:524-534,624-628` | Ertelendi / hardware-altyapı kararı | §9.16/§9.31: PowerBoard/BMS/baud/echo ve gerçek alarm kaynağı kararları yeniden açılmadı. |
+| Y6b.2 | [YÜKSEK] — Kayıt haritası belgesi 8 hat vaat ediyor, firmware 7 hat destekliyor — `MODBUS_REGISTER_MAP.md:127,143` vs `modem_types.h:13`, `modbus_process.c:31-34` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y6b.3 | [YÜKSEK] — Web'den CihazID (slave ID) değişikliği çalışma anında uygulanmıyor — `modbus_process.c:543-544`, `json_config.c:2204` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| Y6b.4 | [YÜKSEK] — "Aku uyarı" kaydı (50000) sabit 23 döndürüyor — `modbus_process.c:432-436` | Ertelendi / hardware-altyapı kararı | §9.16/§9.31: PowerBoard/BMS/baud/echo ve gerçek alarm kaynağı kararları yeniden açılmadı. |
+| Y6b.5 | [YÜKSEK] — RS-485 kendi gönderiminin geri dönüşü (echo) engellenmiyor; FC06 yankısı komutu yeniden icra eder — `modbus_process.c:126` (yalnız OE sürülür; MODBUS_RE tanımsız) — kod tarafı koruma eksikliği DOĞRULANDI, donanım etkisi ŞÜPHELİ | Ertelendi / hardware-altyapı kararı | §9.16/§9.31: PowerBoard/BMS/baud/echo ve gerçek alarm kaynağı kararları yeniden açılmadı. |
+| O6b.6 | [ORTA] — Modem-reset FC06 yanıtı asla gönderilemiyor — `modbus_process.c:504-514`, `modbus_rtu_slave.c:231-243` | Düzeltildi | §9.18: reset ACK önce, mevcut gecikmeli reset sonra; merkezi test. |
+| O6b.7 | [ORTA] — SCP çözümcüde `SRC == 0x00` reddi eksik (spec doğrulama sırasından sapma) — `scp.c:62-135` vs `doc/SCP_Arayuz_Paketi_R1_yeniden_yazim.md:674` | Düzeltildi | §9.17: SCP kaynak adresi doğrulaması; merkezi test. |
+| O6b.8 | [ORTA] — Yanlış uzunluklu FC03/FC06 istekleri sessizce düşürülüyor (exception yanıtı yok) — `modbus_rtu_slave.c:138-140,209-211` | Düzeltildi | §9.19: Modbus kısa/geçersiz istek reddi; merkezi test. |
+| O6b.9 | [ORTA] — Başlık, desteklenmeyen FC'ler için "bayt sayısıyla çerçeveleme" iddiasında — `modbus_rtu_slave.h:32-50,264-266` | İddia güncellendi / kanıtlı | §9.20: gerçek çerçeveleme yolu kontrol edildi; testler raporda. |
+| O6b.10 | [ORTA] — Kayıt başına tam BMS/PowerBoard yapı kopyası; toplu okumada 32-79 kez `__disable_irq` — `modbus_bms_stats.c:145-150`, `modbus_power_stats.c:94-99` | Ertelendi / inceleme kaydı var | §9.21/§9.31: PowerBoard örnekleri incelendi; modül altyapısı ertelemesi korunur. |
+| D6b.11 | [DÜŞÜK] — BMS telemetri bloğu (49300..49378, 79 kayıt) kayıt haritası belgesinde yok | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| D6b.12 | [DÜŞÜK] — Belge notları bayat; `active_baud=115200` CubeMX varsayımına örtük bağlı; CihazID=0 web'de yalnız uyarı | Düzeltildi | §9.22: Modbus cihaz adresi giriş sınırı ve testleri. |
+| Y7.1 | [YÜKSEK] — `xsnprintf` dönüşü taşmada sınırlanmıyor → `sz - pos` işaretsiz underflow ile OOB yazı (latent) — `rf_json.c:113-146, 266-293`; aynı desen `http_handlers.c:1480-1530` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| Y7.2 | [YÜKSEK] — ERROR yanıtında geçici (BUSY/NOT_AVAILABLE) ve kalıcı hata ayrımı yok — tarihsel kaynak `rf_comm.c:278-301` | R1 istek mekanizması tamam | §10.10: komut bazlı ortak bütçe, izinli ERROR sonrası bekleme/yeni SEQ, GEN uyuşmazlığı ve desteklenmeyen okuma istisnası; gerçek RX yolu ve 25 senaryo. Fiziksel kabul açık. |
+| Y7.3 | [YÜKSEK] — `rf_dummy` üretim derlemesinde ve derleme-zamanı korumasız; başlık "no-op" diyor — `rf_dummy.h:14` vs `.c`, `.cproject:105,211`, `app_main.c:238,113` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| Y7.4 | [YÜKSEK] — POST tarafında `in_use=true && fider_id=0` kabul ediliyor — koruma yalnız tarayıcı JS'inde — `json_config.c:1256-1264` | Eski kayıt / yeniden kontrol yok | Bu konsolidasyonda güncel kapanış kanıtı atanmamıştır; kaynak/tetikleyici yeniden incelenmeden bug veya kapalı sayılmamalıdır. |
+| O7.5 | [ORTA] — INVENTORY_END başarısızsa otomatik tekrar yok — tarihsel kaynak `rf_inventory.c:138-155,188-192` | R1 host akışı tamam / fiziksel kabul açık | §10.10–§10.11: sınırlı timeout/BUSY retry, ayrı EMPTY/PARTIAL/READY/ERROR, yeni BOOT'ta yeniden yükleme ve 10 s gap sınırı testlidir. Kalıcı hata otomatik tekrarlanmaz; web/cihaz kabulü ayrı kapsamdadır. |
+| O7.6 | [ORTA] — RF TX yolu çekirdeği ~11 ms meşgul-bekletiyor — `uart.c:54-60` ← `rf_comm.c:144-151` | Ertelendi | §9.25–§9.26: UART bekleme/keşif yetkisi mevcut şekilde korunur. |
+| O7.7 | [ORTA] — `rf disc` üretim keşif kuyruğuna sahte cihaz enjekte eder ve SHELL_LVL_USER'da — `rf_shell.c:55-78,153-161` | Ertelendi | §9.25–§9.26: UART bekleme/keşif yetkisi mevcut şekilde korunur. |
+| O7.8 | [ORTA] — Başlıkta olmayan fonksiyon beyanı: `scp_on_reply` — `rf_comm.h:76` vs `rf_comm.c:256` | Düzeltildi | §9.27–§9.28: fonksiyon bildirimi ve ortak PING builder/testleri. |
+| O7.9 | [ORTA] — rf_scp builder'ları üretimde ölü; kural iki kez uygulanıyor — `rf_comm.c:347-365` vs `rf_scp.c:57-76` | Düzeltildi | §9.27–§9.28: fonksiyon bildirimi ve ortak PING builder/testleri. |
+| O7.10 | [ORTA] — Telemetri işleyicileri boş — tarihsel kaynak `rf_comm.c:465-467` | R1 model/web monitor tamam / ürün kabulü açık | §10.12: gerçek RX→ACK EUI eşlemesi→R1 snapshot/JSON zinciri ve 140 ilgili test geçti. Eski monitor kaldırıldı; IEC104/Modbus ve fiziksel kabul sonraki adımlardadır. |
+| D7.11 | [DÜŞÜK] — `doc/RF_SCP_Akis.md` kod gerçekliğiyle senkron değil | Eski belge / temizlik kapsamı bekliyor | §9.29: eski RF akış belgesi güncel FSM ile uyuşmaz; silme listesine önerildi. |
+| D7.12 | [DÜŞÜK] — cobs.c 0xFF-run sınırı/genel kütüphane kusuru — SCP yolu güvenli, genel kullanım latent | Düzeltildi | §9.30: COBS code-byte/kapasite sınırı; merkezi test. |
+| K8.1 | [KRİTİK] — PWR_PANIC (J21.38) için EXTI hiç kurulmamış — doc S-9 zorunluluğu karşılanmıyor — `gpio_defs.h:107-108` (tanım var, kullanan yok) | Ertelendi / hardware-altyapı kararı | §9.16/§9.31: PowerBoard/BMS/baud/echo ve gerçek alarm kaynağı kararları yeniden açılmadı. |
+| K8.2 | [KRİTİK] — Tüm NVM kalıcılığı stub — her reset sonrası SoC %100 ile başlanıyor — `power_board.c:407-430, 699-705` | Ertelendi / hardware-altyapı kararı | §9.16/§9.31: PowerBoard/BMS/baud/echo ve gerçek alarm kaynağı kararları yeniden açılmadı. |
+| K8.3 | [KRİTİK] — `bms_reader_init()` yorumda — BMS alt sistemi ölü ama UART5 RX kesmesi açık — `app_main.c:307-308` | Ertelendi / hardware-altyapı kararı | §9.16/§9.31: PowerBoard/BMS/baud/echo ve gerçek alarm kaynağı kararları yeniden açılmadı. |
+| Y8.4 | [YÜKSEK] — BMS "raw payload" fallback dalı CRC doğrulamıyor — çöp veri `valid=true` decode edilebilir — `bms.c:89-94` | Yazılım kapsamı tamam / etkinlik erteli | §9.32–§9.33: BMS gerçek parser/reader testleri; reader init açılmadı. |
+| Y8.5 | [YÜKSEK] — BMS alıcısında çerçeve sınırı/boşta-kalma tespiti yok — yarım çerçeve desync üretir — `bms_reader.c:120-168` | Yazılım kapsamı tamam / etkinlik erteli | §9.32–§9.33: BMS gerçek parser/reader testleri; reader init açılmadı. |
+| Y8.6 | [YÜKSEK] — `bms_rx_index` ISR/ana bağlam RMW yarışı; `volatile` değil; sembol `static` değiL — `bms_reader.c:15-16,34-38` | Yazılım kapsamı tamam / etkinlik erteli | §9.32–§9.33: BMS gerçek parser/reader testleri; reader init açılmadı. |
+| Y8.7 | [YÜKSEK] — `is_data_valid` hiç bayatlamıyor — BMS ölünce son çerçeve sonsuza dek "valid" — `bms.c:215`, `bms_reader.c:172-203` | Yazılım kapsamı tamam / etkinlik erteli | §9.32–§9.33: BMS gerçek parser/reader testleri; reader init açılmadı. |
+| O8.8 | [ORTA] — `rtc_sync`/`bsp_set_rtc` aralık doğrulaması yok — dış kaynaklı geçersiz ay `days_lookup` dizisini taşırır — `rtc.c:225-235`, `bsp.c:69,91-99` | Düzeltildi / kalan politika açık | §9.36/§9.46: RTC giriş/resync sınırları; IEC104 geçersiz saat ACK politikası ayrıca açık. |
+| O8.9 | [ORTA] — `bsp_delay_us` kenar durumları: `us=0` → ~175 ms asılma; `us>174762` sessiz taşma; derleme koruması yanlış büyüklüğü denetliyor — `bsp.c:170-186, 23-25` | Düzeltildi | §9.38: sıfır/parçalı SysTick gecikmesi, 8 merkezi senaryo. |
+| O8.10 | [ORTA] — 0x58 IBUS_MA işaret uyumsuzluğu: kod i16, doc u16 — `power_board_decode.c:74`, `power_board.h:153` vs doc `:404` | Ertelendi / hardware-altyapı kararı | §9.16/§9.31: PowerBoard/BMS/baud/echo ve gerçek alarm kaynağı kararları yeniden açılmadı. |
+| O8.11 | [ORTA] — I2C kurtarması ISR bağlamında tam `DeInit/Init` — `i2c_slave.c:188-201` | İncelendi / korundu | §9.16: normal AF ile ağır I2C hata ayrımı doğrulandı; recovery taşınmadı. |
+| O8.12 | [ORTA] — `uart_send_byte` "yaz-sonra-bekle" — TXE=0 iken ilk bayt ezilir (çoklu bağlam) — `uart.c:45-52`, `bms_reader.c:52-57` | Düzeltildi | §9.39: yazma öncesi TXE/TXFNF; bu kontrol multi-writer mutex değildir. |
+| D8.13 | [DÜŞÜK] — Bayat yorumlar — `power_board.h:128` ("expect 0x06" — gerçek 0x09), `led_driver.h:10` ("active-high" — gerçek active-LOW), `bms_reader.c:71,78` (istek adresi 0x81'i 0x51 diye anlatıyor) | Kısmi | §9.40: LED polarite/pin yorumları düzeltildi; BMS adresi tutarlı, PowerBoard yorumu erteli. |
+| D8.14 | [DÜŞÜK] — Ölü kod / ölü değişken — `stm32u3xx_it.c:401` (return sonrası HAL çağrısı), `bms.c payload_len`, `bms_reader.c:31 #if 1` | Geçildi | §9.41: ölü kod/legacy UART5 davranışı için kullanıcı sonraki maddeye geçti; değişiklik yapılmadı. |
+| D8.15 | [DÜŞÜK] — BSP kalıntıları — `spi.c` koşulsuz bekleme (zaman aşımı yok), `gpio.c` geçersiz portta `while(1)` + `pin_map` sınırı, `adc.c` DMA tamponu `volatile` değil | Kısmi / GPIO geçildi | §9.41: SPI bekleme ve ADC volatile düzeltildi; GPIO kullanıcı kapsamı dışında. |
+| D8.16 | [DÜŞÜK] — Shell `cfg` komutu girdiyi sessizce `uint8_t`e buduyor — `power_board.c:638-645` | Ertelendi / hardware-altyapı kararı | §9.16/§9.31: PowerBoard/BMS/baud/echo ve gerçek alarm kaynağı kararları yeniden açılmadı. |
+| K9.1 | [KRİTİK] — Çip kimliği/kapasite sabitleri çelişiyor; JEDEC guard etkisiz; `w25qxx_init` dönüşü yok sayılıyor — `w25qxx.c:201,241-247`, `w25qxx.h:38`, `app_main.c:223` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| K9.2 | [KRİTİK] — GSM/RFWU fw-update sınır kontrolü yanlış tabana karşı — hedef B'de indirme ilk chunk'ta başarısız — `gsm_firmware_update.c:59` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| Y9.3 | [YÜKSEK] — `log_read_last` "boş log" kontrolü seq sarmasından sonra yanlış — 65.535. kümülatif yazımdan sonra sayfalı okumalar logu boş gösterir — `spi_flash_log.c:441` (next_seq==0 testi) | Düzeltildi / testli | §9.11: seq wrap; spi_flash_log.c torn/uncertain slot politikası ve libs entegrasyonu. |
+| Y9.4 | [YÜKSEK] — XMODEM fw yazma yolunda erase/write dönüşleri yok sayılıyor; eski imaj kuyruğu silinmiyor — `xmodem_process.c:130-131,177-178` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| O9.5 | [ORTA] — XMODEM: veri gelmeden EOT gelirse "başarılı indirme" sayılıp reset tetikleniyor — `xmodem.c:290-294` + `xmodem_process.c:116-138` | Kapanış kaydı var | Tarihsel kapanış değerlendirmesi §1; mevcut host/entegrasyon paketleri geçti. Bu kayıt her eski tetikleyicinin yeni fiziksel testi değildir. |
+| O9.6 | [ORTA] — Program hatasında aynı slot yeniden yazılır — NOR AND-bozulması politikayla çelişir — `spi_flash_log.c:344-353` | Düzeltildi / testli | §9.11: seq wrap; spi_flash_log.c torn/uncertain slot politikası ve libs entegrasyonu. |
+| O9.7 | [ORTA] — Ring erase yolu WDT kick'siz ve çekirdeği 45–400 ms bloklar — `w25qxx.c:124-137`, `spi_flash_log.c:356-363` | İncelendi / mevcut yol korundu | §9.12: kick mevcut, normal 4 KB yolunda reset gösterilmedi; cihaz süre ölçümü ayrı. |
+| O9.8 | [ORTA] — elog flood koruması yalnız web-login'de; `tick==0` sentinel kusuru — `elog.c:928-948` | Kısmi / flood iddiası doğrulanmadı | §9.43: logged_once düzeltildi; üreticilerin tekrar korumaları var, genel limiter eklenmedi. |
+| O9.9 | [ORTA] — `fault_log`'un üretimde hiç üreticisi yok — `fault_log.c` (çağıranlar: yalnız `fltlog test`; `app_main.c:293` yalnız init) | Ertelendi / üretim kapısı açık | §9.3/§9.29/§9.44: gerçek RF/ölçüm/arıza üreticisi kurulacak; dummy korunur. |
+| D9.10 | [DÜŞÜK] — `dt_conv_to_unix` yalnız 32-bit konfigürasyonda; `dt_init` Şubat 31'i kabul ediyor; RTC çöpünde zaman damgası doğrulanmıyor — `datetime.h:68-77`, `datetime.c:102`, `elog.c:75-87` | Düzeltildi / seçilen kapsam | §9.46: takvim/resync kontrolü; 24 RTC senaryosu, doğrudan BSP setter/HAL yazma ayrı. |
+| D9.11 | [DÜŞÜK] — Naked `HardFault_Handler` içinde asm'den önce C deyimleri — `hardfault_handler.c:288-299` | Mevcut kaynakta düzeltilmiş | Naked HardFault yalnız basic asm; C handler ayrı. Fiziksel fault dump yönü §9.51 konusu. |
+| D9.12 | [DÜŞÜK] — JEDEC 4 bayt okuma; sektör erase WEL doğrulamasız — `w25qxx.c:279-294, 298-311` | Düzeltildi | §9.47/§9.49: silme WEL ve üç-byte JEDEC; 23 merkezi senaryo. |
+| D9.13 | [DÜŞÜK] — Bayat test kopyası + görüntüleme tutarsızlıkları — `libiec104/test/w25qxx_memory_organization.h` (IEC104_LOG bölümü yok), `iec104_log.c:448` "Stored Entries" etiketi, `fault_log.c:410` double promotion, Türkçe karakterli yorumlar | İşlev hatası doğrulanmadı | §9.51: eski kopya yok, Stored Entries sayımı ve float→double gösterim sınırı tutarlı. |
+| K10.1 | [KRİTİK] — Shell RX durum makinesi ISR ile web shell arasında yarışıyor — `shell.c:51-58`, `stm32u3xx_it.c:439-440`, `web_shell.c:113-117` | Ertelendi / açık | §9.3: shell oturum/ISR tasarımı değiştirilmedi. |
+| Y10.2 | [YÜKSEK] — ftoa e-gösterim koruma eşiği 1 bayt dar — prec=25 + negatif değer → 1 bayt stack dışına yazma — `xprintf.c:119,128-152` | Mevcut kaynakta düzeltilmiş / testli | §9.51–§9.52: ftoa eşiği, %S error korunması, bare %s reddi; formatter/scanner testleri. |
+| Y10.3 | [YÜKSEK] — xscanf `%S` kesmesi sessizce başarıya çevriliyor — `xscanf.c:577-588` | Mevcut kaynakta düzeltilmiş / testli | §9.51–§9.52: ftoa eşiği, %S error korunması, bare %s reddi; formatter/scanner testleri. |
+| Y10.4 | [YÜKSEK] — Küçük harf `%s` sessiz no-op — va_arg sırası kayar → tür karışıklı yazma — `xscanf.c:504-537` | Mevcut kaynakta düzeltilmiş / testli | §9.51–§9.52: ftoa eşiği, %S error korunması, bare %s reddi; formatter/scanner testleri. |
+| Y10.5 | [YÜKSEK] — xscanf dokümantasyonu "capped" diyor; gerçek davranış "hedef dokunulmaz, ret 0" — `xscanf.h:51,61` vs `xscanf.c:89-99` | Geçildi / ertelendi | §9.16/§9.51: doküman, xsprintf, help ve history maddelerine değişiklik yapılmadı. |
+| O10.6 | [ORTA] — `xsprintf` sınırsız — `http_response.c:111-123` (256 B stack!), `bsp.c:125` (24 B), `datetime.c:43,49`, `gsm_engine.c` AT üretimi | Geçildi / ertelendi | §9.16/§9.51: doküman, xsprintf, help ve history maddelerine değişiklik yapılmadı. |
+| O10.7 | [ORTA] — argc/argv kümesi kırılgan değişmeze dayanıyor — erken `break` NULL argv bırakabilir — `shell.c:306-338` | Mevcut kaynakta düzeltilmiş | shell_on_command_received packing sonrası argc=i; güncel kaynak kontrolü. |
+| O10.8 | [ORTA] — `memcmp(argv[1], "help", 4)` NUL'da durmaz — sınıra yakın OOB okuma — `shell.c:285-287` | Geçildi / ertelendi | §9.16/§9.51: doküman, xsprintf, help ve history maddelerine değişiklik yapılmadı. |
+| O10.9 | [ORTA] — Tampon doluyken BACKSPACE iki karakter siler, TAB 64. karakteri dışarıda bırakır — `shell.c:409-441` | Kısmi / latent TAB maddesi | Backspace düzeltildi; TAB kolu kalıyor, mevcut shell build etkinliği doğrulanmadı. |
+| O10.10 | [ORTA] — SHELL_HISTORY tamamen ölü + `SHELL_HISTOR` yazım hatası; ok tuşları `rx_special_ready`'yi kalıcı 1 yapıyor — `shell.c:33-42,388-404,454-493,518` | Geçildi / ertelendi | §9.16/§9.51: doküman, xsprintf, help ve history maddelerine değişiklik yapılmadı. |
+| O10.11 | [ORTA] — Komut tablosu 22/24 dolu; kayıt başarısızlığı yalnız log'a düşüyor — `shell.c:31,142-159` | Kapasite kusuru gösterilmedi / testli | §9.13: kapasite 32, dolu/duplicate/silme senaryoları 4/4. |
+| O10.12 | [ORTA] — 64-bit `%b`/`%o` 32 hanede sessiz kesilir — `xprintf.c:398-402` | Geçildi / üretim çağrısı yok | §9.51: %llb çağrısı bulunmadı; %o 22 haneye sığar. Genel 64-bit kullanım yok iddiası verilmez. |
+| O10.13 | [ORTA] — Statik durumlar ISR-yeniden-girilemez; `CSLOG→xprintf` küresel yönü — `xprintf.c:28-30` | Kısmi / normal ISR yarışı gösterilmedi | §9.51: kaynak paths kontrol edildi; HardFault sırasında web çıktı yönü ayrı düşük öncelikli açık. |
+| O10.14 | [ORTA] — shell_complete: döngü modunda komut kaldırılırsa NULL işaretçi — `shell_complete.c:105-113,214` | Geçildi / latent | Production unregister çağıranı yok; TAB etkinliği doğrulanmadı. |
+| D10.15 | [DÜŞÜK] — Küçük sapmalar | Kısmi | §9.52–§9.55: dört API/formatter ve NULL düzeltildi; #SI 64 normal biçimde yeterli; default/max_len dokümanı geçildi. |
+| G-01 | Gerçek ölçüm/arıza verisi ve SCADA kabulü | Ertelendi / üretim kapısı açık | RF telemetri ve iec104_report_fault_event üreticisi eklenecek; dummy ve IV davranışı gerçek veriyle uçtan uca sınanmalıdır. |
+| G-02 | Cihaz kimliği ve üretim anahtarları | Ertelendi / saha kapısı açık | IP parola/ortak PSK kararı, cihaz başı kimlik ve saha anahtarı provisioning/rotasyon/yedekleme kabulü ayrıca tamamlanmalıdır. |
+| G-03 | Build/CI/uyarı ailesi ve statik analiz | Kısmi / erteli süreç işleri | ARM CI/Docker, tam zorunlu warning ailesi, Debug clean build ve seçili MISRA/statik analiz kanıtı ayrı işlerdir; §10.3. |
+| G-04 | PowerBoard/BMS/SBO/periyodik yayın kapsamı | Ertelendi / açık | Yeni altyapı ve etkinleştirme kararları; kapalı reader/SBO host test geçişiyle açılmaz. |
+| G-05 | Lifetime her reset ve güç kesintisi | İstenen kapsam tamam / daha geniş garanti yok | 25 saat ve periyodik reset sync vardır; reboot_system/power-cut kayıpsızlık genellenmez. |
+| G-06 | Boot/OTA/Flash power-cut/IRQ-DMA ve tepki süresi | Cihaz kabulü açık | A/B update, resume, güç kesintisi, veri bayatlığı ve emniyet tepki süreleri hedefte ölçülmelidir. |
+| G-07 | Kılavuz/release notu ve saha operasyonu | Ertelendi | README/CHANGELOG/kılavuz işleri önceki kullanıcı kararıyla ertelidir; bu envanter güncellemesi kılavuz 1.0 değildir. |
+| G-08 | RTC geçersiz dış saat için IEC104 yanıt politikası | Açık / protokol kararı | RTC reddi handler olumlu ACK politikasını kendiliğinden değiştirmez; §9.36. |
+| G-09 | Flash byte/void read API hata aktarımı | Açık / ayrı API işi | SPI timeout tespit edilir; eski w25qxx_read_buff void ve log adapter read başarısı bütün tüketicilere hata aktaramaz; §9.41. |
+| G-10 | HardFault web shell sırasında konsol hedefi | Koşullu düşük öncelikli açık | Dump öncesi hedef açık seçilebilir; normal ISR formatter yarışı gösterilmedi; backup trace önceden saklanır, §9.51. |
+| G-11 | LE910R1 güncel AT belgesi ve bozuk #SI sınırı | Belge erişimi / ayrı savunma incelemesi | R1 r8 login nedeniyle okunmadı; normal 64 pencere testi geçti, tampon sonundaki bozuk yanıt bütünü kapsanmaz; §9.54. |
+
+### 10.3. Korunan kararlar ve taşınan kanıt özeti
+
+RFWU v2 mevcut kararında 16-byte ortak anahtar, 16-byte nonce ve
+HMAC-SHA256 çıktısının ilk 16 byte'ı kullanılır. MAC girdisi `RFWU2`,
+nonce, little-endian total_size ve file_hash birleşimidir. Nonce aynı
+bağlantıda tek HELLO denemesi için 60 saniye geçerlidir; yeniden challenge
+eski yetkiyi kaldırır. Beş hatalı HELLO sonrası 60 saniye kilit vardır.
+Secure RNG hatasında challenge reddedilir; availability fallback bu
+kimlik doğrulamasında kullanılmaz. Firmware ve PC/web araçlarının v2
+uyumu host testlidir; cihaz kurulum/resume kabulü ayrı kapıdır.
+Bu, silinmesi önerilen plan/değerlendirme belgelerinin uygulanan karar
+özetidir; yeni protokol kararı değildir. Geliştirme anahtarları kullanıcı
+kararıyla şimdilik Git'te tutulur ([keys/README.md](keys/README.md), §9.5);
+eski planın Git dışında tutma önerisi güncel kararı değiştirmez.
+Anahtar değeri bu rapora veya loga yazılmamalıdır.
+
+Lifetime mevcut NVRAM alanında tutulur; 25 saatte bir ve mevcut periyodik
+reset öncesi sync uygulanır. Başarısız sync görünürdür; ayrı Flash alanı
+ve migration eklenmez. Dummy üreticiler, #if 0 blokları, kapalı reader
+ve ertelenmiş shell oturum/ISR tasarımı korunur. Fiziksel RF_IO1/PA7,
+RS-485 echo ve PowerBoard gerçek alarm kaynağı teyitleri ayrı tutulur.
+
+Derleyici raporlarının son uygulama kararında Application kapsamındaki
+uyarılar mevcut Release seçenekleriyle düzeltilmiştir. Kapsam dışında
+8 Contiki, 5 ST vendor ve 1 Core/syscalls tanısı bırakılmıştır. ST vendor
+kümesi RTC BCD, UART FIFO sayısı, RCC unused parametre ve ADC macro
+dönüşümünü kapsar; Core __io_getchar dönüşümüdür. Bu 14 tarihsel tanının
+her biri son incremental logda yeniden çıkmış sayılmaz. Warning bastırma
+ve vendor yamasıyla kapatılmış ilan edilmez. Son kontrol kayıtlarında
+-Wshadow etkin, -Wformat=2/-Werror tam ARM kabulü doğrulanmamıştır.
+Tam zorunlu seçeneklerle bütün konfigürasyonlarda warning-free sonucu
+iddia edilmemelidir. Host istisnaları güncel test/README.md'dedir.
+
+App/bootloader aktarım notlarındaki naked HardFault/CMSIS ve bilinen
+flash kimliği düzeltmeleri mevcut kaynakta bulunur. Bootloader'da bildirilen
+hardware başarısı uygulama firmware'inin fiziksel kabulü değildir.
+Shell dosyalarının eski byte parity'si sonraki uygulama renk/API
+değişiklikleri için yeni bootloader senkronizasyon kanıtı sayılmaz.
+
+### 10.4. Cihaz kabul sırası ve kanıt kuralı
+
+1. G-01/G-02/G-04 ürün kapsamı ve kimlik kararları netleştirilmelidir.
+2. Gerçek SCADA bağlantı/kopuş, telemetri/arıza ve kumanda davranışı
+   kabul edilmiş veri kaynağıyla sınanmalıdır.
+3. A/B firmware update, resume/abort ve güç kesintisi hedefte sınanmalıdır.
+4. RTC resync, SPI hata/WEL ve kalıcı veri kurtarma, IRQ/DMA ve watchdog
+   davranışı hedefte ölçülmelidir. Host süreleri hardware garantisi değildir.
+5. Build sürümü, compiler bayrakları, donanım revizyonu, kullanılan araç,
+   gözlenen sonuç ve log yolu kabul kaydına yazılmalıdır.
+
+Bu bölüm bir cihaz yükleme/reset yetkisi değildir. Test/rapor güncellemesi
+nedeniyle cihaz çalıştırma, yeni key üretimi, deploy veya push yapılmamıştır.
+
+### 10.5. Belge temizliği durumu
+
+Eski tarihli sekiz rapor/plan/akış belgesi için somut silme listesi
+kullanıcıya sunulmuştur. Silme kapsamı cevabı gelmeden belge silinmemiştir.
+Güncel rapor, test README, protokol rehberleri ve ajan/skill yönergeleri
+bu listede değildir. Plan ve warning kararları §10.3'e taşınmıştır;
+güncel dokümanların bağlantıları bu rapora yönlendirilir.
+
+| Silme adayı | Git durumu | Yerine geçen kayıt |
+|---|---|---|
+| ANALIZ_RAPORU_2026-09.md | Takipsiz | 152 tekil kimlik §10.2; tarihsel kaynak/tetikleyici başlıkları |
+| APP_REPO_SENKRON_BULGULARI.md | Takipsiz | §10.3 App/bootloader aktarımı ve kalan kapsam |
+| URETIM_HAZIRLIK_BAGIMSIZ_DEGERLENDIRME_2026-10-03.md | Takipli | §9.1–§9.5, §10.1–§10.4 karar/kanıt |
+| DERLEYICI_UYARILARI_ENVANTER_2026-10-03.md | Takipli | §9.3 ve §10.3; eski konumlar tarihsel build tabanına aittir |
+| DERLEYICI_UYARILARI_DEGERLENDIRME_2026-10-03.md | Takipli | §9.3/§10.3 uyarı kararı ve log atıfları |
+| RFWU_GUVENLIK_PLANI_DEGERLENDIRME_2026-10-03.md | Takipli | §10.3 uygulanan v2 kararları ve kabul sınırı |
+| RFWU_GUVENLIK_DUZELTME_PLANI_2026-10.md | Takipli | §9.1/§10.3 v2 kapsamı; keys README güncel anahtar kararı |
+| doc/RF_SCP_Akis.md | Takipsiz | §9.29/§10.2 eski FSM durumu; güncel SCP rehberi ve kaynaklar |
+
+Takipsiz üç belge Git geçmişinden geri alınamaz. Silme kapsamı cevabı
+bu nedenle dosya bazında alınmalıdır; yaşına göre bütün doc/ klasörü
+silinmemelidir. Silme kararı
+geldiğinde repo içi absolute yol ve Git/diff durumu doğrulanmalıdır.
+
+### 10.6. Değişiklik kaydı
+
+| Tarih | Değişiklik | Doğrulama |
+|---|---|---|
+| 05.10.2026 | 152 eski kimlik ve 11 kabul kapısı tek tablo; test/karar envanteri güncellemesi | 51 aktif Ceedling sonuç dosyası=524/524; 9/9 merkezi entegrasyon yeniden geçti; kaynak/Markdown diff kontrolü |
+
 /*** end of report ***/
 
-## 10. RF-SCP uygulama kanıtları
+### 10.7. Başlanmış test paketlerinin tamamlanması — 05.10.2026
+
+Kullanıcı kapsamı başlamış SHA-256, HMAC ve AT paketlerini tamamlayıp durmak
+olarak sınırlamıştır. 29 yeni Unity testi eklenmiştir. SHA-256 5/5 ve HMAC
+4/4 geçmiştir; AT 19/20 geçmiştir. Merkezi koşuda 553 testin 552'si geçmiş,
+1'i başarısız olmuş, hiçbiri atlanmamıştır. 66 Python referans vektörü ve
+parçalama döngüleri Unity test sayısına ayrıca eklenmemiştir.
+
+**G-12 — KAPATILDI, güncel kanıt §10.14.** Aşağıdaki ilk hata tespiti tarihsel kayıttır. Gerçek AT motoru binary SRECV payload'ındaki `SRING:`
+metnini URC olarak gönderip buffer'dan silmektedir. Sıfır gerçek URC içeren
+senaryoda callback sayısı 0 yerine 1 ölçülmüştür. Soket verisi bozulur;
+eski payload bitiş offset'i yanıt tamamlanmasını da etkileyebilir.
+[Hata raporu ve dar çözüm önerisi](AT_SRECV_URC_HATA_RAPORU_2026-10-05.md)
+üretim koduna müdahale edilmeden hazırlanmıştır. Kullanıcı talebiyle
+regresyon testi korunmuş, düzeltme uygulanmamıştır.
+
+Kanıt: `test/build/production-audit-2026-10-03/test-expansion-all.log` ve
+`at-engine-edges-before.log`. Güncel coverage yüzdesi verilmemiştir.
+Integration, ARM Release ve fiziksel cihaz bu adımda yeniden sınanmamıştır.
+Çalışma ağacındaki önceden mevcut ve eşzamanlı değişiklikler korunmuştur.
+Commit yapılmamıştır. Yeni modüle geçilmeden çalışma durdurulmuştur.
 
 ### 10.8. RF-SCP R1 örnek doğrulama — 05.10.2026
 
@@ -2245,6 +2646,35 @@ Yeni günlük başlangıçta açılır; kayıt API'si bir sonraki servis parças
 bağlanacaktır. 101/105 alarm bağlantısı, merkez aktarımı, FRAM degraded
 akışı ve Powerboard kaynak geçişi açık olduğundan G-01 tamamlandı sayılmaz.
 
+### 10.14. AT SRECV binary payload / URC düzeltmesi — 05.10.2026
+
+**G-12 — KAPATILDI (yazılım):** Kullanıcı ekteki doğrulamayı dikkate alarak
+basit düzeltme ve Ceedling edge case testlerini onaylamıştır.
+Gerçek at_engine2.c üzerinde SRING/NO CARRIER payload taraması, binary
+NUL sonrası gerçek URC kaybı, reset/clear/cancel sonrası eski binary
+penceresi, CME payload metni ve sahte header ile yeniden kurma sınanmıştır.
+Düzeltme öncesi ilgili 33 testte 11 başarısızlık görülmüştür.
+
+URC ve CME araması payload bitişinden başlar. Silme aralığı payload'a
+taşmaz. Terminator bütünüyle metin bölgesinde olmalıdır. Header yalnız
+ilk kez sayacı kurar. Reset/clear/cancel iki binary alanı temizler;
+reset/clear bekleyen ring verisini korur, cancel mevcut tam iptal gereği
+boşaltır. Yeni state, kuyruk, heap, retry veya public API eklenmemiştir.
+
+AT paketine 14 test eklenmiştir; paket 34/34, merkezi Ceedling 57 dosyada
+661/661, tüm integration paketleri 9/9 geçmiştir. Döngüdeki case ve split
+kontrolleri ayrıca Unity testi sayılmaz. ARM Release incremental derleme/link
+uyarı ve hata vermemiştir; paket raw-byte equality/ECDSA self-check geçmiştir.
+Kanıt kökü `test/build/production-audit-2026-10-03/`: `sring-regression-before.log`,
+`sring-all-unit-final.log`, `sring-all-host.log`, `sring-release-final.log`,
+`sring-package-final.log`. Ayrıntı ayrı AT hata raporunun §8 bölümündedir.
+
+Fiziksel modem/IRQ/DMA ve saha kabulü yapılmamıştır. Modemin uzunlukla
+bildirdiği payload baytlarını kesintisiz iletmesi mevcut protokol varsayımıdır;
+pencere içine giren gerçek URC ham veriden ayrıştırılamaz. Çalışma ağacının
+diğer değişiklikleri korunmuştur; test toplamındaki diğer artışlar bu düzeltmeye
+mal edilmez. Commit, cihaza yükleme veya reset yapılmamıştır.
+
 ### 10.15. Otomatik RF olay tüketimi ve arıza listesi — 05.10.2026
 
 Kullanıcı olay 1/7'nin kalıcı, olay 3'ün geçici arıza listesine
@@ -2465,6 +2895,34 @@ build/scp-group-service-release.log, build/scp-group-service-final-build.log.
 Yeni commit veya cihaz yükleme/reset yapılmadı. BOLATeX soruları,
 Powerboard tüketici geçişi ve fiziksel kabul açık; G-01 kapanmadı.
 
+### 10.20. Ceedling modül sınır testleri — 06.10.2026
+
+47 Unity senaryosu eklenmiştir: GSM socket/info, Modbus config, CRC ve
+debouncer yeni paketleri; mevcut gerçek FC03 PowerBoard paketi genişletmesi.
+Nihai tam koşu 72 dosyada 835 test, 829 geçti/6 başarısız/0 atlandıdır.
+Altı başarısızlık aynı CESQ raw range kontrolü eksikliğine aittir;
+report sentinel dışındaki ayrılmış değerleri available=true yapmaktadır.
+Giriş yolu gerçek gsm_cesq_cb üzerinden ulaşılabilirdir. Ayrıntı ve
+küçük range/teknoloji önceliği önerisi ayrı modül kapsam raporu F-01'dedir.
+Üretim kodu değiştirilmemiştir; testler atlanmamış veya beklentileri gizlenmemiştir.
+
+FC03 response içinde yeni source snapshot gelirse farklı register'ların
+farklı örneklerden oluşması mevcut davranış olarak testte görünürdür.
+Tek snapshot gereksinimi belirlenmeden üretim cache/state eklenmemiştir.
+
+Başlangıç Modbus test link hatası canonical PowerBoard sağlayıcısına
+uyarlanan host sınırıyla giderildi. Web auth testine yeni gerçek JSON
+modülü bağlandı; ilk 8/9 integration sonrası bu paket de yeniden geçti.
+JUnit envanter aracı 7/7 Python testiyle doğrulandı; partial/duplicate/stale
+raporu tüm testler yeşil gibi göstermez. Saklanan tam XML sayım için esas alınır.
+
+Kanıt kökü test/build/production-audit-2026-10-03/; module-expansion-final-2026-10-06.log
+ve .xml, module-expansion-inventory-final-2026-10-06.md, module-expansion-integration-2026-10-06.log,
+module-expansion-web-auth-final-2026-10-06.log. Güncel kapsam yüzdesi verilmez.
+ARM, sanitizer ve fiziksel IRQ/DMA/modem bu adımda sınanmadı. Commit yapılmadı.
+Eşzamanlı başka modül değişiklikleri korunmuştur. Tam kapsam ve son aksiyon:
+[Ceedling modül raporu](CEEDLING_MODUL_KAPSAM_RAPORU_2026-10-06.md).
+
 ### 10.21. SCP Powerboard tüketicileri — 06.10.2026
 
 Mevcut `app_main` eski I²C Powerboard process'ini başlatıyordu;
@@ -2490,7 +2948,8 @@ paketleri geçti. 16 Cortex-M33 modülü sıkı C11 uyarılar/-Werror ile geçti
 Release link başarılıdır: text/data/bss 307400/504/126792 B; eşzamanlı
 diğer değişiklikler de dahildir. Kanıt `test/build/scp-power-regression.log`,
 `build/scp-power-strict.log`, `build/scp-power-final-build.log`,
-`build/scp-power-web-auth.log`. Bu seçili test sonucu tam suite geçişi olarak yorumlanmaz.
+`build/scp-power-web-auth.log`. Bu seçili test sonucu §10.20'deki başka
+GSM CESQ bulgusunu kapatmaz ve tam suite geçişi olarak yorumlanmaz.
 
 E5–E8 ayar/sonuç/ham telemetri bağlantıları, BQ-08 ve K9 adres seçimi
 henüz tamamlanmadı. Fiziksel UART/RF/enerji kesintisi kabulü yapılmadı;
@@ -2786,6 +3245,23 @@ değerlerle sınandı. Kayıt/SCP RX/olay/IEC104 tel seçiminde 172/172 geçti.
 **Kanıt:** `test/build/rf-load-shell-before.log`,
 `test/build/rf-load-shell-regression.log`, `build/rf-load-shell-release.log`;
 fixture için `python test/scripts/generate_rf_scp_vectors.py --check`.
+
+### 10.31. Olay günlüğü logging kapalı yapı — 06.10.2026
+
+**Kanıt:** varsayılan NO_SHELL_LOG Ceedling derlemesi `visit_dump()`
+içindeki `sent` değişkeninde unused-variable hatası verdi. Değer yalnız
+çıktıda kullanılır; çıktı kaldırılınca hesap tek başına kalıyordu.
+
+**Düzeltme:** hesap SHELL_LOG argümanına taşındı. Logging kapalı yapıda
+hesap da kalkar; açık yapının çıktısı ve gönderim/kayıt modeli değişmez.
+Ortak NOR fixture üzerinden iki üretim yapılandırması sınanır.
+
+**Doğrulama:** en yeniden okuma, payload/32 bit sürenin korunması,
+yanlış sıra onayı, yeniden init, NULL ve Flash yazma hatasında durum/
+sıranın korunması. 95/95 ilgili Ceedling testi ve Release 0 hata/
+0 uyarıyla geçti. Kanıt: `test/build/iec104-event-log-disabled-before.log`,
+`test/build/iec104-event-log-state-regression.log`,
+`build/iec104-event-log-state-release.log`. Fiziksel kabul yapılmadı.
 
 ### 10.32. HIL raporunun bağımsız değerlendirmesi — 06.10.2026
 
