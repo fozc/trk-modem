@@ -215,12 +215,30 @@ void rf_store_init(void)
 
 int rf_store_sync(void)
 {
-    /* Persist desired settings independently of remote APPLIED. */
-    for (int i = 0; i < MAX_POWER_LINE_COUNT; i++)
+    store_ensure_init();
+    const rf_feeder_t *candidate = staging_active ? staging : rf_ram;
+
+    /* Publish staged settings only after a verified persistent copy. */
+    for (size_t index = 0U; index < MAX_POWER_LINE_COUNT; index++)
     {
-        breaker_config->line[i].rf = rf_ram[i];
+        breaker_config->line[index].rf = candidate[index];
     }
-    return nvram_sync(false);
+    const nvram_save_result_t result = nvram_save(false);
+
+    if (NVRAM_SAVE_FAILED == result)
+    {
+        if (staging_active)
+        {
+            for (size_t index = 0U; index < MAX_POWER_LINE_COUNT; index++)
+            {
+                breaker_config->line[index].rf = rf_ram[index];
+            }
+        }
+        rf_store_stage_abort();
+        return -1;
+    }
+    rf_store_stage_commit();
+    return (NVRAM_SAVE_COMPLETE == result) ? 0 : 1;
 }
 
 const rf_feeder_t* rf_store_get(feeder_id_t line_id)

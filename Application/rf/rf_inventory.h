@@ -59,6 +59,9 @@ void rf_inventory_request_sent(uint8_t cmd);
 void rf_inventory_record_ack(const scp_packet_t *request);
 bool rf_inventory_get_binding(uint8_t source, rf_inventory_entry_t *out);
 
+/* True only when the complete accepted inventory matches desired rows. */
+bool rf_inventory_matches_config(void);
+
 /** Send an operator-selected assignment/deletion (feeder zero deletes).
  * The caller owns persistence; this transport API does not alter NVRAM.
  */

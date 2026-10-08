@@ -47,6 +47,8 @@ static const char *stop_reason_name(rf_apply_stop_reason_t reason)
         case RF_APPLY_STOP_HUB_RESTARTED: return "hub_restarted";
         case RF_APPLY_STOP_CANCELLED: return "cancelled";
         case RF_APPLY_STOP_STATE_CHANGED: return "state_changed";
+        case RF_APPLY_STOP_STORAGE: return "storage";
+        case RF_APPLY_STOP_INVENTORY: return "inventory";
         default: return "unknown";
     }
 }
@@ -83,7 +85,7 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         "\"Reason\":%u,\"ReportedCRC\":%u,\"Attempts\":%u,"
         "\"BatchState\":\"%s\",\"Targets\":%u,\"Applied\":%u,"
         "\"BatchLine\":%u,\"GroupStarted\":%s,\"SaveBlocked\":%s,"
-        "\"StopReason\":\"%s\"}",
+        "\"InventoryPending\":%s,\"StopReason\":\"%s\"}",
         state_name(group.state), (unsigned)group.line, (unsigned)group.feeder,
         (unsigned)group.group_id, (unsigned)group.writes_acked,
         (unsigned)group.expected_crc,
@@ -95,6 +97,7 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         (unsigned)batch.targets, (unsigned)batch.applied,
         (unsigned)batch.line, batch.group_started ? "true" : "false",
         rf_apply_can_save() ? "false" : "true",
+        batch.inventory_pending ? "true" : "false",
         stop_reason_name(batch.stop_reason));
 
     if ((size_t)count >= capacity - 1U)

@@ -32,6 +32,7 @@ static uint32_t tick;
 static bool transport_free;
 static bool inventory_loaded;
 static bool inventory_active;
+static bool inventory_matches;
 static bool binding_valid;
 static bool accept_request;
 static bool epoch_ready;
@@ -64,6 +65,12 @@ static bool is_inventory_active(int call_count)
 {
     (void)call_count;
     return inventory_active;
+}
+
+static bool matches_inventory(int call_count)
+{
+    (void)call_count;
+    return inventory_matches;
 }
 
 static bool is_epoch_ready(uint8_t fider, int call_count)
@@ -238,6 +245,7 @@ void setUp(void)
     transport_free = true;
     inventory_loaded = true;
     inventory_active = false;
+    inventory_matches = true;
     binding_valid = true;
     accept_request = true;
     epoch_ready = true;
@@ -248,6 +256,7 @@ void setUp(void)
     scp_send_request_StubWithCallback(send_request);
     rf_inventory_is_loaded_StubWithCallback(is_loaded);
     rf_inventory_is_active_StubWithCallback(is_inventory_active);
+    rf_inventory_matches_config_StubWithCallback(matches_inventory);
     rf_inventory_epoch_ready_StubWithCallback(is_epoch_ready);
     rf_inventory_get_binding_StubWithCallback(get_binding);
     rf_inventory_config_finished_Ignore();
@@ -1066,6 +1075,93 @@ void test_batch_reports_peer_and_restart_reasons(void)
     rf_apply_hub_restarted();
     TEST_ASSERT_EQUAL_INT(RF_APPLY_STOP_HUB_RESTARTED,
                            batch_status().stop_reason);
+}
+
+void test_primary_only_save_never_starts_inventory_or_rf(void)
+{
+    rf_nvram_fake_set_save_result(NVRAM_SAVE_PRIMARY_ONLY);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_PRIMARY_ONLY, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOP_STORAGE, batch_status().stop_reason);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+}
+
+void test_assignment_save_waits_for_complete_inventory_before_group_write(void)
+{
+    inventory_matches = false;
+    rf_inventory_start_ExpectAndReturn(true);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    TEST_ASSERT_TRUE(batch_status().inventory_pending);
+    TEST_ASSERT_FALSE(rf_apply_abort());
+    inventory_active = true;
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    TEST_ASSERT_FALSE(rf_apply_can_save());
+    inventory_active = false;
+    inventory_matches = true;
+    rf_apply_process();
+    TEST_ASSERT_FALSE(batch_status().inventory_pending);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_CHECKING, status().state);
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+}
+
+void test_partial_inventory_stops_and_next_save_retries_inventory(void)
+{
+    inventory_matches = false;
+    rf_inventory_start_ExpectAndReturn(true);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOP_INVENTORY,
+                          batch_status().stop_reason);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    rf_inventory_start_ExpectAndReturn(true);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    TEST_ASSERT_TRUE(batch_status().inventory_pending);
+}
+
+void test_inventory_start_rejection_keeps_saved_settings_without_rf(void)
+{
+    inventory_matches = false;
+    rf_inventory_start_ExpectAndReturn(false);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOP_INVENTORY,
+                          batch_status().stop_reason);
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+}
+
+void test_removing_all_assignments_waits_for_empty_inventory(void)
+{
+    rf_store_get_mutable(2U)->in_use = false;
+    inventory_matches = false;
+    rf_inventory_start_ExpectAndReturn(true);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    TEST_ASSERT_EQUAL_UINT8(0U, batch_status().targets);
+    TEST_ASSERT_TRUE(batch_status().inventory_pending);
+    inventory_active = true;
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_RUNNING, batch_status().state);
+    inventory_active = false;
+    inventory_matches = true;
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_COMPLETE, batch_status().state);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+}
+
+void test_mh_restart_stops_the_pending_inventory_sequence(void)
+{
+    inventory_matches = false;
+    rf_inventory_start_ExpectAndReturn(true);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_hub_restarted();
+    TEST_ASSERT_FALSE(batch_status().inventory_pending);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOP_HUB_RESTARTED,
+                          batch_status().stop_reason);
+    inventory_matches = true;
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
 }
 
 /*** end of file ***/

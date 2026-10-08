@@ -1641,7 +1641,6 @@ void handle_post_rf_config_json(const char *json_body)
         http_send_error(400, "JSON parse error");
         return;
     }
-    rf_store_stage_commit();
 
     CSLOG("[HTTP] JSON parsed successfully\r\n");
     for (int i = 0; i < MAX_POWER_LINE_COUNT; i++) {
@@ -1652,8 +1651,20 @@ void handle_post_rf_config_json(const char *json_body)
         }
     }
     
-    // Sync to persistent storage (data is already in breaker_config)
-    if (RF_APPLY_SAVE_OK != rf_apply_save()) {
+    /* Save the candidate before publishing it or starting RF operations. */
+    const rf_apply_save_result_t result = rf_apply_save();
+
+    if (RF_APPLY_SAVE_PRIMARY_ONLY == result)
+    {
+        elog_log_config_change(ELOG_CONFIG_RF_CHANGED, ELOG_SOURCE_WEB,
+                               gsm_get_web_client_ip(), "rf", true);
+        const char *body = "{\"success\":true,\"warning\":\"backup_failed\"}";
+
+        http_send_json(body, (int)strlen(body));
+        return;
+    }
+    if (RF_APPLY_SAVE_OK != result) {
+        rf_store_stage_abort();
         CSLOG_ERR("[HTTP] ERROR: Failed to sync RF config to storage\r\n");
         elog_log_config_change(ELOG_CONFIG_RF_CHANGED, ELOG_SOURCE_WEB,
                                gsm_get_web_client_ip(), "rf", false);
