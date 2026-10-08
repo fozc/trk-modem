@@ -36,7 +36,9 @@ jobs:
           sudo apt-get install --yes --no-install-recommends gcc-multilib python3-venv
           gem install ceedling --version 1.0.1 --no-document
           python3 -m venv "$RUNNER_TEMP/host-test-tools"
-          "$RUNNER_TEMP/host-test-tools/bin/python" -m pip install gcovr
+          # pyserial: rf_hil self-tests import tools/hwtest/serial_io.py
+          # (HW_TEST_VE_DEBUG_REHBERI prerequisite) via console.py.
+          "$RUNNER_TEMP/host-test-tools/bin/python" -m pip install gcovr pyserial
           "$RUNNER_TEMP/host-test-tools/bin/python" -m gcovr --version
           # All Ceedling and Make compiler/linker calls use this gcc wrapper.
           cat > "$RUNNER_TEMP/host-test-tools/bin/gcc" <<'SH'
