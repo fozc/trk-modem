@@ -25,8 +25,12 @@ async function checkPage(html, label) {
             },
             querySelectorAll: () => [],
             querySelector: () => null,
-            addEventListener() {}, focus() {}, remove() {},
-            appendChild(child) { notices.push(child); }
+            addEventListener() {}, focus() {},
+            remove() { this.removed = true; },
+            appendChild(child) {
+                notices.push(child);
+                if (child.id) elements.set(child.id, child);
+            }
         };
     }
     const document = {
@@ -641,6 +645,9 @@ async function checkPage(html, label) {
     };
     scheduledTimers.length=0;
     await run('readRfGroupStatus(true)');
+    assert.equal(run('loading'), false);
+    assert.equal(document.getElementById('requestLoading').removed, true,
+        'successful RF status reads must close the loading overlay');
     assert.ok(!scheduledTimers.some(timer=>timer.delay===5000),
         'manual refresh must not schedule another RF status read');
     assert.ok(document.getElementById('rf-status-read').textContent.includes(run("t('rfStatusUpdated')")),
@@ -667,6 +674,9 @@ async function checkPage(html, label) {
     const lastRfStatus=run('JSON.stringify(pageCache.rfGroup)');
     context.fetch=async()=>({ok:false,status:500});
     await run('readRfGroupStatus(true)');
+    assert.equal(run('loading'), false);
+    assert.equal(document.getElementById('requestLoading').removed, true,
+        'failed RF status reads must close the loading overlay');
     assert.ok(document.getElementById('rf-status-read').textContent.includes('HTTP 500'));
     assert.equal(run('JSON.stringify(pageCache.rfGroup)'),lastRfStatus);
     assert.equal(document.getElementById('rf-status-refresh').disabled,false);
@@ -676,11 +686,21 @@ async function checkPage(html, label) {
     let resolveStatus;
     context.fetch = async () => ({ok: true, status: 200,
         json: () => new Promise(resolve => {resolveStatus = resolve;})});
-    const pendingStatus = run('readRfGroupStatus()');
+    const pendingStatus = run('readRfGroupStatus(true)');
     await new Promise(resolve => setImmediate(resolve));
+    assert.equal(run('loading'), true);
+    const rfLoadingOverlay = document.getElementById('requestLoading');
+    assert.equal(rfLoadingOverlay.className, 'loading');
+    assert.ok(rfLoadingOverlay.innerHTML.includes('spinner'));
+    assert.notEqual(rfLoadingOverlay.removed, true);
+    assert.equal(await run('readRfGroupStatus(true)'), null,
+        'a pending status read must not start a second request');
     run("pageCache.rf={inUse:[true]};invalidateRfGroupStatus()");
     resolveStatus({State: 'applied', MatchesDesired: true});
     await pendingStatus;
+    assert.equal(run('loading'), false);
+    assert.equal(rfLoadingOverlay.removed, true,
+        'an invalidated RF response must also close its loading overlay');
     assert.equal(run('pageCache.rfGroup'), undefined,
         'a late status response for older desired settings must be ignored');
     assert.equal(document.getElementById('rf-status-refresh').disabled,false,
