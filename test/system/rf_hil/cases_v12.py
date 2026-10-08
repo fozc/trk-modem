@@ -39,7 +39,10 @@ def e2(ctx):
     computed = sc.crc16_ccitt_false(writes[-1][3:57])
     tc.expect(reported != computed,
               "bildirilen crc hala dogru: 0x%04X" % reported)
-    ctx.console.send("rf cfg-state")
+    state = ctx.console.send_and_wait(
+        "rf cfg-state", r"state=REPORT_MISMATCH", timeout_s=10)
+    tc.expect(state, "DUT did not report MISMATCH")
+    ctx.evidence.append(state[1])
     body2 = ctx.console.drain(2.5)
     ctx.evidence += body2[:15]
     return "reported crc 0x%04X != computed 0x%04X (MISMATCH)" % (

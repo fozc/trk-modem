@@ -67,6 +67,15 @@ log_bell, pwr_summary, pwr_alarm, son_nefes, set_knob, set_telemetry,
 fault, faults_clear, mark_bad_slot, clear_bad_slots, set_degraded,
 busy_for, preload_inventory, live_value).
 
+Alarm/dizi testlerinde `add_events boot_counter=<0..65535>` ile AY
+acilis kimligi secilebilir; varsayilan 7'dir. Bir MH simulator surecinin
+yeniden baslamasi, ayni AY'nin uptime'inin sifirlandigini kanitlamaz.
+Ayri AY acilislarini test ederken bu kimlik acikca degistirilmelidir.
+
+`set_knob name=log_bell_enabled value=false`, 0x47 bildirimlerini
+susturur; olaylari halkadan silmez. Periyodik HEAD okumasi bu kayitlari
+almaya devam edebilir. Merkezi host testleri bu ayrimi dogrular.
+
 ## Bilesenler
 
 | Dosya | Islev |

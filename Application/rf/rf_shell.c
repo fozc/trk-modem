@@ -29,6 +29,7 @@
 #include "rf_log.h"
 #include "rf.h"
 #include "rf_group.h"
+#include "rf_apply.h"
 #include "rf_hil_transport.h"
 #include "boot.h"
 #include "stm32u3xx_hal.h"
@@ -444,7 +445,8 @@ static int rf_shell_config_apply(int argc, char **argv)
         SHELL_LOG("Usage: rf cfg-apply <line 1..7> <fresh group_id>\r\n");
         return -1;
     }
-    if (!rf_group_start((size_t)line - 1U, group_id))
+    if (rf_apply_is_running() ||
+        !rf_group_start((size_t)line - 1U, group_id))
     {
         SHELL_LOG("Config not started: check members, inventory, epoch "
                   "wait and current operation\r\n");
@@ -482,7 +484,7 @@ static int rf_shell_config_state(int argc, char **argv)
 static int rf_shell_config_abort(int argc, char **argv)
 {
     (void)argv;
-    if ((1 != argc) || !rf_group_abort())
+    if ((1 != argc) || !rf_apply_abort())
     {
         SHELL_LOG("Abort not sent: active COMMIT group must be known\r\n");
         return -1;

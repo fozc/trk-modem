@@ -10,6 +10,7 @@
 
 #include "unity.h"
 #include "rf_group.h"
+#include "rf_apply.h"
 #include "rf_config.h"
 #include "rf_group_web.h"
 #include "rf_nvram_fake.h"
@@ -24,6 +25,7 @@ TEST_SOURCE_FILE("rf_nvram_fake.c")
 TEST_SOURCE_FILE("rf_scp_codec.c")
 TEST_SOURCE_FILE("rf_scp.c")
 TEST_SOURCE_FILE("rf_group_web.c")
+TEST_SOURCE_FILE("rf_apply.c")
 TEST_SOURCE_FILE("xprintf.c")
 
 static uint32_t tick;
@@ -33,10 +35,11 @@ static bool binding_valid;
 static bool accept_request;
 static bool epoch_ready;
 static size_t request_count;
-static scp_packet_t requests[12];
+static scp_packet_t requests[300];
 static scp_cmd_done_fn_t callback;
 static rf_feeder_t feeder;
 static rf_inventory_entry_t bindings[3];
+static rf_inventory_entry_t second_bindings[3];
 
 uint32_t HAL_GetTick(void);
 uint32_t HAL_GetTick(void)
@@ -70,6 +73,13 @@ static bool get_binding(uint8_t source, rf_inventory_entry_t *out,
     const uint8_t fider = (source >> 2U) & 0x07U;
 
     (void)call_count;
+    if (binding_valid && (0U != phase) &&
+        (0U != second_bindings[0].feeder) &&
+        (fider == second_bindings[0].feeder))
+    {
+        *out = second_bindings[(size_t)phase - 1U];
+        return true;
+    }
     if (!binding_valid || (0U == phase) ||
         (fider != bindings[0].feeder))
     {
@@ -188,7 +198,10 @@ void setUp(void)
 
     rf_nvram_fake_reset();
     rf_store_stage_abort();
+    rf_store_init();
     rf_group_init();
+    rf_apply_init();
+    (void)memset(second_bindings, 0, sizeof(second_bindings));
     rf_config_defaults(&feeder);
     feeder.in_use = true;
     for (size_t index = 0U; index < count; index++)
@@ -658,6 +671,285 @@ void test_existing_peer_terminal_report_cannot_apply_an_unsent_job(void)
     TEST_ASSERT_FALSE(rf_group_is_active());
     rf_group_process(tick);
     TEST_ASSERT_EQUAL_size_t(1U, request_count);
+}
+
+static rf_apply_status_t batch_status(void)
+{
+    rf_apply_status_t out;
+
+    rf_apply_get_status(&out);
+    return out;
+}
+
+static void add_second_feeder(void)
+{
+    rf_feeder_t second = feeder;
+
+    second.config.fider_id = 2U;
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        second_bindings[index] = bindings[index];
+        second_bindings[index].feeder = 2U;
+        second_bindings[index].eui64[0] ^= 0x80U;
+    }
+    (void)memcpy(second.r_eui64, second_bindings[0].eui64, 8U);
+    (void)memcpy(second.s_eui64, second_bindings[1].eui64, 8U);
+    (void)memcpy(second.t_eui64, second_bindings[2].eui64, 8U);
+    TEST_ASSERT_TRUE(rf_store_set(6U, &second));
+}
+
+static void finish_batch_feeder(uint8_t result)
+{
+    scp_packet_t missing = {.data_len = 1U,
+        .data = {RF_SCP_ERR_INVALID_PARAM}};
+
+    rf_group_process(tick);
+    reply(SCP_CMD_ERR, &missing);
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        rf_group_process(tick);
+        ack();
+    }
+    rf_group_process(tick);
+    ack();
+    rf_scp_message_t report = {.cmd = RF_SCP_CMD_CFG_STATUS_NOTIFY,
+        .type = SCP_TYPE_SET, .body.config = {
+            .group_id = status().group_id, .state = result,
+            .member_bitmap = 7U, .config_crc = status().expected_crc}};
+
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    rf_apply_process();
+}
+
+void test_save_applies_every_active_feeder_in_order_even_when_unchanged(void)
+{
+    add_second_feeder();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    TEST_ASSERT_EQUAL_INT(1, rf_nvram_fake_sync_count());
+    TEST_ASSERT_EQUAL_HEX8(0x44U, batch_status().targets);
+    TEST_ASSERT_FALSE(rf_apply_can_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_UINT8(3U, status().line);
+    TEST_ASSERT_EQUAL_UINT8(1U, status().group_id);
+    finish_batch_feeder(3U);
+    TEST_ASSERT_EQUAL_HEX8(0x04U, batch_status().applied);
+    TEST_ASSERT_EQUAL_UINT8(7U, status().line);
+    TEST_ASSERT_EQUAL_UINT8(2U, status().group_id);
+    finish_batch_feeder(3U);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_COMPLETE, batch_status().state);
+    TEST_ASSERT_EQUAL_HEX8(0x44U, batch_status().applied);
+    TEST_ASSERT_EQUAL_size_t(10U, request_count);
+    TEST_ASSERT_TRUE(rf_apply_can_save());
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_UINT8(3U, status().line);
+    TEST_ASSERT_EQUAL_UINT8(3U, status().group_id);
+}
+
+void test_nvram_failure_never_starts_rf_or_replaces_previous_batch(void)
+{
+    rf_apply_status_t previous = batch_status();
+
+    rf_nvram_fake_set_sync_result(-1);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_ERROR, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(previous.state, batch_status().state);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_IDLE, status().state);
+    rf_nvram_fake_set_sync_result(0);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+}
+
+void test_busy_save_does_not_sync_or_replace_targets(void)
+{
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_BUSY, rf_apply_save());
+    TEST_ASSERT_EQUAL_INT(1, rf_nvram_fake_sync_count());
+    TEST_ASSERT_EQUAL_HEX8(0x04U, batch_status().targets);
+}
+
+void test_empty_active_set_saves_without_rf_commands(void)
+{
+    feeder.in_use = false;
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_COMPLETE, batch_status().state);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    TEST_ASSERT_EQUAL_INT(1, rf_nvram_fake_sync_count());
+}
+
+void test_failed_feeder_stops_queue_and_explicit_save_can_retry(void)
+{
+    add_second_feeder();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    finish_batch_feeder(4U);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_EQUAL_HEX8(0U, batch_status().applied);
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_size_t(5U, request_count);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_UINT8(3U, status().line);
+    TEST_ASSERT_EQUAL_UINT8(2U, status().group_id);
+}
+
+void test_later_feeder_failure_preserves_completed_feeders(void)
+{
+    add_second_feeder();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    finish_batch_feeder(3U);
+    finish_batch_feeder(4U);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_EQUAL_UINT8(7U, batch_status().line);
+    TEST_ASSERT_EQUAL_HEX8(0x04U, batch_status().applied);
+    TEST_ASSERT_EQUAL_size_t(10U, request_count);
+}
+
+void test_uncertain_write_stops_batch_and_blocks_save(void)
+{
+    add_second_feeder();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    unused_group();
+    rf_group_process(tick);
+    reply(SCP_CMD_TIMEOUT, NULL);
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_FALSE(rf_apply_can_save());
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_BUSY, rf_apply_save());
+    TEST_ASSERT_EQUAL_INT(1, rf_nvram_fake_sync_count());
+    TEST_ASSERT_EQUAL_size_t(2U, request_count);
+}
+
+void test_terminal_used_ids_are_skipped_before_write(void)
+{
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    rf_group_process(tick);
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK,
+        .data_len = 8U, .data = {1U, 3U, 7U}};
+
+    reply(SCP_CMD_OK, &packet);
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_UINT8(2U, status().group_id);
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, request_count);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_STATUS_GET, requests[1].cmd);
+}
+
+void test_used_active_peer_stops_batch_without_writes(void)
+{
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    rf_group_process(tick);
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK,
+        .data_len = 8U, .data = {1U, 1U, 7U}};
+
+    reply(SCP_CMD_OK, &packet);
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_FALSE(rf_apply_can_save());
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+}
+
+void test_all_255_used_ids_stop_without_zero_or_wrap_reprobe(void)
+{
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    for (uint16_t id = 1U; id <= UINT8_MAX; id++)
+    {
+        rf_group_process(tick);
+        TEST_ASSERT_EQUAL_UINT8(id, requests[request_count - 1U].data[0]);
+        scp_packet_t packet = {.src = RF_SCP_ADDR_HUB,
+            .dst = RF_SCP_ADDR_RTU, .cmd = RF_SCP_CMD_CFG_STATUS_GET,
+            .type = SCP_TYPE_ACK, .data_len = 8U,
+            .data = {(uint8_t)id, 3U, 7U}};
+
+        reply(SCP_CMD_OK, &packet);
+        rf_apply_process();
+    }
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_EQUAL_size_t(255U, request_count);
+}
+
+void test_abort_before_first_group_and_restart_never_auto_resume(void)
+{
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    TEST_ASSERT_TRUE(rf_apply_abort());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_group_hub_restarted();
+    rf_apply_hub_restarted();
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    rf_apply_init();
+    rf_group_init();
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_IDLE, batch_status().state);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+}
+
+void test_missing_binding_stops_before_first_rf_request(void)
+{
+    binding_valid = false;
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_FALSE(batch_status().group_started);
+    TEST_ASSERT_EQUAL_UINT8(3U, batch_status().line);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+}
+
+void test_late_applied_after_uncertain_does_not_resume_remaining_feeders(void)
+{
+    add_second_feeder();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    scp_packet_t missing = {.data_len = 1U,
+        .data = {RF_SCP_ERR_INVALID_PARAM}};
+
+    rf_group_process(tick);
+    reply(SCP_CMD_ERR, &missing);
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        rf_group_process(tick);
+        ack();
+    }
+    rf_group_process(tick);
+    reply(SCP_CMD_TIMEOUT, NULL);
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    rf_scp_message_t report = {.cmd = RF_SCP_CMD_CFG_STATUS_NOTIFY,
+        .type = SCP_TYPE_SET, .body.config = {
+            .group_id = status().group_id, .state = 3U,
+            .member_bitmap = 7U, .config_crc = status().expected_crc}};
+
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_STOPPED, batch_status().state);
+    TEST_ASSERT_EQUAL_size_t(5U, request_count);
+    TEST_ASSERT_TRUE(rf_apply_can_save());
+}
+
+void test_transport_busy_waits_without_starting_or_losing_targets(void)
+{
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    transport_free = false;
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_RUNNING, batch_status().state);
+    TEST_ASSERT_FALSE(batch_status().group_started);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    transport_free = true;
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_CHECKING, status().state);
+    TEST_ASSERT_EQUAL_UINT8(1U, status().group_id);
 }
 
 /*** end of file ***/

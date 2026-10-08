@@ -1,10 +1,11 @@
-/**
- * @file http_handlers.c
- * @brief HTTP endpoint handlers implementation
+/*
+ * http_handlers.c
  *
  *  Created on: Apr 18, 2026
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
+ *
+ * HTTP endpoint handlers implementation.
  */
 
 #define CSLOG_MODULE LOG_MOD_HTTP
@@ -38,6 +39,7 @@
 #include "rf_monitor_json.h"
 #include "rf_group_web.h"
 #include "rf_group.h"
+#include "rf_apply.h"
 #include "system_status_json.h"
 #include "gsm_engine.h"
 #include "gsm_info.h"
@@ -1587,27 +1589,13 @@ void handle_get_rf_group_status_json(void)
 
 void handle_post_rf_apply(const char *suffix)
 {
-    const rf_web_apply_result_t result = rf_web_start_apply(suffix);
-
-    switch (result)
-    {
-        case RF_WEB_APPLY_STARTED:
-            http_send_json("{\"started\":true}", 16);
-            break;
-        case RF_WEB_APPLY_NOT_STARTED:
-            http_send_error(409, "RF apply not started: check members, "
-                "inventory, epoch, hub and fresh group ID");
-            break;
-        case RF_WEB_APPLY_INVALID:
-        default:
-            http_send_error(400, "Expected store line 1..7/group ID 0..255");
-            break;
-    }
+    (void)suffix;
+    http_send_error(410, "Use RF Save to save and apply all active feeders");
 }
 
 void handle_post_rf_abort(void)
 {
-    if (!rf_group_abort())
+    if (!rf_apply_abort())
     {
         http_send_error(409, "RF abort not started: check current group state");
         return;
@@ -1616,7 +1604,7 @@ void handle_post_rf_abort(void)
 }
 
 /**
- * @brief Save the desired RF settings; application is a separate request.
+ * @brief Save desired RF settings and apply all active feeders in sequence.
  */
 void handle_post_rf_config_json(const char *json_body)
 {
@@ -1625,6 +1613,12 @@ void handle_post_rf_config_json(const char *json_body)
     if (!json_body) {
     	CSLOG_ERR("[HTTP] ERROR: No JSON body\r\n");
         http_send_bad_request();
+        return;
+    }
+
+    if (!rf_apply_can_save())
+    {
+        http_send_error(409, "RF operation active or unresolved; save blocked");
         return;
     }
     
@@ -1659,7 +1653,7 @@ void handle_post_rf_config_json(const char *json_body)
     }
     
     // Sync to persistent storage (data is already in breaker_config)
-    if (rf_store_sync() != 0) {
+    if (RF_APPLY_SAVE_OK != rf_apply_save()) {
         CSLOG_ERR("[HTTP] ERROR: Failed to sync RF config to storage\r\n");
         elog_log_config_change(ELOG_CONFIG_RF_CHANGED, ELOG_SOURCE_WEB,
                                gsm_get_web_client_ip(), "rf", false);
