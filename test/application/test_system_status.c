@@ -37,6 +37,8 @@ static int16_t fake_mcu_temp;
 static uint8_t fake_signal;
 static network_generation_t fake_generation;
 static uint32_t telemetry_read_count;
+static uint8_t fake_telemetry_age;
+static uint32_t fake_alarm_mask;
 
 static bool get_telemetry_callback(uint32_t now_ms,
                                    power_board_snapshot_t *output,
@@ -45,7 +47,9 @@ static bool get_telemetry_callback(uint32_t now_ms,
     (void)call_count;
     (void)now_ms;
     *output = (power_board_snapshot_t){.summary = fake_telemetry,
-                                      .valid_fields = fake_valid_fields};
+                                      .valid_fields = fake_valid_fields,
+                                      .telemetry_age_sec = fake_telemetry_age,
+                                      .active_alarms = fake_alarm_mask};
     telemetry_read_count++;
     return true;
 }
@@ -152,7 +156,14 @@ void test_system_status_maps_all_external_inputs(void)
         .battery_temperature = 24,
         .charge_phase = 2U,
         .board_temperature = 31,
+        .dc_mv = 13500U,
+        .input_ma = 420,
+        .input_power_10mw = 5800,
+        .battery_power_10mw = -1200,
+        .source = 1U,
     };
+    fake_telemetry_age = 7U;
+    fake_alarm_mask = 0x00089001U;
 
     status = system_status_get();
 
@@ -174,6 +185,13 @@ void test_system_status_maps_all_external_inputs(void)
     TEST_ASSERT_EQUAL_INT16(875, status->battery_soc_x10);
     TEST_ASSERT_EQUAL_UINT16(960U, status->battery_soh_x10);
     TEST_ASSERT_EQUAL_UINT8(2U, status->charge_state);
+    TEST_ASSERT_EQUAL_UINT16(13500U, status->dc_voltage);
+    TEST_ASSERT_EQUAL_INT16(420, status->input_current);
+    TEST_ASSERT_EQUAL_INT16(5800, status->input_power_10mw);
+    TEST_ASSERT_EQUAL_INT16(-1200, status->battery_power_10mw);
+    TEST_ASSERT_EQUAL_UINT8(1U, status->power_source);
+    TEST_ASSERT_EQUAL_UINT8(7U, status->telemetry_age);
+    TEST_ASSERT_EQUAL_UINT32(0x00089001U, status->alarm_mask);
     TEST_ASSERT_EQUAL_INT8(19, status->gsm_signal);
     TEST_ASSERT_EQUAL_UINT8(NETWORK_GEN_4G, status->gsm_rat);
     TEST_ASSERT_EQUAL_INT8(31, status->temp);
@@ -250,6 +268,46 @@ void test_monitor_json_uses_null_for_invalid_or_unavailable_power_values(void)
                                                sizeof(buffer), &length));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BatterySOC\":-125"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BataryaVoltaji\":24000"));
+}
+
+void test_power_board_extra_fields_json_gating(void)
+{
+    char buffer[2048];
+    size_t length;
+
+    fake_valid_fields = 0U;
+    fake_telemetry.dc_mv = 13500U;
+    fake_telemetry.input_ma = 420;
+    fake_telemetry.input_power_10mw = 5800;
+    fake_telemetry.battery_power_10mw = -1200;
+    fake_telemetry.source = 1U;
+    fake_telemetry_age = 7U;
+    fake_alarm_mask = 0x00089001U;
+    const system_status_t *status = system_status_get();
+
+    TEST_ASSERT_TRUE(system_status_json_build(status, buffer,
+                                               sizeof(buffer), &length));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"DcVoltaji\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"GirisAkimi\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"GirisGucu\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AkuGucu\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Kaynak\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"TelemetriYasi\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AlarmMaskesi\":null"));
+
+    fake_valid_fields = POWER_VALID_ADC | POWER_VALID_CHARGER |
+                        POWER_VALID_POWER | POWER_VALID_SOURCE |
+                        POWER_VALID_SUMMARY | POWER_VALID_ALARMS;
+    status = system_status_get();
+    TEST_ASSERT_TRUE(system_status_json_build(status, buffer,
+                                               sizeof(buffer), &length));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"DcVoltaji\":13500"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"GirisAkimi\":420"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"GirisGucu\":5800"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AkuGucu\":-1200"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Kaynak\":1"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"TelemetriYasi\":7"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AlarmMaskesi\":561153"));
 }
 
 void test_monitor_json_rejects_small_buffer_without_partial_response(void)

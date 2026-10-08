@@ -147,6 +147,7 @@ void test_stale_charger_keeps_adc_but_rejects_charge_power_and_soc(void)
     TEST_ASSERT_EQUAL_INT16(-321, out.summary.battery_ma);
 }
 
+
 void test_stale_board_adc_rejects_voltages_and_temperature(void)
 {
     rf_scp_message_t message = summary();
