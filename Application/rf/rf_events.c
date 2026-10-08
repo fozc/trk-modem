@@ -174,6 +174,8 @@ static void stop_cycle(void)
     state = EVENTS_IDLE;
     poll_ms = HAL_GetTick();
     requested = false;
+    /* BOLATeX BQ-03: protection failure retries via the normal poll;
+     * inventory starts only from a completed protect (command_done). */
 }
 
 bool rf_events_boot_protect(void)

@@ -698,15 +698,13 @@ def i1(ctx):
 
 # Plan v1.2 additions register their cases on import.
 import cases_v12  # noqa: E402,F401  (registers into CASES above)
+import cases_bq   # noqa: E402,F401  (BOLATeX R0 answer cases)
 
 PLANNED = {
     "d2_lost_bell_60s_poll": "0x47 kaybi -> 60 s periyodik 0x40 (soak)",
     "d5_wrap_during_read": "okuma sirasinda halka sarmasi (soak)",
     "e5_reboot_mid_cfg": "konfig ortasinda hub reset -> RESTARTED",
-    "h5_late_reply": "700 ms gec yanit -> timeout + tekrar",
     "c3_stale_uptime": "artmayan uptime (BOLATeX'e bildirim kasidi)",
-    "c4_trip_failed_flag": "Trip_Failed bayrak gecisleri",
-    "b1_discovery": "0x14 kesif -> rf disc (atama akisi web bekliyor)",
 }
 
 
