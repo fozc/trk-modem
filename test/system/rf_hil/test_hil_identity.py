@@ -141,6 +141,10 @@ const fw_info_t *boot_get_installed_fw_info(void) { return &installed; }
 static bool scp_is_free(void) { return true; }
 static uint8_t rf_comm_get_hub_major(void) { return 1U; }
 static uint8_t rf_inventory_get_status(void) { return 0U; }
+typedef struct { const char *reason; uint32_t total_ms;
+                 uint32_t reason_ms; } rf_inventory_wait_t;
+static void rf_inventory_get_wait(rf_inventory_wait_t *out)
+{ out->reason = "none"; out->total_ms = 0U; out->reason_ms = 0U; }
 static const char *inventory_status_name(uint8_t status)
 { (void)status; return "ready"; }
 static uint8_t rf_discovery_get_count(void) { return 0U; }

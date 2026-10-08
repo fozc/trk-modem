@@ -703,6 +703,7 @@ def i1(ctx):
 import cases_v12  # noqa: E402,F401  (registers into CASES above)
 import cases_bq   # noqa: E402,F401  (BOLATeX R0 answer cases)
 import cases_recovery  # noqa: E402,F401 (recovery and quality cases)
+import cases_findings  # noqa: E402,F401 (2026-10-08 analysis findings)
 
 PLANNED = {
     "d5_wrap_during_read": "okuma sirasinda halka sarmasi (soak)",

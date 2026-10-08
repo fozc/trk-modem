@@ -597,6 +597,23 @@ class ConfigGroupTests(unittest.TestCase):
         crc = int.from_bytes(applied.data[4:6], "little")
         self.assertEqual(crc, sc.crc16_ccitt_false(block[3:57]))
 
+    def test_cfg_mute_suppresses_status_notifies_but_not_replies(self):
+        h = HubHarness()
+        upload_inventory(h)
+        h.hub.cfg_mute = True
+        self.write_group(h)
+        h.advance(5000)
+        h.advance(10000)
+        self.assertEqual(h.notifies(0x21), [],
+                         "cfg_mute must keep 0x21 off the wire")
+        h.request(0x28, sc.TYPE_GET, bytes([7]), seq=180)
+        reply = h.replies()[-1]
+        self.assertEqual(reply.type, sc.TYPE_ACK)
+        self.assertEqual(reply.data[1], hm.GROUP_APPLIED,
+                         "0x28 replies must still carry the live state")
+        h.hub.cfg_mute = False
+        h.hub.group = None
+
     def test_status_get_reflects_history(self):
         h = HubHarness()
         upload_inventory(h)
