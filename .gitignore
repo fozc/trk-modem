@@ -97,3 +97,14 @@ test/integration/**/build_scp/
 !/keys/private_key.pem
 !/keys/aes_key.bin
 !/keys/rfwu_key.bin
+
+# Local reports and guides: keep on disk, out of git.
+/ANALIZ_RAPORU_2026-09.md
+/APP_REPO_SENKRON_BULGULARI.md
+/BOLATEX_YANIT_UYGULAMA_RAPORU_2026-10-07.md
+/CEEDLING_MODUL_KAPSAM_RAPORU_2026-10-06.md
+/README.md
+/RF_HIL_DEGERLENDIRME_2026-10-06.md
+/RF_HIL_TEST_REHBERI.md
+/SCP_ARAYUZ_ANALIZ_RAPORU_2026-10-05.md
+/nvram-common.md
