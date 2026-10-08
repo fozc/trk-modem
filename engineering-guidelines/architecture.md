@@ -1,6 +1,6 @@
 # Architecture — Smart Breaker Modem
 
-Sürüm: 1.1.0 · Tarih: 2026-10-04 · Durum: mevcut proje profili; açık kararlar var.
+Sürüm: 1.2.0 · Tarih: 2026-10-08 · Durum: mevcut proje profili; açık kararlar var.
 
 ## A00. Amaç ve durum
 
@@ -165,7 +165,7 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 | RF enerji/yük ve ayrı kalite bloğu | 06.10.2026 kullanıcı kararı: doküman esas alınır, eski nominal gösterge adları korunmaz. Enerji/yük LIVE bit 0/1 kaynağıdır. Mevcut değer adresleri 0/1; 49500–49520 salt okunur faz kalite bloğunda bit 0 akım, bit 1 enerji, bit 2 yük geçerliliğidir. Eksik/eski örnek kalite=0; son Boolean korunur, hiç örnek yoksa 0 olur. Web/sunucu adres çakışmasını reddeder. NVRAM boyutu/sırası değişmez. Koruma nominal akımı ayrı anlamını korur. Üretim raporu §10.27. |
 | Anlık arıza özetleri kaldırılır | 06.10.2026 kullanıcı kararı: arıza akımı/süresi/tipi canlı göstergeleri kaldırılır, geçici/kalıcı listeler kalır. NVRAM yuvaları reserved olur; kalan adresler korunur. Olay yük biti doğrudan saklanır; eski ters anlamlı liste sürümü 2 reddedilir, yeni fault schema 3'tür. Spontane/replay ilk liste kaydı IOA'larından kendi olay zamanıyla gönderilir; hazırlanan paket 06.10.2026 kullanıcı commit talebiyle onaylandı. |
 | RF operatör onay kanalı sorulur | 06.10.2026 kullanıcı kararı: onayın yerel RTU operatörü veya SCADA merkezinden gelmesi BOLATeX'e BQ-16 ile sorulur. Yeni web düğmesi/yazma API'si cevap bekler. Mevcut terminal `rf alarm-ack` ve servis davranışı değiştirilmez. |
-| RF Kaydet/Uygula ayrıdır | 06.10.2026 kullanıcı K5 kararı: Kaydet istenen ayarı hemen NVRAM’e yazar; Uygula ayrı başlatılır. APPLIED RAM sonucudur, ayar store’unu değiştirmez. PARTIAL/FAILED/reset sonrası otomatik tekrar yoktur. Yeni ayarda eski APPLIED, MatchesDesired ile ayrılır. NVRAM düzeni değişmez. |
+| RF web Kaydet onayı uygulamayı başlatır | 08.10.2026 kullanıcı kararı önceki K5 web ayrımını güncelledi. Tüm etkin fiderler `rf_apply` ile sırayla uygulanır; grup kimliği otomatik seçilir. Ayrı Uygula/Yalnız kaydet yoktur. Güncel kurallar [uygulama planı 0.28](../doc/RF_SCP_MODEM_UYGULAMA_PLANI.md#rf-web-kaydet-onayı-ve-sıralı-uygulama--08102026); doğrulama üretim raporu §10.36. |
 | Powerboard tüketicileri SCP kaynağını kullanır | 06.10.2026 kullanıcı kararı: 49200 tabanı korunarak 38 register yeni harita kurulur. Özet/alarm modeli system_status, web, Modbus ve shell kaynağıdır; eski I²C process başlatılmaz. Kaynaklar silinmez; GPIO power-panic ve kapalı BMS reader korunur. E5–E8 müşteri kontrolü shell ile bağlıdır; GEN/yankı/E1 ve komut sonucu ayrımı korunur. Ayarsız ayar/periyot ve E7 bitiş ayrımı BQ-12–14'tedir. Web/Modbus yazma arayüzü ayrıca ele alınır. [Uygulama planı](../doc/RF_SCP_MODEM_UYGULAMA_PLANI.md#powerboard-tüketici-geçişi--06102026). |
 | PowerBoard ertelemeleri korunur | BMS Y8.4–Y8.7 yazılım düzeltmeleri tamamlandı; reader init hâlâ kapalıdır. Düzeltme etkinleştirme yetkisi değildir. Üretim raporu §9.31–§9.33. |
 
@@ -251,3 +251,4 @@ Bu paketin oluşturulması bu kararların kabulü sayılmaz.
 |---|---|---|
 | 2026-09-14 | 1.0.0 | Mevcut kaynaklarla ilk doldurma; açık kararların ayrılması |
 | 2026-10-04 | 1.1.0 | A06/A08–A11: güncel ABI, kullanıcı kararları, author ve merkezi test girişleri |
+| 2026-10-08 | 1.2.0 | A09.1: RF web Kaydet onayı ve tüm etkin fiderlerin sıralı uygulaması |

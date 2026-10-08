@@ -251,6 +251,7 @@ async function checkPage(html, label) {
     run("pageCache.device = {SeriNumarasi: 'SERIAL-123', SimKartAPN: 'old-apn', PeriyodikModemResetPeriyodu: 3600};");
     let request;
     context.fetch = async (url, options) => {
+        if(!options.body)return {ok:true,status:200,json:async()=>({SaveBlocked:false})};
         request = {url, data: JSON.parse(options.body)};
         return {ok: true, status: 200, json: async () => ({success: true})};
     };
@@ -311,12 +312,14 @@ async function checkPage(html, label) {
     sbo.checked = true;
     document.getElementById('iec-SBOTimeout').value = '30';
     context.fetch = async (url, options) => {
+        if(!options.body)return {ok:true,status:200,json:async()=>({SaveBlocked:false})};
         request = {url, data: JSON.parse(options.body)};
         return {ok: true, status: 200, json: async () => ({success: true})};
     };
     for (const page of ['iec104', 'modbus', 'rf']) {
         run(`pageCache['${page}'] = {};`);
         await run(`savePage('${page}')`);
+        if(page==='rf')await document.getElementById('okConfirm').onclick();
         assert.equal(request.url, '/config/' + page);
         assert.deepEqual(JSON.parse(run(`JSON.stringify(pageCache['${page}'])`)), request.data);
     }
@@ -477,37 +480,50 @@ async function checkPage(html, label) {
         rfRequests.push(url);
         if (options.method === 'POST') rfPosts++;
         return {ok: true, status: 200, json: async () => options.method === 'POST'
-            ? {started: true} : {State: 'checking', Line: 1, GroupId: 7,
-                HasReport: false, MatchesDesired: true}};
+            ? {success: true} : {State: 'idle', BatchState: 'idle', SaveBlocked: false}};
     };
-    run("pageCache.rf={inUse:[true]};dirtyPages.rf=new Set();loading=false;");
-    document.getElementById('rf-apply-line').value = '1';
-    document.getElementById('rf-apply-group').value = '7';
-    run("dirtyPages.rf.add('unsaved')");
-    await run('applyRfConfig()');
-    assert.equal(rfPosts, 0, 'unsaved settings must block apply');
-    run('dirtyPages.rf.clear()');
-    document.getElementById('rf-apply-group').value = '';
-    await run('applyRfConfig()');
-    assert.equal(rfPosts, 0, 'empty group ID must not become zero');
-    document.getElementById('rf-apply-group').value = '256';
-    await run('applyRfConfig()');
-    assert.equal(rfPosts, 0);
-    document.getElementById('rf-apply-group').value = '7';
-    await run('applyRfConfig()');
-    assert.equal(rfPosts, 1);
-    assert.ok(rfRequests.includes('/config/rf/apply/1/7'));
-    assert.ok(rfRequests.includes('/status/rf-group'));
-    assert.ok(!rfRequests.includes('/config/rf'), 'apply must not save again');
-    await run('abortRfConfig()');
-    assert.equal(rfPosts, 2);
-    assert.ok(rfRequests.includes('/config/rf/abort'));
-    run("pageCache.rfGroup={State:'applied',MatchesDesired:true}");
-    context.fetch = async () => ({ok: true, status: 200,
-        json: async () => ({success: true})});
+    run("pageCache.rf={inUse:[true]};dirtyPages.rf=new Set();loading=false;curId='rf';");
+    run("LNG='tr'");
+    for(const [key,value] of Object.entries({HatID:1,ZoneID:1,
+        SetEdilebilirAcmaArizaSayisi:3,OluHatAkimiDogrulamaSuresi:200,
+        YenilenmeSifirlamaSuresi:30,SistemNominalAkimi:6,
+        SetEdilebilirActirmaEsikAkimi:13,ArtimliAkimEsigi:1000,
+        HatKopukHatBosta:2}))document.getElementById('rf-'+key+'-0').value=String(value);
+    document.getElementById('rf-inUse-0').checked = true;
     await run("savePage('rf')");
-    assert.equal(run('pageCache.rfGroup'), undefined,
-        'saving desired settings must invalidate the old application status');
+    assert.equal(rfPosts, 0, 'confirmation must precede save');
+    assert.ok(notices.at(-1).innerHTML.includes('Satır 1'));
+    document.getElementById('cancelConfirm').onclick();
+    assert.equal(rfPosts, 0, 'cancel must not save');
+    await run("savePage('rf')");
+    await document.getElementById('okConfirm').onclick();
+    assert.equal(rfPosts, 1);
+    assert.ok(rfRequests.includes('/config/rf'));
+    assert.ok(!rfRequests.some(url => url.includes('/config/rf/apply/')));
+    assert.ok(rfRequests.includes('/status/rf-group'));
+    const rfHtml = run('renderRf(pageCache.rf)');
+    assert.ok(!rfHtml.includes('rf-apply-group'));
+    assert.ok(!rfHtml.includes('applyRfConfig()'));
+    const progress = run("buildRfGroupStatus({State:'failed',BatchState:'stopped',Targets:7,Applied:1,BatchLine:2,GroupStarted:true})");
+    assert.ok(progress.includes('Uygulama durdu'));
+    assert.ok(progress.includes('Satır 1: Uygulandı'));
+    assert.ok(progress.includes('Satır 2: Uygulama başarısız'));
+    assert.ok(progress.includes('Satır 3: Uygulanmadı'));
+    context.fetch = async () => ({ok:true,status:200,json:async()=>({SaveBlocked:true,BatchState:'running'})});
+    await run("savePage('rf')");
+    assert.equal(rfPosts, 1, 'busy operation must not save');
+    assert.equal(document.getElementById('save-rf').disabled, true);
+    run('hideLoad()');
+    assert.equal(document.getElementById('save-rf').disabled, true);
+    context.fetch = async (url, options={}) => {
+        if (options.method === 'POST') {rfPosts++;return {ok:false,status:500};}
+        return {ok:true,status:200,json:async()=>({SaveBlocked:false,BatchState:'idle'})};
+    };
+    run("dirtyPages.rf.add('unsaved')");
+    await run("savePage('rf')");
+    await document.getElementById('okConfirm').onclick();
+    assert.equal(run("hasDirty('rf')"), true, 'failed save must preserve edits');
+    assert.equal(rfPosts, 2);
     let resolveStatus;
     context.fetch = async () => ({ok: true, status: 200,
         json: () => new Promise(resolve => {resolveStatus = resolve;})});
@@ -518,7 +534,7 @@ async function checkPage(html, label) {
     await pendingStatus;
     assert.equal(run('pageCache.rfGroup'), undefined,
         'a late status response for older desired settings must be ignored');
-    console.log('PASS:', label, '- navigation, RF save/apply, faults, languages, config saves, device cache/failure');
+    console.log('PASS:', label, '- navigation, RF confirmed save/sequence, faults, languages, config saves, device cache/failure');
 
 }
 

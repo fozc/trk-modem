@@ -91,6 +91,7 @@ class HubModel:
         self.sched_active = 1
         self.live_period_s = LIVE_PERIOD_S
         self.live_enabled = True          # master switch for the 0x11 stream
+        self.log_bell_enabled = True      # allow poll-without-notify tests
         self.pwr_enabled = True           # master switch for the 0xE1 stream
         self.cfg_delivered_ms = 5000
         self.cfg_applied_ms = 10000
@@ -504,7 +505,9 @@ class HubModel:
     def build_event_record(self, code, zone, line, phase, fault_count=0,
                            max_current=1250.0, di_dt=800.0, dur_ms=120,
                            v_trip=32.0, v_harv=8.4, mcu_temp=31,
-                           clock_quality=1):
+                           clock_quality=1, boot_counter=7):
+        if not 0 <= boot_counter <= 0xFFFF:
+            raise ValueError("event boot counter must be uint16")
         rec = bytearray(EVENT_LEN)
         stamp = self.wall_struct()
         if stamp is None:
@@ -525,7 +528,7 @@ class HubModel:
         rec[27:31] = struct.pack("<f", v_trip)
         rec[31:35] = struct.pack("<f", v_harv)
         rec[39:41] = struct.pack("<h", mcu_temp)
-        rec[49:51] = struct.pack("<H", 7)   # boot_counter
+        rec[49:51] = struct.pack("<H", boot_counter)
         rec[51:55] = struct.pack("<I", self.uptime_s())
         rec[55] = clock_quality
         crc = sc.crc16_ccitt_false(rec[0:58])
@@ -533,8 +536,10 @@ class HubModel:
         return bytes(rec)
 
     def add_events(self, count, code=1, line=1, zone=None, phase=None,
-                   fault_count=None):
+                   fault_count=None, boot_counter=7):
         """Append records; a full ring overwrites the oldest unconsumed."""
+        if not 0 <= boot_counter <= 0xFFFF:
+            raise ValueError("event boot counter must be uint16")
         if zone is None:
             zone = self.learned_zone if self.learned_zone is not None else 0
         was_pending = self.pending_count()
@@ -543,7 +548,8 @@ class HubModel:
             fc = fault_count if fault_count is not None else 2
             if code == 7:
                 fc = 0
-            rec = self.build_event_record(code, zone, line, ph, fc)
+            rec = self.build_event_record(code, zone, line, ph, fc,
+                                          boot_counter=boot_counter)
             if self.pending_count() >= HUB_SLOTS - 1:
                 self.consumed += 1  # oldest unconsumed slot is lost
             self.slots[self.head()] = rec
@@ -555,6 +561,8 @@ class HubModel:
 
     def send_log_bell(self):
         self.bell_last_ms = self.now_ms()
+        if not self.log_bell_enabled:
+            return
         self.notify(0x47, struct.pack("<HH", min(self.pending_count(),
                                                  0xFFFF), self.head()),
                     note="log_bell pending=%d" % self.pending_count())

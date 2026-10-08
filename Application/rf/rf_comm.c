@@ -1,7 +1,7 @@
 /*
  * rf_comm.c
  *
- *  Created on: 23 Aug 2026
+ *  Created on: Aug 23, 2026
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
@@ -33,6 +33,7 @@
 #include "rf_faults.h"
 #include "rf_alarm.h"
 #include "rf_group.h"
+#include "rf_apply.h"
 #include "power_board_scp.h"
 #include "power_board_control.h"
 #include "rf_inventory.h"
@@ -654,6 +655,7 @@ static void handle_boot_notify(const scp_packet_t *pkt)
     }
     rf_events_init();
     rf_group_hub_restarted();
+    rf_apply_hub_restarted();
     power_board_scp_hub_restarted();
     power_board_control_hub_restarted();
     if (major != RF_SCP_MAJOR_EXPECTED)
@@ -883,6 +885,7 @@ static void rf_comm_periodic_jobs(void)
 
     /* Envanter siralayici: aktif ama komut mekanizmasi mesgulse bekle */
     rf_inventory_continue();
+    rf_apply_process();
     rf_group_process(HAL_GetTick());
     rf_events_process(HAL_GetTick());
     power_board_scp_process(HAL_GetTick());
@@ -951,6 +954,7 @@ void rf_comm_init(uint8_t device_address)
     rf_alarm_init();
     rf_events_init();
     rf_group_init();
+    rf_apply_init();
     if (!rbuff_init(&rx_ring, rx_buff, sizeof(rx_buff)))
     {
         CSLOG_ERR("[RF] Failed to initialize RX ring buffer!\r\n");

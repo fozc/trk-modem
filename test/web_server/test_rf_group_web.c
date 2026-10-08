@@ -11,40 +11,27 @@
 #include "unity.h"
 #include "rf_group_web.h"
 #include "mock_rf_group.h"
+#include "mock_rf_apply.h"
 #include <string.h>
 
 TEST_SOURCE_FILE("xprintf.c")
 
+static void batch_status(rf_apply_status_t *out, int call_count)
+{
+    (void)call_count;
+    *out = (rf_apply_status_t){.state = RF_APPLY_RUNNING,
+        .targets = 0x44U, .applied = 0x04U, .line = 7U,
+        .group_started = true};
+}
+
 void setUp(void)
 {
+    rf_apply_get_status_StubWithCallback(batch_status);
+    rf_apply_can_save_IgnoreAndReturn(false);
 }
 
 void tearDown(void)
 {
-}
-
-void test_apply_uses_one_based_store_line_and_accepts_full_group_id_range(void)
-{
-    rf_group_start_ExpectAndReturn(0U, 0U, true);
-    TEST_ASSERT_EQUAL_INT(RF_WEB_APPLY_STARTED, rf_web_start_apply("1/0"));
-    rf_group_start_ExpectAndReturn(6U, 255U, true);
-    TEST_ASSERT_EQUAL_INT(RF_WEB_APPLY_STARTED, rf_web_start_apply("7/255"));
-    rf_group_start_ExpectAndReturn(1U, 5U, false);
-    TEST_ASSERT_EQUAL_INT(RF_WEB_APPLY_NOT_STARTED, rf_web_start_apply("2/5"));
-}
-
-void test_invalid_apply_paths_never_call_group_service(void)
-{
-    const char *invalid[] = {"", "0/1", "8/1", "1/256", "1/-1",
-        "-1/2", "1/1x", "1/1/2", "1/", "1", "/2", "1.5/2"};
-
-    TEST_ASSERT_EQUAL_INT(RF_WEB_APPLY_INVALID, rf_web_start_apply(NULL));
-    for (size_t index = 0U;
-         index < sizeof(invalid) / sizeof(invalid[0]); index++)
-    {
-        TEST_ASSERT_EQUAL_INT(RF_WEB_APPLY_INVALID,
-                              rf_web_start_apply(invalid[index]));
-    }
 }
 
 static bool get_status(rf_group_status_t *out, int call_count)
@@ -70,6 +57,9 @@ void test_applied_snapshot_is_distinct_from_changed_desired_settings(void)
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Line\":2,\"Feeder\":4"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"MatchesDesired\":false"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"HasReport\":true"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BatchState\":\"running\""));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Targets\":68,\"Applied\":4"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"SaveBlocked\":true"));
     TEST_ASSERT_EQUAL_size_t(strlen(buffer), length);
 }
 

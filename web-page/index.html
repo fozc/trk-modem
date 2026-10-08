@@ -174,8 +174,12 @@ const fmtCsq=v=>Number.isInteger(v)&&v>=0&&v<=31?String(v):t('signalUnknown');
 const fmt=(v,u,dec)=>{if(v===undefined||v===null||v==='')return '-';let s=dec!==undefined?parseFloat(v).toFixed(dec):String(v);return u?s+' '+u:s};
 const toast=(m,t2='info')=>{const e=document.createElement('div');e.className='toast '+t2;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),CFG_TOAST_DURATION_MS)};
 const showLoad=()=>{if(loading)return;loading=true;const e=document.createElement('div');e.id='requestLoading';e.className='loading';e.innerHTML='<div class="spinner"></div>';document.body.appendChild(e);document.querySelectorAll('button').forEach(b=>b.disabled=true)};
-const hideLoad=()=>{loading=false;$('requestLoading')?.remove();document.querySelectorAll('button').forEach(b=>b.disabled=false)};
-const confirmAction=(msg,fn)=>{const o=document.createElement('div');o.className='modal';o.innerHTML='<div class="modal-card"><h3>'+esc(t('confirmT'))+'</h3><p style="color:#64748b;line-height:1.5;margin-bottom:12px">'+esc(msg)+'</p><div class="modal-actions"><button class="btn btn-muted" id="cancelConfirm">'+esc(t('cancel'))+'</button><button class="btn btn-danger" id="okConfirm">'+esc(t('confirmBtn'))+'</button></div></div>';document.body.appendChild(o);$('cancelConfirm').onclick=()=>o.remove();$('okConfirm').onclick=()=>{o.remove();fn()}};
+const hideLoad=()=>{loading=false;$('requestLoading')?.remove();document.querySelectorAll('button').forEach(b=>b.disabled=false);updateRfSaveButton()};
+
+Object.assign(I18N.en,{rfApplyTitle:'RF application progress',rfApplyHint:'Save confirms and applies settings to every active feeder in sequence.',rfSaveConfirm:'Settings will be saved and applied to all active settings rows: {rows}. Continue?',rfSaveNone:'No active feeders. Settings will be saved; no RF commands will be sent. Continue?',rfSaveBusy:'RF operation active or unresolved. Save is blocked.',rfSavedApplying:'Saved; RF application started.',rfBatchRunning:'Applying settings',rfBatchComplete:'Application complete',rfBatchStopped:'Application stopped',rfBatchPending:'Not applied',rfBatchNotStarted:'Application could not start',rfBatchActive:'In progress'});
+Object.assign(I18N.tr,{rfApplyTitle:'RF uygulama durumu',rfApplyHint:'Kaydet onay\u0131, ayarlar\u0131 t\xfcm etkin fiderlere s\u0131rayla uygular.',rfSaveConfirm:'Ayarlar kaydedilecek ve t\xfcm etkin ayar sat\u0131rlar\u0131na uygulanacak: {rows}. Onayl\u0131yor musunuz?',rfSaveNone:'Etkin fider yok. Ayarlar kaydedilecek; RF komutu g\xf6nderilmeyecek. Onayl\u0131yor musunuz?',rfSaveBusy:'RF i\u015flemi s\xfcr\xfcyor veya sonucu belirsiz. Kaydet engellendi.',rfSavedApplying:'Kaydedildi; RF uygulamas\u0131 ba\u015flat\u0131ld\u0131.',rfBatchRunning:'Ayarlar uygulan\u0131yor',rfBatchComplete:'Uygulama tamamland\u0131',rfBatchStopped:'Uygulama durdu',rfBatchPending:'Uygulanmad\u0131',rfBatchNotStarted:'Uygulama ba\u015flat\u0131lamad\u0131',rfBatchActive:'\u0130\u015flem s\xfcr\xfcyor'});
+
+const confirmAction=(msg,fn)=>{const o=document.createElement('div');o.className='modal';o.innerHTML='<div class="modal-card"><h3>'+esc(t('confirmT'))+'</h3><p style="color:#64748b;line-height:1.5;margin-bottom:12px">'+esc(msg)+'</p><div class="modal-actions"><button class="btn btn-muted" id="cancelConfirm">'+esc(t('cancel'))+'</button><button class="btn btn-danger" id="okConfirm">'+esc(t('confirmBtn'))+'</button></div></div>';document.body.appendChild(o);$('cancelConfirm').onclick=()=>o.remove();$('okConfirm').onclick=()=>{o.remove();return fn()}};
 
 /* Dil degistirme: statik etiketler + menu + aktif sayfa yeniden cizilir.
  * Terminal ve sistem gunlugu icerigi DOM'da tutuldugu icin dile geciste
@@ -252,7 +256,7 @@ const selectFieldL=(id,label,value,opts)=>{if(!opts.map(o=>String(o[0])).include
 const feederTabs=(sel,act=0)=>'<div class="tabbar">'+Array.from({length:FEEDER_TABS},(_,i)=>'<button class="tab '+(i===act?'active':'')+'" onclick="'+sel+'('+i+')">'+esc(feederLbl(i))+'</button>').join('')+'</div>';
 const paneOpen=(pfx,i)=>'<div id="'+pfx+'-pane-'+i+'" class="pane '+(i===0?'active':'')+'"'+(i>=FEEDER_TABS?' style="display:none"':'')+'>';
 const sectionHead=(title,page,desc='')=>`<div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div></div>`;
-const pageHead=(title,page,desc='',rw=true)=>`<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button>${rw?`<button class="btn btn-save btn-small" onclick="savePage('${page}')">${esc(t('btnSave'))}</button>`:''}</div></div></div>`;
+const pageHead=(title,page,desc='',rw=true)=>`<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button>${rw?`<button class="btn btn-save btn-small" id="save-${page}" onclick="savePage('${page}')">${esc(t('btnSave'))}</button>`:''}</div></div></div>`;
 const emptyCard=(title,page,desc='')=>`<div class="card"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button></div></div><div class="card-body"><div class="empty">${t('pressRead')}</div></div></div>`;
 const getInt=id=>{const v=$(id)?.value;return v===''?0:parseInt(v,10)||0};
 const getFloat=id=>{const v=$(id)?.value;return v===''?0:parseFloat(v)||0};
@@ -292,25 +296,38 @@ function buildRfGroupStatus(group){
   const keys={idle:'rfGroupIdle',checking:'rfGroupChecking',writing:'rfGroupWriting',committing:'rfGroupCommitting',waiting:'rfGroupWaiting',applied:'rfGroupApplied',failed:'rfGroupFailed',uncertain:'rfGroupUncertain',id_in_use:'rfGroupIdUsed',mismatch:'rfGroupMismatch',aborting:'rfGroupAborting',cancelled:'rfGroupCancelled',restarted:'rfGroupRestarted'};
   let title=t(keys[group.State]||'rfGroupUnknown');
   if(group.State==='applied'&&!group.MatchesDesired)title=t('rfGroupChanged');
-  let html='<p><strong>'+esc(title)+'</strong></p>';
+  let html='';
+  if(group.BatchState&&group.BatchState!=='idle'){
+    const batchKeys={running:'rfBatchRunning',complete:'rfBatchComplete',stopped:'rfBatchStopped'};
+    html+='<p><strong>'+esc(t(batchKeys[group.BatchState]||'rfGroupUnknown'))+'</strong></p>';
+    for(let i=0;i<FEEDER_COUNT;i++)if(group.Targets&(1<<i)){
+      const done=!!(group.Applied&(1<<i)),current=group.BatchLine===i+1;
+      const result=done?t('rfGroupApplied'):current?(group.BatchState==='stopped'?(group.GroupStarted?title:t('rfBatchNotStarted')):t('rfBatchActive')):t('rfBatchPending');
+      html+='<p>'+esc(tf('rfStoreLineTpl',{n:i+1}))+': '+esc(result)+'</p>';
+    }
+    if(!group.GroupStarted)return html;
+  }
+  html+='<p><strong>'+esc(title)+'</strong></p>';
   if(group.Line)html+='<p>'+esc(tf('rfStoreLineTpl',{n:group.Line}))+' · '+esc(t('rfGroupId'))+': '+esc(group.GroupId)+'</p>';
   if(group.HasReport){const mh=['rfGroupIdle','rfGroupPrepared','rfGroupDelivered','rfGroupMHApplied','rfGroupFailed'];html+='<p>'+esc(t('rfGroupMH'))+': '+esc(t(mh[group.MHState]||'rfGroupUnknown'))+' · '+esc(t('rfGroupMembers'))+': '+esc(group.MemberBitmap)+' · '+esc(t('rfGroupReason'))+': '+esc(group.Reason)+' · CRC: '+esc(group.ReportedCRC)+' / '+esc(group.ExpectedCRC)+'</p>'}
   return html;
 }
-function invalidateRfGroupStatus(){delete pageCache.rfGroup;const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(null)}
+function invalidateRfGroupStatus(){rfStatusRequest++;delete pageCache.rfGroup;const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(null)}
+let rfStatusTimer=null;
+let rfStatusRequest=0;
+function scheduleRfStatus(){if(curId==='rf')rfStatusTimer=setTimeout(()=>{if(curId!=='rf')return;if(loading)scheduleRfStatus();else readRfGroupStatus()},5000)}
+function updateRfSaveButton(){const button=$('save-rf');if(button)button.disabled=!!pageCache.rfGroup?.SaveBlocked}
 async function readRfGroupStatus(){
-  const desired=pageCache.rf;
-  try{const group=await api('/status/rf-group');if(pageCache.rf!==desired)return;pageCache.rfGroup=group;const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(group)}catch(e){toast(t('tReadErr')+e.message,'err')}
-}
-async function applyRfConfig(){
-  if(loading)return;
-  if(!pageCache.rf){toast(t('tReadFirst'),'err');return}
-  if(hasDirty('rf')){toast(t('rfSaveFirst'),'err');return}
-  const lineEl=$('rf-apply-line'),groupEl=$('rf-apply-group');
-  const line=Number(lineEl?.value),group=Number(groupEl?.value);
-  const rows=pageCache.rf.root||pageCache.rf;
-  if(!lineEl||!groupEl||groupEl.value.trim()===''||!Number.isInteger(line)||line<1||line>FEEDER_COUNT||!rows.inUse?.[line-1]||!Number.isInteger(group)||group<0||group>255){toast(t('rfGroupInvalid'),'err');return}
-  try{showLoad();await api('/config/rf/apply/'+line+'/'+group,{method:'POST'});hideLoad();toast(t('rfGroupRequested'),'info');await readRfGroupStatus()}catch(e){hideLoad();toast(t('tErr')+e.message,'err')}
+  const desired=pageCache.rf,request=++rfStatusRequest;
+  if(rfStatusTimer){clearTimeout(rfStatusTimer);rfStatusTimer=null}
+  try{
+    const group=await api('/status/rf-group');
+    if(pageCache.rf!==desired||request!==rfStatusRequest)return null;
+    pageCache.rfGroup=group;
+    const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(group);
+    updateRfSaveButton();return group;
+  }catch(e){toast(t('tReadErr')+e.message,'err');return null}
+  finally{if(request===rfStatusRequest)scheduleRfStatus()}
 }
 async function abortRfConfig(){
   if(loading)return;
@@ -338,9 +355,7 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
     s+='</div>';
   }
   s+='</div></div></div>';
-  s+='<div class="card"><div class="card-head"><h3>'+esc(t('rfApplyTitle'))+'</h3><button class="btn btn-read btn-small" onclick="readRfGroupStatus()">'+esc(t('btnRefresh'))+'</button></div><div class="card-body"><p class="hint">'+esc(t('rfApplyHint'))+'</p><div class="grid g3"><label>'+esc(t('rfStoreLine'))+'<select id="rf-apply-line">';
-  for(let i=0;i<FEEDER_COUNT;i++)s+='<option value="'+(i+1)+'"'+(!rows.inUse?.[i]?' disabled':'')+'>'+esc(tf('rfStoreLineTpl',{n:i+1}))+'</option>';
-  s+='</select></label><label>'+esc(t('rfGroupId'))+'<input id="rf-apply-group" type="number" min="0" max="255" step="1"></label><div><button class="btn btn-save" onclick="applyRfConfig()">'+esc(t('rfApply'))+'</button> <button class="btn" onclick="abortRfConfig()">'+esc(t('rfAbort'))+'</button></div></div><div id="rf-group-status">'+buildRfGroupStatus(pageCache.rfGroup)+'</div></div></div>';
+  s+='<div class="card"><div class="card-head"><h3>'+esc(t('rfApplyTitle'))+'</h3><button class="btn btn-read btn-small" onclick="readRfGroupStatus()">'+esc(t('btnRefresh'))+'</button></div><div class="card-body"><p class="hint">'+esc(t('rfApplyHint'))+'</p><button class="btn" onclick="abortRfConfig()">'+esc(t('rfAbort'))+'</button><div id="rf-group-status">'+buildRfGroupStatus(pageCache.rfGroup)+'</div></div></div>';
   s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('discTitle'))+'</h3><div class="sub">'+esc(t('discSub'))+'</div></div><div class="card-actions"><button class="btn btn-read btn-small" onclick="readRfDiscovery()">'+esc(t('btnRefresh'))+'</button></div></div><div class="card-body" id="rf-discovery-panel">';
   if(!un.length){s+='<div class="empty">'+esc(t('discNone'))+'</div>'}
   else{s+=buildDiscoveryTable(un)}
@@ -368,7 +383,36 @@ function renderTerminal(){return '<div class="terminal"><div class="terminal-out
 
 // ---------------- PAGE LOAD / SAVE ----------------
 const readPage=async(page)=>{if(loading)return;try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;if(page==='rf')invalidateRfGroupStatus();pageCache[page]=d;renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}};
-const savePage=async(page)=>{if(loading)return;if(!pageCache[page]){toast(t('tReadFirst'),'err');return}if(!validatePage(page))return;const d=extractPage(page);try{showLoad();const r=await api('/config/'+page,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});hideLoad();if(r.success===false)throw new Error(r.error||t('tSaveFailed'));pageCache[page]={...pageCache[page],...d};if(page==='rf')invalidateRfGroupStatus();markOriginals($('body'));clearDirty(page);toast(t('tSaveOk'),'ok')}catch(e){hideLoad();if(page==='iec104'&&markIecServerErrors(e.message))toast(t('tFixVal'),'err');else toast(t('tSaveErr')+e.message,'err')}};
+const savePage=async(page)=>{
+  if(loading)return;
+  if(!pageCache[page]){toast(t('tReadFirst'),'err');return}
+  if(!validatePage(page))return;
+  const d=extractPage(page);
+  if(page==='rf'){
+    const group=await readRfGroupStatus();
+    if(!group)return;
+    if(group.SaveBlocked){toast(t('rfSaveBusy'),'err');return}
+    const rows=d.root||d;
+    const active=Array.from({length:FEEDER_COUNT},(_,i)=>rows.inUse?.[i]?tf('rfStoreLineTpl',{n:i+1})+(rows.HatID?.[i]?' (ID '+rows.HatID[i]+')':''):null).filter(Boolean);
+    confirmAction(active.length?tf('rfSaveConfirm',{rows:active.join(', ')}):t('rfSaveNone'),()=>savePageData(page,d));
+    return;
+  }
+  return savePageData(page,d);
+};
+async function savePageData(page,d){
+  if(loading)return;
+  try{
+    showLoad();
+    const r=await api('/config/'+page,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+    hideLoad();
+    if(r.success===false)throw new Error(r.error||t('tSaveFailed'));
+    pageCache[page]={...pageCache[page],...d};
+    if(page==='rf')invalidateRfGroupStatus();
+    markOriginals($('body'));clearDirty(page);
+    toast(page==='rf'&&(d.root||d).inUse?.some(Boolean)?t('rfSavedApplying'):t('tSaveOk'),'ok');
+    if(page==='rf')await readRfGroupStatus();
+  }catch(e){hideLoad();if(page==='iec104'&&markIecServerErrors(e.message))toast(t('tFixVal'),'err');else toast(t('tSaveErr')+e.message,'err')}
+}
 const addressError=(el,message)=>{
   el.classList.add('invalid');
   const err=el.closest?.('.field')?.querySelector('.err')||$('err-'+el.id);
@@ -463,7 +507,7 @@ const getIntEl=e=>e.value===''?0:parseInt(e.value,10)||0;
 function extractDevice(){return {WebArayuzuPortu:getInt('dev-WebArayuzuPortu'),SimKartPin:getInt('dev-SimKartPin'),SimKartAPN:getText('dev-SimKartAPN'),SimKartAPNUsername:getText('dev-SimKartAPNUsername'),SimKartAPNSifresi:getText('dev-SimKartAPNSifresi'),NtpServer:getText('dev-NtpServer'),NtpServerPortu:getInt('dev-NtpServerPortu'),TimeZone:getInt('dev-TimeZone'),PeriyodikModemResetPeriyodu:getInt('dev-PeriyodikModemResetPeriyodu')*3600,WebIlkVeriZamanAsimi:getInt('dev-WebIlkVeriZamanAsimi'),WebBostaKalmaZamanAsimi:getInt('dev-WebBostaKalmaZamanAsimi'),IEC104IlkVeriZamanAsimi:getInt('dev-IEC104IlkVeriZamanAsimi'),IEC104BostaKalmaZamanAsimi:getInt('dev-IEC104BostaKalmaZamanAsimi')}}
 
 // ---------------- NAVIGATION / RENDER ----------------
-function renderPage(id,d){let html='';if(id==='iec104')html=pageCache.iec104?renderIec104(pageCache.iec104):emptyCard(t('iecTitle'),'iec104',t('iecSub'));else if(id==='modbus')html=pageCache.modbus?renderModbus(pageCache.modbus):emptyCard(t('modTitle'),'modbus',t('modSub'));else if(id==='rf')html=pageCache.rf?renderRf(pageCache.rf):emptyCard(t('rfTitle'),'rf',t('rfSub'));else if(id==='rfmon')html=renderRfMon(pageCache.rfmon);else if(id==='board')html=pageCache.board?renderBoard(pageCache.board):renderBoard(null);else if(id==='iec-faults')html=renderFaults();else if(id==='syslogs')html=renderLogs();else if(id==='device')html=pageCache.device?renderDevice(pageCache.device):emptyCard(t('devTitle'),'device',t('devSub'));else if(id==='terminal')html=renderTerminal();$('body').innerHTML=html;curId=id;$('title').textContent=t(menuPages.find(p=>p[0]===id)?.[1]||id);document.querySelectorAll('.mi').forEach(e=>e.classList.toggle('a',e.dataset.id===id));dirtyPages[id]=new Set();if(id==='terminal'){$('trmCmd')?.addEventListener('keydown',e=>{if(e.key==='Enter')trmSend()});$('trmCmd')?.focus()}if(id==='rf'&&pageCache.rf){selectRfTab(0);rfBindLive()}markOriginals($('body'));bindDirty(id,$('body'));updatePageState(id)}
+function renderPage(id,d){let html='';if(id==='iec104')html=pageCache.iec104?renderIec104(pageCache.iec104):emptyCard(t('iecTitle'),'iec104',t('iecSub'));else if(id==='modbus')html=pageCache.modbus?renderModbus(pageCache.modbus):emptyCard(t('modTitle'),'modbus',t('modSub'));else if(id==='rf')html=pageCache.rf?renderRf(pageCache.rf):emptyCard(t('rfTitle'),'rf',t('rfSub'));else if(id==='rfmon')html=renderRfMon(pageCache.rfmon);else if(id==='board')html=pageCache.board?renderBoard(pageCache.board):renderBoard(null);else if(id==='iec-faults')html=renderFaults();else if(id==='syslogs')html=renderLogs();else if(id==='device')html=pageCache.device?renderDevice(pageCache.device):emptyCard(t('devTitle'),'device',t('devSub'));else if(id==='terminal')html=renderTerminal();$('body').innerHTML=html;curId=id;$('title').textContent=t(menuPages.find(p=>p[0]===id)?.[1]||id);document.querySelectorAll('.mi').forEach(e=>e.classList.toggle('a',e.dataset.id===id));dirtyPages[id]=new Set();if(id==='terminal'){$('trmCmd')?.addEventListener('keydown',e=>{if(e.key==='Enter')trmSend()});$('trmCmd')?.focus()}if(id==='rf'&&pageCache.rf){selectRfTab(0);rfBindLive();updateRfSaveButton();readRfGroupStatus()}markOriginals($('body'));bindDirty(id,$('body'));updatePageState(id)}
 function switchPageNow(id){renderPage(id,pageCache[id])}
 function switchPage(id){if(loading||id===curId)return;if(curId&&hasDirty(curId)){confirmAction(t('tLeaveDirty'),()=>switchPageNow(id));return}switchPageNow(id)}
 function buildMenu(){const m=$('menu');m.innerHTML='';menuPages.forEach(p=>{if(p[0]==='fwupdate'&&s_role!=='admin')return;const e=document.createElement('div');e.className='mi';e.dataset.id=p[0];e.textContent=t(p[1]);e.onclick=()=>{if(p[0]==='fwupdate'){window.open('/fw_update.html?t='+encodeURIComponent(s_sessionToken||''),'_blank');return}switchPage(p[0])};m.appendChild(e)})}

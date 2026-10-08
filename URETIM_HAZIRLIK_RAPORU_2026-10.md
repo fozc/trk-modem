@@ -1,6 +1,12 @@
 # Troika Smart Breaker Modem — Üretim Hazırlık Raporu (Production Readiness)
 
-**Güncel durum — 06.10.2026:** Tam Ceedling koşusunda 74 dosyada **875/875 test**, **9/9 integration paketi** geçti. CESQ ayrılmış raw değer sorunu kullanıcının aralık düzeltmesiyle kapandı; COPS'un LED sınıflandırmasını aşan ikinci yolu ortak sınıflandırmaya bağlandı (§10.23). ARM Release gsm_engine.c derleme/link uyarı ve hata vermedi. Fiziksel cihaz kabulü yapılmadı. Önceki inceleme ve test sayıları tarihsel kayıttır.
+**Güncelleme — 08.10.2026:** RF web Kaydet onayı tüm etkin fiderlerin
+sıralı uygulamasını başlatır (§10.36). İlgili Ceedling seçimi 168/168,
+web kaynak/gömülü ve HTTP integration paketleri geçti. ARM Release ve
+beş değişen modülün sıkı C11 derlemesi geçti. Bu sonuçlar tam suite veya
+fiziksel cihaz kabulü değildir.
+
+**Tam suite kaydı — 06.10.2026:** Tam Ceedling koşusunda 74 dosyada **875/875 test**, **9/9 integration paketi** geçti. CESQ ayrılmış raw değer sorunu kullanıcının aralık düzeltmesiyle kapandı; COPS'un LED sınıflandırmasını aşan ikinci yolu ortak sınıflandırmaya bağlandı (§10.23). ARM Release gsm_engine.c derleme/link uyarı ve hata vermedi. Fiziksel cihaz kabulü yapılmadı. Önceki inceleme ve test sayıları tarihsel kayıttır.
 
 **İlk inceleme künyesi — 02.10.2026:**
 
@@ -3021,6 +3027,9 @@ modül değişiklikleri bu düzeltmenin katkısı olarak sayılmaz.
 
 ### 10.24. RF web Kaydet/Uygula ve doğrulanmış durum — 06.10.2026
 
+Bu bölüm tarihsel kayıttır; 08.10.2026 kullanıcı kararıyla web akışı
+§10.36 kapsamında güncellenmiştir.
+
 Powerboard değişiklikleri 179205b commit'ine alındı; diğer kullanıcı
 çalışmaları korunmuştur. Ardından mevcut RF Kaydet yolunun NVRAM'e hemen
 sync ettiği ve grup servisinin ayrı APPLIED RAM sonucunu tuttuğu doğrulandı.
@@ -3404,3 +3413,115 @@ cihaza yükleme veya HIL kabulü değildir; bu oturumda bunlar yapılmadı.
 **Bildirim:** Üreticiye bildirilecek tercihler ve kalan sınırlar
 [uygulama raporu bölüm 7](BOLATEX_YANIT_UYGULAMA_RAPORU_2026-10-07.md#7-bolatexe-bildirilecek-rtu-ürün-kararları--07102026)
 içine eklendi; dış kanaldan gönderilmedi. BQ-17–20 açık kalır.
+
+### 10.36. RF web Kaydet onayı ve sıralı uygulama — 08.10.2026
+
+**Amaç ve kanıt:** Kaynak incelemesinde web Kaydet işleyicisinin yalnız
+`rf_store_sync()` yaptığı; ayrı web Uygula yolunun tek store satırı ve
+operatörün verdiği grup kimliğiyle `rf_group_start()` çağırdığı doğrulandı.
+Kullanıcı tek Kaydet onayından sonra tüm etkin fiderlerin sırayla
+uygulanmasını onayladı. Sonradan Uygula/Yalnız kaydet seçeneği kaldırıldı.
+Güncel davranış kuralları [uygulama planı 0.28](doc/RF_SCP_MODEM_UYGULAMA_PLANI.md#rf-web-kaydet-onayı-ve-sıralı-uygulama--08102026)
+içinde tutulur.
+
+**Değişiklik:** Küçük `rf_apply` modülü mevcut cooperative RF process
+(ortak çalışma süreci) içinde yürür. Yeni task, heap, kalıcı alan veya
+SCP wire değişikliği yoktur. NVRAM başarısından sonra etkin satır bitmap'i
+kurulur; otomatik kimlik mevcut MH ön kontrolünden geçer. Mevcut tek
+fider WRITE/COMMIT/CRC doğrulama servisi korunur. Ayar store'unun üretim
+yazarı web handler'ıdır; işlem sırasında parse öncesi Kaydet kilidi ve
+shell grup başlatma kilidi aynı ayarın korunmasını sağlar. ISR veya DMA
+bu sıra durumuna erişmez; ek atomic/IRQ maskeleme eklenmedi.
+
+Web onay ekranı etkin satır/fider kimliklerini gösterir. İptal kayıt
+başlatmaz. Durum, tamamlanan ve uygulanmayan satırları ayırır; firmware
+web kapansa da ilerler. Eski ayrı uygulama POST yolu 410 döndürür.
+Kaydet HTTP yanıtı RF APPLIED kanıtı değildir. Başarısız/belirsiz sonuçta
+sıra durur; geç APPLIED veya reset otomatik devam başlatmaz.
+
+**Doğrulama:** Ruby/Ceedling 1.0.1 ve mevcut host GCC ile aşağıdaki
+merkezi seçim 168/168 geçti; failed/ignored=0:
+
+```text
+cd test
+ruby -S ceedling "test:pattern[(test_rf_group|test_rf_group_web|test_rf_error_retry_scenario|test_http_rf_group_routes|test_rf_config_scenario|test_json_config_bounds|test_rf_json_golden_scenario)]"
+```
+
+Gerçek sıra/grup/store/codec birlikte sınandı; transport ve NVRAM test
+çiftleridir. Sync hatasında gönderimsizlik, tüm etkin fiderler ve tekrar
+Kaydet, sıra, ilk/ikinci fider hatası, belirsiz WRITE, geç APPLIED,
+kullanılmış/aktif kimlik, 255 kimlik sınırı, busy, iptal ve restart
+kapsanır. Shell başka grupla çalışan web sırasını değiştiremez.
+Kaydet yetki kontrolleri eklenmiş router paketi ayrıca 4/4 geçti.
+
+`node test/integration/web_navigation/test_navigation.js` kaynak ve
+gömülü gzip sayfada geçti. Onay/iptal, tek POST, ayrı Uygula'nın yokluğu,
+SaveBlocked ve loading sonrasında kilidin korunması, başarısız kayıtta
+form değişiklikleri ve geç status yanıtının reddi sınandı.
+`python test/integration/web_auth/run_tests.py --cc
+D:/Qt/Tools/mingw1120_64/bin/gcc.exe` geçti. Gerçek HTTP handler gövdelerinde
+aktif işlem, eksik gövde, staging/parse hatası, sync hatası, başarılı kayıt,
+eski uygulama yolunun reddi ve iptal sınandı. Handler paketindeki parser,
+store ve sıra servis sınırları test çiftidir; bu paket tam HTTP süreci
+veya fiziksel Flash doğrulaması değildir.
+
+GCC ARM 14.3.rel1 / Cortex-M33 ile değişen beş modül C11,
+`-Wall -Wextra -Wconversion -Wshadow -Wdouble-promotion -Wformat=2
+-Werror` seçenekleriyle geçti. `make -C Release -j8 main-build` derleme
+ve link başarılıdır; text/data/bss 314332/484/132152 B. Mevcut diğer
+kullanıcı değişiklikleri de bu çalışma ağacındaki imaja dahildir.
+
+Kanıt: `test/build/rf-save-apply-regression.log`,
+`test/build/rf-save-apply-routes.log`,
+`test/build/web_auth/web-auth-integration-repro.log`,
+`build/rf-save-apply-web.log`, `build/rf-save-apply-strict.log`,
+`build/rf-save-apply-release.log`, `build/rf-save-apply-release-final.log`.
+
+**Sınırlar:** Seçili testler tam depo suite sonucu değildir. Fiziksel RF
+ve ayırıcı uygulaması, teslim süresi ve güç kesintisi sınanmadı. ACK
+verilmiş envanter ve epoch koşulları mevcut serviste kalır; Kaydet yeni
+atamayı MH'ye otomatik yüklemez. Güvenilir sonucu bekleyen mevcut grup
+kilitleri korunur. Commit, cihaz yükleme ve reset yapılmadı.
+
+### 10.37. COM10/COM16 RF-SCP HIL ve gerçek MH kontrolü — 08.10.2026
+
+**Amaç ve yetki:** Kullanıcı COM16 konsol, COM10 Modbus test hattı ve son
+MH firmware'i ile donanım testi/fix istedi. Profil 1 test imajının XMODEM
+ile yüklenmesi, cihaz restart'ı ve sonunda profil 0'a dönüş ayrıca açıkça
+onaylandı. Gerçek MH reseti kullanıcı tarafından yapıldı.
+
+**Doğrulama:** İlk kapsamlı koşu 32 vakada 30 PASS, bir konsol test-çifti
+ERROR'u ve bir gecikmiş cevap FAIL'i verdi. Düzeltme/ek koşu 10/10 PASS;
+birleşik son sonuç 35 farklı vaka için PASS'tir. İlk sonuçlar korunur,
+tek kesintisiz koşuda 35 PASS iddiası yapılmaz. Gecikmiş cevabın ilk
+FAIL kök nedeni kesin kanıtlanmadı; tekrar izinde aynı SEQ retry yaklaşık
+510 ms sonra görüldü. Üretim timeout'u değiştirilmedi.
+
+65 simülatör, 9 kimlik ve 9 negatif HIL kabul host testi; 428/428 ilgili
+Ceedling testi geçti. HIL ve normal hedef derlemeleri 0 hata/0 uyarı;
+EFW self-check geçti. C üretim koduna yeni fix yapılmadı. Simülatörün
+açılış kimliği, yanlış 101 sınıflaması beklentisi, tuple konsol satırları,
+ilk boş CONSUME ile yanlış PASS ve zayıf durum kontrolleri düzeltildi.
+Kayıp bildirim, sabit uptime ve COMMIT sırasında MH restart HIL vakaları
+eklendi; mevcut merkezi integration paketine negatif kabul testleri bağlandı.
+
+**Son cihaz:** Profil 0, raw CRC `D1A712DD`, raw boyut 319028,
+paket git `a5487e1`; yeni `FW_INSTALL_OK` görüldü. MH `6dc02267`, major 1.
+Kullanıcı MH resetinden sonra gerçek TIME_SYNC, HEAD/CONSUME koruması ve
+altı envanter girdisini kabul etti; son durum YUKLU. E1/E3 verisi ve grup
+0 IDLE sorgusu gerçek MH ile doğrulandı. Eski FW_APPROVED kayıtları yeni
+paketin onayı olarak sunulmadı.
+
+**Kanıt ve sınırlar:** Ayrıntılar
+[08.10.2026 test sonuçları](doc/RF_HIL_TEST_SONUCLARI_2026-10-08.md)
+içindedir. `build/rf-hil-2026-10-08-full/`, `...-recovery/` ve
+`build/rf-hil-2026-10-08-combined.json` orijinal izleri ve son sonuçları
+tutar. Host logu `build/rf-hil-host-2026-10-08.log`; merkezi regresyon
+`test/build/rf-hil-regression-2026-10-08.log` içindedir.
+
+Gerçek AY LIVE alınmadı; fiziksel RF açma/APPLIED, tarayıcıdan çok fiderli
+Kaydet, SCADA uçtan uca teslimi ve enerji kesintisi sınanmadı. Uzun süreli
+halka taşması HIL'i ertelenmiştir. RTU-only restart yeniden kurulum sınırı
+son MH sürümünde de gözlendi; BQ-17'ye yeni kanıt eklendi. BQ-18–20 ve
+önceki bakım/kurtarma açıkları kapanmış sayılmaz. Simülatör kapatıldı;
+normal taşıma geri yüklendi. Commit ve push yapılmadı.

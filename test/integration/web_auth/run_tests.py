@@ -476,6 +476,8 @@ group_code = r'''
 #include <stdio.h>
 #include "rf_group_web.h"
 #include "rf_group.h"
+#include "rf_apply.h"
+#include "json_config.h"
 static char canvas[514], output[512];
 static struct { char *tx_buffer; int tx_buffer_size; } handler_state;
 static int response_status, output_length;
@@ -487,7 +489,30 @@ bool rf_group_start(size_t line, uint8_t id)
 bool rf_group_get_status(rf_group_status_t *out)
 { *out = group; return true; }
 bool rf_group_matches_config(void) { return false; }
-bool rf_group_abort(void) { abort_calls++; return accepts_abort; }
+bool rf_apply_abort(void) { abort_calls++; return accepts_abort; }
+void rf_apply_get_status(rf_apply_status_t *out)
+{ *out = (rf_apply_status_t){.state=RF_APPLY_RUNNING,.targets=5U}; }
+static bool can_save, parses, stages;
+static uint32_t parse_calls, commit_calls, save_calls, stage_aborts;
+static rf_apply_save_result_t save_result;
+bool rf_apply_can_save(void) { return can_save; }
+rf_apply_save_result_t rf_apply_save(void)
+{ assert(commit_calls > 0U); save_calls++; return save_result; }
+bool rf_store_stage_begin(void) { return stages; }
+void rf_store_stage_commit(void) { commit_calls++; }
+void rf_store_stage_abort(void) { stage_aborts++; }
+int parse_rf_config(const char *text, jayirici_rf_config_t *out)
+{ (void)text; memset(out,0,sizeof(*out)); parse_calls++; return parses; }
+#undef CSLOG
+#undef CSLOG_ERR
+#define CSLOG(...) ((void)0)
+#define CSLOG_ERR(...) ((void)0)
+#define ELOG_CONFIG_RF_CHANGED 1
+#define ELOG_SOURCE_WEB 1
+static const char *gsm_get_web_client_ip(void) { return "127.0.0.1"; }
+static void elog_log_config_change(int a,int b,const char *c,const char *d,bool e)
+{ (void)a;(void)b;(void)c;(void)d;(void)e; }
+static void http_send_bad_request(void) { response_status=400; }
 static void http_send_json(const char *data, int length)
 { assert(length >= 0 && (size_t)length < sizeof(output));
   memcpy(output, data, (size_t)length); output[length] = '\0';
@@ -495,7 +520,7 @@ static void http_send_json(const char *data, int length)
 static void http_send_error(int status, const char *text)
 { (void)text; response_status = status; }
 '''
-for name in ['handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort']:
+for name in ['handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort','handle_post_rf_config_json']:
  group_code += extract('Application/web-server/http_handlers.c',name) + '\n'
 group_code += r'''
 int main(void)
@@ -513,12 +538,25 @@ int main(void)
  handler_state.tx_buffer_size = 8;
  handle_get_rf_group_status_json(); assert(response_status == 500);
  handler_state.tx_buffer_size = 512;
- handle_post_rf_apply("3/256"); assert(response_status == 400);
+ handle_post_rf_apply("3/256"); assert(response_status == 410);
+ handle_post_rf_apply("3/7"); assert(response_status == 410);
  assert(apply_calls == 0U);
- handle_post_rf_apply("3/7"); assert(response_status == 409);
- accepts_apply = true;
- handle_post_rf_apply("3/7"); assert(response_status == 200);
- assert(strcmp(output, "{\"started\":true}") == 0 && output_length == 16);
+ handle_post_rf_config_json(NULL); assert(response_status == 400);
+ handle_post_rf_config_json("{}"); assert(response_status == 409);
+ assert(parse_calls == 0U && commit_calls == 0U && save_calls == 0U);
+ can_save = true;
+ handle_post_rf_config_json("{}"); assert(response_status == 500);
+ assert(parse_calls == 0U && save_calls == 0U);
+ stages = true;
+ handle_post_rf_config_json("{}"); assert(response_status == 400);
+ assert(stage_aborts == 1U && commit_calls == 0U && save_calls == 0U);
+ parses = true; save_result = RF_APPLY_SAVE_ERROR;
+ handle_post_rf_config_json("{}"); assert(response_status == 500);
+ assert(commit_calls == 1U && save_calls == 1U);
+ save_result = RF_APPLY_SAVE_OK;
+ handle_post_rf_config_json("{}"); assert(response_status == 200);
+ assert(commit_calls == 2U && save_calls == 2U);
+ assert(strstr(output,"\"success\":true") != NULL);
  handle_post_rf_abort(); assert(response_status == 409);
  accepts_abort = true;
  handle_post_rf_abort(); assert(response_status == 200 && abort_calls == 2U);
@@ -531,6 +569,9 @@ outputs=[]
 for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro','board_signal_repro','rf_group_handlers_repro']:
  extra=[str(root/'Application/libs/xprintf.c'),'-I'+str(root/'Application/libs'),'-lm'] if name in ['http_lengths_repro', 'board_signal_repro'] else []
  if name == 'rf_group_handlers_repro':
+  extra += ['-I'+str(root/'Application/libiec104'),
+            '-I'+str(root/'Application/libmodbusrtu'),
+            '-I'+str(root/'Application/bms')]
   extra += [str(root/'Application/web-server/rf_group_web.c'),
             str(root/'Application/libs/xprintf.c'),
             '-I'+str(root/'Application/libs'),
@@ -572,4 +613,4 @@ for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','htt
  if run.returncode: raise SystemExit(run.returncode)
 (audit/'web-auth-integration-repro.log').write_text('\n'.join(outputs),encoding='utf8')
 
-print("PASS: RF group handlers preserve stored/applied distinction and explicit actions")
+print("PASS: RF handlers reject standalone apply and start save/application only after validation")
