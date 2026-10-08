@@ -26,7 +26,7 @@ if args.clean:
 audit.mkdir(parents=True, exist_ok=True)
 def extract(path,name):
     source=(root/path).read_text(encoding='utf-8-sig')
-    match=re.search(r'^(?:static )?(?:bool|void|int|uint32_t) '+name+r'\([^;]*?\)\n\{.*?\n\}',source,re.M|re.S)
+    match=re.search(r'^(?:static )?(?:(?:bool|void|int|uint32_t) |const char \*)'+name+r'\([^;]*?\)\n\{.*?\n\}',source,re.M|re.S)
     if not match: raise RuntimeError(name)
     return match.group(0)
 preamble=r'''
@@ -82,11 +82,37 @@ static void http_send_response(int status,const char *reason,
  (void)reason;(void)type;(void)body;(void)len;response_status=status;
 }
 '''
-names=['login_lock_is_active','login_lock_register_failure','login_lock_reset','http_handlers_set_auth_from_token','http_handlers_is_admin','handle_post_login','handle_post_logout']
+names=['skip_login_whitespace','read_login_ascii_escape','read_login_string','parse_login_credentials','login_lock_is_active','login_lock_register_failure','login_lock_reset','create_login_session','http_handlers_set_auth_from_token','http_handlers_is_admin','handle_post_login','handle_post_logout']
 code=preamble+extract('Application/bsp/bsp_random.c','bsp_random_fallback_seed')+extract('Application/bsp/bsp_random.c','generate_fallback_word')+extract('Application/bsp/bsp_random.c','bsp_random_word')+'\n\n'.join(extract('Application/web-server/http_handlers.c',n) for n in names)
 code+=r'''
 int main(void) {
  handler_state.tx_buffer=output; handler_state.tx_buffer_size=sizeof(output);
+ handle_post_login(" \t{\n \"password\" : \"admin25\",\r\n \"username\" : \"admin\" } \n");
+ assert(response_status==200 && http_handlers_is_admin());
+ puts("PASS: whitespace and reversed credential fields authenticate");
+ handle_post_login("{\"username\":\"\\u0061dmin\",\"password\":\"admin\\u0032\\u0035\"}");
+ assert(http_handlers_is_admin());
+ puts("PASS: escaped ASCII credentials authenticate");
+ char protected_token[HTTP_SESSION_TOKEN_SIZE];
+ strcpy(protected_token,handler_state.session_token);
+ const char *bad_json[]={
+  "{\"username\":\"admin\"}",
+  "{\"username\":\"admin\",\"password\":25}",
+  "{\"username\":\"admin\",\"password\":\"admin25\"} trailing",
+  "{\"username\":\"admin\",\"username\":\"user\",\"password\":\"admin25\"}",
+  "{\"username\":\"admin\",\"password\":\"admin25\",}",
+  "{\"username\":\"admin\\u0000junk\",\"password\":\"admin25\"}",
+  "{\"username\":\"admin\",\"password\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+ };
+ for(size_t i=0U;i<sizeof(bad_json)/sizeof(bad_json[0]);i++) {
+  login_lock_reset(); /* Independent input cases; lockout is checked below. */
+  handle_post_login(bad_json[i]);
+  assert(strcmp(protected_token,handler_state.session_token)==0);
+  assert(handler_state.is_authenticated);
+ }
+ puts("PASS: malformed credentials preserve the existing session");
+ test_tick+=LOGIN_LOCKOUT_MS;
+ handle_post_logout();
  handle_post_login("{\"username\":\"admin\",\"password\":\"admin25\"}");
  assert(http_handlers_is_admin());
  assert(strlen(handler_state.session_token)==32U);

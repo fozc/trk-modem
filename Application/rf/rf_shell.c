@@ -29,6 +29,8 @@
 #include "rf_log.h"
 #include "rf.h"
 #include "rf_group.h"
+#include "rf_hil_transport.h"
+#include "boot.h"
 #include "stm32u3xx_hal.h"
 
 #ifndef DISABLE_SHELL_LOG
@@ -42,6 +44,7 @@ static const char *inventory_status_name(rf_inventory_status_t status)
         case RF_INVENTORY_PARTIAL: return "KISMI";
         case RF_INVENTORY_READY: return "YUKLU";
         case RF_INVENTORY_ERROR: return "HATA";
+        case RF_INVENTORY_DRAINING: return "KAYITLAR_CEKILIYOR";
         default: return "BILINMIYOR";
     }
 }
@@ -142,6 +145,13 @@ static int rf_shell_status(int argc, char **argv)
     (void)argc;
     (void)argv;
 
+#ifndef DISABLE_SHELL_LOG
+    const fw_info_t *image = boot_get_installed_fw_info();
+    SHELL_LOG("RTU image: crc=0x%08lX size=%lu git=%s profile=%u\r\n",
+              (unsigned long)image->fw_crc, (unsigned long)image->size,
+              (const char *)image->short_commit_hash,
+              (unsigned)RF_SCP_OVER_MODBUS_PORT);
+#endif
     SHELL_LOG("RF Link: %s\r\n",
              scp_is_free() ? "BOSTA" : "MESGUL");
     SHELL_LOG("MH SCP major: %u\r\n",
@@ -165,7 +175,12 @@ static int rf_shell_inv(int argc, char **argv)
     }
     else
     {
-        rf_inventory_start();
+        if (!rf_inventory_start())
+        {
+            SHELL_LOG("Envanter baslamadi: BOOT korumasi veya aktif "
+                      "ayar islemi tamamlanmali\r\n");
+            return -1;
+        }
         SHELL_LOG("Envanter: %s\r\n",
                   inventory_status_name(rf_inventory_get_status()));
     }
@@ -191,7 +206,7 @@ static void on_epoch_done(scp_cmd_result_t result, const scp_packet_t *response)
     if (SCP_CMD_OK == result)
     {
         SHELL_LOG("Epoch ACK: broadcast kuyruga alindi. "
-                  "Yapilandirmadan once yaklasik 30 s bekleyin\r\n");
+                  "Yapilandirma ve sonraki epoch icin en az 90 s bekleyin\r\n");
     }
     else if ((SCP_CMD_ERR == result) && (NULL != response))
     {
@@ -330,24 +345,6 @@ static int rf_shell_live(int argc, char **argv)
             SHELL_LOG("Irms gecersiz\r\n");
         }
     }
-    return 0;
-}
-
-static int rf_shell_alarm_ack(int argc, char **argv)
-{
-    uint8_t source;
-
-    if (!parse_source_args(argc, argv, &source))
-    {
-        SHELL_LOG("Kullanim: rf alarm-ack <fider 1..4> <faz 1..3>\r\n");
-        return -1;
-    }
-    if (!rf_ack_trip_failure(source))
-    {
-        SHELL_LOG("Onaylanacak latched alarm yok veya Trip_Failed hala 1\r\n");
-        return -1;
-    }
-    SHELL_LOG("Acma basarisizligi alarmi operator tarafindan onaylandi\r\n");
     return 0;
 }
 
@@ -499,7 +496,7 @@ static int rf_shell_command(int argc, char *argv[])
     if (argc < 2)
     {
         SHELL_LOG(
-                 "Usage: rf <disc|status|inv|time|epoch|live|alarm-ack|"
+                 "Usage: rf <disc|status|inv|time|epoch|live|"
                  "cfg-status|cfg-apply|cfg-state|cfg-abort|log>\r\n"
                  "  disc   : kesif kuyruguna sanal cihaz ekle\r\n"
                  "  status : hub ve link durumu\r\n"
@@ -507,7 +504,6 @@ static int rf_shell_command(int argc, char *argv[])
                  "  time   : saati esitle (envanteri yeniden yuklemez)\r\n"
                  "  epoch N: MH degisimi sonrasi fider 1..4 epoch yenile\r\n"
                  "  live F P: fider/faz canli veri ve alarm\r\n"
-                 "  alarm-ack F P: latched acma basarisizligi onayi\r\n"
                  "  cfg-status N: MH group status (0..255)\r\n"
                  "  cfg-apply L N: apply stored line config with fresh ID\r\n"
                  "  cfg-state: local verified group result\r\n"
@@ -564,10 +560,7 @@ static int rf_shell_command(int argc, char *argv[])
     {
         return rf_shell_live(argc - 1, &argv[1]);
     }
-    if (0 == strcmp(argv[1], "alarm-ack"))
-    {
-        return rf_shell_alarm_ack(argc - 1, &argv[1]);
-    }
+
 
     SHELL_LOG( "Bilinmeyen alt komut: %s\r\n", argv[1]);
     return -1;
@@ -588,7 +581,6 @@ void rf_shell_init(void)
                 "\trf time                 - saat esitleme iste\r\n"
                 "\trf epoch <1..4>         - epoch yenile (MH degisimi)\r\n"
                 "\trf live <fider> <faz>   - canli veri ve alarm\r\n"
-                "\trf alarm-ack <fider> <faz> - latched alarmi onayla\r\n"
                 "\trf cfg-status <group_id> - MH config group status\r\n"
                 "\trf cfg-apply <line> <group_id> - apply stored config\r\n"
                 "\trf cfg-state            - local verified group result\r\n"

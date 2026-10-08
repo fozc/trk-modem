@@ -14,6 +14,9 @@
 #include "rf_inventory.h"
 #include "rf_config.h"
 #include "rf_event_log.h"
+#include "rf.h"
+#include "rf_faults.h"
+#include "rf_alarm.h"
 #include "fault_log.h"
 /* HAL types must precede the legacy IEC104 Init macro. */
 #include "stm32u3xx_hal.h"
@@ -38,6 +41,7 @@ typedef enum
     EVENTS_READ,
     EVENTS_STORE,
     EVENTS_VERIFY,
+    EVENTS_BAD_SLOT,
     EVENTS_CONSUME,
     EVENTS_FRAM,
     EVENTS_DEGRADED
@@ -49,14 +53,11 @@ static bool requested;
 static uint32_t poll_ms;
 static uint32_t store_retry_ms;
 static bool store_waiting;
-static uint16_t pending_hint;
-static uint16_t hint_head;
 static uint16_t cursor;
 static uint16_t read_count;
 static uint16_t read_tail;
 static uint16_t read_pending;
 static uint32_t read_total;
-static bool needs_verification;
 static uint8_t batch[RF_SCP_EVENT_SIZE * RF_SCP_BATCH_MAX];
 static uint8_t batch_count;
 static uint8_t saved_count;
@@ -64,11 +65,51 @@ static bool raw_saved;
 static bool fault_added;
 static bool replay_added;
 static fault_log_t fault_record;
+static bool fault_classified;
+static bool has_fault_record;
 static bool stop_after_consume;
+/* BOLATeX BQ-03: bring-up protection mode - read the head, consume the
+ * current tail, then hand over to the inventory upload. */
+static bool protect_mode;
+static bool boot_protected;
+/* BOLATeX BQ-05 store-continuity baseline from the previous 0x40 reply. */
+static bool have_head_baseline;
+static uint32_t prev_total;
+static uint32_t prev_position;   /* total - (wrap * 100 + head) */
+static bool drain_requested;
+static bool drain_ready;
+static uint32_t drain_total;
 
 static uint16_t next_slot(uint16_t slot, uint16_t count)
 {
     return (uint16_t)((slot + count) % MH_EVENT_SLOTS);
+}
+
+/* BOLATeX BQ-05: a smaller total or a changed total - (wrap*100 + head)
+ * means the MH event store was cleared or reset. Pulling already
+ * continues from the current tail; only report the transition once. */
+static bool detect_store_reset(const rf_scp_message_t *message,
+                               uint16_t head)
+{
+    const uint32_t position = message->body.log_head.total -
+                              (((uint32_t)message->body.log_head.wrap *
+                                MH_EVENT_SLOTS) + head);
+
+    const bool reset = have_head_baseline &&
+        ((message->body.log_head.total < prev_total) ||
+         (position != prev_position));
+
+    if (reset)
+    {
+        CSLOG_WARN("[RF] MH event store reset detected "
+                   "(total %lu -> %u); resuming from current tail\r\n",
+                   (unsigned long)prev_total,
+                   (unsigned)message->body.log_head.total);
+    }
+    prev_total = message->body.log_head.total;
+    prev_position = position;
+    have_head_baseline = true;
+    return reset;
 }
 
 void rf_events_init(void)
@@ -76,26 +117,55 @@ void rf_events_init(void)
     state = EVENTS_IDLE;
     requested = true;
     store_waiting = false;
-    pending_hint = 0U;
     batch_count = 0U;
     saved_count = 0U;
     raw_saved = false;
     fault_added = false;
     replay_added = false;
+    fault_classified = false;
+    has_fault_record = false;
     stop_after_consume = false;
-    needs_verification = false;
+    protect_mode = false;
+    boot_protected = false;
+    have_head_baseline = false;
+    prev_total = 0U;
+    prev_position = 0U;
+    drain_requested = false;
+    drain_ready = false;
+}
+
+void rf_events_request_drain(void)
+{
+    drain_requested = true;
+    drain_ready = false;
+    requested = true;
+}
+
+bool rf_events_drain_complete(uint32_t *total)
+{
+    if ((NULL == total) || !drain_requested || !drain_ready)
+    {
+        return false;
+    }
+    *total = drain_total;
+    return true;
+}
+
+void rf_events_finish_drain(void)
+{
+    drain_requested = false;
+    drain_ready = false;
 }
 
 void rf_events_notify(const rf_scp_message_t *message)
 {
     if ((NULL != message) && (RF_SCP_CMD_LOG_AVAILABLE == message->cmd) &&
         (SCP_TYPE_SET == message->type) &&
-        (MH_EVENT_SLOTS >= message->body.log_available.pending) &&
+        (MH_EVENT_SLOTS > message->body.log_available.pending) &&
         (MH_EVENT_SLOTS > message->body.log_available.head))
     {
-        pending_hint = message->body.log_available.pending;
-        hint_head = message->body.log_available.head;
         requested = true;
+        drain_ready = false;
     }
 }
 
@@ -104,6 +174,23 @@ static void stop_cycle(void)
     state = EVENTS_IDLE;
     poll_ms = HAL_GetTick();
     requested = false;
+}
+
+bool rf_events_boot_protect(void)
+{
+    if (EVENTS_IDLE != state)
+    {
+        return false;
+    }
+    protect_mode = true;
+    requested = true;
+    state = EVENTS_HEAD;
+    return true;
+}
+
+bool rf_events_inventory_allowed(void)
+{
+    return boot_protected;
 }
 
 static void head_received(const rf_scp_message_t *message)
@@ -116,20 +203,30 @@ static void head_received(const rf_scp_message_t *message)
         stop_cycle();
         return;
     }
+    /* BOLATeX BQ-02: the ring keeps at most MH_EVENT_SLOTS - 1 unconsumed
+     * records, so head == tail is always the empty ring. The former
+     * pending == 100 recovery branch is removed per the answer. */
     uint16_t pending = (uint16_t)((head + MH_EVENT_SLOTS - tail) %
                                   MH_EVENT_SLOTS);
 
-    if ((0U == pending) && (MH_EVENT_SLOTS == pending_hint) &&
-        (head == hint_head))
+    (void)detect_store_reset(message, head);
+    if (protect_mode)
     {
-        pending = MH_EVENT_SLOTS;
+        cursor = tail;
+        state = EVENTS_CONSUME;
+        return;
     }
-    pending_hint = 0U;
     if (0U == pending)
     {
+        if (drain_requested)
+        {
+            drain_total = message->body.log_head.total;
+            drain_ready = true;
+        }
         stop_cycle();
         return;
     }
+    drain_ready = false;
     cursor = tail;
     read_tail = tail;
     read_pending = pending;
@@ -155,8 +252,40 @@ static void range_received(const rf_scp_message_t *message)
     replay_added = false;
     store_waiting = false;
     stop_after_consume = false;
-    needs_verification = false;
     state = EVENTS_STORE;
+    fault_classified = false;
+    has_fault_record = false;
+}
+
+static void verify_head(const rf_scp_message_t *message)
+{
+    const uint16_t head = message->body.log_head.head;
+    const uint16_t tail = message->body.log_head.tail;
+    if ((MH_EVENT_SLOTS <= head) || (MH_EVENT_SLOTS <= tail))
+    {
+        stop_cycle();
+        return;
+    }
+    if (detect_store_reset(message, head))
+    {
+        head_received(message);
+        return;
+    }
+    const uint16_t pending = (uint16_t)((head + MH_EVENT_SLOTS - tail) %
+                                       MH_EVENT_SLOTS);
+    const uint32_t target = read_total - read_pending + saved_count;
+    const uint32_t current_tail = message->body.log_head.total - pending;
+    const uint32_t distance = target - current_tail;
+
+    if ((0U < distance) && (pending >= distance) &&
+        (cursor == next_slot(tail, (uint16_t)distance)))
+    {
+        state = EVENTS_CONSUME;
+    }
+    else
+    {
+        head_received(message);
+    }
 }
 
 static void command_done(scp_cmd_result_t result,
@@ -178,10 +307,14 @@ static void command_done(scp_cmd_result_t result,
                  (NULL != packet) && (1U <= packet->data_len) &&
                  (RF_SCP_ERR_RECORD_INVALID == packet->data[0]))
         {
-            CSLOG_WARN("[RF] unreadable event slot %u skipped\r\n",
-                       (unsigned)cursor);
-            cursor = next_slot(cursor, 1U);
-            state = EVENTS_CONSUME;
+            state = EVENTS_BAD_SLOT;
+        }
+        else if ((EVENTS_CONSUME == state) && !protect_mode &&
+                 (SCP_CMD_ERR == result) && (NULL != packet) &&
+                 (1U <= packet->data_len) &&
+                 (RF_SCP_ERR_INVALID_PARAM == packet->data[0]))
+        {
+            state = EVENTS_HEAD;
         }
         else
         {
@@ -197,24 +330,34 @@ static void command_done(scp_cmd_result_t result,
         case EVENTS_READ:
             range_received(&message);
             break;
-        case EVENTS_VERIFY:
-            if ((MH_EVENT_SLOTS > message.body.log_head.head) &&
-                (read_tail == message.body.log_head.tail) &&
-                ((uint32_t)(message.body.log_head.total - read_total) <=
-                 (uint32_t)(MH_EVENT_SLOTS - read_pending)))
+        case EVENTS_BAD_SLOT:
+            if (cursor == message.body.log_head.head)
             {
-                state = EVENTS_CONSUME;
+                stop_cycle();
             }
             else
             {
-                CSLOG_WARN("[RF] event slots changed while saving\r\n");
-                head_received(&message);
+                saved_count = 1U;
+                cursor = next_slot(read_tail, 1U);
+                verify_head(&message);
             }
             break;
+        case EVENTS_VERIFY:
+            verify_head(&message);
+            break;
         case EVENTS_CONSUME:
-            if ((cursor != message.body.log_consume.tail) ||
-                (MH_EVENT_SLOTS < message.body.log_consume.left) ||
-                stop_after_consume || (0U == message.body.log_consume.left))
+            if (protect_mode && (cursor == message.body.log_consume.tail) &&
+                (MH_EVENT_SLOTS > message.body.log_consume.left))
+            {
+                protect_mode = false;
+                boot_protected = true;
+                stop_cycle();
+                rf_inventory_start();
+            }
+            else if ((cursor != message.body.log_consume.tail) ||
+                (MH_EVENT_SLOTS <= message.body.log_consume.left) ||
+                stop_after_consume ||
+                ((0U == message.body.log_consume.left) && !drain_requested))
             {
                 stop_cycle();
             }
@@ -237,10 +380,35 @@ static void command_done(scp_cmd_result_t result,
     }
 }
 
-static bool build_fault(const rf_scp_event_t *event, fault_log_t *record)
+static bool find_line(const rf_scp_event_t *event, size_t *line)
 {
-    if (((1U != event->event) && (7U != event->event) &&
-         (3U != event->event)) || (1U > event->feeder) ||
+    const uint8_t source = (uint8_t)((event->feeder << 2U) | event->phase);
+    rf_inventory_entry_t binding;
+    if (rf_inventory_get_binding(source, &binding) &&
+        (binding.zone == event->zone) &&
+        (MAX_POWER_LINE_COUNT > binding.line_index))
+    {
+        *line = binding.line_index;
+        return true;
+    }
+    for (size_t index = 0U; index < MAX_POWER_LINE_COUNT; index++)
+    {
+        const rf_feeder_t *feeder = rf_store_get((feeder_id_t)index);
+        if ((NULL != feeder) && feeder->in_use &&
+            (event->zone == feeder->config.zone_id) &&
+            (event->feeder == feeder->config.fider_id))
+        {
+            *line = index;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool build_fault(const rf_scp_event_t *event, rf_fault_class_t type,
+                         fault_log_t *record)
+{
+    if ((RF_FAULT_NONE == type) || (1U > event->feeder) ||
         (4U < event->feeder) || (1U > event->phase) ||
         (3U < event->phase) || !isfinite(event->current_amps) ||
         (0.0F > event->current_amps) ||
@@ -249,28 +417,27 @@ static bool build_fault(const rf_scp_event_t *event, fault_log_t *record)
     {
         return false;
     }
-    for (size_t index = 0U; index < MAX_POWER_LINE_COUNT; index++)
+    size_t index;
+    if (find_line(event, &index))
     {
-        const rf_feeder_t *feeder = rf_store_get((feeder_id_t)index);
-
-        if ((NULL != feeder) && feeder->in_use &&
-            (event->zone == feeder->config.zone_id) &&
-            (event->feeder == feeder->config.fider_id))
+        (void)memset(record, 0, sizeof(*record));
+        (void)memcpy(&record->tm, event->timestamp, 7U);
+        if (0U == event->clock_quality)
         {
-            (void)memset(record, 0, sizeof(*record));
-            (void)memcpy(&record->tm, event->timestamp, 7U);
-            record->tm.iv_bit = (1U != event->clock_quality);
-            fault_log_set_current_amps(record, event->current_amps);
-            record->fault_duration_ms = event->duration_ms;
-            record->info.feeder = (uint8_t)(index & 0x07U);
-            record->info.phase = (uint8_t)((event->phase - 1U) & 0x03U);
-            /* R1 event byte 13 and LIVE bit 1 both mean load present. */
-            record->info.nominal_current_status =
-                (0U != event->nominal_current_status);
-            record->info.power_status = (0U != event->energy_status);
-            record->info.type = (3U != event->event);
-            return true;
+            record->tm = cp56time2a_now();
         }
+        record->tm.iv_bit = (1U != event->clock_quality) ||
+                            !cp56time2a_is_valid(&record->tm);
+        fault_log_set_current_amps(record, event->current_amps);
+        record->fault_duration_ms = event->duration_ms;
+        record->info.feeder = (uint8_t)(index & 0x07U);
+        record->info.phase = (uint8_t)((event->phase - 1U) & 0x03U);
+        /* R1 event byte 13 and LIVE bit 1 both mean load present. */
+        record->info.nominal_current_status =
+            (0U != event->nominal_current_status);
+        record->info.power_status = (0U != event->energy_status);
+        record->info.type = (RF_FAULT_PERMANENT == type);
+        return true;
     }
     return false;
 }
@@ -315,7 +482,7 @@ static void store_record(uint32_t now_ms)
         {
             cursor = next_slot(cursor, saved_count);
             stop_after_consume = true;
-            state = needs_verification ? EVENTS_VERIFY : EVENTS_CONSUME;
+            state = EVENTS_VERIFY;
         }
         else
         {
@@ -330,29 +497,43 @@ static void store_record(uint32_t now_ms)
         {
             store_waiting = true;
             store_retry_ms = now_ms;
-            needs_verification = true;
             return;
         }
     }
-    if (fault_added || build_fault(&event, &fault_record))
+    if (!fault_classified)
+    {
+        const rf_fault_class_t type = rf_faults_classify(&event);
+        has_fault_record = build_fault(&event, type, &fault_record);
+        fault_classified = true;
+    }
+    if (has_fault_record)
     {
         if (!save_fault())
         {
             store_waiting = true;
             store_retry_ms = now_ms;
-            needs_verification = true;
             return;
         }
+    }
+    if (!rf_alarm_record(&event))
+    {
+        store_waiting = true;
+        store_retry_ms = now_ms;
+        return;
     }
     saved_count++;
     raw_saved = false;
     fault_added = false;
     replay_added = false;
+    fault_classified = false;
+    has_fault_record = false;
     store_waiting = false;
     if (saved_count == batch_count)
     {
         cursor = next_slot(cursor, saved_count);
-        state = needs_verification ? EVENTS_VERIFY : EVENTS_CONSUME;
+        /* BOLATeX BQ-03: re-read the head before EVERY consume and apply
+         * the sequence-number guard, not only after a store stall. */
+        state = EVENTS_VERIFY;
     }
 }
 
@@ -364,6 +545,7 @@ static void send_command(void)
     {
         case EVENTS_HEAD:
         case EVENTS_VERIFY:
+        case EVENTS_BAD_SLOT:
             request.cmd = RF_SCP_CMD_LOG_READ_HEAD;
             break;
         case EVENTS_READ:
@@ -392,9 +574,10 @@ void rf_events_process(uint32_t now_ms)
     const rf_inventory_status_t inventory = rf_inventory_get_status();
 
     if (!rf_comm_can_load_inventory() ||
-        ((RF_INVENTORY_READY != inventory) &&
+        (!protect_mode && (RF_INVENTORY_READY != inventory) &&
          (RF_INVENTORY_PARTIAL != inventory) &&
-         (RF_INVENTORY_EMPTY != inventory)) || !scp_is_free() ||
+         (RF_INVENTORY_EMPTY != inventory) &&
+         (RF_INVENTORY_DRAINING != inventory)) || !scp_is_free() ||
         (EVENTS_DEGRADED == state))
     {
         return;

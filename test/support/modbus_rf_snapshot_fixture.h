@@ -195,7 +195,9 @@ static void check_missing_and_stale_current_are_nan_and_link_is_offline(void)
 
 static void check_invalid_current_does_not_turn_fresh_rf_link_offline(void)
 {
-    live(-1.0F);
+    const rf_scp_live_t invalid = {.source = 5U, .seq = 2U,
+        .uptime_sec = 20U, .current_amps = -1.0F};
+    TEST_ASSERT_TRUE(rf_handle_live(&invalid, tick, NULL));
     read_regs(MODBUS_OFF_ANLIK_AKIM, 2U);
     TEST_ASSERT_TRUE(isnan(current()));
     read_regs(MODBUS_OFF_RF_VARYOK, 1U);
@@ -241,7 +243,9 @@ static void check_energy_and_quality_use_the_same_real_live_sample(void)
     TEST_ASSERT_EQUAL_UINT16(1U, word(0U));
     read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 1U);
     TEST_ASSERT_EQUAL_UINT16(0U, word(0U));
-    live(-1.0F);
+    const rf_scp_live_t invalid = {.source = 5U, .seq = 2U,
+        .uptime_sec = 20U, .current_amps = -1.0F};
+    TEST_ASSERT_TRUE(rf_handle_live(&invalid, tick, NULL));
     read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 1U);
     TEST_ASSERT_EQUAL_UINT16(6U, word(0U));
 }

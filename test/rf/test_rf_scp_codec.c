@@ -156,6 +156,13 @@ void test_incoming_length_errors_preserve_previous_output(void)
                 packet.data_len++;
             }
             packet.data_len++;
+            if ((RF_SCP_CMD_LOG_READ_HEAD == packet.cmd) &&
+                (SCP_TYPE_ACK == packet.type))
+            {
+                TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                                      rf_scp_decode_message(&packet, &out));
+                continue;
+            }
             TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
                                   rf_scp_decode_message(&packet, &out));
             TEST_ASSERT_EQUAL_MEMORY(&previous, &out, sizeof(out));
@@ -378,6 +385,9 @@ void test_power_request_customer_mask_unset_values_and_command_gate(void)
     packet.data[10] = 255U;
     packet.data[14] = 0U;
     packet.data[15] = 255U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    scp_pack_u16(&packet.data[1], 0x0200U); /* Only rate may be unset. */
     TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
                           rf_scp_build_packet(&packet, &out));
     scp_pack_u16(&packet.data[1], 0x0004U);
@@ -747,6 +757,59 @@ void test_short_event_batch_is_valid_but_partial_record_is_rejected(void)
     TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
                           rf_scp_decode_message(&packet, &message));
     TEST_ASSERT_EQUAL_MEMORY(&previous, &message, sizeof(message));
+}
+
+void test_mh_pending_and_consume_left_accept_99_and_reject_100(void)
+{
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .cmd = RF_SCP_CMD_LOG_AVAILABLE,
+        .type = SCP_TYPE_SET, .data_len = 4U};
+    rf_scp_message_t message;
+    scp_pack_u16(packet.data, 99U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    rf_scp_message_t previous = message;
+    scp_pack_u16(packet.data, 100U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &message, sizeof(message));
+    packet.cmd = RF_SCP_CMD_LOG_CONSUME_TO;
+    packet.type = SCP_TYPE_ACK;
+    scp_pack_u16(packet.data, 0U);
+    scp_pack_u16(&packet.data[2], 99U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    previous = message;
+    scp_pack_u16(&packet.data[2], 100U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &message, sizeof(message));
+}
+
+void test_customer_power_config_rejects_unset_capacity_and_bad_period(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_PWR_CFG2,
+        .type = SCP_TYPE_SET, .data_len = 16U};
+    scp_packet_t output;
+    scp_pack_u16(&packet.data[1], 0x2000U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &output));
+    packet.data[14] = 255U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &output));
+    packet.data[14] = 24U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_build_packet(&packet, &output));
+    scp_pack_u16(&packet.data[1], 0x4000U);
+    packet.data[15] = 255U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &output));
+    packet.data[15] = 0x8AU;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_build_packet(&packet, &output));
+    packet.data[15] = 0xCAU;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &output));
 }
 
 /*** end of file ***/

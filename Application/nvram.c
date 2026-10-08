@@ -205,6 +205,8 @@ void nvram_set_defaults(void)
             nvram.breaker.line[i].iec104.enerji_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 40 + ph);
             nvram.breaker.line[i].iec104.yuk_akimi_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 50 + ph);
             nvram.breaker.line[i].iec104.rf_haberlesme_varyok[ph] = iec104_make_ioa_3byte(base_ioa + 60 + ph);
+            nvram.breaker.line[i].iec104.trip_failed[ph] =
+                iec104_make_ioa_3byte(base_ioa + 70U + ph);
         }
 
         /* Separate fault regions; getters add the feeder/phase offsets.

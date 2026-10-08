@@ -90,4 +90,17 @@ void test_retired_fault_summary_offsets_are_reserved_zero(void)
     }
 }
 
+void test_stalled_uptime_returns_nan_and_zero_quality_with_online_link(void)
+{
+    live(1.25F);
+    tick = 5000U;
+    live(1.25F);
+    read_regs(MODBUS_OFF_ANLIK_AKIM, 2U);
+    TEST_ASSERT_TRUE(isnan(current()));
+    read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 1U);
+    TEST_ASSERT_EQUAL_UINT16(0U, word(0U));
+    read_regs(MODBUS_OFF_RF_VARYOK, 1U);
+    TEST_ASSERT_EQUAL_UINT16(1U, word(0U));
+}
+
 /*** end of file ***/

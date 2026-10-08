@@ -875,6 +875,12 @@ static bool parse_iec_line_config(const char **str, jiec_line_config_t *hat) {
             if (!parse_uint32_array(str, hat->ioa_s_yuk_akimi_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_T_YukAkimiVarYok")) {
             if (!parse_uint32_array(str, hat->ioa_t_yuk_akimi_varyok, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "IOA_R_TripFailed")) {
+            if (!parse_uint32_array(str, hat->ioa_r_trip_failed, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "IOA_S_TripFailed")) {
+            if (!parse_uint32_array(str, hat->ioa_s_trip_failed, MAX_ARRAYS)) return false;
+        } else if (match_key(str, "IOA_T_TripFailed")) {
+            if (!parse_uint32_array(str, hat->ioa_t_trip_failed, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_R_RfhabVarYok")) {
             if (!parse_uint32_array(str, hat->ioa_r_rfhab_varyok, MAX_ARRAYS)) return false;
         } else if (match_key(str, "IOA_S_RfhabVarYok")) {
@@ -906,6 +912,9 @@ static const char * const iec_address_keys[] =
     "IOA_R_RfhabVarYok",
     "IOA_S_RfhabVarYok",
     "IOA_T_RfhabVarYok",
+    "IOA_R_TripFailed",
+    "IOA_S_TripFailed",
+    "IOA_T_TripFailed",
     "TemporaryFaultBase",
     "PermanentFaultBase"
 };
@@ -926,9 +935,9 @@ static void format_iec_address_field(char *text, uint16_t field_id)
     {
         const uint32_t index = (uint32_t)field_id - 2U;
         (void)xsnprintf(text, 64U, "Hatlar.%s[%lu] (feeder %lu)",
-            iec_address_keys[index % 14U],
-            (unsigned long)(index / 14U),
-            (unsigned long)((index / 14U) + 1U));
+            iec_address_keys[index % 17U],
+            (unsigned long)(index / 17U),
+            (unsigned long)((index / 17U) + 1U));
     }
 }
 
@@ -999,7 +1008,10 @@ static bool validate_iec_addresses(const jiec_config_t *config)
         config->line.ioa_t_yuk_akimi_varyok,
         config->line.ioa_r_rfhab_varyok,
         config->line.ioa_s_rfhab_varyok,
-        config->line.ioa_t_rfhab_varyok
+        config->line.ioa_t_rfhab_varyok,
+        config->line.ioa_r_trip_failed,
+        config->line.ioa_s_trip_failed,
+        config->line.ioa_t_trip_failed
     };
     iec_ioa_range_t ranges[2U + (MAX_ARRAYS *
         ((sizeof(points) / sizeof(points[0])) + 2U))];
@@ -1012,7 +1024,7 @@ static bool validate_iec_addresses(const jiec_config_t *config)
     }
     for (size_t line = 0U; line < MAX_ARRAYS; line++)
     {
-        const uint16_t line_id = (uint16_t)(2U + (line * 14U));
+        const uint16_t line_id = (uint16_t)(2U + (line * 17U));
         const uint32_t bases[] =
         {
             config->line.temporary_fault_base[line],
@@ -1025,7 +1037,7 @@ static bool validate_iec_addresses(const jiec_config_t *config)
             {
                 char field[64];
                 format_iec_address_field(field,
-                    (uint16_t)(line_id + 12U + base));
+                    (uint16_t)(line_id + 15U + base));
                 (void)xsnprintf(iec_address_error, sizeof(iec_address_error),
                                "Invalid IOA base: %s", field);
                 return false;
@@ -1053,10 +1065,10 @@ static bool validate_iec_addresses(const jiec_config_t *config)
         /* Match the existing getter's additional feeder offset exactly. */
         if (!add_iec_ioa_range(ranges, &count,
                 temp_base + ((uint32_t)line * temp_length), temp_length,
-                (uint16_t)(line_id + 12U)) ||
+                (uint16_t)(line_id + 15U)) ||
             !add_iec_ioa_range(ranges, &count,
                 perm_base + ((uint32_t)line * perm_length), perm_length,
-                (uint16_t)(line_id + 13U)))
+                (uint16_t)(line_id + 16U)))
         {
             return false;
         }
@@ -2361,6 +2373,10 @@ int set_iec_config(const jiec_config_t *config)
 		line.rf_haberlesme_varyok[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_rfhab_varyok[i]);
 		line.rf_haberlesme_varyok[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_rfhab_varyok[i]);
 		line.rf_haberlesme_varyok[PHASE_L3] = iec104_make_ioa_3byte(config->line.ioa_t_rfhab_varyok[i]);
+        line.trip_failed[PHASE_L1] = iec104_make_ioa_3byte(config->line.ioa_r_trip_failed[i]);
+        line.trip_failed[PHASE_L2] = iec104_make_ioa_3byte(config->line.ioa_s_trip_failed[i]);
+        line.trip_failed[PHASE_L3] = iec104_make_ioa_3byte(config->line.ioa_t_trip_failed[i]);
+
 
 		iec104_set_line_config(i, &line);
 	}

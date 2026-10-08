@@ -1,5 +1,21 @@
 # RF Hub (MH) Simulatoru - tools/rf-hil
 
+## HIL koşusunda imaj ve profil kapısı
+
+Runner, kaynak header varsayılanını DUT profili olarak kullanmaz.
+`--firmware-image` kurulu uygulamanın EFW dosyasını, `--transport-profile`
+beklenen derleme profilini belirtmelidir (0=USART3, 1=UART4/RS-485 bench).
+Güncel firmware'in `rf status` çıktısı kurulu boot metadata ve gerçek
+derleme profilini bildirir. Koşu öncesi/sonrası eşleşme yoksa BLOCKED
+olur. Bu komut firmware yüklemez:
+
+```text
+python test/system/rf_hil/run_hil.py --rf-port COM10 --console COM16 --firmware-image <kurulu_imaj.efw> --transport-profile 1
+```
+
+Seçilmiş ertelenmiş vaka, eksik kimlik veya boş seçim başarıyla çıkmamalıdır.
+Eski koşuların metadata'sı geriye dönük değiştirilmemelidir.
+
 BOLATeX Teslim4 R1 SCP arayuzunun (`doc/BOLATeX_Teslim4_R1_RTU_Arayuzu_MD/`)
 RF hub (MH) tarafini bir PC uzerinde birebir simule eden Python araci.
 Modemin (DUT) USART3 RF hattiyla gercek MH varmis gibi konusur; tum
@@ -85,5 +101,7 @@ python test/system/rf_hil/run_hil.py --rf-port COM10 --console COM16
 
 - `tools/rf-hub-sim/` (eski C araci) guncel protokol icin referans
   DEGILDIR; bu arac onun yerine gecti.
-- Protokol referansi yalnizca Teslim4 R1 dokumani + ornek CSV'ler +
-  firmware kaynagidir.
+- Protokol referansi Teslim4 R1, ornek CSV'ler ve 07.10.2026 tarihli
+  BOLATeX R0/Ek-1 yanitlaridir. Planlanan firmware ozellikleri bugunku
+  davranis yerine uygulanmaz. Ayrintili kontrol:
+  [RF-SCP yanıt kontrolü](../../doc/RF_SCP_BOLATEX_YANIT_KONTROLU.md).

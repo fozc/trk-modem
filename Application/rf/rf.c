@@ -8,12 +8,26 @@
 #include "rf.h"
 #include "rf_config.h"
 #include "rf_inventory.h"
+#include "stm32u3xx_hal.h"
 #include <math.h>
 #include <string.h>
 
 #define RF_ACTIVE_FEEDERS 4U
 #define RF_PHASE_SLOTS (RF_ACTIVE_FEEDERS * 3U)
 #define RF_LIVE_TIMEOUT_MS 30000U
+#define RF_ALARM_KEY_COUNT 128U
+
+typedef struct
+{
+    uint32_t uptime_sec;
+    uint16_t boot_counter;
+    uint16_t crc;
+    uint8_t event;
+    uint8_t zone;
+    uint8_t source;
+    bool acknowledged;
+    uint8_t eui64[8];
+} rf_alarm_key_t;
 
 typedef struct
 {
@@ -25,6 +39,9 @@ typedef struct
 static rf_phase_cache_t phase_cache[RF_PHASE_SLOTS];
 static rf_anomaly_data_t anomalies[RF_PHASE_SLOTS][2];
 static rf_anomaly_data_t global_anomalies[2];
+static rf_alarm_key_t alarm_keys[RF_ALARM_KEY_COUNT];
+static size_t alarm_key_count;
+static size_t alarm_key_next;
 
 static bool get_source_index(uint8_t source, size_t *index)
 {
@@ -82,6 +99,85 @@ void rf_init(void)
     (void)memset(phase_cache, 0, sizeof(phase_cache));
     (void)memset(anomalies, 0, sizeof(anomalies));
     (void)memset(global_anomalies, 0, sizeof(global_anomalies));
+    alarm_key_count = 0U;
+    alarm_key_next = 0U;
+}
+
+bool rf_open_trip_failure_alarm(uint8_t zone, uint8_t feeder,
+                                uint8_t phase)
+{
+    if ((1U > feeder) || (4U < feeder) || (1U > phase) || (3U < phase))
+    {
+        return false;
+    }
+    const uint8_t source =
+        (uint8_t)(((uint8_t)(feeder << 2) | phase) & 0x1FU);
+    rf_phase_cache_t *cache = get_bound_cache(source);
+
+    if (NULL == cache)
+    {
+        return false;
+    }
+    rf_inventory_entry_t entry;
+
+    if (!rf_inventory_get_binding(source, &entry) ||
+        (entry.zone != zone))
+    {
+        return false;
+    }
+    /* BQ-01/BQ-16: the event opens an alarm without requiring LIVE. */
+    cache->data.trip_failed = true;
+    cache->data.trip_failure_latched = true;
+    return true;
+}
+
+bool rf_handle_alarm_event(const rf_scp_event_t *event)
+{
+    rf_inventory_entry_t entry;
+    if ((NULL == event) ||
+        ((101U != event->event) && (105U != event->event)) ||
+        (1U > event->feeder) || (4U < event->feeder) ||
+        (1U > event->phase) || (3U < event->phase))
+    {
+        return false;
+    }
+    const uint8_t source = (uint8_t)((event->feeder << 2U) | event->phase);
+    if (!rf_inventory_get_binding(source, &entry) ||
+        (entry.zone != event->zone) || rf_eui64_is_zero(entry.eui64))
+    {
+        return false;
+    }
+    for (size_t index = 0U; index < alarm_key_count; index++)
+    {
+        const rf_alarm_key_t *key = &alarm_keys[index];
+        if ((key->event == event->event) && (key->zone == event->zone) &&
+            (key->source == source) && (key->crc == event->crc) &&
+            (key->boot_counter == event->boot_counter) &&
+            (key->uptime_sec == event->uptime_sec) &&
+            (0 == memcmp(key->eui64, entry.eui64, 8U)))
+        {
+            return !key->acknowledged &&
+                rf_open_trip_failure_alarm(event->zone, event->feeder,
+                                             event->phase);
+        }
+    }
+    if (!rf_open_trip_failure_alarm(event->zone, event->feeder, event->phase))
+    {
+        return false;
+    }
+    alarm_keys[alarm_key_next] = (rf_alarm_key_t)
+    {
+        .uptime_sec = event->uptime_sec, .boot_counter = event->boot_counter,
+        .crc = event->crc, .event = event->event, .zone = event->zone,
+        .source = source, .acknowledged = false
+    };
+    (void)memcpy(alarm_keys[alarm_key_next].eui64, entry.eui64, 8U);
+    alarm_key_next = (alarm_key_next + 1U) % RF_ALARM_KEY_COUNT;
+    if (RF_ALARM_KEY_COUNT > alarm_key_count)
+    {
+        alarm_key_count++;
+    }
+    return true;
 }
 
 void rf_hub_restarted(void)
@@ -116,12 +212,18 @@ bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms,
     }
     if (live->trip_failed)
     {
+        if (restarted || (!data->trip_failed &&
+            (!data->has_live || !data->live.trip_failed)))
+        {
+            data->trip_failure_latched = true;
+        }
         data->trip_failed = true;
     }
-    else if (!data->trip_failure_latched && data->has_live &&
+    else if (data->has_live && data->live.trip_failed &&
              (live->uptime_sec > data->live.uptime_sec))
     {
         data->trip_failed = false;
+        data->trip_failure_latched = false;
     }
     else
     {
@@ -130,17 +232,19 @@ bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms,
          */
     }
     data->uptime_stalled = data->has_live &&
-                          (live->seq != data->live.seq) &&
                           (live->uptime_sec == data->live.uptime_sec);
     data->live = *live;
     data->received_time = (NULL != received_time) ? *received_time :
                          (cp56time2a_t){.iv_bit = 1U};
     data->last_live_ms = now_ms;
     data->has_live = true;
-    data->current_valid = isfinite(live->current_amps) &&
+    data->current_valid = !data->uptime_stalled &&
+                          isfinite(live->current_amps) &&
                           (0.0f <= live->current_amps);
-    data->trip_voltage_valid = isfinite(live->trip_voltage);
-    data->harvest_voltage_valid = isfinite(live->harvest_voltage);
+    data->trip_voltage_valid = !data->uptime_stalled &&
+                              isfinite(live->trip_voltage);
+    data->harvest_voltage_valid = !data->uptime_stalled &&
+                                 isfinite(live->harvest_voltage);
     cache->session_live = true;
     return true;
 }
@@ -180,8 +284,7 @@ bool rf_get_source_data(uint8_t source, uint32_t now_ms, rf_phase_data_t *out)
     }
     const rf_phase_cache_t *cache = &phase_cache[index];
 
-    if ((0 != memcmp(cache->data.eui64, entry.eui64, 8U)) ||
-        (!cache->data.has_live && !cache->data.has_trip))
+    if (0 != memcmp(cache->data.eui64, entry.eui64, 8U))
     {
         return false;
     }
@@ -288,6 +391,40 @@ bool rf_get_anomaly(uint8_t source, uint8_t path, rf_anomaly_data_t *out)
     return true;
 }
 
+bool rf_ack_stored_alarm(const uint8_t eui64[8])
+{
+    if ((NULL == eui64) || rf_eui64_is_zero(eui64))
+    {
+        return false;
+    }
+    bool changed = false;
+    for (size_t key = 0U; key < alarm_key_count; key++)
+    {
+        if ((0 == memcmp(alarm_keys[key].eui64, eui64, 8U)) &&
+            !alarm_keys[key].acknowledged)
+        {
+            alarm_keys[key].acknowledged = true;
+            changed = true;
+        }
+    }
+    const uint32_t now_ms = HAL_GetTick();
+    for (size_t index = 0U; index < RF_PHASE_SLOTS; index++)
+    {
+        rf_phase_cache_t *cache = &phase_cache[index];
+        if ((0 == memcmp(cache->data.eui64, eui64, 8U)) &&
+            cache->data.trip_failed && cache->data.trip_failure_latched)
+        {
+            cache->data.trip_failure_latched = false;
+            cache->data.trip_failed = cache->data.has_live &&
+                cache->session_live &&
+                ((now_ms - cache->data.last_live_ms) < RF_LIVE_TIMEOUT_MS) &&
+                cache->data.live.trip_failed;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 bool rf_ack_trip_failure(uint8_t source)
 {
     size_t index;
@@ -300,15 +437,11 @@ bool rf_ack_trip_failure(uint8_t source)
     }
     rf_phase_cache_t *cache = &phase_cache[index];
 
-    if ((0 != memcmp(cache->data.eui64, entry.eui64, 8U)) ||
-        !cache->data.has_live ||
-        cache->data.live.trip_failed || !cache->data.trip_failure_latched)
+    if (0 != memcmp(cache->data.eui64, entry.eui64, 8U))
     {
         return false;
     }
-    cache->data.trip_failure_latched = false;
-    cache->data.trip_failed = false;
-    return true;
+    return rf_ack_stored_alarm(entry.eui64);
 }
 
 /*** end of file ***/

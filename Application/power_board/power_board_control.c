@@ -23,6 +23,8 @@ static bool write_after_read;
 static bool verifying;
 static bool verification_report_ready;
 static bool awaiting_command;
+static bool cancel_verification_pending;
+static uint32_t command_ack_ms;
 static uint8_t request_cmd;
 static uint8_t request_type;
 static uint8_t sent_command;
@@ -40,6 +42,8 @@ void power_board_control_init(void)
     verifying = false;
     verification_report_ready = false;
     awaiting_command = false;
+    cancel_verification_pending = false;
+    command_ack_ms = 0U;
 }
 
 void power_board_control_hub_restarted(void)
@@ -61,6 +65,8 @@ void power_board_control_hub_restarted(void)
     verifying = false;
     verification_report_ready = false;
     awaiting_command = false;
+    cancel_verification_pending = false;
+    command_ack_ms = 0U;
 }
 
 bool power_board_control_get_status(power_board_control_status_t *out)
@@ -82,6 +88,10 @@ static bool send_request(uint8_t cmd, uint8_t type,
     {
         return false;
     }
+    if (cancel_verification_pending && (RF_SCP_CMD_PWR_RESULT != cmd))
+    {
+        return false;
+    }
     if (0U != length)
     {
         (void)memcpy(packet.data, data, length);
@@ -99,11 +109,7 @@ static bool send_request(uint8_t cmd, uint8_t type,
 
 bool power_board_read_settings(void)
 {
-    if (!send_request(RF_SCP_CMD_PWR_CFG2, SCP_TYPE_GET, NULL, 0U))
-    {
-        return false;
-    }
-    return true;
+    return send_request(RF_SCP_CMD_PWR_CFG2, SCP_TYPE_GET, NULL, 0U);
 }
 
 static bool settings_active(void)
@@ -124,7 +130,7 @@ bool power_board_write_settings(const power_settings_request_t *request)
         ((0U != (request->mask & POWER_SETTING_RATE)) &&
          !valid_setting(request->rate_permille, 20U, 200U)) ||
         ((0U != (request->mask & POWER_SETTING_CAPACITY)) &&
-         !valid_setting(request->capacity_ah, 7U, 54U)) ||
+         ((7U > request->capacity_ah) || (54U < request->capacity_ah))) ||
         ((0U != (request->mask & POWER_SETTING_PERIOD)) &&
          ((1U > request->period_sec) || (10U < request->period_sec))))
     {
@@ -161,7 +167,7 @@ static bool send_settings(void)
     data[10] = desired.rate_permille;
     data[14] = desired.capacity_ah;
     data[15] = desired.period_sec;
-    if ((0U != desired.period_sec) && (255U != desired.period_sec))
+    if (0U != (desired.mask & POWER_SETTING_PERIOD))
     {
         /* Both operands occupy at most one byte. */
         data[15] = (uint8_t)(data[15] | (status.config[14] & 0x80U));
@@ -177,8 +183,10 @@ static bool send_settings(void)
 
 static void check_settings(void)
 {
+    const uint32_t now_ms = HAL_GetTick();
+    const uint32_t elapsed = now_ms - write_ms;
     if (!verifying || !verification_report_ready || !status.has_config ||
-        ((uint32_t)(HAL_GetTick() - write_ms) < verify_delay_ms))
+        (elapsed < verify_delay_ms))
     {
         return;
     }
@@ -198,33 +206,28 @@ static void check_settings(void)
         verifying = false;
         return;
     }
+    const bool capacity = (0U != (desired.mask & POWER_SETTING_CAPACITY));
+    const bool rate = (0U != (desired.mask & POWER_SETTING_RATE)) &&
+                     (0U != desired.rate_permille) &&
+                     (255U != desired.rate_permille);
     status.settings_state = POWER_SETTINGS_WAIT_APPLY;
-    if (((0U != (desired.mask & POWER_SETTING_CAPACITY)) &&
-         ((0U == desired.capacity_ah) || (255U == desired.capacity_ah))) ||
-        ((0U != (desired.mask & POWER_SETTING_RATE)) &&
-         ((0U == desired.rate_permille) || (255U == desired.rate_permille))))
-    {
-        status.settings_state = POWER_SETTINGS_ECHO_ACCEPTED;
-        verifying = false;
-        return;
-    }
-    const uint16_t battery_mask = POWER_SETTING_CAPACITY | POWER_SETTING_RATE;
-    if (0U != (desired.mask & battery_mask))
+    if (capacity || rate)
     {
         power_board_snapshot_t power;
-
-        (void)power_board_get_snapshot(HAL_GetTick(), &power);
+        (void)power_board_get_snapshot(now_ms, &power);
+        const uint8_t verdict = (power.summary.flags2 >> 4U) & 7U;
         if ((0U == (power.valid_fields & POWER_VALID_SUMMARY)) ||
-            (0U != (power.summary.flags2 & 0x70U)) ||
-            ((0U != (desired.mask & POWER_SETTING_CAPACITY)) &&
-             (power.summary.capacity_ah != desired.capacity_ah)) ||
-            ((0U != (desired.mask & POWER_SETTING_RATE)) &&
-             (power.summary.charge_rate_permille != desired.rate_permille)))
+            ((0U != verdict) && (2U != verdict)) ||
+            (capacity && ((power.summary.capacity_ah != desired.capacity_ah) ||
+             (power.received_age_ms > elapsed - verify_delay_ms))) ||
+            (rate && (power.summary.charge_rate_permille != desired.rate_permille)))
         {
             return;
         }
     }
-    status.settings_state = POWER_SETTINGS_APPLIED;
+    const bool unset_rate = (0U != (desired.mask & POWER_SETTING_RATE)) && !rate;
+    status.settings_state = unset_rate ? POWER_SETTINGS_ECHO_ACCEPTED :
+                                        POWER_SETTINGS_APPLIED;
     verifying = false;
 }
 
@@ -252,8 +255,25 @@ bool power_board_handle_command_result(const rf_scp_message_t *message)
     status.result = message->body.command_result.result;
     status.transmissions = message->body.command_result.transmissions;
     status.command_flags = message->body.command_result.flags;
-    if (!status.has_command_ack || (5U != status.result_command) ||
-        (status.command_seq != status.result_seq))
+    if (cancel_verification_pending && (SCP_TYPE_ACK == message->type))
+    {
+        cancel_verification_pending = false;
+        if ((0U != status.transmissions) &&
+            (0U == (status.command_flags & 0x0EU)))
+        {
+            status.command_state = POWER_COMMAND_CANCEL_NO_EFFECT;
+            awaiting_command = status.has_command_ack && (255U == status.result);
+            return true;
+        }
+        if ((0U == status.transmissions) &&
+            (0U == (status.command_flags & 0x0EU)))
+        {
+            status.command_state = POWER_COMMAND_CANCEL_NO_EFFECT;
+            awaiting_command = false;
+            return true;
+        }
+    }
+    if (!status.has_command_ack || (5U != status.result_command))
     {
         return true;
     }
@@ -269,12 +289,19 @@ bool power_board_handle_command_result(const rf_scp_message_t *message)
     }
     else if (0U != (status.command_flags & 4U))
     {
-        status.command_state = POWER_COMMAND_UNCERTAIN;
+        status.command_state = POWER_COMMAND_CANCELLED;
         awaiting_command = false;
     }
     else if (255U != status.result)
     {
         status.command_state = POWER_COMMAND_REJECTED;
+        awaiting_command = false;
+    }
+    else if (((SCP_TYPE_SET == message->type) && (2U <= status.transmissions)) ||
+             ((SCP_TYPE_ACK == message->type) &&
+              (300000U <= (uint32_t)(HAL_GetTick() - command_ack_ms))))
+    {
+        status.command_state = POWER_COMMAND_NO_RESPONSE;
         awaiting_command = false;
     }
     else
@@ -363,7 +390,7 @@ static void settings_written(const rf_scp_message_t *message)
     {
         period = 1U;
     }
-    verify_delay_ms = ((uint32_t)period * 2U + 12U) * 1000U;
+    verify_delay_ms = ((uint32_t)period * 3U + 6U) * 1000U;
     if (20000U > verify_delay_ms)
     {
         verify_delay_ms = 20000U;
@@ -384,24 +411,14 @@ static void command_accepted(const rf_scp_message_t *message)
         status.has_command_ack = true;
         status.command_state = POWER_COMMAND_ACCEPTED;
         awaiting_command = true;
-        if (status.has_result)
-        {
-            rf_scp_message_t report = {.cmd = RF_SCP_CMD_PWR_RESULT,
-                                       .type = SCP_TYPE_SET};
-            report.body.command_result.command = status.result_command;
-            report.body.command_result.seq = status.result_seq;
-            report.body.command_result.result = status.result;
-            report.body.command_result.transmissions = status.transmissions;
-            report.body.command_result.flags = status.command_flags;
-            (void)power_board_handle_command_result(&report);
-        }
+        command_ack_ms = HAL_GetTick();
+        status.has_result = false; /* Only reports after the ACK are evidence. */
     }
     else
     {
         /* Cancel ACK does not prove that counters were not reset. */
-        awaiting_command = false;
-        status.command_state = status.has_command_ack ?
-            POWER_COMMAND_MONITORING : POWER_COMMAND_IDLE;
+        cancel_verification_pending = true;
+        status.command_state = POWER_COMMAND_UNCERTAIN;
     }
 }
 
@@ -419,6 +436,7 @@ static void request_done(scp_cmd_result_t result, const scp_packet_t *packet)
         (RF_CMD_OK == rf_scp_decode_message(packet, &message));
     if ((SCP_CMD_OK != result) || !decoded)
     {
+        cancel_verification_pending = false;
         request_failed(result, decoded ? &message : NULL);
         return;
     }
@@ -462,7 +480,14 @@ void power_board_control_process(uint32_t now_ms)
     {
         return;
     }
-    if (write_after_read)
+    if (cancel_verification_pending)
+    {
+        if (!power_board_read_command_result())
+        {
+            return;
+        }
+    }
+    else if (write_after_read)
     {
         (void)send_settings();
     }

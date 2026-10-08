@@ -30,6 +30,8 @@
 #include "rf_scp_codec.h"
 #include "rf.h"
 #include "rf_events.h"
+#include "rf_faults.h"
+#include "rf_alarm.h"
 #include "rf_group.h"
 #include "power_board_scp.h"
 #include "power_board_control.h"
@@ -493,6 +495,9 @@ static const char *scp_cmd_to_string(uint8_t cmd)
     switch (cmd)
     {
         case RF_SCP_CMD_GET_STATUS:        return "GET_STATUS";
+        case RF_SCP_CMD_GET_FRAM_STATS:    return "GET_FRAM_STATS";
+        case RF_SCP_CMD_SET_CONFIG:        return "SET_CONFIG";
+        case RF_SCP_CMD_INVENTORY_UPDATE:  return "INVENTORY_UPDATE";
         case RF_SCP_CMD_TIME_SYNC:         return "TIME_SYNC";
         case RF_SCP_CMD_INVENTORY_SET:     return "INVENTORY_SET";
         case RF_SCP_CMD_INVENTORY_END:     return "INVENTORY_END";
@@ -503,6 +508,22 @@ static const char *scp_cmd_to_string(uint8_t cmd)
         case RF_SCP_CMD_DISCOVERY_REPORT:  return "DISCOVERY_REPORT";
         case RF_SCP_CMD_CFG_STATUS_NOTIFY: return "CFG_STATUS_NOTIFY";
         case RF_SCP_CMD_LOG_AVAILABLE:     return "LOG_AVAILABLE";
+        case RF_SCP_CMD_CFG_READ_ALL:      return "CFG_READ_ALL";
+        case RF_SCP_CMD_CFG_WRITE:         return "CFG_WRITE";
+        case RF_SCP_CMD_CFG_COMMIT:        return "CFG_COMMIT";
+        case RF_SCP_CMD_CFG_ABORT:         return "CFG_ABORT";
+        case RF_SCP_CMD_CFG_STATUS_GET:    return "CFG_STATUS_GET";
+        case RF_SCP_CMD_EPOCH_REFRESH:     return "EPOCH_REFRESH";
+        case RF_SCP_CMD_LOG_READ_HEAD:     return "LOG_READ_HEAD";
+        case RF_SCP_CMD_LOG_READ_RECORD:   return "LOG_READ_RECORD";
+        case RF_SCP_CMD_LOG_READ_RANGE:    return "LOG_READ_RANGE";
+        case RF_SCP_CMD_LOG_CONSUME_TO:    return "LOG_CONSUME_TO";
+        case RF_SCP_CMD_PWR_SUMMARY:       return "PWR_SUMMARY";
+        case RF_SCP_CMD_PWR_ALARM:         return "PWR_ALARM";
+        case RF_SCP_CMD_PWR_CFG2:          return "PWR_CFG2";
+        case RF_SCP_CMD_PWR_COMMAND:       return "PWR_COMMAND";
+        case RF_SCP_CMD_PWR_RESULT:        return "PWR_RESULT";
+        case RF_SCP_CMD_PWR_TELEMETRY:     return "PWR_TELEMETRY";
         default:                           return "UNKNOWN";
     }
 }
@@ -542,6 +563,16 @@ static void reply_ping(const scp_packet_t *pkt)
  * Proactive handlers
  * ====================================================================== */
 
+/* BQ-03: inventory starts only after HEAD + no-op CONSUME succeeds.
+ * The event machine keeps protection pending on failure. */
+static void bridge_to_inventory(void)
+{
+    if (!rf_events_boot_protect())
+    {
+        CSLOG_WARN("[RF] inventory waits for event protection\r\n");
+    }
+}
+
 /** 0x07 TIME_SYNC gonderildikten sonra cagrilir */
 static void on_time_sync_done(scp_cmd_result_t result,
                               const scp_packet_t *rsp)
@@ -559,11 +590,12 @@ static void on_time_sync_done(scp_cmd_result_t result,
     {
         CSLOG("[RF] hub saati senkronize (TIME_SYNC ACK)\r\n");
 
-        /* Devreye alma zincirinin 3. adimi: saat tamam -> envanter push */
+        /* Devreye alma zincirinin 3. adimi: saat tamam -> envanter oncesi
+         * halka korunmasi (BOLATeX BQ-03) -> envanter push */
         if (time_sync_boot)
         {
             time_sync_boot = false;
-            rf_inventory_start();
+            bridge_to_inventory();
         }
     }
     else
@@ -672,8 +704,11 @@ static void handle_proactive(const scp_packet_t *pkt)
                 const bsp_rtc_t rtc = bsp_get_datetime();
                 received_time = cp56time2a_from_rtc(&rtc);
             }
-            (void)rf_handle_live(&message.body.live, HAL_GetTick(),
-                                &received_time);
+            if (rf_handle_live(&message.body.live, HAL_GetTick(),
+                                &received_time))
+            {
+                rf_alarm_live(message.body.live.source, &received_time);
+            }
             break;
         }
 
@@ -710,7 +745,7 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         default:    /* MISRA 16.4 - S3-S5'te yeni case'ler gelecek */
-            CSLOG("[RF] proactive (henuz islenmiyor)\r\n");
+            CSLOG_WARN("[RF] proactive (henuz islenmiyor)\r\n");
             break;
     }
 }
@@ -838,7 +873,7 @@ static void rf_comm_periodic_jobs(void)
              * pending; its later ACK must not restart the upload.
              */
             time_sync_boot = false;
-            rf_inventory_start();
+            bridge_to_inventory();
         }
         else
         {
@@ -852,6 +887,7 @@ static void rf_comm_periodic_jobs(void)
     rf_events_process(HAL_GetTick());
     power_board_scp_process(HAL_GetTick());
     power_board_control_process(HAL_GetTick());
+    rf_alarm_process(HAL_GetTick());
 
     /* Periyodik GET_STATUS (canlilik) */
     if (!liveness_timer_started)
@@ -911,6 +947,8 @@ void rf_comm_init(uint8_t device_address)
     liveness_timer_started = false;
     rf_inventory_reset();
     rf_init();
+    rf_faults_init();
+    rf_alarm_init();
     rf_events_init();
     rf_group_init();
     if (!rbuff_init(&rx_ring, rx_buff, sizeof(rx_buff)))

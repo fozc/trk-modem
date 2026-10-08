@@ -197,6 +197,7 @@ void test_energy_uses_live_flag_and_keeps_receive_time_when_stale(void)
     TEST_ASSERT_EQUAL_UINT8(1U, value.not_topical);
     TEST_ASSERT_EQUAL_MEMORY(&received, &time, sizeof(time));
     sample.flags = 0x80U;
+    sample.uptime_sec++;
     TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
     TEST_ASSERT_EQUAL_INT(0, read_enerji_varyok(0U, 0U, &value, &time));
     TEST_ASSERT_EQUAL_UINT8(0U, value.spi);
@@ -242,10 +243,42 @@ void test_load_uses_mh_flag_independently_of_energy_and_rms(void)
     TEST_ASSERT_EQUAL_INT(-1, read_yuk_akimi_varyok(0U, 0U, &value, NULL));
     sample.current_amps = 100.0F;
     sample.flags = 1U;
+    sample.uptime_sec++;
     TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
     TEST_ASSERT_EQUAL_INT(0, read_yuk_akimi_varyok(0U, 0U, &value, &time));
     TEST_ASSERT_EQUAL_UINT8(0U, value.spi);
     TEST_ASSERT_EQUAL_UINT8(0U, value.invalid);
+}
+
+void test_stalled_uptime_invalidates_measurements_but_fsm_error_does_not(void)
+{
+    const cp56time2a_t received = receipt();
+    rf_scp_live_t sample = {.source = 5U, .seq = 1U, .uptime_sec = 10U,
+        .current_amps = 1.25F, .flags = 3U, .fsm_error = true};
+    qds_t quality;
+    siq_t flag;
+    cp56time2a_t time;
+    float value;
+
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
+    TEST_ASSERT_EQUAL_INT(0, read_anlik_akim(0U, 0U, &value, &quality, &time));
+    TEST_ASSERT_EQUAL_UINT8(0U, quality.invalid);
+    tick = 5000U;
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
+    TEST_ASSERT_EQUAL_INT(0, read_anlik_akim(0U, 0U, &value, &quality, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, quality.invalid);
+    TEST_ASSERT_EQUAL_UINT8(0U, quality.not_topical);
+    TEST_ASSERT_EQUAL_INT(0, read_enerji_varyok(0U, 0U, &flag, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, flag.invalid);
+    TEST_ASSERT_EQUAL_INT(0, read_yuk_akimi_varyok(0U, 0U, &flag, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, flag.invalid);
+    TEST_ASSERT_EQUAL_INT(0, read_rf_haberlesme_varyok(0U, 0U, &flag, &time));
+    TEST_ASSERT_EQUAL_UINT8(1U, flag.spi);
+    TEST_ASSERT_EQUAL_UINT8(0U, flag.invalid);
+    sample.uptime_sec++;
+    TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
+    TEST_ASSERT_EQUAL_INT(0, read_anlik_akim(0U, 0U, &value, &quality, &time));
+    TEST_ASSERT_EQUAL_UINT8(0U, quality.invalid);
 }
 
 /*** end of file ***/

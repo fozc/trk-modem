@@ -2,7 +2,8 @@
  * cp56time2a.h
  *
  *  Created on: Mar 8, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef LIBIEC104_CP56TIME2A_H_
@@ -163,7 +164,7 @@ int32_t cp56time2a_compare(const cp56time2a_t *t1_ptr, const cp56time2a_t *t2_pt
  * @param  t1_ptr  Pointer to the first (later) timestamp.
  * @param  t2_ptr  Pointer to the second (earlier) timestamp.
  * @return Difference in milliseconds (t1 - t2). Positive if t1 > t2.
- *         Accurate for timestamps within approximately 24 days of each other.
+ *         Larger differences saturate at INT32_MIN / INT32_MAX.
  */
 int32_t cp56time2a_diff_ms(const cp56time2a_t *t1_ptr, const cp56time2a_t *t2_ptr);
 

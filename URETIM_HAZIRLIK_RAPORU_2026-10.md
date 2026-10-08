@@ -2786,3 +2786,145 @@ değerlerle sınandı. Kayıt/SCP RX/olay/IEC104 tel seçiminde 172/172 geçti.
 **Kanıt:** `test/build/rf-load-shell-before.log`,
 `test/build/rf-load-shell-regression.log`, `build/rf-load-shell-release.log`;
 fixture için `python test/scripts/generate_rf_scp_vectors.py --check`.
+
+### 10.32. HIL raporunun bağımsız değerlendirmesi — 06.10.2026
+
+Kapanış 20261006-211601 manifest/report için 26/26 seçili bench PASS
+kaydı doğrulandı; vaka başı dört kanıt dosyası boş değildir. Donanımsız
+self-test tekrar 57/57 geçti. Yeni fiziksel koşu/cihaz yüklemesi yapılmadı.
+
+Manifest profil 0'ı kaynak header varsayılanından alırken üst rapor
+profil 1 bench imajını tarif eder. Git/dirty bilgisi çalışma ağacıdır;
+SIM-T4R1 MH etiketi DUT imaj kimliği değildir. Bu kabul sınırı açık
+tutulmalıdır. Ertelenmiş soak/plan ve üretim UART3/ikinci faz istemci
+kabulleri 26 PASS sonucuyla kapatılmamalıdır.
+
+Login whitespace ayrıştırması ve RF komut adı tablosunun eksikliği
+güncel üretim kaynaklarında doğrulandı; bunlar bu değerlendirmede
+düzeltilmedi. Geçmiş tüm FAIL'ler bağımsız olarak yeniden sınıflandırılmadı.
+Ayrıntı ve kanıtlar [RF HIL değerlendirmesi](RF_HIL_DEGERLENDIRME_2026-10-06.md)
+içindedir. Bu bölüm bir defteri kapatma veya üretim kabulü değildir.
+
+### 10.33. HIL yazılım bulgularının düzeltilmesi — 07.10.2026
+
+**Kanıt/düzeltme:** login, bitişik anahtar/değer metni yerine sınırlı
+buffer'larla credential nesnesini ayrıştırır. Whitespace, alan sırası
+ve ASCII escape'leri kabul edilir; yinelenen/eksik/yanlış tipli, uzun,
+trailing veya NUL giriş mevcut oturumu değiştirmez. Parola/token/lockout
+kuralları korunur. Regresyon önce gerçek handler'da başarısız oldu.
+
+RF ad tablosuna olay/konfigürasyon/Powerboard komutları eklendi; tel
+işleme değişmedi. `rf status`, boot servisinden kurulu CRC/boyut/commit
+ve derlenmiş profili bildirir. Yeni kalıcı alan veya onay API'si eklenmedi.
+
+Runner beklenen EFW dosyası/profil ile vaka öncesi/sonrası DUT kimliğini
+eşleştirir. Eksik veya yanlış kimlik BLOCKED olur. Artifact tam SHA-256,
+beklenen/gözlenen kimlik ve başlangıç/bitiş repository bilgileri ayrıdır.
+Seçilen DEFERRED/SKIP/ERROR/BLOCKED, boş veya tekrarlı seçim başarıyla
+çıkmaz. Eski manifestler korunur; raporun tam kabul ifadesi sınırlandırıldı.
+
+**Doğrulama:** web auth integration, gerçek SCP RX 79/79, simülatör
+57/57 ve HIL kimlik/çıkış kapısı 9/9 geçti. Son test gerçek status
+callback'ini gerçek boot header'ıyla profil 0/1 derler. Release 0 hata/
+0 uyarıdır. Kanıt: `build/hil-login-before.log`, `build/hil-login-final.log`,
+`test/build/hil-rf-fixes-ceedling.log`, `build/hil-fixes-host-final.log`,
+`build/hil-fixes-release-final.log`.
+
+**Sınır:** cihaza yükleme/fiziksel HIL tekrarı yapılmadı. Yeni kimlik
+satırını içeren firmware ile yeniden koşu gerekir. Kapı kurulu boot
+metadata ve derlenmiş profili karşılaştırır; DUT SHA-256 ölçümü veya
+paket imzasını doğrulama değildir. BQ-16 açık kalır. Yazılım/fiziksel
+kabul ayrımı [HIL değerlendirmesi v1.1](RF_HIL_DEGERLENDIRME_2026-10-06.md)
+içinde güncellendi.
+
+### 10.34. BOLATeX yanıt kontrolü ve RF sadeleştirmesi — 07.10.2026
+
+**Kanıt:** R0 ve Ek-1 yanıtları mevcut çağrı yollarıyla karşılaştırıldı.
+Boot koruması inventory IDLE koşuluna takılıyor, olay latch'i otomatik
+alarm kapanmasını engelliyor, epoch 30 s bekliyor, aynı SEQ/uptime geçerli
+ölçüm sayılıyor ve ACK öncesi E7 sonucu başarıya dönüşebiliyordu.
+Simülatör eski CONSUME'ye bugünkü MH'de olmayan koruma uyguluyor ve eski
+grup kimliğini koruyordu. Bunlar kaynak ve regresyonlarda doğrulandı.
+
+**Düzeltme:** boş halka dahil HEAD/no-op CONSUME başarıyla bitmeden
+inventory başlamaz; hata inventory'yi açmaz. Her tüketme taze HEAD ve
+sıra kontrolünden geçer; reset, ilerleyen tail ve ERROR 06/02 yolları
+güncellendi. MH pending/left sınırı 99 oldu; fazlar arası epoch beklemesi
+90 s oldu. Alarmın gözlenen aynı-açılış 1→0 kapanması, olay-only/offline
+onayı ve onaylanmış-süren durumu mevcut alanlarla düzeltildi.
+
+Powerboard ayar/sonuç doğrulaması Ek-1'e geçirildi. Uptime durmasında
+IEC104/Modbus ölçüm kalitesi düşer; RF online ayrı tutulur. Web eski/
+geçersiz ölçümü gizler, bakım uyarısı verir. I2C3 init USER CODE alanında
+atlanır; mevcut MSP pinleri analog/no-pull bırakılır. Simülatörün
+tüketme, grup ID ve E7 başlangıç/bitiş/iptal modeli düzeltildi.
+
+**Sadeleştirme:** olay makinesindeki üç gereksiz durum değişkeni,
+Powerboard wrapper/tekrarlı kontrol ve grup handler'ındaki erişilemeyen
+kontroller kaldırıldı. Alarm için yeni durum bayrağı, ek retry servisi
+veya otomatik yeniden uygulama eklenmedi.
+
+**Doğrulama:** ilgili 16 Ceedling dosyasında 274/274, simülatörde 62/62,
+web navigation'da kaynak/gömülü sayfa geçti. 22 production modülünün C11
+Cortex-M33 sıkı warning derlemesi geçti. Release 0 hata/0 uyarı; paket
+self-check başarılıdır. Kanıt: `test/build/bolatex-regression.log`,
+`build/bolatex-sim.log`, `build/bolatex-web.log`,
+`build/bolatex-strict.log`, `build/bolatex-release.log`.
+
+**Sınır:** NVRAM son grup kalıcılığı, BQ-10 dizili arıza sınıflaması ve
+fider sayımı, canlı envanter değişimi ön kontrolü ve onay/tekilleştirme
+modeli kullanıcı kararı bekler; bu maddeler fix sayılmaz. Normal sayaç
+taşması, boot counter sıfır alarm kopyası ve eksik/geç dizi için BQ-18–20
+eklendi. Fiziksel HIL, Flash yazma veya pin ölçümü yapılmadı.
+Madde bazında durumun tek kaynağı
+[BOLATeX yanıt kontrolüdür](doc/RF_SCP_BOLATEX_YANIT_KONTROLU.md).
+
+### 10.35. Altı kullanıcı kararının uygulanması — 07.10.2026
+
+**Karar:** Son group_id/fider kalıcılığı şimdilik ertelendi; RTU startup
+bilgiyi sıfırlar. Kesici açmadan geçen 4/5→3 yalnız ham olaydır. Faz
+listeleri korunur, fider sayımı ayrıdır. Envanter değişimi eski AY/MH
+kayıtları çekildikten sonra yapılır. Onay kalıcı kayıt servisi tarafından
+otomatik verilir; faz başına SCADA alarm noktaları ve son 128 alarm
+kimliğinin RAM'de tutulması kullanıcı tarafından onaylandı.
+
+**Düzeltme:** `rf_faults` dizi ve zaman kanıtıyla sınıflar/sayar;
+kanıt eksikse kesin toplam üretmez. `rf_alarm` yazma/readback ve replay
+senkronlaması başarılı olmadan onay vermez. Bağlantı, k-window veya TX
+hatasında kayıt gönderilmemiş kalır. Güncel LIVE 1, onaylanmış-süren
+alarmdır. Kopya ham kayıt tutulur; onaylanmış kopya alarmı yeniden açmaz.
+Manuel terminal onayı kaldırıldı. Eski MH grubunun peer raporu yeni,
+gönderilmemiş işin APPLIED sonucu yapılmaz.
+
+Envanter DRAINING aşaması canlı log_pending ve taze MH boş HEAD bekler;
+total sınırı RAM'de tutulur. BOOT koruması ve aktif yerel ayar işlemi
+atlanamaz. Kabul edilmiş RTU satırı drain sırasında korunur; tek 06
+hatası eski atamayı değiştirmez. Tam 04/05 yükleme PARTIAL politikasını
+korur. Üreticinin atama sonrası eski etiket belirsizliği çözülmüş sayılmaz.
+
+**Yerleşim:** Yeni alarm IOA'ları emekli IEC104 adres slotunu kullanır;
+schema 3, NVRAM 2476 B/CRC ofseti 2472. Group alanı eklenmedi. IEC104
+payload fault/alarm türüyle 25 B, entry 29 B oldu; mevcut 32 KB alanda
+1128 kayıt, sektör dönüşünde 987 kayıt tutulur. Ham RF alanı 8 KB kalır.
+Flash/linker alanı değiştirilmedi. Saha cihazı olmadığı kararıyla eski
+schema migration'ı eklenmedi.
+
+**Doğrulama:** 415/415 ilgili Ceedling testi; gerçek Contiki replay
+sürecinde gönderim reddi, alarm/fault sırası ve son güncel durum yayımı
+testi dahil. 307/307 NVRAM integration kontrolü, kaynak/gömülü web
+kontrolleri geçti. 24 modül C11 Cortex-M33 sıkı warning derlemesinden
+geçti. Release 0 hata/0 uyarı; paket self-check başarılıdır.
+Kanıt: `test/build/rf-decisions-regression.log`,
+`test/build/rf-replay-scenario.log`, `build/rf-decisions-nvram.log`,
+`build/rf-decisions-web.log`, `build/rf-decisions-strict.log`,
+`build/rf-decisions-release-final.log`.
+
+Host scheduler testi mevcut Contiki kaynaklarını değiştirmeden kullanır;
+wrapper yalnız vendor'un mevcut iki conversion uyarısını yerel olarak
+susturur. Production replay kodunun strict kontrolleri korunur. Kernel
+kapsam dışı kararları yeniden açılmadı. Bu sonuç fiziksel zamanlama,
+cihaza yükleme veya HIL kabulü değildir; bu oturumda bunlar yapılmadı.
+
+**Bildirim:** Üreticiye bildirilecek tercihler ve kalan sınırlar
+[uygulama raporu bölüm 7](BOLATEX_YANIT_UYGULAMA_RAPORU_2026-10-07.md#7-bolatexe-bildirilecek-rtu-ürün-kararları--07102026)
+içine eklendi; dış kanaldan gönderilmedi. BQ-17–20 açık kalır.

@@ -6,14 +6,15 @@ Per case:
      scenario timeline, a TCP control channel and a JSONL trace;
   2. open the interactive console on --console (rf log verbose, admin);
   3. execute the case (drives the DUT, asserts on trace + console);
-  4. write report.md with PASS/FAIL/SKIP + evidence.
+  4. write report.md with PASS/FAIL/BLOCKED/DEFERRED + evidence.
 
 Usage:
-  python test/system/rf_hil/run_hil.py --rf-port COM10 --console COM16
+  python test/system/rf_hil/run_hil.py --rf-port COM10 --console COM16 \
+      --firmware-image installed.efw --transport-profile 1
   python ... --case a1_boot_from_start --case e1_cfg_apply_happy
   python ... --list
 
-Exit codes: 0 all pass (skips allowed), 1 any fail, 2 environment error.
+Exit codes: 0 all selected cases PASS, 1 FAIL only, 2 incomplete/environment error.
 """
 
 import argparse
@@ -131,8 +132,26 @@ def control_ready(port, timeout_s=15.0):
     return False
 
 
+from identity import IdentityError, read_image_identity, result_exit_code
+
+
+def _verify_running_dut(session, args, name, stage):
+    from identity import IMAGE_PATTERN, IdentityError, parse_dut_identity, verify_dut_identity
+    reply = session.send_and_wait("rf status", IMAGE_PATTERN, timeout_s=10.0)
+    if reply is None:
+        raise IdentityError("DUT did not report installed image/profile")
+    observed = parse_dut_identity(reply[1])
+    OBSERVED.setdefault("dut_images", {}).setdefault(name, {})[stage] = observed
+    verify_dut_identity(observed, args.expected_image, args.transport_profile)
+    OBSERVED["dut_images"][name][stage + "_verified"] = True
+
+
 def run_case(name, spec, args, outdir):
+    if name in cases_mod.PLANNED:
+        return "DEFERRED", [cases_mod.PLANNED[name]]
     import console as console_mod
+    from identity import IdentityError
+    OBSERVED.setdefault("dut_images", {})[name] = {}
     case_dir = outdir / name
     case_dir.mkdir(parents=True, exist_ok=True)
     trace_path = case_dir / "sim_trace.jsonl"
@@ -148,14 +167,18 @@ def run_case(name, spec, args, outdir):
         session = console_mod.ConsoleSession(
             args.console, logfile=str(case_dir / "console.log"))
         try:
-            _observe_running_image(session)
+            _observe_hub_version(session)
+            _verify_running_dut(session, args, name, "before")
             ctx = CaseContext(sim, session, case_dir, trace_path)
             try:
                 snapshots = {"start": _snapshot(sim)}
                 detail = spec["run"](ctx)
+                _verify_running_dut(session, args, name, "after")
                 snapshots["end"] = _snapshot(sim)
                 _write_json(case_dir / "snapshots.json", snapshots)
                 return "PASS", ([detail] if detail else []) + ctx.evidence
+            except IdentityError as error:
+                return "BLOCKED", [str(error)]
             except cases_mod.SkipCase as skip:
                 return "DEFERRED", [str(skip)]
             except (cases_mod.CheckError, AssertionError):
@@ -165,7 +188,7 @@ def run_case(name, spec, args, outdir):
                 tb = traceback.format_exc(limit=6)
                 return "ERROR", tb.strip().splitlines()
         finally:
-            _observe_running_image(session)
+            _observe_hub_version(session)
             session.close()
             sim.close()
     except (RuntimeError, OSError) as env_err:
@@ -175,12 +198,8 @@ def run_case(name, spec, args, outdir):
 OBSERVED = {}
 
 
-def _observe_running_image(session):
-    """Running-image proof (plan v1.2 sec 4.1/11): the hub fw label on
-    the wire tells which transport build is live -- SIM-T4R1 means the
-    simulator answers over the HIL transport; the real hub's label would
-    indicate the production build talking on USART3. Scan-only: never
-    blocks the case, re-checked at session close."""
+def _observe_hub_version(session):
+    """Record the peer version separately from the installed DUT identity."""
     if "hub_fw" in OBSERVED:
         return
     import re
@@ -221,14 +240,6 @@ def write_manifest(outdir, args, selected, results):
         except (OSError, sp.TimeoutExpired):
             return "unavailable"
 
-    profile = "unknown"
-    header = (REPO_ROOT / "Application" / "rf" / "rf_hil_transport.h")
-    if header.exists():
-        text = header.read_text(encoding="ascii")
-        for line in text.splitlines():
-            if line.startswith("#define RF_SCP_OVER_MODBUS_PORT"):
-                profile = line.split()[-1]
-
     pyserial_version = "unavailable"
     try:
         import serial
@@ -241,14 +252,24 @@ def write_manifest(outdir, args, selected, results):
                     / "Ornek_SCP_Akislari")
     for path in sorted(capture_root.glob("*.csv")):
         captures[path.name] = hashlib.sha256(
-            path.read_bytes()).hexdigest()[:16]
+            path.read_bytes()).hexdigest()
 
+    identity_verified = bool(selected) and all(
+        OBSERVED.get("dut_images", {}).get(name, {}).get(stage + "_verified", False)
+        for name in selected for stage in ("before", "after"))
     manifest = {
         "run_id": outdir.name,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "git_commit": git(["rev-parse", "--short", "HEAD"]),
-        "git_dirty": bool(git(["status", "--porcelain"])),
-        "transport_profile": "RF_SCP_OVER_MODBUS_PORT=%s" % profile,
+        "repository_at_start": getattr(args, "repository_at_start", None),
+        "repository_at_end": dict(git_commit=git(["rev-parse", "HEAD"]),
+                                  git_dirty=bool(git(["status", "--porcelain"]))),
+        "expected_image": getattr(args, "expected_image", None),
+        "identity_source": "installed_boot_metadata_and_compiled_profile",
+        "expected_transport_profile": args.transport_profile,
+        "observed_dut_images": OBSERVED.get("dut_images", {}),
+        "identity_verified": identity_verified,
+        "complete": result_exit_code(results) == 0 and identity_verified,
+        "scope": "selected_cases",
         "python": platform.python_version(),
         "pyserial": pyserial_version,
         "rf_port": args.rf_port,
@@ -276,10 +297,14 @@ def main():
                              "non-planned")
     parser.add_argument("--with-planned", action="store_true",
                         help="also run the registered planned cases "
-                             "(they SKIP)")
+                             "(they are DEFERRED)")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--outdir", default=None)
+    parser.add_argument("--firmware-image", help="Installed application EFW artifact")
+    parser.add_argument("--transport-profile", type=int, choices=(0, 1),
+                        help="Expected compiled DUT profile: 0 USART3, 1 RS485 bench")
     args = parser.parse_args()
+    OBSERVED.clear()
 
     cases_mod.register_planned()
 
@@ -287,6 +312,9 @@ def main():
         for name, spec in cases_mod.CASES.items():
             print("%-28s %s" % (name, spec["desc"]))
         return 0
+
+    if args.case and len(set(args.case)) != len(args.case):
+        parser.error("Duplicate --case selections would overwrite case evidence")
 
     outdir = Path(args.outdir) if args.outdir else (
         TEST_ROOT / "build" / "hil-rf" /
@@ -299,6 +327,21 @@ def main():
         selected = [n for n in cases_mod.CASES
                     if n not in cases_mod.PLANNED or args.with_planned]
 
+    import subprocess
+    def source_git(command):
+        return subprocess.check_output(["git"] + command, cwd=REPO_ROOT,
+                                       text=True).strip()
+    args.repository_at_start = dict(git_commit=source_git(["rev-parse", "HEAD"]),
+                                   git_dirty=bool(source_git(["status", "--porcelain"])))
+    args.expected_image = None
+    identity_error = None
+    if any(name not in cases_mod.PLANNED for name in selected):
+        try:
+            if args.firmware_image is None or args.transport_profile is None:
+                raise IdentityError("--firmware-image and --transport-profile are required")
+            args.expected_image = read_image_identity(args.firmware_image)
+        except (OSError, IdentityError) as error:
+            identity_error = str(error)
     results = {}
     for name in selected:
         spec = cases_mod.CASES.get(name)
@@ -306,7 +349,10 @@ def main():
             print("unknown case: %s (--list)" % name, file=sys.stderr)
             return 2
         print("=== CASE %s ===" % name, flush=True)
-        verdict, evidence = run_case(name, spec, args, outdir)
+        if identity_error is not None:
+            verdict, evidence = "BLOCKED", [identity_error]
+        else:
+            verdict, evidence = run_case(name, spec, args, outdir)
         results[name] = (verdict, evidence)
         print("%s: %s" % (verdict, name), flush=True)
         for line in evidence[:12]:
@@ -322,27 +368,22 @@ def main():
     for name, (verdict, evidence) in results.items():
         lines.append("### %s - %s" % (name, verdict))
         lines.append("")
-        lines.append("Kanal izleri: `%s/`" % name)
+        if (outdir / name).exists():
+            lines.append("Kanal izleri: `%s/`" % name)
+        else:
+            lines.append("Case not executed; no channel artifacts.")
         for line in evidence:
             lines.append("- %s" % (line,))
         lines.append("")
     report.write_text("\n".join(lines), encoding="ascii")
 
-    failed = [n for n, (v, _) in results.items() if v == "FAIL"]
-    errored = [n for n, (v, _) in results.items() if v in ("ERROR",
-                                                            "BLOCKED")]
     manifest = write_manifest(outdir, args, selected, results)
     print("\nreport: %s" % report)
     print("manifest: %s (%s, %s)" % (outdir / "manifest.json",
-                                     manifest["git_commit"],
-                                     manifest["transport_profile"]))
-    if errored:
-        print("ERROR/BLOCKED cases: %s" % ", ".join(errored))
-        return 2
-    if failed:
-        print("FAILED cases: %s" % ", ".join(failed))
-        return 1
-    return 0
+                                     manifest["repository_at_start"]["git_commit"],
+                                     manifest["expected_transport_profile"]))
+    code = result_exit_code(results)
+    return 2 if code == 0 and not manifest["identity_verified"] else code
 
 
 if __name__ == "__main__":

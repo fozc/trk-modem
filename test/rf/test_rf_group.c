@@ -627,4 +627,37 @@ void test_changed_desired_settings_do_not_match_the_started_snapshot(void)
     TEST_ASSERT_EQUAL_INT(RF_GROUP_CHECKING, status().state);
 }
 
+void test_rtu_restart_resets_group_metadata_and_does_not_restore_applied(void)
+{
+    TEST_ASSERT_FALSE(rf_group_is_active());
+    TEST_ASSERT_TRUE(rf_group_start(2U, 7U));
+    TEST_ASSERT_TRUE(rf_group_is_active());
+    rf_group_init();
+    TEST_ASSERT_EQUAL_UINT8(0U, status().group_id);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_IDLE, status().state);
+    TEST_ASSERT_FALSE(rf_group_matches_config());
+    TEST_ASSERT_FALSE(rf_group_is_active());
+}
+
+void test_existing_peer_terminal_report_cannot_apply_an_unsent_job(void)
+{
+    TEST_ASSERT_TRUE(rf_group_start(2U, 7U));
+    rf_group_process(tick);
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK,
+        .data_len = 8U, .data = {7U, 1U, 7U}};
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_ID_IN_USE, status().state);
+    TEST_ASSERT_TRUE(rf_group_is_active());
+    const rf_scp_message_t report = {.cmd = RF_SCP_CMD_CFG_STATUS_NOTIFY,
+        .type = SCP_TYPE_SET, .body.config = {.group_id = 7U,
+            .state = 3U, .member_bitmap = 7U,
+            .config_crc = status().expected_crc}};
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_ID_IN_USE, status().state);
+    TEST_ASSERT_FALSE(rf_group_is_active());
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+}
+
 /*** end of file ***/

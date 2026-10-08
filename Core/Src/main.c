@@ -3,6 +3,8 @@
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
+  * Author: Fatih Ozcan
+  *         fatihozcan@gmail.com
   ******************************************************************************
   * @attention
   *
@@ -166,6 +168,11 @@ int main(void)
 #ifdef DEBUG
   LL_GPIO_SetPinMode(EWDT_FEED_GPIO_Port, EWDT_FEED_Pin, LL_GPIO_MODE_INPUT);
 #endif
+
+  /* BOLATeX RF-SCP answer (BQ-08 ek not): the RTU no longer talks to
+   * the power board over direct I2C; power data flows via MH/SCP only.
+   * Keep the I2C3 peripheral off and its SCL/SDA pins high-impedance. */
+  HAL_GPIO_DeInit(GPIOD, GPIO_PIN_12 | GPIO_PIN_13);
 
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 
@@ -385,6 +392,9 @@ static void MX_I2C3_Init(void)
 {
 
   /* USER CODE BEGIN I2C3_Init 0 */
+  /* BQ-08: SCP owns power-board communication. Do not enable the old
+   * I2C peripheral, GPIO alternate functions or interrupts at startup. */
+  return;
 
   /* USER CODE END I2C3_Init 0 */
 

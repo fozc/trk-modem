@@ -74,6 +74,7 @@ async function checkPage(html, label) {
         assert.ok(rfMonitor.includes(`<td>${loadLabel}</td><td>1</td>`));
         for (const phase of [
             '{HasData:true,Online:false,Live:{Flags:3}}',
+            '{HasData:true,Online:true,UptimeStalled:true,Live:{Flags:3}}',
             '{HasData:true,Online:true,Live:null}',
             '{HasData:true,Online:true,Live:{Flags:null}}',
             '{HasData:true,Online:true,Live:{Flags:256}}',
@@ -86,6 +87,22 @@ async function checkPage(html, label) {
         assert.ok(!rfMonitor.includes('5V DC'));
         assert.ok(!rfMonitor.includes('LQI'));
         assert.ok(!rfMonitor.includes('undefined'));
+        const countsTable=run(`buildRfMonitorTable({Phases:[],
+            FaultCountsSinceStartup:{Permanent:1,Temporary:2,Uncertain:3}})`);
+        assert.ok(countsTable.includes(language==='tr'
+            ? 'kalıcı 1, geçici 2, belirsiz 3'
+            : 'permanent 1, temporary 2, uncertain 3'));
+        const maintenance=run(`buildRfMonitorTable({Phases:[
+            {HasData:true,Online:true,Live:{Flags:3,FsmError:true}}]})`);
+        assert.ok(maintenance.includes(language==='tr'
+            ? 'Bakım gerekli' : 'Maintenance required'));
+        assert.ok(maintenance.includes(`<td>${energyLabel}</td><td>1</td>`));
+        for(const unavailable of ['Online:false','Online:true,UptimeStalled:true']){
+            const stale=run(`buildRfMonitorTable({Phases:[
+                {HasData:true,${unavailable},Live:{Irms:9.75,Temp:300}}]})`);
+            assert.ok(!stale.includes('9.750'));
+            assert.ok(!stale.includes('<td>300'));
+        }
         assert.ok(rfMonitor.includes(language === 'tr'
               ? 'Açma kondansatörü' : 'Trip capacitor'));
         const applied = run(`buildRfGroupStatus({State:'applied',Line:1,
@@ -361,7 +378,7 @@ async function checkPage(html, label) {
         const rendered = run(page === 'iec104' ? 'renderIec104({Hatlar:{}})' : 'renderModbus({Hat:{}})');
         const allKeys = [...new Set([...rendered.matchAll(/data-id="(?:iec|mod)" data-key="([^"]+)" data-i="0"/g)]
             .map(match => match[1]).filter(key => key !== 'inUse'))];
-        assert.equal(allKeys.length, page === 'iec104' ? 14 : 12);
+          assert.equal(allKeys.length, page === 'iec104' ? 17 : 12);
         const originalKey = b.dataset.key;
         // Every actual rendered address field must collide across categories.
         a.value = '1000';

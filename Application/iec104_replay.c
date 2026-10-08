@@ -46,7 +46,7 @@ static void iec104_replay_start_if_pending(void);
 PROCESS_THREAD(iec104_replay_process, ev, data)
 {
 	static struct etimer timer;
-	static fault_log_t record;
+	static iec104_event_record_t record;
 	static uint16_t seq;
 	static uint32_t fail_count;
 
@@ -89,7 +89,7 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 
 		if (iec104_event_log_read_newest_unsent(&record, &seq))
 		{
-			if (iec104_emit_evtlog_record(&record))
+			if (iec104_emit_event_record(&record))
 			{
 				iec104_event_log_mark_sent(seq);
 				sent_ok = true;
@@ -115,6 +115,19 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 		etimer_reset(&timer);
 	}
 
+	/* Historical records use newest-first order. Restore current RF/alarm
+     * states afterwards, so an older alarm does not remain the last value.
+     * Reuse the existing paced retry bound and process timer. */
+    fail_count = 0U;
+    while (iec104_is_link_active() &&
+           (0U == iec104_event_log_get_unsent_count()) &&
+           (REPLAY_MAX_CONSEC_FAIL > fail_count) &&
+           !iec104_send_rf_communication_states(COT_SPONTANEOUS))
+    {
+        fail_count++;
+        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+        etimer_reset(&timer);
+    }
 	(void)iec104_event_log_sync();
 	CSLOG("replay: bitti (kalan unsent=%u)\r\n",
 	      iec104_event_log_get_unsent_count());
