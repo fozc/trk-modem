@@ -1508,3 +1508,32 @@ hata sonrası düzenlemenin korunması ve geç durum cevabı sınanır.
 Güncel komutlar, sonuçlar ve fiziksel kabul sınırları üretim raporu
 §10.36'da tutulur. Host sonucu fiziksel RF teslim süresi veya ayırıcı
 uygulaması kanıtı değildir.
+
+## RF durum ekranı geri bildirimi — 08.10.2026
+
+**Amaç:** Yenile işleminin ve İptal ret durumunun operatör tarafından
+anlaşılmasını sağlar.
+
+**Kullanım yeri:** RF yapılandırma içindeki RF uygulama durumu kartı.
+
+**Kurallar:** Yenile sırasında okuma bilgisi, başarıda son okuma saati
+ve elle yenilemede başarı bildirimi gösterilmelidir. Sonuç aynı olsa
+bile başarılı HTTP okuması görünür olmalıdır. Okuma hatası kartta
+belirtilmeli ve önceki geçerli RF sonucu korunmalıdır. IDLE/APPLIED/
+FAILED/CANCELLED/RESTARTED gibi bitmiş veya boş işlerde İptal düğmesi
+kapatılmalıdır. Bekleyen sıra ve mevcut iptal adayı grup durumlarında
+iptal öncesi son durum yeniden okunmalıdır. Firmware'in ABORT ret
+kararı korunmalı; HTTP 409 açıklaması kullanıcıya gösterilmelidir.
+
+**Anlam:** Yenile, modemdeki RAM işlem sonucunu okur. MH'ye doğrudan yeni
+RF sorgusu değildir. Mevcut RF grup servisi WAITING sırasında kendi
+poll (düzenli sorgu) yolunu yürütür. Yeni RF uygulaması Kaydet onayıyla
+başlar; durum kartından Yenile uygulamayı yeniden başlatmaz.
+
+Doğrulama ve canlı cihaz erişim sınırı üretim raporu §10.39'dadır.
+
+Otomatik web yenilemesi kullanıcı isteğiyle kaldırılmıştır. Sayfa
+açılışında ve Kaydet sonrasında durum sorgusu yapılmaz; Yenile bir kez
+okur ve yeni zamanlayıcı kurmaz. Kaydet/İptal öncesindeki kontroller
+ve İptal sonucunun okunması korunur. Kaynak ve gömülü web entegrasyon
+testleri bu davranışı doğrular; üretim raporu §10.42 ayrıntıları tutar.
