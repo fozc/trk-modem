@@ -1585,10 +1585,10 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
                 CSLOG_ERR( "[JSON] ERROR: Failed to parse SetEdilebilirActirmaEsikAkimi array\r\n");
                 return false;
             }
-            /* Ia_Threshold [2.00x1.2, 240.0] (spec R2 section 4.6) */
+            /* R1 4.10: Ia >= max(1.2 * nominal, 5 A). */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 2.4f, 240.0f, "Ia_Threshold")) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 5.0f, 240.0f, "Ia_Threshold")) {
                         return false;
                     }
                     configs[i]->config.ia_threshold = temp_float[i];
@@ -1617,10 +1617,10 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
                 CSLOG_ERR( "[JSON] ERROR: Failed to parse ArtimliAkimEsigi array\r\n");
                 return false;
             }
-            /* di_dt_Threshold [250, 2500] A/s (spec R2 section 3.1 / 7.1) */
+            /* R1 4.10: di_dt_Threshold [1, 2200] A/s. */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
-                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 250.0f, 2500.0f, "di_dt_Threshold")) {
+                    if (configs[i]->in_use && !validate_rf_float(temp_float[i], 1.0f, 2200.0f, "di_dt_Threshold")) {
                         return false;
                     }
                     configs[i]->config.di_dt_threshold = temp_float[i];
@@ -1921,15 +1921,15 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
         }
     }
 
-    /* Capraz dogrulama (spec R2 section 4.6): Ia >= 1.2 x Nominal.
-     * Tum array'ler islendikten sonra yapilir - alan sirasi onemsiz. */
+    /* Validate the complete candidate with the same R1 codec used by
+     * CFG_WRITE. Field order and retained values cannot bypass it. */
     for (int i = 0; i < MAX_ARRAYS; i++) {
         if ((configs[i] != NULL) && configs[i]->in_use) {
-            const float nom = configs[i]->config.nominal_current;
-            const float ia = configs[i]->config.ia_threshold;
-            if (ia < (nom * 1.2f) - 0.001f) {
-                CSLOG_ERR( "[VALIDATION] ERROR: Line %d: Ia_Threshold %.2f < 1.2 x Nominal (%.2f)\r\n",
-                         i + 1, (double)ia, (double)nom);
+            if (RF_CMD_OK != rf_scp_validate_config(
+                    (const uint8_t *)&configs[i]->config,
+                    sizeof(configs[i]->config))) {
+                CSLOG_ERR("[VALIDATION] ERROR: Line %d: invalid R1 config\r\n",
+                          i + 1);
                 return false;
             }
         }

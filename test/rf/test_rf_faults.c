@@ -160,4 +160,25 @@ void test_invalid_input_and_intermediate_events_preserve_counts(void)
     TEST_ASSERT_EQUAL_UINT32(42U, after.permanent);
 }
 
+void test_unreliable_permanent_time_cannot_block_a_new_valid_sequence(void)
+{
+    event.clock_quality = 2U;
+    (void)classify(101U, 1U, 50000U);
+    event.clock_quality = 1U;
+    (void)classify(5U, 1U, 10000U);
+    (void)classify(6U, 1U, 11000U);
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, classify(3U, 1U, 30000U));
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).temporary);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
+}
+
+void test_valid_newer_permanent_time_survives_an_older_detection(void)
+{
+    (void)classify(101U, 1U, 50000U);
+    (void)classify(5U, 1U, 10000U);
+    (void)classify(6U, 1U, 11000U);
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, classify(3U, 1U, 30000U));
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).temporary);
+}
+
 /*** end of file ***/

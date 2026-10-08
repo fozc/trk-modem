@@ -54,6 +54,12 @@ void system_status_update(void)
     (void)power_board_get_snapshot(HAL_GetTick(), &power);
     const rf_scp_power_summary_t *telemetry = &power.summary;
     system_status.power_valid_fields = power.valid_fields;
+    /* BQ-12: default 7 Ah, unset capacity and verdict 3 need maintenance. */
+    system_status.battery_capacity_unknown =
+        (0U != (power.valid_fields & POWER_VALID_SUMMARY)) &&
+        (7U == telemetry->capacity_ah) &&
+        (0U == (telemetry->flags2 & 0x0CU)) &&
+        (0x30U == (telemetry->flags2 & 0x70U));
 
 
     /* Debounced digital inputs (active-LOW -> logical 1). */

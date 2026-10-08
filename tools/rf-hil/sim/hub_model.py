@@ -96,6 +96,7 @@ class HubModel:
         self.cfg_delivered_ms = 5000
         self.cfg_applied_ms = 10000
         self.cfg_force_fail_reason = None  # e.g. 1/2 forced at commit
+        self.cfg_mute = False             # drop all 0x21 notifies
         self.cfg_no_deliver = False        # STAGED -> FAILED 5 after window
         self.cfg_no_apply = False          # DELIVERED -> FAILED 6 after win.
         self.cfg_delivered_fail_ms = 8000  # failure window when no_deliver
@@ -189,6 +190,14 @@ class HubModel:
     def next_proactive_seq(self):
         self.proactive_seq = (self.proactive_seq + 1) & 0xFF
         return self.proactive_seq
+
+    def _cfg_notify(self, body, note=None):
+        """Send a 0x21 status body; cfg_mute drops it on the floor
+        (lost-terminal-notification cases)."""
+        if self.cfg_mute:
+            self.note("cfg notify muted: %s" % (note or ""))
+            return
+        self.notify(0x21, body, note=note)
 
     def notify(self, cmd, data, note=None):
         pkt = sc.ScpPacket(sc.ADDR_RTU, sc.ADDR_HUB, sc.TYPE_SET, cmd,
@@ -770,7 +779,7 @@ class HubModel:
             self.group_history[group_id] = self._group_status_body(group)
             if answered:
                 self._ack_set(pkt)
-            self.notify(0x21, self._group_status_body(group),
+            self._cfg_notify(self._group_status_body(group),
                         note="cfg FAILED reason=%d" % reason)
             return
 
@@ -781,7 +790,7 @@ class HubModel:
         self.note("cfg_commit", group_id=group_id)
         if answered:
             self._ack_set(pkt)
-        self.notify(0x21, self._group_status_body(group), note="cfg STAGED")
+        self._cfg_notify(self._group_status_body(group), note="cfg STAGED")
 
     def _h_cfg_abort(self, pkt, answered):
         if pkt.type != sc.TYPE_SET or len(pkt.data) != 1:
@@ -800,7 +809,7 @@ class HubModel:
         self.group_history[group_id] = self._group_status_body(group)
         if answered:
             self._ack_set(pkt)
-        self.notify(0x21, self._group_status_body(group),
+        self._cfg_notify(self._group_status_body(group),
                     note="cfg FAILED USER_ABORT")
 
     def _h_cfg_status_get(self, pkt, answered):
@@ -1179,14 +1188,14 @@ class HubModel:
                         group["reason"] = 5
                         self.group_history[group["id"]] = \
                             self._group_status_body(group)
-                        self.notify(0x21, self._group_status_body(group),
+                        self._cfg_notify(self._group_status_body(group),
                                     note="cfg FAILED TIMEOUT(deliver)")
                 elif now - group["staged_ms"] >= self.cfg_delivered_ms:
                     group["state"] = GROUP_DELIVERED
                     group["delivered_ms"] = now
                     self.group_history[group["id"]] = \
                         self._group_status_body(group)
-                    self.notify(0x21, self._group_status_body(group),
+                    self._cfg_notify(self._group_status_body(group),
                                 note="cfg DELIVERED")
             elif group["state"] == GROUP_DELIVERED:
                 if self.cfg_no_apply:
@@ -1195,7 +1204,7 @@ class HubModel:
                         group["reason"] = 6
                         self.group_history[group["id"]] = \
                             self._group_status_body(group)
-                        self.notify(0x21, self._group_status_body(group),
+                        self._cfg_notify(self._group_status_body(group),
                                     note="cfg FAILED PARTIAL_COMMIT")
                 elif now - group["delivered_ms"] >= self.cfg_applied_ms:
                     group["state"] = GROUP_APPLIED
@@ -1204,7 +1213,7 @@ class HubModel:
                         & 0xFFFF
                     self.group_history[group["id"]] = \
                         self._group_status_body(group)
-                    self.notify(0x21, self._group_status_body(group),
+                    self._cfg_notify(self._group_status_body(group),
                                 note="cfg APPLIED crc=0x%04X" %
                                 group["cfg_crc"])
 

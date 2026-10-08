@@ -2422,4 +2422,66 @@ void test_manual_inventory_cannot_bypass_boot_protection_or_active_config(void)
     TEST_ASSERT_EQUAL_INT(RF_INVENTORY_IDLE, rf_inventory_get_status());
 }
 
+void test_explicit_hub_replacement_arms_only_one_epoch_retry(void)
+{
+    rf_inventory_start();
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_hub_replaced(1U, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    fake_tick += 90000U;
+    TEST_ASSERT_TRUE(rf_inventory_epoch_ready(1U));
+    rf_inventory_config_finished(1U, 5U);
+    const uint32_t before = transmit_calls;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before + 1U, transmit_calls);
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_EPOCH_REFRESH, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(1U, transmitted.data[0]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_FALSE(rf_inventory_epoch_ready(1U));
+    fake_tick += 90000U;
+    TEST_ASSERT_TRUE(rf_inventory_epoch_ready(1U));
+    rf_inventory_config_finished(1U, 5U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before + 1U, transmit_calls);
+}
+
+void test_regular_epoch_or_other_failure_never_arms_a_replacement_retry(void)
+{
+    rf_inventory_start();
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_refresh_epoch(1U, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    fake_tick += 90000U;
+    rf_inventory_config_finished(1U, 5U);
+    uint32_t before = transmit_calls;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    TEST_ASSERT_TRUE(rf_inventory_hub_replaced(1U, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    fake_tick += 90000U;
+    rf_inventory_config_finished(1U, 6U);
+    rf_inventory_config_finished(1U, 5U);
+    before = transmit_calls;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+}
+
+void test_failed_replacement_epoch_and_mh_boot_clear_retry_authorization(void)
+{
+    rf_inventory_start();
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_hub_replaced(1U, command_done));
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    rf_inventory_config_finished(1U, 5U);
+    const uint32_t before = transmit_calls;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    TEST_ASSERT_TRUE(rf_inventory_hub_replaced(1U, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_reset();
+    rf_inventory_config_finished(1U, 5U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before + 1U, transmit_calls);
+}
+
 /*** end of file ***/

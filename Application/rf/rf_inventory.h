@@ -68,6 +68,12 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
 /** Queue epoch refresh only after the nonempty inventory is accepted. */
 bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done);
 
+/* Explicit MH replacement maintenance, never inferred from BOOT.
+ * Arms one epoch retry only for the first following configuration's
+ * TIMEOUT reason 5. It does not retry the configuration itself. */
+bool rf_inventory_hub_replaced(uint8_t feeder, scp_cmd_done_fn_t done);
+void rf_inventory_config_finished(uint8_t feeder, uint8_t reason);
+
 /* Minimum local wait after an acknowledged epoch refresh; not RF proof. */
 bool rf_inventory_epoch_ready(uint8_t feeder);
 bool rf_inventory_get_boundary(uint32_t *total);

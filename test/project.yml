@@ -122,6 +122,11 @@
         - -Wno-array-parameter
         - -Wno-conversion
         - -Wno-sign-conversion
+      # Keep the same legacy JSON exceptions; R1 codec stays in the test.
+      test_rf_config_parse:
+        - -Wno-array-parameter
+        - -Wno-conversion
+        - -Wno-sign-conversion
       test_rf_json_golden_scenario:
         - -Wno-conversion
         - -Wno-sign-conversion

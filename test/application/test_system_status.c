@@ -263,4 +263,34 @@ void test_monitor_json_rejects_small_buffer_without_partial_response(void)
     TEST_ASSERT_EQUAL_STRING("", buffer);
 }
 
+void test_unknown_capacity_signature_produces_a_fresh_maintenance_flag(void)
+{
+    char json[2048];
+    size_t length = 0U;
+    fake_valid_fields = POWER_VALID_SUMMARY;
+    fake_telemetry.capacity_ah = 7U;
+    fake_telemetry.flags2 = 0x30U;
+    const system_status_t *status = system_status_get();
+    TEST_ASSERT_TRUE(status->battery_capacity_unknown);
+    TEST_ASSERT_TRUE(system_status_json_build(status, json, sizeof(json),
+                                              &length));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryCapacityUnknown\":1"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"Capacity\":null"));
+    fake_valid_fields = 0U;
+    status = system_status_get();
+    TEST_ASSERT_FALSE(status->battery_capacity_unknown);
+    TEST_ASSERT_TRUE(system_status_json_build(status, json, sizeof(json),
+                                              &length));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryCapacityUnknown\":null"));
+}
+
+void test_valid_seven_ah_capacity_does_not_raise_the_maintenance_flag(void)
+{
+    fake_telemetry.capacity_ah = 7U;
+    fake_telemetry.flags2 = 0x34U;
+    TEST_ASSERT_FALSE(system_status_get()->battery_capacity_unknown);
+    fake_telemetry.flags2 = 0x20U;
+    TEST_ASSERT_FALSE(system_status_get()->battery_capacity_unknown);
+}
+
 /*** end of file ***/

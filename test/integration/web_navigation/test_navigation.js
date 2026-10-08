@@ -488,8 +488,29 @@ async function checkPage(html, label) {
         SetEdilebilirAcmaArizaSayisi:3,OluHatAkimiDogrulamaSuresi:200,
         YenilenmeSifirlamaSuresi:30,SistemNominalAkimi:6,
         SetEdilebilirActirmaEsikAkimi:13,ArtimliAkimEsigi:1000,
-        HatKopukHatBosta:2}))document.getElementById('rf-'+key+'-0').value=String(value);
+        HatKopukHatBosta:2})){
+        const input=document.getElementById('rf-'+key+'-0');
+        input.type='number';
+        input.value=String(value);
+    }
     document.getElementById('rf-inUse-0').checked = true;
+    for (const value of [1, 2200]) {
+        document.getElementById('rf-ArtimliAkimEsigi-0').value = String(value);
+        assert.equal(run("validatePage('rf')"), true);
+    }
+    document.getElementById('rf-ArtimliAkimEsigi-0').value = '2200.1';
+    assert.equal(run("validatePage('rf')"), false);
+    document.getElementById('rf-ArtimliAkimEsigi-0').value = '1000';
+    document.getElementById('rf-SistemNominalAkimi-0').value = '2';
+    document.getElementById('rf-SetEdilebilirActirmaEsikAkimi-0').value = '2.4';
+    assert.equal(run("validatePage('rf')"), false);
+    document.getElementById('rf-SetEdilebilirActirmaEsikAkimi-0').value = '5';
+    assert.equal(run("validatePage('rf')"), true);
+    document.getElementById('rf-SistemNominalAkimi-0').value = '200';
+    document.getElementById('rf-SetEdilebilirActirmaEsikAkimi-0').value = '240';
+    assert.equal(run("validatePage('rf')"), true);
+    document.getElementById('rf-SistemNominalAkimi-0').value = '6';
+    document.getElementById('rf-SetEdilebilirActirmaEsikAkimi-0').value = '13';
     await run("savePage('rf')");
     assert.equal(rfPosts, 0, 'confirmation must precede save');
     assert.ok(notices.at(-1).innerHTML.includes('Satır 1'));
@@ -509,6 +530,13 @@ async function checkPage(html, label) {
     assert.ok(progress.includes('Satır 1: Uygulandı'));
     assert.ok(progress.includes('Satır 2: Uygulama başarısız'));
     assert.ok(progress.includes('Satır 3: Uygulanmadı'));
+    const stopped = run("buildRfGroupStatus({State:'idle',BatchState:'stopped',Targets:1,BatchLine:1,GroupStarted:false,StopReason:'start_rejected'})");
+    assert.ok(stopped.includes('Envanteri, atamaları'));
+    const partial = run("buildRfGroupStatus({State:'failed',HasReport:true,Reason:6})");
+    assert.ok(partial.includes('Kısmi uygulama'));
+    assert.ok(partial.includes('otomatik tekrar yapılmaz'));
+    assert.ok(run("renderBoard({BatteryCapacityUnknown:1})").includes('Akü kapasitesi bilinmiyor'));
+    assert.ok(!run("renderBoard({BatteryCapacityUnknown:null})").includes('Akü kapasitesi bilinmiyor'));
     context.fetch = async () => ({ok:true,status:200,json:async()=>({SaveBlocked:true,BatchState:'running'})});
     await run("savePage('rf')");
     assert.equal(rfPosts, 1, 'busy operation must not save');
