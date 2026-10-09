@@ -83,6 +83,25 @@ check("cp56_decode", cp56["iv"] == 0 and cp56["su"] == 0 and
 cp56_su = apdu.parse_cp56(bytes.fromhex("11 22 33 c4 55 66 05"), 0)
 check("cp56_su_bit7", cp56_su["su"] == 1 and cp56_su["hour"] == 4)
 
+# --- malformed / degenerate frames must degrade, never crash ---------
+# SQ=1 ASDU: no objects key, body kept as hex evidence
+sq1 = parse("68 0b 04 00 02 00 24 81 03 01 01 00 06 03 00")
+check("sq1_no_objects", sq1["asdu"]["sq"] == 1 and
+      "objects" not in sq1["asdu"] and "body_hex" in sq1["asdu"])
+# truncated ASDU (< 6 bytes): asdu None, raw hex preserved
+short = parse("68 06 04 00 02 00 24 01")
+check("short_asdu_none", short["kind"] == "I" and
+      short["asdu"] is None and "asdu_hex" in short)
+# object body shorter than declared count: fall back to body_hex
+trunc = parse("68 0d 04 00 02 00 24 02 03 01 01 00 06 03 00 00")
+check("truncated_objects_hex", "objects" not in trunc["asdu"] and
+      "body_hex" in trunc["asdu"])
+# unknown type id: IOA extracted once, rest kept raw
+unk = parse("68 0f 04 00 02 00 2a 01 03 01 01 00 06 04 00 aa bb")
+check("unknown_type_raw", unk["asdu"]["type"] == 42 and
+      unk["asdu"]["objects"][0]["ioa"] == 1030 and
+      unk["asdu"]["objects"][0]["raw_rest_hex"] == "aabb")
+
 print("\n%d/%d OK" % (
-    14 - len(FAILURES), 14))
+    18 - len(FAILURES), 18))
 raise SystemExit(1 if FAILURES else 0)

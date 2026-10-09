@@ -216,7 +216,31 @@ def main():
           verdict == "FAIL" and "olcum" in joined,
           "verdict=%s lines=%s" % (verdict, lines))
 
-    total = 5
+    # --- edge: confirm frame WITHOUT objects must not crash -----------
+    # (count=0 confirm: old predicate indexed objects[0] -> ERROR)
+    frames = correct_station_script(1, currents, states)
+    raw0 = bytearray(frames[0][2])
+    raw0[7] = 0                      # VSQ count=0 -> no objects decoded
+    frames[0] = (frames[0][0], frames[0][1], bytes(raw0),
+                 apdu.parse_apdu(bytes(raw0)))
+    ctx, _, _ = make_ctx([])
+    load_script(ctx.master, frames)
+    verdict, lines = cases.i02_gi_station(ctx)
+    check("i02_objectless_confirm_no_crash", verdict == "FAIL",
+          "verdict=%s lines=%s" % (verdict, lines))
+
+    # --- edge: malformed I-frame inside the window is ignored ---------
+    # (undecodable ASDU must not TypeError in the window filter)
+    frames = correct_station_script(1, currents, states)
+    junk = i_frame(99, 0, bytes([0x24, 0x01]))    # 2-byte ASDU -> None
+    frames.insert(2, junk)
+    ctx, _, _ = make_ctx([])
+    load_script(ctx.master, frames)
+    verdict, lines = cases.i02_gi_station(ctx)
+    check("i02_malformed_frame_ignored", verdict == "PASS",
+          "verdict=%s lines=%s" % (verdict, lines))
+
+    total = 7
     print("\n%d/%d OK" % (total - len(FAILURES), total))
     return 1 if FAILURES else 0
 
