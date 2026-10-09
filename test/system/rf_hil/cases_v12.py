@@ -155,7 +155,10 @@ def g4(ctx):
     ctx.console.send("pwrboard cfg-read")
     time.sleep(1.0)
     ctx.console.send("pwrboard cfg-set capacity 40")
-    time.sleep(30.0)
+    # H-01: keep the sim alive through long waits (watchdog restarts).
+    for _ in range(15):
+        refresh(ctx)
+        time.sleep(2.0)
     # verification GET is issued by cfg-read; without it the settings
     # machine stays in "waiting for verification" and refuses 0x05
     ctx.console.send_and_wait("pwrboard cfg-read",

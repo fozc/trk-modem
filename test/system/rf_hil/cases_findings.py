@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from cases import case, wait_upload_complete  # noqa: E402
+from cases import case, refresh, wait_upload_complete  # noqa: E402
 
 PROGRAMMER = r"C:/ST/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
 
@@ -101,7 +101,9 @@ def f02_lost_notify(ctx):
         # Terminal transition with notifications still muted: only the
         # poll can carry the APPLIED report to the DUT.
         ctx.sim.call(do="set_knob", name="cfg_no_deliver", value=0)
-        time.sleep(15.0)
+        for _ in range(7):  # H-01: keep the sim alive while waiting
+            refresh(ctx)
+            time.sleep(2.0)
         final = mh_report_state(ctx)
         assert final == "APPLIED", "poll did not recover: %r" % final
         return ("polls=%d in 13 s; report=APPLIED with no 0x21 on wire"
@@ -122,7 +124,11 @@ def f11_epoch_retry(ctx):
         reply = ctx.console.send_and_wait("rf epoch 1", r"Epoch ACK",
                                           timeout_s=15)
         assert reply, "epoch refresh was not acknowledged"
-        time.sleep(92.0)  # firmware-side 90 s epoch settle window
+        # H-01: firmware-side 90 s epoch settle window; keep the sim
+        # alive through it instead of a blind sleep.
+        for _ in range(46):
+            refresh(ctx)
+            time.sleep(2.0)
 
         ctx.sim.call(do="set_knob", name="cfg_force_fail_reason", value=5)
         ctx.console.mark()
@@ -149,7 +155,9 @@ def f11_epoch_retry(ctx):
         assert retries == 1, "expected one retry, got %d" % retries
 
         # A second reason-5 failure must not arm another retry.
-        time.sleep(92.0)
+        for _ in range(46):
+            refresh(ctx)
+            time.sleep(2.0)
         ctx.console.mark()
         ctx.console.send_and_wait("rf cfg-apply 1 92", r"queued",
                                   timeout_s=10)

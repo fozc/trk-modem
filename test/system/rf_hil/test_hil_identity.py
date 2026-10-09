@@ -140,6 +140,8 @@ static fw_info_t installed = {.size=100U, .fw_crc=0x12345678U,
 const fw_info_t *boot_get_installed_fw_info(void) { return &installed; }
 static bool scp_is_free(void) { return true; }
 static uint8_t rf_comm_get_hub_major(void) { return 1U; }
+/* Keep these stubs in sync with the live rf_shell_status body
+ * in rf_shell.c: every new call it makes needs a stub here. */
 static uint8_t rf_inventory_get_status(void) { return 0U; }
 typedef struct { const char *reason; uint32_t total_ms;
                  uint32_t reason_ms; } rf_inventory_wait_t;
