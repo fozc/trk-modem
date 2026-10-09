@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include "bsp.h"
 #include "reboot.h"
+#include "gsm_listener_process.h"
 /* ============================================================================
  * GLOBAL STATE AND BUFFERS
  * ============================================================================ */
@@ -49,6 +50,11 @@ static struct {
 
 static void route_and_handle_request(http_request_t *request);
 static void reset_server_state(void);
+
+/* W-01: consecutive 401s from the current web client before the
+ * server drops the connection to free the single client slot. */
+#define HTTP_UNAUTHORIZED_CLOSE_THRESHOLD 3U
+static uint8_t unauthorized_streak;
 
 
 /* ============================================================================
@@ -104,8 +110,19 @@ static void route_and_handle_request(http_request_t *request)
     if (!is_public_endpoint && !http_handlers_is_authenticated()) {
     	CCSLOG(XCOLOR_RED, "[HTTP] Unauthorized access attempt to: %s\r\n", request->path);
         http_send_error(401, "Unauthorized");
+        /* W-01: a client that keeps hitting protected endpoints without
+         * a session holds the single web socket forever (keep-alive).
+         * Drop the connection after consecutive rejections so another
+         * client can connect. A valid request resets the streak. */
+        unauthorized_streak++;
+        if (HTTP_UNAUTHORIZED_CLOSE_THRESHOLD <= unauthorized_streak) {
+            unauthorized_streak = 0;
+            gsm_listener_socket_event_handler(GSM_LISTENER_WEB,
+                                              GSM_USER_EVENT_CLOSE_SOCKET);
+        }
         return;
     }
+    unauthorized_streak = 0;
 
     /* GET requests */
     if (request->method == HTTP_METHOD_GET) {
