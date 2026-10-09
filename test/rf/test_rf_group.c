@@ -361,7 +361,7 @@ void test_incomplete_or_changed_ack_binding_rejects_start_and_commit(void)
     TEST_ASSERT_EQUAL_INT(RF_GROUP_UNCERTAIN, status().state);
     TEST_ASSERT_EQUAL_UINT32(2U, request_count);
     TEST_ASSERT_FALSE(rf_group_start(2U, 2U));
-    TEST_ASSERT_FALSE(rf_group_abort());
+    TEST_ASSERT_TRUE(rf_group_abort());
 }
 
 void test_start_rejects_missing_duplicate_members_and_invalid_settings(void)
@@ -481,15 +481,18 @@ void test_partial_failure_keeps_member_bitmap_without_auto_reapply(void)
     TEST_ASSERT_EQUAL_UINT32(5U, request_count);
 }
 
-void test_failed_write_locks_other_ids_without_guessing_abort_identity(void)
+void test_failed_write_allows_explicit_abort_of_the_transmitted_group(void)
 {
     TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
     unused_group();
     rf_group_process(tick);
     reply(SCP_CMD_TIMEOUT, NULL);
     TEST_ASSERT_EQUAL_INT(RF_GROUP_UNCERTAIN, status().state);
-    TEST_ASSERT_FALSE(rf_group_abort());
     TEST_ASSERT_FALSE(rf_group_start(2U, 2U));
+    TEST_ASSERT_TRUE(rf_group_abort());
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_ABORT,
+                           requests[request_count - 1U].cmd);
+    ack();
     rf_group_hub_restarted();
     TEST_ASSERT_EQUAL_INT(RF_GROUP_RESTARTED, status().state);
     TEST_ASSERT_TRUE(rf_group_start(2U, 2U));
@@ -1253,6 +1256,27 @@ void test_mh_restart_stops_the_pending_inventory_sequence(void)
     inventory_matches = true;
     rf_apply_process();
     TEST_ASSERT_EQUAL_size_t(0U, request_count);
+}
+
+void test_r2_mh_restart_queries_known_commit_once_without_reapplying(void)
+{
+    write_three_and_commit();
+    ack();
+    rf_group_hub_restarted();
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_STATUS_GET,
+                           requests[request_count - 1U].cmd);
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .cmd = RF_SCP_CMD_CFG_STATUS_GET,
+        .type = SCP_TYPE_ACK, .data_len = 8U,
+        .data = {1U, 4U, 0U, 8U, 0U, 0U, 0U, 0U}};
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_RESTARTED, status().state);
+    TEST_ASSERT_TRUE(status().has_report);
+    TEST_ASSERT_EQUAL_UINT8(8U, status().report.reason);
+    const size_t sent = request_count;
+    rf_group_process(200000U);
+    TEST_ASSERT_EQUAL_size_t(sent, request_count);
 }
 
 /*** end of file ***/

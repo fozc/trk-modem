@@ -19,7 +19,7 @@ void rf_events_notify(const rf_scp_message_t *message);
 void rf_events_process(uint32_t now_ms);
 
 /** BOLATeX BQ-03: run the pre-inventory ring protection (0x40 then a
- * no-op 0x46 at the current tail) after an MH restart; the inventory
+ * no-op 0x48 at the current tail ordinal) after an MH restart; the inventory
  * upload starts only after successful protection. A failed pair uses
  * the existing event poll interval; the inventory remains paused. */
 bool rf_events_boot_protect(void);

@@ -72,10 +72,10 @@ bool scp_send_command(uint8_t type, uint8_t cmd,
  */
 bool scp_send_request(const scp_packet_t *request, scp_cmd_done_fn_t done);
 
-/** True after a compatible BOOT and completion of the boot time step. */
+/** True after BOOT or known R2 identity and completion of the time step. */
 bool rf_comm_can_load_inventory(void);
 
-/** Last BOOT major; zero before a BOOT has been received. */
+/** BOOT major or major proven by the delivered R2 firmware identity. */
 uint8_t rf_comm_get_hub_major(void);
 
 /** Request a time refresh; it will not start another inventory upload. */

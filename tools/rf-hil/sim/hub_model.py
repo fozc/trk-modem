@@ -1,4 +1,4 @@
-"""MH (RF hub) behaviour model per BOLATeX Teslim4 R1.
+"""MH (RF hub) behaviour model per BOLATeX SCP R2 (09.10.2026).
 
 Implements the hub side of the SCP interface: every RTU request handler,
 proactive notification generators, inventory/bring-up semantics, the
@@ -29,7 +29,7 @@ RF_FEEDERS = (1, 2, 3, 4)
 # Reserved CMD bands -> ERROR 0x01 (spec section 3).
 RESERVED_BANDS = (
     list(range(0x08, 0x10)) + list(range(0x15, 0x20)) +
-    list(range(0x2C, 0x40)) + list(range(0x48, 0x60)) +
+    list(range(0x2C, 0x40)) + list(range(0x49, 0x60)) +
     list(range(0x60, 0xC0)) + list(range(0xC0, 0xE0)) +
     [0xE0, 0xE2, 0xE4] + list(range(0xE9, 0xF0))
 )
@@ -73,6 +73,7 @@ class InventoryEntry:
         self.log_pending = 0
         self.current_state = 1
         self.fault_count = 0
+        self.boot_counter = 7
 
     def src(self):
         return ((self.fider << 2) | self.phase) & 0xFF
@@ -87,7 +88,7 @@ class HubModel:
         self.on_event = on_event or (lambda ev: None)
 
         # --- knobs (defaults; scenario/control overrides) ---
-        self.fw_label = "SIM-T4R1"
+        self.fw_label = "SIM-T4R2"
         self.sched_active = 1
         self.live_period_s = LIVE_PERIOD_S
         self.live_enabled = True          # master switch for the 0x11 stream
@@ -125,6 +126,8 @@ class HubModel:
         # --- event ring ---
         self.slots = [None] * HUB_SLOTS
         self.total = 0                     # writes ever (monotonic)
+        self.consume_baseline = None
+        self.consume_locked = False
         self.consumed = 0                  # consume cursor (monotonic)
         self.bad_slots = set()             # indices -> ERROR 0x06
         # slots served with a corrupted INNER record CRC (plan v1.2
@@ -310,6 +313,7 @@ class HubModel:
             0x42: self._h_log_read_record,
             0x44: self._h_log_read_range,
             0x46: self._h_log_consume_to,
+            0x48: self._h_log_consume_if,
             0xE1: self._h_notify_only,
             0xE3: self._h_notify_only,
             0xE5: self._h_pwr_cfg2,
@@ -351,8 +355,8 @@ class HubModel:
             if answered:
                 self.reply_error(pkt, sc.ERR_BUSY)
             return
-        free = HUB_SLOTS - min(self.pending_count(), HUB_SLOTS)
-        body = struct.pack("<HHHB", self.head(), self.wrap_count(), free,
+        free = 0 if self.degraded else 99 - self.pending_count()
+        body = struct.pack("<HHHB", self.head(), self.wrap_count() & 0xFFFF, free,
                            1 if self.degraded else 0) + b"\x00"
         if answered:
             self.reply(pkt, body)
@@ -540,6 +544,11 @@ class HubModel:
         rec[49:51] = struct.pack("<H", boot_counter)
         rec[51:55] = struct.pack("<I", self.uptime_s())
         rec[55] = clock_quality
+        entry = next((item for item in self.inventory.values()
+                      if item.fider == line and item.phase == phase), None)
+        if entry is not None and code not in (135, 136, 138, 201):
+            source_hash = sc.crc16_ccitt_false(entry.eui) or 0xFFFF
+            rec[56:58] = struct.pack("<H", source_hash)
         crc = sc.crc16_ccitt_false(rec[0:58])
         rec[58:60] = struct.pack("<H", crc)
         return bytes(rec)
@@ -585,6 +594,9 @@ class HubModel:
             if answered:
                 self.reply_error(pkt, sc.ERR_BUSY)
             return
+        self.consume_locked = False
+        if self.consume_baseline is None:
+            self.consume_baseline = self.consumed
         body = struct.pack("<HHIH", self.head(),
                            self.wrap_count() & 0xFFFF,
                            self.total & 0xFFFFFFFF, self.tail())
@@ -640,7 +652,7 @@ class HubModel:
         body = bytearray()
         index = start
         for _ in range(count):
-            if not self._slot_readable(index):
+            if index == self.head() or not self._slot_readable(index):
                 break
             body += self._slot_record(index)
             index = (index + 1) % HUB_SLOTS
@@ -666,16 +678,46 @@ class HubModel:
             if answered:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
-        # BQ-03: current firmware accepts a slot without an ordinal guard.
-        # Re-anchor the absolute tail surrogate to the resulting wire ring.
-        # Rejecting an old cursor belongs to the planned MH release.
-        self.consumed = self.total - ((self.head() - index) % HUB_SLOTS)
+        if self.consume_baseline is None:
+            if answered:
+                self.reply_error(pkt, sc.ERR_INVALID_PARAM)
+            return
+        target = self.consume_baseline + ((index -
+                    (self.consume_baseline % HUB_SLOTS)) % HUB_SLOTS)
+        if target < self.consumed or target > self.total:
+            self.consume_baseline = None
+            if answered:
+                self.reply_error(pkt, sc.ERR_INVALID_PARAM)
+            return
+        self.consumed = target
+        self.consume_baseline = target
         self.note("log_consume", index=index, tail=self.tail(),
                   left=self.pending_count())
         if answered:
             self.reply(pkt, struct.pack("<HH", self.tail(),
                                         min(self.pending_count(),
                                             0xFFFF)))
+
+    def _h_log_consume_if(self, pkt, answered):
+        if pkt.type != sc.TYPE_SET or len(pkt.data) != 4:
+            if answered:
+                self.reply_error(pkt, sc.ERR_INVALID_PARAM)
+            return
+        if self._log_busy() or self.degraded:
+            if answered:
+                self.reply_error(pkt, sc.ERR_BUSY)
+            return
+        target = struct.unpack("<I", pkt.data)[0]
+        if self.consume_locked or target < self.consumed or target > self.total:
+            if answered:
+                self.reply_error(pkt, sc.ERR_INVALID_PARAM)
+            return
+        self.consumed = target
+        self.note("log_consume_if", target=target, tail=self.tail(),
+                  left=self.pending_count())
+        if answered:
+            self.reply(pkt, struct.pack("<HHI", self.tail(),
+                                        self.pending_count(), self.consumed))
 
     # ------------------------------------------------------------------
     # config group (4.9 / 4.10)
@@ -799,11 +841,13 @@ class HubModel:
             return
         group_id = pkt.data[0]
         group = self.group
-        if group is None or group["id"] != group_id or \
-                group["state"] in (GROUP_FAILED, GROUP_APPLIED, GROUP_IDLE):
+        if group is None or \
+                (group["state"] != GROUP_IDLE and group["id"] != group_id) or \
+                group["state"] in (GROUP_FAILED, GROUP_APPLIED):
             if answered:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
+        group["id"] = group_id
         group["state"] = GROUP_FAILED
         group["reason"] = 10  # USER_ABORT
         self.group_history[group_id] = self._group_status_body(group)
@@ -842,7 +886,7 @@ class HubModel:
         t = self.telemetry if self.telemetry is not None else {}
         sira = (self.pwr_sira + 1) & 0xFF
         self.pwr_sira = sira
-        body = bytearray(39)
+        body = bytearray(45)
         body[0] = 1                                   # ver
         body[1] = sira
         body[2] = t.get("durum", 0x03)
@@ -996,7 +1040,7 @@ class HubModel:
         if sira == 0:
             sira = 1
         self.cmd_state = {"komut": komut, "sira": sira, "sonuc": 0xFF,
-                          "yayin": 1, "durum": 0}
+                          "yayin": 1, "durum": 0x10}
         self.cmd_pending = True
         self.cmd_param = param
         self.cmd_due_ms = self.now_ms() + int(self.pwr_result_delay_s * 1000)
@@ -1018,6 +1062,7 @@ class HubModel:
             sonuc = 0x02  # PARAM invalid
         self.cmd_state["sonuc"] = sonuc
         self.cmd_pending = False
+        self.cmd_state["durum"] &= ~0x10
         if sonuc == 0xFF:
             self.cmd_state["yayin"] = 2  # BQ-13 terminal no-response report.
         if sonuc == 0x00 and komut == 0x05:
@@ -1065,11 +1110,11 @@ class HubModel:
         self.proactive_seq = 0xFF  # next notify uses seq 0
         self.live_next_ms = {}
         self.started_ms = self.now_ms()
+        self.consume_baseline = None
         group = self.group
         if group is not None and group["state"] in (GROUP_STAGED,
                                                     GROUP_DELIVERED):
             self.group_history.clear()
-            group["id"] = 0  # BQ-11: current MH loses the running group ID.
             group["state"] = GROUP_FAILED
             group["reason"] = 8  # MODEM_REBOOT
             self.group_history[group["id"]] = self._group_status_body(group)
@@ -1128,6 +1173,7 @@ class HubModel:
         body[22] = entry.fsm_error
         body[23] = entry.trip_failed
         body[24] = entry.log_pending
+        body[26:28] = struct.pack("<H", entry.boot_counter)
         return bytes(body)
 
     def _send_live(self, entry):

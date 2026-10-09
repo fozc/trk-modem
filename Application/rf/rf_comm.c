@@ -527,6 +527,7 @@ static const char *scp_cmd_to_string(uint8_t cmd)
         case RF_SCP_CMD_LOG_READ_RECORD:   return "LOG_READ_RECORD";
         case RF_SCP_CMD_LOG_READ_RANGE:    return "LOG_READ_RANGE";
         case RF_SCP_CMD_LOG_CONSUME_TO:    return "LOG_CONSUME_TO";
+        case RF_SCP_CMD_LOG_CONSUME_IF:    return "LOG_CONSUME_IF";
         case RF_SCP_CMD_PWR_SUMMARY:       return "PWR_SUMMARY";
         case RF_SCP_CMD_PWR_ALARM:         return "PWR_ALARM";
         case RF_SCP_CMD_PWR_CFG2:          return "PWR_CFG2";
@@ -846,6 +847,25 @@ static void on_status_done(scp_cmd_result_t result,
 
         if (RF_CMD_OK == rf_scp_decode_status(rsp, &status))
         {
+            if (!hub_boot_received && (0U == hub_major))
+            {
+                /* R2 BQ-17: an already configured MH will not send BOOT.
+                 * Only the delivered firmware identity proves SCP major.
+                 */
+                if (0 == strcmp(status.fw_version, "022555bf"))
+                {
+                    hub_major = RF_SCP_MAJOR_EXPECTED;
+                    time_sync_boot = true;
+                    time_sync_pending = true;
+                    time_sync_timer_started = false;
+                }
+                else
+                {
+                    CSLOG_WARN("[RF] unknown MH firmware %s; "
+                               "startup waits for compatible BOOT\r\n",
+                               status.fw_version);
+                }
+            }
             CSLOG("[RF] hub up=%us fw=%s sched=%u cyc=%u\r\n",
                   (unsigned)status.uptime_sec, status.fw_version,
                   (unsigned)status.sched_active,
@@ -907,7 +927,9 @@ static void rf_comm_periodic_jobs(void)
     /* Periyodik GET_STATUS (canlilik) */
     if (!liveness_timer_started)
     {
-        timer_set(&liveness_timer, CLOCK_SECOND * RF_LIVENESS_PERIOD_S);
+        timer_set(&liveness_timer, (!hub_boot_received &&
+                  (0U == hub_major)) ? 0U :
+                  CLOCK_SECOND * RF_LIVENESS_PERIOD_S);
         liveness_timer_started = true;
     }
 

@@ -316,4 +316,15 @@ void test_periodic_expiry_prevents_old_data_becoming_fresh_after_full_tick_cycle
     TEST_ASSERT_EQUAL_UINT16(0U, read_snapshot(0U).valid_fields);
 }
 
+void test_r2_unknown_soh_is_retained_with_invalid_soh_quality(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.soh_percent = UINT8_MAX;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    power_board_snapshot_t out = read_snapshot(0U);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, out.summary.soh_percent);
+    TEST_ASSERT_EQUAL_HEX16(0U, out.valid_fields & POWER_VALID_SOH);
+    TEST_ASSERT_NOT_EQUAL(0U, out.valid_fields & POWER_VALID_SUMMARY);
+}
+
 /*** end of file ***/

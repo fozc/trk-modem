@@ -85,7 +85,8 @@ static void emit_float(json_writer_t *writer, const char *name, float value,
     append(writer, text);
 }
 
-static void emit_live(json_writer_t *writer, const rf_phase_data_t *data)
+static void emit_live(json_writer_t *writer, const rf_phase_data_t *data,
+                       bool detailed)
 {
     if (!data->has_live)
     {
@@ -98,6 +99,10 @@ static void emit_live(json_writer_t *writer, const rf_phase_data_t *data)
     append(writer, text);
     emit_u32(writer, "Seq", data->live.seq);
     emit_u32(writer, "Uptime", data->live.uptime_sec);
+    if (detailed)
+    {
+        emit_u32(writer, "BootCounter", data->live.boot_counter);
+    }
     emit_u32(writer, "State", data->live.state);
     emit_u32(writer, "FaultCount", data->live.fault_count);
     emit_float(writer, "Irms", data->live.current_amps,
@@ -144,7 +149,7 @@ static void emit_anomaly(json_writer_t *writer, uint8_t source, uint8_t path)
 }
 
 static void emit_phase(json_writer_t *writer, size_t line, size_t phase,
-                        uint32_t now_ms)
+                        uint32_t now_ms, bool detailed)
 {
     char text[64];
     rf_phase_data_t data;
@@ -175,7 +180,7 @@ static void emit_phase(json_writer_t *writer, size_t line, size_t phase,
     {
         append(writer, ",\"LiveAgeMs\":null");
     }
-    emit_live(writer, &data);
+    emit_live(writer, &data, detailed);
     emit_trip(writer, &data);
     uint8_t source = data.source;
     emit_anomaly(writer, source, 0U);
@@ -201,6 +206,23 @@ static void emit_fault_counts(json_writer_t *writer, size_t line)
     append(writer, text);
     emit_u32(writer, "Temporary", count.temporary);
     emit_u32(writer, "Uncertain", count.uncertain);
+    append(writer, "}");
+}
+
+static void emit_service_status(json_writer_t *writer)
+{
+    rf_service_status_t status;
+    rf_get_service_status(&status);
+    append(writer, ",\"Maintenance\":{\"SourceMismatches\":");
+    char text[16];
+    (void)xsnprintf(text, sizeof(text), "%u",
+                    (unsigned)status.source_mismatches);
+    append(writer, text);
+    emit_u32(writer, "StoreResetReason", status.store_reset_reason);
+    emit_u32(writer, "CounterStatus", status.counter_status);
+    emit_u32(writer, "EpochFeeder", status.epoch_feeder);
+    emit_u32(writer, "EpochPhases", status.epoch_phases);
+    emit_u32(writer, "EpochDurationMs", status.epoch_duration_ms);
     append(writer, "}");
 }
 
@@ -236,7 +258,7 @@ bool rf_json_monitor_build(char *buffer, size_t capacity, int32_t line_filter,
             {
                 append(&writer, ",");
             }
-            emit_phase(&writer, line, phase, now_ms);
+            emit_phase(&writer, line, phase, now_ms, (0 <= line_filter));
         }
         append(&writer, "]");
         /* Per-feeder reads carry counters. Keep the bulk 21-phase
@@ -244,6 +266,7 @@ bool rf_json_monitor_build(char *buffer, size_t capacity, int32_t line_filter,
         if (0 <= line_filter)
         {
             emit_fault_counts(&writer, line);
+            emit_service_status(&writer);
         }
         append(&writer, "}");
     }
