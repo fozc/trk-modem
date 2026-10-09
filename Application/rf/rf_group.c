@@ -46,8 +46,8 @@ void rf_group_hub_restarted(void)
     }
     group.command_pending = false;
     group.write_sent = false;
-    group.commit_sent = false;
     group.group_known = false;
+    group.status.has_report = false;
 }
 
 bool rf_group_get_status(rf_group_status_t *out)
@@ -230,10 +230,22 @@ bool rf_group_handle_status(const rf_scp_message_t *message)
         (RF_GROUP_FAILED == group.status.state) ||
         ((RF_GROUP_MISMATCH == group.status.state) &&
          (SCP_TYPE_ACK != message->type)) ||
-        (RF_GROUP_CANCELLED == group.status.state) ||
-        (RF_GROUP_RESTARTED == group.status.state))
+        (RF_GROUP_CANCELLED == group.status.state))
     {
         return false;
+    }
+    if (RF_GROUP_RESTARTED == group.status.state)
+    {
+        if ((RF_SCP_CMD_CFG_STATUS_GET != message->cmd) ||
+            (SCP_TYPE_ACK != message->type) ||
+            (4U != message->body.config.state) ||
+            (8U != message->body.config.reason))
+        {
+            return false;
+        }
+        group.status.report = message->body.config;
+        group.status.has_report = true;
+        return true;
     }
     if (RF_GROUP_ID_IN_USE == group.status.state)
     {
@@ -331,6 +343,15 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
         check_group_response(result, packet);
         return;
     }
+    if (RF_GROUP_RESTARTED == state)
+    {
+        if (SCP_CMD_OK == result)
+        {
+            (void)handle_status_response(packet);
+        }
+        group.commit_sent = false;
+        return;
+    }
     if (RF_GROUP_ID_IN_USE == state)
     {
         /* A failed probe does not prove that the observed peer stopped. */
@@ -362,6 +383,7 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
     }
     if (RF_GROUP_WRITING == state)
     {
+        group.group_known = true;
         group.status.writes_acked++;
         if (3U == group.status.writes_acked)
         {
@@ -433,8 +455,11 @@ bool rf_group_abort(void)
         group.status.state = RF_GROUP_CANCELLED;
         return true;
     }
-    if (!group.group_known || !scp_is_free() || group.command_pending ||
+    if ((!group.group_known && !group.write_sent) || !scp_is_free() ||
+        group.command_pending ||
         ((RF_GROUP_WAITING != group.status.state) &&
+         (RF_GROUP_WRITING != group.status.state) &&
+         (RF_GROUP_COMMITTING != group.status.state) &&
          (RF_GROUP_UNCERTAIN != group.status.state) &&
          (RF_GROUP_MISMATCH != group.status.state)))
     {
@@ -482,6 +507,12 @@ void rf_group_process(uint32_t now_ms)
                 {
                     group.poll_ms = now_ms;
                 }
+            }
+            break;
+        case RF_GROUP_RESTARTED:
+            if (group.commit_sent && rf_comm_can_load_inventory())
+            {
+                (void)send_request(RF_SCP_CMD_CFG_STATUS_GET);
             }
             break;
         default:

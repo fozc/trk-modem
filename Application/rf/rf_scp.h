@@ -52,6 +52,7 @@ extern "C" {
 #define RF_SCP_CMD_LOG_READ_RECORD   0x42U
 #define RF_SCP_CMD_LOG_READ_RANGE    0x44U
 #define RF_SCP_CMD_LOG_CONSUME_TO    0x46U
+#define RF_SCP_CMD_LOG_CONSUME_IF    0x48U
 #define RF_SCP_CMD_PWR_SUMMARY       0xE1U
 #define RF_SCP_CMD_PWR_ALARM         0xE3U
 #define RF_SCP_CMD_PWR_CFG2          0xE5U

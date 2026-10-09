@@ -5,7 +5,7 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * Decode R1 payloads without hardware, heap or persistent state.
+ * Decode R2 payloads without hardware, heap or persistent state.
  */
 
 #include "rf_scp_codec.h"
@@ -77,6 +77,16 @@ static uint16_t record_crc(const uint8_t *data, size_t length)
     return crc;
 }
 
+uint16_t rf_scp_eui_hash(const uint8_t *eui64)
+{
+    if (NULL == eui64)
+    {
+        return 0U;
+    }
+    const uint16_t crc = record_crc(eui64, 8U);
+    return (0U == crc) ? UINT16_MAX : crc;
+}
+
 rf_cmd_status_t rf_scp_decode_event(const uint8_t *data, size_t length,
                                       rf_scp_event_t *out)
 {
@@ -123,6 +133,7 @@ rf_cmd_status_t rf_scp_decode_event(const uint8_t *data, size_t length,
     event.boot_counter = scp_unpack_u16(&data[49]);
     event.uptime_sec = read_u32(&data[51]);
     event.clock_quality = data[55];
+    event.src_eui_hash = scp_unpack_u16(&data[56]);
     event.crc = scp_unpack_u16(&data[58]);
     *out = event;
     return RF_CMD_OK;
@@ -243,7 +254,8 @@ static rf_cmd_status_t request_length(uint8_t cmd, uint8_t type,
         case RF_SCP_CMD_LOG_READ_RECORD:
         case RF_SCP_CMD_LOG_CONSUME_TO:
         case RF_SCP_CMD_PWR_COMMAND: *length = 2U; break;
-        case RF_SCP_CMD_LOG_READ_RANGE: *length = 4U; break;
+        case RF_SCP_CMD_LOG_READ_RANGE:
+        case RF_SCP_CMD_LOG_CONSUME_IF: *length = 4U; break;
         case RF_SCP_CMD_PWR_CFG2:
             *length = (SCP_TYPE_GET == type) ? 0U : 16U;
             return ((SCP_TYPE_GET == type) || (SCP_TYPE_SET == type))
@@ -266,6 +278,7 @@ static rf_cmd_status_t request_length(uint8_t cmd, uint8_t type,
              (RF_SCP_CMD_CFG_ABORT == cmd) ||
              (RF_SCP_CMD_EPOCH_REFRESH == cmd) ||
              (RF_SCP_CMD_LOG_CONSUME_TO == cmd) ||
+             (RF_SCP_CMD_LOG_CONSUME_IF == cmd) ||
              (RF_SCP_CMD_PWR_COMMAND == cmd))
     {
         expected_type = SCP_TYPE_SET;
@@ -434,10 +447,17 @@ static rf_cmd_status_t incoming_length(const scp_packet_t *packet)
             length = packet->data_len;
             break;
         case RF_SCP_CMD_LOG_CONSUME_TO: length = 4U; break;
+        case RF_SCP_CMD_LOG_CONSUME_IF: length = 8U; break;
         case RF_SCP_CMD_LOG_AVAILABLE:
             length = 4U; notification = true; break;
         case RF_SCP_CMD_PWR_SUMMARY:
-            length = 39U; notification = true; break;
+            if (39U > packet->data_len)
+            {
+                return RF_CMD_ERR_LEN;
+            }
+            length = packet->data_len;
+            notification = true;
+            break;
         case RF_SCP_CMD_PWR_ALARM:
             length = 11U; notification = true; break;
         case RF_SCP_CMD_PWR_CFG2:
@@ -491,6 +511,7 @@ static void decode_live(const uint8_t *data, rf_scp_live_t *out)
     out->trip_failed = (0U != data[28]);
     out->log_pending = data[29];
     out->log_wrap_low = data[30];
+    out->boot_counter = scp_unpack_u16(&data[31]);
 }
 
 static void decode_power(const uint8_t *data, rf_scp_power_summary_t *out)
@@ -677,8 +698,13 @@ static rf_cmd_status_t decode_log(const scp_packet_t *packet,
                     (100U > out->body.log_head.tail))
                  ? RF_CMD_OK : RF_CMD_ERR_PARAM;
         case RF_SCP_CMD_LOG_CONSUME_TO:
+        case RF_SCP_CMD_LOG_CONSUME_IF:
             out->body.log_consume.tail = scp_unpack_u16(data);
             out->body.log_consume.left = scp_unpack_u16(&data[2]);
+            if (RF_SCP_CMD_LOG_CONSUME_IF == packet->cmd)
+            {
+                out->body.log_consume.tail_seq = read_u32(&data[4]);
+            }
             return ((100U > out->body.log_consume.tail) &&
                     (100U > out->body.log_consume.left))
                  ? RF_CMD_OK : RF_CMD_ERR_PARAM;
@@ -802,6 +828,7 @@ rf_cmd_status_t rf_scp_decode_message(const scp_packet_t *packet,
         else if ((RF_SCP_CMD_LOG_READ_HEAD == packet->cmd) ||
                  (RF_SCP_CMD_LOG_READ_RECORD == packet->cmd) ||
                  (RF_SCP_CMD_LOG_READ_RANGE == packet->cmd) ||
+                 (RF_SCP_CMD_LOG_CONSUME_IF == packet->cmd) ||
                  (RF_SCP_CMD_LOG_CONSUME_TO == packet->cmd))
         {
             result = decode_log(packet, &message);

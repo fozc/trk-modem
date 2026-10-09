@@ -510,6 +510,10 @@ void test_captured_command_reports_show_pending_then_parameter_rejection(void)
             rf_scp_message_t message;
 
             (void)memcpy(packet.data, &logical[7], packet.data_len);
+            if ((255U == packet.data[2]) && (1U == packet.data[3]))
+            {
+                packet.data[4] |= 0x10U; /* R2 running command. */
+            }
             if (RF_CMD_OK != rf_scp_decode_message(&packet, &message))
             {
                 continue;
@@ -574,6 +578,10 @@ void test_captured_cfg2_get_set_echo_flow_keeps_customer_mask(void)
                 .type = logical[2], .cmd = logical[3],
                 .seq = logical[4], .data_len = logical[5]};
             (void)memcpy(packet.data, &logical[7], packet.data_len);
+            if ((255U == packet.data[2]) && (1U == packet.data[3]))
+            {
+                packet.data[4] |= 0x10U; /* R2 running command. */
+            }
             if (2U == replies)
             {
                 tick = 20000U;
@@ -762,7 +770,7 @@ void test_get_ff_with_two_transmissions_waits_until_five_minutes(void)
     {
         .src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
         .cmd = RF_SCP_CMD_PWR_RESULT, .type = SCP_TYPE_ACK,
-        .data_len = 5U, .data = {5U, 43U, 255U, 2U, 0U}
+        .data_len = 5U, .data = {5U, 43U, 255U, 2U, 0x10U}
     };
     tick = 299999U;
     TEST_ASSERT_TRUE(power_board_read_command_result());
@@ -796,6 +804,30 @@ void test_cancel_get_reports_ineffective_cancel_without_waiting_for_outcome(void
     power_board_control_process(tick);
     TEST_ASSERT_EQUAL_size_t(before, request_count);
     TEST_ASSERT_TRUE(power_board_battery_replaced());
+}
+
+void test_r2_b4_distinguishes_running_from_unanswered_terminal_report(void)
+{
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(5U, 1U);
+    rf_scp_message_t message = {.cmd = RF_SCP_CMD_PWR_RESULT,
+        .type = SCP_TYPE_SET, .body.command_result =
+        {.command = 5U, .seq = 1U, .result = 255U,
+         .transmissions = 2U, .flags = 0x10U}};
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&message));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_ACCEPTED, control_status().command_state);
+    message.body.command_result.flags = 0U;
+    message.body.command_result.transmissions = 1U;
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&message));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_NO_RESPONSE,
+                          control_status().command_state);
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(5U, 2U);
+    message.type = SCP_TYPE_ACK;
+    message.body.command_result.seq = 2U;
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&message));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_NO_RESPONSE,
+                          control_status().command_state);
 }
 
 /*** end of file ***/

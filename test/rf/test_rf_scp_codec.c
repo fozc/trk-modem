@@ -156,8 +156,10 @@ void test_incoming_length_errors_preserve_previous_output(void)
                 packet.data_len++;
             }
             packet.data_len++;
-            if ((RF_SCP_CMD_LOG_READ_HEAD == packet.cmd) &&
-                (SCP_TYPE_ACK == packet.type))
+            if (((RF_SCP_CMD_LOG_READ_HEAD == packet.cmd) &&
+                 (SCP_TYPE_ACK == packet.type)) ||
+                ((RF_SCP_CMD_PWR_SUMMARY == packet.cmd) &&
+                 (SCP_TYPE_SET == packet.type)))
             {
                 TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
                                       rf_scp_decode_message(&packet, &out));
@@ -810,6 +812,81 @@ void test_customer_power_config_rejects_unset_capacity_and_bad_period(void)
     packet.data[15] = 0xCAU;
     TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
                           rf_scp_build_packet(&packet, &output));
+}
+
+void test_r2_summary_accepts_tail_extension_and_rejects_short_body(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_PWR_SUMMARY, SCP_TYPE_SET);
+    rf_scp_message_t original;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_message(&packet, &original));
+    for (uint8_t length = 45U; 47U >= length; length++)
+    {
+        packet.data_len = length;
+        rf_scp_message_t decoded;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+            rf_scp_decode_message(&packet, &decoded));
+        TEST_ASSERT_EQUAL_MEMORY(&original.body.power, &decoded.body.power,
+                                 sizeof(original.body.power));
+    }
+    packet.data_len = 38U;
+    rf_scp_message_t output = original;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+        rf_scp_decode_message(&packet, &output));
+    TEST_ASSERT_EQUAL_MEMORY(&original, &output, sizeof(output));
+}
+
+void test_r2_source_hash_matches_delivered_eui_and_event_vector(void)
+{
+    const uint8_t eui[8] = {0x00U, 0x12U, 0x4BU, 0x00U,
+                            0x38U, 0xC9U, 0xF1U, 0xC3U};
+    TEST_ASSERT_EQUAL_HEX16(0x1787U, rf_scp_eui_hash(eui));
+    TEST_ASSERT_EQUAL_HEX16(0U, rf_scp_eui_hash(NULL));
+    const uint8_t raw[60] =
+    {
+        0xE8U, 0x80U, 0x0AU, 0x10U, 0xA9U, 0x0AU, 0x1AU, 0x8FU,
+        1U, 1U, 2U, 2U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U,
+        0U, 0U, 0U, 0x10U, 0x4FU, 0x0CU, 0U, 0U, 0U, 0U,
+        0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U,
+        0U, 0U, 4U, 0U, 0U, 0U, 0U, 0U, 0xCEU, 0U,
+        0U, 0U, 0U, 0U, 0U, 0x87U, 0x17U, 0x5EU, 0x89U
+    };
+    rf_scp_event_t event;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_event(raw, 60U, &event));
+    TEST_ASSERT_EQUAL_HEX16(0x1787U, event.src_eui_hash);
+    TEST_ASSERT_EQUAL_UINT16(206U, event.boot_counter);
+}
+
+void test_r2_live_boot_counter_uses_payload_offset_31(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_LIVE_DATA, SCP_TYPE_SET);
+    scp_pack_u16(&packet.data[31], 206U);
+    rf_scp_message_t message;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_UINT16(206U, message.body.live.boot_counter);
+}
+
+void test_r2_conditional_consume_preserves_full_ordinal_and_validates_ack(void)
+{
+    scp_packet_t request = {.cmd = RF_SCP_CMD_LOG_CONSUME_IF,
+        .type = SCP_TYPE_SET, .data_len = 4U, .seq = 13U,
+        .data = {0xFEU, 0xDCU, 0xBAU, 0x98U}};
+    scp_packet_t output;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_build_packet(&request, &output));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(request.data, output.data, 4U);
+    scp_packet_t ack = {.cmd = RF_SCP_CMD_LOG_CONSUME_IF,
+        .type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 8U,
+        .data = {99U, 0U, 2U, 0U, 0xFEU, 0xDCU, 0xBAU, 0x98U}};
+    rf_scp_message_t message;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&ack, &message));
+    TEST_ASSERT_EQUAL_HEX32(0x98BADCFEU, message.body.log_consume.tail_seq);
+    const rf_scp_message_t previous = message;
+    ack.data_len = 7U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+        rf_scp_decode_message(&ack, &message));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &message, sizeof(message));
 }
 
 /*** end of file ***/

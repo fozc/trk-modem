@@ -2674,4 +2674,36 @@ void test_full_inventory_change_preserves_old_binding_until_drain_and_ack(void)
     TEST_ASSERT_EQUAL_UINT8(0x22U, accepted.eui64[0]);
 }
 
+void test_r2_status_without_boot_starts_time_and_inventory_protection(void)
+{
+    hub_major = 0U;
+    hub_boot_received = false;
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_GET_STATUS, transmitted.cmd);
+    scp_packet_t response = make_response(SCP_TYPE_ACK, 25U);
+    (void)memcpy(&response.data[4], "022555bf", 9U);
+    inject_packet(&response);
+    TEST_ASSERT_EQUAL_UINT8(1U, rf_comm_get_hub_major());
+    TEST_ASSERT_FALSE(rf_comm_can_load_inventory());
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_TIME_SYNC, transmitted.cmd);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_TRUE(rf_comm_can_load_inventory());
+    TEST_ASSERT_TRUE(rf_inventory_is_active());
+}
+
+void test_unknown_status_without_boot_cannot_guess_major(void)
+{
+    hub_major = 0U;
+    hub_boot_received = false;
+    rf_comm_periodic_jobs();
+    scp_packet_t response = make_response(SCP_TYPE_ACK, 25U);
+    (void)memcpy(&response.data[4], "unknown", 8U);
+    inject_packet(&response);
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_comm_get_hub_major());
+    TEST_ASSERT_FALSE(time_sync_pending);
+    TEST_ASSERT_FALSE(rf_comm_can_load_inventory());
+}
+
 /*** end of file ***/

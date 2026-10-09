@@ -582,6 +582,7 @@ function buildRfMonitorTable(d){
   const fields=[
     ['Eui64','EUI-64',''],['Online',(LNG==='tr'?'RF haberleşmesi':'RF online'),''],
     ['Live.Seq','SEQ',''],['Live.Uptime',(LNG==='tr'?'Çalışma süresi':'Uptime'),'s'],
+    ['Live.BootCounter',(LNG==='tr'?'Açılış sayacı':'Boot counter'),''],
     ['Live.State',(LNG==='tr'?'Koruma durumu':'Current state'),''],['Live.FaultCount',t('monActFault'),''],
     ['Live.Irms',t('monPhCur'),'A',3],
     ['Live.Flags',t('catEnerji'),'',undefined,1],
@@ -607,6 +608,16 @@ function buildRfMonitorTable(d){
   ];
   const maintenance=phases.some(p=>p?.UptimeStalled===true||p?.Live?.FsmError===true);
   let html=maintenance?'<p class="muted">'+esc(LNG==='tr'?'Bakım gerekli: uptime ilerlemiyor veya FSM hata bildirimi var.':'Maintenance required: stalled uptime or FSM error reported.')+'</p>':'';
+  const service=d.Maintenance;
+  if(service){
+    const messages=[];
+    if(service.SourceMismatches>0)messages.push(LNG==='tr'?`Kaynağı doğrulanamayan ${service.SourceMismatches} olay ham günlükte tutuldu; mevcut ayırıcıya bağlanmadı.`:`${service.SourceMismatches} events with unverified sources were retained in the raw log without binding to the current device.`);
+    const resetLabels=LNG==='tr'?['','biçimlendirme','durum kaybı','servis silmesi']:['','formatting','state loss','service clear'];
+    if(service.StoreResetReason>0)messages.push((LNG==='tr'?'Son MH olay deposu işlemi: ':'Last MH event store operation: ')+(resetLabels[service.StoreResetReason]||service.StoreResetReason));
+    if(service.CounterStatus>0)messages.push(LNG==='tr'?`Son RF güvenlik sayacı kaydı: 143/${service.CounterStatus}. 4–6 kodları RF iletiminin kilitlendiğini bildirir; anahtarsız yeni kartta 5 beklenir.`:`Last RF security counter record: 143/${service.CounterStatus}. Codes 4–6 report locked RF transmission; code 5 is expected on an unprovisioned new board.`);
+    if(service.EpochFeeder>0)messages.push(LNG==='tr'?`Son MH yenilemesi: fider ${service.EpochFeeder}, faz maskesi ${service.EpochPhases}, süre ${service.EpochDurationMs} ms.`:`Last MH refresh: feeder ${service.EpochFeeder}, phase mask ${service.EpochPhases}, duration ${service.EpochDurationMs} ms.`);
+    html+=messages.map(message=>'<p class="muted">'+esc(message)+'</p>').join('');
+  }
   html+='<div class="table-wrap"><table class="phase-table"><thead><tr><th>'+esc(t('thParam'))+'</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
   if(counts){
     const n=k=>Number.isInteger(counts[k])&&counts[k]>=0?counts[k]:'—';
