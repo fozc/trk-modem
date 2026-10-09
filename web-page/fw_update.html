@@ -318,7 +318,7 @@ async function doLogin(){
       try{r=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user,password:pass})});break;}
       catch(e){if(i===0&&e instanceof TypeError){await sleep(150);continue;}throw e;}
     }
-    if(!r.ok){err.textContent=t('loginFailed');return;}
+    if(!r.ok&&r.status!==401){err.textContent=t('loginFailed');return;}
     const d=await r.json();
     if(d.success&&d.token){s_token=d.token;sessionStorage.setItem('st',d.token);showMain();await init();}
     else err.textContent=d.error||t('invalidCred');
