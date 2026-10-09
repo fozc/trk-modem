@@ -150,7 +150,8 @@ int main(void) {
  strcpy(saved_token,handler_state.session_token);
  handle_post_login("{\"username\":\"admin\",\"password\":\"wrong\"}");
  assert(strcmp(saved_token,handler_state.session_token)==0);
- puts("PASS: invalid credentials do not create a fallback session");
+ assert(response_status==401);
+ puts("PASS: invalid credentials do not create a fallback session (HTTP 401)");
  handle_post_logout();
  handle_post_login("{\"username\":\"admin\",\"password\":\"admin25\"}");
  assert(response_status==200 && http_handlers_is_admin());

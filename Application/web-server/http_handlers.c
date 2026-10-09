@@ -488,12 +488,15 @@ void handle_post_login(const char *json_body)
         const char *locked_response =
             "{\"success\":false,\"error\":\"Too many attempts, "
             "try again later\"}";
-        http_send_json(locked_response, (int)strlen(locked_response));
+        /* W-02: auth failures carry HTTP 401, not 200. */
+        http_send_response(401, "Unauthorized", "application/json",
+                           locked_response, (int)strlen(locked_response));
         return;
     }
 
     if (!json_body) {
-        http_send_json("{\"success\":false,\"error\":\"No body\"}", 35);
+        http_send_response(401, "Unauthorized", "application/json",
+                           "{\"success\":false,\"error\":\"No body\"}", 35);
         return;
     }
     
@@ -545,7 +548,9 @@ void handle_post_login(const char *json_body)
         create_login_session(username);
     } else {
         const char *error_response = "{\"success\":false,\"error\":\"Invalid credentials\"}";
-        http_send_json(error_response, (int)strlen(error_response));
+        /* W-02: auth failure must carry HTTP 401, not 200. */
+        http_send_response(401, "Unauthorized", "application/json",
+                           error_response, (int)strlen(error_response));
     }
 }
 

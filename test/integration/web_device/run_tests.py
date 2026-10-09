@@ -143,11 +143,8 @@ def main():
 
     st, body = http_req("POST", "/auth/login",
                         '{"username":"admin","password":"wrong"}')
-    # W-02 (report): auth failure is HTTP 200 with success:false today;
-    # 401 would be the conventional status. Assert current contract.
     check("login_wrong_password_rejected",
-          st == 200 and '"success":false' in body,
-          "HTTP %d %s" % (st, "(W-02: 200 not 401)" if st == 200 else ""))
+          st == 401 and '"success":false' in body, "HTTP %d" % st)
 
     st, body = http_req("POST", "/auth/login",
                         '{"username":"admin","password":"admin60"}')
