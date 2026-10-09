@@ -109,6 +109,9 @@ def main():
             print("%-24s %s" % (name, desc))
         return 0
 
+    if args.case and len(set(args.case)) != len(args.case):
+        parser.error("tekrarli --case secimi kanit uzerine yazar")
+
     if not args.host:
         print("SKIP: hedef verilmedi (--host / IEC104_DEVICE_HOST)")
         return 1 if args.require_device else 0
