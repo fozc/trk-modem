@@ -75,12 +75,14 @@ obj = frame["asdu"]["objects"][0]
 check("m_sp_tb_1", obj["ioa"] == 1042 and obj["siq"]["value"] == 0 and
       obj["siq"]["bl"] == 1 and obj["siq"]["nt"] == 1)
 
-# --- CP56 round trip -------------------------------------------------
-# minute byte 0x33 -> iv=0; hour byte 0x44 -> su=1, hour=4
+# --- CP56 round trip (SU = bit 7 of the hour byte) -------------------
+# 0x44 = 0100_0100: hour=4, su=0;  0xC4 = 1100_0100: hour=4, su=1
 cp56 = apdu.parse_cp56(bytes.fromhex("11 22 33 44 55 66 05"), 0)
-check("cp56_decode", cp56["iv"] == 0 and cp56["su"] == 1 and
-      cp56["day"] == 21 and cp56["year"] == 2005)
+check("cp56_decode", cp56["iv"] == 0 and cp56["su"] == 0 and
+      cp56["hour"] == 4 and cp56["day"] == 21 and cp56["year"] == 2005)
+cp56_su = apdu.parse_cp56(bytes.fromhex("11 22 33 c4 55 66 05"), 0)
+check("cp56_su_bit7", cp56_su["su"] == 1 and cp56_su["hour"] == 4)
 
 print("\n%d/%d OK" % (
-    13 - len(FAILURES), 13))
+    14 - len(FAILURES), 14))
 raise SystemExit(1 if FAILURES else 0)
