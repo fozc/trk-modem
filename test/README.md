@@ -1,7 +1,7 @@
 # Test Altyapısı
 
-**Sürüm:** 1.36
-**Tarih:** 2026-10-07
+**Sürüm:** 1.37
+**Tarih:** 2026-10-10
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
@@ -51,6 +51,18 @@ Yalnız integration testleri için:
 ruby test/run_all.rb integration
 ```
 
+Kalıcı günlük ve replay (yeniden gönderim) testleri için:
+
+```text
+ruby test/run_all.rb logs
+```
+
+Bu komut seçili Ceedling testlerini tek koşuda, ardından mevcut
+`integration/fault_log` ve `integration/libs` paketlerini çalıştırır.
+Her paketin hatası çıkış koduna yansır. Ruby yürütücüsü Ceedling gem'ini
+doğrudan başlatır; Windows batch yorumlaması regex (düzenli ifade)
+seçimini parçalara ayırmaz.
+
 Coverage raporu için:
 
 ```text
@@ -67,6 +79,29 @@ ruby test/run_all.rb clean
 ```
 
 ## Yeni test ekleme
+
+### Kalıcı günlük test kapsamı
+
+| Dosya | Gerçek üretim girişleri ve doğrulanan davranış |
+|---|---|
+| `application/test_fault_log.c` | Mevcut 11 A/B senaryosu ayrı test adıyla raporlanır. Tüm fider/faz ve geçici/kalıcı listelerde 15 kayıt sınırı, yeniden açılış, sıra ve geçersiz girişte önceki verinin korunması sınanır. |
+| `iec104/test_iec104_event_log.c` | Yarım payload/CRC yazımı, sessiz CRC kaybı, iç/dış CRC, bilinmeyen kayıt türü, dolu halkada erase hatası, sıra numarası taşması, araya kayıt eklenmesi, başarısız/eksik NVRAM sync ve `mark_sent` gelmeden tekrar okuma. |
+| `iec104/test_iec104_durable_replay_scenario.c` | Gerçek Contiki replay süreci + gerçek `iec104_event_log` + gerçek `spi_flash_log`; yalnız taşıma ve donanım/NVRAM sınırları taklit edilir. Gönderim reddi, 150 ardışık başarısızlık ve bağlantı kesilip yeniden kurulmasında kayıtların korunması ve en yeniden eskiye sıra doğrulanır. |
+| `rf/test_rf_event_log.c` | Onaylı 60 bayt ham RF kayıtları; yarım yazımdan sonra yeniden açılış ve retry, bozuk en yeni kayıttan sonra eski kaydın okunabilmesi, sektör dönüşümü ve sınırlar. |
+| `libs/test_spi_flash_log_sequence_wrap.c` | Ortak NOR kütüphanesinin sıra numarası taşması ve açılış taraması. Ayrıntılı Flash hata yolları `integration/libs` paketindedir. |
+
+`support/iec104_event_log_fixture.h`, sayfa sınırlarını ve NOR 1→0
+yazımını denetler. Belirli program çağrısında kısmi hata veya sessiz
+yazmama, erase reddi ve NVRAM sync reddi üretir. Çalışan replay durumu
+ile son başarılı sync görüntüsü ayrıdır; yeniden açılış yardımcısı RAM'i
+kalıcı görüntüden yükler. Sadece modülü tekrar başlatmak, NVRAM
+kalıcılığını doğrulayan yeniden açılış olarak değerlendirilmemelidir.
+
+Bu fixture (test çifti) gerçek NVRAM'in A/B algoritmasını taklit etmez;
+o algoritma kendi NVRAM paketinde sınanır. Bu testler fiziksel enerji
+kesintisi, Flash dayanıklılığı veya gerçek SCADA kabulü kanıtı değildir.
+
+### Diğer merkezi senaryolar
 
 RF-SCP kayıt/onay regresyonları merkezi Ceedling paketindedir:
 `rf/test_rf_faults.c` dizi ve fider sayımını,

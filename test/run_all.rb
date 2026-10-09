@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+require "rbconfig"
+require "rubygems"
+
+$stdout.sync = true
+
 # Central entry point for Ceedling unit tests and host integration suites.
 
 TEST_ROOT = File.expand_path(__dir__)
@@ -28,13 +33,16 @@ def run_command(label, directory, command)
 end
 
 def run_unit(task)
-  run_command("ceedling", TEST_ROOT, ["ceedling", task])
+  command = [RbConfig.ruby, Gem.bin_path("ceedling", "ceedling"), task]
+  run_command("ceedling", TEST_ROOT, command)
 end
 
-def run_integration
+def run_integration(selected = nil)
   results = []
 
   INTEGRATION_SUITES.each do |name, relative_dir, commands|
+    next if selected && !selected.include?(name)
+
     directory = File.join(TEST_ROOT, "integration", relative_dir)
     commands.each do |command|
       results << run_command(name, directory, command)
@@ -70,13 +78,18 @@ when "unit"
   results << run_unit("test:all")
 when "integration"
   results << run_integration
+when "logs"
+  pattern = "test_(fault_log|iec104_event_log|iec104_.*replay_scenario|" \
+            "rf_event_log|spi_flash_log_sequence_wrap)"
+  results << run_unit("test:pattern[#{pattern}]")
+  results << run_integration(%w[fault_log libs])
 when "coverage"
   results << run_unit("clobber")
   results << run_unit("gcov:all") if results.all?
 when "clean"
   results << clean_all
 else
-  warn "usage: ruby test/run_all.rb [all|unit|integration|coverage|clean]"
+  warn "usage: ruby test/run_all.rb [all|unit|integration|logs|coverage|clean]"
   exit 2
 end
 
