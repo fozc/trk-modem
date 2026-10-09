@@ -23,7 +23,7 @@
 #include <stdlib.h>
 #include "bsp.h"
 #include "reboot.h"
-#include "gsm_listener_process.h"
+#include "gsm_http_server.h"
 /* ============================================================================
  * GLOBAL STATE AND BUFFERS
  * ============================================================================ */
@@ -65,6 +65,7 @@ void http_server_init(int (*send_function)(const void *data, int length))
 {
     /* Clear state */
     memset(&server_state, 0, sizeof(server_state));
+    unauthorized_streak = 0U;
     
     /* Register send callback */
     server_state.send_function = send_function;
@@ -117,8 +118,7 @@ static void route_and_handle_request(http_request_t *request)
         unauthorized_streak++;
         if (HTTP_UNAUTHORIZED_CLOSE_THRESHOLD <= unauthorized_streak) {
             unauthorized_streak = 0;
-            gsm_listener_socket_event_handler(GSM_LISTENER_WEB,
-                                              GSM_USER_EVENT_CLOSE_SOCKET);
+            gsm_http_server_close_after_response();
         }
         return;
     }
@@ -421,6 +421,7 @@ static void reset_server_state(void)
 
 void http_server_reset(void)
 {
+    unauthorized_streak = 0U;
     if (!server_state.initialized) {
         return;
     }

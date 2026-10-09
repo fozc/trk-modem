@@ -212,6 +212,7 @@ const api=async(url,opt={})=>{
   try{
     const r=await fetch(url,{...opt,signal:ctrl.signal});clearTimeout(tid);
     if(r.status===401&&!skipAuthCheck){s_sessionToken=null;s_role=null;buildMenu();showLoginModal();toast(t('tAuthReq'),'info');throw new Error(t('tAuthReq'))}
+    if(r.status===401&&skipAuthCheck&&url.split('?')[0]==='/auth/login')return await r.json();
     if(!r.ok){const message=(r.status===400||r.status===409)?await r.text():'';throw new Error(message||'HTTP '+r.status)}
     return await r.json();
   }catch(e){clearTimeout(tid);if(!skipAuthCheck&&e.name!=='Error'&&!!s_sessionToken)toast(t('tConnErr'),'err');throw e}
