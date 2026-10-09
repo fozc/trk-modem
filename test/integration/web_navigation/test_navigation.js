@@ -710,8 +710,84 @@ async function checkPage(html, label) {
         'a late status response for older desired settings must be ignored');
     assert.equal(document.getElementById('rf-status-refresh').disabled,false,
         'invalidated old reads must not leave refresh locked');
-    console.log('PASS:', label, '- navigation, RF confirmed save/sequence, faults, languages, config saves, device cache/failure');
+    for (const error of ['Invalid credentials',
+                         'Too many attempts, try again later']) {
+        document.getElementById('loginUser').value = 'admin';
+        document.getElementById('loginPass').value = 'wrong';
+        context.fetch = async () => ({ok: false, status: 401,
+            json: async () => ({success: false, error})});
+        await run('doLogin()');
+        assert.equal(document.getElementById('loginErr').textContent, error);
+    }
+    document.getElementById('loginPass').value = 'correct';
+    context.fetch = async () => ({ok: true, status: 200,
+        json: async () => ({success: true, token: 'valid', role: 'admin'})});
+    await run('doLogin()');
+    assert.equal(run('s_sessionToken'), 'valid');
+    assert.equal(run('s_role'), 'admin');
+    context.fetch = async () => ({ok: false, status: 401,
+        json: async () => {throw new Error('invalid JSON');}});
+    document.getElementById('loginPass').value = 'wrong';
+    await run('doLogin()');
+    assert.equal(document.getElementById('loginErr').textContent,
+                 run("t('tLoginFail')"));
+    assert.equal(run('s_sessionToken'), 'valid');
+    await assert.rejects(run("api('/config/device')"));
+    assert.equal(run('s_sessionToken'), null);
+    assert.equal(document.getElementById('loginModal').style.display, 'flex');
+    console.log('PASS:', label, '- navigation, RF confirmed save/sequence, faults, languages, config saves, device cache/failure, login 401');
 
+}
+
+async function checkFirmwareLogin(html, label) {
+    const elements = new Map();
+    const document = {
+        getElementById(id) {
+            if (!elements.has(id)) elements.set(id, {
+                value: '', textContent: '', style: {}, dataset: {},
+                classList: {toggle() {}, add() {}, remove() {}},
+                appendChild() {}, addEventListener() {}
+            });
+            return elements.get(id);
+        },
+        querySelectorAll: () => [], addEventListener() {},
+        createElement: () => ({}), documentElement: {}
+    };
+    const context = vm.createContext({document, console,
+        localStorage: {getItem: () => 'tr', setItem() {}},
+        sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
+        location: {search: ''}, AbortController,
+        setTimeout: () => 1, clearTimeout() {}
+    });
+    vm.runInContext(html.match(/<script[^>]*>([\s\S]*?)<\/script>/i)[1], context);
+    const run = code => vm.runInContext(code, context);
+    for (const error of ['Invalid credentials',
+                         'Too many attempts, try again later']) {
+        document.getElementById('loginUser').value = 'admin';
+        document.getElementById('loginPass').value = 'wrong';
+        context.fetch = async () => ({ok: false, status: 401,
+            json: async () => ({success: false, error})});
+        await run('doLogin()');
+        assert.equal(document.getElementById('lerr').textContent, error);
+    }
+    document.getElementById('loginPass').value = 'correct';
+    context.fetch = async url => ({ok: true, status: 200,
+        json: async () => url === '/auth/login'
+            ? {success: true, token: 'valid'} : {ready: false}});
+    await run('doLogin()');
+    assert.equal(run('s_token'), 'valid');
+    assert.equal(document.getElementById('mainCard').style.display, '');
+    document.getElementById('loginPass').value = 'wrong';
+    context.fetch = async () => ({ok: false, status: 401,
+        json: async () => {throw new Error('invalid JSON');}});
+    await run('doLogin()');
+    assert.equal(document.getElementById('lerr').textContent,
+                 run("t('connError')"));
+    assert.equal(run('s_token'), 'valid');
+    await assert.rejects(run("apiFetch('/fw_status')"));
+    assert.equal(run('s_token'), null);
+    assert.equal(document.getElementById('loginCard').style.display, '');
+    console.log('PASS:', label, '- firmware login 401, success, malformed JSON, protected endpoint');
 }
 
 (async () => {
@@ -721,4 +797,12 @@ async function checkPage(html, label) {
     const bytes = Buffer.from([...source.split('};')[0].matchAll(/0x([0-9a-f]{2})/gi)]
         .map(match => parseInt(match[1], 16)));
     await checkPage(zlib.gunzipSync(bytes).toString('utf8'), 'embedded');
+    await checkFirmwareLogin(fs.readFileSync(path.join(root,
+        'web-page/fw_update.html'), 'utf8'), 'source');
+    const firmware = fs.readFileSync(path.join(root,
+        'Application/web-server/fw_update_html.c'), 'utf8');
+    const firmwareBytes = Buffer.from([...firmware.split('};')[0]
+        .matchAll(/0x([0-9a-f]{2})/gi)].map(match => parseInt(match[1], 16)));
+    await checkFirmwareLogin(zlib.gunzipSync(firmwareBytes).toString('utf8'),
+                             'embedded');
 })().catch(error => { console.error(error); process.exitCode = 1; });

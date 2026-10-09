@@ -8,6 +8,7 @@
 #define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_http_server.h"
 #include "gsm_engine.h"
+#include "gsm_listener_process.h"
 #include "web_server.h"
 #include "index_html.h"
 #include "fw_update_html.h"
@@ -44,6 +45,7 @@ typedef struct
 	bool     rx_data_received;
 
 	bool     tx_data_ready;
+	bool     close_after_response;
 	bool     is_rfwu;  /**< True when the connection carries RFWU firmware-update traffic */
 
 	uint8_t state;
@@ -135,6 +137,7 @@ void gsm_http_server_reset(void)
 	g_http_server.rx_length = 0;
 	g_http_server.rx_data_received = false;
 	g_http_server.tx_data_ready = false;
+	g_http_server.close_after_response = false;
 	g_http_server.is_rfwu = false;
 	g_http_server.state = GSM_HTTP_SERVER_STATE_IDLE;
 
@@ -143,6 +146,7 @@ void gsm_http_server_reset(void)
 
 void gsm_http_server_init(void)
 {
+	  g_http_server.close_after_response = false;
 	  web_server_io_t wio = {0};
 	  wio.send = http_server_send; //(int (*)(const uint8_t*, int))http_server_send;
 	  web_server_init(&wio);
@@ -174,6 +178,12 @@ void gsm_http_server_init(void)
 }
 
 
+void gsm_http_server_close_after_response(void)
+{
+    g_http_server.close_after_response = true;
+    g_http_server.tx_data_ready = true;
+}
+
 void gsm_http_server_send_response(void)
 {
 	if(gsm_tx_is_ready() != 0){
@@ -186,6 +196,7 @@ void gsm_http_server_send_response(void)
 			CSLOG_ERR("[GSM HTTP SERVER] Listener socket not open, cannot send response!\r\n");
 		}
 		g_http_server.tx_data_ready = false;
+		g_http_server.close_after_response = false;
 		rbuff_clear(&tx_rb_ctx);
 		g_http_server.state = GSM_HTTP_SERVER_STATE_IDLE;
 		return;
@@ -203,6 +214,18 @@ void gsm_http_server_send_response(void)
 
     if(rbuff_available(&tx_rb_ctx) == 0)
     {
+        if (g_http_server.close_after_response)
+        {
+            /* Empty ring only means the last chunk reached gsm.tx_buff.
+             * Wait for the listener's AT result before requesting close. */
+            if (0U != gsm_tx_is_ready())
+            {
+                return;
+            }
+            g_http_server.close_after_response = false;
+            gsm_listener_socket_event_handler(GSM_LISTENER_WEB,
+                                              GSM_USER_EVENT_CLOSE_SOCKET);
+        }
 		if (!g_http_server.is_rfwu) {
 			CCSLOG(XCOLOR_GREEN, "[GSM HTTP SERVER] Response sent completely\r\n");
 		}
