@@ -47,9 +47,81 @@ void tearDown(void)
 {
 }
 
-void test_existing_fault_log_dual_copy_regressions(void)
+void test_fault_log_flush_failure_preserves_ram(void)
 {
-    TEST_ASSERT_EQUAL_INT(0, fault_log_integration_main());
+    test_flush_failure_preserves_ram();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_backup_newer_wins_after_reload(void)
+{
+    test_backup_newer_wins_after_reload();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_primary_newer_still_wins(void)
+{
+    test_primary_newer_still_wins();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_clear_keeps_deleted_records_gone(void)
+{
+    test_clear_keeps_deleted_records_gone();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_primary_failure_leaves_backup_untouched(void)
+{
+    test_primary_failure_leaves_backup_untouched();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_retry_after_backup_wipe_preserves_history(void)
+{
+    test_retry_after_backup_wipe_preserves_history();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_basic_flow_regression(void)
+{
+    test_basic_flow_regression();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_virgin_boot_writes_defaults(void)
+{
+    test_virgin_boot_writes_defaults();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_retry_reproduces_same_sequence(void)
+{
+    test_retry_reproduces_same_sequence();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_torn_repair_interrupted_twice(void)
+{
+    test_torn_repair_interrupted_twice();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
+}
+
+void test_fault_log_erase_rejection_leaves_slot_untouched(void)
+{
+    test_erase_rejection_leaves_slot_untouched();
+    TEST_ASSERT_GREATER_THAN_INT(0, passed);
+    TEST_ASSERT_EQUAL_INT(0, failed);
 }
 
 void test_source_time_and_maximum_duration_survive_flash_reload(void)
@@ -114,6 +186,93 @@ void test_dump_displays_load_present_bit_without_old_nominal_meaning(void)
     TEST_ASSERT_NOT_NULL(strstr(shell_output, "Load=0  Power=On"));
     TEST_ASSERT_NULL(strstr(shell_output, "Nominal="));
     TEST_ASSERT_NULL(strstr(shell_output, "Below"));
+}
+
+static uint32_t record_id(uint8_t feeder, uint8_t phase, size_t type,
+                            uint32_t ordinal)
+{
+    return ((uint32_t)feeder * 100000U) + ((uint32_t)phase * 1000U) +
+           ((uint32_t)type * 100U) + ordinal;
+}
+
+void test_all_feeder_phase_lists_keep_newest_fifteen_after_reload(void)
+{
+    boot_virgin();
+    const fault_log_type_t types[2] =
+        {FAULT_LOG_TYPE_TEMPORARY, FAULT_LOG_TYPE_PERMANENT};
+    for (uint8_t feeder = 0U; MAX_POWER_LINE_COUNT > feeder; feeder++)
+    {
+        for (uint8_t phase = 0U; PHASE_MAX > phase; phase++)
+        {
+            for (size_t type = 0U; 2U > type; type++)
+            {
+                for (uint32_t ordinal = 0U; 19U > ordinal; ordinal++)
+                {
+                    fault_log_t record = {0};
+                    record.info.feeder = (uint8_t)(feeder & 7U);
+                    record.info.phase = (uint8_t)(phase & 3U);
+                    record.info.type =
+                        (FAULT_LOG_TYPE_PERMANENT == types[type]);
+                    record.fault_duration_ms =
+                        record_id(feeder, phase, type, ordinal);
+                    TEST_ASSERT_TRUE(fault_log_append(&record));
+                }
+            }
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(0, fault_log_sync());
+    fault_log_init();
+    for (uint8_t feeder = 0U; MAX_POWER_LINE_COUNT > feeder; feeder++)
+    {
+        for (uint8_t phase = 0U; PHASE_MAX > phase; phase++)
+        {
+            TEST_ASSERT_EQUAL_UINT8(15U,
+                fault_log_get_temp_count(feeder, phase));
+            TEST_ASSERT_EQUAL_UINT8(15U,
+                fault_log_get_perm_count(feeder, phase));
+            for (size_t type = 0U; 2U > type; type++)
+            {
+                for (uint8_t newest = 0U; 15U > newest; newest++)
+                {
+                    fault_log_t stored;
+                    TEST_ASSERT_TRUE(fault_log_read_nth(feeder, phase,
+                        types[type], newest, &stored));
+                    TEST_ASSERT_EQUAL_UINT32(
+                        record_id(feeder, phase, type, 18U - newest),
+                        stored.fault_duration_ms);
+                }
+            }
+        }
+    }
+}
+
+void test_invalid_append_and_read_preserve_the_valid_history_and_output(void)
+{
+    boot_virgin();
+    fault_log_t record = {.fault_duration_ms = 123456U};
+    TEST_ASSERT_TRUE(fault_log_append(&record));
+    record.info.feeder = 7U;
+    TEST_ASSERT_FALSE(fault_log_append(&record));
+    record.info.feeder = 0U;
+    record.info.phase = 3U;
+    TEST_ASSERT_FALSE(fault_log_append(&record));
+    TEST_ASSERT_FALSE(fault_log_append(NULL));
+    fault_log_t output;
+    (void)memset(&output, 0xA5, sizeof(output));
+    const fault_log_t previous = output;
+    TEST_ASSERT_FALSE(fault_log_read_nth(7U, 0U,
+        FAULT_LOG_TYPE_TEMPORARY, 0U, &output));
+    TEST_ASSERT_FALSE(fault_log_read_nth(0U, 3U,
+        FAULT_LOG_TYPE_TEMPORARY, 0U, &output));
+    TEST_ASSERT_FALSE(fault_log_read_nth(0U, 0U,
+        FAULT_LOG_TYPE_TEMPORARY, 1U, &output));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+    TEST_ASSERT_EQUAL_INT(0, fault_log_sync());
+    fault_log_init();
+    TEST_ASSERT_EQUAL_UINT8(1U, fault_log_get_temp_count(0U, 0U));
+    TEST_ASSERT_TRUE(fault_log_read_nth(0U, 0U,
+        FAULT_LOG_TYPE_TEMPORARY, 0U, &output));
+    TEST_ASSERT_EQUAL_UINT32(123456U, output.fault_duration_ms);
 }
 
 /*** end of file ***/

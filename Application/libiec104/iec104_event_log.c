@@ -306,6 +306,7 @@ bool iec104_event_log_read_newest_unsent(iec104_event_record_t *out, uint16_t *s
         scanned++;
 
         evtlog_visit_t v = { .out = out, .seq = EVTLOG_SEQ_INVALID, .valid = false };
+        const log_page_ctx_t record_cursor = s_cursor;
 
         if (LOG_OK != log_read_last(&s_log, 1U, visit_one, &v, &s_cursor))
         {
@@ -339,6 +340,11 @@ bool iec104_event_log_read_newest_unsent(iec104_event_record_t *out, uint16_t *s
         {
             *seq_out = v.seq;
         }
+        /* Reads do not acknowledge delivery. Retry this record until the
+         * caller marks it sent. Unreadable newer slots were already skipped.
+         */
+        s_cursor = record_cursor;
+        s_state->unsent_high = v.seq;
         return true;
     }
 
