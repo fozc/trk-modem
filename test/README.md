@@ -265,8 +265,18 @@ sring-all-host.log`.
 | nvram | Gerçek NVRAM başlangıç ve sync | Geçti |
 | rfwu_auth | RFWU v2, nonce/MAC ve PC yardımcıları | Geçti |
 | rf_hub_sim | RF hub simülasyonu | Geçti |
+| iec104_master | Cihaz 104 kabul süiti (c104); `IEC104_DEVICE_HOST` yoksa SKIP | SKIP (hedef verilmedi) |
 | web_auth | HTTP/oturum/RNG ve log gizleme | Geçti |
 | web_navigation | Web sayfa/Save/adres davranışı | Geçti |
+| web_device | Cihaz web API (cihaz yoksa SKIP) | SKIP (cihaz yok) |
+
+`iec104_master` ve `web_device` canlı cihaz ister; cihaz/hedef
+bulunamazsa SKIP ile geçer, kabul koşusu için açık hedef gerekir
+(`IEC104_DEVICE_HOST=... ruby test/run_all.rb integration`). IEC104
+süiti `test/system/iec104_master/` içinde yaşar; kurulum (Python 3.13
+venv + pinned c104) ve vaka kataloğu
+[`system/iec104_master/README.md`](system/iec104_master/README.md)
+dosyasındadır.
 
 Host testleri MMIO (donanım register erişimi), fiziksel IRQ/DMA süresi,
 Flash güç kesintisi veya cihaz üzerinde OTA (uzaktan güncelleme) kabulünü
