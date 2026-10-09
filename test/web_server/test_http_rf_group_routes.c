@@ -21,6 +21,15 @@ uint32_t HAL_GetTick(void)
     return 0U;
 }
 
+/* W-01: http_server.c now calls this when the unauthorized streak
+ * hits the threshold; the transport tests exercise the real one. */
+static uint8_t close_after_response_calls;
+void gsm_http_server_close_after_response(void);
+void gsm_http_server_close_after_response(void)
+{
+    close_after_response_calls++;
+}
+
 #include "../../Application/web-server/http_server.c"
 
 void setUp(void)
