@@ -338,4 +338,51 @@ void test_recent_read_bounds_and_skip_preserve_output_buffer(void)
     TEST_ASSERT_EQUAL_UINT32(0U, count);
 }
 
+void test_reboot_after_torn_program_keeps_confirmed_raw_packets(void)
+{
+    for (uint32_t step = 1U; 2U >= step; step++)
+    {
+        setUp();
+        sample[51] = 1U;
+        update_crc();
+        TEST_ASSERT_TRUE(rf_event_log_append(sample, sizeof(sample)));
+        failed_program = program_calls + step;
+        sample[51] = 2U;
+        update_crc();
+        TEST_ASSERT_FALSE(rf_event_log_append(sample, sizeof(sample)));
+        failed_program = 0U;
+        TEST_ASSERT_TRUE(rf_event_log_init());
+        rf_event_record_t records[2];
+        size_t count;
+        TEST_ASSERT_TRUE(rf_event_log_read_recent(0U, 2U, records, &count));
+        TEST_ASSERT_EQUAL_size_t(1U, count);
+        TEST_ASSERT_EQUAL_UINT8(1U, records[0].data[51]);
+        sample[51] = 3U;
+        update_crc();
+        TEST_ASSERT_TRUE(rf_event_log_append(sample, sizeof(sample)));
+        TEST_ASSERT_TRUE(rf_event_log_init());
+        TEST_ASSERT_TRUE(rf_event_log_read_recent(0U, 2U, records, &count));
+        TEST_ASSERT_EQUAL_size_t(2U, count);
+        TEST_ASSERT_EQUAL_UINT8(3U, records[0].data[51]);
+        TEST_ASSERT_EQUAL_UINT8(1U, records[1].data[51]);
+    }
+}
+
+void test_corrupt_newest_outer_crc_does_not_hide_an_older_raw_packet(void)
+{
+    sample[51] = 1U;
+    update_crc();
+    TEST_ASSERT_TRUE(rf_event_log_append(sample, sizeof(sample)));
+    sample[51] = 2U;
+    update_crc();
+    TEST_ASSERT_TRUE(rf_event_log_append(sample, sizeof(sample)));
+    flash[64U + LOG_SEQ_SIZE + 20U] ^= 1U;
+    TEST_ASSERT_TRUE(rf_event_log_init());
+    rf_event_record_t records[2];
+    size_t count;
+    TEST_ASSERT_TRUE(rf_event_log_read_recent(0U, 2U, records, &count));
+    TEST_ASSERT_EQUAL_size_t(1U, count);
+    TEST_ASSERT_EQUAL_UINT8(1U, records[0].data[51]);
+}
+
 /*** end of file ***/
