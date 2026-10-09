@@ -19,7 +19,7 @@
 
 
 
-/** R1 values retain their original units and signed/float representation.
+/** R2 values retain their original units and signed/float representation.
  * is_online describes fresh communication, not breaker position.
  * trip.current_amps is the instantaneous trip value, not fault magnitude;
  * trip.timestamp_ms is reserved and must not be used as event time.
@@ -86,6 +86,22 @@ bool rf_open_trip_failure_alarm(uint8_t zone, uint8_t feeder,
  * reopen an alarm. True means durable acknowledgement is needed.
  * The last 128 identities are kept until RTU restart. */
 bool rf_handle_alarm_event(const rf_scp_event_t *event);
+/** True only for an R2 AY matching its accepted slot and unique hash. */
+bool rf_event_source_matches(const rf_scp_event_t *event);
+
+typedef struct
+{
+    uint32_t source_mismatches;
+    uint32_t epoch_duration_ms;
+    uint8_t store_reset_reason;
+    uint8_t counter_status;
+    uint8_t epoch_feeder;
+    uint8_t epoch_phases;
+} rf_service_status_t;
+
+/** Session diagnostics from durably stored records, not persistent alarms. */
+void rf_record_service_event(const rf_scp_event_t *event, bool source_matches);
+void rf_get_service_status(rf_service_status_t *out);
 
 #endif /* RF_H_ */
 

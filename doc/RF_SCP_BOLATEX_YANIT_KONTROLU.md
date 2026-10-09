@@ -1,8 +1,14 @@
 # RF-SCP BOLATeX yanıtlarının uygulama kontrolü
 
-**Sürüm:** 0.3
-**Tarih:** 07.10.2026
-**Durum:** Altı kullanıcı kararı uygulandı; üreticiye bildirilecek sapmalar ve protokol sınırları ayrı tutuldu.
+**Sürüm:** 0.4
+**Tarih:** 09.10.2026
+**Durum:** R2 uyum eklemeleri uygulandı. R1 uyumluluğu kullanıcı
+kararıyla kapsam dışıdır. Aşağıdaki R0/Ek-1 tablosu tarihsel incelemedir;
+0x48, LIVE boot sayacı, kaynak özeti ve pre-COMMIT ABORT artık R2
+özellikleridir. Güncel kaynak ve doğrulama kapsamı
+[uygulama planında](RF_SCP_MODEM_UYGULAMA_PLANI.md#r2-uyumu--09102026)
+ve [üretim raporu §10.50'de](../URETIM_HAZIRLIK_RAPORU_2026-10.md#1050-r2-rf-scp-uyumu--09102026)
+tutulur. Fiziksel R2 kabulü ayrıca gereklidir.
 
 ## Amaç
 
@@ -114,3 +120,5 @@ tutulur. Açık madde, tamamlanmış düzeltme olarak sayılmamalıdır.
 | 07.10.2026 | 0.2 | Altı kullanıcı kararının uygulanması; otomatik onay, kalıcı karma replay, SCADA alarm IOA'ları, dizi/fider sayımı ve envanter ön kontrolü |
 
 | 08.10.2026 | 0.3 | Analiz teyidi: tek EPOCH bakım tekrarı, FAILED/6 yönlendirmesi ve kapasite-bilinmiyor web uyarısı; fiziksel özel senaryo sınırı korundu |
+
+| 09.10.2026 | 0.4 | R2 uygulaması, güncel plan ve üretim kanıtına geçiş, R1 uyumluluğunun kapsam dışı bırakılması. |

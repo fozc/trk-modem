@@ -1,7 +1,11 @@
-# RF-SCP R1 modem uygulama planı
+# RF-SCP modem uygulama planı
 
 **Tarih:** 05.10.2026
-**Son güncelleme:** 08.10.2026
+**Son güncelleme:** 09.10.2026
+**Güncel kapsam:** Kullanıcı 09.10.2026 tarihinde R2 uyum eklemelerini
+onayladı ve R1 uyumluluğuna gerek olmadığını belirtti.
+Güncel davranış [R2 uyumu](#r2-uyumu--09102026) bölümündedir.
+Aşağıdaki ilk durum ve tarihli bölümler uygulama geçmişidir.
 **Durum:** Kullanıcı R1 davranışlarının uygulanmasını onayladı.
 İlk beş adımın codec, istek, açılış/envanter ve canlı veri servisleri
 tamamlandı. RF web monitorü güncel modele geçti. Altıncı adımda otomatik
@@ -1733,3 +1737,67 @@ halkası senkron Flash sırasında ayrıca dolabilir; yeni buffer veya DMA
 çözümü bu ölçüm olmadan eklenmemelidir. Tam Ceedling 1020/1020 ve son
 RF tekrar koşusu 431/431 geçti; dört üretim modülü C11 strict derlendi.
 Gerçek RF HTTP handler/staging/kayıt hata integration testleri de geçti.
+
+
+## R2 uyumu — 09.10.2026
+
+**Amaç:** 09.10.2026 üretici teslimini RTU koduna almak.
+
+**Kullanıcı kararı:** R2 eklemeleri onaylandı; R1 uyumluluğu kapsam
+dışıdır. Son grup kimliği ve restart sonrası alarm kimliği kalıcılığı
+önceki ertelemede kalır. R2.1 komutları yayımlanmadan kullanılmaz.
+
+**Kaynak:** SCP Arayüzü R2, BQ-17–20 yanıtı ve teslim e-postası.
+MH, kontrol kartındaki CC1312PSIP işlemcisidir (Modem Hub).
+
+**Uygulanan davranış:**
+
+- E1 ver=1 ve en az 39 bayt kabul eder; R2 45 baytlık gövdenin
+  bilinen ilk alanları çözülür. Ek akü ömrü baytları yok sayılır.
+  SOH FF bilinmiyor, mevcut kalite maskesiyle gösterilir.
+- Olayın 56–57. baytları EUI özeti olarak çözülür. Envanter eşleşmesi
+  ve aynı fiderde bilinen hash çakışması kontrol edilir. Doğrulanmayan
+  kayıt ham günlükte kalır; arıza/alarm listesine bağlanmaz. Atanmadan
+  yazılan 117 için envanter genelinde tek eşleşen kimlik varsa ayrı
+  atanmamış sayım korunur; mevcut faz listesi üretilmez.
+- R2 geçici sonuç 142'dir; olay 3 hiçbir dizide geçici arıza değildir.
+  Önceki algılama kaydı 142 için şart değildir. R1'in çıkarıma dayalı
+  arıza bayrakları kaldırılmıştır; faz/fider sayımı ayrıdır.
+- Depo süreklilik farkı 6 553 600 modülünde karşılaştırılır. 0x48
+  tüketmesi ilk HEAD'deki T + saklanan kayıt sayısını gönderir.
+  ACK sıra numarası doğrulanır; ERROR02 taze HEAD'e döner. Açılışta
+  HEAD + etkisiz 0x48 korunur. R1'e 0x46 dönüşü yoktur.
+- BOOT gelmeyen RTU açılışında ilk GET_STATUS hemen yapılır. Tam
+  022555bf kimliği SCP major=1 bilgisini kanıtlar; saat ve koruma
+  üzerinden envanter yüklenir. Bilinmeyen kimlikte major tahmin edilmez.
+- LIVE Boot_Counter toplam SCP gövdesinin 31–32. baytlarından çözülür.
+  Yeni açılıştaki 0 bayrağı eski alarmı çözmez. Alarm anahtarına kaynak
+  özeti eklenmiştir; boot=0 kaydı tekilleştirilmez.
+- Açık yerel WRITE grubu için operatör ABORT'u COMMIT öncesinde de
+  gönderilebilir; WRITE yanıt kaybında açıkça seçilmiş grup kullanılabilir.
+  Otomatik başka grup temizliği eklenmemiştir.
+- MH restart'ından önce gönderilmiş COMMIT'in bilinen kimliğiyle bir
+  durum sorgusu yapılır. FAILED/8 gösterilir; yeni APPLIED veya yeni
+  otomatik ayar uygulaması üretilmez. RTU restart'ında kalıcılık yoktur.
+- Powerboard E7 b4 süren komutu ayırır. FF/yayin>=1/b4=0 terminal
+  SET veya GET sonucu yanıtsız kapanır; b1/b2/b3 akıbet sırası ve
+  beş dakikalık üst süre kontrolü korunur.
+- Seçili fider web ayrıntısı açılış sayacını, RTU oturumundaki kaynak
+  uyuşmazlıklarını ve son 138/143/201 bakım gözlemlerini gösterir.
+  Bunlar kalıcı alarm/onay geçmişi değildir. Toplu 21 faz yanıtına
+  bu ayrıntılar eklenmez; mevcut HTTP tampon sınırı korunur.
+
+**Doğrulama:** 1038/1038 merkezi Ceedling testi geçti. R2 simülatörü
+69 davranış, 9 kimlik ve 9 koşu-sonucu testini geçti. Kaynak ve gömülü web
+navigation (sayfa geçişi) paketi geçti. 10 değişen production (ürün)
+modülü Cortex-M33 C11, Werror/Wformat=2 dahil sıkı seçeneklerle derlendi.
+Artımlı Release derlemesi ve bağlama geçti. Web sürümü 1.4.9.
+
+**Sınırlar:** R1 CSV'leri tarihsel çerçeve/alan test girdisi olarak
+korundu; R2 biçimine çevrilen test girdileri test içinde açıkça
+oluşturulur. Simülatör sonuçları fiziksel RF sürelerini kanıtlamaz.
+Gerçek R2 MH/AY, SCADA uçtan uca, enerji kesintisi ve üreticinin
+17 fiziksel tekrar sınavı bu turda yapılmadı. Cihaza yükleme veya
+Git commit yapılmadı. NVRAM/Flash/linker yerleşimi değişmedi.
+
+**Kanıt:** [Üretim raporu §10.50](../URETIM_HAZIRLIK_RAPORU_2026-10.md#1050-r2-rf-scp-uyumu--09102026).

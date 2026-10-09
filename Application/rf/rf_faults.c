@@ -22,8 +22,6 @@ typedef struct
     uint32_t uptime_sec;
     uint8_t zone;
     bool has_event;
-    bool breaker_opened;
-    bool permanent;
     uint8_t eui64[8];
 } fault_sequence_t;
 
@@ -40,15 +38,12 @@ typedef struct
 static fault_sequence_t sequences[RF_FEEDERS][3];
 static rf_fault_stats_t stats[RF_ZONES][RF_FEEDERS + 1U];
 static fault_opening_t openings[RF_OPENINGS];
-static bool permanent_feeders[RF_ZONES][RF_FEEDERS];
-static cp56time2a_t permanent_time[RF_ZONES][RF_FEEDERS];
 static size_t opening_count;
 static size_t opening_next;
 
 void rf_faults_reset_sequences(void)
 {
     (void)memset(sequences, 0, sizeof(sequences));
-    (void)memset(permanent_feeders, 0, sizeof(permanent_feeders));
 }
 
 void rf_faults_init(void)
@@ -132,66 +127,30 @@ static bool is_sequence_event(uint8_t event)
         case 100U:
         case 101U:
         case 104U:
+        case 106U:
+        case 117U:
+        case 141U:
+        case 142U:
             return true;
         default:
             return false;
     }
 }
 
-static rf_fault_class_t classify_sequence(const rf_scp_event_t *event,
-                                           fault_sequence_t *sequence)
+static rf_fault_class_t classify_event(uint8_t event)
 {
-    rf_fault_class_t type = RF_FAULT_NONE;
-    bool *permanent = &permanent_feeders[event->zone][event->feeder - 1U];
-    cp56time2a_t time;
-    (void)memcpy(&time, event->timestamp, sizeof(time));
-    switch (event->event)
+    switch (event)
     {
-        case 4U:
-        case 5U:
-            if ((1U == event->clock_quality) && cp56time2a_is_valid(&time) &&
-                (!*permanent || !cp56time2a_is_valid(
-                    &permanent_time[event->zone][event->feeder - 1U]) ||
-                    (0 < cp56time2a_diff_ms(&time,
-                    &permanent_time[event->zone][event->feeder - 1U]))))
-            {
-                *permanent = false;
-            }
-            sequence->breaker_opened = false;
-            sequence->permanent = false;
-            break;
-        case 0U:
-        case 104U:
-            *permanent = false;
-            sequence->breaker_opened = false;
-            sequence->permanent = false;
-            break;
-        case 6U:
-            sequence->breaker_opened = true;
-            break;
         case 1U:
         case 7U:
         case 100U:
         case 101U:
-            *permanent = true;
-            time.iv_bit = (1U != event->clock_quality) ||
-                          !cp56time2a_is_valid(&time);
-            permanent_time[event->zone][event->feeder - 1U] = time;
-            sequence->permanent = true;
-            type = RF_FAULT_PERMANENT;
-            break;
-        case 3U:
-            if (sequence->breaker_opened && !sequence->permanent && !*permanent)
-            {
-                type = RF_FAULT_TEMPORARY;
-            }
-            sequence->breaker_opened = false;
-            sequence->permanent = false;
-            break;
+            return RF_FAULT_PERMANENT;
+        case 142U:
+            return RF_FAULT_TEMPORARY;
         default:
-            break;
+            return RF_FAULT_NONE;
     }
-    return type;
 }
 
 rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
@@ -228,8 +187,6 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
          (sequence->boot_counter != event->boot_counter)))
     {
         sequence->has_event = false;
-        sequence->breaker_opened = false;
-        sequence->permanent = false;
     }
     if (sequence->has_event && (sequence->uptime_sec > event->uptime_sec))
     {
@@ -241,7 +198,7 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
     sequence->zone = event->zone;
     sequence->boot_counter = event->boot_counter;
     sequence->uptime_sec = event->uptime_sec;
-    rf_fault_class_t type = classify_sequence(event, sequence);
+    rf_fault_class_t type = classify_event(event->event);
     if (RF_FAULT_NONE != type)
     {
         const bool opened = count_opening(event, type);

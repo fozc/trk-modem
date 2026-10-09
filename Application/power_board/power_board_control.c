@@ -297,7 +297,8 @@ bool power_board_handle_command_result(const rf_scp_message_t *message)
         status.command_state = POWER_COMMAND_REJECTED;
         awaiting_command = false;
     }
-    else if (((SCP_TYPE_SET == message->type) && (2U <= status.transmissions)) ||
+    else if (((0U == (status.command_flags & 0x10U)) &&
+              (1U <= status.transmissions)) ||
              ((SCP_TYPE_ACK == message->type) &&
               (300000U <= (uint32_t)(HAL_GetTick() - command_ack_ms))))
     {

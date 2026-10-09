@@ -60,7 +60,7 @@ void test_breaker_opening_then_recovery_is_one_temporary_fault(void)
 {
     TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, classify(5U, 1U, 10000U));
     TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, classify(6U, 1U, 11000U));
-    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, classify(3U, 1U, 30000U));
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, classify(142U, 1U, 30000U));
     TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).temporary);
     TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, classify(3U, 1U, 30000U));
 }
@@ -130,7 +130,7 @@ void test_unknown_diagnostic_does_not_erase_a_valid_fault_sequence(void)
     rf_scp_event_t unknown = {.event = 255U, .zone = 1U,
         .feeder = 1U, .phase = 1U};
     TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, rf_faults_classify(&unknown));
-    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, classify(3U, 1U, 30000U));
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, classify(142U, 1U, 30000U));
 }
 
 void test_unassigned_117_has_a_separate_count_and_no_assigned_feeder(void)
@@ -167,7 +167,7 @@ void test_unreliable_permanent_time_cannot_block_a_new_valid_sequence(void)
     event.clock_quality = 1U;
     (void)classify(5U, 1U, 10000U);
     (void)classify(6U, 1U, 11000U);
-    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, classify(3U, 1U, 30000U));
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, classify(142U, 1U, 30000U));
     TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).temporary);
     TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
 }
@@ -179,6 +179,19 @@ void test_valid_newer_permanent_time_survives_an_older_detection(void)
     (void)classify(6U, 1U, 11000U);
     TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, classify(3U, 1U, 30000U));
     TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).temporary);
+}
+
+void test_r2_event_three_never_creates_a_temporary_fault(void)
+{
+    (void)classify(6U, 1U, 10000U);
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, classify(3U, 1U, 30000U));
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).temporary);
+}
+
+void test_r2_142_is_a_result_without_prior_detection(void)
+{
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, classify(142U, 1U, 30000U));
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).temporary);
 }
 
 /*** end of file ***/

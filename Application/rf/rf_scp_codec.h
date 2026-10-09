@@ -5,7 +5,7 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * Stateless R1 request validation and inbound payload decoding.
+ * Stateless R2 request validation and inbound payload decoding.
  */
 
 #ifndef RF_SCP_CODEC_H
@@ -39,6 +39,7 @@ typedef struct
     bool trip_failed;
     uint8_t log_pending;
     uint8_t log_wrap_low;
+    uint16_t boot_counter;
 } rf_scp_live_t;
 
 typedef struct
@@ -125,6 +126,7 @@ typedef struct
     uint16_t boot_counter;
     uint32_t uptime_sec;
     uint8_t clock_quality;
+    uint16_t src_eui_hash;
     uint16_t crc;
 } rf_scp_event_t;
 
@@ -172,6 +174,7 @@ typedef struct
         {
             uint16_t tail;
             uint16_t left;
+            uint32_t tail_seq;
         } log_consume;
         struct
         {
@@ -239,6 +242,8 @@ rf_cmd_status_t rf_scp_decode_message(const scp_packet_t *packet,
 rf_cmd_status_t rf_scp_decode_event(const uint8_t *data, size_t length,
                                     rf_scp_event_t *out);
 rf_cmd_status_t rf_scp_validate_config(const uint8_t *data, size_t length);
+/** R2 source summary: CCITT-FALSE over MSB-first EUI-64; zero maps to FFFF. */
+uint16_t rf_scp_eui_hash(const uint8_t *eui64);
 
 #ifdef __cplusplus
 }

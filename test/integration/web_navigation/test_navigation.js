@@ -102,6 +102,13 @@ async function checkPage(html, label) {
         assert.ok(maintenance.includes(language==='tr'
             ? 'Bakım gerekli' : 'Maintenance required'));
         assert.ok(maintenance.includes(`<td>${energyLabel}</td><td>1</td>`));
+        const service=run(`buildRfMonitorTable({Phases:[],Maintenance:{
+            SourceMismatches:2,StoreResetReason:3,CounterStatus:4,
+            EpochFeeder:1,EpochPhases:7,EpochDurationMs:19600}})`);
+        assert.ok(service.includes(language==='tr'?'servis silmesi':'service clear'));
+        assert.ok(service.includes('143/4'));
+        assert.ok(service.includes('19600 ms'));
+        assert.ok(service.includes(language==='tr'?'doğrulanamayan 2':'2 events'));
         for(const unavailable of ['Online:false','Online:true,UptimeStalled:true']){
             const stale=run(`buildRfMonitorTable({Phases:[
                 {HasData:true,${unavailable},Live:{Irms:9.75,Temp:300}}]})`);

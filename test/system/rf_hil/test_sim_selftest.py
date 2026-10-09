@@ -419,7 +419,7 @@ class EventRingTests(unittest.TestCase):
         self.assertEqual(0, h.hub.total)
         self.assertEqual(0, h.hub.pending_count())
 
-    def test_stale_cursor_can_consume_records_not_read_by_rtu(self):
+    def test_r2_stale_ordinal_cannot_consume_unread_records(self):
         h = HubHarness()
         upload_inventory(h)
         h.hub.add_events(99, code=1, line=1)
@@ -427,12 +427,40 @@ class EventRingTests(unittest.TestCase):
         self.assertEqual(len(h.replies()[-1].data), 60)
         h.hub.add_events(2, code=1, line=1)
         self.assertEqual(h.hub.tail(), 2)
-        # Old target 1 now equals head. Current MH accepts it and drops all
-        # 99 unread records; the RTU's fresh HEAD check must prevent this.
-        h.request(0x46, sc.TYPE_SET, struct.pack("<H", 1), seq=201)
+        h.request(0x48, sc.TYPE_SET, struct.pack("<I", 1), seq=201)
         reply = h.replies()[-1]
-        self.assertEqual(reply.type, sc.TYPE_ACK)
-        self.assertEqual(struct.unpack("<HH", reply.data), (1, 0))
+        self.assertEqual(reply.type, sc.TYPE_ERROR)
+        self.assertEqual(reply.data, bytes([sc.ERR_INVALID_PARAM]))
+        self.assertEqual(h.hub.pending_count(), 99)
+
+    def test_r2_conditional_consume_repeat_and_reset_lock(self):
+        h = HubHarness()
+        upload_inventory(h)
+        h.hub.add_events(3)
+        for seq in (201, 202):
+            h.request(0x48, sc.TYPE_SET, struct.pack("<I", 2), seq=seq)
+            self.assertEqual(struct.unpack("<HHI", h.replies()[-1].data),
+                             (2, 1, 2))
+        h.hub.consume_locked = True
+        h.request(0x48, sc.TYPE_SET, struct.pack("<I", 3), seq=203)
+        self.assertEqual(h.replies()[-1].data, bytes([sc.ERR_INVALID_PARAM]))
+        self.assertEqual(h.hub.pending_count(), 1)
+        h.request(0x40, sc.TYPE_GET, b"", seq=204)
+        h.request(0x48, sc.TYPE_SET, struct.pack("<I", 3), seq=205)
+        self.assertEqual(struct.unpack("<HHI", h.replies()[-1].data),
+                         (3, 0, 3))
+
+    def test_r2_range_stops_at_head_and_preserves_source_hash(self):
+        h = HubHarness()
+        upload_inventory(h)
+        h.hub.add_events(1, line=1, phase=1)
+        h.request(0x44, sc.TYPE_GET, struct.pack("<HH", 0, 4), seq=201)
+        body = h.replies()[-1].data
+        self.assertEqual(len(body), 60)
+        expected = sc.crc16_ccitt_false(make_eui(1, 1)) or 0xFFFF
+        self.assertEqual(struct.unpack_from("<H", body, 56)[0], expected)
+        h.request(0x44, sc.TYPE_GET, struct.pack("<HH", 1, 1), seq=202)
+        self.assertEqual(h.replies()[-1].data, bytes([sc.ERR_RECORD_INVALID]))
 
     def test_pull_loop_math(self):
         h = HubHarness()
@@ -453,8 +481,9 @@ class EventRingTests(unittest.TestCase):
         self.assertEqual((tail, left), (4, 3))
         h.request(0x46, sc.TYPE_SET, struct.pack("<H", 2), seq=63)
         reply = h.replies()[-1]
-        self.assertEqual(reply.type, sc.TYPE_ACK)
-        self.assertEqual(struct.unpack("<HH", reply.data), (2, 5))
+        self.assertEqual(reply.type, sc.TYPE_ERROR)
+        self.assertEqual(reply.data, bytes([sc.ERR_INVALID_PARAM]))
+        self.assertEqual(h.hub.pending_count(), 3)
         h.request(0x46, sc.TYPE_SET, struct.pack("<H", 100), seq=64)
         err = h.replies()[-1]
         self.assertEqual(err.data[0], 0x02)
@@ -479,8 +508,9 @@ class EventRingTests(unittest.TestCase):
             batch = h.replies()[-1]
             self.assertEqual(len(batch.data) // 60, count)
             consumed += count
-            h.request(0x46, sc.TYPE_SET,
-                      struct.pack("<H", (tail + count) % 100), seq=seq)
+            h.request(0x48, sc.TYPE_SET,
+                      struct.pack("<I", h.hub.consumed + count), seq=seq)
+            self.assertEqual(h.replies()[-1].type, sc.TYPE_ACK)
             seq += 1
         self.assertEqual(consumed, 99)
         self.assertEqual(h.hub.pending_count(), 0)
@@ -518,6 +548,16 @@ class EventRingTests(unittest.TestCase):
 
 
 class ConfigGroupTests(unittest.TestCase):
+
+    def test_r2_precommit_abort_closes_members_without_rf_commit(self):
+        h = HubHarness()
+        upload_inventory(h)
+        h.request(0x22, sc.TYPE_SET,
+                  make_eui(1, 1) + self.make_block(), seq=230)
+        h.request(0x26, sc.TYPE_SET, bytes([9]), seq=231)
+        self.assertEqual(h.replies()[-1].type, sc.TYPE_ACK)
+        h.request(0x28, sc.TYPE_GET, bytes([9]), seq=232)
+        self.assertEqual(h.replies()[-1].data[:4], bytes([9, 4, 1, 10]))
 
     def test_first_write_forgets_previous_commit_identity(self):
         h = HubHarness()
@@ -658,12 +698,11 @@ class ConfigGroupTests(unittest.TestCase):
         h.hub.reboot()
         h.request(0x28, sc.TYPE_GET, bytes([7]), seq=210)
         reply = h.replies()[-1]
-        self.assertEqual((reply.type, reply.data[0]), (sc.TYPE_ERROR, 0x02))
-        h.request(0x28, sc.TYPE_GET, bytes([0]), seq=211)
-        reply = h.replies()[-1]
-        self.assertEqual(reply.data[0], 0)
+        self.assertEqual((reply.type, reply.data[0]), (sc.TYPE_ACK, 7))
         self.assertEqual(reply.data[1], hm.GROUP_FAILED)
         self.assertEqual(reply.data[3], 8)
+        h.request(0x28, sc.TYPE_GET, bytes([0]), seq=211)
+        self.assertEqual(h.replies()[-1].data, bytes([sc.ERR_INVALID_PARAM]))
         notifies = [p for (_, p, k) in h.sent if k == "notify"]
         self.assertTrue(any(p.cmd == 0x12 and p.data[1] == 2
                             for p in notifies))
@@ -744,7 +783,7 @@ class PwrbTests(unittest.TestCase):
         h.advance(400)
         results = h.notifies(0xE7)
         self.assertEqual(len(results), 2)
-        self.assertEqual(results[0].data[2:5], bytes([0xFF, 1, 0]))
+        self.assertEqual(results[0].data[2:5], bytes([0xFF, 1, 0x10]))
         self.assertEqual(results[1].data[2], 0x00)
         self.assertEqual(results[1].data[4], 0x08)  # verified bit
 

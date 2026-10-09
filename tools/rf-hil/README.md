@@ -110,7 +110,9 @@ python test/system/rf_hil/run_hil.py --rf-port COM10 --console COM16
 
 - `tools/rf-hub-sim/` (eski C araci) guncel protokol icin referans
   DEGILDIR; bu arac onun yerine gecti.
-- Protokol referansi Teslim4 R1, ornek CSV'ler ve 07.10.2026 tarihli
-  BOLATeX R0/Ek-1 yanitlaridir. Planlanan firmware ozellikleri bugunku
+- Protokol referansi 09.10.2026 SCP arayuzu R2 ve BQ-17-20 yanitidir.
+  R1 CSV'leri yalniz tarihsel wire test girdileridir. R2 modelinde 0x48,
+  head'de kesilen RANGE, EUI ozeti, LIVE boot sayaci, 45 B E1, E7 b4,
+  pre-COMMIT ABORT ve korunmus grup kimligi sinanir. Planlanan firmware ozellikleri bugunku
   davranis yerine uygulanmaz. Ayrintili kontrol:
   [RF-SCP yanıt kontrolü](../../doc/RF_SCP_BOLATEX_YANIT_KONTROLU.md).

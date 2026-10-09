@@ -4,7 +4,11 @@
 
 **Tarih:** 08.10.2026
 
-**Durum:** BQ-01–16 yanıtları alındı. BQ-17–20 açık. Bildirimler RTU tarafında uygulanan tercihleri anlatır.
+**Durum:** BQ-01–20 yanıtları alındı. Aşağıdaki 08.10.2026 soru ve
+bildirim metni gönderim geçmişidir. 09.10.2026 yanıtının güncel uygulama
+durumu [R2 uygulama planında](RF_SCP_MODEM_UYGULAMA_PLANI.md#r2-uyumu--09102026)
+ve [R2 analizinde](BOLATEX_R2_DURUM_ANALIZI_2026-10-09.md) tutulur.
+R2.1 önerileri yayımlanmış özellik değildir.
 
 ## Amaç
 
@@ -66,7 +70,7 @@ bildirimler bölümünde tam olarak verilmiştir.
 
 ### BQ-17 — RTU tek başına yeniden başladığında yeniden kurulum
 
-**Durum:** [AÇIK] Yanıt bekleniyor.
+**Durum:** 09.10.2026 üretici yanıtı alındı. Aşağıdaki metin önceki gönderimin sorusudur.
 
 **Kaynak:** R1 §1.1, §1.10 ve §4.3.
 
@@ -101,7 +105,7 @@ mevcut bench kurtarma yoludur; kalıcı çözüm olarak sunulmaz.
 
 ### BQ-18 — Normal sayaç taşması ile olay deposu resetinin ayrımı
 
-**Durum:** [AÇIK] Yanıt bekleniyor.
+**Durum:** 09.10.2026 üretici yanıtı alındı. Aşağıdaki metin önceki gönderimin sorusudur.
 
 **Kaynak:** R0 BQ-05; HEAD içindeki total u32 ve wrap u16.
 
@@ -123,7 +127,7 @@ bir kurtarma algoritması eklenmemiştir.
 
 ### BQ-19 — Boot counter sıfırken alarm tekilleştirmesi
 
-**Durum:** [AÇIK] Yanıt bekleniyor.
+**Durum:** 09.10.2026 üretici yanıtı alındı. Aşağıdaki metin önceki gönderimin sorusudur.
 
 **Kaynak:** R0 BQ-03 ile Ek-1 BQ-16.
 
@@ -148,7 +152,7 @@ veya kalıcı onay geçmişi garantisi verilmez.
 
 ### BQ-20 — Eksik olay dizisi ve başka fazdan geç gelen kayıt
 
-**Durum:** [AÇIK] Yanıt bekleniyor.
+**Durum:** 09.10.2026 üretici yanıtı alındı. Aşağıdaki metin önceki gönderimin sorusudur.
 
 **Kaynak:** R0 BQ-10 sınıflaması ve BQ-03 halka kayıp sınırı.
 
