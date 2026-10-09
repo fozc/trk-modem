@@ -35,12 +35,27 @@ class Ctx:
 
 
 def _rx_frames(master, t0):
-    """All recorded rx frames at/after t0 with a parsed I-frame ASDU."""
+    """Rx I-frames at/after t0 WITH a decoded ASDU.
+
+    Malformed I-frames (undecodable ASDU) are skipped here; they stay in
+    the JSONL evidence but must never crash downstream indexing.
+    """
     result = []
     for frame in master.since(t0):
-        if frame[1] == "rx" and frame[3] and frame[3].get("kind") == "I":
+        if (frame[1] == "rx" and frame[3]
+                and frame[3].get("kind") == "I"
+                and frame[3].get("asdu")):
             result.append(frame)
     return result
+
+
+def _ic_confirm(frame, cot, qoi):
+    """C_IC_NA_1 confirm predicate safe against object-less ASDUs
+    (count=0, SQ=1 or truncated bodies carry no objects key)."""
+    if not is_i_asdu(frame, "rx", apdu.TYPE_C_IC_NA_1, cot=cot, pn=0):
+        return False
+    objects = frame[3]["asdu"].get("objects") or []
+    return bool(objects) and objects[0].get("qoi") == qoi
 
 
 def _collect_interrogation(master, t0, qoi, data_deadline_s=30.0):
@@ -51,15 +66,11 @@ def _collect_interrogation(master, t0, qoi, data_deadline_s=30.0):
     spontaneous frames (COT outside 20..24) in the window. Structural
     validation of CA/COT/type happens in _check_gi_frames.
     """
-    ok, con = master.wait(
-        lambda f: is_i_asdu(f, "rx", apdu.TYPE_C_IC_NA_1, cot=7, pn=0)
-        and f[3]["asdu"]["objects"][0]["qoi"] == qoi, 12.0, t0=t0)
+    ok, con = master.wait(lambda f: _ic_confirm(f, 7, qoi), 12.0, t0=t0)
     if not ok:
         return False, {"stage": "ACT_CON", "qoi": qoi}
-    ok, term = master.wait(
-        lambda f: is_i_asdu(f, "rx", apdu.TYPE_C_IC_NA_1, cot=10, pn=0)
-        and f[3]["asdu"]["objects"][0]["qoi"] == qoi, data_deadline_s,
-        t0=con[0])
+    ok, term = master.wait(lambda f: _ic_confirm(f, 10, qoi),
+                           data_deadline_s, t0=con[0])
     if not ok:
         return False, {"stage": "ACT_TERM", "qoi": qoi}
     window = [f for f in _rx_frames(master, t0)
@@ -319,6 +330,7 @@ def i04_clock_sync(ctx):
     if ctx.console is None:
         return "SKIP", ["--clock-sync icin --console gerekli"]
     t0 = time.monotonic()
+    pre_stamp = console_io.latest_console_time(ctx.console)
     if not ctx.master.clock_sync():
         return "FAIL", ["clock_sync() gonderilemedi"]
     ok, con = ctx.master.wait(
@@ -344,6 +356,10 @@ def i04_clock_sync(ctx):
     if stamp is None:
         return "FAIL", ["apply dogrulamasi icin zaman damgali konsol "
                         "satiri gorulmedi"]
+    if stamp == pre_stamp:
+        return "FAIL", ["senkron sonrasi YENI zaman damgali konsol satiri "
+                        "gelmedi (eski damga %s ile karsilastirma "
+                        "anlamsiz)" % (stamp,)]
     import calendar
     import datetime
     sent_epoch = calendar.timegm(
@@ -520,7 +536,7 @@ def i06_replay_reconnect(ctx):
         return "FAIL", ["yeniden baglanilamadi (STARTDT_CON yok)"]
     ok, first = ctx.master.wait(
         lambda f: f[1] == "rx" and f[3] and f[3].get("kind") == "I"
-        and f[3].get("asdu", {}).get("cot") == 3, 30.0, t0=t0)
+        and (f[3].get("asdu") or {}).get("cot") == 3, 30.0, t0=t0)
     if not ok:
         return "FAIL", ["replay baslamadi (30 s, 15 s fallback timer "
                         "asildi olmali)"]
@@ -531,7 +547,7 @@ def i06_replay_reconnect(ctx):
         ok, frame = ctx.master.wait(
             lambda f: f[1] == "rx" and f[3] and
             f[3].get("kind") == "I" and
-            f[3].get("asdu", {}).get("cot") == 3, 6.0,
+            (f[3].get("asdu") or {}).get("cot") == 3, 6.0,
             t0=last + 0.001)
         if not ok:
             break
