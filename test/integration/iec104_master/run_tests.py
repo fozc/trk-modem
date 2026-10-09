@@ -4,7 +4,8 @@
 The suite itself lives in test/system/iec104_master/ (device/network
 tests belong there per test/README.md layout rules). This wrapper:
 
-- ALWAYS runs the hardware-less APDU golden self-test (13 checks);
+- ALWAYS runs the hardware-less self-tests (14 APDU golden checks +
+  5 case-level regression checks incl. the wrong-CA/COT/type repro);
 - IEC104_DEVICE_HOST (or argv[1]) unset  -> device suite SKIPs, exit 0;
 - set -> delegate to the system suite, preferring its .venv python
   (c104 lives only there; never installed into the system python).
@@ -33,9 +34,11 @@ def suite_python():
 
 
 def main():
-    selftest = subprocess.call([sys.executable, str(SELFTEST)])
-    if selftest:
-        return 1
+    for selftest in (SELFTEST,
+                     SYSTEM / "test_cases_selftest.py"):
+        result = subprocess.call([sys.executable, str(selftest)])
+        if result:
+            return 1
 
     host = (len(sys.argv) > 1 and sys.argv[1]) or \
         os.environ.get("IEC104_DEVICE_HOST")

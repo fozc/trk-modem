@@ -46,9 +46,10 @@ def _rx_frames(master, t0):
 def _collect_interrogation(master, t0, qoi, data_deadline_s=30.0):
     """Wait ACT_CON -> data* -> ACT_TERM for one interrogation.
 
-    Data frames are the rx I-frames between con and term with type
-    30/36 AND an interrogated COT (20..24) - spontaneous (COT=3)
-    traffic such as pending replay must not pollute the set checks.
+    Returns con/term frames, the GI data frames (type 30/36 with an
+    interrogated COT 20..24 between con and term) and any concurrent
+    spontaneous frames (COT outside 20..24) in the window. Structural
+    validation of CA/COT/type happens in _check_gi_frames.
     """
     ok, con = master.wait(
         lambda f: is_i_asdu(f, "rx", apdu.TYPE_C_IC_NA_1, cot=7, pn=0)
@@ -61,12 +62,46 @@ def _collect_interrogation(master, t0, qoi, data_deadline_s=30.0):
         t0=con[0])
     if not ok:
         return False, {"stage": "ACT_TERM", "qoi": qoi}
-    data = [f for f in _rx_frames(master, t0)
-            if con[0] <= f[0] <= term[0]
-            and f[3]["asdu"]["type"] in (apdu.TYPE_M_ME_TF_1,
-                                         apdu.TYPE_M_SP_TB_1)
-            and 20 <= f[3]["asdu"]["cot"] <= 24]
-    return True, {"con": con, "term": term, "data": data}
+    window = [f for f in _rx_frames(master, t0)
+              if con[0] <= f[0] <= term[0]
+              and f[3]["asdu"]["type"] in (apdu.TYPE_M_ME_TF_1,
+                                           apdu.TYPE_M_SP_TB_1)]
+    data = [f for f in window if 20 <= f[3]["asdu"]["cot"] <= 24]
+    concurrent = [f for f in window if not 20 <= f[3]["asdu"]["cot"] <= 24]
+    return True, {"con": con, "term": term, "data": data,
+                  "concurrent": concurrent}
+
+
+def _check_gi_frames(detail, qoi, ca, currents, states):
+    """Strict GI response validation.
+
+    Every data frame must carry the expected common address, the
+    query-specific interrogated COT (20 for station, the group number
+    itself for groups) and the type matching each IOA family: current
+    points are M_ME_TF_1 measurements, state points are M_SP_TB_1.
+    Returns None when valid, else a failure string.
+    """
+    expected_cot = 20 if qoi == 20 else qoi
+    for frame in detail["data"]:
+        asdu = frame[3]["asdu"]
+        if asdu["ca"] != ca:
+            return "CA=%s (beklenen %d, tip=%s cot=%s)" % (
+                asdu["ca"], ca, asdu["type"], asdu["cot"])
+        if asdu["cot"] != expected_cot:
+            return "COT=%s (beklenen %d, sorgu=%d)" % (
+                asdu["cot"], expected_cot, qoi)
+        if qoi in (20, 21, 22):
+            for obj in asdu.get("objects", []):
+                ioa = obj["ioa"]
+                if ioa in currents and asdu["type"] != \
+                        apdu.TYPE_M_ME_TF_1:
+                    return "akim IOA %d tip %s (beklenen olcum 36)" % (
+                        ioa, asdu["type"])
+                if ioa in states and asdu["type"] != \
+                        apdu.TYPE_M_SP_TB_1:
+                    return "durum IOA %d tip %s (beklenen 30)" % (
+                        ioa, asdu["type"])
+    return None
 
 
 def _ioas(frames):
@@ -141,22 +176,31 @@ def i02_gi_station(ctx):
     ok, detail = _collect_interrogation(ctx.master, t0, 20)
     if not ok:
         return "FAIL", ["QOI=20 %s gelmedi" % detail["stage"]]
+    ca = ctx.oracle["ca"]
+    failure = _check_gi_frames(detail, 20, ca, ctx.expected["group1"],
+                               ctx.expected["group2"])
+    if failure:
+        return "FAIL", ["GI cevabi yapisi gecersiz: %s" % failure]
     got = _ioas(detail["data"])
     if got != station_set:
         missing = sorted(station_set - got)
         extra = sorted(got - station_set)
         return "FAIL", [
             "IOA kumesi eslesmedi: eksik=%s fazla=%s" % (missing, extra)]
-    cots = sorted({f[3]["asdu"]["cot"] for f in detail["data"]})
-    if not all(20 <= cot <= 24 for cot in cots):
-        return "FAIL", ["interrogated COT bekleniyor, gelen=%s" % cots]
     lines = ["ACT_CON -> %d veri cercevesi -> ACT_TERM sirasi tamam" %
              len(detail["data"]),
-             "IOA kumesu tam (%d nokta)" % len(station_set),
-             "COT degerleri=%s" % cots]
+             "IOA kumesu tam (%d nokta), CA=%d, COT=20" %
+             (len(station_set), ca)]
+    if detail["concurrent"]:
+        lines.append("pencerede es zamanli spontane=%d (set disi "
+                     "tutuldu)" % len(detail["concurrent"]))
     # Quality per plan item 5: expectation follows the bench RF state.
     quals = _qualities(detail["data"])
     currents = ctx.expected["group1"]
+    measured_currents = [ioa for ioa in quals if ioa in currents]
+    if not measured_currents:
+        return "FAIL", ["akim noktalari olcum (M_ME_TF_1) olarak "
+                        "gelmedi - kalite kontrolu bos gecemaz"]
     rf_online = ctx.console_state.get("rf_online")
     if rf_online is False:
         bad = {ioa: q for ioa, q in quals.items()
@@ -171,8 +215,8 @@ def i02_gi_station(ctx):
                 key = ("iv" if q["qds"]["iv"] else "") + \
                       ("nt" if q["qds"]["nt"] else "") or "clean"
                 summary[key] = summary.get(key, 0) + 1
-        lines.append("akim kalite dagilimi=%s (rf_online=%s)" %
-                     (summary, rf_online))
+        lines.append("akim kalite dagilimi=%s (rf_online=%s; yalniz "
+                     "rapor, kabul maddesi degil)" % (summary, rf_online))
     return "PASS", lines
 
 
@@ -201,6 +245,7 @@ def i03_gi_groups(ctx):
     if not ctx.expected["station"]:
         return "SKIP", ["aktif hat yok (i02 ile ayni kosul)"]
     lines = []
+    ca = ctx.oracle["ca"]
     for qoi, expected in ((21, ctx.expected["group1"]),
                           (22, ctx.expected["group2"])):
         t0 = time.monotonic()
@@ -209,13 +254,20 @@ def i03_gi_groups(ctx):
         ok, detail = _collect_interrogation(ctx.master, t0, qoi)
         if not ok:
             return "FAIL", ["QOI=%d %s gelmedi" % (qoi, detail["stage"])]
+        failure = _check_gi_frames(detail, qoi, ca,
+                                   ctx.expected["group1"],
+                                   ctx.expected["group2"])
+        if failure:
+            return "FAIL", ["QOI=%d cevap yapisi gecersiz: %s" %
+                            (qoi, failure)]
         got = _ioas(detail["data"])
         if got != expected:
             return "FAIL", ["QOI=%d kume eslesmedi: eksik=%s fazla=%s" %
                             (qoi, sorted(expected - got),
                              sorted(got - expected))]
-        lines.append("QOI=%d: ACT_CON -> %d cerceve -> ACT_TERM, kume tam"
-                     % (qoi, len(detail["data"])))
+        lines.append("QOI=%d: ACT_CON -> %d cerceve -> ACT_TERM, kume "
+                     "tam (CA=%d, COT=%d)" % (qoi, len(detail["data"]),
+                                              ca, qoi))
     ranges = _fault_space_ranges(ctx)
     for qoi in (23, 24):
         t0 = time.monotonic()
@@ -226,6 +278,12 @@ def i03_gi_groups(ctx):
         if not ok:
             return "FAIL", ["QOI=%d %s gelmedi (45 s)" %
                             (qoi, detail["stage"])]
+        failure = _check_gi_frames(detail, qoi, ca,
+                                   ctx.expected["group1"],
+                                   ctx.expected["group2"])
+        if failure:
+            return "FAIL", ["QOI=%d cevap yapisi gecersiz: %s" %
+                            (qoi, failure)]
         data_types = {f[3]["asdu"]["type"] for f in detail["data"]}
         if not data_types <= {apdu.TYPE_M_ME_TF_1, apdu.TYPE_M_SP_TB_1}:
             return "FAIL", ["QOI=%d beklenmedik tip: %s" %
@@ -293,8 +351,9 @@ def i04_clock_sync(ctx):
     device_epoch = calendar.timegm(datetime.datetime(*stamp).timetuple())
     drift = abs(device_epoch - sent_epoch)
     lines.append("cihaz saati %02d:%02d:%02d; gonderilene gore kayma "
-                 "%.0f s (konsol satiri ~6 s gec gelebilir; c104 UTC "
-                 "gonderir, host yereli %s)" %
+                 "<=%d s (OLCUM SINIRI: konsol satiri senkron+~6 s sonra "
+                 "okundu; gercek sapma bu pencerenin altindadir; c104 "
+                 "UTC gonderir, host yereli %s)" %
                  (stamp[3], stamp[4], stamp[5], drift,
                   time.strftime("%H:%M")))
     # Console lines carry second resolution and arrive seconds late;
@@ -396,9 +455,11 @@ def i05_testfr_idle(ctx):
                     if "DISC" in line.upper() or "CONN" in line.upper()]
             for line in disc[-4:]:
                 lines.append("elog: %s" % line)
-            lines.append("kok neden: iec104elog DISC kaydindan "
-                         "ayristirin (cihaz t1 kapanmasi mi, tasiyici "
-                         "bosta kopmasi mi)")
+            lines.append("kok neden ACIK: master/modem/ag/firmware "
+                         "zamanlamasi ayristirilmali (iec104elog DISC + "
+                         "master kanitlari). Not: master'a periyodik "
+                         "trafik linki korur ama bosta TESTFR testini "
+                         "karsilamaz")
         return "FAIL", lines
     if new_rx:
         return "SKIP", [

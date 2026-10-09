@@ -53,14 +53,19 @@ COT_NAMES = {
 
 
 def parse_cp56(data, offset):
-    """Decode a 7-byte CP56Time2a at offset -> dict (or None on overflow)."""
+    """Decode a 7-byte CP56Time2a at offset -> dict (or None on overflow).
+
+    Wire layout per production cp56time2a_t (iec104_types.h:130-144):
+    minute byte: bits 0-5 min, bit 7 IV; hour byte: bits 0-4 hour,
+    bit 7 SU (summer time); day byte: bits 0-4 day, bits 5-7 DOW.
+    """
     if offset + 7 > len(data):
         return None
     msec = data[offset] | (data[offset + 1] << 8)
     minute = data[offset + 2] & 0x3F
     iv = (data[offset + 2] >> 7) & 0x01
     hour = data[offset + 3] & 0x1F
-    su = (data[offset + 3] >> 6) & 0x01  # noqa: F841 (reported for evidence)
+    su = (data[offset + 3] >> 7) & 0x01
     day = data[offset + 4] & 0x1F
     month = data[offset + 5] & 0x0F
     year = 2000 + (data[offset + 6] & 0x7F)
