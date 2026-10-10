@@ -830,4 +830,117 @@ void test_r2_b4_distinguishes_running_from_unanswered_terminal_report(void)
                           control_status().command_state);
 }
 
+static void check_setting_request(const power_settings_request_t *request,
+                                  bool accepted)
+{
+    power_board_control_init();
+    request_count = 0U;
+    free_transport = true;
+    TEST_ASSERT_EQUAL(accepted, power_board_write_settings(request));
+    TEST_ASSERT_EQUAL_size_t(accepted ? 1U : 0U, request_count);
+    TEST_ASSERT_EQUAL_INT(accepted ? POWER_SETTINGS_READING :
+                         POWER_SETTINGS_IDLE, control_status().settings_state);
+}
+
+void test_rate_acceptance_covers_all_byte_values_including_unset_sentinels(void)
+{
+    for (uint16_t value = 0U; UINT8_MAX >= value; value++)
+    {
+        const power_settings_request_t request =
+        {
+            .mask = POWER_SETTING_RATE, .rate_permille = (uint8_t)value
+        };
+        check_setting_request(&request, (0U == value) || (255U == value) ||
+                              ((20U <= value) && (200U >= value)));
+    }
+}
+
+void test_capacity_acceptance_covers_all_byte_values(void)
+{
+    for (uint16_t value = 0U; UINT8_MAX >= value; value++)
+    {
+        const power_settings_request_t request =
+        {
+            .mask = POWER_SETTING_CAPACITY, .capacity_ah = (uint8_t)value
+        };
+        check_setting_request(&request, (7U <= value) && (54U >= value));
+    }
+}
+
+void test_period_acceptance_covers_all_byte_values(void)
+{
+    for (uint16_t value = 0U; UINT8_MAX >= value; value++)
+    {
+        const power_settings_request_t request =
+        {
+            .mask = POWER_SETTING_PERIOD, .period_sec = (uint8_t)value
+        };
+        check_setting_request(&request, (1U <= value) && (10U >= value));
+    }
+}
+
+void test_transport_refusal_preserves_idle_and_delayed_set_retries_once(void)
+{
+    const power_settings_request_t request =
+    {
+        .mask = POWER_SETTING_PERIOD, .period_sec = 2U
+    };
+    accept_request = false;
+    TEST_ASSERT_FALSE(power_board_write_settings(&request));
+    TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_IDLE, control_status().settings_state);
+    accept_request = true;
+    TEST_ASSERT_TRUE(power_board_write_settings(&request));
+    accept_request = false;
+    config_reply(7U, true, 0U, 0U);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+    TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_READING,
+                         control_status().settings_state);
+    power_board_control_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+    accept_request = true;
+    power_board_control_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, request_count);
+    TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WRITING,
+                         control_status().settings_state);
+    power_board_control_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, request_count);
+}
+
+void test_invalid_unsolicited_blocks_preserve_last_valid_reports(void)
+{
+    rf_scp_message_t raw = {.cmd = RF_SCP_CMD_PWR_TELEMETRY,
+                            .type = SCP_TYPE_SET};
+    (void)memset(raw.body.telemetry.bytes, 0xA5,
+                 sizeof(raw.body.telemetry.bytes));
+    TEST_ASSERT_TRUE(power_board_handle_raw(&raw));
+    const power_board_control_status_t before = control_status();
+    raw.type = SCP_TYPE_GET;
+    TEST_ASSERT_FALSE(power_board_handle_raw(&raw));
+    raw.type = SCP_TYPE_SET;
+    raw.cmd = RF_SCP_CMD_PWR_SUMMARY;
+    TEST_ASSERT_FALSE(power_board_handle_raw(&raw));
+    TEST_ASSERT_FALSE(power_board_handle_command_result(&raw));
+    raw.cmd = RF_SCP_CMD_PWR_RESULT;
+    raw.type = SCP_TYPE_GET;
+    TEST_ASSERT_FALSE(power_board_handle_command_result(&raw));
+    const power_board_control_status_t after = control_status();
+    TEST_ASSERT_EQUAL_MEMORY(&before, &after, sizeof(before));
+}
+
+void test_read_timeout_preserves_cached_config_and_next_read_recovers(void)
+{
+    TEST_ASSERT_TRUE(power_board_read_settings());
+    config_reply(7U, true, 0U, 0U);
+    const power_board_control_status_t before = control_status();
+    TEST_ASSERT_TRUE(power_board_read_settings());
+    reply(SCP_CMD_TIMEOUT, NULL);
+    const power_board_control_status_t after = control_status();
+    TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_REJECTED, after.settings_state);
+    TEST_ASSERT_EQUAL_MEMORY(before.config, after.config, sizeof(after.config));
+    TEST_ASSERT_TRUE(after.has_config);
+    TEST_ASSERT_TRUE(power_board_read_settings());
+    config_reply(8U, true, 0U, 0U);
+    TEST_ASSERT_EQUAL_UINT8(8U, control_status().config[1]);
+}
+
 /*** end of file ***/

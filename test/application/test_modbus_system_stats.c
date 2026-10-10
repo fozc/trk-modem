@@ -73,4 +73,73 @@ void test_temperature_word_encoding_is_preserved(void)
     TEST_ASSERT_EQUAL_HEX16(0xFFF6U, value);
 }
 
+static void expect_register(uint16_t address, uint16_t expected)
+{
+    uint16_t value = 0xA5A5U;
+    TEST_ASSERT_TRUE(modbus_system_stats_read(address, &value));
+    TEST_ASSERT_EQUAL_UINT16(expected, value);
+}
+
+void test_all_calendar_registers_keep_wire_order_and_year_offset(void)
+{
+    rtc_get_second_ExpectAndReturn(59U);
+    expect_register(49000U, 59U);
+    rtc_get_minute_ExpectAndReturn(58U);
+    expect_register(49001U, 58U);
+    rtc_get_hour_ExpectAndReturn(23U);
+    expect_register(49002U, 23U);
+    rtc_get_day_ExpectAndReturn(31U);
+    expect_register(49003U, 31U);
+    rtc_get_month_ExpectAndReturn(12U);
+    expect_register(49004U, 12U);
+    rtc_get_year_ExpectAndReturn(99U);
+    expect_register(49005U, 2099U);
+}
+
+void test_epoch_and_raw_uptime_use_high_word_before_low_word(void)
+{
+    rtc_get_unix_epoch_ExpectAndReturn(0x1234ABCDU);
+    expect_register(49006U, 0x1234U);
+    rtc_get_unix_epoch_ExpectAndReturn(0x1234ABCDU);
+    expect_register(49007U, 0xABCDU);
+    bsp_get_tick_ExpectAndReturn(0x5678EF01U);
+    expect_register(49014U, 0x5678U);
+    bsp_get_tick_ExpectAndReturn(0x5678EF01U);
+    expect_register(49015U, 0xEF01U);
+}
+
+void test_rail_registers_select_correct_adc_channels(void)
+{
+    adc_get_voltage_mv_ExpectAndReturn(ADC_CH_5V, 5001U);
+    expect_register(49011U, 5001U);
+    adc_get_voltage_mv_ExpectAndReturn(ADC_CH_3V3, 3302U);
+    expect_register(49012U, 3302U);
+    adc_get_voltage_mv_ExpectAndReturn(ADC_CH_3V8, 3803U);
+    expect_register(49013U, 3803U);
+    digital_input_get_all_ExpectAndReturn(UINT8_MAX);
+    expect_register(49016U, 0x00FFU);
+}
+
+void test_uptime_minute_boundary_and_full_width_tick(void)
+{
+    bsp_get_tick_ExpectAndReturn(59999U);
+    expect_register(49008U, 0U);
+    bsp_get_tick_ExpectAndReturn(60000U);
+    expect_register(49008U, 1U);
+    bsp_get_tick_ExpectAndReturn(UINT32_MAX);
+    expect_register(49008U, (uint16_t)((UINT32_MAX / 60000U) & 0xFFFFU));
+}
+
+void test_addresses_outside_dense_block_preserve_output(void)
+{
+    const uint16_t invalid[] = {0U, 48999U, 49017U, UINT16_MAX};
+    for (size_t index = 0U; sizeof(invalid) / sizeof(invalid[0]) > index;
+         index++)
+    {
+        uint16_t value = 0xA5A5U;
+        TEST_ASSERT_FALSE(modbus_system_stats_read(invalid[index], &value));
+        TEST_ASSERT_EQUAL_HEX16(0xA5A5U, value);
+    }
+}
+
 /*** end of file ***/
