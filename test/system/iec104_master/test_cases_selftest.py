@@ -67,10 +67,27 @@ class FakeMaster:
     def __init__(self):
         self.frames = []
         self.vs = 0
+        self.is_connected = False
+        self.connect_count = 0
+        # Frames appended on the Nth connect() (i07 reconnect window).
+        self.pending_script = None
+        self.pending_on_connect = 3
 
     def _push(self, asdu_bytes):
         self.frames.append(i_frame(self.vs, 0, asdu_bytes))
         self.vs += 1
+
+    def connect(self, timeout_s=20.0):
+        self.is_connected = True
+        self.connect_count += 1
+        if (self.pending_script is not None and
+                self.connect_count == self.pending_on_connect):
+            for asdu_bytes in self.pending_script:
+                self._push(asdu_bytes)
+        return True
+
+    def disconnect(self):
+        self.is_connected = False
 
     def interrogate(self, qoi_value):
         return True
@@ -240,7 +257,67 @@ def main():
     check("i02_malformed_frame_ignored", verdict == "PASS",
           "verdict=%s lines=%s" % (verdict, lines))
 
-    total = 7
+    # --- i07: retention across a mid-replay link break (de5604c) -----
+    # seqs 204..200 injected (next_seq 205); window1 delivers 204,203,
+    # the cut drops the link, window2 must deliver the rest.
+    import console_io
+
+    def replay_asdu(seq):
+        current = 100.0 + (seq % 900) / 10.0
+        duration = float(100 + (seq % 50) * 20)
+        return (bytes([36, 2, 3, 0, 1, 0]) +
+                me_tf(1030, current, 0x00) +
+                me_tf(1031, duration, 0x00))
+
+    def i07_ctx(window2_seqs):
+        ctx, _, _ = make_ctx([])
+        ctx.args.mutate_eventlog = True
+        ctx.console = object()          # guard only; run_cmd is patched
+        ctx.master.pending_script = [replay_asdu(s) for s in window2_seqs]
+        # Window1 frames must land after the case's second connect (t0),
+        # which happens after the 2 s post-drain sleep: stamp +5 s.
+        base = time.monotonic() + 5.0
+        stamped = []
+        for index, seq in enumerate((204, 203)):
+            frame = i_frame(0, 0, replay_asdu(seq))
+            stamped.append((base + index * 0.05, frame[1], frame[2],
+                            frame[3]))
+        ctx.master.frames = stamped
+        statuses = [
+            "kayitli: 100, next_seq: 200, unsent : 0 [0..0]",
+            "",
+            "kayitli: 105, next_seq: 205, unsent : 5 [200..204]",
+            "kayitli: 105, next_seq: 205, unsent : 0 [0..0]",
+        ]
+        state = {"index": 0}
+        real_run_cmd = console_io.run_cmd
+
+        def fake_run_cmd(console, cmd, settle_s=0.0):
+            text = statuses[state["index"]] if "status" in cmd else ""
+            state["index"] += 1
+            return text
+
+        console_io.run_cmd = fake_run_cmd
+        return ctx, real_run_cmd
+
+    ctx, real_run_cmd = i07_ctx([202, 201, 200])
+    verdict, lines = cases.i07_replay_retention(ctx)
+    console_io.run_cmd = real_run_cmd
+    joined = " | ".join(lines)
+    check("i07_retention_passes",
+          verdict == "PASS" and "birlesik tumul 5/5" in joined,
+          "verdict=%s lines=%s" % (verdict, lines))
+
+    ctx, real_run_cmd = i07_ctx([202, 200])       # seq 201 lost forever
+    verdict, lines = cases.i07_replay_retention(ctx)
+    console_io.run_cmd = real_run_cmd
+    joined = " | ".join(lines)
+    check("i07_lost_record_fails",
+          verdict == "FAIL" and "kayit kayboldu" in joined and
+          "201" in joined,
+          "verdict=%s lines=%s" % (verdict, lines))
+
+    total = 9
     print("\n%d/%d OK" % (total - len(FAILURES), total))
     return 1 if FAILURES else 0
 
