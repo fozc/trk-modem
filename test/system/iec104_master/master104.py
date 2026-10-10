@@ -127,10 +127,21 @@ class Master104:
     # -- commands --------------------------------------------------------
 
     def interrogate(self, qoi_value):
-        """Send C_IC_NA_1 with the given QOI; own waits drive assertions."""
-        return self.conn.interrogation(
+        """Send C_IC_NA_1 with the given QOI; own waits drive assertions.
+
+        One retry: connect() returns as soon as the raw STARTDT_CON frame
+        is observed, but c104's state machine may not be STARTED yet - an
+        interrogation fired in that window is rejected (seen when this
+        case runs first, without i01 ahead of it)."""
+        sent = self.conn.interrogation(
             self.ca, qualifier=c104.Qoi(qoi_value),
             wait_for_response=False)
+        if not sent:
+            time.sleep(1.0)
+            sent = self.conn.interrogation(
+                self.ca, qualifier=c104.Qoi(qoi_value),
+                wait_for_response=False)
+        return sent
 
     def clock_sync(self):
         return self.conn.clock_sync(self.ca, wait_for_response=False)
