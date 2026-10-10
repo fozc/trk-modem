@@ -304,6 +304,7 @@ sring-all-host.log`.
 | web_auth | HTTP/oturum/RNG ve log gizleme | Geçti |
 | web_navigation | Web sayfa/Save/adres davranışı | Geçti |
 | web_device | Cihaz web API (cihaz yoksa SKIP) | SKIP (cihaz yok) |
+| rf_real_mh | Gerçek MH gözlem dumanı (profile=0); `RF_REAL_MH_CONSOLE` yoksa SKIP | SKIP (hedef verilmedi) |
 
 `iec104_master` ve `web_device` canlı cihaz ister; cihaz/hedef
 bulunamazsa SKIP ile geçer, kabul koşusu için açık hedef gerekir

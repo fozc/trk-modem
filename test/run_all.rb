@@ -19,6 +19,7 @@ INTEGRATION_SUITES = [
   ["rfwu_auth", "rfwu_auth", [[MAKE, "run"]]],
   ["rf_hub_sim", "rf_hub_sim", [[MAKE, "run"]]],
   ["rf_hil", "rf_hil", [[MAKE, "run"]]],
+  ["rf_real_mh", "rf_real_mh", [[MAKE, "run"]]],
   ["iec104_master", "iec104_master", [[MAKE, "run"]]],
   ["web_auth", "web_auth", [[MAKE, "run"]]],
   ["web_navigation", "web_navigation", [[MAKE, "run"]]],
