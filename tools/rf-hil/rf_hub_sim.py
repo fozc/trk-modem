@@ -147,7 +147,8 @@ def main():
     boot_in_scenario = args.scenario is not None and (
         any(s.get("do") == "boot" for s in scenario.spec.get("steps", []))
         or any(s.get("do") == "boot" for s in scenario.spec.get("setup",
-                                                                [])))
+                                                                []))
+        or bool(scenario.spec.get("noboot")))
     if not args.noboot and not boot_in_scenario:
         hub.start_boot()
 

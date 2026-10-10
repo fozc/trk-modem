@@ -74,6 +74,7 @@ class InventoryEntry:
         self.current_state = 1
         self.fault_count = 0
         self.boot_counter = 7
+        self.last_live_ms = None             # set by _send_live / preload
 
     def src(self):
         return ((self.fider << 2) | self.phase) & 0xFF
@@ -92,8 +93,12 @@ class HubModel:
         self.sched_active = 1
         self.live_period_s = LIVE_PERIOD_S
         self.live_enabled = True          # master switch for the 0x11 stream
+        self.live_muted = set()           # (fider, phase) tuples: no 0x11
         self.log_bell_enabled = True      # allow poll-without-notify tests
         self.pwr_enabled = True           # master switch for the 0xE1 stream
+        self.mh_has_key = True            # R2: keyless -> 0x22/0x24/0x2A 0x02
+        self.rf_queue_busy = False        # R2: 0x2A ERROR 0x03 condition 4
+        self.epoch_duration_ms = 19800    # R2 masa: 19.6..19.9 s renewal
         self.cfg_delivered_ms = 5000
         self.cfg_applied_ms = 10000
         self.cfg_force_fail_reason = None  # e.g. 1/2 forced at commit
@@ -106,6 +111,10 @@ class HubModel:
         self.pwr_echo_delay_s = 20.0
         self.pwr_result_delay_s = 2.0
         self.pwr_result_sonuc = 0x00
+        self.pwr_akibet_delay_s = 2.0     # 0x05 cancel -> akıbet notify
+        self.pwr_cancel_verified = False  # akıbet b3 instead of b2
+        self.aku_kaynak_yok = False       # 0xE1 soh 0xFF + 39..42 0xFFFF
+        self.telemetry_stale = False      # 0xE1 durum b0=0, 39..44 0xFFFF
 
         # --- identity / time ---
         self.started_ms = self.now_ms()
@@ -129,6 +138,11 @@ class HubModel:
         self.consume_baseline = None
         self.consume_locked = False
         self.consumed = 0                  # consume cursor (monotonic)
+        # R2 4.6: head/wrap/tail slots are explicit cursors so a service
+        # wipe can report wrap=0/tail=0 while `total` is preserved.
+        self.ring_head_slot = 0
+        self.ring_wrap = 0
+        self.ring_tail_slot = 0
         self.bad_slots = set()             # indices -> ERROR 0x06
         # slots served with a corrupted INNER record CRC (plan v1.2
         # section 6.1: distinct from ERROR 0x06; the RTU must not
@@ -142,6 +156,8 @@ class HubModel:
         self.group = None
         self.group_history = {}            # group_id -> last 8 B body
         self.epoch_busy_until_ms = 0
+        self.epoch_due_ms = None           # R2: renewal -> 201 + 120 events
+        self.epoch_feeder = 0
 
         # --- proactive state ---
         self.boot_started = False
@@ -170,6 +186,7 @@ class HubModel:
         self.cmd_param = 0
         self.cmd_due_ms = 0
         self.echo_due_ms = None
+        self.akibet_due_ms = None          # R2 5.6: 0x05 cancel akıbet notify
 
     # ------------------------------------------------------------------
     # helpers
@@ -223,13 +240,13 @@ class HubModel:
 
     # ring accessors
     def head(self):
-        return self.total % HUB_SLOTS
+        return self.ring_head_slot
 
     def wrap_count(self):
-        return self.total // HUB_SLOTS
+        return self.ring_wrap
 
     def tail(self):
-        return self.consumed % HUB_SLOTS
+        return self.ring_tail_slot
 
     def pending_count(self):
         # BOLATeX BQ-02: the ring holds at most HUB_SLOTS - 1 unconsumed
@@ -387,6 +404,28 @@ class HubModel:
     def _ack_set(self, pkt):
         self.reply(pkt)
 
+    def _store_inventory_entry(self, zone, fider, phase, eui, channel):
+        """R2 4.3: last write wins per position. A different EUI-64 at the
+        same (fider, phase) drops the old card's RF session without an MH
+        reboot; rewriting the same EUI-64 preserves the card's session
+        state (uptime/live_seq/boot_counter, BQ-17.2)."""
+        key = eui.hex()
+        for other_key, other in list(self.inventory.items()):
+            if other_key != key and other.fider == fider and \
+                    other.phase == phase:
+                del self.inventory[other_key]
+                self.live_next_ms.pop(other_key, None)
+                self.note("card_replaced", old=other_key, new=key)
+        existing = self.inventory.get(key)
+        if existing is not None:
+            existing.zone = zone
+            existing.fider = fider
+            existing.phase = phase
+            existing.channel = channel
+        else:
+            self.inventory[key] = InventoryEntry(zone, fider, phase, eui,
+                                                 channel)
+
     def _h_inventory_set(self, pkt, answered):
         if pkt.type != sc.TYPE_SET:
             if answered:
@@ -407,8 +446,7 @@ class HubModel:
             if answered:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
-        self.inventory[eui.hex()] = InventoryEntry(zone, fider, phase, eui,
-                                                   channel)
+        self._store_inventory_entry(zone, fider, phase, eui, channel)
         if self.learned_zone is None:
             self.learned_zone = zone
         self.last_inventory_activity_ms = self.now_ms()
@@ -452,8 +490,7 @@ class HubModel:
                 if answered:
                     self.reply_error(pkt, sc.ERR_INVALID_PARAM)
                 return
-            self.inventory[eui.hex()] = InventoryEntry(zone, fider, phase,
-                                                       eui, channel)
+            self._store_inventory_entry(zone, fider, phase, eui, channel)
             if self.learned_zone is None:
                 self.learned_zone = zone
             self.note("inventory_update", eui=eui.hex(), fider=fider,
@@ -494,16 +531,24 @@ class HubModel:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
         fider = pkt.data[0]
-        if fider not in RF_FEEDERS or not self.loaded:
+        if fider not in RF_FEEDERS or not self.mh_has_key:
+            # R2 4.3: ERROR 0x02 for a bad feeder or a keyless MH.
             if answered:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
         now = self.now_ms()
-        if now < self.epoch_busy_until_ms:
+        group = self.group
+        config_running = group is not None and group["state"] in (
+            GROUP_STAGED, GROUP_DELIVERED)
+        if not self.loaded or config_running or \
+                now < self.epoch_busy_until_ms or self.rf_queue_busy:
+            # R2 4.3: the four ERROR 0x03 conditions.
             if answered:
                 self.reply_error(pkt, sc.ERR_BUSY)
             return
-        self.epoch_busy_until_ms = now + 15000
+        self.epoch_busy_until_ms = now + self.epoch_duration_ms
+        self.epoch_due_ms = now + self.epoch_duration_ms
+        self.epoch_feeder = fider
         self.note("epoch_refresh", fider=fider)
         if answered:
             self._ack_set(pkt)
@@ -518,16 +563,30 @@ class HubModel:
     def build_event_record(self, code, zone, line, phase, fault_count=0,
                            max_current=1250.0, di_dt=800.0, dur_ms=120,
                            v_trip=32.0, v_harv=8.4, mcu_temp=31,
-                           clock_quality=1, boot_counter=7):
+                           clock_quality=1, boot_counter=7,
+                           perm_count=None, temp_count=None,
+                           mh_record=False):
+        """Build one 60 B record (R2 4.7).
+
+        mh_record=True models an MH-produced record (135/136/138/201 and
+        MH's own 143): timestamp, boot_counter, uptime_sec, clock_quality
+        and src_eui_hash are zero. perm_count/temp_count fill the
+        event-specific u16 fields at offsets 41/43 (122 cfg_crc, 201
+        phase mask).
+        """
         if not 0 <= boot_counter <= 0xFFFF:
             raise ValueError("event boot counter must be uint16")
         rec = bytearray(EVENT_LEN)
-        stamp = self.wall_struct()
-        if stamp is None:
-            rec[0:7] = b"\x00" * 7  # invalid clock: ms=0 fields zero
+        if mh_record:
             clock_quality = 0
+            boot_counter = 0
         else:
-            rec[0:7] = cp56.pack_cp56(stamp)
+            stamp = self.wall_struct()
+            if stamp is None:
+                rec[0:7] = b"\x00" * 7  # invalid clock: ms=0 fields zero
+                clock_quality = 0
+            else:
+                rec[0:7] = cp56.pack_cp56(stamp)
         rec[7] = code
         rec[8] = zone
         rec[9] = line
@@ -541,12 +600,17 @@ class HubModel:
         rec[27:31] = struct.pack("<f", v_trip)
         rec[31:35] = struct.pack("<f", v_harv)
         rec[39:41] = struct.pack("<h", mcu_temp)
+        if perm_count is not None:
+            rec[41:43] = struct.pack("<H", perm_count & 0xFFFF)
+        if temp_count is not None:
+            rec[43:45] = struct.pack("<H", temp_count & 0xFFFF)
         rec[49:51] = struct.pack("<H", boot_counter)
-        rec[51:55] = struct.pack("<I", self.uptime_s())
+        rec[51:55] = struct.pack("<I", 0 if mh_record else self.uptime_s())
         rec[55] = clock_quality
         entry = next((item for item in self.inventory.values()
                       if item.fider == line and item.phase == phase), None)
-        if entry is not None and code not in (135, 136, 138, 201):
+        if entry is not None and not mh_record and \
+                code not in (135, 136, 138, 201):
             source_hash = sc.crc16_ccitt_false(entry.eui) or 0xFFFF
             rec[56:58] = struct.pack("<H", source_hash)
         crc = sc.crc16_ccitt_false(rec[0:58])
@@ -554,7 +618,8 @@ class HubModel:
         return bytes(rec)
 
     def add_events(self, count, code=1, line=1, zone=None, phase=None,
-                   fault_count=None, boot_counter=7):
+                   fault_count=None, boot_counter=7, dur_ms=None,
+                   perm_count=None, temp_count=None, mh_record=False):
         """Append records; a full ring overwrites the oldest unconsumed."""
         if not 0 <= boot_counter <= 0xFFFF:
             raise ValueError("event boot counter must be uint16")
@@ -566,16 +631,70 @@ class HubModel:
             fc = fault_count if fault_count is not None else 2
             if code == 7:
                 fc = 0
+            kwargs = {}
+            if dur_ms is not None:
+                kwargs["dur_ms"] = dur_ms
             rec = self.build_event_record(code, zone, line, ph, fc,
-                                          boot_counter=boot_counter)
+                                          boot_counter=boot_counter,
+                                          perm_count=perm_count,
+                                          temp_count=temp_count,
+                                          mh_record=mh_record, **kwargs)
             if self.pending_count() >= HUB_SLOTS - 1:
                 self.consumed += 1  # oldest unconsumed slot is lost
-            self.slots[self.head()] = rec
+                self.ring_tail_slot = (self.ring_tail_slot + 1) % HUB_SLOTS
+            self.slots[self.ring_head_slot] = rec
+            self.ring_head_slot = (self.ring_head_slot + 1) % HUB_SLOTS
+            if 0 == self.ring_head_slot:
+                self.ring_wrap = (self.ring_wrap + 1) & 0xFFFF
             self.total += 1
         self.note("events_added", count=count, code=code, line=line,
                   pending=self.pending_count())
         if was_pending == 0 and self.pending_count() > 0:
             self.send_log_bell()
+
+    def _reset_store(self, subcode, keep_total):
+        """Apply the R2 4.6 store-reset table and arm the consume lock."""
+        self.slots = [None] * HUB_SLOTS
+        if not keep_total:
+            self.total = 0
+            self.consumed = 0
+        self.slots[0] = self.build_event_record(138, 0, 0, 0,
+                                                fault_count=subcode,
+                                                mh_record=True)
+        self.total += 1
+        self.consumed = self.total - 1
+        self.ring_head_slot = 1
+        self.ring_wrap = 0
+        self.ring_tail_slot = 0
+        self.consume_locked = True
+        self.consume_baseline = None
+        self.bell_last_ms = None
+        self.note("store_reset", subcode=subcode, total=self.total)
+        self.send_log_bell()
+
+    def service_wipe(self):
+        """R2: service console wipe -> first record 138 subcode 3."""
+        self._reset_store(3, keep_total=True)
+
+    def store_format(self):
+        """Boot-time formatting -> 138 subcode 1, total restarts at 1."""
+        self._reset_store(1, keep_total=False)
+
+    def store_state_loss(self):
+        """Boot-time state loss -> 138 subcode 2, total restarts at 1."""
+        self._reset_store(2, keep_total=False)
+
+    def advance_ring(self, records):
+        """Fast-forward the write cursor for BQ-18 wrap-overflow tests."""
+        records = int(records)
+        if 0 > records:
+            raise ValueError("records must be >= 0")
+        ahead = self.ring_head_slot + records
+        self.ring_wrap = (self.ring_wrap + ahead // HUB_SLOTS) & 0xFFFF
+        self.ring_head_slot = ahead % HUB_SLOTS
+        self.total += records
+        self.note("ring_advanced", records=records, total=self.total,
+                  wrap=self.ring_wrap)
 
     def send_log_bell(self):
         self.bell_last_ms = self.now_ms()
@@ -690,6 +809,7 @@ class HubModel:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
         self.consumed = target
+        self.ring_tail_slot = target % HUB_SLOTS
         self.consume_baseline = target
         self.note("log_consume", index=index, tail=self.tail(),
                   left=self.pending_count())
@@ -713,6 +833,7 @@ class HubModel:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
         self.consumed = target
+        self.ring_tail_slot = target % HUB_SLOTS
         self.note("log_consume_if", target=target, tail=self.tail(),
                   left=self.pending_count())
         if answered:
@@ -754,6 +875,11 @@ class HubModel:
             return
         eui = pkt.data[0:8]
         block = bytes(pkt.data[8:104])
+        if not self.mh_has_key:
+            # R2 4.9: a keyless MH rejects 0x22 with ERROR 0x02.
+            if answered:
+                self.reply_error(pkt, sc.ERR_INVALID_PARAM)
+            return
         group = self.group
         if group is not None and group["state"] in (GROUP_STAGED,
                                                     GROUP_DELIVERED):
@@ -777,11 +903,26 @@ class HubModel:
             self._ack_set(pkt)
 
     def _group_status_body(self, group):
-        bitmap = (1 << len(group["members"])) - 1
+        bitmap = group.get("bitmap")
+        if bitmap is None:
+            bitmap = (1 << len(group["members"])) - 1
         return (bytes([group["id"], group["state"], bitmap & 0xFF,
                        group["reason"]]) +
                 struct.pack("<H", group["cfg_crc"]) +
                 bytes([group["attempts"], 0x00]))
+
+    def _member_live(self, eui):
+        """R2 4.9: liveness is checked per fider x phase."""
+        entry = self.inventory.get(eui.hex())
+        if entry is None or not self.live_enabled:
+            return False
+        if (entry.fider, entry.phase) in self.live_muted:
+            return False
+        if entry.last_live_ms is None:
+            # A preloaded entry models an already-live feeder.
+            return True
+        window_ms = 3 * int(self.live_period_s * 1000)
+        return (self.now_ms() - entry.last_live_ms) <= window_ms
 
     def _h_cfg_commit(self, pkt, answered):
         if pkt.type != sc.TYPE_SET or len(pkt.data) != 1:
@@ -789,6 +930,11 @@ class HubModel:
                 self.reply_error(pkt, sc.ERR_INVALID_PARAM)
             return
         group_id = pkt.data[0]
+        if not self.mh_has_key:
+            # R2 4.9: a keyless MH rejects 0x24 with ERROR 0x02.
+            if answered:
+                self.reply_error(pkt, sc.ERR_INVALID_PARAM)
+            return
         group = self.group
         if group is None or len(group["members"]) < 3:
             if answered:
@@ -805,26 +951,49 @@ class HubModel:
         group["id"] = group_id
         now = self.now_ms()
 
-        # prerequisites: inventory match + liveness of the members
+        # prerequisites (R2 4.9): block Fider_ID vs member feeders,
+        # distinct phases, per fider x phase liveness. A failed check
+        # stays below RF and reports FAILED with the offending bitmap.
         reason = None
-        for eui in group["members"]:
-            if eui.hex() not in self.inventory:
-                reason = 2  # NO_INV
-                break
-        if reason is None and not self.live_enabled:
-            reason = 1  # NOT_LIVE
+        bitmap = (1 << len(group["members"])) - 1
+        block_fider = group["block"][1]
+        if not 1 <= block_fider <= 4:
+            reason = 2  # whole group flagged
+        else:
+            phases = {}
+            for index, eui in enumerate(group["members"]):
+                entry = self.inventory.get(eui.hex())
+                if entry is None or entry.fider != block_fider:
+                    reason = 2
+                    bitmap = 1 << index
+                    break
+                if entry.phase in phases:
+                    reason = 2
+                    bitmap = (1 << phases[entry.phase]) | (1 << index)
+                    break
+                phases[entry.phase] = index
+            if reason is None:
+                for index, eui in enumerate(group["members"]):
+                    if not self._member_live(eui):
+                        reason = 1
+                        bitmap = 1 << index
+                        break
         if self.cfg_force_fail_reason is not None:
             reason = self.cfg_force_fail_reason
+            bitmap = (1 << len(group["members"])) - 1
         if reason is not None:
             group["state"] = GROUP_FAILED
             group["reason"] = reason
+            group["bitmap"] = bitmap
             self.group_history[group_id] = self._group_status_body(group)
             if answered:
                 self._ack_set(pkt)
             self._cfg_notify(self._group_status_body(group),
-                        note="cfg FAILED reason=%d" % reason)
+                        note="cfg FAILED reason=%d bitmap=0x%X" %
+                             (reason, bitmap))
             return
 
+        group["bitmap"] = None
         group["state"] = GROUP_STAGED
         group["staged_ms"] = now
         group["attempts"] += 1
@@ -850,6 +1019,7 @@ class HubModel:
         group["id"] = group_id
         group["state"] = GROUP_FAILED
         group["reason"] = 10  # USER_ABORT
+        group["bitmap"] = None
         self.group_history[group_id] = self._group_status_body(group)
         if answered:
             self._ack_set(pkt)
@@ -883,14 +1053,24 @@ class HubModel:
     # ------------------------------------------------------------------
 
     def build_pwr_summary(self):
-        t = self.telemetry if self.telemetry is not None else {}
+        t = dict(self.telemetry) if self.telemetry is not None else {}
+        telem_valid = self.telemetry is not None and not self.telemetry_stale
         sira = (self.pwr_sira + 1) & 0xFF
         self.pwr_sira = sira
         body = bytearray(45)
         body[0] = 1                                   # ver
         body[1] = sira
-        body[2] = t.get("durum", 0x03)
-        body[3] = t.get("durum2", 0x00)
+        durum = t.get("durum", 0x03)
+        durum2 = t.get("durum2", 0x00)
+        if self.telemetry is None:
+            durum &= ~0x01                            # no telemetry at all
+            t["tlm_yas"] = 255
+        elif self.telemetry_stale:
+            durum &= ~0x01
+        if self.aku_kaynak_yok:
+            durum2 &= ~0x0C                           # b3:2 = 0 (kaynak yok)
+        body[2] = durum
+        body[3] = durum2
         body[4] = t.get("tlm_yas", 0)
         body[5] = t.get("kaynak", 1)
         body[6] = t.get("sarj_fazi", 5)
@@ -905,7 +1085,7 @@ class HubModel:
         body[22:24] = struct.pack("<h", t.get("pbat_10mw", 16))
         body[24:26] = struct.pack("<h", t.get("psys_10mw", -45))
         body[26:28] = struct.pack("<h", t.get("soc_pm", 870))
-        body[28] = t.get("soh_pct", 96)
+        body[28] = 0xFF if self.aku_kaynak_yok else t.get("soh_pct", 96)
         body[29] = t.get("aku_sic", 24)
         body[30] = t.get("kart_sic", 31)
         body[31] = t.get("cap_ah", 7)
@@ -913,6 +1093,17 @@ class HubModel:
         body[33] = t.get("lg_adet", 0)
         body[34:38] = struct.pack("<I", self.pwr_alarm_mask)
         body[38] = t.get("soc_capa", 0x03)
+        # R2 5.2 battery-life tail: 0xFFFF means unknown.
+        if not telem_valid:
+            body[39:45] = b"\xFF" * 6
+        else:
+            if self.aku_kaynak_yok:
+                body[39:43] = b"\xFF" * 4
+                body[43:45] = struct.pack("<H", t.get("kalan_yil_x10", 50))
+            else:
+                body[39:41] = struct.pack("<H", t.get("efc", 0))
+                body[41:43] = struct.pack("<H", t.get("kalan_efc", 2500))
+                body[43:45] = struct.pack("<H", t.get("kalan_yil_x10", 50))
         return bytes(body)
 
     def send_pwr_summary(self, note=None):
@@ -1022,14 +1213,21 @@ class HubModel:
             return
         if komut == 0x00:
             was_pending = self.cmd_pending
+            pending_komut = self.cmd_state["komut"] if was_pending else 0
             self.cmd_pending = False
-            if was_pending:
-                # Deterministic bench outcome: cancel before applying.
-                # Firmware tests also exercise b1 / delayed outcomes.
-                self.cmd_state.update(sonuc=0xFF, yayin=0, durum=0x04)
             if answered:
                 self.reply(pkt, bytes([0x00, 0x00]))
             if was_pending:
+                if 0x05 == pending_komut:
+                    # R2 5.6: cancel keeps the transmission count, reports
+                    # b1 (izleme sürüyor); the separate akıbet notification
+                    # (b2 unverifiable / b3 verified) follows after the
+                    # akıbet delay.
+                    self.cmd_state.update(sonuc=0xFF, durum=0x02)
+                    self.akibet_due_ms = self.now_ms() + int(
+                        self.pwr_akibet_delay_s * 1000)
+                else:
+                    self.cmd_state.update(sonuc=0xFF, yayin=0, durum=0x00)
                 self._notify_pwr_result("cancelled before applying")
             return
         if self.cmd_pending:
@@ -1111,6 +1309,8 @@ class HubModel:
         self.live_next_ms = {}
         self.started_ms = self.now_ms()
         self.consume_baseline = None
+        self.epoch_due_ms = None       # a restart interrupts the renewal
+        self.akibet_due_ms = None      # PWRB chain breaks on restart
         group = self.group
         if group is not None and group["state"] in (GROUP_STAGED,
                                                     GROUP_DELIVERED):
@@ -1177,6 +1377,7 @@ class HubModel:
         return bytes(body)
 
     def _send_live(self, entry):
+        entry.last_live_ms = self.now_ms()
         entry.live_seq = (entry.live_seq + 1) & 0xFFFFFFFF
         if entry.live_seq == 0:
             entry.live_seq = 1
@@ -1209,7 +1410,9 @@ class HubModel:
 
         # live stream
         if self.live_enabled and self.loaded:
-            for key, entry in self.inventory.items():
+            for key, entry in list(self.inventory.items()):
+                if (entry.fider, entry.phase) in self.live_muted:
+                    continue
                 due = self.live_next_ms.get(key)
                 if due is None:
                     self.live_next_ms[key] = now + int(
@@ -1281,6 +1484,32 @@ class HubModel:
             self.note("pwr_echo", gen=self.echo_gen)
         if self.cmd_pending and now >= self.cmd_due_ms:
             self._finish_pwr_command()
+
+        # R2 5.6: separate akıbet notification for a cancelled 0x05
+        if self.akibet_due_ms is not None and now >= self.akibet_due_ms:
+            self.akibet_due_ms = None
+            self.cmd_state["durum"] = 0x08 if self.pwr_cancel_verified \
+                else 0x04
+            self._notify_pwr_result("0x05 akibet b%d" %
+                                    (3 if self.pwr_cancel_verified else 2))
+
+        # R2 4.3: renewal completion -> event 201 + one 120 per ayırıcı
+        if self.epoch_due_ms is not None and now >= self.epoch_due_ms:
+            feeder = self.epoch_feeder
+            duration_ms = int(self.epoch_duration_ms)
+            self.epoch_due_ms = None
+            phases = [entry.phase for entry in self.inventory.values()
+                      if entry.fider == feeder]
+            mask = 0
+            for phase in phases:
+                mask |= 1 << (phase - 1)
+            self.add_events(1, code=201, line=feeder, phase=0,
+                            fault_count=0, dur_ms=duration_ms,
+                            perm_count=mask, mh_record=True)
+            for phase in sorted(phases):
+                self.add_events(1, code=120, line=feeder, phase=phase,
+                                fault_count=0)
+            self.note("epoch_done", feeder=feeder, phases=mask)
 
     # ------------------------------------------------------------------
     # introspection for control/status

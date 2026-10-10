@@ -27,7 +27,9 @@ HUB_KNOBS = (
     "cfg_force_fail_reason", "cfg_no_deliver", "cfg_no_apply",
     "cfg_delivered_fail_ms", "cfg_applied_fail_ms",
     "cfg_report_crc_offset", "cfg_mute", "pwr_echo_delay_s", "pwr_result_delay_s",
-    "pwr_result_sonuc",
+    "pwr_result_sonuc", "pwr_akibet_delay_s", "pwr_cancel_verified",
+    "mh_has_key", "rf_queue_busy", "epoch_duration_ms",
+    "aku_kaynak_yok", "telemetry_stale",
 )
 
 
@@ -52,8 +54,53 @@ def dispatch_action(hub, faults, lock, req):
                            line=int(req.get("line", 1)),
                            zone=req.get("zone"),
                            phase=req.get("phase"),
-                           boot_counter=int(req.get("boot_counter", 7)))
+                           fault_count=req.get("fault_count"),
+                           boot_counter=int(req.get("boot_counter", 7)),
+                           perm_count=req.get("perm_count"),
+                           temp_count=req.get("temp_count"),
+                           mh_record=bool(req.get("mh_record", False)))
             return {"ok": True, "pending": hub.pending_count()}
+        if action == "service_wipe":
+            hub.service_wipe()
+            return {"ok": True, "total": hub.total}
+        if action == "store_format":
+            hub.store_format()
+            return {"ok": True, "total": hub.total}
+        if action == "store_state_loss":
+            hub.store_state_loss()
+            return {"ok": True, "total": hub.total}
+        if action == "advance_ring":
+            hub.advance_ring(int(req["records"]))
+            return {"ok": True, "total": hub.total,
+                    "wrap": hub.wrap_count()}
+        if action == "live_mute":
+            line = int(req["line"])
+            phase = int(req["phase"])
+            if req.get("value", True):
+                hub.live_muted.add((line, phase))
+            else:
+                hub.live_muted.discard((line, phase))
+            return {"ok": True, "muted": sorted(hub.live_muted)}
+        if action == "move_card":
+            # R2 card change at the MH side: rebind (line, phase) to a
+            # different EUI-64 without a DUT-visible inventory command.
+            # The default replacement EUI always comes from line 9 (the
+            # unassigned band) so it can never equal the DUT-uploaded EUI
+            # of the target position.
+            eui = req.get("eui")
+            if isinstance(eui, str):
+                eui = bytes.fromhex(eui.replace(":", ""))
+            eui = bytes(eui or make_eui(9, int(req.get("phase", 1))))
+            hub._store_inventory_entry(int(req.get("zone", 1)),
+                                       int(req["line"]), int(req["phase"]),
+                                       eui, 0)
+            return {"ok": True, "eui": eui.hex()}
+        if action == "epoch_force_done":
+            # Test shortcut: complete a running renewal immediately.
+            hub.epoch_duration_ms = 0
+            if hub.epoch_due_ms is not None:
+                hub.epoch_due_ms = hub.now_ms()
+            return {"ok": True}
         if action == "inject_trip":
             hub.inject_trip(int(req["line"]), int(req["phase"]),
                             fault_count=int(req.get("fault_count", 2)),
@@ -137,11 +184,14 @@ def dispatch_action(hub, faults, lock, req):
             zone = int(req.get("zone", 1))
             lines = req.get("lines", [1])
             phases = req.get("phases", [1, 2, 3])
+            now = hub.now_ms()
             for line in lines:
                 for phase in phases:
                     eui = make_eui(int(line), int(phase))
-                    hub.inventory[eui.hex()] = InventoryEntry(
-                        zone, int(line), int(phase), eui, 0)
+                    entry = InventoryEntry(zone, int(line), int(phase),
+                                           eui, 0)
+                    entry.last_live_ms = now
+                    hub.inventory[eui.hex()] = entry
             if req.get("loaded", True):
                 hub.loaded = True
                 hub.learned_zone = zone

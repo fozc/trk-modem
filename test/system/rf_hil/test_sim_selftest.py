@@ -931,11 +931,8 @@ class V12PlanAdditions(unittest.TestCase):
     def test_ring_counter_wrap_truncation(self):
         h = HubHarness()
         upload_inventory(h)
-        # push total past the u16 wrap field boundary (65535 * 100)
-        h.hub.total = 65535 * 100 + 40
-        h.hub.consumed = 65535 * 100
-        for i in range(40):
-            h.hub.slots[i] = h.hub.build_event_record(1, 1, 1, (i % 3) + 1)
+        # push the write cursor past the u16 wrap boundary (65535 * 100)
+        h.hub.advance_ring(65535 * 100 + 40)
         h.request(0x40, sc.TYPE_GET, b"", seq=300)
         reply = h.replies()[-1]
         self.assertEqual(reply.type, sc.TYPE_ACK)
@@ -995,12 +992,269 @@ class V12PlanAdditions(unittest.TestCase):
                                  "gap %d ms should discard" % gap_ms)
 
 
+class R2SimAdditions(unittest.TestCase):
+    """SCP R2 (022555bf) model additions: src_eui_hash golden vector,
+    keyless MH, COMMIT preconditions (Fider_ID / liveness bitmap),
+    0x2A renewal records (201 + 120), store-reset table with the
+    consume lock, u16 wrap overflow, 0xE1 battery-life tail, 0xE7
+    cancel choreography, card change, free_slots."""
+
+    @staticmethod
+    def block(fider=1):
+        b = bytearray(96)
+        b[0:3] = bytes([0, fider, 0])
+        b[3:7] = struct.pack("<f", 6.0)
+        b[7:11] = struct.pack("<f", 13.0)
+        b[11:15] = struct.pack("<f", 0.3)
+        b[15:19] = struct.pack("<f", 1000.0)
+        b[19:23] = struct.pack("<f", 2.0)
+        b[23] = 50
+        b[24:26] = struct.pack("<H", 60)
+        b[26:28] = struct.pack("<H", 30)
+        b[28:30] = struct.pack("<H", 180)
+        b[30:32] = struct.pack("<H", 60)
+        b[32:36] = struct.pack("<f", 5.0)
+        b[36:38] = struct.pack("<H", 200)
+        b[38:40] = struct.pack("<H", 100)
+        b[40:42] = struct.pack("<H", 40)
+        b[42] = 3
+        b[43] = 0
+        b[44] = 1
+        b[45] = 39
+        b[46] = 0
+        b[47:51] = struct.pack("<f", 2.0)
+        b[51:53] = struct.pack("<H", 5000)
+        b[53:57] = struct.pack("<f", 32.0)
+        return bytes(b)
+
+    def write_members(self, h, block, line=1):
+        seq = 400
+        for phase in (1, 2, 3):
+            h.request(0x22, sc.TYPE_SET, make_eui(line, phase) + block,
+                      seq=seq)
+            seq += 1
+
+    def test_r2_src_eui_hash_golden_vector(self):
+        # Spec 4.7 masa example: EUI 00:12:4B:00:38:C9:F1:C3 -> 0x1787
+        self.assertEqual(sc.crc16_ccitt_false(
+            bytes.fromhex("00124B0038C9F1C3")), 0x1787)
+        h = HubHarness()
+        eui = bytes.fromhex("00124B0038C9F1C3")
+        h.request(0x07, sc.TYPE_SET, cp56.pack_cp56(_time.localtime()),
+                  seq=10)
+        h.request(0x04, sc.TYPE_SET, bytes([1, 1, 1]) + eui + b"\x00",
+                  seq=11)
+        h.request(0x05, sc.TYPE_SET, b"", seq=12)
+        h.hub.add_events(1, code=143, line=1, phase=1, fault_count=2)
+        h.request(0x42, sc.TYPE_GET, b"\x00\x00", seq=13)
+        rec = h.replies()[-1].data
+        self.assertEqual(struct.unpack_from("<H", rec, 56)[0], 0x1787)
+
+    def test_r2_keyless_mh_rejects_write_commit_and_epoch(self):
+        h = HubHarness()
+        upload_inventory(h, lines=(1,))
+        h.hub.mh_has_key = False
+        h.request(0x22, sc.TYPE_SET,
+                  make_eui(1, 1) + self.block(), seq=400)
+        self.assertEqual(h.replies()[-1].data,
+                         bytes([sc.ERR_INVALID_PARAM]))
+        self.write_members(h, self.block())
+        h.request(0x24, sc.TYPE_SET, bytes([7]), seq=450)
+        self.assertEqual(h.replies()[-1].data,
+                         bytes([sc.ERR_INVALID_PARAM]))
+        h.request(0x2A, sc.TYPE_SET, bytes([1]), seq=451)
+        self.assertEqual(h.replies()[-1].data,
+                         bytes([sc.ERR_INVALID_PARAM]))
+
+    def test_r2_commit_fider_mismatch_fails_without_rf(self):
+        h = HubHarness()
+        upload_inventory(h, lines=(1,))
+        self.write_members(h, self.block(fider=2))
+        h.request(0x24, sc.TYPE_SET, bytes([7]), seq=450)
+        self.assertEqual(h.replies()[-1].type, sc.TYPE_ACK)
+        body = h.notifies(0x21)[-1].data
+        self.assertEqual(list(body[:4]), [7, hm.GROUP_FAILED, 0x01, 2])
+
+    def test_r2_commit_muted_member_fails_not_live(self):
+        h = HubHarness()
+        upload_inventory(h, lines=(1,))
+        h.hub.live_muted.add((1, 2))
+        self.write_members(h, self.block(fider=1))
+        h.request(0x24, sc.TYPE_SET, bytes([7]), seq=450)
+        body = h.notifies(0x21)[-1].data
+        self.assertEqual(list(body[:4]), [7, hm.GROUP_FAILED, 0x02, 1])
+
+    def test_r2_epoch_refresh_conditions_and_records(self):
+        h = HubHarness()
+        h.request(0x2A, sc.TYPE_SET, bytes([1]), seq=460)
+        self.assertEqual(h.replies()[-1].data, bytes([sc.ERR_BUSY]))
+        upload_inventory(h, lines=(1,))
+        h.request(0x2A, sc.TYPE_SET, bytes([5]), seq=461)
+        self.assertEqual(h.replies()[-1].data, bytes([sc.ERR_INVALID_PARAM]))
+        h.hub.rf_queue_busy = True
+        h.request(0x2A, sc.TYPE_SET, bytes([1]), seq=462)
+        self.assertEqual(h.replies()[-1].data, bytes([sc.ERR_BUSY]))
+        h.hub.rf_queue_busy = False
+        h.hub.epoch_duration_ms = 100
+        h.request(0x2A, sc.TYPE_SET, bytes([1]), seq=463)
+        self.assertEqual(h.replies()[-1].type, sc.TYPE_ACK)
+        h.request(0x2A, sc.TYPE_SET, bytes([1]), seq=464)
+        self.assertEqual(h.replies()[-1].data, bytes([sc.ERR_BUSY]))
+        h.advance(300)
+        h.request(0x40, sc.TYPE_GET, b"", seq=465)
+        head_i, wrap_i, total_i, tail_i = struct.unpack(
+            "<HHIH", h.replies()[-1].data)
+        self.assertEqual(total_i - tail_i, 4)      # 201 + 3 x 120
+        h.request(0x42, sc.TYPE_GET, b"\x00\x00", seq=466)
+        rec = h.replies()[-1].data
+        self.assertEqual(rec[7], 201)
+        self.assertEqual(rec[8], 1)                # inventory zone
+        self.assertEqual(rec[9], 1)                # renewed feeder
+        self.assertEqual(rec[10], 0)
+        self.assertEqual(struct.unpack_from("<I", rec, 23)[0], 100)
+        self.assertEqual(struct.unpack_from("<H", rec, 41)[0], 0b111)
+        self.assertEqual(rec[49], 0)               # MH record: boot 0
+        self.assertEqual(rec[55], 0)               # clock_quality 0
+        self.assertEqual(struct.unpack_from("<H", rec, 56)[0], 0)
+        for slot in (1, 2, 3):
+            h.request(0x42, sc.TYPE_GET, struct.pack("<H", slot), seq=470)
+            rec = h.replies()[-1].data
+            self.assertEqual(rec[7], 120)
+            self.assertNotEqual(struct.unpack_from("<H", rec, 56)[0], 0)
+
+    def test_r2_service_wipe_locks_consume_until_head(self):
+        h = HubHarness()
+        upload_inventory(h, lines=(1,))
+        h.hub.add_events(5, code=1, line=1)
+        h.request(0x40, sc.TYPE_GET, b"", seq=460)
+        h.request(0x48, sc.TYPE_SET, struct.pack("<I", 3), seq=461)
+        self.assertEqual(h.replies()[-1].type, sc.TYPE_ACK)
+        total_before = h.hub.total
+        h.hub.service_wipe()
+        self.assertEqual(h.hub.total, total_before + 1)
+        h.request(0x48, sc.TYPE_SET,
+                  struct.pack("<I", h.hub.total), seq=462)
+        self.assertEqual(h.replies()[-1].data,
+                         bytes([sc.ERR_INVALID_PARAM]))   # reset lock
+        h.request(0x40, sc.TYPE_GET, b"", seq=463)
+        head_i, wrap_i, total_i, tail_i = struct.unpack(
+            "<HHIH", h.replies()[-1].data)
+        self.assertEqual((head_i, wrap_i, tail_i), (1, 0, 0))
+        self.assertEqual(total_i, total_before + 1)
+        h.request(0x42, sc.TYPE_GET, b"\x00\x00", seq=464)
+        rec = h.replies()[-1].data
+        self.assertEqual(rec[7], 138)
+        self.assertEqual(rec[11], 3)               # service-wipe subcode
+        self.assertEqual(struct.unpack_from("<H", rec, 56)[0], 0)
+        h.request(0x48, sc.TYPE_SET,
+                  struct.pack("<I", h.hub.total), seq=465)
+        self.assertEqual(h.replies()[-1].type, sc.TYPE_ACK)
+        self.assertEqual(h.hub.pending_count(), 0)
+
+    def test_r2_store_format_restarts_total(self):
+        h = HubHarness()
+        upload_inventory(h, lines=(1,))
+        h.hub.add_events(3, code=1, line=1)
+        h.hub.store_format()
+        h.request(0x40, sc.TYPE_GET, b"", seq=460)
+        head_i, wrap_i, total_i, tail_i = struct.unpack(
+            "<HHIH", h.replies()[-1].data)
+        self.assertEqual((head_i, wrap_i, total_i, tail_i), (1, 0, 1, 0))
+        h.request(0x42, sc.TYPE_GET, b"\x00\x00", seq=461)
+        rec = h.replies()[-1].data
+        self.assertEqual((rec[7], rec[11]), (138, 1))
+
+    def test_r2_wrap_overflow_keeps_modular_position(self):
+        h = HubHarness()
+        upload_inventory(h, lines=(1,))
+        h.hub.advance_ring(65534 * 100)
+        h.hub.add_events(300, code=1, line=1)
+        h.request(0x40, sc.TYPE_GET, b"", seq=460)
+        head_i, wrap_i, total_i, tail_i = struct.unpack(
+            "<HHIH", h.replies()[-1].data)
+        self.assertEqual(wrap_i, 1)                # crossed 65535 -> 0 -> 1
+        fark = (total_i - (wrap_i * 100 + head_i)) % 6553600
+        self.assertEqual(fark, 0)                  # not a store reset
+
+    def test_r2_pwr_summary_battery_life_tail(self):
+        h = HubHarness()
+        h.hub.telemetry = {"efc": 12, "kalan_efc": 2488,
+                           "kalan_yil_x10": 47}
+        body = h.hub.build_pwr_summary()
+        self.assertEqual(len(body), 45)
+        self.assertEqual(struct.unpack_from("<H", body, 39)[0], 12)
+        self.assertEqual(struct.unpack_from("<H", body, 41)[0], 2488)
+        self.assertEqual(struct.unpack_from("<H", body, 43)[0], 47)
+        self.assertNotEqual(body[28], 0xFF)
+        h.hub.aku_kaynak_yok = True
+        body = h.hub.build_pwr_summary()
+        self.assertEqual(body[28], 0xFF)           # soh unknown
+        self.assertEqual(body[39:43], b"\xff\xff\xff\xff")
+        self.assertEqual(struct.unpack_from("<H", body, 43)[0], 47)
+        h.hub.aku_kaynak_yok = False
+        h.hub.telemetry = None
+        body = h.hub.build_pwr_summary()
+        self.assertEqual(0, body[2] & 0x01)        # no telemetry: b0 = 0
+        self.assertEqual(body[4], 255)
+        self.assertEqual(body[39:45], b"\xff" * 6)
+
+    def test_r2_pwr_command_cancel_choreography(self):
+        h = HubHarness()
+        h.hub.pwr_result_delay_s = 10.0
+        h.request(0xE6, sc.TYPE_SET, b"\x01\x00", seq=460)
+        started = h.notifies(0xE7)[-1].data
+        self.assertEqual(started[4] & 0x10, 0x10)  # b4: komut sürüyor
+        h.request(0xE6, sc.TYPE_SET, b"\x00\x00", seq=461)
+        cancelled = h.notifies(0xE7)[-1].data
+        self.assertEqual((cancelled[2], cancelled[3], cancelled[4]),
+                         (0xFF, 0, 0x00))           # non-0x05: FF 00 00
+        h.request(0xE6, sc.TYPE_SET, b"\x05\xA5", seq=462)
+        h.request(0xE6, sc.TYPE_SET, b"\x00\x00", seq=463)
+        monitoring = h.notifies(0xE7)[-1].data
+        self.assertEqual(monitoring[4], 0x02)      # b1: izleme sürüyor
+        self.assertEqual(monitoring[3], 1)         # yayin kept at cancel
+        h.advance(3000)
+        akibet = h.notifies(0xE7)[-1].data
+        self.assertEqual((akibet[2], akibet[4]), (0xFF, 0x04))  # b2
+        h.hub.pwr_cancel_verified = True
+        h.request(0xE6, sc.TYPE_SET, b"\x05\xA5", seq=464)
+        h.request(0xE6, sc.TYPE_SET, b"\x00\x00", seq=465)
+        h.advance(3000)
+        akibet = h.notifies(0xE7)[-1].data
+        self.assertEqual((akibet[2], akibet[4]), (0xFF, 0x08))  # b3
+
+    def test_r2_card_change_same_position_drops_old_session(self):
+        h = HubHarness()
+        upload_inventory(h, lines=(1,))
+        old_key = make_eui(1, 1).hex()
+        h.hub.inventory[old_key].uptime_s = 123
+        new_eui = bytes.fromhex("00124B0038C9F9C1")
+        h.request(0x06, sc.TYPE_SET,
+                  bytes([1, 1, 1]) + new_eui + b"\x00", seq=460)
+        self.assertNotIn(old_key, h.hub.inventory)
+        self.assertIn(new_eui.hex(), h.hub.inventory)
+        h.hub.inventory[new_eui.hex()].uptime_s = 77
+        h.request(0x04, sc.TYPE_SET,
+                  bytes([1, 1, 1]) + new_eui + b"\x00", seq=461)
+        # same EUI rewrite is not a card change: session state kept
+        self.assertEqual(h.hub.inventory[new_eui.hex()].uptime_s, 77)
+
+    def test_r2_free_slots_reports_99_minus_pending(self):
+        h = HubHarness()
+        upload_inventory(h, lines=(1,))
+        h.request(0x02, sc.TYPE_GET, b"", seq=460)
+        self.assertEqual(h.replies()[-1].data[4], 99)
+        h.hub.add_events(5, code=1, line=1)
+        h.request(0x02, sc.TYPE_GET, b"", seq=461)
+        self.assertEqual(h.replies()[-1].data[4], 94)
+
+
 def build_suite():
     suite = unittest.TestSuite()
     for cls in (CodecBasics, ParserBehaviour, GoldenCaptures, Cp56Helpers,
                 BringUpTests, IdempotencyTests, EventRingTests,
                 ConfigGroupTests, PwrbTests, ProactiveAndFaultsTests,
-                V12PlanAdditions):
+                V12PlanAdditions, R2SimAdditions):
         suite.addTest(unittest.TestLoader().loadTestsFromTestCase(cls))
     return suite
 

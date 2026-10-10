@@ -253,7 +253,7 @@ def c2(ctx):
 # ----------------------------------------------------------------------
 
 @case("d1_trip_and_event_pull",
-      "TRIP + olay kayitlari: 0x47 -> 0x40/0x44/0x46 dongusu, left=0",
+      "TRIP + olay kayitlari: 0x47 -> 0x40/0x44/0x48 dongusu, left=0",
       scenario={"steps": [{"at_s": 0.5, "do": "boot"},
                           {"at_s": 12.0, "do": "inject_trip",
                            "line": 1, "phase": 2},
@@ -268,7 +268,7 @@ def d1(ctx):
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         tc = refresh(ctx)
-        consumes = tc.rx_requests(0x46)
+        consumes = tc.rx_requests(0x48)
         if consumes and _left_zero(tc):
             break
         time.sleep(2.0)
@@ -281,14 +281,14 @@ def d1(ctx):
     tc.expect(heads, "0x40 LOG_READ_HEAD yok")
     ranges = tc.rx_requests(0x44)
     tc.expect(ranges, "0x44 LOG_READ_RANGE yok")
-    # verify start == tail rule using preceding 0x40/0x46 answers is
+    # verify start == tail rule using preceding 0x40/0x48 answers is
     # approximated by: each 0x44 start advances in multiples of its count
     for record in ranges:
         start, count = struct.unpack("<HH",
                                      bytes.fromhex(record["data_hex"]))
         tc.expect(count <= 4, "0x44 count=%d > 4" % count)
-    consumes = tc.rx_requests(0x46)
-    tc.expect(consumes, "0x46 LOG_CONSUME_TO yok")
+    consumes = tc.rx_requests(0x48)
+    tc.expect(consumes, "0x48 LOG_CONSUME_IF yok")
     tc.expect(_left_zero(tc), "left=0'a ulasilmadi (dongu tamamlanmadi)")
     body = ctx.console.drain(1.0)
     ctx.evidence += body[-10:]
@@ -299,7 +299,10 @@ def d1(ctx):
 
 
 def _left_zero(tc):
-    acks = [r for r in tc.tx_frames(0x46) if r.get("kind") == "reply"]
+    # R2 consumes via 0x48 (ACK 8 B: tail,left,tail_sira); the legacy
+    # 0x46 ACK shares the same leading tail/left pair.
+    acks = [r for r in tc.tx_frames(0x48) + tc.tx_frames(0x46)
+            if r.get("kind") == "reply"]
     for ack in reversed(acks):
         data = bytes.fromhex(ack["data_hex"])
         if len(data) >= 4:
@@ -321,7 +324,7 @@ def d3(ctx):
     tc = refresh(ctx)
     err303 = [r for r in tc.tx_frames()
               if r.get("kind") == "reply" and
-              r["cmd"] in (0x40, 0x42, 0x44, 0x46) and
+              r["cmd"] in (0x40, 0x42, 0x44, 0x46, 0x48) and
               r.get("type") == 4 and r["data_hex"][:2] == "03"]
     seqs = tc.seqs(0x40) + tc.seqs(0x44)
     duplicates = [s for s in set(seqs) if seqs.count(s) > 1]
@@ -355,23 +358,21 @@ def d4(ctx):
               if r.get("kind") == "reply" and
               bytes.fromhex(r["data_hex"])[0:1] == b"\x06"]
     tc.expect(err606, "ERROR 0x06 (bozuk yuva) gorulmedi")
-    # Exclude the BQ-03 boot-protect no-op consume (0x46 at initial tail
-    # before any 0x44 pull); only pulls advance past the bad slot.
-    consumes = [struct.unpack("<H", bytes.fromhex(r["data_hex"]))[0]
-                for r in tc.rx_requests(0x46)]
+    # Exclude the BQ-03 boot-protect no-op consume (0x48 at the initial
+    # ordinal before any 0x44 pull); only pulls advance past the bad slot.
     pull_consumes = []
     seen_pull = False
     for r in tc.rx:
         if r["cmd"] == 0x44:
             seen_pull = True
-        if r["cmd"] == 0x46 and seen_pull:
+        if r["cmd"] == 0x48 and seen_pull:
             pull_consumes.append(
-                struct.unpack("<H", bytes.fromhex(r["data_hex"]))[0])
+                struct.unpack("<I", bytes.fromhex(r["data_hex"]))[0])
     tc.expect(pull_consumes and min(pull_consumes) >= 1,
               "imlec ileri tasinmadi: %s (boot-protect no-op haric)" %
               pull_consumes)
     tc.expect(_left_zero(tc), "left=0'a ulasilmadi")
-    return "slot skipped; consumes=%s" % consumes
+    return "slot skipped; consumes=%s" % pull_consumes
 
 
 # ----------------------------------------------------------------------
@@ -558,7 +559,7 @@ def g1(ctx):
     tc.expect(summaries, "0xE1 PWR_SUMMARY bildirimi yok")
     for record in summaries:
         data = bytes.fromhex(record["data_hex"])
-        tc.expect(len(data) == 39, "0xE1 govde 39 B olmali")
+        tc.expect(len(data) == 45, "0xE1 govde R2'de 45 B olmali")
         tc.expect(data[0] == 1, "0xE1 ver=1 olmali")
     return "0xE1 count=%d" % len(summaries)
 
@@ -644,7 +645,7 @@ def h4(ctx):
     wait_upload_complete(ctx)
     time.sleep(25.0)
     tc = refresh(ctx)
-    consumes = tc.rx_requests(0x46)
+    consumes = tc.rx_requests(0x48)
     tc.expect(consumes, "metin gurultusu sonrasi olay cekme durdu")
     tc.expect(_left_zero(tc), "left=0'a ulasilmadi")
     return "noise tolerated"
@@ -704,6 +705,7 @@ import cases_v12  # noqa: E402,F401  (registers into CASES above)
 import cases_bq   # noqa: E402,F401  (BOLATeX R0 answer cases)
 import cases_recovery  # noqa: E402,F401 (recovery and quality cases)
 import cases_findings  # noqa: E402,F401 (2026-10-08 analysis findings)
+import cases_r2   # noqa: E402,F401 (SCP R2 022555bf teslim cases)
 
 PLANNED = {
     "d5_wrap_during_read": "okuma sirasinda halka sarmasi (soak)",
