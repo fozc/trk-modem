@@ -19,6 +19,13 @@ doğrudan sınar).
 2. Gerçek MH, SCP hattına (USART3) bağlı ve ayakta.
 3. Konsol portu erişilebilir (varsayılan COM16, 230400).
 
+Aktif RF-SCP yolu **yüklenen imajın profili** belirler: RS-485 adaptörü
+(COM10) ve gerçek MH aynı anda takılı kalabilir. Profile-0'da SCP
+USART3'ten gerçek MH'ye gider (COM10 normal Modbus portu olur);
+profile-1'de firmware gerçek hubu yok sayar ve SCP'yi COM10'daki
+simülatöre yöneltir. Süitler arasında geçiş yeniden kablolama değil,
+ilgili profilin imajını yüklemekle yapılır.
+
 ## Kullanım
 
 ```bash
