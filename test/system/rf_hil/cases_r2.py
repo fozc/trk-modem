@@ -35,10 +35,18 @@ def wait_drained(ctx, timeout_s=75):
 
 
 def read_fault_count(ctx, line, kind):
-    """fltlog dump total for one phase; kind is TEMPORARY/PERMANENT."""
-    reply = ctx.console.send_and_wait(
-        "fltlog dump %d" % line,
-        r"Phase 1 - %s FAULTS \(total: (\d+)," % kind, timeout_s=10)
+    """fltlog dump total for one phase; kind is TEMPORARY/PERMANENT.
+
+    Retries once: under verbose RF logging the shell reply can be lost
+    in a LIVE_DATA burst (bench race, not firmware behaviour)."""
+    reply = None
+    for attempt in range(2):
+        reply = ctx.console.send_and_wait(
+            "fltlog dump %d" % line,
+            r"Phase 1 - %s FAULTS \(total: (\d+)," % kind, timeout_s=10)
+        if reply:
+            break
+        ctx.console.drain(1.0)
     assert reply, "%s fault count missing" % kind
     ctx.evidence.append(reply[1])
     return int(reply[2].group(1))
