@@ -11,11 +11,18 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "iec104_event_log.h"
+
+/* The caller owns storage. A successful return means queued, not sent.
+ * The log range is consumed only by the validated IEC104 ACK callback.
+ * Rejected/blocked submissions remain durable and request paced replay. */
+bool iec104_replay_send_record(const iec104_event_record_t *record,
+                               uint16_t seq);
 
 /* STARTDT bildirimi: 15 s'lik emniyet sayacini baslatir. Sure dolunca
  * IKM hic sorgulama yapmamis olsa bile replay kendiliginden kalkar
  * (sertname 2.2.4.2: donen baglantida veri otomatik gonderilir).
- * Bu, replay'in tek tetik yoludur. */
+ * Canli olay gonderimleri ayni sureci poll ile de uyandirabilir. */
 void iec104_replay_link_established(void);
 
 /* RF uretici giris noktasi (TRIP_NOTIFY isleyicisi icin): bir ariza

@@ -44,6 +44,14 @@ static bool package_ready = false;
 static uint16_t receive_sn = 0; //receive_squence_number, scadadan alinan paket sayisi, 15-bit
 static uint16_t send_sn = 0;    //send_squence_number, rtu'nun gonderdigi paket sayisi, 15-bit
 static uint16_t ack_sn = 0;    // Scada'nin onayladigi son paket numarasi, 15-bit
+/* ACK parsing and event submission run in cooperative process context.
+ * The ISR tick path does not access this transaction. */
+static struct
+{
+    uint16_t record_id;
+    uint16_t end_sn;
+    iec104_event_ack_fn_t on_ack;
+} event_ack;
  
 // Gonderilen I-frame paketlere Onay almadan maksimum gonderilecek mesaj sayisi. Doldugunda t1 sure sonunda tekrar gonderim yapilir.
  static uint16_t k_counter = 0; // Henuz SCADA'dan ACK alinmamis I-frame sayisi
@@ -951,6 +959,9 @@ bool on_ack_received(uint16_t nr)
 
         if (num_acked <= k_counter)
         {
+            const uint16_t event_distance =
+                (uint16_t)(((uint32_t)event_ack.end_sn -
+                            (uint32_t)ack_sn) & 0x7FFFU);
             k_counter -= num_acked;
             ack_sn = nr;
 
@@ -964,6 +975,14 @@ bool on_ack_received(uint16_t nr)
             else
             {
                 t1_timer = 0; // Kismi onay geldi, kalan en eski paket icin T1 yeniden baslatildi
+            }
+            if ((NULL != event_ack.on_ack) &&
+                (0U < event_distance) && (num_acked >= event_distance))
+            {
+                const iec104_event_ack_fn_t callback = event_ack.on_ack;
+                const uint16_t record_id = event_ack.record_id;
+                event_ack.on_ack = NULL;
+                callback(record_id);
             }
         }
         else
@@ -1231,6 +1250,8 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
 
 void iec104_reset(void)
 {
+	/* Socket/session reset never acknowledges outstanding event data. */
+	event_ack.on_ack = NULL;
 	link_active = false;
     wait_for_ack = false;
     wait_for_testfr_con = false;
@@ -1831,6 +1852,35 @@ bool iec104_emit_event_record(const iec104_event_record_t *record)
         default:
             return true;
     }
+}
+
+bool iec104_event_ack_pending(void)
+{
+    return NULL != event_ack.on_ack;
+}
+
+bool iec104_emit_event_record_tracked(const iec104_event_record_t *record,
+                                     uint16_t record_id,
+                                     iec104_event_ack_fn_t on_ack)
+{
+    if ((NULL == record) || (NULL == on_ack) || iec104_event_ack_pending())
+    {
+        return false;
+    }
+    const uint16_t before = send_sn;
+    if (!iec104_emit_event_record(record))
+    {
+        return false;
+    }
+    if ((before == send_sn) || (ack_sn == send_sn))
+    {
+        on_ack(record_id);
+        return true;
+    }
+    event_ack.record_id = record_id;
+    event_ack.end_sn = send_sn;
+    event_ack.on_ack = on_ack;
+    return true;
 }
 
 void iec104_send_C_SC_NA_1(cot_t cot, ioa_3byte_t ioa, sco_command_state_t scs, qualifier_of_command_t qu, se_bit_t se_bit)

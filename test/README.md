@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.39
+**Sürüm:** 1.41
 **Tarih:** 2026-10-10
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -181,6 +181,39 @@ alt sistemler test kapsamı gerekçesiyle etkinleştirilmemelidir. Flash enerji
 kesintisi ve gerçek ISR/DMA zamanlaması cihaz kanıtı gerektirir.
 
 ### Kalıcı günlük test kapsamı
+
+#### IEC104 ACK sonrası tüketme — 10.10.2026
+
+Kuyruğa kabul edilen kayıt, master'ın geçerli `N(R)` onayı bütün
+I-frame'lerini kapsayana kadar unsent (gönderilmemiş) kalmalıdır.
+Fault kaydı iki ASDU içerir; ilk ASDU'nun onayı kaydı tüketmemelidir.
+S-frame ve I-frame içindeki cumulative ACK (toplu onay) aynı mevcut
+doğrulama yolundan geçer. Tek kalıcı olay kaydı onay bekler; başka kayıtlar
+depoda kalır. Socket/reset onay bekleyen callback'i iptal eder. ACK gelmezse
+mevcut t1 ve bağlantı yönetimi geçerlidir; yeni timeout katmanı yoktur.
+Canlı RF fault/alarm girişleri de aynı ACK yolunu kullanır.
+
+`iec104/test_iec104_ack_delivery_scenario.c` gerçek Contiki replay, gerçek
+IEC104 parser, gerçek `iec104_process.c` TX slotları ve gerçek kalıcı logu
+birlikte çalıştırır. GSM, Flash ve NVRAM sınırları test çiftleridir.
+RAM kuyruğunda kopuş, GSM kabulünden sonra ACK'siz kopuş, kısmi fault ACK,
+bekleyen ACK sırasında yeni kayıt, ACK-state sync hatası, hatalı gelecek
+ACK ve t1 timeout sınanır. Eski replay kaynağıyla ilk senaryo yeniden
+açılışta `Expected 2 Was 0` üretmiştir; düzeltmeden sonra kayıtlar korunur.
+
+Protokol paketinde tam/kısmi/eski/mükerrer/gelecek ACK, I-frame onayı,
+15-bit wrap, reset, NULL ve ikinci ASDU'nun taşıma reddi sınanır.
+Önceden `TEST_IGNORE` olan durable replay regresyonu artık çalışır.
+ACK sonrası NVRAM sync başarısızsa yeniden açılışta kayıt tekrar
+gönderilebilir. Bu at-least-once (en az bir kez) davranışıdır; master
+uygulamasının kendi kalıcı deposuna yazdığını kanıtlamaz.
+
+Son host koşusunda 1134/1134 Unity testi ve sekiz kritik integration
+paketi geçti; atlanan test yoktur. Master i06/i07 toplama penceresi master'ın
+gerçek t2 (`confirm_interval`) değerine göre bekler; c104 2.2.1 yerel
+varsayılanı 10 s iken eski 6 s sessizlik sınırı erken sonuç üretiyordu.
+Bu değişiklikten sonra 13/13 master vaka selftest'i geçti. Fiziksel
+profile-0 i07 turu ve gerçek MH m3/m7 kabulü ayrıca yapılmalıdır.
 
 | Dosya | Gerçek üretim girişleri ve doğrulanan davranış |
 |---|---|
@@ -938,6 +971,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-10 | 1.41 | Kalıcı IEC104 kayıtlarının N(R) sonrası tüketilmesi, gerçek TX/ACK/log regresyonu ve master ACK aralığına uygun replay toplama süresi |
 | 2026-10-10 | 1.40 | SCP R2 HIL seti: simülatör R2 modeli (81 self-test), cases_r2 (8 cihaz vakası, toplam 45), 0x48 tüketim taşıması; iec104 master i07 replay tutma vakası; rf_real_mh gerçek MH duman süiti; bench konsol yarışına yeniden deneme |
 | 2026-10-10 | 1.39 | Bütün üretim C dosyalarının coverage envanteri, eksiksiz JUnit kontrolü ve sekiz modülde mantık/hata yolu testleri |
 | 2026-09-25 | 1.0 | İlk merkezi Ceedling ve integration test yapısı |

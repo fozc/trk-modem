@@ -119,6 +119,11 @@ class Master104:
     def is_connected(self):
         return bool(self.conn.is_connected)
 
+    @property
+    def confirm_interval_s(self):
+        """Actual master t2; replay may wait this long for each ACK."""
+        return float(self.conn.protocol_parameters.confirm_interval)
+
     # -- commands --------------------------------------------------------
 
     def interrogate(self, qoi_value):

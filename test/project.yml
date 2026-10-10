@@ -171,8 +171,14 @@
         - -O2
       test_app_ipc_scenario:
         - -Isupport/app_ipc
+      test_iec104_ack_delivery_scenario:
+        - -flto
+        - -O2
 
     :link:
+      test_iec104_ack_delivery_scenario:
+        - -flto
+        - -O2
       test_at_engine_scenario:
         - -flto
         - -O2

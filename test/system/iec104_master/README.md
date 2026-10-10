@@ -84,6 +84,11 @@ görüntüsü: port/CA/T0-T3/K/W/satır IOA haritası, vaka sonuçları),
 
 ## Oracle ve sınırlar
 
+- i06/i07, tek kayıt için master ACK'sini bekleyen RTU replay akışını
+  destekler. Kayıtlar arası sessizlik sınırı gerçek master t2
+  (`confirm_interval`) + 6 s gözlem payıdır. Toplama bütçesi ilk gelen
+  kayıttan sonra başlar ve kayıt sayısına göre genişler. Bu bir test
+  bekleme payıdır; protokol zamanlayıcıları değiştirilmez.
 - Beklenen IOA kümesi cihazın **canlı yapılandırmasından** üretilir
   (web `/config/iec104` Hatlar bölümü + `/config/rf`); doc tabloları
   tek başına oracle değildir (bir kısmı eski).
