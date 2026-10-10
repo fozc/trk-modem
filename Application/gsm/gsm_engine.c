@@ -77,7 +77,7 @@ uint8_t simcard_mcc_mnc[6] = {};
 uint8_t at_err_try = 0;
 
 /*
- * Response view � read-only pointer into at_engine2's internal response buffer.
+ * Response view - read-only pointer into at_engine2's internal response buffer.
  * Synced each time gsm_at_response_ready() is called via at_engine_get_response().
  * Field names kept for compatibility with existing parsing code.
  */
@@ -968,7 +968,7 @@ int32_t gsm_ss_iec104_listener_cb(void)
 		if(!gsm_info.iec104_session.ip.ip) /* Bu baglanti yeni ise log al. */
 		{
 			uint8_t ip_buff[16] = {0}, ip_index = 0, comma = 0;
-			/* Sinir 55: web listener ayristiricisiyla ayni — #SS satiri
+			/* Sinir 55: web listener ayristiricisiyla ayni - #SS satiri
 			 * "#SS: <id>,<state>,<local_ip>,<lport>,<remote_ip>,<rport>"
 			 * biciminde; remote IP 4. virgulden sonra baslar. */
 			for(uint32_t i = 0; i < rx.len && i < 55U; i++)
@@ -1377,7 +1377,10 @@ int32_t gsm_ntp_cb(void)
 						.month    = dt.month,
 						.year     = dt.year,
 					};
-					rtc_sync(&new_time);
+					if (!rtc_sync(&new_time))
+                    {
+                        CSLOG_WARN("NTP: RTC rejected the received time\r\n");
+                    }
 				}
 
 			}

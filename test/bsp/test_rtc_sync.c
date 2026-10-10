@@ -26,6 +26,8 @@ static RTC_TimeTypeDef hw_time;
 static RTC_DateTypeDef hw_date;
 static uint32_t read_count;
 static uint32_t expected_reads;
+static HAL_StatusTypeDef time_status;
+static HAL_StatusTypeDef date_status;
 
 static HAL_StatusTypeDef get_time(RTC_HandleTypeDef *handle,
     RTC_TimeTypeDef *value, uint32_t format, int call_count)
@@ -96,6 +98,10 @@ static HAL_StatusTypeDef set_time(RTC_HandleTypeDef *handle,
     (void)call_count;
     TEST_ASSERT_EQUAL_PTR(&hrtc, handle);
     TEST_ASSERT_EQUAL_UINT32(RTC_FORMAT_BIN, format);
+    if (HAL_OK != time_status)
+    {
+        return time_status;
+    }
     hw_time = *value;
     write_count++;
     return HAL_OK;
@@ -108,6 +114,10 @@ static HAL_StatusTypeDef set_date(RTC_HandleTypeDef *handle,
     (void)call_count;
     TEST_ASSERT_EQUAL_PTR(&hrtc, handle);
     TEST_ASSERT_EQUAL_UINT32(RTC_FORMAT_BIN, format);
+    if (HAL_OK != date_status)
+    {
+        return date_status;
+    }
     hw_date = *value;
     write_count++;
     return HAL_OK;
@@ -136,6 +146,8 @@ void setUp(void)
     write_count = 0U;
     read_count = 0U;
     expected_reads = 0U;
+    time_status = HAL_OK;
+    date_status = HAL_OK;
     bsp_set_rtc_StubWithCallback(set_calendar);
     bsp_set_rtc_milisec_StubWithCallback(set_ms);
     bsp_set_epoch_time_StubWithCallback(set_epoch);
@@ -165,7 +177,7 @@ static void assert_rejected(const rtc_t *value)
     const bsp_rtc_t before = stored;
     const uint32_t old_epoch = epoch_value;
     const uint32_t old_marker = marker;
-    rtc_sync(value);
+    TEST_ASSERT_FALSE(rtc_sync(value));
     TEST_ASSERT_EQUAL_UINT32(0U, write_count);
     TEST_ASSERT_EQUAL_MEMORY(&before, &stored, sizeof(stored));
     TEST_ASSERT_EQUAL_UINT32(old_epoch, epoch_value);
@@ -175,7 +187,7 @@ static void assert_rejected(const rtc_t *value)
 void test_rtc_sync_valid_time_updates_all_views(void)
 {
     const rtc_t value = valid_time();
-    rtc_sync(&value);
+    TEST_ASSERT_TRUE(rtc_sync(&value));
     TEST_ASSERT_EQUAL_UINT32(6U, write_count);
     TEST_ASSERT_EQUAL_UINT16(value.millisec, stored.millisec);
     TEST_ASSERT_EQUAL_UINT8(value.month, stored.month);
@@ -230,7 +242,7 @@ void test_rtc_sync_leap_february_29_is_accepted(void)
     value.year = 28U;
     value.month = 2U;
     value.day = 29U;
-    rtc_sync(&value);
+    TEST_ASSERT_TRUE(rtc_sync(&value));
     TEST_ASSERT_EQUAL_UINT32(6U, write_count);
     TEST_ASSERT_EQUAL_UINT32(1835481599U, epoch_value);
 }
@@ -258,7 +270,7 @@ void test_rtc_sync_source_before_2026_is_rejected(void)
 void test_rtc_sync_epoch_floor_is_accepted(void)
 {
     const rtc_t value = {.day = 1U, .month = 1U, .year = 26U};
-    rtc_sync(&value);
+    TEST_ASSERT_TRUE(rtc_sync(&value));
     TEST_ASSERT_EQUAL_UINT32(1767225600U, epoch_value);
     TEST_ASSERT_EQUAL_UINT32(6U, write_count);
 }
@@ -267,7 +279,7 @@ void test_rtc_sync_year_99_is_accepted(void)
 {
     rtc_t value = valid_time();
     value.year = 99U;
-    rtc_sync(&value);
+    TEST_ASSERT_TRUE(rtc_sync(&value));
     TEST_ASSERT_EQUAL_UINT8(99U, hw_date.Year);
     TEST_ASSERT_EQUAL_UINT32(6U, write_count);
 }
@@ -460,4 +472,36 @@ void test_rtc_resync_accepts_valid_time_after_rejected_read(void)
     TEST_ASSERT_EQUAL_UINT32(3U, write_count);
     TEST_ASSERT_EQUAL_UINT32(1798761599U, epoch_value);
 }
+void test_time_write_failure_preserves_software_epoch_and_invalidates_marker(void)
+{
+    const rtc_t value = valid_time();
+    const bsp_rtc_t before = stored;
+    const uint32_t old_epoch = epoch_value;
+    time_status = HAL_ERROR;
+    TEST_ASSERT_FALSE(rtc_sync(&value));
+    TEST_ASSERT_EQUAL_MEMORY(&before, &stored, sizeof(stored));
+    TEST_ASSERT_EQUAL_UINT32(old_epoch, epoch_value);
+    TEST_ASSERT_EQUAL_UINT32(0U, marker);
+    time_status = HAL_OK;
+    TEST_ASSERT_TRUE(rtc_sync(&value));
+    TEST_ASSERT_EQUAL_UINT32(1798761599U, epoch_value);
+    TEST_ASSERT_EQUAL_UINT32(0x32F2U, marker);
+}
+
+void test_date_write_failure_does_not_publish_partially_changed_calendar(void)
+{
+    const rtc_t value = valid_time();
+    const bsp_rtc_t before = stored;
+    const uint32_t old_epoch = epoch_value;
+    date_status = HAL_ERROR;
+    TEST_ASSERT_FALSE(rtc_sync(&value));
+    TEST_ASSERT_EQUAL_MEMORY(&before, &stored, sizeof(stored));
+    TEST_ASSERT_EQUAL_UINT32(old_epoch, epoch_value);
+    TEST_ASSERT_EQUAL_UINT32(0U, marker);
+    date_status = HAL_OK;
+    TEST_ASSERT_TRUE(rtc_sync(&value));
+    TEST_ASSERT_EQUAL_UINT8(value.month, stored.month);
+    TEST_ASSERT_EQUAL_UINT32(0x32F2U, marker);
+}
+
 /*** end of file ***/

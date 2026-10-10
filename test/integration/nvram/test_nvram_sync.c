@@ -80,7 +80,7 @@ static void craft_sequence(uint32_t slot, uint32_t seq)
     image->crc = crc32_finalize(crc);
 }
 
-/* ---- 1. Normal kullanım ---------------------------------------------- */
+/* ---- 1. Normal kullanim ---------------------------------------------- */
 
 static void test_normal_flow(void)
 {
@@ -161,7 +161,7 @@ static void test_recovery_none(void)
     check(img(MOCK_SLOT_A)->sequence == 1U, "T6: fresh sequence");
 }
 
-/* ---- 3. Yedek hazırlama ----------------------------------------------- */
+/* ---- 3. Yedek hazirlama ----------------------------------------------- */
 
 static void test_backup_prepared_before_a(void)
 {
@@ -234,7 +234,7 @@ static void test_retry_after_b_failure(void)
     check(images_equal(), "T9: slots consistent");
 }
 
-/* ---- 5. RAM korunması (onarım flash->flash) ---------------------------- */
+/* ---- 5. RAM korunmasi (onarim flash->flash) ---------------------------- */
 
 static void test_ram_preserved_during_repair(void)
 {
@@ -526,8 +526,97 @@ static void test_rf_staged_save_with_real_flash_failures(void)
     check(0 == rf_store_sync(), "RF: manual retry completes copies");
 }
 
+static void update_image_crc(uint32_t slot)
+{
+    nvram_t *image = img(slot);
+    image->crc = crc32_finalize(crc32_update(crc32_init(), image,
+        sizeof(*image) - sizeof(image->crc)));
+}
+
+static void test_invalid_header_or_crc_uses_valid_peer_without_data_loss(void)
+{
+    for (uint32_t slot = 0U; 2U > slot; slot++)
+    {
+        for (uint8_t fault = 0U; 5U > fault; fault++)
+        {
+            boot_virgin();
+            nvram_set_gsm_log_level(1U);
+            check(0 == nvram_sync(false), "header: baseline saved");
+            const uint32_t sequence = img(slot)->sequence;
+            switch (fault)
+            {
+                case 0U: img(slot)->magic ^= 1U; break;
+                case 1U: img(slot)->schema_version++; break;
+                case 2U: img(slot)->length = 0U; break;
+                case 3U: img(slot)->length = UINT32_MAX; break;
+                default: img(slot)->crc ^= 1U; break;
+            }
+            if (4U != fault)
+            {
+                update_image_crc(slot);
+            }
+            reboot();
+            check(1U == nvram_get_gsm_log_level(),
+                "header: valid peer retains the committed settings");
+            check(sequence == img(MOCK_SLOT_A)->sequence,
+                "header: repair keeps the committed sequence");
+            check(images_equal(), "header: bad copy repaired from peer");
+            check(!nvram_is_busy(), "header: repair releases the lock");
+        }
+    }
+}
+
+static void test_repair_interrupted_at_every_page_retains_committed_settings(void)
+{
+    const uint32_t pages = ((uint32_t)sizeof(nvram_t) + 255U) / 256U;
+    for (uint32_t slot = 0U; 2U > slot; slot++)
+    {
+        for (uint32_t page = 0U; pages > page; page++)
+        {
+            boot_virgin();
+            nvram_set_gsm_log_level(1U);
+            check(0 == nvram_sync(false), "page: baseline saved");
+            const uint32_t sequence = img(slot)->sequence;
+            (void)memset(mock_slot_image_rw(slot), 0xFF, 4096U);
+            /* The 4 KB image has at most 16 pages; the mock uses int. */
+            mock_fail_page(slot, (int)page);
+            reboot();
+            check(1U == nvram_get_gsm_log_level(),
+                "page: interrupted repair retains settings in RAM");
+            check(!nvram_is_busy(), "page: interrupted repair unlocks");
+            check(0 == nvram_sync(false), "page: repair retry succeeds");
+            check(images_equal(), "page: retry reconstructs both images");
+            check(sequence == img(MOCK_SLOT_A)->sequence,
+                "page: repair does not create a new settings revision");
+            reboot();
+            check(1U == nvram_get_gsm_log_level(),
+                "page: settings survive restart after retry");
+        }
+    }
+}
+
+static void test_two_invalid_images_provision_verified_defaults(void)
+{
+    boot_virgin();
+    nvram_set_gsm_log_level(1U);
+    check(0 == nvram_sync(false), "defaults: baseline saved");
+    img(MOCK_SLOT_A)->magic = 0U;
+    img(MOCK_SLOT_B)->magic = 0U;
+    reboot();
+    check(2U == nvram_get_gsm_log_level(),
+        "defaults: corrupt images do not publish previous RAM settings");
+    check(NVRAM_MAGIC == img(MOCK_SLOT_A)->magic,
+        "defaults: provisioned image has the current magic");
+    check(NVRAM_SCHEMA_VERSION == img(MOCK_SLOT_A)->schema_version,
+        "defaults: provisioned image has the current schema");
+    check(images_equal(), "defaults: verified copies agree");
+}
+
 int main(void)
 {
+    test_invalid_header_or_crc_uses_valid_peer_without_data_loss();
+    test_repair_interrupted_at_every_page_retains_committed_settings();
+    test_two_invalid_images_provision_verified_defaults();
     test_rf_staged_save_with_real_flash_failures();
     test_detailed_save_distinguishes_failed_and_primary_only();
     test_factory_register_addresses_are_unchanged();
