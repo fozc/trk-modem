@@ -39,6 +39,43 @@ const uint8_t GSM_CSQ_STR[]        = "+CSQ: ";
 
 void gsm_internet_connection_faild_cd(void);
 
+/* LE910R1 AT guide r8, SCFGEXT2: documented causes are 0..4. */
+static const char *socket_close_cause_name(uint8_t cause)
+{
+    switch (cause)
+    {
+        case 0U: return "not available";
+        case 1U: return "remote FIN/END";
+        case 2U: return "RST or fatal socket error";
+        case 3U: return "socket inactivity timeout";
+        case 4U: return "network PDP deactivation";
+        default: return "unknown";
+    }
+}
+
+static void log_socket_close_cause(const char *notification, uint8_t socket_id)
+{
+    const size_t comma_index = (' ' == notification[11]) ? 13U : 12U;
+    if (',' == notification[comma_index])
+    {
+        const char *value = notification + comma_index + 1U;
+        if (' ' == *value)
+        {
+            value++;
+        }
+        if (('0' <= *value) && ('9' >= *value))
+        {
+            const uint8_t cause = (uint8_t)(*value - '0');
+            CSLOG_WARN("URC: NO CARRIER socket=%u cause=%u (%s)\r\n",
+                (unsigned int)socket_id, (unsigned int)cause,
+                socket_close_cause_name(cause));
+            return;
+        }
+    }
+    CSLOG_WARN("URC: NO CARRIER socket=%u cause=unavailable\r\n",
+        (unsigned int)socket_id);
+}
+
 void gsm_URC_callback(uint8_t *msg, uint16_t len)
 {
     (void)len;
@@ -71,6 +108,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		//hes_event_listener_socket_close();
 		gsm_set_socket_state(LISTENER_SOCKET, SOCKET_CLOSED);
 		CSLOG_WARN("URC: NO CARRIER: LISTENER Soket ile baglanti sonlandirildi.\r\n");
+        log_socket_close_cause(ptr, 1U);
 		return;
 	}
 
@@ -89,6 +127,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	if(ptr != NULL)
 	{
 		CSLOG_WARN("URC: NO CARRIER: DIALER Soket ile baglanti sonlandirildi.\r\n");
+        log_socket_close_cause(ptr, 2U);
 		gsm.dialer_socket_no_carrier = 1;
 		return;
 	}
@@ -118,6 +157,7 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 	if(ptr != NULL)
 	{
 		CSLOG_WARN("URC: NO CARRIER: IEC104 Soket ile baglanti sonlandirildi.\r\n");
+        log_socket_close_cause(ptr, 3U);
 		//trace_gsm_callback(TR_EVENT_NO_CARRIER, NULL, 0);
 		gsm_set_socket_state(IEC104_LISTENER_SOCKET, SOCKET_CLOSED);
 		gsm_listener_set_no_carrier(GSM_LISTENER_IEC104, 1);
@@ -257,6 +297,12 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
 		return;
 	}
 
+    if (NULL != strstr((const char *)msg, "NO CARRIER"))
+    {
+        CSLOG_WARN("URC: NO CARRIER socket=unavailable "
+            "cause=unavailable\r\n");
+        return;
+    }
 	CCSLOG(XCOLOR_YELLOW, "URC not handled [%s]\r\n", msg);
 }
 
@@ -707,4 +753,3 @@ void gsm_process_old(void)
 			break;
 	}
 }
-

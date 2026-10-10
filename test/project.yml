@@ -113,6 +113,9 @@
         - -Wno-array-parameter
         - -flto
         - -O2
+      test_gsm_urc_scenario:
+        - -flto
+        - -O2
       # Legacy JSON module; range regressions use its public API.
       test_json_config_bounds:
         - -Wno-array-parameter
@@ -176,6 +179,9 @@
         - -O2
 
     :link:
+      test_gsm_urc_scenario:
+        - -flto
+        - -O2
       test_iec104_ack_delivery_scenario:
         - -flto
         - -O2
