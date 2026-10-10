@@ -65,6 +65,7 @@ bağlanmamalıdır.
 | i04_clock_sync | C_CS_NA_1 ACT_CON + konsol zaman damgasıyla apply | `--clock-sync` + `--console` |
 | i05_testfr_idle | cihaz t3 TESTFR_ACT → master CON → GI canlılığı (master t3'ü cihazdan büyük seçilir) | cihaz |
 | i06_replay_reconnect | sentetik kayıt replay: içerik + en-yeni-önce sıra + unsent tükenmesi | `--mutate-eventlog` + `--console` |
+| i07_replay_retention | replay ortasında link kesintisi: kayıt kaybı yok (de5604c), pencere 2 en-yeni-önce | `--mutate-eventlog` + `--console` |
 
 ## Sonuç ve çıkış kodları
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """IEC104 master acceptance suite orchestrator (device-level).
 
-Runs the i01..i06 case catalog from cases.py against a live device over
+Runs the i01..i07 case catalog from cases.py against a live device over
 its GSM IEC-104 listener (default port 2404), using the c104 library
 (pinned 2.2.1, bench venv) as an independent master-side oracle.
 
