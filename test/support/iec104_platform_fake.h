@@ -1,14 +1,12 @@
-/**********************************************************************
+/*
+ * iec104_platform_fake.h
  *
- * Filename:    iec104_platform_fake.h
+ *  Created on: Oct 01, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
- * Description: Host-test doubles for the platform services libiec104
- *              reaches into (breaker, fault_log, rtc, nvram, logging).
- *
- * Notes:       Only the seeding helpers the protocol tests need are
- *              exposed; other services remain internal to the fake.
- *
- **********************************************************************/
+ * Host platform boundaries for real IEC104 protocol tests.
+ */
 
 #ifndef IEC104_PLATFORM_FAKE_H
 #define IEC104_PLATFORM_FAKE_H
@@ -28,6 +26,7 @@ void mock_platform_reset(void);
 
 uint32_t mock_rtc_sync_count(void);
 rtc_t mock_rtc_last_sync(void);
+void mock_rtc_sync_failure(bool failed);
 
 /* Marks power line 'feeder_id' as in use so the emitters walk it. */
 void mock_breaker_set_line_in_use(uint8_t feeder_id, bool in_use);

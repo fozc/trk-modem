@@ -71,7 +71,8 @@ void rtc_hw_read(rtc_t *out);
  * @brief  Write the hardware RTC calendar and set the valid-time marker.
  * @param[in] dt  Source time structure. Ignored if NULL.
  */
-void rtc_hw_write(const rtc_t *dt);
+/* False on NULL or HAL failure; failed writes clear the valid marker. */
+bool rtc_hw_write(const rtc_t *dt);
 
 /* ---- Unified time set / sync ---- */
 
@@ -84,7 +85,8 @@ void rtc_hw_write(const rtc_t *dt);
  *
  * @param[in] dt  New time. Ignored if NULL.
  */
-void rtc_sync(const rtc_t *dt);
+/* True only after calendar acceptance and successful hardware writes. */
+bool rtc_sync(const rtc_t *dt);
 
 /**
  * @brief  Reload the software RTC (and epoch) from the hardware RTC.

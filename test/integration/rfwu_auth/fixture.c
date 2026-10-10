@@ -23,6 +23,12 @@ static uint32_t response_len;
 static uint32_t tick;
 static uint32_t nonce_word;
 static bool rng_failure;
+static bool init_failure;
+static bool write_failure;
+static bool finish_failure;
+static uint32_t finish_count;
+static uint32_t written_bytes;
+static uint32_t init_offset;
 
 const rfwu_nvram_t *nvram_get_rfwu(void)
 {
@@ -62,23 +68,28 @@ static int capture_response(const void *data, int len)
 static int fake_init(uint32_t size, uint32_t offset)
 {
     (void)size;
-    (void)offset;
+    init_offset = offset;
     init_count++;
-    return 0;
+    return init_failure ? -1 : 0;
 }
 
 static int fake_write(const uint8_t *data, uint32_t size)
 {
     (void)data;
-    (void)size;
     write_count++;
+    if (write_failure)
+    {
+        return -1;
+    }
+    written_bytes += size;
     return 0;
 }
 
 static int fake_finish(uint32_t size)
 {
     (void)size;
-    return 0;
+    finish_count++;
+    return finish_failure ? -1 : 0;
 }
 
 static void fake_reboot(void)
@@ -103,6 +114,12 @@ void fixture_reset(uint32_t key)
     tick = 0U;
     nonce_word = 0x12345678U;
     rng_failure = false;
+    init_failure = false;
+    write_failure = false;
+    finish_failure = false;
+    finish_count = 0U;
+    written_bytes = 0U;
+    init_offset = 0U;
     init_count = 0U;
     write_count = 0U;
     reboot_count = 0U;
@@ -121,6 +138,10 @@ uint32_t fixture_value(uint32_t field)
         case 4U: return reboot_count;
         case 5U: return record.total_size;
         case 6U: return record.file_hash;
+        case 7U: return finish_count;
+        case 8U: return written_bytes;
+        case 9U: return init_offset;
+        case 10U: return record.received_bytes;
         default: return 0U;
     }
 }
@@ -154,5 +175,16 @@ uint32_t fixture_response(uint8_t *data)
 {
     (void)memcpy(data, response, sizeof(response));
     return response_len;
+}
+
+void fixture_fw_failure(uint8_t operation, bool failed)
+{
+    switch (operation)
+    {
+        case 1U: init_failure = failed; break;
+        case 2U: write_failure = failed; break;
+        case 3U: finish_failure = failed; break;
+        default: break;
+    }
 }
 /*** end of file ***/
