@@ -166,6 +166,7 @@ static void add_records(bool alarm)
 
 void setUp(void)
 {
+    config_apply_pending = false;
     reset_fixture();
     now = 0U;
     (void)memset(&breaker_state, 0, sizeof(breaker_state));
@@ -327,6 +328,55 @@ void test_existing_t1_timeout_preserves_unacknowledged_record(void)
     close_link();
     reboot_fixture();
     TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
+}
+
+
+
+void test_runtime_config_waits_for_close_without_losing_unacknowledged_records(void)
+{
+    add_records(true);
+    advance(500U);
+    TEST_ASSERT_TRUE(0U < tx.pending);
+    const uint16_t pending = tx.pending;
+    const uint16_t unsent = iec104_event_log_get_unsent_count();
+    const uint16_t send_sn_before = iec104_get_send_sn();
+    config.t3_max = 120U;
+    nvram_get_iec104_config_IgnoreAndReturn(&config);
+    gsm_get_socket_state_ExpectAndReturn(IEC104_LISTENER_SOCKET,
+        SOCKET_CONNECTED);
+    iec104_application_event_handler_StopIgnore();
+    iec104_process_config_changed();
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(60U, iec104_get_t3_timeout());
+    TEST_ASSERT_EQUAL_UINT16(pending, tx.pending);
+    TEST_ASSERT_EQUAL_UINT16(send_sn_before, iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(unsent, iec104_event_log_get_unsent_count());
+    iec104_process_apply_pending_config();
+    TEST_ASSERT_EQUAL_UINT16(60U, iec104_get_t3_timeout());
+    TEST_ASSERT_TRUE(config_apply_pending);
+    iec104_application_event_handler_Ignore();
+    iec104_process_socket_closed_cb();
+    TEST_ASSERT_EQUAL_UINT16(120U, iec104_get_t3_timeout());
+    TEST_ASSERT_FALSE(config_apply_pending);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx.pending);
+    TEST_ASSERT_EQUAL_UINT16(unsent, iec104_event_log_get_unsent_count());
+    start_link();
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
+void test_runtime_config_without_connected_master_prepares_new_listener(void)
+{
+    iec104_reset();
+    config.t3_max = 65525U;
+    nvram_get_iec104_config_IgnoreAndReturn(&config);
+    gsm_get_socket_state_ExpectAndReturn(IEC104_LISTENER_SOCKET,
+        SOCKET_LISTENING);
+    iec104_application_event_handler_StopIgnore();
+    iec104_application_event_handler_Expect(IEC104_EVT_REQUEST_SOCKET_CLOSE);
+    iec104_process_config_changed();
+    iec104_process_apply_pending_config();
+    TEST_ASSERT_EQUAL_UINT16(65525U, iec104_get_t3_timeout());
+    TEST_ASSERT_FALSE(config_apply_pending);
 }
 
 /*** end of file ***/

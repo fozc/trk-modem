@@ -13,6 +13,12 @@
 #include <stdbool.h>
 #include "types.h"
 
+#define IEC104_T3_MIN_SECONDS          20U
+#define IEC104_T3_MAX_SECONDS          65525U
+#define IEC104_T3_DEFAULT_SECONDS      60U
+#define IEC104_TEST_DELAY_SECONDS      2U
+#define IEC104_MODEM_IDLE_MARGIN_SECONDS 10U
+
 
 #define TEMPORARY_FAULT_COUNT              15U
 #define TEMPORARY_FAULT_FIELDS_PER_RECORD   4U

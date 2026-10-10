@@ -312,7 +312,7 @@ void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config
             .t0_max = 30,  //  [1-255 sec, def:30s] Baglanti kurma zaman asimi, RTU'da onemsiz(?) [1-255 saniye]
             .t1_max = 45,  //  [1-255 sec, def:15s] Onay zaman asimi. RTU I-frame gonderdikten sonra baslar, sure sonuna kadar scada'dan onay gelmesi lazim, gelmezse paket kaybolmus denilir, tekrar gonderim yapilir. Belirli sayida tekrar gonderimden sonra  ack alamaz ise bagantiyi koparir
             .t2_max = 30,  //  [1-255 sec, def:10s] Bir istasyonun (RTU veya SCADA) aldigi I-frame paketlerine onay gondermek icin bekleyebilecegi maks sure
-            .t3_max = 60,  //  [1-255 sec, def:20s] Idle timeout. Hat bu sure boyunca bosta kalirsa TESTFR gonderimi yaparak baglantiyi test eder. SCADA'da yapabilir.
+            .t3_max = IEC104_T3_DEFAULT_SECONDS,
             .k_max = 64,   //  [1-32767,   def:12 ] Send-window-limit: Max number of unacknowledged I format frames
             .w_max = 32,    // [1-32767,    def:8  ] W, alim penceresi siniri: Max number of unacknowledged I format frames to be received
             .sbo_execute_timeout = 30, // seconds. Time between SBO select and execute command
@@ -324,6 +324,12 @@ void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config
          config = *iec104_config;
     }
    
+
+    if ((IEC104_T3_MIN_SECONDS > config.t3_max) ||
+        (IEC104_T3_MAX_SECONDS < config.t3_max))
+    {
+        config.t3_max = IEC104_T3_DEFAULT_SECONDS;
+    }
 
     // k > w secilmeli
     k_counter = 0;
@@ -1290,6 +1296,28 @@ uint16_t iec104_get_send_sn(void)
     return send_sn;
 }
 
+uint16_t iec104_get_t3_timeout(void)
+{
+    return config.t3_max;
+}
+
+uint16_t iec104_get_listen_port(void)
+{
+    return config.scada_port;
+}
+
+bool iec104_apply_config(const iec104_config_t *new_config)
+{
+    if (link_active || (NULL == new_config) ||
+        (IEC104_T3_MIN_SECONDS > new_config->t3_max) ||
+        (IEC104_T3_MAX_SECONDS < new_config->t3_max))
+    {
+        return false;
+    }
+    config = *new_config;
+    return true;
+}
+
 uint16_t iec104_get_w(void)
 {
     return w_counter;
@@ -1406,6 +1434,7 @@ void iec104_process_package(void)
         // Format tipine gore dallanma ve STARTDT (link_active) Dogrulamasi
                 if(iec104_is_u_format(&package))
                 {
+                    t3_timer = 0U;
                     /* U-Frame paketleri (Orn: STARTDT_ACT) hat aktiflesmeden once gelebilen yegane kontrol paketleridir */
                     iec104_process_u_frame(&package.frame.apci.u_frame);
                 }
@@ -1414,6 +1443,7 @@ void iec104_process_package(void)
                     /* Hat aktif degilse S-Frame onay paketlerini gormezden gel ve drop et */
                     if (link_active)
                     {
+                        t3_timer = 0U;
                         iec104_process_s_frame(&package.frame.apci.s_frame);
                     }
                     else
@@ -1426,6 +1456,7 @@ void iec104_process_package(void)
                     /* Standart Geregi Kati Koruma: STARTDT sureci bitmeden gelen I-Frame veri paketleri islenemez */
                     if (link_active)
                     {
+                        t3_timer = 0U;
                         iec104_process_i_frame(&package.frame.apci.i_frame);
                     }
                     else
@@ -1475,7 +1506,6 @@ void libiec104_poll(void)
 {
 	if(package_ready)
 	{
-        t3_timer = 0;
 		iec104_process_package();
 	}
 
@@ -1512,7 +1542,8 @@ void libiec104_poll(void)
             notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
         }
     }
-    else if (t3_timer > config.t3_max)
+    else if (t3_timer >= (uint32_t)config.t3_max +
+        IEC104_TEST_DELAY_SECONDS)
     {
         /* Hat bosta (idle) ise TESTFR gonder */
         CSLOG_WARN("T3 timer expired, sending TESTFR\r\n");

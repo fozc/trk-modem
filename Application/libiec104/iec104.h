@@ -74,6 +74,11 @@ bool iec104_send_s_frame(uint16_t receive_seq);
 
 uint16_t iec104_get_receive_sn(void);
 uint16_t iec104_get_send_sn(void);
+/* Active startup configuration, unaffected by a pending NVRAM save. */
+uint16_t iec104_get_t3_timeout(void);
+uint16_t iec104_get_listen_port(void);
+/* Apply after the old link has been stopped; preserve transport callbacks. */
+bool iec104_apply_config(const iec104_config_t *new_config);
 void iec_set_receive_sn(uint16_t sn);
 void iec_set_send_sn(uint16_t sn);
 

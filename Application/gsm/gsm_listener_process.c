@@ -4,6 +4,8 @@
  * Unified listener socket state machine.
  * Both the web-server and IEC104 listener sockets are driven by a single
  * parametric process, differentiated only by their const config struct.
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #define CSLOG_MODULE LOG_MOD_GSM
@@ -14,6 +16,8 @@
 #include "bsp.h"
 #include "modem_config.h"
 #include "iec104_process.h"
+#include "iec104.h"
+#include "iec104_config.h"
 #include "web_server.h"
 #include "led_driver.h"
 
@@ -377,9 +381,14 @@ static void handle_data_mode(const gsm_listener_cfg_t *p_cfg,
 		case GSM_NO_CARRIER:
 			gsm_socket_record_disconnect(p_cfg->socket_id, SOCK_DISC_NO_CARRIER);
 			gsm_set_socket_state(p_cfg->socket_id, SOCKET_CLOSED);
+            if (NULL != p_cfg->on_closed)
+            {
+                p_cfg->on_closed();
+            }
 			if (p_cfg->reset_session != NULL) { p_cfg->reset_session(); }
 			gsm_set_delay(1000);
-			ls_set_state(ctx, GSM_LS_OPEN_SOCKET);
+			ls_set_state(ctx, (GSM_LISTENER_IEC104 == p_cfg->id) ?
+                GSM_LS_CONFIG_SOCKET : GSM_LS_OPEN_SOCKET);
 			gsm_set_free();
 			break;
 
@@ -705,6 +714,39 @@ static void handle_open_socket(const gsm_listener_cfg_t *p_cfg,
 	gsm_set_free();
 }
 
+static void handle_config_socket(gsm_listener_ctx_t *ctx)
+{
+    if (GSM_INIT_PHASE_SEND == ctx->phase)
+    {
+        iec104_process_apply_pending_config();
+        const uint16_t idle_timeout = (uint16_t)(
+            (uint32_t)iec104_get_t3_timeout() +
+            IEC104_MODEM_IDLE_MARGIN_SECONDS);
+        if (idle_timeout == ctx->configured_idle_timeout)
+        {
+            ls_set_state(ctx, GSM_LS_OPEN_SOCKET);
+            return;
+        }
+        ls_send(ctx, ATQUERY_SOCKET_3_CONFIG_SCFG);
+        return;
+    }
+    const uint32_t result = gsm_engine_get_query_res();
+    if (0U == result)
+    {
+        return;
+    }
+    if (GSM_RESPONSE_OK == result)
+    {
+        ctx->configured_idle_timeout = (uint16_t)(
+            (uint32_t)iec104_get_t3_timeout() +
+            IEC104_MODEM_IDLE_MARGIN_SECONDS);
+    }
+    ls_set_state(ctx, (GSM_RESPONSE_OK == result) ?
+        GSM_LS_OPEN_SOCKET : GSM_LS_CHECK_NET);
+    gsm_set_delay(50U);
+    gsm_set_free();
+}
+
 static void handle_read_socket_data(const gsm_listener_cfg_t *p_cfg,
                                         gsm_listener_ctx_t *ctx)
 {
@@ -820,10 +862,9 @@ static void handle_check_net(const gsm_listener_cfg_t *p_cfg,
 		return;
 	}
 
-	(void)p_cfg;
-
 	/* Check completed — proceed to re-open the listener socket */
-	ls_set_state(ctx, GSM_LS_OPEN_SOCKET);
+	ls_set_state(ctx, (GSM_LISTENER_IEC104 == p_cfg->id) ?
+        GSM_LS_CONFIG_SOCKET : GSM_LS_OPEN_SOCKET);
 }
 
 /* ---------------------------------------------------------------------------
@@ -875,6 +916,9 @@ void gsm_listener_socket_process(const gsm_listener_cfg_t *p_cfg)
 		case GSM_LS_OPEN_SOCKET:
 			handle_open_socket(p_cfg, ctx);
 			break;
+        case GSM_LS_CONFIG_SOCKET:
+            handle_config_socket(ctx);
+            break;
 
 		case GSM_LS_READ_SOCKET_DATA:
 			handle_read_socket_data(p_cfg, ctx);
@@ -887,7 +931,6 @@ void gsm_listener_socket_process(const gsm_listener_cfg_t *p_cfg)
 		case GSM_LS_CHECK_NET:
 			handle_check_net(p_cfg, ctx);
 			break;
-
 		default:
 			/* Unknown state — return to idle as fail-safe */
 			ls_set_state(ctx, GSM_LS_IDLE);

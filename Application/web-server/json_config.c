@@ -19,6 +19,7 @@
 #include "modem_config.h"
 #include "iec104_util.h"
 #include "iec104_config.h"
+#include "iec104_process.h"
 #include "modbus_config.h"
 #include "modbus_process.h"
 #include "modbus_rf_stats.h"
@@ -441,7 +442,7 @@ static bool validate_port(uint16_t port) {
  * BUSINESS LOGIC VALIDATION
  * ============================================ */
 
-/* Validate IEC104 timeout values (must be logical: T0 < T1 < T2 < T3) */
+/* T2 must acknowledge before T1; T3 has a separate modem idle limit. */
 static bool validate_iec_timeouts(const jiec_config_t *config) {
     if (config->t0_timeout < 1) {
         CSLOG_ERR( "[VALIDATION] ERROR: T0 must be >= 1 second\r\n");
@@ -455,13 +456,14 @@ static bool validate_iec_timeouts(const jiec_config_t *config) {
         CSLOG_ERR( "[VALIDATION] ERROR: T2 must be >= 1 second\r\n");
         return false;
     }
-    if (config->t3_timeout < 1) {
-        CSLOG_ERR( "[VALIDATION] ERROR: T3 must be >= 1 second\r\n");
+    if ((IEC104_T3_MIN_SECONDS > config->t3_timeout) ||
+        (IEC104_T3_MAX_SECONDS < config->t3_timeout)) {
+        CSLOG_ERR("[VALIDATION] ERROR: T3 must be 20..65525 seconds\r\n");
         return false;
     }
-    if (config->t1_timeout >= config->t3_timeout) {
-        CSLOG_WARN("[VALIDATION] WARNING: T1 (%u) should be < T3 (%u) for optimal operation\r\n",
-               config->t1_timeout, config->t3_timeout);
+    if (config->t2_timeout >= config->t1_timeout) {
+        CSLOG_ERR("[VALIDATION] ERROR: T2 must be less than T1\r\n");
+        return false;
     }
     return true;
 }
@@ -1131,7 +1133,7 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
         }
         else if (match_key(str, "T3"))
         {
-            if (!parse_uint8(str, &iec->t3_timeout))
+            if (!parse_uint16(str, &iec->t3_timeout))
             	return false;
         }
         else if (match_key(str, "K"))
@@ -2275,6 +2277,11 @@ int set_iec_config(const jiec_config_t *config)
     	return -1;
     }
 
+    if (!validate_iec_timeouts(config))
+    {
+        return -1;
+    }
+
     if (UINT16_MAX < config->sbo_timeout)
     {
         return -1;
@@ -2382,6 +2389,10 @@ int set_iec_config(const jiec_config_t *config)
 	}
 
     int res =  iec104_config_sync();
+    if (0 == res)
+    {
+        iec104_process_config_changed();
+    }
 
     CCSLOG(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
     		res == 0 ? "[IEC104] IEC config synchronized successfully\r\n"

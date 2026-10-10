@@ -55,7 +55,7 @@ typedef struct
     uint8_t t0_timeout;
     uint8_t t1_timeout;
     uint8_t t2_timeout;
-    uint8_t t3_timeout;
+    uint16_t t3_timeout;
     uint8_t k_max;
     uint8_t w_max;
     uint8_t originator_address;

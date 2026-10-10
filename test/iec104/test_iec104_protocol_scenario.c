@@ -1120,7 +1120,7 @@ void test_testfr_confirmation_cancels_pending_timeout(void)
 {
     setup(64U, 32U);
     start_link();
-    advance_ticks(20U);
+    advance_ticks(21U);
     TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
     advance_ticks(1U);
     TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
@@ -1891,7 +1891,7 @@ void test_old_ack_cannot_complete_new_tracked_record(void)
     TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
 }
 
-/*** end of file ***/
+
 
 void test_gi_confirmation_pn_retains_only_the_low_bit(void)
 {
@@ -1974,6 +1974,79 @@ void test_nonexistent_calendar_day_is_rejected_without_clock_update(void)
     libiec104_poll();
     TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
     TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+}
+
+
+
+static void setup_idle_timeout(uint16_t t3)
+{
+    setup(64U, 32U);
+    const iec104_config_t cfg = {
+        .t0_max = 30U, .t1_max = 15U, .t2_max = 10U, .t3_max = t3,
+        .k_max = 64U, .w_max = 32U, .common_address = TEST_COMMON_ADDRESS
+    };
+    iec104_init(&test_io, &cfg);
+    start_link();
+}
+
+void test_idle_probe_fires_exactly_at_t3_plus_two_and_is_not_duplicated(void)
+{
+    const uint16_t values[] = {20U, 60U, 65525U};
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        setup_idle_timeout(values[index]);
+        for (uint32_t tick = 0U; tick < (uint32_t)values[index] + 1U; tick++)
+        {
+            iec104_tick();
+        }
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+        iec104_tick();
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_ACT, frame_u_func(tx_log[0]));
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        feed_u_frame(IEC104_TESTFR_CON);
+        TEST_ASSERT_TRUE(iec104_is_link_active());
+    }
+}
+
+void test_received_frame_restarts_idle_window_but_partial_bytes_do_not(void)
+{
+    setup_idle_timeout(20U);
+    for (uint32_t tick = 0U; tick < 21U; tick++)
+    {
+        iec104_tick();
+    }
+    feed_u_frame(IEC104_TESTFR_ACT);
+    tx_clear();
+    for (uint32_t tick = 0U; tick < 21U; tick++)
+    {
+        iec104_tick();
+    }
+    const uint8_t partial[] = {0x68U, 0x04U};
+    iec104_data_received(partial, sizeof(partial));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    iec104_tick();
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_ACT, frame_u_func(tx_log[0]));
+}
+
+void test_active_t3_remains_unchanged_until_reinitialization(void)
+{
+    setup_idle_timeout(60U);
+    iec104_config_set_t3_max(120U);
+    TEST_ASSERT_EQUAL_UINT16(120U, iec104_config_get_t3_max());
+    TEST_ASSERT_EQUAL_UINT16(60U, iec104_get_t3_timeout());
+    setup_idle_timeout(120U);
+    TEST_ASSERT_EQUAL_UINT16(120U, iec104_get_t3_timeout());
+    setup_idle_timeout(19U);
+    TEST_ASSERT_EQUAL_UINT16(60U, iec104_get_t3_timeout());
+    setup_idle_timeout(65535U);
+    TEST_ASSERT_EQUAL_UINT16(60U, iec104_get_t3_timeout());
 }
 
 /*** end of file ***/

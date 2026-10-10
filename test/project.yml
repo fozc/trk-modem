@@ -113,6 +113,9 @@
         - -Wno-array-parameter
         - -flto
         - -O2
+      test_gsm_listener_scenario:
+        - -flto
+        - -O2
       test_gsm_urc_scenario:
         - -flto
         - -O2
@@ -179,6 +182,9 @@
         - -O2
 
     :link:
+      test_gsm_listener_scenario:
+        - -flto
+        - -O2
       test_gsm_urc_scenario:
         - -flto
         - -O2
