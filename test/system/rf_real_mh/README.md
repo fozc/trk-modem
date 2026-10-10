@@ -50,6 +50,7 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
 | m4_ring_consume | 0x47 zilinin 0x48 tüketmesiyle kapanması | zil var tüketme yok = FAIL; ikisi de yok = SKIP (bekleyen kayıt zorlanamaz) |
 | m5_epoch_201 | `--epoch`: olay 201 (+120) kayıtları gerçek halkadan okunur | 100 s içinde 201 yok = FAIL |
 | m6_bootless | `--reset-dut`: BOOT_NOTIFY gelmeden kurulum | BOOT geldi = FAIL (MH de yeniden başlamış; pencereyi kaydır) |
+| m7_asdu_quality | `--104-host`: canlı akan fiderlerin GI ölçüm noktalarında kalite VE CP56 damga geçerli | canlı akış + tüm noktalar IV = FAIL (VINCI belirtisi); geçerli ölçüm + iv=1 damga = FAIL |
 
 ## Sınırlar
 
