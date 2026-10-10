@@ -99,4 +99,5 @@ jobs:
           path: |
             test/build/reports/test/*.xml
             test/build/ceedling/artifacts/gcov/**
+            test/build/logic-coverage.json
             test/build/ci-logs/*.log

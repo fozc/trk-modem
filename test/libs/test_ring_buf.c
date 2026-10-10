@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "ring_buf.h"
 
@@ -130,6 +131,65 @@ void test_ring_buf_process_all_handles_wrapped_data(void)
     TEST_ASSERT_EQUAL_HEX8(2U, handled[0]);
     TEST_ASSERT_EQUAL_HEX8(3U, handled[1]);
     TEST_ASSERT_EQUAL_HEX8(4U, handled[2]);
+}
+
+void test_all_small_capacities_match_fifo_model_across_repeated_wraps(void)
+{
+    struct
+    {
+        uint8_t before[8];
+        RingBufElement data[16];
+        uint8_t after[8];
+    } guarded;
+    RingBufElement model[16];
+    uint32_t random_state = 0x12345678U;
+
+    for (uint16_t length = 1U; 16U >= length; length++)
+    {
+        size_t count = 0U;
+        const size_t capacity = (size_t)length - 1U;
+        (void)memset(&guarded, 0xA5, sizeof(guarded));
+        RingBuf_ctor(&ring, guarded.data, length);
+        for (uint32_t step = 0U; 4096U > step; step++)
+        {
+            random_state = random_state * 1664525U + 1013904223U;
+            if (0U != (random_state & 0x80000000U))
+            {
+                const RingBufElement value = (RingBufElement)random_state;
+                const bool accepted = count < capacity;
+                TEST_ASSERT_EQUAL(accepted, RingBuf_put(&ring, value));
+                if (accepted)
+                {
+                    model[count++] = value;
+                }
+            }
+            else
+            {
+                RingBufElement out = 0xA5U;
+                const bool available = 0U != count;
+                TEST_ASSERT_EQUAL(available, RingBuf_get(&ring, &out));
+                if (available)
+                {
+                    TEST_ASSERT_EQUAL_HEX8(model[0], out);
+                    count--;
+                    for (size_t index = 0U; count > index; index++)
+                    {
+                        model[index] = model[index + 1U];
+                    }
+                }
+                else
+                {
+                    TEST_ASSERT_EQUAL_HEX8(0xA5U, out);
+                }
+            }
+            TEST_ASSERT_EQUAL_UINT16(capacity - count, RingBuf_num_free(&ring));
+            for (size_t index = 0U; sizeof(guarded.before) > index; index++)
+            {
+                TEST_ASSERT_EQUAL_HEX8(0xA5U, guarded.before[index]);
+                TEST_ASSERT_EQUAL_HEX8(0xA5U, guarded.after[index]);
+            }
+        }
+    }
 }
 
 /*** end of file ***/

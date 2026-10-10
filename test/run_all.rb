@@ -91,6 +91,15 @@ when "critical"
 when "coverage"
   results << run_unit("clobber")
   results << run_unit("gcov:all") if results.all?
+  if results.all?
+    results << run_command("coverage test inventory", TEST_ROOT,
+                           ["python", "scripts/test_inventory.py", "--junit",
+                            "build/ceedling/artifacts/gcov/junit_tests_report.xml"])
+    results << run_command("coverage inventory checks", TEST_ROOT,
+                           ["python", "scripts/test_logic_coverage.py"])
+    results << run_command("logic coverage inventory", TEST_ROOT,
+                           ["python", "scripts/logic_coverage.py"])
+  end
 when "clean"
   results << clean_all
 else
