@@ -21,7 +21,7 @@ the HIL bench image ignores the real hub entirely.
 
 Usage:
   python run_smoke.py --console COM16 [--fw 022555bf] [--duration 60]
-      [--host <device_ip>] [--epoch] [--reset-dut] [--case m1_hub_fw]
+      [--104-host <device_ip>] [--epoch] [--reset-dut] [--case m1_hub_fw]
       [--list] [--outdir DIR]
 """
 
@@ -156,18 +156,17 @@ def m1_hub_fw(ctx):
     return "PASS", ["MH firmware=%s" % match.group(1)]
 
 
-@case("m2_inventory", "Envanter Yuklu + giris sayisi")
+@case("m2_inventory", "RTU envanter yukleme durumu YUKLU")
 def m2_inventory(ctx):
     status = run_lines(ctx, "rf status", settle_s=4.0)
     joined = "\n".join(status)
-    if "YUKLU" not in joined:
+    if re.search(r"\bEnvanter:\s*YUKLU\b", joined) is None:
         return "FAIL", ["Envanter Yuklu degil: %s" %
                         [t for t in status if "Envanter" in t][:2]]
-    inv = run_lines(ctx, "rf inv", settle_s=4.0)
-    ctx.evidence += inv[:8]
-    count = sum(1 for text in inv if re.search(r"\b[0-9A-F]{2}\b.*:"
-                                               r".*[0-9A-F:]{17}", text))
-    return "PASS", ["envanter yuklu (giris satiri=%d)" % count]
+    # rf inv starts a new upload; it is not an inventory listing command.
+    ctx.evidence += status[:8]
+    return "PASS", ["RTU envanter durumu YUKLU; fiziksel AY/EUI "
+                    "eslesmesi ve cihaz sayisi bu vakayla dogrulanmaz"]
 
 
 @case("m3_live_boot", "LIVE_DATA akiyor + Boot_Counter tasiyor")

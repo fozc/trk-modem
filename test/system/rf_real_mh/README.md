@@ -1,15 +1,18 @@
 # Gerçek MH Duman Süiti (`rf_real_mh`)
 
+**Sürüm:** 1.1
+**Tarih:** 2026-10-10
+
 HIL süiti (`test/system/rf_hil`) PC'deki simülatörün oynadığı MH'ye karşı
-koşar; bu süit onun **karşıt uç** doğrulamasıdır: gerçek Modem RF Hub ve
-gerçek ayırıcı kartlar. Gerçek hub bench'ten komutlanamadığı için her
-denetim **gözleme dayalıdır** — DUT konsolunda ayrıntılı RF günlüğü
-açılır ve gerçek hattın gerçekten ne teslim ettiği doğrulanır.
+koşar; bu süit gerçek MH ve ayırıcı kartlarla doğrulama yapar. Üretim
+imajında MH trafiği RTU konsolundan gözlenir. m1–m4 ve m7 gözlem yapar;
+m5/m6 açık opt-in ile epoch komutu gönderir veya RTU'yu resetler.
 
 Bu süit, simülatörün yakalayamayacağı tek sınıfı hedefler: gerçek hub
-davranışı. Örnek: 2026-10-09 gecesi VINCI'de görülen timetag-IV sorununun
-kökü, gerçek MH'nin hiç LIVE_DATA göndermemesiydi (`m3_live_boot` bunu
-doğrudan sınar).
+davranışı. Örnek: VINCI'de geçersiz ölçüm/zaman damgası görülürken
+LIVE_DATA akışı da yoktu. 10.10.2026 kullanıcı bilgisine göre AY–MH
+bağlantısı henüz kurulmamıştı; bu gözlem MH firmware arızasını kanıtlamaz.
+`m3_live_boot` akışı, m7 ise gerçek IEC104 kalite ve zaman damgasını sınar.
 
 ## Ön koşullar
 
@@ -52,7 +55,7 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
 | Vaka | Ne doğrular | Sonuç mantığı |
 |---|---|---|
 | m1_hub_fw | GET_STATUS yanıtında beklenen fw kimliği | farklı kimlik = FAIL; yanıt yok = SKIP (MH bağlı değil olabilir) |
-| m2_inventory | `Envanter: YUKLU` + giriş sayısı | YUKLU değil = FAIL |
+| m2_inventory | RTU'da `Envanter: YUKLU` durumu | YUKLU değil = FAIL; fiziksel AY/EUI eşleşmesi ve giriş sayısını doğrulamaz |
 | m3_live_boot | LIVE_DATA akışı + telde Boot_Counter (gövde bayt 31–32, BQ-19) | akış yok = FAIL; sayaç 0 taşıyan kaynak = FAIL |
 | m4_ring_consume | 0x47 zilinin 0x48 tüketmesiyle kapanması | zil var tüketme yok = FAIL; ikisi de yok = SKIP (bekleyen kayıt zorlanamaz) |
 | m5_epoch_201 | `--epoch`: olay 201 (+120) kayıtları gerçek halkadan okunur | 100 s içinde 201 yok = FAIL |
@@ -61,6 +64,23 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
 
 ## Sınırlar
 
+- `rf inv` bir listeleme komutu değildir; MH'ye envanteri yeniden yükler.
+  m2 yalnız `rf status` okur. Envanter yükleme onayı, ayırıcıyla RF
+  bağlantısının kurulduğunu kanıtlamaz. Gerçek EUI-64, fider/faz ataması
+  ve AY–MH bağlantısı ayrı doğrulanmalıdır. R2 `channel` alanı yalnız
+  bilgi amaçlıdır.
+- AY–MH bağlantısı kurulmamış bir bench'te LIVE_DATA yokluğu firmware
+  arızası olarak bildirilmemelidir. m3/m5/m7 için bu önkoşul sağlanmalıdır;
+  eski rapordaki m3 FAIL böyle bir kurulumda kabul engeli olarak ayrı
+  değerlendirilmelidir. m4'te zil yoksa tüketme yolu sınanmamıştır.
+- Merkezi paket, cihaz hedefi verilmeden önce dört host selftest'i
+  çalıştırır. Doğrudan komut: `python test_smoke_selftest.py`.
+
+## Değişiklik geçmişi
+
+| Tarih | Sürüm | Etkilenen bölüm |
+|---|---|---|
+| 2026-10-10 | 1.1 | AY bağlantı önkoşulu, m2 salt gözlem kapsamı ve merkezi host selftest'leri |
 - Gerçek ayırıcı arızası/olayı üretilemediği için olay zinciri
   (101/142/201 sınıflaması) cihaz tarafında yalnız gerçek trafik olduğunda
   gözlemlenir; kapsamlı sınama HIL süitindedir.
