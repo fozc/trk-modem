@@ -24,17 +24,22 @@ ve davranis seviyesi hata enjeksiyonu yapar.
 
 ## Kablolama
 
-Modemin RF hatti (USART3, 230400 8N1) bir **USB-TTL 3.3 V** ceviriciye
-baglanir (RS-485 cevirici uygun DEGILDIR):
+**Bench profili (profile=1, onerilen):** SCP UART4/RS-485'e yonelir;
+COM10 (USB-RS485) Modbus konnektorune takilir. Gercek MH ayni anda
+takili kalabilir — aktif RF-SCP yolunu yuklenen imajin profili
+belirler: profile-1 firmware USART3 RF dagitimini derlemeden cikarir
+(gercek hub yok sayilir), profile-0'da SCP USART3'ten gercek MH'ye
+gider. Suitsu degistirmek kablolamayi degil, imaji degistirmeyi gerektirir.
+
+**Eki yontem (USART3'e dogrudan erisim):** Modemin RF hatti
+(USART3, 230400 8N1) bir **USB-TTL 3.3 V** ceviriciye baglanir
+(RS-485 cevirici dogrudan USART3'e baglanmaz):
 
 ```
 STM32_USART3_TX (PC4)  ->  cevirici RX
 STM32_USART3_RX (PC5)  <-  cevirici TX
 GND                    <-> cevirici GND
 ```
-
-Gercek MH modulu hatta takiliyken simulator ayni hatta baglanmaz
-(cakisir); once MH modulunu cikarin.
 
 ## Kullanim
 
