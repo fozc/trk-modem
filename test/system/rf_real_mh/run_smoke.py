@@ -265,6 +265,80 @@ def m6_bootless(ctx):
                     ["0x%02X" % c for c in cmds[:12]]]
 
 
+@case("m7_asdu_quality",
+      "(--104-host) canli fiderlerin ASDU kalite/timetag'i gecerli")
+def m7_asdu_quality(ctx):
+    """Live points must carry valid measurement quality AND timestamp.
+
+    Closes the 2026-10-10 review point: m3 (LIVE_DATA on the wire) alone
+    does not prove the SCADA side sees valid data. With live traffic on
+    the console, the station interrogation must contain at least one
+    non-invalid measurement, and every non-invalid measurement must also
+    carry a valid (iv=0) CP56 timestamp - the exact VINCI timetag-IV
+    symptom class."""
+    if not ctx.args.host_104:
+        return "SKIP", ["--104-host <ip> ile acilir (c104 venv gerekir)"]
+    live_lines = [text for text in observe(ctx, 12.0)
+                  if "LIVE_DATA" in text]
+    if not live_lines:
+        return "SKIP", ["12 s pencerede LIVE_DATA yok: kalite kontrolu "
+                        "icin once canli akis gerekir (m3'u incele)"]
+    try:
+        suite_root = REPO_ROOT / "test" / "system" / "iec104_master"
+        sys.path.insert(0, str(suite_root))
+        import master104  # noqa: E402
+        import apdu  # noqa: E402
+    except ImportError as error:
+        return "SKIP", ["c104 yok (%r): test/system/iec104_master/.venv "
+                        "kurulu olmali" % error]
+
+    class NullEvidence:
+        def write(self, record):
+            pass
+
+    master = master104.Master104(ctx.args.host_104, ctx.args.port_104,
+                                 1, NullEvidence(), keep_alive_s=90)
+    master.start()
+    try:
+        if not master.connect(timeout_s=45.0):
+            return "FAIL", ["104 baglantisi kurulamadi (STARTDT_CON yok)"]
+        master.interrogate(20)
+        t0 = time.monotonic()
+        ok, term = master.wait(
+            lambda f: f[1] == "rx" and f[3] and
+            (f[3].get("asdu") or {}).get("type") ==
+            apdu.TYPE_C_IC_NA_1 and
+            (f[3].get("asdu") or {}).get("cot") == 10, 30.0, t0=t0)
+        measurements = []
+        deadline = time.monotonic() + (term[0] - t0 if ok else 30.0) + 1.0
+        for frame in master.since(t0):
+            if deadline < frame[0]:
+                break
+            asdu = frame[3].get("asdu") or {}
+            if ("rx" == frame[1] and
+                    apdu.TYPE_M_ME_TF_1 == asdu.get("type")):
+                for obj in asdu.get("objects", []):
+                    measurements.append(obj)
+        if not measurements:
+            return "FAIL", ["GI yanitinda olcum (M_ME_TF_1) noktasi yok"]
+        valid = [obj for obj in measurements
+                 if not (obj.get("qds") or {}).get("iv")]
+        if not valid:
+            return "FAIL", ["canli akis var ama tum olcum noktalari IV "
+                            "(VINCI timetag-IV belirtisi ayni)"]
+        bad_stamp = [obj["ioa"] for obj in valid
+                     if (obj.get("time") or {}).get("iv")]
+        if bad_stamp:
+            return "FAIL", ["gecerli olcum + gecersiz zaman damgasi "
+                            "iv=1: IOA=%s" % sorted(bad_stamp)[:8]]
+        return "PASS", ["%d olcum noktasi: %d gecerli (kalite+damga), "
+                        "%d IV" % (len(measurements), len(valid),
+                                   len(measurements) - len(valid))]
+    finally:
+        master.disconnect()
+        master.stop()
+
+
 # ---------------------------------------------------------------------------
 # runner
 # ---------------------------------------------------------------------------
@@ -293,6 +367,10 @@ def main():
                         help="gozlem penceresi (s)")
     parser.add_argument("--epoch", action="store_true")
     parser.add_argument("--reset-dut", action="store_true")
+    parser.add_argument("--104-host", dest="host_104", default=None,
+                        help="m7: c104 master icin cihaz IP'si (venv)")
+    parser.add_argument("--104-port", dest="port_104", type=int,
+                        default=2404)
     parser.add_argument("--case", action="append", default=None)
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--outdir", default=None)
