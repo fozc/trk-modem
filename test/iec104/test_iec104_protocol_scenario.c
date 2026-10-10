@@ -1750,6 +1750,147 @@ void test_rtc_service_rejection_returns_negative_confirmation_and_keeps_time(voi
     TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
 }
 
+static uint32_t event_ack_count;
+static uint16_t acknowledged_record;
+
+static void capture_event_ack(uint16_t record_id)
+{
+    event_ack_count++;
+    acknowledged_record = record_id;
+}
+
+static iec104_event_record_t tracked_fault(void)
+{
+    setup(12U, 8U);
+    start_link();
+    event_ack_count = 0U;
+    acknowledged_record = 0U;
+    iec104_line_config_t line = {0};
+    line.temporary_fault = iec104_make_ioa_3byte(100000U);
+    TEST_ASSERT_TRUE(iec104_set_line_config(0U, &line));
+    return (iec104_event_record_t){.kind = IEC104_EVENT_FAULT};
+}
+
+void test_tracked_fault_waits_for_both_asdus_and_ignores_duplicate_ack(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    const uint16_t before = iec104_get_send_sn();
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U,
+                                                    capture_event_ack));
+    TEST_ASSERT_TRUE(iec104_event_ack_pending());
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    feed_s_frame((uint16_t)(before + 1U));
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    TEST_ASSERT_FALSE(iec104_emit_event_record_tracked(&record, 43U,
+                                                     capture_event_ack));
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+    TEST_ASSERT_EQUAL_UINT16(42U, acknowledged_record);
+    TEST_ASSERT_FALSE(iec104_event_ack_pending());
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+}
+
+void test_tracked_fault_invalid_future_ack_resets_without_consumption(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U,
+                                                    capture_event_ack));
+    feed_s_frame((uint16_t)(iec104_get_send_sn() + 1U));
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    TEST_ASSERT_FALSE(iec104_event_ack_pending());
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+}
+
+void test_tracked_fault_reset_drops_old_ack_callback_without_consumption(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U,
+                                                    capture_event_ack));
+    iec104_reset();
+    start_link();
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    TEST_ASSERT_FALSE(iec104_event_ack_pending());
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 43U,
+                                                    capture_event_ack));
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(43U, acknowledged_record);
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+}
+
+void test_tracked_fault_partial_transport_failure_keeps_callback_unarmed(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    transport_budget = 1;
+    TEST_ASSERT_FALSE(iec104_emit_event_record_tracked(&record, 42U,
+                                                     capture_event_ack));
+    TEST_ASSERT_FALSE(iec104_event_ack_pending());
+    transport_budget = -1;
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U,
+                                                    capture_event_ack));
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+}
+
+void test_tracked_event_null_arguments_do_not_send_or_arm_callback(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    TEST_ASSERT_FALSE(iec104_emit_event_record_tracked(NULL, 42U,
+                                                     capture_event_ack));
+    TEST_ASSERT_FALSE(iec104_emit_event_record_tracked(&record, 42U, NULL));
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_FALSE(iec104_event_ack_pending());
+}
+
+void test_tracked_fault_ack_boundary_wraps_from_32767_to_zero(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    for (uint32_t index = 0U; 32765U > index; index++)
+    {
+        iec104_send_M_SP_TB_1_spontan(iec104_make_ioa_3byte(1U), 1U, 0U);
+        feed_s_frame(iec104_get_send_sn());
+        tx_clear();
+    }
+    TEST_ASSERT_EQUAL_UINT16(32766U, iec104_get_send_sn());
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U,
+                                                    capture_event_ack));
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_send_sn());
+    feed_s_frame(32767U);
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    feed_s_frame(0U);
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+}
+
+void test_i_frame_piggyback_ack_completes_tracked_event(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U,
+                                                    capture_event_ack));
+    uint8_t frame[16];
+    build_interrogation(frame, 0U, iec104_get_send_sn(),
+                        TEST_COMMON_ADDRESS, QOI_STATION);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+    TEST_ASSERT_EQUAL_UINT16(42U, acknowledged_record);
+}
+
+void test_old_ack_cannot_complete_new_tracked_record(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    const uint16_t before = iec104_get_acksn();
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U,
+                                                    capture_event_ack));
+    feed_s_frame(before);
+    feed_s_frame((uint16_t)((before - 1U) & 0x7FFFU));
+    TEST_ASSERT_TRUE(iec104_event_ack_pending());
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+}
+
 /*** end of file ***/
 
 void test_gi_confirmation_pn_retains_only_the_low_bit(void)

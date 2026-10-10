@@ -87,11 +87,18 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 			break;
 		}
 
+        if (iec104_event_ack_pending())
+        {
+            /* t1/connection handling belongs to the protocol layer. */
+            PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+            etimer_reset(&timer);
+            continue;
+        }
+
 		if (iec104_event_log_read_newest_unsent(&record, &seq))
 		{
-			if (iec104_emit_event_record(&record))
+			if (iec104_replay_send_record(&record, seq))
 			{
-				iec104_event_log_mark_sent(seq);
 				sent_ok = true;
 			}
 		}
@@ -153,7 +160,8 @@ PROCESS_THREAD(iec104_replay_fallback_timer, ev, data)
 
 	etimer_set(&timer, REPLAY_FALLBACK_TIMEOUT_S * CLOCK_SECOND);
 
-	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+	PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer) ||
+                             (PROCESS_EVENT_POLL == ev));
 
 	iec104_replay_start_if_pending();
 
@@ -168,22 +176,13 @@ void iec104_replay_link_established(void)
 	}
 }
 
-/* Tek tetik yolu emniyet sayacidir (STARTDT + 15 s); kosullar uygunsa
- * replay surecini kaldirir. Unsent sayacinin kendisi durumdur - ayri
- * oturum bayragi tasimaz. */
+/* STARTDT fallback and a live submission both use the same scheduler path.
+ * Live submissions poll the existing one-shot process; no new timer or
+ * retry layer is needed. The unsent range remains the persistent state. */
 static void iec104_replay_start_if_pending(void)
 {
-	/* GI alt sureclerinden hicbirine bagli degil: replay yalniz
-	 * emniyet sayacindan kalkar; calisan GI surecleri varsa semafor
-	 * sirasini dogal olarak korur. */
-	if (process_is_running(&iec104_send_temporary_faults))
-	{
-		return;
-	}
-	if (process_is_running(&iec104_send_permanent_faults))
-	{
-		return;
-	}
+    /* The existing semaphore serializes GI and replay. Do not discard a
+     * live event's replay trigger while a GI producer holds it. */
 	if (process_is_running(&iec104_replay_process))
 	{
 		return;
@@ -198,6 +197,31 @@ static void iec104_replay_start_if_pending(void)
 	}
 
 	process_start(&iec104_replay_process, NULL);
+}
+
+static void record_acknowledged(uint16_t seq)
+{
+    iec104_event_log_mark_sent(seq);
+    (void)iec104_event_log_sync();
+}
+
+bool iec104_replay_send_record(const iec104_event_record_t *record,
+                               uint16_t seq)
+{
+    const bool accepted = iec104_emit_event_record_tracked(
+        record, seq, record_acknowledged);
+    if (iec104_is_link_active() &&
+        !process_is_running(&iec104_replay_process))
+    {
+        /* Defer startup to the scheduler: no recursive replay submission
+         * from a transport failure or a synchronous discard callback. */
+        if (!process_is_running(&iec104_replay_fallback_timer))
+        {
+            process_start(&iec104_replay_fallback_timer, NULL);
+        }
+        process_poll(&iec104_replay_fallback_timer);
+    }
+    return accepted;
 }
 
 void iec104_report_fault_event(float fault_current, uint32_t fault_duration_ms,
@@ -236,17 +260,12 @@ void iec104_report_fault_event(float fault_current, uint32_t fault_duration_ms,
 		return;
 	}
 
-	/* 3) Hat aciksa olay aninda spontane gonder.
-	 *
-	 * Bilincl odun: hat acikken backlog varken gelen kayit sinirli
-	 * kopyaya yol acar - mark_sent(seq) araligin ust ucunu ceker ve
-	 * bir onceki (zaten gonderilmis) kayit yeniden unsent gorunur.
-	 * Kopya, kayiptan iyidir; alternatif (araligi yalnizca gonderim
-	 * basarisizsa genisletmek) log_write ile mark_sent arasinda enerji
-	 * kesilirse gercek kayip uretir. */
-	if (iec104_is_link_active() && iec104_emit_evtlog_record(&record))
+	/* 3) Hat aciksa olay aninda spontane gonder; ACK gelene kadar sakla. */
+	if (iec104_is_link_active())
 	{
-		iec104_event_log_mark_sent(seq);
+        const iec104_event_record_t event =
+            {.kind = IEC104_EVENT_FAULT, .payload.fault = record};
+        (void)iec104_replay_send_record(&event, seq);
 	}
 
 	/* Kayit basina bir nvram_sync() kabul edilebilir - olaylar seyrek. */

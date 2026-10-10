@@ -21,6 +21,7 @@
 /* HAL types must precede the legacy IEC104 Init macro. */
 #include "stm32u3xx_hal.h"
 #include "iec104.h"
+#include "iec104_replay.h"
 #include "iec104_event_log.h"
 #include "scp_endian.h"
 #include "utils.h"
@@ -487,10 +488,11 @@ static bool save_fault(void)
         {
             return false;
         }
-        if (iec104_is_link_active() &&
-            iec104_emit_evtlog_record(&fault_record))
+        if (iec104_is_link_active())
         {
-            iec104_event_log_mark_sent(seq);
+            const iec104_event_record_t event =
+                {.kind = IEC104_EVENT_FAULT, .payload.fault = fault_record};
+            (void)iec104_replay_send_record(&event, seq);
         }
     }
     return 0 == iec104_event_log_sync();

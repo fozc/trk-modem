@@ -15,6 +15,7 @@
 #include "rf.h"
 #include "rf_faults.h"
 #include "rf_alarm.h"
+#include "mock_iec104_replay.h"
 #include "cp56time2a.h"
 #include "rf_types.h"
 #include "mock_rf_event_log.h"
@@ -96,6 +97,19 @@ bool iec104_emit_event_record(const iec104_event_record_t *record)
     TEST_ASSERT_EQUAL_UINT8(IEC104_EVENT_TRIP_FAILURE, record->kind);
     alarm_emit_calls++;
     return emit_success;
+}
+
+static bool send_replay(const iec104_event_record_t *record,
+                        uint16_t seq, int call_count)
+{
+    (void)call_count;
+    if (IEC104_EVENT_FAULT == record->kind)
+    {
+        TEST_ASSERT_EQUAL_UINT16(42U, seq);
+        return iec104_emit_evtlog_record(&record->payload.fault);
+    }
+    TEST_ASSERT_EQUAL_UINT16(43U, seq);
+    return iec104_emit_event_record(record);
 }
 
 static bool save_alarm(const iec104_alarm_record_t *record, uint16_t *seq,
@@ -359,6 +373,7 @@ void setUp(void)
     fault_log_append_StubWithCallback(save_fault);
     fault_log_sync_StubWithCallback(sync_fault);
     iec104_event_log_add_StubWithCallback(save_replay);
+    iec104_replay_send_record_StubWithCallback(send_replay);
     iec104_event_log_add_alarm_StubWithCallback(save_alarm);
     iec104_event_log_sync_IgnoreAndReturn(0);
     rf_events_init();
@@ -957,14 +972,11 @@ void test_overwrite_during_local_failure_cannot_consume_reused_slots(void)
     TEST_ASSERT_NOT_EQUAL(RF_SCP_CMD_LOG_CONSUME_IF, request.cmd);
 }
 
-void test_online_fault_is_forwarded_and_marked_sent_after_persistent_add(void)
+void test_online_fault_queue_acceptance_does_not_mark_persistent_record_sent(void)
 {
     start_read(36U, 37U);
     scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
-    uint16_t seq = 42U;
-
     link_active = true;
-    iec104_event_log_mark_sent_Expect(seq);
     respond(&packet);
     rf_events_process(tick);
     TEST_ASSERT_EQUAL_UINT32(1U, emit_calls);
@@ -1170,7 +1182,6 @@ void test_alarm_sync_failure_retries_without_adding_or_sending_twice(void)
 {
     scp_packet_t packet = alarm_packet();
     link_active = true;
-    iec104_event_log_mark_sent_Expect(43U);
     iec104_event_log_sync_StopIgnore();
     iec104_event_log_sync_ExpectAndReturn(-1);
     iec104_event_log_sync_ExpectAndReturn(0);
