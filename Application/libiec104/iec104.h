@@ -99,6 +99,16 @@ void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt);
  * etiketiyle COT_SPONTANEOUS olarak canli ariza noktalarina gonderir. */
 bool iec104_emit_evtlog_record(const fault_log_t *record);
 bool iec104_emit_event_record(const iec104_event_record_t *record);
+typedef void (*iec104_event_ack_fn_t)(uint16_t record_id);
+/* One persistent event at a time. Acceptance is not delivery: on_ack runs
+ * only after validated N(R) covers every I-frame emitted for this record.
+ * Reset abandons the callback without consuming the persistent record.
+ * A record intentionally skipped by the existing emitter has no I-frames
+ * and completes immediately. Called in cooperative process context only. */
+bool iec104_emit_event_record_tracked(const iec104_event_record_t *record,
+                                     uint16_t record_id,
+                                     iec104_event_ack_fn_t on_ack);
+bool iec104_event_ack_pending(void);
 bool iec104_send_rf_communication_states(cause_of_transmission_t cause);
 
 
@@ -128,7 +138,7 @@ void iec104_send_general_interrogation_term(iec104_qoi_t qoi, uint8_t is_negativ
 
 bool iec104_is_link_active(void);
 
-/* Bir fider/faz icin arıza kayitlarinin yayim ilerlemesi. Cagiran sifirlanmis
+/* Bir fider/faz icin ariza kayitlarinin yayim ilerlemesi. Cagiran sifirlanmis
  * bir kopya ile baslar ve yayim bitene kadar ayni kopyayla geri gelir. */
 typedef struct
 {

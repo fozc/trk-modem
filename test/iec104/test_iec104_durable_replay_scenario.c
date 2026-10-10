@@ -57,6 +57,7 @@ static clock_time_t now;
 static bool link_active;
 static bool block_transport;
 static bool flush_to_wire;
+static bool waiting_for_ack;
 static uint32_t rejections;
 static uint8_t attempted[160U];
 static size_t attempt_count;
@@ -72,7 +73,17 @@ clock_time_t clock_time(void)
 static bool is_link_active(int call_count)
 {
     (void)call_count;
+    if (!link_active)
+    {
+        waiting_for_ack = false; /* Production core resets on socket close. */
+    }
     return link_active;
+}
+
+static bool ack_pending(int call_count)
+{
+    (void)call_count;
+    return waiting_for_ack;
 }
 
 static bool send_record(const iec104_event_record_t *record, int call_count)
@@ -99,6 +110,21 @@ static bool send_record(const iec104_event_record_t *record, int call_count)
     TEST_ASSERT_TRUE(4U > delivered_count);
     delivered[delivered_count++] = *record;
     return true;
+}
+
+static bool send_tracked(const iec104_event_record_t *record, uint16_t seq,
+                         iec104_event_ack_fn_t on_ack, int call_count)
+{
+    const bool accepted = send_record(record, call_count);
+    if (accepted)
+    {
+        waiting_for_ack = !flush_to_wire;
+        if (flush_to_wire)
+        {
+            on_ack(seq); /* Boundary model: successful transfer plus ACK. */
+        }
+    }
+    return accepted;
 }
 
 static bool send_snapshot(cause_of_transmission_t cause, int call_count)
@@ -142,6 +168,7 @@ void setUp(void)
     link_active = true;
     block_transport = false;
     flush_to_wire = true;
+    waiting_for_ack = false;
     rejections = 0U;
     attempt_count = 0U;
     delivered_count = 0U;
@@ -150,7 +177,8 @@ void setUp(void)
     process_start(&etimer_process, NULL);
     PT_SEM_INIT(&iec104_tx_sem, 1U);
     iec104_is_link_active_StubWithCallback(is_link_active);
-    iec104_emit_event_record_StubWithCallback(send_record);
+    iec104_emit_event_record_tracked_StubWithCallback(send_tracked);
+    iec104_event_ack_pending_StubWithCallback(ack_pending);
     iec104_send_rf_communication_states_StubWithCallback(send_snapshot);
 }
 
@@ -227,31 +255,21 @@ void test_link_loss_preserves_replay_order_after_reconnect(void)
     TEST_ASSERT_EQUAL_UINT8(IEC104_EVENT_FAULT, delivered[1].kind);
 }
 
-/* Review 2026-10-10: the production replay marks a record sent as soon
- * as iec104_send() accepts it into the RAM TX slots
- * (iec104_replay.c:92 -> iec104_process.c:146); the actual wire flush
- * happens later (iec104_process.c:197) and a socket close drops the
- * unflushed slots via tx_reset() (iec104_process.c:94). A link death in
- * that accept->flush window must NOT consume the record: nothing
- * reached the wire, so after a reboot the record has to replay. */
+/* Review 2026-10-10: the old replay marked a record sent as soon
+ * as the transport accepted it into the RAM TX slots. Socket close
+ * discarded these slots before delivery. This boundary regression is
+ * complemented by test_iec104_ack_delivery_scenario.c, which executes
+ * the actual production slots, reset, ACK parser and persistent log. */
 void test_queue_accept_without_wire_flush_survives_link_loss(void)
 {
-    /* KNOWN-RED: fails on the current tree ("Expected 2 Was 0") - the
-     * queue-accept->disconnect loss path (review 2026-10-10 item 3).
-     * Remove the ignore together with the production fix that stops
-     * mark_sent on mere TX-queue acceptance (or re-arms unflushed
-     * records on socket close). */
-    TEST_IGNORE_MESSAGE("kayip yolu acik: TX kuyruk kabulu mark_sent "
-                        "yoluyor (kanit: 2026-10-10 kirmizi koshum)");
     queue_fault_and_alarm();
     flush_to_wire = false;   /* emit accepts into the queue only */
     iec104_replay_link_established();
     advance(15U * CLOCK_SECOND);
     advance(100U);
     advance(100U);
-    /* both records were accepted by the transport queue, but none of
-     * them reached the wire yet */
-    TEST_ASSERT_EQUAL_size_t(2U, attempt_count);
+    /* Only one record can await ACK; both remain durable. */
+    TEST_ASSERT_EQUAL_size_t(1U, attempt_count);
     TEST_ASSERT_EQUAL_size_t(0U, delivered_count);
     /* the socket dies before any flush */
     link_active = false;

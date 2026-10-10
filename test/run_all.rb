@@ -81,7 +81,8 @@ when "integration"
   results << run_integration
 when "logs"
   pattern = "test_(fault_log|iec104_event_log|iec104_.*replay_scenario|" \
-            "rf_event_log|spi_flash_log_sequence_wrap)"
+            "iec104_ack_delivery_scenario|rf_event_log|" \
+            "spi_flash_log_sequence_wrap)"
   results << run_unit("test:pattern[#{pattern}]")
   results << run_integration(%w[fault_log libs])
 when "critical"

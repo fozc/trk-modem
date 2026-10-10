@@ -60,7 +60,8 @@ bool iec104_event_log_init(void);
 
 /**
  * Yeni ariza kaydi ekler. Kayit tanimi geregi "gonderilmedi" sayilir;
- * cagiran hemen gonderebilirse iec104_event_log_mark_sent() ile geri alir.
+ * Kuyruga kabul kaydi tuketmez. Gecerli IEC104 N(R) butun ASDU'lari
+ * onayladiktan sonra iec104_event_log_mark_sent() ile tuketilir.
  *
  * @param[out] seq_out Kayda atanan seq (NULL olabilir).
  */
@@ -84,7 +85,8 @@ bool iec104_event_log_read_newest_unsent(iec104_event_record_t *out,
                                         uint16_t *seq_out);
 
 /**
- * Kaydi gonderildi olarak isaretler (yalnizca RAM).
+ * Mark the newest record acknowledged (RAM only); persist with sync.
+ * Production callers must establish validated cumulative IEC104 ACK first.
  */
 void iec104_event_log_mark_sent(uint16_t seq);
 

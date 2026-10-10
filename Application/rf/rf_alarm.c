@@ -13,6 +13,7 @@
 #include "rf_inventory.h"
 #include "stm32u3xx_hal.h"
 #include "iec104.h"
+#include "iec104_replay.h"
 #include <string.h>
 
 #define RF_ALARM_SOURCES 12U
@@ -137,9 +138,9 @@ static bool deliver(alarm_delivery_t *delivery)
             .kind = IEC104_EVENT_TRIP_FAILURE,
             .payload.alarm = delivery->record
         };
-        if (iec104_is_link_active() && iec104_emit_event_record(&record))
+        if (iec104_is_link_active())
         {
-            iec104_event_log_mark_sent(delivery->seq);
+            (void)iec104_replay_send_record(&record, delivery->seq);
         }
     }
     if (0 != iec104_event_log_sync())

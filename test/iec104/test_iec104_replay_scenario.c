@@ -82,6 +82,17 @@ static bool send_record(const iec104_event_record_t *record, int call_count)
     return true;
 }
 
+static bool send_tracked(const iec104_event_record_t *record, uint16_t seq,
+                         iec104_event_ack_fn_t on_ack, int call_count)
+{
+    const bool accepted = send_record(record, call_count);
+    if (accepted)
+    {
+        on_ack(seq); /* Boundary model: master ACK arrives immediately. */
+    }
+    return accepted;
+}
+
 static void mark_sent(uint16_t seq, int call_count)
 {
     (void)call_count;
@@ -133,7 +144,8 @@ void setUp(void)
     iec104_event_log_read_newest_unsent_StubWithCallback(read_record);
     iec104_event_log_mark_sent_StubWithCallback(mark_sent);
     iec104_event_log_sync_IgnoreAndReturn(0);
-    iec104_emit_event_record_StubWithCallback(send_record);
+    iec104_emit_event_record_tracked_StubWithCallback(send_tracked);
+    iec104_event_ack_pending_IgnoreAndReturn(false);
     iec104_send_rf_communication_states_StubWithCallback(send_snapshot);
 }
 

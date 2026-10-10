@@ -491,6 +491,17 @@ def i05_testfr_idle(ctx):
 # ---------------------------------------------------------------------------
 
 
+def _replay_timing(master, count):
+    """Allow the peer's delayed ACK plus the existing six-second margin.
+
+    The RTU retains one record until N(R) confirms all its ASDUs. Six
+    seconds of silence is not completion when the master t2 is ten.
+    Return an inter-record wait and a collection budget after first RX.
+    """
+    gap = max(6.0, float(master.confirm_interval_s) + 6.0)
+    return gap, max(60.0, count * gap)
+
+
 def i06_replay_reconnect(ctx):
     """Inject N synthetic records, reconnect, verify newest-first replay.
 
@@ -540,14 +551,16 @@ def i06_replay_reconnect(ctx):
     if not ok:
         return "FAIL", ["replay baslamadi (30 s, 15 s fallback timer "
                         "asildi olmali)"]
-    # Collect until 6 s of silence after the last COT=3 frame (cap 60 s).
+    # A delayed N(R) can legitimately pause the next replay record.
+    gap, collection_budget = _replay_timing(ctx.master, count)
     last = first[0]
-    deadline = t0 + 60.0
+    deadline = time.monotonic() + collection_budget
     while time.monotonic() < deadline:
         ok, frame = ctx.master.wait(
             lambda f: f[1] == "rx" and f[3] and
             f[3].get("kind") == "I" and
-            (f[3].get("asdu") or {}).get("cot") == 3, 6.0,
+            (f[3].get("asdu") or {}).get("cot") == 3,
+            min(gap, max(0.0, deadline - time.monotonic())),
             t0=last + 0.001)
         if not ok:
             break
@@ -684,10 +697,10 @@ def _measured_replay(frames):
 
 
 def i07_replay_retention(ctx):
-    """de5604c regression: a mid-replay link break must not lose records.
+    """A mid-replay link break before master ACK must not lose records.
 
     Inject N synthetic records, start the replay, then cut the master link
-    while the burst is still in flight (the device's next sends fail).
+    while data is in flight or awaiting the master's cumulative ACK.
     Reconnect and require EVERY injected record to arrive at least once
     across the two windows combined, with the second window itself in
     newest-first order. Before de5604c the read cursor advanced past a
@@ -758,12 +771,15 @@ def i07_replay_retention(ctx):
         lambda f: f[1] == "rx" and f[3] and f[3].get("kind") == "I"
         and (f[3].get("asdu") or {}).get("cot") == 3, 30.0, t0=t1)
     if ok2:
+        gap, collection_budget = _replay_timing(ctx.master, count)
         last = first2[0]
-        while time.monotonic() < t1 + 60.0:
+        deadline = time.monotonic() + collection_budget
+        while time.monotonic() < deadline:
             okw, frame = ctx.master.wait(
                 lambda f: f[1] == "rx" and f[3] and
                 f[3].get("kind") == "I" and
-                (f[3].get("asdu") or {}).get("cot") == 3, 6.0,
+                (f[3].get("asdu") or {}).get("cot") == 3,
+                min(gap, max(0.0, deadline - time.monotonic())),
                 t0=last + 0.001)
             if not okw:
                 break

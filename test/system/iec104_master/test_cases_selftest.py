@@ -69,6 +69,8 @@ class FakeMaster:
         self.vs = 0
         self.is_connected = False
         self.connect_count = 0
+        self.confirm_interval_s = 10.0
+        self.wait_budgets = []
         # Frames appended on the Nth connect() (i07 reconnect window).
         self.pending_script = None
         self.pending_on_connect = 3
@@ -93,6 +95,7 @@ class FakeMaster:
         return True
 
     def wait(self, predicate, timeout_s, t0=None):
+        self.wait_budgets.append(timeout_s)
         start = t0 if t0 is not None else 0.0
         for frame in self.frames:
             if frame[0] >= start and predicate(frame):
@@ -307,6 +310,14 @@ def main():
     check("i07_retention_passes",
           verdict == "PASS" and "birlesik tumul 5/5" in joined,
           "verdict=%s lines=%s" % (verdict, lines))
+    check("i07_delayed_ack_gap_allowed",
+          any(ctx.master.confirm_interval_s < budget < 20.0
+              for budget in ctx.master.wait_budgets),
+          "wait budgets=%s" % ctx.master.wait_budgets)
+    gap, budget = cases._replay_timing(ctx.master, 20)
+    check("replay_collection_budget_scales_with_ack_count",
+          gap > ctx.master.confirm_interval_s and budget >= 20 * gap,
+          "gap=%s collection=%s" % (gap, budget))
 
     ctx, real_run_cmd = i07_ctx([202, 200])       # seq 201 lost forever
     verdict, lines = cases.i07_replay_retention(ctx)
@@ -351,7 +362,7 @@ def main():
           " | ".join(lines),
           "verdict=%s lines=%s" % (verdict, lines))
 
-    total = 11
+    total = 13
     print("\n%d/%d OK" % (total - len(FAILURES), total))
     return 1 if FAILURES else 0
 
