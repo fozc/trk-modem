@@ -317,7 +317,41 @@ def main():
           "201" in joined,
           "verdict=%s lines=%s" % (verdict, lines))
 
-    total = 9
+    # --- review 2026-10-10: one missing record must not report more ----
+    # window1 delivers 204 and 202; window2 delivers 201 and 200. Only
+    # 203 is missing - the old cursor matcher reported four missing.
+    ctx, real_run_cmd = i07_ctx([201, 200])
+    stamped = []
+    base = time.monotonic() + 5.0
+    for index, seq in enumerate((204, 202)):
+        frame = i_frame(0, 0, replay_asdu(seq))
+        stamped.append((base + index * 0.05, frame[1], frame[2],
+                        frame[3]))
+    ctx.master.frames = stamped
+    verdict, lines = cases.i07_replay_retention(ctx)
+    console_io.run_cmd = real_run_cmd
+    joined = " | ".join(lines)
+    check("i07_single_loss_reported_exactly",
+          verdict == "FAIL" and "seq=[203]" in joined,
+          "verdict=%s lines=%s" % (verdict, lines))
+
+    # --- review 2026-10-10: everything in window1 is NOT a PASS --------
+    ctx, real_run_cmd = i07_ctx([])
+    stamped = []
+    base = time.monotonic() + 5.0
+    for index, seq in enumerate((204, 203, 202, 201, 200)):
+        frame = i_frame(0, 0, replay_asdu(seq))
+        stamped.append((base + index * 0.05, frame[1], frame[2],
+                        frame[3]))
+    ctx.master.frames = stamped
+    verdict, lines = cases.i07_replay_retention(ctx)
+    console_io.run_cmd = real_run_cmd
+    check("i07_no_interrupt_skip",
+          verdict == "SKIP" and "kesim ucu yakalamadi" in
+          " | ".join(lines),
+          "verdict=%s lines=%s" % (verdict, lines))
+
+    total = 11
     print("\n%d/%d OK" % (total - len(FAILURES), total))
     return 1 if FAILURES else 0
 

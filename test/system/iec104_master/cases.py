@@ -646,28 +646,35 @@ def _evtlog_pairs(next_seq, count):
     return pairs
 
 
-def _match_evtlog_pairs(frames, expected_pairs, cursor):
-    """Cursor-match synthetic records in measured frames (see i06).
+def _match_evtlog_pairs(frames, expected_pairs):
+    """Presence-match synthetic records in measured frames (i07).
 
-    Returns (matched seq list, ambient count, cursor). Frames are matched
-    against the current expectation in newest-first order; everything the
-    formula does not expect counts as ambient noise.
+    Each expected record is matched independently anywhere in the
+    window; anything the formula does not expect counts as ambient
+    noise. Order is NOT checked here - a cursor matcher would get stuck
+    on the first missing record and over-report the loss (review
+    2026-10-10: one missing record reported four). Returns the matched
+    seq list in arrival order.
     """
+    wanted = {seq: (current, duration)
+              for seq, current, duration in expected_pairs}
     matched = []
     ambient = 0
     for frame in frames:
         objects = frame[3]["asdu"]["objects"]
-        if cursor >= len(expected_pairs):
+        hit = None
+        for seq, (want_current, want_duration) in wanted.items():
+            if seq in matched:
+                continue
+            if (abs(objects[0]["value"] - want_current) <= 0.051 and
+                    abs(objects[1]["value"] - want_duration) <= 0.5):
+                hit = seq
+                break
+        if hit is None:
             ambient += 1
-            continue
-        seq, want_current, want_duration = expected_pairs[cursor]
-        if (abs(objects[0]["value"] - want_current) <= 0.051 and
-                abs(objects[1]["value"] - want_duration) <= 0.5):
-            matched.append(seq)
-            cursor += 1
         else:
-            ambient += 1
-    return matched, ambient, cursor
+            matched.append(hit)
+    return matched, ambient
 
 
 def _measured_replay(frames):
@@ -765,28 +772,33 @@ def i07_replay_retention(ctx):
                if f[3]["asdu"]["cot"] == 3]
 
     expected_pairs = _evtlog_pairs(st1["next_seq"], count)
-    matched1, ambient1, cursor = _match_evtlog_pairs(
-        _measured_replay(window1), expected_pairs, 0)
-    matched2, ambient2, cursor = _match_evtlog_pairs(
-        _measured_replay(window2), expected_pairs, cursor)
-    matched_all = matched1 + matched2
+    matched1, ambient1 = _match_evtlog_pairs(
+        _measured_replay(window1), expected_pairs)
+    matched2, ambient2 = _match_evtlog_pairs(
+        _measured_replay(window2), expected_pairs)
+    matched_all = sorted(set(matched1) | set(matched2))
     lines = ["kesim: pencere1=%d kayit, pencere2=%d kayit (ortam=%d+%d)" %
              (len(matched1), len(matched2), ambient1, ambient2)]
-    if len(matched_all) != count:
-        missing = [seq for seq, _, _ in expected_pairs
-                   if seq not in matched_all]
+    missing = [seq for seq, _, _ in expected_pairs
+               if seq not in matched_all]
+    if missing:
         return "FAIL", [
             "kayit kayboldu: %d/%d eslesti; iki pencerede de gelmeyen "
             "seq=%s (de5604c oncesi: red edilen gonderim imleci ilerletip "
-            "kaydi atliyordu)" % (len(matched_all), count, missing)]
-    if not matched2 and len(matched1) == count:
-        lines.append("zayif koshum: kesim yarisi yakalanamadi, tum kayitlar "
-                     "ilk pencerede ACK'landi")
-    if len(matched2) > 1 and matched2 != sorted(matched2, reverse=True):
-        return "FAIL", ["pencere2 sirasi bozuk (en-yeni-once beklenir): %s" %
-                        matched2]
-    lines.append("birlesik tumul %d/%d; pencere2 en-yeni-once sirali" %
-                 (len(matched_all), count))
+            "kaydi atliyordu; TX kuyrugu kabulu yolu ayri bir aciktir)" %
+            (len(matched_all), count, missing)]
+    retained = sorted(set(matched2) - set(matched1), reverse=True)
+    if not retained:
+        return "SKIP", [
+            "kesim ucu yakalamadi: tum kayitlar ilk pencerede gonderildi "
+            "ve isaretlendi - kesinti regressyonu koshulmadi (tekrar)"]
+    for label, matched in (("pencere1", matched1), ("pencere2", matched2)):
+        if len(matched) > 1 and matched != sorted(matched, reverse=True):
+            return "FAIL", ["%s sirasi bozuk (en-yeni-once beklenir): %s" %
+                            (label, matched)]
+    lines.append("birlesik tumul %d/%d; keside korunup ikinci pencereye "
+                 "kalan seq=%s" % (len(matched_all), count, retained))
+    lines.append("her pencere kendi icinde en-yeni-once sirali")
 
     st2 = console_io.parse_evtlog_status(console_io.run_cmd(
         ctx.console, "iec104evtlog status", settle_s=4.0))
