@@ -12,9 +12,16 @@ from cases import case, wait_upload_complete, refresh, any_retry  # noqa: E402
 
 
 def read_trip_state(ctx, line, phase=1):
-    reply = ctx.console.send_and_wait(
-        "rf live %d %d" % (line, phase),
-        r"trip_failed=([01]), latched=([01])", timeout_s=10)
+    """Retries once: under verbose RF logging the shell reply can be
+    lost in a LIVE_DATA burst (bench race, not firmware behaviour)."""
+    reply = None
+    for attempt in range(2):
+        reply = ctx.console.send_and_wait(
+            "rf live %d %d" % (line, phase),
+            r"trip_failed=([01]), latched=([01])", timeout_s=10)
+        if reply:
+            break
+        ctx.console.drain(1.0)
     assert reply, "RF phase state missing"
     ctx.evidence.append(reply[1])
     return tuple(int(value) for value in reply[2].groups())

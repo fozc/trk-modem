@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.38
+**Sürüm:** 1.39
 **Tarih:** 2026-10-10
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -69,6 +69,28 @@ Coverage raporu için:
 ruby test/run_all.rb coverage
 ```
 
+Bu komut eski Ceedling ve GCOV çıktılarını temizleyip raporu yeniden
+üretir. JUnit envanteri güncel test dosyalarıyla karşılaştırılır; eksik,
+başarısız veya atlanan test içeren koşu başarılı kabul edilmez.
+`scripts/logic_coverage.py`, bütün `Application/**/*.c` dosyalarını
+`test/build/logic-coverage.json` içinde listeler. Her ölçülen dosyada
+çalıştırılan/toplam satır ve dal sayısı, çalışmayan satırlar ve eksik dal
+satırları bulunur. Ölçülmeyen dosyalar `unmeasured` olarak kalır.
+Test çiftleri, header'lar ve vendor kaynakları üretim toplamına katılmaz.
+
+Bu envanterin kendi kontrolleri coverage hedefinde çalışır. Raporu yeniden
+derlemeden okumak için:
+
+```text
+python test/scripts/logic_coverage.py
+```
+
+JSON toplamları yalnız ölçülen üretim C dosyalarına aittir; bütün firmware
+için coverage yüzdesi değildir. Ayrı integration paketleri ve test dosyasına
+doğrudan alınan kaynaklar bu dosya envanterinde ölçülmemiş görünebilir.
+Kaynak adıyla ölçülmemek, hiç test edilmemek anlamına gelmez. `%100` satır
+ve dal kapsamı da bütün durum dizilerinin doğru olduğunu kanıtlamaz.
+
 Üretim açısından kritik host paketlerini birlikte çalıştırmak için:
 
 ```text
@@ -104,9 +126,6 @@ servisinin ret sonucunun negatif cevap ve korunmuş son eşitleme
 bilgisi olarak yansımasını kontrol eder. Gerçek RTC doğrulaması ayrı
 `bsp/test_rtc_sync.c` paketinde, HAL sınırları taklit edilerek sınanır.
 
-Bu komut önce eski Ceedling ve GCOV çıktılarını temizler, ardından raporu
-yeniden üretir.
-
 Üretilen test çıktıları şu komutla temizlenir:
 
 ```text
@@ -114,6 +133,52 @@ ruby test/run_all.rb clean
 ```
 
 ## Yeni test ekleme
+
+### Mantık ve hata yolu testleri — 10.10.2026
+
+Hedef, üretim girişlerinin geçerli/geçersiz değerlerini, sınırlarını,
+durum geçişlerini ve hata sonrası veri korumasını sınamaktır. Test edilen
+algoritma taklit edilmemeli; donanım ve taşıma sınırları taklit edilmelidir.
+Döngü içindeki kontrol sayısı ayrı Unity testi olarak sayılmamalıdır.
+
+| Paket | Eklenen kontroller |
+|---|---|
+| `iec104/test_iec104_config_edges.c` | Bütün genel ayarlar, NULL ve NVRAM meşgulken veri koruma; tüm fider/faz/15 kayıt/4 alan/geçici-kalıcı IOA kombinasyonları ve her boyutta geçersiz indeks. Mevcut adres sözleşmesi kullanılır. |
+| `efw/test_efw_validation_edges.c` | Base ve identity başlıklarının her doğrulama alanı, bütün reserved byte'lar, hedef/size/version uyuşmazlıkları, bütün kısa base boyları, NULL, byte sırası ve sürüm sıralamasının tüm kararları. Bu yapısal doğrulamadır; imza kabulü değildir. |
+| `application/test_app_ipc_scenario.c` | Gerçek CRC ve EFW parser ile IPC mesajı, image binding, approval/update ayrımı, erase/write/verify retleri, doğrulama öncesinde reset engeli ve terminal hata dönüşleri. Reset çağrısı host test çiftiyle sayılır. |
+| `application/test_modbus_system_stats.c` | 17 register'ın tamamı, takvim yılı, ABCD word sırası, ADC kanal seçimi, uptime sınırı ve geçersiz adreslerde çıkışın korunması. |
+| `application/test_modbus_gsm_stats.c` | 9 register'ın tamamı, CSQ unknown değeri, RAT, üç socket'in seçimi, hata zamanı word sırası ve NULL/adres retleri. |
+| `application/test_modbus_bms_stats.c` | Bütün scalar ve array register'ları, işaretli değerler, iki yönde yuvarlama/doyum, bağımsız geçerlilik bayrakları ve geçersiz adresler. Reader etkinleştirilmez. |
+| `power_board/test_power_board_control.c` | Rate/capacity/period için 256 byte değerinin tamamı; transport ret sonrası bekleyen SET, timeout sonrası cache korunması ve yeniden okuma, hatalı bildirimde önceki durumun korunması. |
+| `libs/test_ring_buf.c` | 1–16 storage kapasitesinde 4096 adım; bağımsız FIFO modeliyle sıra, boş/dolu retleri, boş slot sayısı, wrap ve canary (koruma byte'ları). ISR yarış zamanı ölçümü değildir. |
+
+**Doğrulama:** 10.10.2026 temiz coverage koşusunda 90 dosyada 1118/1118
+Unity testi geçti; başarısız/atlanan test yoktur. Bu turda 43 yeni Unity
+testi eklendi. Envanter aracının altı Python testi ayrı sayılır. Sekiz
+kritik integration paketi de geçti. Bütün üretim C dosyalarının 69'u
+Ceedling dosya coverage raporunda ölçüldü; 55'i ölçülmedi.
+
+| Üretim kaynağı | Önce satır / dal | Sonra satır / dal |
+|---|---|---|
+| `iec104_config.c` | %29,61 / %28,12 | %100 / %100 |
+| `efw.c` | %85,48 / %58,33 | %100 / %100 |
+| `app_ipc.c` | Ölçülmedi | %100 / %100 |
+| `ring_buf.c` | %97,83 / %93,75 | %100 / %100 |
+| `modbus_system_stats.c` | %19,35 / %22,73 | %95,16 / %95,45 |
+| `modbus_gsm_stats.c` | Ölçülmedi | %91,89 / %93,75 |
+| `modbus_bms_stats.c` | Ölçülmedi | %96,59 / %97,50 |
+| `power_board_control.c` | %93,49 / %79,66 | %95,44 / %84,14 |
+
+Bu üç Modbus veri bloğunun geçerli adres aralığı bütün `case` etiketlerini
+kaplar; kalan `default` yolları bu aralıktan erişilemez. Coverage yüzdesini
+artırmak için protokol aralığı veya üretim kodu değiştirilmemiştir.
+
+Sonraki kapsam çalışmasında JSON envanterindeki açık satır/dallar ve
+ölçülmeyen dosyalar esas alınmalıdır. Boot/superblock, XMODEM ve güncelleme
+süreçleri; GSM/IEC104 süreç geçişleri; web taşıma/oturum ve cihaz başlangıcı
+ayrı davranış matrisleriyle tamamlanmalıdır. Mevcut ertelemeler ve kapalı
+alt sistemler test kapsamı gerekçesiyle etkinleştirilmemelidir. Flash enerji
+kesintisi ve gerçek ISR/DMA zamanlaması cihaz kanıtı gerektirir.
 
 ### Kalıcı günlük test kapsamı
 
@@ -173,13 +238,20 @@ simülatör izi (DUT'un gönderdiği çerçeveler) + konsol çıktısı üzerind
 yapılır.
 
 - Donanımsız self-test (codec CSV golden'ları, cfg_crc, halka, grup,
-  idempotency, PWRB GEN makinesi, fault motoru — 53 test):
+  idempotency, PWRB GEN makinesi, fault motoru ve R2 model davranışları —
+  81 test):
   `python test/system/rf_hil/test_sim_selftest.py`
 - HIL koşusu (canlı cihaz; RF hattında simülatör, konsolda DUT):
   `python test/system/rf_hil/run_hil.py --rf-port COM10 --console COM16`
   (vaka listesi: `--list`; rapor `test/build/hil-rf/<ts>/report.md`)
 - Kablolama ve simülatör kullanımı: `tools/rf-hil/README.md`.
 - Merkezi host koşusuna bağlı değildir; fiziksel kurulum ister.
+- SCP R2 (`022555bf`): simülatör R2 sözleşmesini modeller (0x48 koşullu
+  tüketme, 0x46 sıra koruması, src_eui_hash, Boot_Counter, depo sıfırlma
+  tablosu, anahtarsız MH, COMMIT ön koşulları, 0x2A/olay 201, 45 B 0xE1,
+  0xE7 iptal koreografisi, kart değişimi). `cases_r2.py` 8 R2 cihaz
+  vakası taşır (toplam 45 kayıtlı vaka; `d5_wrap_during_read` ertelenmiş);
+  tüketim beklentileri 0x48'e göredir.
 
 ## Ceedling modül kapsamı
 
@@ -348,6 +420,15 @@ süiti `test/system/iec104_master/` içinde yaşar; kurulum (Python 3.13
 venv + pinned c104) ve vaka kataloğu
 [`system/iec104_master/README.md`](system/iec104_master/README.md)
 dosyasındadır.
+
+Gerçek MH duman süiti `test/system/rf_real_mh/` içinde yaşar: HIL'in
+simülatör-MH'sine karşıt uç olarak gerçek huba karşı gözlem temelli 6
+denetim (fw kimliği, envanter, LIVE_DATA + Boot_Counter, 0x47→0x48,
+`--epoch` ile olay 201/120, `--reset-dut` ile BOOT'suz kurulum). Üretim
+profili (0) önkoşuldur; katalog ve sınırlar
+[`system/rf_real_mh/README.md`](system/rf_real_mh/README.md)
+dosyasındadır. Tetikleme: `RF_REAL_MH_CONSOLE=COM16 make -C
+test/integration/rf_real_mh run`.
 
 Host testleri MMIO (donanım register erişimi), fiziksel IRQ/DMA süresi,
 Flash güç kesintisi veya cihaz üzerinde OTA (uzaktan güncelleme) kabulünü
@@ -857,6 +938,8 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-10 | 1.40 | SCP R2 HIL seti: simülatör R2 modeli (81 self-test), cases_r2 (8 cihaz vakası, toplam 45), 0x48 tüketim taşıması; iec104 master i07 replay tutma vakası; rf_real_mh gerçek MH duman süiti; bench konsol yarışına yeniden deneme |
+| 2026-10-10 | 1.39 | Bütün üretim C dosyalarının coverage envanteri, eksiksiz JUnit kontrolü ve sekiz modülde mantık/hata yolu testleri |
 | 2026-09-25 | 1.0 | İlk merkezi Ceedling ve integration test yapısı |
 | 2026-09-28 | 1.1 | CP56Time2a, SCP, debouncer ve atomik ring buffer testleri |
 | 2026-09-28 | 1.2 | Datetime, modem config ve system status testleri |
