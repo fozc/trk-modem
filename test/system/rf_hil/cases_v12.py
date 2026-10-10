@@ -216,13 +216,15 @@ def d6(ctx):
     tc = refresh(ctx)
     ranges = tc.rx_requests(0x44)
     tc.expect(ranges, "0x44 cekme yok")
-    consumes = [struct.unpack("<H", bytes.fromhex(r["data_hex"]))[0]
-                for r in tc.rx_requests(0x46)]
-    # slot 0 saglam, slot 1 bozuk: basarili prefix yalniz slot 0
-    tc.expect(all(c <= 1 for c in consumes),
-              "bozuk kayit otesine consume gonderildi: %s" % consumes)
+    targets = [struct.unpack("<I", bytes.fromhex(r["data_hex"]))[0]
+               for r in tc.rx_requests(0x48)]
+    # slot 0 saglam, slot 1 bozuk: basarili prefix yalniz slot 0; the
+    # first 0x48 is the boot-protect no-op at the initial ordinal.
+    base = targets[0] if targets else 0
+    tc.expect(all(t <= base + 1 for t in targets),
+              "bozuk kayit otesine consume gonderildi: %s" % targets)
     bell = tc.tx_frames(0x47)
-    return "consumes=%s (prefix korunuyor), bells=%d" % (consumes,
+    return "consumes=%s (prefix korunuyor), bells=%d" % (targets,
                                                          len(bell))
 
 
@@ -240,7 +242,7 @@ def h2(ctx):
     retries = any_retry(tc)
     tc.expect(not retries,
               "kisa bosluklu bolunme tekrar dogurdu: %s" % retries)
-    tc.expect(tc.rx_requests(0x46), "olay cekme tamamlanmadi")
+    tc.expect(tc.rx_requests(0x48), "olay cekme tamamlanmadi")
     tc.expect(_left_zero(tc), "left=0'a ulasilamadi")
     return "short-gap split parsed without retry"
 
