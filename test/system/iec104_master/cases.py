@@ -728,7 +728,10 @@ def i07_replay_retention(ctx):
                                   (st1 or {}).get("next_seq"), count)]
 
     t0 = time.monotonic()
-    if not ctx.master.connect(timeout_s=20.0):
+    # 45 s: the GSM accept chain (listen URC + ~5 s poll + latency) can
+    # consume ~20 s before STARTDT_CON; a 20 s budget lost this race on
+    # the bench (2026-10-10 run: accept at +17 s, data at +21 s).
+    if not ctx.master.connect(timeout_s=45.0):
         return "FAIL", ["replay penceresi 1 icin baglanti kurulamadi"]
     ok, first = ctx.master.wait(
         lambda f: f[1] == "rx" and f[3] and f[3].get("kind") == "I"
@@ -742,7 +745,7 @@ def i07_replay_retention(ctx):
                if f[3]["asdu"]["cot"] == 3]
     time.sleep(3.0)          # device notices the dead link
     t1 = time.monotonic()
-    if not ctx.master.connect(timeout_s=20.0):
+    if not ctx.master.connect(timeout_s=45.0):
         return "FAIL", ["kesintiden sonra yeniden baglanilamadi"]
     ok2, first2 = ctx.master.wait(
         lambda f: f[1] == "rx" and f[3] and f[3].get("kind") == "I"
