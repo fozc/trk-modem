@@ -58,6 +58,7 @@
 #include "time_service.h"
 #include "iec104_process.h"
 #include "iec104_config.h"
+#include "iec104.h"
 #include "gsm_socket.h"
 #include "bsp.h"
 #include "rtc.h"
@@ -3009,7 +3010,9 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			at_len += xsprintf(buff_ptr, "#SCFG=2,1,0,60,600,50");
 			break;
 		case ATQUERY_SOCKET_3_CONFIG_SCFG:
-			at_len += xsprintf(buff_ptr, "#SCFG=3,1,0,60,600,50");
+			at_len += xsprintf(buff_ptr, "#SCFG=3,1,0,%u,600,50",
+                (unsigned int)((uint32_t)iec104_get_t3_timeout() +
+                    IEC104_MODEM_IDLE_MARGIN_SECONDS));
 			break;
 
 		case ATQUERY_SOCKET_1_CONFIG_SCFGEXT:
@@ -3159,7 +3162,8 @@ uint32_t gsm_engine_send_query(uint8_t query)
 		case ATQUERY_OPEN_IEC104_LISTENER_SOCKET:		/* Soketi dinlemeye basla */
 			gsm.at_callback = gsm_sl_listener_cb;
 			timeout = 10*1000UL;
-			at_len += xsprintf(buff_ptr, "#SL=3,1,%d,0", iec104_config_get_scada_port());
+			at_len += xsprintf(buff_ptr, "#SL=3,1,%u,0",
+                (unsigned int)iec104_get_listen_port());
 			break;
 		case ATQUERY_CLOSE_IEC104_LISTENER_SOCKET:    /* Soketi kapat */
 			timeout = 3500;

@@ -2,7 +2,8 @@
  * gsm_process.h
  *
  *  Created on: 2 Nis 2018
- *      Author: fozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef _GSM_PROCESS_H_
@@ -24,6 +25,7 @@ typedef enum {
 	GSM_LS_ACCEPT_CONNECTION,
 
 	GSM_LS_CHECK_NET,
+    GSM_LS_CONFIG_SOCKET,
 
 }ls_states_t;
 

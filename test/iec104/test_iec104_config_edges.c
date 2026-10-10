@@ -36,7 +36,7 @@ void test_config_null_preserves_owned_copy_and_sync_returns_failure(void)
     const iec104_config_t input =
     {
         .scada_ip_address = 0xC0A80101U, .scada_port = 2404U,
-        .common_address = 7U, .k_max = 12U, .w_max = 8U
+        .common_address = 7U, .k_max = 12U, .w_max = 8U, .t3_max = 60U
     };
     iec104_config_set(&input);
     iec104_config_set(NULL);
@@ -80,7 +80,7 @@ void test_config_scalar_fields_preserve_zero_and_full_width_values(void)
         TEST_ASSERT_EQUAL_UINT16(half, iec104_config_get_t0_max());
         TEST_ASSERT_EQUAL_UINT16(half, iec104_config_get_t1_max());
         TEST_ASSERT_EQUAL_UINT16(half, iec104_config_get_t2_max());
-        TEST_ASSERT_EQUAL_UINT16(half, iec104_config_get_t3_max());
+        TEST_ASSERT_EQUAL_UINT16(0U, iec104_config_get_t3_max());
         TEST_ASSERT_EQUAL_UINT8(byte, iec104_config_get_k_max());
         TEST_ASSERT_EQUAL_UINT8(byte, iec104_config_get_w_max());
         TEST_ASSERT_EQUAL_UINT16(half,
@@ -211,6 +211,27 @@ void test_fault_ioas_reject_each_out_of_range_dimension(void)
         iec104_get_feeder_permanent_fault_base_ioa(UINT32_MAX, 0U)));
     TEST_ASSERT_EQUAL_UINT32(0U, iec104_ioa_3byte_to_uint32(
         iec104_get_feeder_permanent_fault_base_ioa(0U, UINT8_MAX)));
+}
+
+
+
+void test_t3_setters_reject_invalid_values_without_changing_valid_state(void)
+{
+    const uint16_t valid[] = {20U, 60U, 256U, 65525U};
+    const uint16_t invalid[] = {0U, 19U, 65526U, 65535U};
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        iec104_config_set_t3_max(valid[index]);
+        TEST_ASSERT_EQUAL_UINT16(valid[index], iec104_config_get_t3_max());
+        iec104_config_set_t3_max(invalid[index]);
+        TEST_ASSERT_EQUAL_UINT16(valid[index], iec104_config_get_t3_max());
+        iec104_config_t input = config;
+        input.t3_max = invalid[index];
+        input.common_address = 999U;
+        iec104_config_set(&input);
+        TEST_ASSERT_EQUAL_UINT16(valid[index], config.t3_max);
+        TEST_ASSERT_EQUAL_UINT16(0U, config.common_address);
+    }
 }
 
 /*** end of file ***/

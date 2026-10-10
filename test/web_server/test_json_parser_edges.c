@@ -14,6 +14,7 @@
 #include "modem_types.h"
 #include "iec104_util.h"
 #include "mock_iec104_config.h"
+#include "mock_iec104_process.h"
 #include "mock_modbus_config.h"
 #include "mock_modbus_process.h"
 #include "mock_modem_config.h"

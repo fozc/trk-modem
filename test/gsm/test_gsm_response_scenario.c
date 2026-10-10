@@ -29,6 +29,20 @@ TEST_SOURCE_FILE("gsm_signal_led.c")
 #include "../../Application/gsm/gsm_engine.c"
 #include "../../Application/gsm/utils.c"
 
+static uint16_t active_t3_timeout;
+static uint16_t active_listen_port;
+static uint32_t expected_timeout;
+
+uint16_t iec104_get_t3_timeout(void)
+{
+    return active_t3_timeout;
+}
+
+uint16_t iec104_get_listen_port(void)
+{
+    return active_listen_port;
+}
+
 static const char *response_text;
 /* Match the AT motor's actual allocation and NUL-termination contract. */
 static uint8_t response_buffer[1280];
@@ -63,6 +77,9 @@ static const uint8_t *get_response(uint16_t *length, int call_count)
 
 void setUp(void)
 {
+    active_t3_timeout = 60U;
+    active_listen_port = 2404U;
+    expected_timeout = 2000U;
     memset(&gsm, 0, sizeof(gsm));
     memset(&gsm_info, 0, sizeof(gsm_info));
     at_engine_get_response_Stub(get_response);
@@ -235,7 +252,7 @@ static bool check_at_command(const void *command, uint16_t command_len,
     TEST_ASSERT_EQUAL_MEMORY(GSM_OK_STR, expected_response, GSM_OK_STR_LEN);
     TEST_ASSERT_EQUAL_UINT8(GSM_OK_STR_LEN, response_len);
     TEST_ASSERT_EQUAL_UINT8(3U, retries);
-    TEST_ASSERT_EQUAL_UINT32(2000U, timeout);
+    TEST_ASSERT_EQUAL_UINT32(expected_timeout, timeout);
     return true;
 }
 
@@ -302,7 +319,7 @@ void test_2g_registration_callback_reports_home_and_roaming(void)
     TEST_ASSERT_EQUAL_INT(GSM_GPRS_NETWORK_ROAMING, gsm_cgreg_get_cb());
 }
 
-/*** end of file ***/
+
 
 void test_dialer_si_preserves_zero_and_maximum_ack_count(void)
 {
@@ -532,3 +549,39 @@ void test_cops_error_and_timeout_do_not_update_rat_or_led(void)
     TEST_ASSERT_EQUAL_INT(GSM_TIMEOUT, gsm_COPS_state_cb());
     TEST_ASSERT_EQUAL_UINT32(0U, signal_apply_calls);
 }
+
+void test_iec104_modem_idle_timeout_uses_active_t3_with_ten_second_margin(void)
+{
+    const uint16_t values[] = {20U, 60U, 65525U};
+    const char *commands[] = {
+        "AT#SCFG=3,1,0,30,600,50\r",
+        "AT#SCFG=3,1,0,70,600,50\r",
+        "AT#SCFG=3,1,0,65535,600,50\r"
+    };
+    at_engine_is_busy_IgnoreAndReturn(false);
+    at_engine_send_at_command_Stub(check_at_command);
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        active_t3_timeout = values[index];
+        expected_command = commands[index];
+        TEST_ASSERT_EQUAL_UINT32(1U,
+            gsm_engine_send_query(ATQUERY_SOCKET_3_CONFIG_SCFG));
+        gsm_set_free();
+    }
+    expected_command = "AT#SCFG=1,1,0,60,600,50\r";
+    TEST_ASSERT_EQUAL_UINT32(1U,
+        gsm_engine_send_query(ATQUERY_SOCKET_1_CONFIG_SCFG));
+}
+
+void test_iec104_listener_uses_active_port_instead_of_pending_saved_port(void)
+{
+    active_listen_port = 2500U;
+    expected_command = "AT#SL=3,1,2500,0\r";
+    expected_timeout = 10000U;
+    at_engine_is_busy_IgnoreAndReturn(false);
+    at_engine_send_at_command_Stub(check_at_command);
+    TEST_ASSERT_EQUAL_UINT32(1U,
+        gsm_engine_send_query(ATQUERY_OPEN_IEC104_LISTENER_SOCKET));
+}
+
+/*** end of file ***/

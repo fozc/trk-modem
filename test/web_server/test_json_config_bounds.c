@@ -10,6 +10,7 @@
 #include "json_config.h"
 #include "iec104_util.h"
 #include "mock_iec104_config.h"
+#include "mock_iec104_process.h"
 #include "mock_modbus_config.h"
 #include "mock_modbus_process.h"
 #include "mock_modem_config.h"
@@ -61,6 +62,7 @@ void setUp(void)
     memset(&saved_iec, 0, sizeof(saved_iec));
     memset(&saved_modbus, 0, sizeof(saved_modbus));
     memset(&saved_modbus_line, 0, sizeof(saved_modbus_line));
+    iec104_process_config_changed_Ignore();
     (void)strcpy(iec.scada_ip_address, "192.168.1.2");
     iec.scada_port = 2404U;
     iec.periodical_send_interval = 60U;
@@ -590,6 +592,59 @@ void test_trip_failure_ioas_parse_validate_and_reach_the_saved_line(void)
     TEST_ASSERT_EQUAL_INT(0, parse_iec_config(
         "{\"Hatlar\":{\"IOA_R_TripFailed\":[16777216]}}", &iec));
     TEST_ASSERT_EQUAL_MEMORY(&before, &saved_line, sizeof(saved_line));
+}
+
+
+void test_t3_json_accepts_full_supported_range_and_persists_without_truncation(void)
+{
+    const uint16_t values[] = {20U, 60U, 255U, 256U, 65525U};
+    iec104_config_get_IgnoreAndReturn(NULL);
+    iec104_config_set_Stub(capture_iec);
+    iec104_set_line_config_IgnoreAndReturn(true);
+    iec104_config_sync_IgnoreAndReturn(0);
+    iec104_process_config_changed_StopIgnore();
+    for (size_t index = 0U; index < 5U; index++)
+    {
+        char json[32];
+        (void)snprintf(json, sizeof(json), "{\"T3\":%u}",
+            (unsigned int)values[index]);
+        TEST_ASSERT_EQUAL_INT(1, parse_iec_config(json, &iec));
+        TEST_ASSERT_EQUAL_UINT16(values[index], iec.t3_timeout);
+        iec104_process_config_changed_Expect();
+        TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
+        TEST_ASSERT_EQUAL_UINT16(values[index], saved_iec.t3_max);
+    }
+}
+
+void test_invalid_t3_and_timeout_order_never_write_storage(void)
+{
+    const uint16_t values[] = {0U, 19U, 65526U, 65535U};
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        char json[32];
+        (void)snprintf(json, sizeof(json), "{\"T3\":%u}",
+            (unsigned int)values[index]);
+        TEST_ASSERT_EQUAL_INT(0, parse_iec_config(json, &iec));
+        iec.t3_timeout = values[index];
+        TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    }
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{\"T3\":65536}", &iec));
+    iec.t3_timeout = 60U;
+    iec.t2_timeout = iec.t1_timeout;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{\"T2\":16}", &iec));
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    TEST_ASSERT_EQUAL_UINT16(0U, saved_iec.t3_max);
+}
+
+void test_failed_save_does_not_apply_runtime_config(void)
+{
+    iec104_process_config_changed_StopIgnore();
+    iec104_config_get_IgnoreAndReturn(NULL);
+    iec104_config_set_Stub(capture_iec);
+    iec104_set_line_config_IgnoreAndReturn(true);
+    iec104_config_sync_ExpectAndReturn(-1);
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
 }
 
 /*** end of file ***/

@@ -1,7 +1,7 @@
 # IEC104 yapılandırma ve adres rehberi
 
-Sürüm: 1.3
-Tarih: 2026-10-04
+Sürüm: 1.4
+Tarih: 2026-10-10
 
 ## Amaç
 
@@ -48,6 +48,43 @@ işleri `iec104_process.c`/GSM; paketler `libiec104`; grup 3/4 süreçleri
 | SBOTimeout | 60 | Saniye; etkinse backend 1–300, depolama 16 bit |
 | AkuUyarisi | 10000 | Akü uyarısı için ayrılmış IOA |
 | ModemReset | 10001 | Reset komutunun yapılandırılabilir IOA'sı |
+
+### Zamanlama ve bağlantı ayarlarının uygulanması
+
+T0, T1 ve T2 için 1–255 saniye kullanılmalıdır; T2, T1'den küçük olmalıdır.
+T3 için 20–65525 saniye kullanılmalıdır. T3 varsayılanı 60 saniyedir.
+Web formu, JSON parser (ayrıştırıcı) ve config yazma yolu bu sınırları
+uygulamalıdır. Geçersiz değerler saklanmadan reddedilmelidir.
+
+Son tamamlanmış IEC104 frame'inden (çerçeve) itibaren T3+2 saniye trafik
+alınmazsa RTU TESTFR_ACT göndermelidir. TESTFR_CON beklenirken ikinci
+TESTFR_ACT gönderilmemelidir. Yanıt gelmezse mevcut T1 timeout (zaman
+aşımı) akışı bağlantıyı kapatmalıdır. Yalnızca parçalı veri alımı idle
+(boşta kalma) sayacını sıfırlamamalıdır.
+
+IEC104 soketi 3 için modem `#SCFG maxTo` değeri aktif T3+10 saniye
+olmalıdır. Böylece aralık 30–65535 saniye olur; varsayılanda TESTFR
+62. saniyede, modem timeout'u 70. saniyede oluşur. Bu değerler yazılım
+sayaç eşikleridir; GSM aktarım gecikmesinin fiziksel kabulü ayrıca yapılmalıdır.
+Web soketi 1'in timeout'u bu hesapla değiştirilmemelidir. T1, T3+10'dan
+uzun seçilirse yanıtsız bağlantıyı modem T1 dolmadan kapatabilir; bu
+kombinasyonda kapanış sebebi modem inactivity timeout olur.
+
+Başarılı Kaydet sonrasında yeni global bağlantı ayarları bekletilmelidir.
+Mevcut master bağlantısı, sıra numaraları ve gönderim kuyruğu korunmalıdır.
+Bağlantı kapandığında yeni ayarlar alınmalı, dinleyici açılmadan önce
+modem timeout'u uygulanmalıdır. Bağlı master yoksa dinleyici yeni ayarlarla
+hazırlanmalıdır. RTU reseti gerekmez. Başarısız saklama çalışan ayara
+aktarılmamalıdır. Onaylanmamış olaylar bağlantı geçişinde tüketilmemelidir.
+
+`#SCFG` parametreleri Telit LE910R1 r8 rehberi s.684–685'te tanımlıdır;
+parametreler modem NVM'ine (kalıcı bellek) kaydedilir. Aynı GSM çalışma
+döngüsünde timeout değişmemişse komut yeniden yazılmamalıdır. Modem
+başlatma akışı mevcut RAM durumunu sıfırlar ve ilk açılışta komutu gönderir.
+
+Bu bölüm global bağlantı/zamanlama ayarlarını açıklar. Fider IOA alanları
+mevcut NVRAM getter'ları üzerinden okunur; bu çalışmada bunlar için ayrı
+bir oturum görüntüsü eklenmemiştir.
 
 Akü uyarısı IOA'sı yapılandırmada vardır; incelenen aktif IEC104 kodunda
 bu IOA'dan akü uyarısı yayımlayan bir yol bulunmamıştır. Alanın olması,
@@ -257,3 +294,5 @@ Kaynak dosyalar: `Application/nvram.c`, `Application/nvram.h`,
 | 1.1 | 2026-10-03 | Save öncesi adres kontrolü ve alan üzerinde hata gösterimi |
 | 1.2 | 2026-10-03 | Modbus veri tipi ve canlı register aralığı, çakışan register adresinin hata metninde gösterimi |
 | 1.3 | 2026-10-04 | 45/46 kontrol komutlarının aktif destek durumu ve olumsuz yanıt davranışı |
+
+| 1.4 | 2026-10-10 | T3 sınırları, T3+2 TESTFR, T3+10 modem timeout ve sonraki bağlantıda global ayar uygulama |

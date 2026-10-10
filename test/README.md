@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.41
+**Sürüm:** 1.42
 **Tarih:** 2026-10-10
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -121,6 +121,15 @@ modunu sınar; fiziksel ISR zamanlaması kabulü değildir.
 RTC testleri HAL Time/Date hata dönüşlerinde yazılım saati ve epoch'un
 korunmasını, valid marker'ın temizlenmesini ve sonraki başarılı
 eşitlemeyi sınar. `rtc_sync` ve `rtc_hw_write` artık bool sonuç döndürür.
+IEC104 T3 regresyonları 20/60/65525 sınırlarını, tam T3+2 TESTFR eşiğini,
+parçalı veri ile frame ayrımını ve bekleyen TESTFR_CON durumunu sınar.
+`gsm/test_gsm_listener_scenario.c`, gerçek listener state machine (dinleyici
+durum makinesi) üzerinden config/SCFG/OPEN sırasını ve hata halinde
+bağlantının açılmamasını doğrular. Aktif bağlantıda Kaydet, sonraki bağlantıda
+uygulama ve onaysız olayların korunması gerçek IEC104 TX/replay senaryosunda
+sınanır. Web doğrulaması source ve gömülü HTML üzerinden ayrı çalıştırılır.
+Zamanlama kabulü için gerçek GSM/SCADA koşumu ayrıca yapılmalıdır.
+
 IEC104 protokol senaryosu CP56Time2a alan/takvim doğrulamasını ve RTC
 servisinin ret sonucunun negatif cevap ve korunmuş son eşitleme
 bilgisi olarak yansımasını kontrol eder. Gerçek RTC doğrulaması ayrı

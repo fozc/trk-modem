@@ -2,7 +2,8 @@
  * gsm_engine.h
  *
  *  Created on: 20 Mar 2018
- *      Author: fozcan
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef GSM_ENGINE_H_
@@ -381,6 +382,7 @@ typedef struct {
 	uint8_t            had_data_activity;
 	uint8_t            si_all_zero;
 	uint16_t           ack_waiting;
+    uint16_t           configured_idle_timeout;
 	uint32_t           socket_timer;
 	uint32_t           tcp_ack_timer;
 	uint32_t           data_check_timer;

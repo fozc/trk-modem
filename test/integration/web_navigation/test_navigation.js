@@ -329,8 +329,8 @@ async function checkPage(html, label) {
     }
     const configFields = {
         'iec-Port': 2404, 'iec-PeriodicSend': 60, 'iec-T0': 30,
-        'iec-T1': 30, 'iec-T2': 30, 'iec-T3': 30, 'iec-K': 64,
-        'iec-W': 32, 'iec-OriginatorAddr': 1, 'iec-CommonAddr': 1,
+        'iec-T1': 45, 'iec-T2': 30, 'iec-T3': 30, 'iec-K': 64,
+        'iec-W': 24, 'iec-OriginatorAddr': 1, 'iec-CommonAddr': 1,
         'iec-SBOTimeout': 30, 'iec-AkuUyarisi': 10000,
         'iec-ModemReset': 10001, 'mod-CihazID': 1, 'mod-BaudRate': 115200
     };
@@ -341,6 +341,24 @@ async function checkPage(html, label) {
     }
     assert.match(run("renderIec104({Hatlar:{}})"), /data-key="TemporaryFaultBase"/);
     assert.match(run("renderIec104({Hatlar:{}})"), /data-key="PermanentFaultBase"/);
+    for (const [value, valid] of [[19,false],[20,true],[60,true],
+                                  [255,true],[256,true],[65525,true],
+                                  [65526,false],[65535,false],[20.5,false]]) {
+        document.getElementById('iec-T3').value = String(value);
+        assert.equal(run("validatePage('iec104')"), valid, 'T3='+value);
+    }
+    document.getElementById('iec-T3').value = '60';
+    document.getElementById('iec-T2').value = '45';
+    assert.equal(run("validatePage('iec104')"), false, 'T2 equals T1');
+    document.getElementById('iec-T2').value = '46';
+    assert.equal(run("validatePage('iec104')"), false, 'T2 exceeds T1');
+    document.getElementById('iec-T1').value = '2';
+    document.getElementById('iec-T2').value = '1';
+    document.getElementById('iec-T0').value = '1';
+    assert.equal(run("validatePage('iec104')"), true, 'small valid timeouts');
+    document.getElementById('iec-T1').value = '45';
+    document.getElementById('iec-T2').value = '30';
+    document.getElementById('iec-T0').value = '90';
     const sbo = document.getElementById('iec-SBO');
     sbo.type = 'checkbox';
     sbo.checked = true;

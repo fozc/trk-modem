@@ -30,7 +30,9 @@ const iec104_config_t* iec104_config_get(void)
 
 void iec104_config_set(const iec104_config_t* config)
 {
-	if(config) {
+	if ((NULL != config) &&
+        (IEC104_T3_MIN_SECONDS <= config->t3_max) &&
+        (IEC104_T3_MAX_SECONDS >= config->t3_max)) {
 		*iec104_config = *config;
 	}
 }
@@ -113,7 +115,11 @@ uint16_t iec104_config_get_t3_max(void)
 
 void iec104_config_set_t3_max(uint16_t timeout)
 {
-	iec104_config->t3_max = timeout;
+    if ((IEC104_T3_MIN_SECONDS <= timeout) &&
+        (IEC104_T3_MAX_SECONDS >= timeout))
+    {
+        iec104_config->t3_max = timeout;
+    }
 }
 
 // k_max

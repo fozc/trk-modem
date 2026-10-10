@@ -10,6 +10,7 @@
 /* HAL structs must be parsed before libiec104's legacy Init macro. */
 #include "stm32u3xx_hal.h"
 #include "iec104.h"
+#include "iec104_config.h"
 #include "nvram.h"
 #include "bsp.h"
 #include "contiki.h"
@@ -22,6 +23,8 @@
 #include "iec104_elog.h"
 
 static iec104_config_t iec104_config = {0};
+/* Owned by the cooperative main context; no ISR access. */
+static bool config_apply_pending = false;
 static struct timer periodic_send_timer;
 
 /* Slot-based TX buffer: each slot = one TCP segment */
@@ -92,6 +95,37 @@ void iec104_process_socket_closed_cb(void)
 
 	iec104_application_event_handler(IEC104_EVT_SOCKET_CLOSED);
 	tx_reset();
+    iec104_process_apply_pending_config();
+}
+
+void iec104_process_apply_pending_config(void)
+{
+    if (config_apply_pending && iec104_apply_config(&iec104_config))
+    {
+        timer_set(&periodic_send_timer,
+            iec104_config.periodical_send_interval * 1000U);
+        config_apply_pending = false;
+    }
+}
+
+void iec104_process_config_changed(void)
+{
+    const iec104_config_t *new_config = nvram_get_iec104_config();
+    if ((NULL == new_config) ||
+        (IEC104_T3_MIN_SECONDS > new_config->t3_max) ||
+        (IEC104_T3_MAX_SECONDS < new_config->t3_max))
+    {
+        return;
+    }
+    iec104_config = *new_config;
+    config_apply_pending = true;
+    /* No connected master: prepare the listener with the new settings. */
+    const uint8_t socket_state = gsm_get_socket_state(IEC104_LISTENER_SOCKET);
+    if ((SOCKET_CONNECTED != socket_state) &&
+        (SOCKET_DATA_MODE != socket_state))
+    {
+        iec104_application_event_handler(IEC104_EVT_REQUEST_SOCKET_CLOSE);
+    }
 }
 
 static void generate_dummy_test_data(void)
