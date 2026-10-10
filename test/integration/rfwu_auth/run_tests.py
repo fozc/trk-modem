@@ -265,6 +265,106 @@ class Protocol(unittest.TestCase):
         self.accepted()
         self.assertEqual(self.value(5), 0)
 
+    def test_failed_new_init_cannot_write_through_an_old_active_session(self):
+        self.authenticate()
+        LIB.fixture_fw_failure(1, True)
+        feed(self.hello(self.challenge(), size=8192))
+        self.rejected(5)
+        feed(packet(2, struct.pack("<I", 0) + b"X"))
+        self.rejected(6)
+        self.assertEqual(self.value(3), 0)
+        LIB.fixture_fw_failure(1, False)
+        feed(self.hello(self.challenge(), size=8192))
+        self.accepted()
+        feed(packet(2, struct.pack("<I", 0) + b"X"))
+        self.accepted()
+        self.assertEqual(self.value(8), 1)
+
+    def test_flash_write_failure_keeps_offset_and_retries_same_chunk(self):
+        self.authenticate()
+        data = packet(2, struct.pack("<I", 0) + b"X" * 1024)
+        LIB.fixture_fw_failure(2, True)
+        feed(data)
+        self.rejected(5)
+        self.assertEqual(struct.unpack_from("<I", reply()[1], 1)[0], 0)
+        self.assertEqual(self.value(8), 0)
+        LIB.fixture_fw_failure(2, False)
+        feed(data)
+        self.accepted()
+        self.assertEqual(struct.unpack_from("<I", reply()[1])[0], 1024)
+        self.assertEqual(self.value(8), 1024)
+
+    def test_failed_finish_does_not_publish_complete_progress(self):
+        feed(self.hello(self.challenge(), size=16))
+        self.accepted()
+        feed(packet(2, struct.pack("<I", 0) + b"F" * 16))
+        self.accepted()
+        LIB.fixture_fw_failure(3, True)
+        feed(packet(3, struct.pack("<I", 16)))
+        self.rejected(5)
+        self.assertEqual(self.value(10), 0)
+        LIB.fixture_fw_failure(3, False)
+        feed(packet(3, struct.pack("<I", 16)))
+        self.accepted()
+        self.assertEqual(self.value(10), 16)
+        self.assertEqual(self.value(7), 2)
+
+    def test_data_reassembles_at_every_tcp_split_boundary(self):
+        data = packet(2, struct.pack("<I", 0) + b"DATA")
+        for boundary in range(1, len(data)):
+            with self.subTest(boundary=boundary):
+                LIB.fixture_reset(0)
+                self.authenticate()
+                feed(data[:boundary])
+                self.assertEqual(self.value(3), 0)
+                feed(data[boundary:])
+                self.accepted()
+                self.assertEqual(self.value(8), 4)
+
+    def test_bad_data_crc_preserves_progress_and_next_packet_recovers(self):
+        self.authenticate()
+        data = packet(2, struct.pack("<I", 0) + b"DATA")
+        feed(data[:-1] + bytes([data[-1] ^ 1]))
+        self.rejected(2)
+        self.assertEqual(self.value(3), 0)
+        feed(data)
+        self.accepted()
+        self.assertEqual(self.value(8), 4)
+
+    def test_incomplete_packet_is_discarded_on_disconnect(self):
+        self.authenticate()
+        data = packet(2, struct.pack("<I", 0) + b"DATA")
+        feed(data[:15])
+        LIB.rfwu_on_disconnect()
+        self.authenticate()
+        feed(data)
+        self.accepted()
+        self.assertEqual(self.value(8), 4)
+
+    def test_persisted_resume_uses_sector_boundary_not_ram_head(self):
+        self.authenticate()
+        for offset in range(0, 4096, 1024):
+            feed(packet(2, struct.pack("<I", offset) + b"F" * 1024))
+            self.accepted()
+            self.assertEqual(self.value(10), 4096 if offset == 3072 else 0)
+        LIB.rfwu_on_disconnect()
+        self.authenticate()
+        self.assertEqual(self.value(9), 4096)
+        self.assertEqual(struct.unpack_from("<I", reply()[1])[0], 4096)
+
+    def test_reserved_header_flags_reject_before_starting_flash(self):
+        data = bytearray(self.hello(self.challenge()))
+        data[5] = 1
+        data[-4:] = struct.pack("<I", PC["_crc32"](data[:-4]))
+        feed(data)
+        self.rejected(2)
+        self.assertEqual(self.value(2), 0)
+        self.assertEqual(self.value(5), 0)
+        data[5] = 0
+        data[-4:] = struct.pack("<I", PC["_crc32"](data[:-4]))
+        feed(data)
+        self.accepted()
+
     def test_pc_socket_authentication_matches_device(self):
         sock = ParserSocket()
         cmd, _ = PC["authenticate_socket"](sock, self.firmware, KEY)
@@ -371,6 +471,8 @@ if __name__ == "__main__":
         getattr(LIB, name).restype = None
     LIB.fixture_rng_failure.argtypes = [ctypes.c_bool]
     LIB.fixture_rng_failure.restype = None
+    LIB.fixture_fw_failure.argtypes = [ctypes.c_uint8, ctypes.c_bool]
+    LIB.fixture_fw_failure.restype = None
     LIB.fixture_value.argtypes = [ctypes.c_uint32]
     LIB.fixture_value.restype = ctypes.c_uint32
     LIB.fixture_response.argtypes = [ctypes.POINTER(ctypes.c_uint8)]

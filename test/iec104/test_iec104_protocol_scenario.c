@@ -1726,6 +1726,30 @@ void test_current_rf_alarm_snapshot_reserves_the_whole_k_window(void)
     TEST_ASSERT_EQUAL_UINT32(1070U, iec104_ioa_3byte_to_uint32(object->ioa));
 }
 
+void test_rtc_service_rejection_returns_negative_confirmation_and_keeps_time(void)
+{
+    uint8_t frame[22];
+    setup(64U, 32U);
+    start_link();
+    build_clock_command(frame);
+    const cp56time2a_t previous = iec104_get_last_clock_sync_time();
+    mock_rtc_sync_failure(true);
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    const cp56time2a_t actual = iec104_get_last_clock_sync_time();
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &actual, sizeof(actual));
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+    mock_rtc_sync_failure(false);
+    build_clock_command(frame);
+    frame[2] = 2U;
+    frame[4] = 4U;
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[1]));
+    TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
+}
+
 /*** end of file ***/
 
 void test_gi_confirmation_pn_retains_only_the_low_bit(void)
@@ -1766,3 +1790,49 @@ void test_point_quality_flags_and_value_bits_preserve_wire_encoding(void)
         TEST_ASSERT_EQUAL_HEX8(double_point[i], tx_log[0][15]);
     }
 }
+
+
+void test_invalid_clock_fields_do_not_publish_time_and_next_command_recovers(void)
+{
+    static const uint8_t offsets[] = {16U, 17U, 18U, 19U, 20U, 20U, 21U};
+    static const uint8_t values[] = {0xFFU, 60U, 24U, 0U, 0U, 13U, 100U};
+    for (size_t index = 0U; sizeof(offsets) > index; index++)
+    {
+        uint8_t frame[22];
+        setup(64U, 32U);
+        start_link();
+        build_clock_command(frame);
+        frame[offsets[index]] = values[index];
+        const cp56time2a_t previous = iec104_get_last_clock_sync_time();
+        iec104_data_received(frame, (uint16_t)sizeof(frame));
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+        TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+        const cp56time2a_t actual = iec104_get_last_clock_sync_time();
+        TEST_ASSERT_EQUAL_MEMORY(&previous, &actual, sizeof(actual));
+        build_clock_command(frame);
+        frame[2] = 2U; /* Next receive sequence, 1. */
+        frame[4] = 4U; /* Acknowledge the negative response, sequence 2. */
+        iec104_data_received(frame, (uint16_t)sizeof(frame));
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[1]));
+        TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
+    }
+}
+
+void test_nonexistent_calendar_day_is_rejected_without_clock_update(void)
+{
+    uint8_t frame[22];
+    setup(64U, 32U);
+    start_link();
+    build_clock_command(frame);
+    frame[19] = 30U;
+    frame[20] = 2U;
+    iec104_data_received(frame, (uint16_t)sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+}
+
+/*** end of file ***/

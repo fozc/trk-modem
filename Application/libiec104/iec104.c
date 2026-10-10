@@ -46,7 +46,7 @@ static uint16_t send_sn = 0;    //send_squence_number, rtu'nun gonderdigi paket 
 static uint16_t ack_sn = 0;    // Scada'nin onayladigi son paket numarasi, 15-bit
  
 // Gonderilen I-frame paketlere Onay almadan maksimum gonderilecek mesaj sayisi. Doldugunda t1 sure sonunda tekrar gonderim yapilir.
- static uint16_t k_counter = 0; // Henuz SCADA'dan ACK alinmamış I-frame sayisi
+ static uint16_t k_counter = 0; // Henuz SCADA'dan ACK alinmamis I-frame sayisi
 //Alinan I-frame paketlere onay gondermeden alinabilecek  maksimum mesaj sayisi. Doldugunda hemen onay gonderilmeli. Eger sayi t2 suresine kadar dolmaz ise t2 suresi sonunda onay gonderilmeli
 static uint16_t w_counter = 0; // Henuz ACK gondermedigimiz alinan I-frame sayisi
  
@@ -176,7 +176,7 @@ static bool iec104_send(const uint8_t *data, size_t length)
 
 	if(is_i_frame)
 	{
-		// T1 zamanlayıcısı yalnızca ilk onaysız pakette sıfırlanıp başlatılmalıdır
+		// T1 zamanlayicisi yalnizca ilk onaysiz pakette sifirlanip baslatilmalidir
 		if(k_counter == 0)
 		{
 			t1_timer = 0;
@@ -284,7 +284,7 @@ static inline asdu_header_t make_asdu_header(uint8_t type_id, cot_t cot, uint16_
         .common_asdu_address = common_address,
         .vsq = {
             .number_of_objects = vsq_number_of_objects & 0x7FU, // 1: single object, != 1: multiple objects
-            .sq_bit = vsq_sq_bit & 0x01U // 1: Single object, 0: multiple objects, sq=1 ise IOA'lar arsisik tek IOA gonderilir, sq=0 ise her obje için ayri IOA var
+            .sq_bit = vsq_sq_bit & 0x01U // 1: Single object, 0: multiple objects, sq=1 ise IOA'lar arsisik tek IOA gonderilir, sq=0 ise her obje icin ayri IOA var
         }
     };
 }
@@ -303,7 +303,7 @@ void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config
             .periodical_send_interval = 60, // seconds
             .t0_max = 30,  //  [1-255 sec, def:30s] Baglanti kurma zaman asimi, RTU'da onemsiz(?) [1-255 saniye]
             .t1_max = 45,  //  [1-255 sec, def:15s] Onay zaman asimi. RTU I-frame gonderdikten sonra baslar, sure sonuna kadar scada'dan onay gelmesi lazim, gelmezse paket kaybolmus denilir, tekrar gonderim yapilir. Belirli sayida tekrar gonderimden sonra  ack alamaz ise bagantiyi koparir
-            .t2_max = 30,  //  [1-255 sec, def:10s] Bir istasyonun (RTU veya SCADA) aldigı I-frame paketlerine onay gondermek icin bekleyebilecegi maks sure
+            .t2_max = 30,  //  [1-255 sec, def:10s] Bir istasyonun (RTU veya SCADA) aldigi I-frame paketlerine onay gondermek icin bekleyebilecegi maks sure
             .t3_max = 60,  //  [1-255 sec, def:20s] Idle timeout. Hat bu sure boyunca bosta kalirsa TESTFR gonderimi yaparak baglantiyi test eder. SCADA'da yapabilir.
             .k_max = 64,   //  [1-32767,   def:12 ] Send-window-limit: Max number of unacknowledged I format frames
             .w_max = 32,    // [1-32767,    def:8  ] W, alim penceresi siniri: Max number of unacknowledged I format frames to be received
@@ -711,6 +711,26 @@ cp56time2a_t iec104_get_last_clock_sync_time(void)
     return last_clock_sync_time;
 }
 
+static bool apply_clock_time(const cp56time2a_t *timestamp)
+{
+    if (!cp56time2a_is_valid(timestamp))
+    {
+        return false;
+    }
+    /* Decode CP56Time2a and apply to software RTC, hardware RTC and epoch. */
+    const bsp_rtc_t decoded = cp56time2a_to_rtc(timestamp);
+    const rtc_t new_time = {
+        .millisec = decoded.millisec,
+        .second   = decoded.second,
+        .minute   = decoded.minute,
+        .hour     = decoded.hour,
+        .day      = decoded.day,
+        .month    = decoded.month,
+        .year     = decoded.year,
+    };
+    return rtc_sync(&new_time);
+}
+
 void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)
 {
     if (pkt == NULL) {
@@ -723,7 +743,7 @@ void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)
     CSLOG("Processing C_CS_NA_1 command\r\n");
     cp56time2a_print(timestamp);
 
-    const bool is_valid_time = (pkt->frame.c_cs_na_1.timestamp.iv_bit == 0);
+    const bool is_valid_time = apply_clock_time(timestamp);
     const uint16_t frame_length = (uint16_t)(pkt->frame.apci.apdu_length + 2); // +2 for start char and length byte
 
     iec104_package_t pkt_response;
@@ -743,19 +763,6 @@ void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)
     }
 
     last_clock_sync_time = pkt->frame.c_cs_na_1.timestamp;
-
-    /* Decode CP56Time2a and apply to software RTC, hardware RTC and epoch. */
-    const bsp_rtc_t decoded = cp56time2a_to_rtc(timestamp);
-    const rtc_t new_time = {
-        .millisec = decoded.millisec,
-        .second   = decoded.second,
-        .minute   = decoded.minute,
-        .hour     = decoded.hour,
-        .day      = decoded.day,
-        .month    = decoded.month,
-        .year     = decoded.year,
-    };
-    rtc_sync(&new_time);
 }
 
 void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt)
@@ -926,7 +933,7 @@ bool iec104_send_s_frame(uint16_t receive_seq)
 bool on_ack_received(uint16_t nr)
 {
     nr &= 0x7FFF;
-    // 15-bit modülo aritmetiğine göre kaç paketin onaylandığını hesapla
+    // 15-bit modulo aritmetigine gore kac paketin onaylandigini hesapla
     uint16_t num_acked = (nr - ack_sn) & 0x7FFF;
 
     CSLOG("-> On-ACK Received k-counter[%d] ack-sn[%d] w-counter[%d] send-sn[%d]\r\n", k_counter, ack_sn, w_counter, send_sn);
@@ -935,7 +942,7 @@ bool on_ack_received(uint16_t nr)
     {
         /* Gecikmeli veya mukerrer eski ACK kontrolu (15-bit Underflow Filtresi)
          * Eger num_acked degeri muazzam buyuk bir sayi ciktiysa (Orn: 32718),
-         * bu master'ın geriden gelen eski bir N(R) numarasını tekrar ettigini gosterir. */
+         * bu master'in geriden gelen eski bir N(R) numarasini tekrar ettigini gosterir. */
         if (num_acked > (0x7FFF - config.k_max))
         {
             CSLOG("-> Delayed/Duplicate old ACK ignored (nr: %d, ack_sn: %d)\r\n", nr, ack_sn);
@@ -947,7 +954,7 @@ bool on_ack_received(uint16_t nr)
             k_counter -= num_acked;
             ack_sn = nr;
 
-            // T1 Zamanlayıcısı Yönetimi
+            // T1 Zamanlayicisi Yonetimi
             if (k_counter == 0)
             {
                 wait_for_ack = false;
@@ -956,17 +963,17 @@ bool on_ack_received(uint16_t nr)
             }
             else
             {
-                t1_timer = 0; // Kismi onay geldi, kalan en eski paket için T1 yeniden baslatildi
+                t1_timer = 0; // Kismi onay geldi, kalan en eski paket icin T1 yeniden baslatildi
             }
         }
         else
         {
-            /* Eger num_acked hem 0'dan buyuk, hem k_counter'dan buyuk, hem de eski paket uzayında degilse;
-             * Master bizim henuz gondermedigimiz bir paketi onaylamaya calisiyordur. Bu gercek bir protokoldür. */
+            /* Eger num_acked hem 0'dan buyuk, hem k_counter'dan buyuk, hem de eski paket uzayinda degilse;
+             * Master bizim henuz gondermedigimiz bir paketi onaylamaya calisiyordur. Bu gercek bir protokoldur. */
             CSLOG_ERR("Sequence number error: ack_sn=%d, nr=%d, num_acked=%d, k_counter=%d\r\n",
                        ack_sn, nr, num_acked, k_counter);
 
-            // Gerçek sira hatasinda soketi guvenli moda cekmek mantiklidir
+            // Gercek sira hatasinda soketi guvenli moda cekmek mantiklidir
             iec104_reset();
             notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
             return false;
@@ -1052,7 +1059,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
            iframe->send_seq, iframe->receive_seq);
 
     /*
-     * SCADA'nın gonderdigi Paket Sira Numarasi N(S) ile bizim beklediğimiz receive_sn
+     * SCADA'nin gonderdigi Paket Sira Numarasi N(S) ile bizim bekledigimiz receive_sn
      * birebir eslesmelidir. Eslesmiyorsa paket kaybi veya sira kaymasi (desync) vardir.
      */
     if (iframe->send_seq != receive_sn) {
@@ -1098,7 +1105,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     if(++w_counter >= config.w_max){
         if(iec104_send_s_frame(receive_sn)){
             w_counter = 0;
-            t2_timer = 0; // Hatalı t1_timer ataması t2_timer olarak düzeltildi.
+            t2_timer = 0; // Hatali t1_timer atamasi t2_timer olarak duzeltildi.
         }
     }
 
@@ -1340,7 +1347,7 @@ void iec104_process_package(void)
 
         uint8_t apdu_length = iec104_rx_buffer[idx + 1];
 
-        // APDU length validation (4-253 arası olmalı)
+        // APDU length validation (4-253 arasi olmali)
         if(apdu_length < 4 || apdu_length > 253)
         {
             CSLOG("Invalid APDU length: %d\r\n", apdu_length);
@@ -1375,15 +1382,15 @@ void iec104_process_package(void)
 
         memcpy(&package, &iec104_rx_buffer[idx], frame_length);
 
-        // Format tipine göre dallanma ve STARTDT (link_active) Dogrulamasi
+        // Format tipine gore dallanma ve STARTDT (link_active) Dogrulamasi
                 if(iec104_is_u_format(&package))
                 {
-                    /* U-Frame paketleri (Örn: STARTDT_ACT) hat aktifleşmeden önce gelebilen yegane kontrol paketleridir */
+                    /* U-Frame paketleri (Orn: STARTDT_ACT) hat aktiflesmeden once gelebilen yegane kontrol paketleridir */
                     iec104_process_u_frame(&package.frame.apci.u_frame);
                 }
                 else if(iec104_is_s_format(&package))
                 {
-                    /* Hat aktif değilse S-Frame onay paketlerini görmezden gel ve drop et */
+                    /* Hat aktif degilse S-Frame onay paketlerini gormezden gel ve drop et */
                     if (link_active)
                     {
                         iec104_process_s_frame(&package.frame.apci.s_frame);
@@ -1395,7 +1402,7 @@ void iec104_process_package(void)
                 }
                 else if(iec104_is_i_format(&package))
                 {
-                    /* Standart Gereği Katı Koruma: STARTDT süreci bitmeden gelen I-Frame veri paketleri işlenemez */
+                    /* Standart Geregi Kati Koruma: STARTDT sureci bitmeden gelen I-Frame veri paketleri islenemez */
                     if (link_active)
                     {
                         iec104_process_i_frame(&package.frame.apci.i_frame);
@@ -2212,7 +2219,7 @@ bool iec104_send_load_current_states(cause_of_transmission_t cause)
 /*
     |<-- Sabit Header -->|<----------- APCI ----------->|<-------------- ASDU Header ------------->|<------------------- ASDU Veri (Information Objects) -------------->|
     +-------+------------+----+----+----+----+----------+----+-----+-----+------------+------------+-----------+-----------+     +-----------+---------------------------+
-    | START |   LENGTH   | I1 | I2 | I3 | I4 | TYPE ID  |VSQ | COT | COT | ASDU ADDR  | ASDU ADDR  |  OBJE 1   |  OBJE 2   | ... |  OBJE 22  | BOŞ / ARTIK ALAN          |
+    | START |   LENGTH   | I1 | I2 | I3 | I4 | TYPE ID  |VSQ | COT | COT | ASDU ADDR  | ASDU ADDR  |  OBJE 1   |  OBJE 2   | ... |  OBJE 22  | BOS / ARTIK ALAN          |
     | (0x68)| (Max 253)  |    |    |    |    | (M_SP_TB)|(22)| (L) | (H) |    (L)     |    (H)     | (11 Byte) | (11 Byte) |     | (11 Byte) | (Max 1 Byte)              |
     +-------+------------+----+----+----+----+----------+----+-----+-----+------------+------------+-----------+-----------+     +-----------+---------------------------+
     | 1 Byte|   1 Byte   |      4 Byte       |  1 Byte  | 1B |  1B |  1B |   1 Byte   |   1 Byte   | <------- 11 Byte ------>     <-- 11 B -->| 243 - (22*11) = 1 Byte   |
@@ -2394,7 +2401,7 @@ bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
 /* ---------------------------------------------------------------
  * Fault gonderim engine'leri
  * Tum 8 "iec104_send_feeder_xxx_faults_yyy" public fonksiyonu
- * bu 2 static engine üzerinden calisir.
+ * bu 2 static engine uzerinden calisir.
  * --------------------------------------------------------------- */
 
 typedef enum 
@@ -2595,7 +2602,7 @@ static bool send_fault_sp_tb_1(uint8_t feeder_id, phase_id_t phase, fault_log_ty
 }
 
 /* ---------------------------------------------------------------
- * Public yayicilar — bir fider/faz icin dort alan sirayla
+ * Public yayicilar - bir fider/faz icin dort alan sirayla
  * --------------------------------------------------------------- */
 #define FAULT_EMIT_STEP_COUNT   4U
 

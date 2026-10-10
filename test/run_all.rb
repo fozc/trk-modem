@@ -84,13 +84,18 @@ when "logs"
             "rf_event_log|spi_flash_log_sequence_wrap)"
   results << run_unit("test:pattern[#{pattern}]")
   results << run_integration(%w[fault_log libs])
+when "critical"
+  results << run_unit("test:all")
+  results << run_integration(%w[fault_log libs gsm nvram rfwu_auth
+                                iec104_master web_auth web_navigation])
 when "coverage"
   results << run_unit("clobber")
   results << run_unit("gcov:all") if results.all?
 when "clean"
   results << clean_all
 else
-  warn "usage: ruby test/run_all.rb [all|unit|integration|logs|coverage|clean]"
+  warn "usage: ruby test/run_all.rb " \
+       "[all|unit|integration|logs|critical|coverage|clean]"
   exit 2
 end
 

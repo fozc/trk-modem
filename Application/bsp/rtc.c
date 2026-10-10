@@ -212,14 +212,14 @@ void rtc_hw_read(rtc_t *out)
 	out->year  = d.Year;
 }
 
-void rtc_hw_write(const rtc_t *dt)
+bool rtc_hw_write(const rtc_t *dt)
 {
 	RTC_TimeTypeDef t = {0};
 	RTC_DateTypeDef d = {0};
 
 	if (dt == NULL)
 	{
-		return;
+		return false;
 	}
 
 	t.Hours          = dt->hour;
@@ -228,16 +228,25 @@ void rtc_hw_write(const rtc_t *dt)
 	t.TimeFormat     = RTC_HOURFORMAT12_AM;
 	t.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
 	t.StoreOperation = RTC_STOREOPERATION_RESET;
-	(void)HAL_RTC_SetTime(&hrtc, &t, RTC_FORMAT_BIN);
+    if (HAL_OK != HAL_RTC_SetTime(&hrtc, &t, RTC_FORMAT_BIN))
+    {
+        HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, 0U);
+        return false;
+    }
 
 	/* Weekday is not tracked by the software RTC; store a valid placeholder. */
 	d.WeekDay = RTC_WEEKDAY_MONDAY;
 	d.Month   = dt->month;
 	d.Date    = dt->day;
 	d.Year    = dt->year;
-	(void)HAL_RTC_SetDate(&hrtc, &d, RTC_FORMAT_BIN);
+    if (HAL_OK != HAL_RTC_SetDate(&hrtc, &d, RTC_FORMAT_BIN))
+    {
+        HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, 0U);
+        return false;
+    }
 
 	HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR0, (uint32_t)RTC_HW_VALID_MAGIC);
+    return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -283,7 +292,7 @@ static bool rtc_is_recent(const rtc_t *dt)
 	return (rtc_to_epoch(dt) >= RTC_EPOCH_MIN);
 }
 
-void rtc_sync(const rtc_t *dt)
+bool rtc_sync(const rtc_t *dt)
 {
 	if ((dt == NULL) || !rtc_is_valid(dt))
 	{
@@ -295,7 +304,7 @@ void rtc_sync(const rtc_t *dt)
 		            dt ? (unsigned)dt->hour : 0U,
 		            dt ? (unsigned)dt->minute : 0U,
 			dt ? (unsigned)dt->second : 0U);
-		return;
+		return false;
 	}
 
 	if (!rtc_is_recent(dt))
@@ -305,12 +314,17 @@ void rtc_sync(const rtc_t *dt)
 			(unsigned)dt->day, (unsigned)dt->month, (unsigned)dt->year,
 			(unsigned)dt->hour, (unsigned)dt->minute,
 			(unsigned)dt->second);
-		return;
+		return false;
 	}
 
+    if (!rtc_hw_write(dt))
+    {
+        CSLOG_WARN("RTC sync rejected: hardware calendar write failed\r\n");
+        return false;
+    }
 	rtc_load_sw(dt);     /* millisecond software RTC (logging)   */
-	rtc_hw_write(dt);    /* persistent hardware RTC + marker     */
 	rtc_update_epoch(dt);/* epoch counter (wall-clock seconds)   */
+    return true;
 }
 
 void rtc_resync_sw_from_hw(void)
@@ -352,5 +366,4 @@ uint32_t rtc_get_unix_epoch(void)
 	/* The epoch counter is already 1970-based, so this is identical. */
 	return bsp_get_epoch_time();
 }
-
 

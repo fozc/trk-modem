@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.37
+**Sürüm:** 1.38
 **Tarih:** 2026-10-10
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -68,6 +68,41 @@ Coverage raporu için:
 ```text
 ruby test/run_all.rb coverage
 ```
+
+Üretim açısından kritik host paketlerini birlikte çalıştırmak için:
+
+```text
+ruby test/run_all.rb critical
+```
+
+Bu hedef tüm Ceedling testlerini; ardından fault log, ortak SPI log,
+GSM toparlanma, NVRAM, RFWU, IEC104 master, web auth ve web navigation
+integration (birlikte çalışma) paketlerini çalıştırır. Hata olan paket
+çıkış kodunu başarısız yapar. Bu bir host kapısıdır; gerçek donanım,
+enerji kesintisi veya SCADA saha kabulü yerine kullanılmamalıdır.
+
+NVRAM paketinde her iki kopyanın magic/schema/length/CRC bozulması ve
+her sayfada kesilen açılış onarımı sınanır. Saklanan test değeri
+varsayılandan farklıdır; yanlışlıkla default'a dönmek başarı sayılamaz.
+RFWU fixture (test çifti), Flash init/write/finish çağrılarını ayrı ayrı
+reddedebilir. Byte/TCP bölünmesi, CRC hatası, resume (kaldığı yerden
+devam) sınırı ve reserved flags (ayrılmış bayraklar) doğrulaması gerçek
+parser üzerinden yapılır; özel üretim anahtarı kullanılmaz.
+
+Modbus testleri maksimum 125 register yanıtını, CRC ve callback
+sayısını; hatalı sayım/adres, RX overflow (tampon taşması), parse
+sırasında gelen byte ve tick wrap (sayaç taşması) sonrası toparlanmayı
+sınar. Context (çalışma durumu) çevresindeki canary (koruma baytları)
+bellek dışına yazmayı kontrol eder. Bu paket mevcut yazılım timeout
+modunu sınar; fiziksel ISR zamanlaması kabulü değildir.
+
+RTC testleri HAL Time/Date hata dönüşlerinde yazılım saati ve epoch'un
+korunmasını, valid marker'ın temizlenmesini ve sonraki başarılı
+eşitlemeyi sınar. `rtc_sync` ve `rtc_hw_write` artık bool sonuç döndürür.
+IEC104 protokol senaryosu CP56Time2a alan/takvim doğrulamasını ve RTC
+servisinin ret sonucunun negatif cevap ve korunmuş son eşitleme
+bilgisi olarak yansımasını kontrol eder. Gerçek RTC doğrulaması ayrı
+`bsp/test_rtc_sync.c` paketinde, HAL sınırları taklit edilerek sınanır.
 
 Bu komut önce eski Ceedling ve GCOV çıktılarını temizler, ardından raporu
 yeniden üretir.

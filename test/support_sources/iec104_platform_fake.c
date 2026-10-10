@@ -1,15 +1,12 @@
-/**********************************************************************
+/*
+ * iec104_platform_fake.c
  *
- * Filename:    iec104_platform_fake.c
+ *  Created on: Oct 01, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
- * Description: Host-test doubles for the platform services libiec104
- *              reaches into. iec104.c includes breaker.h, fault_log.h,
- *              rtc.h and (through iec104_config.c) nvram.h; on the host
- *              those are replaced by the minimal fakes below.
- *
- * Notes:       Logging is silenced so the test output stays readable.
- *
- **********************************************************************/
+ * Host platform boundaries for real IEC104 protocol tests.
+ */
 
 #include "iec104_platform_fake.h"
 
@@ -171,6 +168,7 @@ bool fault_log_read_nth(uint8_t feeder_id, uint8_t phase_id, fault_log_type_t ty
 /* ---------------------------------------------------------------- */
 
 static uint32_t rtc_sync_count;
+static bool rtc_sync_failure;
 static rtc_t rtc_last_sync;
 
 uint32_t mock_rtc_sync_count(void)
@@ -183,13 +181,20 @@ rtc_t mock_rtc_last_sync(void)
     return rtc_last_sync;
 }
 
-void rtc_sync(const rtc_t *dt)
+bool rtc_sync(const rtc_t *dt)
 {
-    if (NULL != dt)
+    if ((NULL == dt) || rtc_sync_failure)
     {
-        rtc_last_sync = *dt;
-        rtc_sync_count++;
+        return false;
     }
+    rtc_last_sync = *dt;
+    rtc_sync_count++;
+    return true;
+}
+
+void mock_rtc_sync_failure(bool failed)
+{
+    rtc_sync_failure = failed;
 }
 
 void rtc_print_now(void)
@@ -245,6 +250,7 @@ unsigned int xcprintf(const char *color, const char *fmt, ...)
 void mock_platform_reset(void)
 {
     rtc_sync_count = 0U;
+    rtc_sync_failure = false;
     (void)memset(&rtc_last_sync, 0, sizeof(rtc_last_sync));
     (void)memset(&mock_breaker, 0, sizeof(mock_breaker));
     (void)memset(&mock_iec104_config, 0, sizeof(mock_iec104_config));

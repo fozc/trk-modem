@@ -4,15 +4,15 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * RFWU — Raw Firmware Update Protocol over TCP port 80.
+ * RFWU - Raw Firmware Update Protocol over TCP port 80.
  *
  * Parser state machine:
- *   WAIT_HEADER (12 bytes) → WAIT_DATA (data_len bytes) → WAIT_CRC (4 bytes)
- *   → validate CRC → dispatch command → WAIT_HEADER
+ *   WAIT_HEADER (12 bytes) -> WAIT_DATA (data_len bytes) -> WAIT_CRC (4 bytes)
+ *   -> validate CRC -> dispatch command -> WAIT_HEADER
  *
  * Received-bytes tracking:
- *   write_head        — in-memory offset of next expected byte (advances per chunk).
- *   session.received_bytes — NVRAM-persisted progress; only advances at 4 KB sector
+ *   write_head        - in-memory offset of next expected byte (advances per chunk).
+ *   session.received_bytes - NVRAM-persisted progress; only advances at 4 KB sector
  *                           boundaries so resume always starts on an aligned offset.
  */
 
@@ -31,7 +31,7 @@
 #include <string.h>
 #include <stddef.h>
 
-/* ── Parser states ──────────────────────────────────────────────── */
+/* -- Parser states ------------------------------------------------ */
 
 typedef enum {
     PARSE_WAIT_HEADER = 0,
@@ -39,7 +39,7 @@ typedef enum {
     PARSE_WAIT_CRC,
 } parse_state_t;
 
-/* ── Module state ───────────────────────────────────────────────── */
+/* -- Module state ------------------------------------------------- */
 
 static struct {
     /* Packet parser */
@@ -92,7 +92,7 @@ static void auth_record_failure(void)
     }
 }
 
-/* ── CRC-32 helper ──────────────────────────────────────────────── */
+/* -- CRC-32 helper ------------------------------------------------ */
 
 static uint32_t crc32_calc(const uint8_t *p_data, uint16_t len)
 {
@@ -101,7 +101,7 @@ static uint32_t crc32_calc(const uint8_t *p_data, uint16_t len)
     return (uint32_t)efw_crc_finalize(crc);
 }
 
-/* ── Little-endian read helpers ─────────────────────────────────── */
+/* -- Little-endian read helpers ----------------------------------- */
 
 static uint16_t read_u16_le(const uint8_t *p)
 {
@@ -116,7 +116,7 @@ static uint32_t read_u32_le(const uint8_t *p)
          | ((uint32_t)p[3] << 24U);
 }
 
-/* ── Response builders ──────────────────────────────────────────── */
+/* -- Response builders -------------------------------------------- */
 
 /*
  * Build and send an RFWU response packet.
@@ -224,7 +224,7 @@ static void send_status(void)
     send_response((uint8_t)RFWU_RESP_STATUS, data, (uint8_t)sizeof(data));
 }
 
-/* ── NVRAM session helpers ──────────────────────────────────────── */
+/* -- NVRAM session helpers ---------------------------------------- */
 
 /* Persist sector-aligned progress; preserves all other NVRAM fields. */
 static void session_persist(uint32_t received_bytes)
@@ -262,7 +262,7 @@ static void session_clear(void)
     s.write_head     = 0U;
 }
 
-/* ── Command handlers ───────────────────────────────────────────── */
+/* -- Command handlers --------------------------------------------- */
 
 static void handle_cmd_challenge(void)
 {
@@ -352,7 +352,7 @@ static void handle_cmd_hello(void)
     }
     else
     {
-        /* New transfer — write session record first */
+        /* New transfer - write session record first */
         rfwu_nvram_t upd;
         upd.magic          = RFWU_SESSION_MAGIC;
         upd.file_hash      = file_hash;
@@ -566,7 +566,7 @@ static void handle_cmd_abort(void)
     send_ack(0U);
 }
 
-/* ── Packet parser ──────────────────────────────────────────────── */
+/* -- Packet parser ------------------------------------------------ */
 
 static void reset_parser(void)
 {
@@ -593,6 +593,12 @@ static void process_packet(void)
 
     if (computed_crc != expected_crc) {
         CCSLOG(XCOLOR_RED, "[RFWU] CRC error\r\n");
+        send_nack(RFWU_ERR_CRC, s.write_head);
+        return;
+    }
+
+    if (0U != s.hdr.flags)
+    {
         send_nack(RFWU_ERR_CRC, s.write_head);
         return;
     }
@@ -624,10 +630,10 @@ static void advance_state(void)
         case PARSE_WAIT_HEADER:
             decode_header();
             if (s.hdr.magic != RFWU_MAGIC) {
-                /* Not an RFWU packet — discard and re-sync */
+                /* Not an RFWU packet - discard and re-sync */
                 reset_parser();
             } else if (s.hdr.data_len > RFWU_MAX_DATA_LEN) {
-                /* Oversized payload — reject */
+                /* Oversized payload - reject */
                 reset_parser();
             } else if (s.hdr.data_len == 0U) {
                 s.parse_state = PARSE_WAIT_CRC;
@@ -654,7 +660,7 @@ static void advance_state(void)
     }
 }
 
-/* ── Public API ─────────────────────────────────────────────────── */
+/* -- Public API --------------------------------------------------- */
 
 void rfwu_init(int (*p_send)(const void *p_data, int len))
 {
