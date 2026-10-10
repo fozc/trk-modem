@@ -631,6 +631,172 @@ def i06_replay_reconnect(ctx):
 
 
 # ---------------------------------------------------------------------------
+# i07 - replay retention across a mid-replay link break (de5604c regression)
+# ---------------------------------------------------------------------------
+
+
+def _evtlog_pairs(next_seq, count):
+    """(seq, current, duration) for the synthetic records of i06/i07."""
+    pairs = []
+    for offset in range(count):
+        seq = next_seq - 1 - offset
+        pairs.append((seq,
+                      100.0 + (seq % 900) / 10.0,
+                      float(100 + (seq % 50) * 20)))
+    return pairs
+
+
+def _match_evtlog_pairs(frames, expected_pairs, cursor):
+    """Cursor-match synthetic records in measured frames (see i06).
+
+    Returns (matched seq list, ambient count, cursor). Frames are matched
+    against the current expectation in newest-first order; everything the
+    formula does not expect counts as ambient noise.
+    """
+    matched = []
+    ambient = 0
+    for frame in frames:
+        objects = frame[3]["asdu"]["objects"]
+        if cursor >= len(expected_pairs):
+            ambient += 1
+            continue
+        seq, want_current, want_duration = expected_pairs[cursor]
+        if (abs(objects[0]["value"] - want_current) <= 0.051 and
+                abs(objects[1]["value"] - want_duration) <= 0.5):
+            matched.append(seq)
+            cursor += 1
+        else:
+            ambient += 1
+    return matched, ambient, cursor
+
+
+def _measured_replay(frames):
+    return [f for f in frames
+            if f[3]["asdu"]["type"] == apdu.TYPE_M_ME_TF_1
+            and len(f[3]["asdu"].get("objects", [])) == 2]
+
+
+def i07_replay_retention(ctx):
+    """de5604c regression: a mid-replay link break must not lose records.
+
+    Inject N synthetic records, start the replay, then cut the master link
+    while the burst is still in flight (the device's next sends fail).
+    Reconnect and require EVERY injected record to arrive at least once
+    across the two windows combined, with the second window itself in
+    newest-first order. Before de5604c the read cursor advanced past a
+    record whose send was rejected, so that record never replayed.
+    """
+    import console_io
+    if not ctx.args.mutate_eventlog:
+        return "SKIP", ["Flash/NVRAM'e yazar: --mutate-eventlog ile "
+                        "calisir"]
+    if ctx.console is None:
+        return "SKIP", ["--mutate-eventlog icin --console gerekli"]
+    if not ctx.expected["station"]:
+        return "SKIP", ["aktif hat yok: replay kayitlari in-use fider "
+                        "IOA'larina yazilir (once --setup-feeders)"]
+    count = max(3, getattr(ctx.args, "evtlog_count", 5))
+
+    if not ctx.master.is_connected:
+        if not ctx.master.connect(timeout_s=20.0):
+            return "FAIL", ["ilk baglanti kurulamadi (STARTDT_CON yok)"]
+    # Drain an older backlog so both windows below are ours alone.
+    drain_start = time.monotonic()
+    last_seen = drain_start
+    while (time.monotonic() - last_seen < 8.0 and
+           time.monotonic() - drain_start < 45.0):
+        ok, frame = ctx.master.wait(
+            lambda f: f[1] == "rx" and f[3] and
+            (f[3].get("asdu") or {}).get("cot") == 3, 8.0,
+            t0=last_seen + 0.001)
+        if not ok:
+            break
+        last_seen = frame[0]
+    ctx.master.disconnect()
+    time.sleep(2.0)
+    st0 = console_io.parse_evtlog_status(console_io.run_cmd(
+        ctx.console, "iec104evtlog status", settle_s=4.0))
+    if st0 is None or st0["next_seq"] is None:
+        return "FAIL", ["iec104evtlog status okunamadi"]
+    console_io.run_cmd(ctx.console, "iec104evtlog test %d" % count,
+                       settle_s=4.0)
+    st1 = console_io.parse_evtlog_status(console_io.run_cmd(
+        ctx.console, "iec104evtlog status", settle_s=4.0))
+    if st1 is None or st1["next_seq"] != st0["next_seq"] + count:
+        return "FAIL", ["evtlog test yazmadi: next_seq %s -> %s (beklenen "
+                        "+%d)" % (st0["next_seq"],
+                                  (st1 or {}).get("next_seq"), count)]
+
+    t0 = time.monotonic()
+    if not ctx.master.connect(timeout_s=20.0):
+        return "FAIL", ["replay penceresi 1 icin baglanti kurulamadi"]
+    ok, first = ctx.master.wait(
+        lambda f: f[1] == "rx" and f[3] and f[3].get("kind") == "I"
+        and (f[3].get("asdu") or {}).get("cot") == 3, 30.0, t0=t0)
+    if not ok:
+        return "FAIL", ["replay baslamadi (30 s, 15 s fallback timer "
+                        "asildi olmali)"]
+    time.sleep(0.4)          # let a couple more frames land in flight
+    ctx.master.disconnect()  # cut mid-burst: pending sends now fail
+    window1 = [f for f in _rx_frames(ctx.master, t0)
+               if f[3]["asdu"]["cot"] == 3]
+    time.sleep(3.0)          # device notices the dead link
+    t1 = time.monotonic()
+    if not ctx.master.connect(timeout_s=20.0):
+        return "FAIL", ["kesintiden sonra yeniden baglanilamadi"]
+    ok2, first2 = ctx.master.wait(
+        lambda f: f[1] == "rx" and f[3] and f[3].get("kind") == "I"
+        and (f[3].get("asdu") or {}).get("cot") == 3, 30.0, t0=t1)
+    if ok2:
+        last = first2[0]
+        while time.monotonic() < t1 + 60.0:
+            okw, frame = ctx.master.wait(
+                lambda f: f[1] == "rx" and f[3] and
+                f[3].get("kind") == "I" and
+                (f[3].get("asdu") or {}).get("cot") == 3, 6.0,
+                t0=last + 0.001)
+            if not okw:
+                break
+            last = frame[0]
+    window2 = [f for f in _rx_frames(ctx.master, t1)
+               if f[3]["asdu"]["cot"] == 3]
+
+    expected_pairs = _evtlog_pairs(st1["next_seq"], count)
+    matched1, ambient1, cursor = _match_evtlog_pairs(
+        _measured_replay(window1), expected_pairs, 0)
+    matched2, ambient2, cursor = _match_evtlog_pairs(
+        _measured_replay(window2), expected_pairs, cursor)
+    matched_all = matched1 + matched2
+    lines = ["kesim: pencere1=%d kayit, pencere2=%d kayit (ortam=%d+%d)" %
+             (len(matched1), len(matched2), ambient1, ambient2)]
+    if len(matched_all) != count:
+        missing = [seq for seq, _, _ in expected_pairs
+                   if seq not in matched_all]
+        return "FAIL", [
+            "kayit kayboldu: %d/%d eslesti; iki pencerede de gelmeyen "
+            "seq=%s (de5604c oncesi: red edilen gonderim imleci ilerletip "
+            "kaydi atliyordu)" % (len(matched_all), count, missing)]
+    if not matched2 and len(matched1) == count:
+        lines.append("zayif koshum: kesim yarisi yakalanamadi, tum kayitlar "
+                     "ilk pencerede ACK'landi")
+    if len(matched2) > 1 and matched2 != sorted(matched2, reverse=True):
+        return "FAIL", ["pencere2 sirasi bozuk (en-yeni-once beklenir): %s" %
+                        matched2]
+    lines.append("birlesik tumul %d/%d; pencere2 en-yeni-once sirali" %
+                 (len(matched_all), count))
+
+    st2 = console_io.parse_evtlog_status(console_io.run_cmd(
+        ctx.console, "iec104evtlog status", settle_s=4.0))
+    if st2 is None:
+        return "FAIL", ["iec104evtlog status (son) okunamadi"]
+    if st2["unsent"] and st2["next_seq"] <= st1["next_seq"]:
+        return "FAIL", ["unsent=%s hala dolu (yeni kayit yok, replay "
+                        "bizim seq'leri birakmis)" % st2["unsent"]]
+    lines.append("unsent durum=%s" % st2["unsent"])
+    return "PASS", lines
+
+
+# ---------------------------------------------------------------------------
 # registry
 # ---------------------------------------------------------------------------
 
@@ -647,4 +813,7 @@ CASES = {
                         "cihaz t3 TESTFR_ACT + GI canliligi"),
     "i06_replay_reconnect": (i06_replay_reconnect,
                              "evtlog replay icerik+sira (--mutate-eventlog)"),
+    "i07_replay_retention": (i07_replay_retention,
+                             "replay ortasinda link kesintisi kayit "
+                             "kaybetmez (--mutate-eventlog)"),
 }
