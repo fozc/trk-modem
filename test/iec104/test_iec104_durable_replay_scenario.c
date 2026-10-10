@@ -56,6 +56,7 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
 static clock_time_t now;
 static bool link_active;
 static bool block_transport;
+static bool flush_to_wire;
 static uint32_t rejections;
 static uint8_t attempted[160U];
 static size_t attempt_count;
@@ -86,6 +87,14 @@ static bool send_record(const iec104_event_record_t *record, int call_count)
             rejections--;
         }
         return false;
+    }
+    if (!flush_to_wire)
+    {
+        /* Queue accept only: mirrors iec104_send() returning 0 when the
+         * frame is copied into the RAM TX slots (iec104_process.c:146)
+         * before any gsm_send_to_socket() flush (iec104_process.c:197).
+         * delivered[] stays the wire-level ground truth. */
+        return true;
     }
     TEST_ASSERT_TRUE(4U > delivered_count);
     delivered[delivered_count++] = *record;
@@ -132,6 +141,7 @@ void setUp(void)
     now = 0U;
     link_active = true;
     block_transport = false;
+    flush_to_wire = true;
     rejections = 0U;
     attempt_count = 0U;
     delivered_count = 0U;
@@ -215,6 +225,47 @@ void test_link_loss_preserves_replay_order_after_reconnect(void)
     TEST_ASSERT_EQUAL_size_t(2U, delivered_count);
     TEST_ASSERT_EQUAL_UINT8(IEC104_EVENT_TRIP_FAILURE, delivered[0].kind);
     TEST_ASSERT_EQUAL_UINT8(IEC104_EVENT_FAULT, delivered[1].kind);
+}
+
+/* Review 2026-10-10: the production replay marks a record sent as soon
+ * as iec104_send() accepts it into the RAM TX slots
+ * (iec104_replay.c:92 -> iec104_process.c:146); the actual wire flush
+ * happens later (iec104_process.c:197) and a socket close drops the
+ * unflushed slots via tx_reset() (iec104_process.c:94). A link death in
+ * that accept->flush window must NOT consume the record: nothing
+ * reached the wire, so after a reboot the record has to replay. */
+void test_queue_accept_without_wire_flush_survives_link_loss(void)
+{
+    /* KNOWN-RED: fails on the current tree ("Expected 2 Was 0") - the
+     * queue-accept->disconnect loss path (review 2026-10-10 item 3).
+     * Remove the ignore together with the production fix that stops
+     * mark_sent on mere TX-queue acceptance (or re-arms unflushed
+     * records on socket close). */
+    TEST_IGNORE_MESSAGE("kayip yolu acik: TX kuyruk kabulu mark_sent "
+                        "yoluyor (kanit: 2026-10-10 kirmizi koshum)");
+    queue_fault_and_alarm();
+    flush_to_wire = false;   /* emit accepts into the queue only */
+    iec104_replay_link_established();
+    advance(15U * CLOCK_SECOND);
+    advance(100U);
+    advance(100U);
+    /* both records were accepted by the transport queue, but none of
+     * them reached the wire yet */
+    TEST_ASSERT_EQUAL_size_t(2U, attempt_count);
+    TEST_ASSERT_EQUAL_size_t(0U, delivered_count);
+    /* the socket dies before any flush */
+    link_active = false;
+    advance(100U);
+    reboot_fixture();
+    /* durability contract: unflushed records must still be unsent */
+    TEST_ASSERT_EQUAL_UINT16(2U, iec104_event_log_get_unsent_count());
+    flush_to_wire = true;
+    link_active = true;
+    iec104_replay_link_established();
+    advance(15U * CLOCK_SECOND);
+    advance(100U);
+    advance(100U);
+    TEST_ASSERT_EQUAL_size_t(2U, delivered_count);
 }
 
 /*** end of file ***/
