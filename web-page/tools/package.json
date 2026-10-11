@@ -1,0 +1,7 @@
+{
+  "name": "troika-web-build-tools",
+  "private": true,
+  "version": "1.0.0",
+  "engines": { "node": ">=18" },
+  "dependencies": { "acorn": "8.19.0", "terser": "5.51.2" }
+}
