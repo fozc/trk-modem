@@ -648,11 +648,26 @@ static void handle_close_socket(const gsm_listener_cfg_t *p_cfg,
 	gsm_set_free();
 }
 
+static uint16_t get_iec104_idle_timeout(void)
+{
+    return (uint16_t)((uint32_t)iec104_get_t3_timeout() +
+        IEC104_MODEM_IDLE_MARGIN_SECONDS);
+}
+
 static void handle_open_socket(const gsm_listener_cfg_t *p_cfg,
                                    gsm_listener_ctx_t *ctx)
 {
 	if (ctx->phase == GSM_INIT_PHASE_SEND)
 	{
+        if (GSM_LISTENER_IEC104 == p_cfg->id)
+        {
+            iec104_process_apply_pending_config();
+            if (get_iec104_idle_timeout() != ctx->configured_idle_timeout)
+            {
+                ls_set_state(ctx, GSM_LS_CONFIG_SOCKET);
+                return;
+            }
+        }
 		gsm_socket_record_attempt(p_cfg->socket_id);
 		ls_send(ctx, p_cfg->at_cmd[LS_AT_OPEN_SOCKET]);
 		return;
@@ -719,14 +734,13 @@ static void handle_config_socket(gsm_listener_ctx_t *ctx)
     if (GSM_INIT_PHASE_SEND == ctx->phase)
     {
         iec104_process_apply_pending_config();
-        const uint16_t idle_timeout = (uint16_t)(
-            (uint32_t)iec104_get_t3_timeout() +
-            IEC104_MODEM_IDLE_MARGIN_SECONDS);
+        const uint16_t idle_timeout = get_iec104_idle_timeout();
         if (idle_timeout == ctx->configured_idle_timeout)
         {
             ls_set_state(ctx, GSM_LS_OPEN_SOCKET);
             return;
         }
+        ctx->pending_idle_timeout = idle_timeout;
         ls_send(ctx, ATQUERY_SOCKET_3_CONFIG_SCFG);
         return;
     }
@@ -737,9 +751,7 @@ static void handle_config_socket(gsm_listener_ctx_t *ctx)
     }
     if (GSM_RESPONSE_OK == result)
     {
-        ctx->configured_idle_timeout = (uint16_t)(
-            (uint32_t)iec104_get_t3_timeout() +
-            IEC104_MODEM_IDLE_MARGIN_SECONDS);
+        ctx->configured_idle_timeout = ctx->pending_idle_timeout;
     }
     ls_set_state(ctx, (GSM_RESPONSE_OK == result) ?
         GSM_LS_OPEN_SOCKET : GSM_LS_CHECK_NET);

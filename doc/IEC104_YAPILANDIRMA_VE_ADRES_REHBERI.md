@@ -1,7 +1,7 @@
 # IEC104 yapılandırma ve adres rehberi
 
-Sürüm: 1.4
-Tarih: 2026-10-10
+Sürüm: 1.7
+Tarih: 2026-10-11
 
 ## Amaç
 
@@ -78,9 +78,21 @@ hazırlanmalıdır. RTU reseti gerekmez. Başarısız saklama çalışan ayara
 aktarılmamalıdır. Onaylanmamış olaylar bağlantı geçişinde tüketilmemelidir.
 
 `#SCFG` parametreleri Telit LE910R1 r8 rehberi s.684–685'te tanımlıdır;
-parametreler modem NVM'ine (kalıcı bellek) kaydedilir. Aynı GSM çalışma
-döngüsünde timeout değişmemişse komut yeniden yazılmamalıdır. Modem
-başlatma akışı mevcut RAM durumunu sıfırlar ve ilk açılışta komutu gönderir.
+parametreler modem NVM'ine (kalıcı bellek) kaydedilir. Sabit web SCFG ve
+her iki soketin SCFGEXT/SCFGEXT2 ayarları genel GSM init (başlatma)
+vektöründe kalmalıdır. Web ve IEC104 soketleri ilk açılışta ve yeniden
+bağlantıda kendi GSM listener (dinleyici) durum makinelerinden açılmalıdır.
+IEC104 listener, dinlemeyi açmadan önce bekleyen ayarı uygulamalı ve aktif
+T3+10 değerini CONFIG_SOCKET adımında göndermelidir. Son başarılı timeout
+RAM'de tutulmalı; değişmemişse SCFG tekrar gönderilmemelidir. Genel modem
+init tamamlandığında bu önbellek geçersiz sayılmalı ve ilk dinleme öncesinde
+SCFG tekrar uygulanmalıdır. Bu önbellek için Flash alanı ayrılmamalıdır.
+
+Eski genel init soket açma fonksiyonları ve dispatcher dalları korunmalıdır.
+Dinamik IEC104 SCFG ve iki soket açma adımı init vektöründe yorum satırı
+olarak tutulmalıdır; gerektiğinde yalnız vektör düzenlenerek geri alınabilir.
+Genel init'te zaten dinlemeye açılmış soket listener'a IDLE durumunda
+aktarılmalıdır; ikinci kez açılmamalıdır.
 
 Bu bölüm global bağlantı/zamanlama ayarlarını açıklar. Fider IOA alanları
 mevcut NVRAM getter'ları üzerinden okunur; bu çalışmada bunlar için ayrı
@@ -263,6 +275,15 @@ bu iki alanın aralığı çakışmaz. Bu görünüm register haritasını deği
 - `test/web_server/test_json_config_bounds.c`: gerçek parser/setter,
   nokta/nokta ve nokta/aralık çakışması, iki aralık, sınır taşması,
   kısmi kayıt, taban düzeltmesi ve hata metnindeki alan adları.
+- `test/web_server/test_http_iec_config_scenario.c`: gerçek HTTP GET/POST,
+  parser ve setter; kısmi kayıtta 256/300/65525 saniyenin korunması,
+  geçersiz ve boş isteğin saklama yapılmadan reddedilmesi.
+- `test/gsm/test_gsm_init_scenario.c`: gerçek init vektörü ve dispatcher;
+  sabit ayarların genel init'te kalması, soket açılışının listener'a
+  aktarılması, yeniden init'te RAM önbelleğinin geçersiz sayılması ve hata yolu.
+- `test/gsm/test_gsm_listener_scenario.c`: ilk açılış/yeniden bağlantıda
+  SCFG→dinleme sırası, aynı timeout'un atlanması, gönderilen değerin
+  saklanması, açılış öncesinde yeniden kontrol ve web listener LED durumu.
 - `test/iec104/test_iec104_protocol_scenario.c`: gerçek arıza getter'larının
   yedi fider için ilk/son adresi; mevcut protocol loopback senaryoları.
 - `test/integration/nvram/test_nvram_sync.c`: gerçek fabrika varsayılanları.
@@ -296,3 +317,6 @@ Kaynak dosyalar: `Application/nvram.c`, `Application/nvram.h`,
 | 1.3 | 2026-10-04 | 45/46 kontrol komutlarının aktif destek durumu ve olumsuz yanıt davranışı |
 
 | 1.4 | 2026-10-10 | T3 sınırları, T3+2 TESTFR, T3+10 modem timeout ve sonraki bağlantıda global ayar uygulama |
+| 1.5 | 2026-10-10 | Kısmi HTTP POST T3 korunumu ve ilk GSM dinlemesinden önce dinamik SCFG; init/listener önbellek ayrımı |
+| 1.6 | 2026-10-10 | Sabit ayarlar init'te kalır; soket açılışları listener'a taşınır, dinamik IEC104 SCFG RAM önbelleği kullanır |
+| 1.7 | 2026-10-11 | Eski init fonksiyonları korunur; vektör adımları yorum satırıyla kapalı tutulur, yeniden etkinleştirme sınanır |

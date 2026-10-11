@@ -116,6 +116,21 @@
       test_gsm_listener_scenario:
         - -flto
         - -O2
+      # Legacy init dispatcher uses narrow enum/integer boundaries.
+      test_gsm_init_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-but-set-variable
+        - -flto
+        - -O2
+      # Exercise real HTTP/JSON paths; retain legacy module exceptions.
+      test_http_iec_config_scenario:
+        - -Wno-array-parameter
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-variable
+        - -flto
+        - -O2
       test_gsm_urc_scenario:
         - -flto
         - -O2
@@ -182,6 +197,12 @@
         - -O2
 
     :link:
+      test_gsm_init_scenario:
+        - -flto
+        - -O2
+      test_http_iec_config_scenario:
+        - -flto
+        - -O2
       test_gsm_listener_scenario:
         - -flto
         - -O2

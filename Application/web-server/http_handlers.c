@@ -1192,7 +1192,7 @@ void handle_post_iec_config_json(const char *json_body)
     config.t0_timeout = (uint8_t)nvram_config->t0_max;
     config.t1_timeout = (uint8_t)nvram_config->t1_max;
     config.t2_timeout = (uint8_t)nvram_config->t2_max;
-    config.t3_timeout = (uint8_t)nvram_config->t3_max;
+    config.t3_timeout = nvram_config->t3_max;
     config.k_max = nvram_config->k_max;
     config.w_max = nvram_config->w_max;
     config.sbo_timeout = nvram_config->sbo_execute_timeout;

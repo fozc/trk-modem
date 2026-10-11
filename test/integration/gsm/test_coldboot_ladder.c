@@ -2,7 +2,8 @@
  * test_coldboot_ladder.c
  *
  *  Created on: Sep 6, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * GSM kurtarma merdiveninin karar mantigi (gsm_init.c) host testleri.
  * Uretim dosyasi #include edilir; statik durumlara (s_pin_reset_state,
@@ -10,7 +11,7 @@
  *
  * Kapsam:
  *   - ENHRST/pin-reset merdiveni: reboot_counter akisi (REBOOT x2 -> PIN_RESET)
- *   - Tukeme: soguk baslatma istegi (bayrak + sayaç + elog arg'lari),
+ *   - Tukeme: soguk baslatma istegi (bayrak + sayac + elog arg'lari),
  *     maksimum deneme siniri ve init-basarisi sifirlamasi
  *   - "hang" modu: haklar bitince adim while(1)'e dusmeli (disaridan
  *     timeout ile oldurulerek dogrulanir - Makefile hedefi)
@@ -78,6 +79,12 @@ uint32_t gsm_get_tick(void)            { return tick_now; }
 void gsm_set_delay(uint32_t d_time)    { (void)d_time; }
 void gsm_set_busy(void)                { }
 void gsm_set_free(void)                { }
+void gsm_set_tx_state(uint8_t state)   { gsm.tx_flag = state; }
+uint8_t gsm_get_socket_state(uint8_t socket)
+{ (void)socket; return SOCKET_CLOSED; }
+void gsm_set_socket_state(uint8_t socket, uint8_t state)
+{ (void)socket; (void)state; }
+uint8_t gsm_get_gprs_state(void) { return 1U; }
 
 /* Bayrak API'si: gsm_process.c'deki gercek davranisin birebir kopyasi */
 void gsm_request_module_restart(void)  { restart_flag = 1U; restart_flag_sets++; }
@@ -86,6 +93,8 @@ void gsm_clear_module_restart(void)    { restart_flag = 0U; }
 
 void led_driver_set_modem_mode(led_modem_mode_t mode) { (void)mode; }
 void led_driver_set_gsm_mode(led_gsm_mode_t mode)     { (void)mode; }
+void led_driver_set_web_mode(led_listener_mode_t mode) { (void)mode; }
+void led_driver_set_iec104_mode(led_listener_mode_t mode) { (void)mode; }
 
 void gsm_elog_modem_event(elog_code_t code)
 {

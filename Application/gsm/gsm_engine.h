@@ -382,7 +382,9 @@ typedef struct {
 	uint8_t            had_data_activity;
 	uint8_t            si_all_zero;
 	uint16_t           ack_waiting;
+    /* Main-context cache; zero means modem configuration is unknown. */
     uint16_t           configured_idle_timeout;
+    uint16_t           pending_idle_timeout;
 	uint32_t           socket_timer;
 	uint32_t           tcp_ack_timer;
 	uint32_t           data_check_timer;
