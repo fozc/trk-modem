@@ -2,7 +2,8 @@
  * rf_uart_bridge.c
  *
  *  Created on: Sep 05, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * USART3 (RF modul tarafi) ile LPUART1 (konsol tarafi) arasinda saydam
  * (transparent) bayt koprusu. Amac: RF modulunu PC'den dogrudan
@@ -26,6 +27,7 @@
  * Statik atomikler sifir ile baslar: kopru her reset sonrasi kapali. */
 static atomic_bool bridge_enabled;
 
+__extension__
 _Static_assert(__atomic_always_lock_free(sizeof(bridge_enabled), 0),
                "bridge_enabled must be lock-free for ISR access");
 
