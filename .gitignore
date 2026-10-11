@@ -6,6 +6,8 @@ DebugWithBootloader/
 
 __pycache__
 
+/web-page/tools/node_modules/
+
 *.pem
 
 *.launch

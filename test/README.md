@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.45
+**Sürüm:** 1.47
 **Tarih:** 2026-10-11
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -26,8 +26,15 @@ komut/yanıt sırasını ve açılış öncesinde değişen ayarın yeniden uygu
 sınar. Config saklama, HTTP yanıt ve AT transport sınırları mock'tur.
 Sonuçlar ve fiziksel kabul sınırı üretim raporu §10.58–10.59'da tutulmalıdır.
 
-## Ön koşul
+## Kompakt dil tablosu doğrulaması
 
+Web navigation paketindeki `test_i18n_pack.js`, gerçek minifier üzerinden
+kompakt dil tablosunu ve kaynak/gzip tam sözlük eşitliğini doğrular.
+
+## Ön koşul
+- Web build/minifier testleri için Node.js 18 veya üzeri bulunmalı ve
+  depo kökünde `npm ci --prefix web-page/tools --ignore-scripts`
+  çalıştırılmalıdır. Ayrıntılar `web-page/tools/README.md` içindedir.
 - Ruby ve Ceedling 1.0.1 kurulu olmalıdır.
 - Host C derleyicisi ve GNU Make komut satırında bulunmalıdır.
 - Web arayüzü integration testi için Node.js bulunmalıdır.

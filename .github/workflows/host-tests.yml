@@ -34,6 +34,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends gcc-multilib python3-venv
+          npm ci --prefix web-page/tools --ignore-scripts --no-audit --no-fund
           gem install ceedling --version 1.0.1 --no-document
           python3 -m venv "$RUNNER_TEMP/host-test-tools"
           # pyserial: rf_hil self-tests import tools/hwtest/serial_io.py

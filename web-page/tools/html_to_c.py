@@ -175,7 +175,7 @@ def write_c_array(html_content, output_name, output_dir, source_html_file, compr
         f.write(f'#endif /* {guard_name} */\n')
         write_if_changed(output_h, f.getvalue())
     
-    print(f"Embedded payload: {len(html_content)} bytes")
+    print(f"Embedded payload: {data_length} bytes")
 
 if __name__ == '__main__':
     import argparse
@@ -259,7 +259,7 @@ if __name__ == '__main__':
     html_content = html_content.replace('{{WEB_VERSION}}', ver)
     print(f"Version stamp: {ver}")
 
-    original_size = len(html_content)
+    original_size = len(html_content.encode('utf-8'))
     print(f"Original: {original_size} bytes")
     
     # Minify if requested
@@ -271,7 +271,7 @@ if __name__ == '__main__':
             spec.loader.exec_module(minify_html)
             minifier = minify_html.SafeHTMLMinifier()
             html_content = minifier.minify_html(html_content)
-            minified_size = len(html_content)
+            minified_size = len(html_content.encode('utf-8'))
             reduction = ((original_size - minified_size) / original_size) * 100
             print(f"Minified: {minified_size} bytes ({reduction:.1f}% reduction)")
         else:
@@ -281,14 +281,14 @@ if __name__ == '__main__':
     # Compress if requested
     compression_type = None
     if args.brotli:
-        pre_compress_size = len(html_content)
+        pre_compress_size = len(html_content.encode('utf-8'))
         html_content = brotli.compress(html_content.encode('utf-8'), quality=11)
         compressed_size = len(html_content)
         reduction = ((pre_compress_size - compressed_size) / pre_compress_size) * 100
         print(f"Brotli: {compressed_size} bytes ({reduction:.1f}% reduction)")
         compression_type = 'br'
     elif args.gzip:
-        pre_compress_size = len(html_content)
+        pre_compress_size = len(html_content.encode('utf-8'))
         html_content = gzip.compress(html_content.encode('utf-8'),
                                      compresslevel=9, mtime=0)
         compressed_size = len(html_content)
@@ -300,7 +300,8 @@ if __name__ == '__main__':
     write_c_array(html_content, output_name, output_dir, input_html, compression_type)
     
     # Final summary
-    final_size = len(html_content)
+    final_size = (len(html_content) if isinstance(html_content, bytes)
+                  else len(html_content.encode('utf-8')))
     total_reduction = ((original_size - final_size) / original_size) * 100
     print(f"\nTotal: {original_size} -> {final_size} bytes ({total_reduction:.1f}% total reduction)")
     print(f"Output directory: {output_dir}")
