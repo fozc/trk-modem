@@ -63,6 +63,7 @@ void test_iec104_reopen_applies_pending_config_then_scfg_before_open(void)
     gsm_engine_get_query_res_ExpectAndReturn(GSM_RESPONSE_OK);
     gsm_listener_iec104_process();
     TEST_ASSERT_EQUAL_UINT8(GSM_LS_OPEN_SOCKET, ctx->state);
+    iec104_process_apply_pending_config_Expect();
     gsm_socket_record_attempt_Expect(IEC104_LISTENER_SOCKET);
     gsm_engine_send_query_ExpectAndReturn(ATQUERY_OPEN_IEC104_LISTENER_SOCKET,
         1U);
@@ -74,9 +75,12 @@ void test_failed_modem_configuration_does_not_open_listener(void)
     gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_IEC104];
     ctx->state = GSM_LS_CONFIG_SOCKET;
     ctx->phase = GSM_INIT_PHASE_WAIT_RESPONSE;
+    ctx->configured_idle_timeout = 70U;
+    ctx->pending_idle_timeout = 130U;
     gsm_engine_get_query_res_ExpectAndReturn(GSM_ERROR);
     gsm_listener_iec104_process();
     TEST_ASSERT_EQUAL_UINT8(GSM_LS_CHECK_NET, ctx->state);
+    TEST_ASSERT_EQUAL_UINT16(70U, ctx->configured_idle_timeout);
 }
 
 void test_web_reopen_keeps_existing_path_without_iec104_configuration(void)
@@ -120,6 +124,52 @@ void test_data_mode_carrier_loss_notifies_close_before_configuring_reopen(void)
     gsm_reset_iec104_session_info_Expect();
     gsm_listener_iec104_process();
     TEST_ASSERT_EQUAL_UINT8(GSM_LS_CONFIG_SOCKET, ctx->state);
+}
+
+void test_scfg_cache_records_sent_value_and_rechecks_before_open(void)
+{
+    gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_IEC104];
+    ctx->state = GSM_LS_CONFIG_SOCKET;
+    iec104_process_apply_pending_config_Expect();
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_SOCKET_3_CONFIG_SCFG, 1U);
+    gsm_listener_iec104_process();
+    active_t3 = 120U;
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_RESPONSE_OK);
+    gsm_listener_iec104_process();
+    TEST_ASSERT_EQUAL_UINT16(70U, ctx->configured_idle_timeout);
+    iec104_process_apply_pending_config_Expect();
+    gsm_listener_iec104_process();
+    TEST_ASSERT_EQUAL_UINT8(GSM_LS_CONFIG_SOCKET, ctx->state);
+    iec104_process_apply_pending_config_Expect();
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_SOCKET_3_CONFIG_SCFG, 1U);
+    gsm_listener_iec104_process();
+    TEST_ASSERT_EQUAL_UINT16(130U, ctx->pending_idle_timeout);
+}
+
+void test_rejected_scfg_send_does_not_mark_timeout_configured(void)
+{
+    gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_IEC104];
+    ctx->state = GSM_LS_CONFIG_SOCKET;
+    iec104_process_apply_pending_config_Expect();
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_SOCKET_3_CONFIG_SCFG, 0U);
+    gsm_listener_iec104_process();
+    TEST_ASSERT_EQUAL_UINT8(GSM_INIT_PHASE_SEND, ctx->phase);
+    TEST_ASSERT_EQUAL_UINT16(0U, ctx->configured_idle_timeout);
+}
+
+void test_first_web_open_sets_listening_state_and_led(void)
+{
+    gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_WEB];
+    ctx->state = GSM_LS_OPEN_SOCKET;
+    gsm_socket_record_attempt_Expect(LISTENER_SOCKET);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_OPEN_LISTENER_SOCKET, 1U);
+    gsm_listener_web_process();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_RESPONSE_OK);
+    gsm_listener_set_no_carrier_Expect(GSM_LISTENER_WEB, 0U);
+    gsm_set_socket_state_Expect(LISTENER_SOCKET, SOCKET_LISTENING);
+    led_driver_set_web_mode_Expect(LED_LISTENER_LISTENING);
+    gsm_listener_web_process();
+    TEST_ASSERT_EQUAL_UINT8(GSM_LS_IDLE, ctx->state);
 }
 
 /*** end of file ***/

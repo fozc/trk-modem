@@ -1,6 +1,6 @@
 # Architecture — Smart Breaker Modem
 
-Sürüm: 1.2.0 · Tarih: 2026-10-08 · Durum: mevcut proje profili; açık kararlar var.
+Sürüm: 1.4.0 · Tarih: 2026-10-11 · Durum: mevcut proje profili; açık kararlar var.
 
 ## A00. Amaç ve durum
 
@@ -168,8 +168,13 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 | RF web Kaydet onayı uygulamayı başlatır | 08.10.2026 kullanıcı kararı önceki K5 web ayrımını güncelledi. Tüm etkin fiderler `rf_apply` ile sırayla uygulanır; grup kimliği otomatik seçilir. Ayrı Uygula/Yalnız kaydet yoktur. Güncel kurallar [uygulama planı 0.28](../doc/RF_SCP_MODEM_UYGULAMA_PLANI.md#rf-web-kaydet-onayı-ve-sıralı-uygulama--08102026); doğrulama üretim raporu §10.36. |
 | Powerboard tüketicileri SCP kaynağını kullanır | 06.10.2026 kullanıcı kararı: 49200 tabanı korunarak 38 register yeni harita kurulur. Özet/alarm modeli system_status, web, Modbus ve shell kaynağıdır; eski I²C process başlatılmaz. Kaynaklar silinmez; GPIO power-panic ve kapalı BMS reader korunur. E5–E8 müşteri kontrolü shell ile bağlıdır; GEN/yankı/E1 ve komut sonucu ayrımı korunur. Ayarsız ayar/periyot ve E7 bitiş ayrımı BQ-12–14'tedir. Web/Modbus yazma arayüzü ayrıca ele alınır. [Uygulama planı](../doc/RF_SCP_MODEM_UYGULAMA_PLANI.md#powerboard-tüketici-geçişi--06102026). |
 | PowerBoard ertelemeleri korunur | BMS Y8.4–Y8.7 yazılım düzeltmeleri tamamlandı; reader init hâlâ kapalıdır. Düzeltme etkinleştirme yetkisi değildir. Üretim raporu §9.31–§9.33. |
+| GSM sabit ayarlar ve listener açılışı ayrılır | 10.10.2026 kullanıcı kararı: sabit web SCFG ve iki soketin SCFGEXT/SCFGEXT2 ayarları genel init'te kalır. İlk açılış ve reconnect, GSM listener süreçlerinden yürür. Dinamik IEC104 SCFG son başarılı timeout'u RAM'de tutar; değişmemiş değer atlanır, genel modem init tamamlandığında cache geçersiz sayılır. Ayrı Flash alanı yoktur. Üretim raporu §10.59. |
 
 Diğer geçilen/ertelenen bulguların güncel kapsamı üretim raporundadır.
+11.10.2026 kullanıcı kararı: Eski GSM init soket açılış fonksiyonları ve
+dispatcher dalları silinmez. Dinamik SCFG ve soket açılış adımları init
+vektöründe yorum satırı olarak korunur; yalnız vektör değişikliğiyle yeniden
+etkinleştirilebilir. Init'te açılmış listener ikinci kez açılmaz.
 Eski erteleme ile sonraki açık kullanıcı kararı çelişirse son karar
 esas alınmalıdır. Erteleme üretim kabulü veya düzeltme sayılmamalıdır.
 ARM CI/Docker ve ertelenen dokümantasyon işleri kendi başına bu görevle
@@ -252,3 +257,5 @@ Bu paketin oluşturulması bu kararların kabulü sayılmaz.
 | 2026-09-14 | 1.0.0 | Mevcut kaynaklarla ilk doldurma; açık kararların ayrılması |
 | 2026-10-04 | 1.1.0 | A06/A08–A11: güncel ABI, kullanıcı kararları, author ve merkezi test girişleri |
 | 2026-10-08 | 1.2.0 | A09.1: RF web Kaydet onayı ve tüm etkin fiderlerin sıralı uygulaması |
+| 2026-10-10 | 1.3.0 | A09.1: GSM sabit ayarları genel init'te, soket açılışları listener'da ve dinamik SCFG RAM önbelleği |
+| 2026-10-11 | 1.4.0 | A09.1: Eski GSM init fonksiyonları ve dispatcher korunur; yalnız vektör adımları kapatılır |

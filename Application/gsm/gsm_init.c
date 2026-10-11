@@ -3,7 +3,7 @@
  *
  * GSM modem initialization state machine.
  * Handles the full init sequence: AT command setup, SIM check, network
- * registration, GPRS activation, and listener socket opening.
+ * registration, GPRS activation, and static socket configuration.
  *
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
@@ -77,12 +77,13 @@ static const uint8_t gsm_LE910R1_init_vector[] =
 	GSM_GET_SIMCARD_IMSI,
 	GSM_GET_PHONE_NUMBER,
 
-	GSM_CONFIG_SOCKET_WEB_SCFG,
-	GSM_CONFIG_SOCKET_WEB_SCFGEXT,
-	GSM_CONFIG_SOCKET_WEB_SCFGEXT2,
-
-	GSM_CONFIG_SOCKET_IEC104_SCFGEXT,
-	GSM_CONFIG_SOCKET_IEC104_SCFGEXT2,
+    GSM_CONFIG_SOCKET_WEB_SCFG,
+    GSM_CONFIG_SOCKET_WEB_SCFGEXT,
+    GSM_CONFIG_SOCKET_WEB_SCFGEXT2,
+    /* Dynamic configuration and opening are owned by the listeners. */
+    //GSM_CONFIG_SOCKET_IEC104_SCFG,
+    GSM_CONFIG_SOCKET_IEC104_SCFGEXT,
+    GSM_CONFIG_SOCKET_IEC104_SCFGEXT2,
 
 	GSM_ACTIVATE_GPRS,
 	GSM_CONNECT_TO_GPRS,
@@ -90,8 +91,8 @@ static const uint8_t gsm_LE910R1_init_vector[] =
 	GSM_GET_SIGNAL_QUALITY,
 	GSM_READ_DATETIME,
 	GSM_GET_NTP_DATE_TIME,
-	GSM_OPEN_WEB_LISTENER_SOCKET,
-	GSM_OPEN_IEC104_LISTENER_SOCKET,
+    //GSM_OPEN_WEB_LISTENER_SOCKET,
+    //GSM_OPEN_IEC104_LISTENER_SOCKET,
 	GSM_CONFIG_SMS_FORMAT,
 	GSM_INIT_DONE
 };
@@ -1052,6 +1053,32 @@ static void gsm_init_step_done(void)
 	}
 	else
 	{
+        /* Listener opening is shared by startup and reconnect.
+         * Modem init invalidates the dynamic IEC104 timeout cache. */
+        for (size_t index = 0U; index < GSM_LISTENER_COUNT; index++)
+        {
+            gsm_listener_ctx_t *ctx = &gsm.listener[index];
+            ctx->configured_idle_timeout = 0U;
+            ctx->pending_idle_timeout = 0U;
+            ctx->temp_counter = 0U;
+            const uint8_t socket_id = (GSM_LISTENER_IEC104 == index) ?
+                IEC104_LISTENER_SOCKET : LISTENER_SOCKET;
+            if (SOCKET_LISTENING == gsm_get_socket_state(socket_id))
+            {
+                /* Supports re-enabling the opening steps in the vector. */
+                ctx->state = GSM_LS_IDLE;
+            }
+            else
+            {
+                ctx->state = (GSM_LISTENER_IEC104 == index) ?
+                    GSM_LS_CONFIG_SOCKET : GSM_LS_OPEN_SOCKET;
+            }
+            ctx->phase = GSM_INIT_PHASE_SEND;
+        }
+        gsm.signal_quality_timer =
+            gsm_get_tick() + GSM_SIGNAL_QUALITY_PERIOD_MS;
+        gsm.gsm_network_timer = gsm_get_tick() + GSM_NETWORK_CHECK_PERIOD_MS;
+        gsm_set_tx_state(GSM_TX_READY);
 		led_driver_set_modem_mode(LED_MODEM_READY);
 		gsm_set_main_state(GSM_NORMAL_MODE);
 	}

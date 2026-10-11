@@ -1,13 +1,30 @@
 # Test Altyapısı
 
-**Sürüm:** 1.42
-**Tarih:** 2026-10-10
+**Sürüm:** 1.45
+**Tarih:** 2026-10-11
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
+
+## 10.10.2026 IEC104 HTTP ve GSM açılış regresyonları
+
+`test/` dizininde `ruby -S ceedling test:test_http_iec_config_scenario` ve
+`ruby -S ceedling test:test_gsm_init_scenario` çalıştırılmalıdır.
+İlk dosya gerçek HTTP GET/POST, JSON parser (ayrıştırıcı) ve setter üzerinden
+T3'ün kısmi kayıtta korunmasını ve geçersiz isteğin reddini sınar. İkinci
+dosya gerçek GSM init vektörü ve dispatcher (yönlendirici) üzerinden sabit
+ayarların genel init'te kalmasını, açılışın listener'a aktarılmasını,
+yeniden init'te RAM önbelleğinin geçersiz sayılmasını ve ERROR yolunu sınar.
+Eski SCFG/açılış adımları test vektöründe yeniden etkinleştirilerek gerçek
+dispatcher üzerinden çalıştırılır; init'te açılmış soketin listener'da
+tekrar açılmadığı doğrulanır. Üretim init fonksiyonları korunmaktadır.
+`test_gsm_listener_scenario` ilk açılış/yeniden bağlantıda SCFG önbelleğini,
+komut/yanıt sırasını ve açılış öncesinde değişen ayarın yeniden uygulanmasını
+sınar. Config saklama, HTTP yanıt ve AT transport sınırları mock'tur.
+Sonuçlar ve fiziksel kabul sınırı üretim raporu §10.58–10.59'da tutulmalıdır.
 
 ## Ön koşul
 
