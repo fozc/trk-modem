@@ -5,7 +5,8 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * Serialize valid system values; missing power measurements are null.
+ * Serialize system values; every field carries its raw value and the
+ * client marks unreliable ones using the PowerValidFields bitmask.
  */
 #include "system_status_json.h"
 #include "power_board_scp.h"
@@ -17,8 +18,12 @@ typedef struct
 {
     const char *name;
     int32_t value;
-    bool valid;
 } json_field_t;
+
+static bool has_fields(uint16_t mask, uint16_t fields)
+{
+    return fields == (mask & fields);
+}
 
 static bool append(char *buffer, size_t capacity, size_t *length,
                     const char *text)
@@ -35,11 +40,6 @@ static bool append(char *buffer, size_t capacity, size_t *length,
     return true;
 }
 
-static bool has_fields(uint16_t mask, uint16_t fields)
-{
-    return fields == (mask & fields);
-}
-
 static bool emit_fields(const json_field_t *fields, size_t count,
                          char *buffer, size_t capacity, size_t *length)
 {
@@ -49,16 +49,10 @@ static bool emit_fields(const json_field_t *fields, size_t count,
     for (size_t index = 0U; ok && (index < count);
          index++)
     {
-        if (fields[index].valid)
-        {
-            (void)xsnprintf(text, sizeof(text), ",\"%s\":%ld",
-                            fields[index].name, (long)fields[index].value);
-        }
-        else
-        {
-            (void)xsnprintf(text, sizeof(text), ",\"%s\":null",
-                            fields[index].name);
-        }
+        /* Raw value always; reliability is decided on the client from
+         * PowerValidFields so unreliable data stays visible but marked. */
+        (void)xsnprintf(text, sizeof(text), ",\"%s\":%ld",
+                        fields[index].name, (long)fields[index].value);
         ok = append(buffer, capacity, length, text);
     }
     return ok;
@@ -77,65 +71,47 @@ bool system_status_json_build(const system_status_t *status, char *buffer,
     *length = 0U;
     buffer[0] = '\0';
     const uint16_t mask = status->power_valid_fields;
-    const bool adc = has_fields(mask, POWER_VALID_ADC);
-    const bool soc = has_fields(mask, POWER_VALID_SOC | POWER_VALID_DISCHARGE);
     const json_field_t fields[] =
     {
-        {"3V3", status->v3v3, true}, {"3V8", status->v3v8, true},
-        {"5V", status->v5v, true},
-        {"ChargeState", status->charge_state,
-         has_fields(mask, POWER_VALID_CHARGE_PHASE)},
-        {"ChargeVerdict", status->charge_verdict,
-         has_fields(mask, POWER_VALID_CHARGE_VERDICT)},
-        {"Temp", status->temp, has_fields(mask, POWER_VALID_BOARD_TEMP)},
-        {"TempMax", status->temp_max, status->board_temp_history_valid},
-        {"TempMin", status->temp_min, status->board_temp_history_valid},
-        {"PanelAkimi", 0, false}, {"PanelVoltaji", status->panel_voltage, adc},
-        {"DcVoltaji", status->dc_voltage, adc},
-        {"GirisAkimi", status->input_current,
-         has_fields(mask, POWER_VALID_CHARGER)},
-        {"GirisGucu", status->input_power_10mw,
-         has_fields(mask, POWER_VALID_POWER)},
-        {"AkuGucu", status->battery_power_10mw,
-         has_fields(mask, POWER_VALID_POWER)},
-        {"Kaynak", status->power_source,
-         has_fields(mask, POWER_VALID_SOURCE)},
-        {"TelemetriYasi", status->telemetry_age,
-         has_fields(mask, POWER_VALID_SUMMARY)},
-        {"KartDurum", status->board_flags,
-         has_fields(mask, POWER_VALID_SUMMARY)},
-        {"KartDurum2", status->board_flags2,
-         has_fields(mask, POWER_VALID_SUMMARY)},
-        {"AlarmMaskesi", (int32_t)status->alarm_mask,
-         has_fields(mask, POWER_VALID_ALARMS)},
-        {"BataryaVoltaji", status->battery_voltage, adc},
-        {"TDIE", status->tdie_temp, true},
-        {"TDIEMax", status->tdie_temp_max, true},
-        {"TDIEMin", status->tdie_temp_min, true},
-        {"ChargePertance", status->battery_charge_x10, soc},
-        {"Capacity", status->battery_capacity,
-         has_fields(mask, POWER_VALID_CAPACITY)},
-        {"BatteryCapacityUnknown", status->battery_capacity_unknown ? 1 : 0,
-         has_fields(mask, POWER_VALID_SUMMARY)},
-        {"GsmSig", status->gsm_signal, true}, {"GsmRAT", status->gsm_rat, true},
-        {"GsmRxlev", gsm_info_get_signal_quality_2G(), true},
-        {"GsmRscp", gsm_info_get_signal_quality_3G(), true},
-        {"GsmRsrp", gsm_info_get_signal_quality_4G(), true},
-        {"GsmRsrq", gsm_info_get_4G_rsrq(), true},
-        {"GsmCREG", gsm_info_get_creg(), true},
-        {"GsmCGREG", gsm_info_get_cgreg(), true},
-        {"GsmCEREG", gsm_info_get_cereg(), true},
-        {"BataryaAkimi", status->battery_current,
-         has_fields(mask, POWER_VALID_CHARGER | POWER_VALID_DISCHARGE)},
-        {"BatteryTemp", status->battery_temp_x10,
-         has_fields(mask, POWER_VALID_BATTERY_TEMP)},
-        {"BatterySOC", status->battery_soc_x10, soc},
-        {"BatterySOH", status->battery_soh_x10,
-         has_fields(mask, POWER_VALID_SOH)},
-        {"OrtamSicakligi", 0, false}, {"HeaterState", 0, false},
-        {"HeaterPower", 0, false}, {"PowerValidFields", mask, true},
-        {"BatterySOCAbsolute", has_fields(mask, POWER_SOC_ABSOLUTE) ? 1 : 0,
-         has_fields(mask, POWER_VALID_SOC)}
+        {"3V3", status->v3v3}, {"3V8", status->v3v8},
+        {"5V", status->v5v},
+        {"ChargeState", status->charge_state},
+        {"ChargeVerdict", status->charge_verdict},
+        {"Temp", status->temp},
+        {"TempMax", status->temp_max},
+        {"TempMin", status->temp_min},
+        {"PanelAkimi", 0}, {"PanelVoltaji", status->panel_voltage},
+        {"DcVoltaji", status->dc_voltage},
+        {"GirisAkimi", status->input_current},
+        {"GirisGucu", status->input_power_10mw},
+        {"AkuGucu", status->battery_power_10mw},
+        {"Kaynak", status->power_source},
+        {"TelemetriYasi", status->telemetry_age},
+        {"KartDurum", status->board_flags},
+        {"KartDurum2", status->board_flags2},
+        {"AlarmMaskesi", (int32_t)status->alarm_mask},
+        {"BataryaVoltaji", status->battery_voltage},
+        {"TDIE", status->tdie_temp},
+        {"TDIEMax", status->tdie_temp_max},
+        {"TDIEMin", status->tdie_temp_min},
+        {"ChargePertance", status->battery_charge_x10},
+        {"Capacity", status->battery_capacity},
+        {"BatteryCapacityUnknown", status->battery_capacity_unknown ? 1 : 0},
+        {"GsmSig", status->gsm_signal}, {"GsmRAT", status->gsm_rat},
+        {"GsmRxlev", gsm_info_get_signal_quality_2G()},
+        {"GsmRscp", gsm_info_get_signal_quality_3G()},
+        {"GsmRsrp", gsm_info_get_signal_quality_4G()},
+        {"GsmRsrq", gsm_info_get_4G_rsrq()},
+        {"GsmCREG", gsm_info_get_creg()},
+        {"GsmCGREG", gsm_info_get_cgreg()},
+        {"GsmCEREG", gsm_info_get_cereg()},
+        {"BataryaAkimi", status->battery_current},
+        {"BatteryTemp", status->battery_temp_x10},
+        {"BatterySOC", status->battery_soc_x10},
+        {"BatterySOH", status->battery_soh_x10},
+        {"OrtamSicakligi", 0}, {"HeaterState", 0},
+        {"HeaterPower", 0}, {"PowerValidFields", mask},
+        {"BatterySOCAbsolute", has_fields(mask, POWER_SOC_ABSOLUTE) ? 1 : 0}
     };
 
     (void)xsnprintf(text, sizeof(text),

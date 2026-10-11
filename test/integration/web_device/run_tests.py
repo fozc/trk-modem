@@ -164,13 +164,21 @@ def main():
     missing = [k for k in required if k not in board]
     check("board_schema_complete", st == 200 and not missing,
           "missing=%s" % missing)
+    # Gecersiz alanlar artik degerini tasir; istemci PowerValidFields
+    # ile isaretler (null davranisi 2026-10-11'de degisti).
     mask = board.get("PowerValidFields", 0)
-    gated = ["GirisAkimi", "GirisGucu", "AkuGucu", "BatterySOC", "SOH"]
+    gated = ["GirisAkimi", "GirisGucu", "AkuGucu", "BatterySOC",
+             "BatterySOH"]
+    raw_visible = all(k in board and board[k] is not None
+                      for k in gated)
+    check("board_fields_carry_raw_values", raw_visible,
+          "null gelen alanlar=%s" % [k for k in gated
+                                     if board.get(k) is None])
     summary_bit = 1 << 0
-    if mask & summary_bit:
-        ok = all(board.get(k) is None for k in gated
-                 if not mask & (1 << 2))  # charger-valid gate
-        check("board_invalid_fields_are_null", ok)
+    if mask & summary_bit and not mask & (1 << 2):
+        check("board_mask_marks_charger_invalid",
+              isinstance(board.get("GirisAkimi"), (int, float)),
+              "GirisAkimi sayi degil")
 
     st, body = http_req("GET", "/config/rf?" + t)
     rf = json.loads(body) if st == 200 else {}
