@@ -51,7 +51,6 @@
 
 
 #include "relay.h"
-#include "power_board.h"
 #include "power_board_scp.h"
 #include "system_status.h"
 #include "reset_source.h"

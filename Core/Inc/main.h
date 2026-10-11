@@ -134,10 +134,6 @@ void Error_Handler(void);
 #define DIN3_GPIO_Port GPIOB
 #define DIN4_Pin LL_GPIO_PIN_8
 #define DIN4_GPIO_Port GPIOD
-#define CHARGER_SCL_Pin LL_GPIO_PIN_12
-#define CHARGER_SCL_GPIO_Port GPIOD
-#define CHARGER_SDA_Pin LL_GPIO_PIN_13
-#define CHARGER_SDA_GPIO_Port GPIOD
 #define CHARGER_STAT_Pin LL_GPIO_PIN_14
 #define CHARGER_STAT_GPIO_Port GPIOD
 #define RELAY1_PWM_Pin LL_GPIO_PIN_8

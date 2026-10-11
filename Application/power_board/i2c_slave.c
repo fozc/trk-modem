@@ -5,6 +5,9 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  */
+#if 0  /* Powerboard artik yalniz RF-SCP uzerinden erisilir (R2);
+          CubeMX I2C3 kaldirildi (2026-10-11). Surucu referans icin
+          korunur - hi2c3/main.h bagimliligi kaldirildi. */
 #include "i2c_slave.h"
 #include "main.h"
 #include <string.h>
@@ -322,3 +325,5 @@ void i2c_slave_write_block(uint8_t start, const uint8_t *src, uint8_t len)
     }
     __set_PRIMASK(primask);
 }
+
+#endif
