@@ -205,6 +205,7 @@ void http_send_html_resource(const html_resource_t *resource)
             "Content-Type: text/html; charset=utf-8\r\n"
             "Content-Encoding: %s\r\n"
             "Content-Length: %lu\r\n"
+            "Cache-Control: no-cache\r\n"
             "Connection: keep-alive\r\n"
             "Server: EmbeddedHTTP/1.0\r\n"
             "\r\n",
