@@ -9,6 +9,7 @@
  */
 
 #include "power_board_control.h"
+#include "power_board_scp.h"
 #include "shell.h"
 #include <string.h>
 
@@ -152,6 +153,99 @@ static void print_raw(void)
     }
 }
 
+#ifndef DISABLE_SHELL_LOG
+static uint16_t raw_u16(const power_summary_raw_t *pkt, uint8_t offset)
+{
+    return (uint16_t)((uint16_t)pkt->raw[offset] |
+                      ((uint16_t)pkt->raw[offset + 1U] << 8));
+}
+
+static uint32_t raw_u32(const power_summary_raw_t *pkt, uint8_t offset)
+{
+    return (uint32_t)pkt->raw[offset] |
+           ((uint32_t)pkt->raw[offset + 1U] << 8) |
+           ((uint32_t)pkt->raw[offset + 2U] << 16) |
+           ((uint32_t)pkt->raw[offset + 3U] << 24);
+}
+
+static void print_summary_packet(void)
+{
+    power_summary_raw_t pkt;
+
+    if (!power_board_get_summary_raw(&pkt))
+    {
+        SHELL_LOG("No 0xE1 summary packet yet\r\n");
+        return;
+    }
+    SHELL_LOG("0xE1 PWR_SUMMARY %u B\r\n", (unsigned)pkt.len);
+    SHELL_LOG("recv 20%02u/%02u/%02u %02u:%02u:%02u\r\n",
+              (unsigned)pkt.year, (unsigned)pkt.month, (unsigned)pkt.day,
+              (unsigned)pkt.hour, (unsigned)pkt.minute,
+              (unsigned)pkt.second);
+    for (uint8_t row = 0U; row < pkt.len; row += 16U)
+    {
+        for (uint8_t col = 0U; (col < 16U) && ((row + col) < pkt.len);
+             col++)
+        {
+            SHELL_LOG("%02X ", (unsigned)pkt.raw[row + col]);
+        }
+        SHELL_LOG("\r\n");
+    }
+    SHELL_LOG("ver=%u sira=%u durum=0x%02X durum2=0x%02X tlm_yas=%u\r\n",
+              (unsigned)pkt.raw[0], (unsigned)pkt.raw[1],
+              (unsigned)pkt.raw[2], (unsigned)pkt.raw[3],
+              (unsigned)pkt.raw[4]);
+    SHELL_LOG("kaynak=%u sarj=%u oturum=%u | vpv=%u vdc=%u ibus=%d "
+              "vsys=%u vbat=%u ibat=%d (mA/mV)\r\n",
+              (unsigned)pkt.raw[5], (unsigned)pkt.raw[6],
+              (unsigned)pkt.raw[7], (unsigned)raw_u16(&pkt, 8U),
+              (unsigned)raw_u16(&pkt, 10U),
+              (int)(int16_t)raw_u16(&pkt, 12U),
+              (unsigned)raw_u16(&pkt, 14U), (unsigned)raw_u16(&pkt, 16U),
+              (int)(int16_t)raw_u16(&pkt, 18U));
+    SHELL_LOG("pin=%d pbat=%d psys=%d soc=%d soh=%u aku=%d kart=%d "
+              "cap=%u crate=%u lg=%u\r\n",
+              (int)(int16_t)raw_u16(&pkt, 20U),
+              (int)(int16_t)raw_u16(&pkt, 22U),
+              (int)(int16_t)raw_u16(&pkt, 24U),
+              (int)(int16_t)raw_u16(&pkt, 26U),
+              (unsigned)pkt.raw[28], (int)(int8_t)pkt.raw[29],
+              (int)(int8_t)pkt.raw[30], (unsigned)pkt.raw[31],
+              (unsigned)pkt.raw[32], (unsigned)pkt.raw[33]);
+    SHELL_LOG("alarm=0x%08lX soc_capa=0x%02X",
+              (unsigned long)raw_u32(&pkt, 34U), (unsigned)pkt.raw[38]);
+    if (pkt.len >= 45U)
+    {
+        SHELL_LOG(" efc=%u kalan_efc=%u kalan_yil_x10=%u",
+                  (unsigned)raw_u16(&pkt, 39U),
+                  (unsigned)raw_u16(&pkt, 41U),
+                  (unsigned)raw_u16(&pkt, 43U));
+    }
+    SHELL_LOG("\r\n");
+    SHELL_LOG("aktif:");
+    {
+        const uint32_t mask = raw_u32(&pkt, 34U);
+        bool any = false;
+
+        for (uint8_t code = 0U; code < 32U; code++)
+        {
+            if (0U != (mask & ((uint32_t)1U << code)))
+            {
+                const char *name = power_board_alarm_name(code);
+
+                SHELL_LOG(" %s", (NULL != name) ? name : "?");
+                any = true;
+            }
+        }
+        if (!any)
+        {
+            SHELL_LOG(" yok");
+        }
+        SHELL_LOG("\r\n");
+    }
+}
+#endif /* !DISABLE_SHELL_LOG */
+
 int power_board_control_shell(int argc, char **argv)
 {
     bool started = false;
@@ -165,6 +259,13 @@ int power_board_control_shell(int argc, char **argv)
         print_status();
         return 0;
     }
+#ifndef DISABLE_SHELL_LOG
+    if ((2 == argc) && (0 == strcmp(argv[1], "pkt")))
+    {
+        print_summary_packet();
+        return 0;
+    }
+#endif
     if ((2 == argc) && (0 == strcmp(argv[1], "raw")))
     {
         print_raw();
@@ -196,7 +297,7 @@ int power_board_control_shell(int argc, char **argv)
     }
     else
     {
-        SHELL_LOG("Usage: pwrboard control|cfg-read|cfg-set "
+        SHELL_LOG("Usage: pwrboard control|pkt|cfg-read|cfg-set "
                   "<capacity|rate|period> <value>|battery-replaced|cancel|"
                   "result-get|raw-get|raw\r\n");
         return -1;

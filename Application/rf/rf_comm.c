@@ -744,6 +744,8 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         case RF_SCP_CMD_PWR_SUMMARY:
+            power_board_capture_summary_raw(pkt->data, pkt->data_len,
+                                            HAL_GetTick());
             (void)power_board_handle_summary(&message, HAL_GetTick());
             break;
 

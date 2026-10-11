@@ -236,6 +236,7 @@ void setUp(void)
     power_board_handle_command_result_IgnoreAndReturn(true);
     power_board_handle_raw_IgnoreAndReturn(true);
     power_board_scp_process_Ignore();
+    power_board_capture_summary_raw_Ignore();
     power_board_handle_summary_IgnoreAndReturn(true);
     power_board_handle_alarm_IgnoreAndReturn(true);
     rf_group_hub_restarted_Ignore();
