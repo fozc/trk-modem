@@ -252,11 +252,13 @@ void test_system_status_ignores_power_board_temperature_error(void)
     TEST_ASSERT_EQUAL_INT8(18, status->temp_max);
 }
 
-void test_monitor_json_uses_null_for_invalid_or_unavailable_power_values(void)
+void test_monitor_json_keeps_raw_values_for_invalid_power_fields(void)
 {
     char buffer[2048];
     size_t length;
 
+    /* 2026-10-11: gecersiz alanlar artik ham degerini tasir; istemci
+     * PowerValidFields maskesiyle isaretler (null davranisi kaldirildi). */
     fake_valid_fields = 0U;
     fake_telemetry.soc_tenths = -125;
     fake_telemetry.battery_mv = 24000U;
@@ -264,10 +266,10 @@ void test_monitor_json_uses_null_for_invalid_or_unavailable_power_values(void)
 
     TEST_ASSERT_TRUE(system_status_json_build(status, buffer,
                                                sizeof(buffer), &length));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BatterySOC\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BataryaVoltaji\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"HeaterState\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"PanelAkimi\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BatterySOC\":-125"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BataryaVoltaji\":24000"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"PanelAkimi\":0"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"PowerValidFields\":0"));
     fake_valid_fields = UINT16_MAX;
     status = system_status_get();
     TEST_ASSERT_TRUE(system_status_json_build(status, buffer,
@@ -295,15 +297,16 @@ void test_power_board_extra_fields_json_gating(void)
 
     TEST_ASSERT_TRUE(system_status_json_build(status, buffer,
                                                sizeof(buffer), &length));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"DcVoltaji\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"GirisAkimi\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"GirisGucu\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AkuGucu\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Kaynak\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"TelemetriYasi\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AlarmMaskesi\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"KartDurum\":null"));
-    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"KartDurum2\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"DcVoltaji\":13500"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"GirisAkimi\":420"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"GirisGucu\":5800"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AkuGucu\":-1200"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Kaynak\":1"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"TelemetriYasi\":7"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"AlarmMaskesi\":561153"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"KartDurum\":39"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"KartDurum2\":216"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"PowerValidFields\":0"));
 
     fake_valid_fields = POWER_VALID_ADC | POWER_VALID_CHARGER |
                         POWER_VALID_POWER | POWER_VALID_SOURCE |
@@ -345,13 +348,14 @@ void test_unknown_capacity_signature_produces_a_fresh_maintenance_flag(void)
     TEST_ASSERT_TRUE(system_status_json_build(status, json, sizeof(json),
                                               &length));
     TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryCapacityUnknown\":1"));
-    TEST_ASSERT_NOT_NULL(strstr(json, "\"Capacity\":null"));
+    /* gecersiz kapasite degeri artık gorunur; istemci maskesiyle isaretler */
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"Capacity\":7"));
     fake_valid_fields = 0U;
     status = system_status_get();
     TEST_ASSERT_FALSE(status->battery_capacity_unknown);
     TEST_ASSERT_TRUE(system_status_json_build(status, json, sizeof(json),
                                               &length));
-    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryCapacityUnknown\":null"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryCapacityUnknown\":0"));
 }
 
 void test_valid_seven_ah_capacity_does_not_raise_the_maintenance_flag(void)
