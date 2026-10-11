@@ -77,6 +77,98 @@ def test_epoch_refresh_ack_body_is_empty():
     assert acks[0][2] == b"", acks[0][2]
 
 
+def test_every_truncated_packet_is_rejected():
+    frame = load("epoch4_rf_rx.log")[0]
+    end = 7 + frame[5] + 2
+    for length in range(end):
+        assert parse_scp_frame(frame[:length]) is None, length
+
+
+def test_prefix_or_multiple_trailing_bytes_cannot_hide_a_bad_frame():
+    frame = load("epoch4_rf_rx.log")[0]
+    exact = frame[:7 + frame[5] + 2]
+    assert parse_scp_frame(b"\x00" + exact) is None
+    assert parse_scp_frame(exact + b"\x00\x00") is None
+
+
+def test_wrong_message_type_is_not_live_or_event_data():
+    frame = bytearray(next(f for f in load("epoch4_rf_rx.log")
+                           if f[3] == 0x11))
+    frame[2] = 4  # ERROR must never become a LIVE_DATA sample.
+    end = 7 + frame[5]
+    crc = run_crc(frame[:end])
+    frame[end:end + 2] = bytes((crc & 255, crc >> 8))
+    assert not live_bodies([bytes(frame)])
+
+
+def run_crc(data):
+    # Independently specified golden polynomial; not the decoder under test.
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ (0x1021 if crc & 0x8000 else 0)) & 0xFFFF
+    return crc
+
+
+def test_every_packet_bit_corruption_is_rejected():
+    frames = load("epoch4_rf_rx.log")
+    for cmd in (0x2A, 0x11, 0x44):
+        frame = next(f for f in frames if f[3] == cmd)
+        exact = frame[:7 + frame[5] + 2]
+        for byte in range(len(exact)):
+            for bit in range(8):
+                broken = bytearray(exact)
+                broken[byte] ^= 1 << bit
+                assert parse_scp_frame(bytes(broken)) is None, (cmd, byte, bit)
+
+
+def test_valid_packet_crc_does_not_hide_corrupt_record_crc():
+    frame = bytearray(next(f for f in load("epoch4_rf_rx.log")
+                           if f[3] == 0x44))
+    frame[7 + 58] ^= 1
+    end = 7 + frame[5]
+    crc = run_crc(frame[:end])
+    frame[end:end + 2] = bytes((crc & 255, crc >> 8))
+    assert parse_scp_frame(frame) is not None
+    assert log_records([frame]) == []
+
+
+def make_frame(cmd, body, kind=3, dst=2, src=1):
+    header = bytes((dst, src, kind, cmd, 7, len(body), len(body) ^ 255))
+    raw = header + body
+    crc = run_crc(raw)
+    return raw + bytes((crc & 255, crc >> 8))
+
+
+def test_parser_obeys_libscp_244_byte_payload_capacity():
+    for length in range(256):
+        raw = make_frame(0x44, bytes(length))
+        parsed = parse_scp_frame(raw)
+        if length <= 244:
+            assert parsed is not None and len(parsed[2]) == length
+        else:
+            assert parsed is None, length
+
+
+def test_partial_record_batch_and_wrong_type_cannot_be_event_records():
+    record = log_records(load("epoch4_rf_rx.log"))[0][1]
+    for frame in (make_frame(0x44, record + b"\0"),
+                  make_frame(0x42, record + record),
+                  make_frame(0x44, record, kind=2)):
+        assert parse_scp_frame(frame) is not None
+        assert log_records([frame]) == []
+
+
+def test_foreign_address_or_unknown_type_is_rejected_even_with_valid_crc():
+    for frame in (make_frame(0x2A, b"", dst=0),
+                  make_frame(0x2A, b"", src=0),
+                  make_frame(0x2A, b"", src=3),
+                  make_frame(0x2A, b"", kind=0),
+                  make_frame(0x2A, b"", kind=6)):
+        assert parse_scp_frame(frame) is None
+
+
 def main():
     tests = [value for name, value in sorted(globals().items())
              if name.startswith("test_")]
