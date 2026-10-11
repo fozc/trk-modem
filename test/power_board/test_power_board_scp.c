@@ -12,6 +12,7 @@
 #include "mock_power_board_control.h"
 #include "mock_elog.h"
 #include "mock_shell.h"
+#include "mock_rtc.h"
 #include "../fixtures/rf_scp_vectors.h"
 #include <string.h>
 
@@ -88,6 +89,47 @@ void setUp(void)
 
 void tearDown(void)
 {
+}
+
+void test_summary_raw_capture_keeps_last_packet_with_reception_time(void)
+{
+    power_summary_raw_t out;
+    uint8_t body[POWER_SUMMARY_RAW_MAX];
+
+    for (size_t index = 0U; index < sizeof(body); index++)
+    {
+        body[index] = (uint8_t)index;
+    }
+
+    rtc_get_second_ExpectAndReturn(31U);
+    rtc_get_minute_ExpectAndReturn(24U);
+    rtc_get_hour_ExpectAndReturn(16U);
+    rtc_get_day_ExpectAndReturn(5U);
+    rtc_get_month_ExpectAndReturn(10U);
+    rtc_get_year_ExpectAndReturn(26U);
+    power_board_capture_summary_raw(body, POWER_SUMMARY_RAW_MAX, 1000U);
+
+    TEST_ASSERT_TRUE(power_board_get_summary_raw(&out));
+    TEST_ASSERT_EQUAL_UINT8(POWER_SUMMARY_RAW_MAX, out.len);
+    TEST_ASSERT_EQUAL_UINT32(1000U, out.tick_ms);
+    TEST_ASSERT_EQUAL_UINT8(16U, out.hour);
+    TEST_ASSERT_EQUAL_UINT8(26U, out.year);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(body, out.raw, POWER_SUMMARY_RAW_MAX);
+
+    /* Asiri uzun paket reddedilir; onceki kayit bozulmaz. */
+    power_board_capture_summary_raw(body, POWER_SUMMARY_RAW_MAX + 1U, 2000U);
+    TEST_ASSERT_TRUE(power_board_get_summary_raw(&out));
+    TEST_ASSERT_EQUAL_UINT32(1000U, out.tick_ms);
+    TEST_ASSERT_EQUAL_UINT8(POWER_SUMMARY_RAW_MAX, out.len);
+}
+
+void test_alarm_names_cover_spec_codes_and_reject_out_of_range(void)
+{
+    TEST_ASSERT_EQUAL_STRING("AKU_COK_DUSUK", power_board_alarm_name(0U));
+    TEST_ASSERT_EQUAL_STRING("KART_YUVA_KAPALI", power_board_alarm_name(19U));
+    TEST_ASSERT_EQUAL_STRING("AKU_YOK", power_board_alarm_name(20U));
+    TEST_ASSERT_NULL(power_board_alarm_name(21U));
+    TEST_ASSERT_NULL(power_board_alarm_name(255U));
 }
 
 void test_capture_summaries_and_alarms_enter_real_model(void)

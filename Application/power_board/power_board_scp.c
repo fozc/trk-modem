@@ -13,6 +13,9 @@
 #include "elog.h"
 #include "shell.h"
 #include "stm32u3xx_hal.h"
+#include "rtc.h"
+#include "console_logger.h"
+#define CSLOG_MODULE LOG_MOD_RF
 #include <string.h>
 
 #define SUMMARY_TIMEOUT_MS 30000U
@@ -99,6 +102,53 @@ static void store_alarm(uint8_t source, const rf_scp_message_t *message,
     elog_add(ELOG_PWR_SCP_ALARM, level, info, sizeof(info));
 }
 
+/* R2 bolum 5.3 seviye alarm kodlari; maske bit n = kod n. */
+static const char *const alarm_names[] =
+{
+    "AKU_COK_DUSUK", "BESLEME_COKUYOR", "AKU_SOGUK", "AKU_SICAK",
+    "AKU_DUSUK", "AKU_YUKSEK", "GIRIS_ASIRI_GERILIM",
+    "AKU_OVP_SARJ_YASAGI", "AKU_OVP_KALICI", "KART_SICAK", "SOGUK",
+    "SARJ_DENETLEYICI_HATA", "OLCUM_BAYAT", "TELEMETRI_YOK",
+    "MH_I2C_KAPALI", "SARJ_DENETLEYICI_OKUNAMADI", "KOR",
+    "STM_OLCUM_BAYAT", "SOC_DUSUK", "KART_YUVA_KAPALI", "AKU_YOK"
+};
+
+const char *power_board_alarm_name(uint8_t code)
+{
+    const size_t count = sizeof(alarm_names) / sizeof(alarm_names[0]);
+    return ((size_t)code < count) ? alarm_names[code] : NULL;
+}
+
+static power_summary_raw_t last_summary_raw;
+
+void power_board_capture_summary_raw(const uint8_t *data, uint8_t len,
+                                     uint32_t now_ms)
+{
+    if ((NULL == data) || (0U == len) || (POWER_SUMMARY_RAW_MAX < len))
+    {
+        return;
+    }
+    (void)memcpy(last_summary_raw.raw, data, len);
+    last_summary_raw.len = len;
+    last_summary_raw.tick_ms = now_ms;
+    last_summary_raw.second = rtc_get_second();
+    last_summary_raw.minute = rtc_get_minute();
+    last_summary_raw.hour = rtc_get_hour();
+    last_summary_raw.day = rtc_get_day();
+    last_summary_raw.month = rtc_get_month();
+    last_summary_raw.year = rtc_get_year();
+}
+
+bool power_board_get_summary_raw(power_summary_raw_t *out)
+{
+    if ((NULL == out) || (0U == last_summary_raw.len))
+    {
+        return false;
+    }
+    *out = last_summary_raw;
+    return true;
+}
+
 bool power_board_handle_summary(const rf_scp_message_t *message,
                                  uint32_t now_ms)
 {
@@ -123,6 +173,19 @@ bool power_board_handle_summary(const rf_scp_message_t *message,
     alarms_current = true;
     if (previous != snapshot.active_alarms)
     {
+        const uint32_t newly_active = snapshot.active_alarms & ~previous;
+
+        for (uint8_t code = 0U; code < 32U; code++)
+        {
+            if (0U != (newly_active & ((uint32_t)1U << code)))
+            {
+                const char *name = power_board_alarm_name(code);
+
+                CSLOG_WARN("[PB] alarm basladi: %s (kod=%u maske=0x%08lX)\r\n",
+                           (NULL != name) ? name : "?", (unsigned)code,
+                           (unsigned long)snapshot.active_alarms);
+            }
+        }
         store_alarm(RF_SCP_CMD_PWR_SUMMARY, message, previous);
     }
     return true;
