@@ -326,29 +326,39 @@ static int hex_nibble(char c)
 
 bool rf_eui64_from_hex(uint8_t eui[RF_EUI64_LEN], const char *hex)
 {
-    if ((eui == NULL) || (hex == NULL)) {
+    if ((NULL == eui) || (NULL == hex))
+    {
         return false;
     }
 
     /* Bos string = atanmamis (tum-sifir). */
-    if (hex[0] == '\0') {
+    if ('\0' == hex[0])
+    {
         (void)memset(eui, 0, RF_EUI64_LEN);
         return true;
     }
 
-    for (unsigned int i = 0U; i < RF_EUI64_LEN; i++)
+    size_t length = 0U;
+    while ((RF_EUI64_LEN * 2U > length) && ('\0' != hex[length]))
     {
-        const int hi = hex_nibble(hex[i * 2]);
-        const int lo = hex_nibble(hex[(i * 2) + 1]);
-        if ((hi < 0) || (lo < 0)) {
-            return false;  /* gecersiz karakter veya kisa string */
+        length++;
+    }
+    if ((RF_EUI64_LEN * 2U != length) || ('\0' != hex[length]))
+    {
+        return false;
+    }
+    uint8_t decoded[RF_EUI64_LEN];
+    for (size_t index = 0U; RF_EUI64_LEN > index; index++)
+    {
+        const int32_t hi = hex_nibble(hex[index * 2U]);
+        const int32_t lo = hex_nibble(hex[index * 2U + 1U]);
+        if ((0 > hi) || (0 > lo))
+        {
+            return false;
         }
-        eui[i] = (uint8_t)((hi << 4) | lo);
+        decoded[index] = (uint8_t)((hi << 4) | lo);
     }
-
-    if (hex[RF_EUI64_LEN * 2] != '\0') {
-        return false;  /* fazladan karakter */
-    }
+    (void)memcpy(eui, decoded, sizeof(decoded));
     return true;
 }
 

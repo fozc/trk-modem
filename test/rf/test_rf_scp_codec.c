@@ -5,7 +5,7 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * Verify R1 payload codecs with captured and invalid boundary inputs.
+ * Verify R2 payload codecs with captured and invalid boundary inputs.
  */
 
 #include "unity.h"
@@ -887,6 +887,191 @@ void test_r2_conditional_consume_preserves_full_ordinal_and_validates_ack(void)
     TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
         rf_scp_decode_message(&ack, &message));
     TEST_ASSERT_EQUAL_MEMORY(&previous, &message, sizeof(message));
+}
+
+void test_r2_every_event_bit_is_protected_by_record_crc(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_LOG_READ_RANGE,
+                                       SCP_TYPE_ACK);
+    rf_scp_event_t previous;
+    (void)memset(&previous, 0xA5, sizeof(previous));
+    for (size_t byte = 0U; RF_SCP_EVENT_SIZE > byte; byte++)
+    {
+        for (uint8_t bit = 0U; 8U > bit; bit++)
+        {
+            packet.data[byte] ^= (uint8_t)(1U << bit);
+            rf_scp_event_t output = previous;
+            TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_CRC,
+                rf_scp_decode_event(packet.data, RF_SCP_EVENT_SIZE, &output));
+            TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+            packet.data[byte] ^= (uint8_t)(1U << bit);
+        }
+    }
+}
+
+void test_r2_event_all_short_lengths_preserve_output(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_LOG_READ_RANGE,
+                                       SCP_TYPE_ACK);
+    rf_scp_event_t previous;
+    (void)memset(&previous, 0xA5, sizeof(previous));
+    for (size_t length = 0U; RF_SCP_EVENT_SIZE > length; length++)
+    {
+        rf_scp_event_t output = previous;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+            rf_scp_decode_event(packet.data, length, &output));
+        TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+    }
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_NULL,
+        rf_scp_decode_event(NULL, RF_SCP_EVENT_SIZE, &previous));
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_NULL,
+        rf_scp_decode_event(packet.data, RF_SCP_EVENT_SIZE, NULL));
+}
+
+void test_r2_summary_every_supported_tail_length_keeps_known_fields(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_PWR_SUMMARY, SCP_TYPE_SET);
+    rf_scp_message_t previous;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_message(&packet, &previous));
+    (void)memset(&packet.data[39], 0xA5, sizeof(packet.data) - 39U);
+    for (size_t length = 0U; sizeof(packet.data) >= length; length++)
+    {
+        packet.data_len = (uint8_t)length;
+        rf_scp_message_t output = previous;
+        const rf_cmd_status_t expected = (39U > length) ?
+            RF_CMD_ERR_LEN : RF_CMD_OK;
+        TEST_ASSERT_EQUAL_INT(expected,
+            rf_scp_decode_message(&packet, &output));
+        TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+    }
+}
+
+void test_r2_consume_ack_all_tail_and_pending_values_are_range_checked(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_LOG_CONSUME_IF,
+        .type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 8U};
+    rf_scp_message_t previous;
+    (void)memset(&previous, 0xA5, sizeof(previous));
+    for (size_t offset = 0U; 4U > offset; offset += 2U)
+    {
+        for (uint16_t value = 0U; 256U > value; value++)
+        {
+            (void)memset(packet.data, 0, sizeof(packet.data));
+            scp_pack_u16(&packet.data[offset], value);
+            rf_scp_message_t output = previous;
+            const rf_cmd_status_t expected = (100U > value) ?
+                RF_CMD_OK : RF_CMD_ERR_PARAM;
+            TEST_ASSERT_EQUAL_INT(expected,
+                rf_scp_decode_message(&packet, &output));
+            if (RF_CMD_OK != expected)
+            {
+                TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+            }
+        }
+    }
+}
+
+void test_r2_all_live_boolean_and_state_values_are_validated(void)
+{
+    const size_t offsets[] = {9U, 27U, 28U, 29U};
+    const uint8_t maxima[] = {6U, 1U, 1U, 100U};
+    const scp_packet_t original =
+        first_packet(RF_SCP_CMD_LIVE_DATA, SCP_TYPE_SET);
+    rf_scp_message_t previous;
+    (void)memset(&previous, 0xA5, sizeof(previous));
+    for (size_t field = 0U; 4U > field; field++)
+    {
+        for (uint16_t value = 0U; 256U > value; value++)
+        {
+            scp_packet_t packet = original;
+            packet.data[offsets[field]] = (uint8_t)value;
+            rf_scp_message_t output = previous;
+            const rf_cmd_status_t expected = (maxima[field] >= value) ?
+                RF_CMD_OK : RF_CMD_ERR_PARAM;
+            TEST_ASSERT_EQUAL_INT(expected,
+                rf_scp_decode_message(&packet, &output));
+            if (RF_CMD_OK != expected)
+            {
+                TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+            }
+        }
+    }
+}
+
+void test_r2_every_short_capture_body_preserves_decoded_output(void)
+{
+    for (size_t index = 0U; VECTOR_COUNT > index; index++)
+    {
+        scp_packet_t packet = packet_from_vector(index);
+        if (RF_SCP_ADDR_RTU != packet.dst)
+        {
+            continue;
+        }
+        const uint8_t original_length = packet.data_len;
+        rf_scp_message_t previous;
+        (void)memset(&previous, 0xA5, sizeof(previous));
+        for (uint8_t length = 0U; original_length > length; length++)
+        {
+            packet.data_len = length;
+            rf_scp_message_t output = previous;
+            const rf_cmd_status_t result =
+                rf_scp_decode_message(&packet, &output);
+            if (RF_CMD_OK != result)
+            {
+                TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+            }
+            else
+            {
+                TEST_ASSERT_TRUE((RF_SCP_CMD_LOG_READ_RANGE == packet.cmd) ||
+                    (RF_SCP_CMD_PWR_CFG2 == packet.cmd) ||
+                    (RF_SCP_CMD_PWR_SUMMARY == packet.cmd) ||
+                    (RF_SCP_CMD_LOG_READ_HEAD == packet.cmd));
+            }
+        }
+    }
+}
+
+void test_r2_head_cannot_have_more_pending_records_than_lifetime_total(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
+    scp_pack_u16(packet.data, 1U);
+    scp_pack_u16(&packet.data[2], 0U);
+    (void)memset(&packet.data[4], 0, 4U);
+    scp_pack_u16(&packet.data[8], 0U);
+    rf_scp_message_t previous;
+    (void)memset(&previous, 0xA5, sizeof(previous));
+    rf_scp_message_t output = previous;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+        rf_scp_decode_message(&packet, &output));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+}
+
+void test_r2_fram_free_slots_uses_the_99_record_capacity(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_GET_FRAM_STATS,
+        .type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 8U};
+    rf_scp_message_t previous;
+    (void)memset(&previous, 0xA5, sizeof(previous));
+    for (uint16_t value = 0U; 256U > value; value++)
+    {
+        scp_pack_u16(&packet.data[4], value);
+        rf_scp_message_t output = previous;
+        TEST_ASSERT_EQUAL_INT((100U > value) ? RF_CMD_OK : RF_CMD_ERR_PARAM,
+            rf_scp_decode_message(&packet, &output));
+        if (100U <= value)
+        {
+            TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+        }
+    }
+}
+
+void test_zero_crc_eui_hash_uses_ffff_instead_of_unknown_identity(void)
+{
+    const uint8_t eui[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0x0EU, 0x10U};
+    TEST_ASSERT_EQUAL_HEX16(UINT16_MAX, rf_scp_eui_hash(eui));
 }
 
 /*** end of file ***/
