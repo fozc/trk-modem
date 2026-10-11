@@ -123,6 +123,47 @@ Her paketin hatası çıkış koduna yansır. Ruby yürütücüsü Ceedling gem'
 doğrudan başlatır; Windows batch yorumlaması regex (düzenli ifade)
 seçimini parçalara ayırmaz.
 
+### Tek paket seçme
+
+Her integration paketi repo kökünden `make -C` ile tek başına çalışır:
+
+| Paket | Komut | Ek koşul |
+|---|---|---|
+| `contiki_process` | `make -C test/integration/contiki_process run` | — |
+| `fault_log` | `make -C test/integration/fault_log run` | — |
+| `gsm` | `make -C test/integration/gsm run` | — |
+| `iec104_master` | `make -C test/integration/iec104_master run` | `IEC104_DEVICE_HOST=<ip>` verilmezse self-test + SKIP |
+| `libs` | `make -C test/integration/libs run` | — |
+| `nvram` | `make -C test/integration/nvram run` | — |
+| `rf_hil` | `make -C test/integration/rf_hil run` | simülatör veya HIL imajı gerekebilir |
+| `rf_hub_sim` | `make -C test/integration/rf_hub_sim run` | — |
+| `rf_real_mh` | `make -C test/integration/rf_real_mh run` | üretim imajı + gerçek MH + `--console COM16` |
+| `rfwu_auth` | `make -C test/integration/rfwu_auth run` | — |
+| `web_auth` | `make -C test/integration/web_auth run` | — |
+| `web_device` | `make -C test/integration/web_device run` | cihaz web erişimi |
+| `web_navigation` | `make -C test/integration/web_navigation run` | Node.js |
+
+Cihaz gerektiren paketlerin ortam değişkeni/parametre verilmeden
+çalıştırılması self-test'i koşup cihaz vakalarını SKIP ile geçer (exit 0).
+Örnek — IEC104 cihaz süiti tek komutla:
+
+```text
+IEC104_DEVICE_HOST=188.59.76.59 make -C test/integration/iec104_master run
+```
+
+### Bağımsız Python self-test'ler
+
+```text
+python test/system/iec104_master/test_apdu_selftest.py
+python test/system/iec104_master/test_cases_selftest.py
+python test/system/rf_real_mh/test_parser_selftest.py
+python test/system/rf_real_mh/test_smoke_selftest.py
+python test/system/rf_hil/test_sim_selftest.py
+```
+
+Ceedling JUnit XML çıktısı `test/build/ceedling/artifacts/test/junit_tests_report.xml`
+dosyasına yazılır.
+
 Coverage raporu için:
 
 ```text
