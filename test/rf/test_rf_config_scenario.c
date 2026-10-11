@@ -438,4 +438,76 @@ void test_primary_only_staged_save_publishes_the_persistent_candidate(void)
     TEST_ASSERT_EQUAL_INT(0, rf_store_sync());
 }
 
+void test_eui_invalid_hex_at_every_position_preserves_existing_identity(void)
+{
+    const char valid[] = "00124B0038C9F1C3";
+    uint8_t previous[8];
+    (void)memset(previous, 0xA5, sizeof(previous));
+    for (size_t position = 0U; 16U > position; position++)
+    {
+        char input[17];
+        (void)memcpy(input, valid, sizeof(input));
+        input[position] = 'Z';
+        uint8_t output[8];
+        (void)memcpy(output, previous, sizeof(output));
+        TEST_ASSERT_FALSE(rf_eui64_from_hex(output, input));
+        TEST_ASSERT_EQUAL_HEX8_ARRAY(previous, output, sizeof(output));
+    }
+}
+
+void test_eui_short_and_overlong_hex_preserve_existing_identity(void)
+{
+    const char valid[] = "00124B0038C9F1C3";
+    for (size_t length = 1U; 16U > length; length++)
+    {
+        char input[17];
+        (void)memcpy(input, valid, sizeof(input));
+        input[length] = '\0';
+        uint8_t output[8];
+        (void)memset(output, 0xA5, sizeof(output));
+        TEST_ASSERT_FALSE(rf_eui64_from_hex(output, input));
+        TEST_ASSERT_EACH_EQUAL_HEX8(0xA5U, output, sizeof(output));
+    }
+    uint8_t output[8];
+    (void)memset(output, 0xA5, sizeof(output));
+    TEST_ASSERT_FALSE(rf_eui64_from_hex(output, "00124B0038C9F1C30"));
+    TEST_ASSERT_EACH_EQUAL_HEX8(0xA5U, output, sizeof(output));
+}
+
+void test_eui_round_trip_covers_every_byte_and_mixed_case_input(void)
+{
+    for (uint16_t value = 0U; 256U > value; value++)
+    {
+        uint8_t original[8];
+        (void)memset(original, (uint8_t)value, sizeof(original));
+        char text[RF_EUI64_HEX_LEN];
+        rf_eui64_to_hex(original, text);
+        TEST_ASSERT_EQUAL_UINT8(0U, (uint8_t)text[16]);
+        uint8_t output[8];
+        TEST_ASSERT_TRUE(rf_eui64_from_hex(output, text));
+        TEST_ASSERT_EQUAL_HEX8_ARRAY(original, output, sizeof(output));
+    }
+    const uint8_t expected[8] = {0U, 0x12U, 0x4BU, 0U, 0x38U,
+                                 0xC9U, 0xF1U, 0xC3U};
+    uint8_t output[8];
+    TEST_ASSERT_TRUE(rf_eui64_from_hex(output, "00124b0038C9f1C3"));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, output, sizeof(output));
+}
+
+void test_empty_eui_clears_assignment_and_null_inputs_preserve_output(void)
+{
+    uint8_t output[8];
+    (void)memset(output, 0xA5, sizeof(output));
+    TEST_ASSERT_FALSE(rf_eui64_from_hex(output, NULL));
+    TEST_ASSERT_FALSE(rf_eui64_from_hex(NULL, "00124B0038C9F1C3"));
+    TEST_ASSERT_EACH_EQUAL_HEX8(0xA5U, output, sizeof(output));
+    TEST_ASSERT_TRUE(rf_eui64_from_hex(output, ""));
+    TEST_ASSERT_TRUE(rf_eui64_is_zero(output));
+    char text[RF_EUI64_HEX_LEN];
+    (void)memset(text, 'X', sizeof(text));
+    rf_eui64_to_hex(NULL, text);
+    rf_eui64_to_hex(output, NULL);
+    TEST_ASSERT_EACH_EQUAL_UINT8('X', text, sizeof(text));
+}
+
 /*** end of file ***/

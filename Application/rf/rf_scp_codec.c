@@ -695,7 +695,10 @@ static rf_cmd_status_t decode_log(const scp_packet_t *packet,
             out->body.log_head.total = read_u32(&data[4]);
             out->body.log_head.tail = scp_unpack_u16(&data[8]);
             return ((100U > out->body.log_head.head) &&
-                    (100U > out->body.log_head.tail))
+                    (100U > out->body.log_head.tail) &&
+                    (out->body.log_head.total >=
+                     (((uint32_t)out->body.log_head.head + 100U -
+                       out->body.log_head.tail) % 100U)))
                  ? RF_CMD_OK : RF_CMD_ERR_PARAM;
         case RF_SCP_CMD_LOG_CONSUME_TO:
         case RF_SCP_CMD_LOG_CONSUME_IF:
@@ -742,7 +745,8 @@ static rf_cmd_status_t decode_system(const scp_packet_t *packet,
                 out->body.fram.head = scp_unpack_u16(data);
                 out->body.fram.wrap = scp_unpack_u16(&data[2]);
                 out->body.fram.free_slots = scp_unpack_u16(&data[4]);
-                if (100U <= out->body.fram.head)
+                if ((100U <= out->body.fram.head) ||
+                    (100U <= out->body.fram.free_slots))
                 {
                     return RF_CMD_ERR_PARAM;
                 }
