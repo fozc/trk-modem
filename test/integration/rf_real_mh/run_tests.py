@@ -15,11 +15,13 @@ from pathlib import Path
 TEST_ROOT = Path(__file__).resolve().parents[2]
 RUNNER = TEST_ROOT / "system" / "rf_real_mh" / "run_smoke.py"
 SELFTEST = RUNNER.with_name("test_smoke_selftest.py")
+PARSER_TEST = RUNNER.with_name("test_parser_selftest.py")
 
 
 def main():
-    if subprocess.call([sys.executable, str(SELFTEST)]) != 0:
-        return 1
+    for test in (SELFTEST, PARSER_TEST):
+        if subprocess.call([sys.executable, str(test)]) != 0:
+            return 1
     console = os.environ.get("RF_REAL_MH_CONSOLE")
     if not console:
         print("SKIP: RF_REAL_MH_CONSOLE ayarli degil (gercek MH hedefi "

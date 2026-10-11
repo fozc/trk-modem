@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.47
+**Sürüm:** 1.48
 **Tarih:** 2026-10-11
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -8,6 +8,42 @@ doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
+
+## 11.10.2026 RF-SCP R2 test genişletmesi
+
+[R2 kapsam ve kabul matrisi](../doc/RF_SCP_R2_TEST_KAPSAM_VE_KABUL.md),
+üreticinin 17 tekrar sınavını gerçek modül girişleriyle eşler. Yeni
+discovery ve UART bridge paketleri bütün public girişlerini sınar;
+codec/model/arıza/alarm/EUI/SCP paketleri sınır ve invalid-input davranışını
+genişletir. RF log handler'ı gerçek `rf_log.c` ile merkez logger'a bağlanır.
+Alarm binding test çifti artık `line_index` değerini sabit bir değerle
+ezmez; geçerli satır ve fallback (alternatif eşleme) ayrı sınanır.
+
+Checksum ile sabitlenen kaynak snapshot'ında 96 dosyada 1212/1212 Unity
+testi geçti. Önceki 97 dosya/1223 toplamından eski I2C decoder'ın kullanıcı
+tarafından kaldırılan 11 testi çıkarılmıştır; yeni 52 regresyon korunmuştur.
+Envanter tamdır; failure/error/skipped yoktur. RF alt kümesi 10 dosyada
+322 testtir; 52 yeni Unity testi bu çalışmaya aittir. Döngü adımları veya
+Python selftest sayıları Unity toplamına eklenmez. Güncel coverage ve
+fiziksel kabul sınırları kapsam matrisinin §7 bölümündedir.
+
+`integration/rf_real_mh/run_tests.py`, cihaz seçmeden önce 18 smoke/config ve
+14 parser host regresyonunu çalıştırır. Parser regresyon hatası cihaz
+koşusunu durdurur. Cihaz hedefi ayarlı değilse fiziksel bölüm SKIP olur;
+bu sonuç fiziksel kabul başarısı değildir. Güçlendirilen m4, request değil
+eşleşen ACK ve ordinal/slot ilerlemesini; m5, aynı boot'a ait AY 120
+kayıtlarını ve 201 faz maskesini de arar. Eski m4/m5 PASS'leri bu yeni
+ölçütleri geçmiş kabul edilmez.
+
+Bu çalışma fider toplamının ±1 saniyelik olay zamanı eşleştirmesini
+değiştirmez. BQ-20 kapanış/belirsizlik kararı kapsam matrisinde açıktır.
+Normal merkezi komutlar aşağıda korunmuştur; clean coverage komutu
+mevcut merkezi build çıktısını temizler. Bu turda eşzamanlı kaynak
+değişiklikleri nedeniyle son koşu byte düzeyinde doğrulanan
+`build/r2-snapshot` kopyasında yapıldı. Asıl testler merkezi dizindedir.
+Gcovr artık `GCOV_BUILD_OUTPUT_PATH` ile yalnız aktif koşunun object
+dizinini tarar; eski build profilleri yeni ölçüme karışmaz. Kaynak manifest'i,
+JUnit ve ölçülen/ölçülmeyen kaynak envanteri kapsam matrisinde belirtilmiştir.
 
 ## 10.10.2026 IEC104 HTTP ve GSM açılış regresyonları
 

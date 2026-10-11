@@ -8,6 +8,9 @@ import os
 import sys
 import unittest
 from unittest.mock import patch
+import struct
+import re
+import xml.etree.ElementTree as ET
 
 import run_smoke
 
@@ -34,6 +37,156 @@ class FakeConsole:
 
 
 class SmokeTests(unittest.TestCase):
+    def test_powerboard_scp_build_keeps_i2c_disabled_in_both_configurations(self):
+        project = ET.parse(ROOT / ".cproject").getroot()
+        found = set()
+        for config in project.findall(".//configuration"):
+            name = config.get("name")
+            if name not in ("Debug", "Release"):
+                continue
+            entries = config.findall("./sourceEntries/entry")
+            application = [entry for entry in entries
+                           if entry.get("name") == "Application"]
+            self.assertEqual(1, len(application))
+            self.assertIn("power_board/i2c_slave.c",
+                          application[0].get("excluding", "").split("|"))
+            found.add(name)
+        self.assertEqual({"Debug", "Release"}, found)
+        hal = (ROOT / "Core/Inc/stm32u3xx_hal_conf.h").read_text()
+        self.assertIsNone(re.search(
+            r"^\s*#define\s+HAL_I2C_MODULE_ENABLED(?:\s|$)", hal, re.M))
+
+    @staticmethod
+    def frame(cmd, body, seq=7, kind=3):
+        header = bytes((2, 1, kind, cmd, seq, len(body), len(body) ^ 255))
+        raw = header + body
+        raw += struct.pack("<H", run_smoke._crc16_ccitt_false(raw))
+        return "RF RX[%d]: [%s]" % (len(raw), raw.hex(" "))
+
+    def consume(self, lines):
+        ctx = SimpleNamespace(args=SimpleNamespace(duration=1))
+        with patch.object(run_smoke, "observe", return_value=lines):
+            return run_smoke.m4_ring_consume(ctx)[0]
+
+    def test_consume_request_without_ack_is_not_success(self):
+        self.assertEqual("FAIL", self.consume([
+            "[RF ST->RF] cmd=0x48 seq=7 gonderildi"]))
+
+    def test_empty_protection_ack_is_not_record_consumption(self):
+        head = self.frame(0x40, struct.pack("<HHIH", 10, 1, 110, 10))
+        ack = self.frame(0x48, struct.pack("<HHI", 10, 0, 110))
+        self.assertEqual("SKIP", self.consume([
+            head, "[RF ST->RF] cmd=0x48 seq=7 gonderildi", ack]))
+
+    def test_matched_ack_after_nonempty_head_proves_ordinal_progress(self):
+        head = self.frame(0x40, struct.pack("<HHIH", 10, 1, 110, 8))
+        ack = self.frame(0x48, struct.pack("<HHI", 10, 0, 110))
+        self.assertEqual("PASS", self.consume([
+            head, "[RF ST->RF] cmd=0x48 seq=7 gonderildi", ack]))
+
+    def test_wrong_seq_error_or_backward_ack_cannot_pass_consumption(self):
+        head = self.frame(0x40, struct.pack("<HHIH", 10, 1, 110, 8))
+        for ack in (self.frame(0x48, struct.pack("<HHI", 10, 0, 110), seq=8),
+                    self.frame(0x48, bytes((2,)), kind=4),
+                    self.frame(0x48, struct.pack("<HHI", 7, 3, 107)),
+                    self.frame(0x48, struct.pack("<HHI", 9, 1, 110))):
+            with self.subTest(ack=ack):
+                self.assertEqual("FAIL", self.consume([
+                    head, "[RF ST->RF] cmd=0x48 seq=7 gonderildi", ack]))
+
+    def test_ack_without_initial_head_is_insufficient_evidence(self):
+        self.assertEqual("FAIL", self.consume([
+            "[RF ST->RF] cmd=0x48 seq=7 gonderildi",
+            self.frame(0x48, struct.pack("<HHI", 10, 0, 110))]))
+
+    def test_ring_wrap_ack_uses_ordinal_and_modular_slot(self):
+        head = self.frame(0x40, struct.pack("<HHIH", 1, 0, 6553601, 99))
+        ack = self.frame(0x48, struct.pack("<HHI", 1, 0, 6553601))
+        self.assertEqual("PASS", self.consume([
+            head, "[RF ST->RF] cmd=0x48 seq=7 gonderildi", ack]))
+
+    def test_central_gate_runs_parser_regressions_before_device_selection(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(gate.subprocess, "call", return_value=0) as call:
+                self.assertEqual(0, gate.main())
+        paths = [Path(item.args[0][1]).name for item in call.call_args_list]
+        self.assertEqual(["test_smoke_selftest.py", "test_parser_selftest.py"],
+                         paths)
+
+    def test_parser_regression_failure_stops_device_execution(self):
+        with patch.dict(os.environ, {"RF_REAL_MH_CONSOLE": "COM16"}, clear=True):
+            with patch.object(gate.subprocess, "call", side_effect=[0, 1]):
+                with patch.object(gate.subprocess, "run") as run:
+                    self.assertEqual(1, gate.main())
+                    run.assert_not_called()
+
+    @staticmethod
+    def epoch_record(code, phase=0, boot=0, mask=3, feeder=1, zone=1):
+        raw = bytearray(60)
+        raw[7:11] = bytes((code, zone, feeder, phase))
+        struct.pack_into("<H", raw, 41, mask)
+        struct.pack_into("<H", raw, 49, boot)
+        struct.pack_into("<H", raw, 56, 0 if code == 201 else 0x1787)
+        struct.pack_into("<H", raw, 58,
+                         run_smoke._crc16_ccitt_false(raw[:58]))
+        return bytes(raw)
+
+    def test_epoch_requires_each_live_phase_and_matching_boot_identity(self):
+        summary = self.epoch_record(201)
+        first = self.epoch_record(120, phase=1, boot=7)
+        second = self.epoch_record(120, phase=2, boot=20)
+        expected = {1: 7, 2: 20}
+        self.assertFalse(run_smoke.epoch_records_complete([summary], expected))
+        self.assertFalse(run_smoke.epoch_records_complete(
+            [summary, first, first], expected))
+        self.assertTrue(run_smoke.epoch_records_complete(
+            [summary, first, second], expected))
+        for bad in (self.epoch_record(120, phase=2, boot=19),
+                    self.epoch_record(120, phase=2, boot=20, feeder=2),
+                    self.epoch_record(120, phase=2, boot=20, zone=2)):
+            self.assertFalse(run_smoke.epoch_records_complete(
+                [summary, first, bad], expected))
+
+    def test_epoch_wrong_mask_or_foreign_summary_cannot_pass(self):
+        marks = [self.epoch_record(120, phase=1, boot=7),
+                 self.epoch_record(120, phase=2, boot=20)]
+        for summary in (self.epoch_record(201, mask=0),
+                        self.epoch_record(201, mask=1),
+                        self.epoch_record(201, mask=7),
+                        self.epoch_record(201, feeder=2)):
+            self.assertFalse(run_smoke.epoch_records_complete(
+                [summary] + marks, {1: 7, 2: 20}))
+
+    def run_epoch(self, records, ack_seq=7):
+        live = bytearray(33)
+        live[0] = 5
+        struct.pack_into("<H", live, 31, 7)
+        before = [self.frame(0x11, live, kind=2)]
+        lines = ["[RF ST->RF] cmd=0x2A seq=7 gonderildi",
+                 self.frame(0x2A, b"", seq=ack_seq)]
+        lines += [self.frame(0x44, record) for record in records]
+        ctx = SimpleNamespace(args=SimpleNamespace(epoch=True,
+                              admin_pass="test"), console=FakeConsole(lines))
+        with patch.object(run_smoke, "observe", return_value=before):
+            with patch.object(run_smoke.time, "sleep"):
+                with patch.object(run_smoke.time, "monotonic",
+                                  side_effect=[0, 0, 101]):
+                    return run_smoke.m5_epoch_201(ctx)[0]
+
+    def test_actual_epoch_case_does_not_stop_at_summary_only(self):
+        self.assertEqual("FAIL", self.run_epoch([
+            self.epoch_record(201, mask=1)]))
+
+    def test_actual_epoch_case_passes_after_summary_and_matching_phase(self):
+        self.assertEqual("PASS", self.run_epoch([
+            self.epoch_record(201, mask=1),
+            self.epoch_record(120, phase=1, boot=7)]))
+
+    def test_actual_epoch_case_requires_matching_command_ack(self):
+        self.assertEqual("FAIL", self.run_epoch([
+            self.epoch_record(201, mask=1),
+            self.epoch_record(120, phase=1, boot=7)], ack_seq=8))
+
     def check_inventory(self, lines):
         console = FakeConsole(lines)
         ctx = SimpleNamespace(console=console, evidence=[])

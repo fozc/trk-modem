@@ -29,6 +29,7 @@ import argparse
 import json
 import re
 import subprocess
+import struct
 import sys
 import time
 from pathlib import Path
@@ -63,6 +64,7 @@ def frame_bytes(line_text):
 
 SCP_HEADER_SIZE = 7   # libscp scp.h: DST+SRC+TYPE+CMD+SEQ+LEN+~LEN
 SCP_CRC_SIZE = 2      # libscp scp.h: CRC-16 little-endian
+SCP_MAX_DATA_SIZE = 244
 
 
 def parse_scp_frame(raw):
@@ -75,21 +77,19 @@ def parse_scp_frame(raw):
     """
     if len(raw) < SCP_HEADER_SIZE + SCP_CRC_SIZE:
         return None
-    for offset in range(0, len(raw) - SCP_HEADER_SIZE + 1):
-        if 2 != raw[offset] or 1 != raw[offset + 1]:
-            continue
-        length = raw[offset + 5]
-        if raw[offset + 6] != ((~length) & 0xFF):
-            continue
-        body_start = offset + SCP_HEADER_SIZE
-        crc_at = body_start + length
-        if crc_at + SCP_CRC_SIZE > len(raw):
-            continue
-        stored = raw[crc_at] | (raw[crc_at + 1] << 8)
-        if _crc16_ccitt_false(raw[offset:crc_at]) != stored:
-            continue
-        return (raw[offset + 3], raw[offset + 4], raw[body_start:crc_at])
-    return None
+    if raw[0:2] != bytes((2, 1)) or raw[2] not in (2, 3, 4, 5):
+        return None
+    length = raw[5]
+    if length > SCP_MAX_DATA_SIZE or raw[6] != ((~length) & 0xFF):
+        return None
+    crc_at = SCP_HEADER_SIZE + length
+    if len(raw) not in (crc_at + SCP_CRC_SIZE,
+                        crc_at + SCP_CRC_SIZE + 1):
+        return None
+    stored = raw[crc_at] | (raw[crc_at + 1] << 8)
+    if _crc16_ccitt_false(raw[:crc_at]) != stored:
+        return None
+    return (raw[3], raw[4], raw[SCP_HEADER_SIZE:crc_at])
 
 
 def live_bodies(raw_frames):
@@ -101,7 +101,8 @@ def live_bodies(raw_frames):
     bodies = []
     for frame in raw_frames:
         parsed = parse_scp_frame(frame)
-        if parsed is not None and 0x11 == parsed[0] and 33 == len(parsed[2]):
+        if (parsed is not None and frame[2] == 2 and
+                0x11 == parsed[0] and 33 == len(parsed[2])):
             bodies.append(parsed[2])
     return bodies
 
@@ -135,7 +136,9 @@ def log_records(raw_frames):
         if parsed is None:
             continue
         cmd, _seq, body = parsed
-        if cmd not in (0x42, 0x44):
+        if (frame[2] != 3 or cmd not in (0x42, 0x44) or
+                not body or len(body) > 240 or len(body) % 60 or
+                (cmd == 0x42 and len(body) != 60)):
             continue
         for index in range(0, len(body) - 59, 60):
             block = bytes(body[index:index + 60])
@@ -247,42 +250,111 @@ def m3_live_boot(ctx):
 @case("m4_ring_consume", "0x47 zili 0x48 tuketmesiyle sonlanir")
 def m4_ring_consume(ctx):
     lines = observe(ctx, ctx.args.duration)
-    bells = [text for text in lines if "LOG_AVAILABLE" in text]
-    consumed = [cmd for cmd in sent_cmds(lines) if 0x48 == cmd]
-    if consumed:
-        return "PASS", ["0x48 tuketmesi goruldu (%d istek)" % len(consumed)]
-    if bells:
-        return "FAIL", ["0x47 zili geldi (%d) ama 0x48 tuketmesi yok" %
-                        len(bells)]
-    return "SKIP", ["bekleyen kayit yok: zil/tuketme gozlenmedi (zorlanamaz)"]
+    head = None
+    request = None
+    attempted = False
+    invalid = False
+    for text in lines:
+        sent = re.search(r"ST->RF\] cmd=0x48 seq=(\d+)\b", text)
+        if sent:
+            attempted = True
+            request = (int(sent.group(1)), head)
+        raw = frame_bytes(text)
+        frame = parse_scp_frame(raw) if raw is not None else None
+        if frame is None or raw[2] != 3:
+            continue
+        cmd, seq, body = frame
+        if cmd == 0x40 and len(body) >= 10:
+            values = struct.unpack_from("<HHIH", body)
+            h, _wrap, total, tail = values
+            if h < 100 and tail < 100 and total >= (h - tail) % 100:
+                head = (h, total, tail)
+        elif cmd == 0x48 and len(body) == 8 and request is not None:
+            expected_seq, initial = request
+            if expected_seq != seq or initial is None:
+                invalid = True
+                continue
+            h, total, old_tail = initial
+            ordinal = total - (h - old_tail) % 100
+            tail, left, target = struct.unpack("<HHI", body)
+            advanced = target - ordinal
+            if (tail >= 100 or left >= 100 or advanced < 0 or
+                    advanced > (h - old_tail) % 100 or
+                    tail != (old_tail + advanced) % 100):
+                invalid = True
+            elif advanced > 0:
+                return "PASS", ["0x48 ACK seq=%d tail=%d ordinal=%d->%d" %
+                                (seq, tail, ordinal, target)]
+            request = None
+    if invalid or request is not None or "LOG_AVAILABLE" in "\n".join(lines):
+        return "FAIL", ["0x48 eslesen ACK/imlec ilerlemesi kanitlanamadi"]
+    return "SKIP", ["kayit tuketimi gozlenmedi%s" %
+                    (" (yalniz etkisiz koruma ACK'i)" if attempted else "")]
 
 
 @case("m5_epoch_201", "(--epoch) yenileme 201 + 120 kayitlari yazar")
 def m5_epoch_201(ctx):
     if not ctx.args.epoch:
         return "SKIP", ["--epoch ile acilir (MH'ye 0x2A gonderir)"]
+    before = observe(ctx, 12.0)
+    lives = live_bodies([raw for raw in (frame_bytes(t) for t in before)
+                         if raw is not None])
+    expected = {body[0] & 3: body[31] | (body[32] << 8)
+                for body in lives if (body[0] >> 2) & 7 == 1}
+    if not expected or 0 in expected or 0 in expected.values():
+        return "BLOCKED", ["fider 1 icin taze LIVE/Boot_Counter kaniti yok"]
     ctx.console.send("su admin")
     time.sleep(0.3)
     ctx.console.send(ctx.args.admin_pass)
     time.sleep(0.3)
+    ctx.console.mark()
     ctx.console.send("rf epoch 1")
     deadline = time.monotonic() + 100.0
     records = []
+    seen = set()
+    epoch_seq = None
+    accepted = False
     while time.monotonic() < deadline:
         fresh = [text for _, text in ctx.console.new_lines()]
-        records += log_records(
-            [f for f in (frame_bytes(t) for t in fresh)
-             if f is not None])
-        codes = [rec[7] for _, rec in records]
-        if 201 in codes:
-            break
+        for text in fresh:
+            sent = re.search(r"ST->RF\] cmd=0x2A seq=(\d+)\b", text)
+            if sent:
+                epoch_seq = int(sent.group(1))
+            raw = frame_bytes(text)
+            frame = parse_scp_frame(raw) if raw is not None else None
+            if (frame is not None and raw[2] == 3 and frame[0] == 0x2A
+                    and frame[1] == epoch_seq and frame[2] == b""):
+                accepted = True
+            if accepted and raw is not None:
+                for _, record in log_records([raw]):
+                    if record not in seen:
+                        seen.add(record)
+                        records.append(record)
+        if accepted and epoch_records_complete(records, expected):
+            return "PASS", ["0x2A ACK + fider 1 olay 201 + faz 120: %s" %
+                            sorted(expected)]
         time.sleep(2.0)
-    codes = [rec[7] for _, rec in records]
-    if 201 not in codes:
-        return "FAIL", ["%.0f s icinde olay 201 kaydi okunmadi (kodlar=%s)" %
-                        (100.0, sorted(set(codes))[:10])]
-    return "PASS", ["olay 201 okundu; 120 sayisi=%d; kayit=%d" %
-                    (codes.count(120), len(codes))]
+    return "FAIL", ["100 s icinde eslesen ACK/201/tum faz 120 tamamlanmadi; "
+                    "ACK=%s kodlar=%s" %
+                    (accepted, sorted({rec[7] for rec in records}))]
+
+
+def epoch_records_complete(records, expected):
+    """Require the same feeder/zone and the LIVE boot of each active AY."""
+    required = sum(1 << (phase - 1) for phase in expected)
+    for summary in records:
+        if summary[7] != 201 or summary[9] != 1 or summary[56:58] != b"\0\0":
+            continue
+        mask = summary[41] | (summary[42] << 8)
+        if mask != required:
+            continue
+        phases = {record[10] for record in records
+                  if record[7] == 120 and record[8:10] == summary[8:10]
+                  and record[10] in expected and record[56:58] != b"\0\0"
+                  and (record[49] | (record[50] << 8)) == expected[record[10]]}
+        if phases == set(expected):
+            return True
+    return False
 
 
 @case("m6_bootless", "(--reset-dut) DUT reset: BOOT'suz kurulum")
