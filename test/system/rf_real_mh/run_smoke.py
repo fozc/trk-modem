@@ -38,7 +38,7 @@ sys.path.insert(0, str(REPO_ROOT / "tools" / "hwtest"))
 
 from serial_io import ConsoleSession  # noqa: E402
 
-PROGRAMMER = "STM32_Programmer_CLI.exe"
+PROGRAMMER = "C:/ST/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
 
 CASES = {}
 
@@ -61,40 +61,89 @@ def frame_bytes(line_text):
         return None
 
 
-def live_bodies(raw_frames):
-    """33-byte LIVE_DATA bodies from raw console frames.
+SCP_HEADER_SIZE = 7   # libscp scp.h: DST+SRC+TYPE+CMD+SEQ+LEN+~LEN
+SCP_CRC_SIZE = 2      # libscp scp.h: CRC-16 little-endian
 
-    Wire layout: [dst, src, type, cmd, seq, len, body...]. Body: src(1)
-    + seq(4) + live(28); Boot_Counter is live bytes 26-27 = body 31-32.
+
+def parse_scp_frame(raw):
+    """(cmd, seq, body) from one raw console frame, CRC validated.
+
+    Wire layout (libscp): [DST SRC TYPE CMD SEQ LEN ~LEN][body LEN]
+    [CRC16 LE]; the packet CRC covers header+body. The console line may
+    carry one trailing byte after the CRC. LEN/~LEN and CRC mismatches
+    reject the frame.
+    """
+    if len(raw) < SCP_HEADER_SIZE + SCP_CRC_SIZE:
+        return None
+    for offset in range(0, len(raw) - SCP_HEADER_SIZE + 1):
+        if 2 != raw[offset] or 1 != raw[offset + 1]:
+            continue
+        length = raw[offset + 5]
+        if raw[offset + 6] != ((~length) & 0xFF):
+            continue
+        body_start = offset + SCP_HEADER_SIZE
+        crc_at = body_start + length
+        if crc_at + SCP_CRC_SIZE > len(raw):
+            continue
+        stored = raw[crc_at] | (raw[crc_at + 1] << 8)
+        if _crc16_ccitt_false(raw[offset:crc_at]) != stored:
+            continue
+        return (raw[offset + 3], raw[offset + 4], raw[body_start:crc_at])
+    return None
+
+
+def live_bodies(raw_frames):
+    """33-byte LIVE_DATA bodies from validated SCP frames.
+
+    Body: src(1) + seq(4) + live(28); Boot_Counter is live bytes 26-27
+    = body 31-32.
     """
     bodies = []
     for frame in raw_frames:
-        if len(frame) < 39:
-            continue
-        for offset in range(len(frame) - 38):
-            if (2 == frame[offset] and 1 == frame[offset + 1] and
-                    2 == frame[offset + 2] and 0x11 == frame[offset + 3] and
-                    33 == frame[offset + 5]):
-                bodies.append(frame[offset + 6:offset + 39])
-                break
+        parsed = parse_scp_frame(frame)
+        if parsed is not None and 0x11 == parsed[0] and 33 == len(parsed[2]):
+            bodies.append(parsed[2])
     return bodies
 
 
+def _crc16_ccitt_false(data):
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) if (crc & 0x8000) else (crc << 1)
+            crc &= 0xFFFF
+    return crc
+
+
+def _valid_record(block):
+    """R2 4.7: CRC-16/CCITT-FALSE over 0..57, stored LE at 58..59."""
+    return (len(block) == 60 and
+            (block[58] | (block[59] << 8)) == _crc16_ccitt_false(block[0:58]))
+
+
 def log_records(raw_frames):
-    """(cmd, record bytes) from 0x42/0x44 ACK replies on the console."""
+    """(cmd, record bytes) from validated 0x42/0x44 frames.
+
+    Each 60 B record carries its own CRC (R2 4.7: CRC-16/CCITT-FALSE over
+    0..57, LE at 58..59). Records re-read before the 0x48 consume are
+    deduplicated by their full bytes."""
     found = []
+    seen = set()
     for frame in raw_frames:
-        for offset in range(max(1, len(frame) - 62)):
-            if (2 != frame[offset] or 1 != frame[offset + 1] or
-                    3 != frame[offset + 2]):
+        parsed = parse_scp_frame(frame)
+        if parsed is None:
+            continue
+        cmd, _seq, body = parsed
+        if cmd not in (0x42, 0x44):
+            continue
+        for index in range(0, len(body) - 59, 60):
+            block = bytes(body[index:index + 60])
+            if not _valid_record(block):
                 continue
-            cmd = frame[offset + 3]
-            if cmd not in (0x42, 0x44):
-                continue
-            length = frame[offset + 5]
-            body = frame[offset + 6:offset + 6 + length]
-            for index in range(0, len(body) - 59, 60):
-                found.append((cmd, body[index:index + 60]))
+            if block not in seen:
+                seen.add(block)
+                found.append((cmd, block))
     return found
 
 
@@ -240,8 +289,12 @@ def m5_epoch_201(ctx):
 def m6_bootless(ctx):
     if not ctx.args.reset_dut:
         return "SKIP", ["--reset-dut ile acilir (cihazi resetler)"]
-    subprocess.run([PROGRAMMER, "-c", "port=SWD mode=UnderReset reset=SWRST",
-                    "-rst"], capture_output=True, text=True, timeout=60)
+    reset_res = subprocess.run(
+        [PROGRAMMER, "-c", "port=SWD", "mode=UnderReset", "reset=SWRST",
+         "-rst"], capture_output=True, text=True, timeout=60)
+    if reset_res.returncode != 0:
+        return "ERROR", ["DUT reset basarisiz: %s" %
+                         (reset_res.stderr or reset_res.stdout)[-200:]]
     time.sleep(8.0)
     ctx.console.send("rf log verbose")
     deadline = time.monotonic() + 90.0

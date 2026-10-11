@@ -144,7 +144,12 @@ class Master104:
         return sent
 
     def clock_sync(self):
-        return self.conn.clock_sync(self.ca, wait_for_response=False)
+        """Same STARTED race as interrogate(): one retry after 1 s."""
+        sent = self.conn.clock_sync(self.ca, wait_for_response=False)
+        if not sent:
+            time.sleep(1.0)
+            sent = self.conn.clock_sync(self.ca, wait_for_response=False)
+        return sent
 
     # -- frame queries ----------------------------------------------------
 
