@@ -20,6 +20,7 @@
 #include "mock_rf_alarm.h"
 #include "mock_rf_group.h"
 #include "mock_rf_apply.h"
+#include "mock_console_logger.h"
 #include "mock_power_board_scp.h"
 #include "mock_power_board_control.h"
 #include "../fixtures/rf_scp_vectors.h"
@@ -34,6 +35,7 @@ TEST_SOURCE_FILE("rf.c")
 TEST_SOURCE_FILE("rf_dummy.c")
 TEST_SOURCE_FILE("rf_monitor_json.c")
 TEST_SOURCE_FILE("xprintf.c")
+TEST_SOURCE_FILE("rf_log.c")
 
 static uint32_t fake_tick;
 static bool bridge_enabled;
@@ -2705,6 +2707,30 @@ void test_unknown_status_without_boot_cannot_guess_major(void)
     TEST_ASSERT_EQUAL_UINT8(0U, rf_comm_get_hub_major());
     TEST_ASSERT_FALSE(time_sync_pending);
     TEST_ASSERT_FALSE(rf_comm_can_load_inventory());
+}
+
+void test_rf_log_shell_routes_all_levels_only_to_rf_module(void)
+{
+    char log[] = "log";
+    char levels[][8] = {"off", "on", "verbose"};
+    const log_lvl_t expected[] = {LOG_LVL_OFF, LOG_LVL_NORMAL, LOG_LVL_VERBOSE};
+    for (size_t index = 0U; 3U > index; index++)
+    {
+        char *args[] = {log, levels[index]};
+        console_logger_set_level_Expect(LOG_MOD_RF, expected[index]);
+        TEST_ASSERT_EQUAL_INT(0, rf_shell_log(2, args));
+        console_logger_get_level_ExpectAndReturn(LOG_MOD_RF, expected[index]);
+        TEST_ASSERT_EQUAL_INT(expected[index], rf_log_get_level());
+    }
+}
+
+void test_rf_log_invalid_or_missing_level_never_changes_persistent_settings(void)
+{
+    char log[] = "log";
+    char invalid[] = "invalid";
+    char *args[] = {log, invalid};
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_log(2, args));
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_log(1, args));
 }
 
 /*** end of file ***/

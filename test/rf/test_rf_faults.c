@@ -194,4 +194,127 @@ void test_r2_142_is_a_result_without_prior_detection(void)
     TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).temporary);
 }
 
+void test_r2_106_and_141_sequences_end_without_a_temporary_fault(void)
+{
+    const uint8_t failures[] = {100U, 101U, 106U, 117U, 141U};
+    for (size_t index = 0U; sizeof(failures) > index; index++)
+    {
+        rf_faults_init();
+        event.uptime_sec = 0U;
+        (void)classify(failures[index], 1U, 10000U);
+        (void)classify(4U, 1U, 11000U);
+        (void)classify(6U, 1U, 12000U);
+        TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, classify(3U, 1U, 30000U));
+        TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).temporary);
+    }
+}
+
+void test_each_unknown_event_id_preserves_all_fault_counts(void)
+{
+    for (uint16_t code = 0U; 256U > code; code++)
+    {
+        if ((1U == code) || (7U == code) || (100U == code) ||
+            (101U == code) || (142U == code))
+        {
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE,
+            classify((uint8_t)code, 1U, 10000U));
+        TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).permanent);
+        TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).temporary);
+    }
+}
+
+void test_all_invalid_feeder_phase_and_zone_values_preserve_counters(void)
+{
+    (void)classify(142U, 1U, 10000U);
+    const rf_fault_stats_t before = counts(1U);
+    event.event = 142U;
+    for (uint16_t value = 0U; 256U > value; value++)
+    {
+        event.feeder = (uint8_t)value;
+        if ((0U == value) || (4U < value))
+        {
+            TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, rf_faults_classify(&event));
+        }
+        event.feeder = 1U;
+        event.phase = (uint8_t)value;
+        if ((0U == value) || (3U < value))
+        {
+            TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, rf_faults_classify(&event));
+        }
+        event.phase = 1U;
+        event.zone = (uint8_t)value;
+        if (8U <= value)
+        {
+            TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, rf_faults_classify(&event));
+        }
+        event.zone = 1U;
+    }
+    const rf_fault_stats_t after = counts(1U);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &after, sizeof(after));
+}
+
+void test_invalid_stats_indices_and_null_preserve_output(void)
+{
+    rf_fault_stats_t output = {.permanent = 123U};
+    TEST_ASSERT_FALSE(rf_faults_get_stats(0U, 0U, NULL));
+    for (uint16_t value = 5U; 256U > value; value++)
+    {
+        TEST_ASSERT_FALSE(rf_faults_get_stats(1U, (uint8_t)value, &output));
+        TEST_ASSERT_EQUAL_UINT32(123U, output.permanent);
+    }
+    for (uint16_t value = 8U; 256U > value; value++)
+    {
+        TEST_ASSERT_FALSE(rf_faults_get_stats((uint8_t)value, 1U, &output));
+        TEST_ASSERT_EQUAL_UINT32(123U, output.permanent);
+    }
+}
+
+void test_invalid_clock_keeps_phase_result_and_marks_total_uncertain(void)
+{
+    (void)memset(event.timestamp, 0, sizeof(event.timestamp));
+    event.event = 142U;
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_TEMPORARY, rf_faults_classify(&event));
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).temporary);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
+}
+
+void test_late_arrival_with_same_event_time_does_not_split_feeder_count(void)
+{
+    (void)classify(1U, 1U, 10000U);
+    /* These independent AY uptimes represent delayed/out-of-order delivery.
+     * Matching is on event time, never on RTU receive time. */
+    event.uptime_sec = 200000U;
+    (void)classify(7U, 3U, 10000U);
+    event.uptime_sec = 500000U;
+    (void)classify(7U, 2U, 10000U);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).permanent);
+}
+
+void test_current_event_time_window_has_explicit_999_1000_1001_boundaries(void)
+{
+    const uint16_t times[] = {10999U, 11000U, 11001U};
+    for (size_t index = 0U; 3U > index; index++)
+    {
+        rf_faults_init();
+        event.uptime_sec = 0U;
+        (void)classify(1U, 1U, 10000U);
+        (void)classify(7U, 2U, times[index]);
+        TEST_ASSERT_EQUAL_UINT32((2U == index) ? 2U : 1U,
+                                 counts(1U).permanent);
+    }
+}
+
+void test_older_record_in_same_ay_boot_is_uncertain_and_cannot_change_counts(void)
+{
+    (void)classify(142U, 1U, 10000U);
+    event.uptime_sec = 0U;
+    event.event = 1U;
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, rf_faults_classify(&event));
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).permanent);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).temporary);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
+}
+
 /*** end of file ***/

@@ -348,4 +348,78 @@ void test_scp_ping_builds_zero_payload_packet(void)
     TEST_ASSERT_EQUAL_UINT8(0U, packet->data_len);
 }
 
+void test_every_payload_length_round_trips_zero_and_nonzero_bytes(void)
+{
+    scp_t transmitter;
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK,
+        scp_init(&transmitter, TEST_REMOTE_ADDRESS, capture_transmit, NULL, 0U));
+    for (size_t length = 0U; SCP_MAX_DATA_SIZE >= length; length++)
+    {
+        scp_packet_t packet = make_packet(TEST_DEVICE_ADDRESS);
+        packet.data_len = (uint8_t)length;
+        for (size_t index = 0U; length > index; index++)
+        {
+            packet.data[index] = (uint8_t)((index * 17U + length) & 0xFFU);
+        }
+        scp_t receiver;
+        TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK,
+            scp_init(&receiver, TEST_DEVICE_ADDRESS, NULL, NULL, 0U));
+        TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK, scp_send(&transmitter, &packet));
+        feed_frame(&receiver, captured_frame, captured_len);
+        const scp_packet_t *output = scp_get_packet(&receiver);
+        TEST_ASSERT_NOT_NULL(output);
+        TEST_ASSERT_EQUAL_UINT8(packet.data_len, output->data_len);
+        if (0U < length)
+        {
+            TEST_ASSERT_EQUAL_HEX8_ARRAY(packet.data, output->data, length);
+        }
+    }
+}
+
+void test_two_consecutive_frames_require_done_and_preserve_second_sequence(void)
+{
+    scp_t transmitter;
+    scp_t receiver;
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK,
+        scp_init(&transmitter, TEST_REMOTE_ADDRESS, capture_transmit, NULL, 0U));
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK,
+        scp_init(&receiver, TEST_DEVICE_ADDRESS, NULL, NULL, 0U));
+    scp_packet_t packet = make_packet(TEST_DEVICE_ADDRESS);
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK, scp_send(&transmitter, &packet));
+    feed_frame(&receiver, captured_frame, captured_len);
+    packet.seq++;
+    TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK, scp_send(&transmitter, &packet));
+    feed_frame(&receiver, captured_frame, captured_len);
+    TEST_ASSERT_EQUAL_UINT8(0xA5U, scp_get_packet(&receiver)->seq);
+    scp_packet_done(&receiver);
+    feed_frame(&receiver, captured_frame, captured_len);
+    TEST_ASSERT_EQUAL_UINT8(0xA6U, scp_get_packet(&receiver)->seq);
+}
+
+void test_interbyte_timeout_boundary_and_tick_wrap_recover_on_next_frame(void)
+{
+    const uint32_t gaps[] = {9U, 10U, 11U};
+    for (size_t index = 0U; 3U > index; index++)
+    {
+        scp_t receiver;
+        scp_t transmitter;
+        fake_tick = UINT32_MAX - 5U;
+        TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK,
+            scp_init(&receiver, TEST_DEVICE_ADDRESS, NULL, get_fake_tick, 10U));
+        scp_process_byte(&receiver, SCP_DELIMITER);
+        scp_process_byte(&receiver, 2U);
+        fake_tick += gaps[index];
+        scp_process_byte(&receiver, 0x55U);
+        TEST_ASSERT_EQUAL_INT((10U > gaps[index]) ? SCP_STATE_COLLECT :
+                             SCP_STATE_WAIT_SOF, receiver.rx_state);
+        TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK,
+            scp_init(&transmitter, TEST_REMOTE_ADDRESS,
+                      capture_transmit, NULL, 0U));
+        scp_packet_t packet = make_packet(TEST_DEVICE_ADDRESS);
+        TEST_ASSERT_EQUAL_INT(SCP_STATUS_OK, scp_send(&transmitter, &packet));
+        feed_frame(&receiver, captured_frame, captured_len);
+        TEST_ASSERT_TRUE(scp_packet_ready(&receiver));
+    }
+}
+
 /*** end of file ***/

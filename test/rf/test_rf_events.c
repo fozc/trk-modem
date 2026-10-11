@@ -26,6 +26,7 @@
 #include "scp_endian.h"
 #include "../fixtures/rf_scp_vectors.h"
 #include <string.h>
+#include <math.h>
 
 TEST_SOURCE_FILE("rf_scp_codec.c")
 TEST_SOURCE_FILE("rf_scp.c")
@@ -313,7 +314,6 @@ static bool binding_entry(uint8_t source, rf_inventory_entry_t *entry,
         return false;
     }
     *entry = binding_entry_storage;
-    entry->line_index = 2U;
     return true;
 }
 
@@ -761,7 +761,7 @@ void test_stored_101_opens_latched_trip_failure_alarm(void)
 {
     rf_inventory_entry_t entry =
     {
-        .zone = 1U, .feeder = 1U, .phase = 1U,
+        .zone = 1U, .feeder = 1U, .phase = 1U, .line_index = 2U,
         .eui64 = {0x00, 0x12, 0x4B, 0x00, 0x38, 0xC9, 0xF1, 0x1A}
     };
     rf_phase_data_t data;
@@ -1421,6 +1421,252 @@ void test_r2_verified_unassigned_117_keeps_separate_count_without_mapping(void)
     TEST_ASSERT_EQUAL_UINT32(1U, stats.permanent);
     TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
     TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+}
+
+void test_alarm_boot_zero_is_not_deduplicated_after_receipt_ack(void)
+{
+    scp_packet_t packet = alarm_packet();
+    scp_pack_u16(&packet.data[49], 0U);
+    update_crc(&packet);
+    rf_scp_event_t event;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+}
+
+void test_alarm_retry_deadline_preserves_pending_record_across_tick_wrap(void)
+{
+    scp_packet_t packet = alarm_packet();
+    rf_scp_event_t event;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    tick = UINT32_MAX - 1000U;
+    alarm_success = false;
+    TEST_ASSERT_FALSE(rf_alarm_record(&event));
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    const uint32_t failed_at = tick;
+    alarm_success = true;
+    tick = failed_at + 59999U;
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    tick++;
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+}
+
+void test_alarm_unrelated_or_null_event_never_writes_or_opens_a_latch(void)
+{
+    rf_scp_event_t event = {.event = 142U, .zone = 1U,
+                            .feeder = 1U, .phase = 1U};
+    TEST_ASSERT_FALSE(rf_alarm_record(NULL));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    rf_alarm_live(5U, NULL);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+    TEST_ASSERT_EQUAL_size_t(0U, alarm_writes);
+}
+
+void test_live_invalid_numbers_do_not_make_fresh_rf_communication_stale(void)
+{
+    const float values[] = {NAN, INFINITY, -INFINITY, -1.0F};
+    for (size_t index = 0U; 4U > index; index++)
+    {
+        const rf_scp_live_t live = {.source = 5U,
+            .uptime_sec = (uint32_t)index + 1U, .boot_counter = 1U,
+            .current_amps = values[index], .flags = 3U};
+        TEST_ASSERT_TRUE(rf_handle_live(&live, tick, NULL));
+        rf_phase_data_t data;
+        TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+        TEST_ASSERT_TRUE(data.is_online);
+        TEST_ASSERT_FALSE(data.current_valid);
+        TEST_ASSERT_EQUAL_UINT8(3U, data.live.flags);
+    }
+}
+
+void test_live_stall_invalidates_measurement_then_next_uptime_recovers(void)
+{
+    rf_scp_live_t live = {.source = 5U, .uptime_sec = 7U,
+        .boot_counter = 1U, .current_amps = 10.0F};
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick, NULL));
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick + 1U, NULL));
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick + 1U, &data));
+    TEST_ASSERT_TRUE(data.uptime_stalled);
+    TEST_ASSERT_FALSE(data.current_valid);
+    live.uptime_sec++;
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick + 2U, NULL));
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick + 2U, &data));
+    TEST_ASSERT_FALSE(data.uptime_stalled);
+    TEST_ASSERT_TRUE(data.current_valid);
+}
+
+void test_live_invalid_input_preserves_previous_measurements(void)
+{
+    rf_scp_live_t live = {.source = 5U, .uptime_sec = 7U,
+        .boot_counter = 1U, .current_amps = 10.0F};
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick, NULL));
+    rf_phase_data_t before;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &before));
+    TEST_ASSERT_FALSE(rf_handle_live(NULL, tick, NULL));
+    live.state = 7U;
+    TEST_ASSERT_FALSE(rf_handle_live(&live, tick, NULL));
+    live.state = 0U;
+    live.log_pending = 101U;
+    TEST_ASSERT_FALSE(rf_handle_live(&live, tick, NULL));
+    rf_phase_data_t after;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &after));
+    TEST_ASSERT_EQUAL_MEMORY(&before, &after, sizeof(after));
+    TEST_ASSERT_FALSE(rf_get_source_data(5U, tick, NULL));
+    TEST_ASSERT_FALSE(rf_get_phase_data(0U, PHASE_L1, tick, NULL));
+}
+
+void test_anomaly_global_reset_clears_every_phase_and_both_paths(void)
+{
+    for (uint8_t feeder_id = 1U; 4U >= feeder_id; feeder_id++)
+    {
+        for (uint8_t phase = 1U; 3U >= phase; phase++)
+        {
+            for (uint8_t path = 0U; 2U > path; path++)
+            {
+                const rf_scp_anomaly_t report = {.source =
+                    (uint8_t)((feeder_id << 2U) | phase),
+                    .state = 1U, .path = path, .window = 55U, .total = 99U};
+                TEST_ASSERT_TRUE(rf_handle_anomaly(&report));
+            }
+        }
+    }
+    const rf_scp_anomaly_t global = {.source = 0xFFU, .state = 1U};
+    TEST_ASSERT_TRUE(rf_handle_anomaly(&global));
+    const rf_scp_anomaly_t reset = {.source = 0xFFU, .state = 2U};
+    TEST_ASSERT_TRUE(rf_handle_anomaly(&reset));
+    for (uint8_t source = 5U; 20U > source; source++)
+    {
+        if (0U == (source & 3U))
+        {
+            continue;
+        }
+        for (uint8_t path = 0U; 2U > path; path++)
+        {
+            rf_anomaly_data_t data;
+            TEST_ASSERT_TRUE(rf_get_anomaly(source, path, &data));
+            TEST_ASSERT_FALSE(data.has_report);
+            TEST_ASSERT_FALSE(data.is_active);
+            TEST_ASSERT_EQUAL_UINT32(0U, data.total);
+        }
+    }
+    rf_anomaly_data_t data;
+    TEST_ASSERT_TRUE(rf_get_anomaly(0xFFU, 0U, &data));
+    TEST_ASSERT_FALSE(data.has_report);
+}
+
+void test_anomaly_invalid_inputs_preserve_last_valid_report_and_output(void)
+{
+    rf_scp_anomaly_t report = {.source = 5U, .state = 1U,
+        .path = 1U, .window = 55U, .total = 99U};
+    TEST_ASSERT_TRUE(rf_handle_anomaly(&report));
+    report.state = 3U;
+    TEST_ASSERT_FALSE(rf_handle_anomaly(&report));
+    report.state = 1U;
+    report.path = 2U;
+    TEST_ASSERT_FALSE(rf_handle_anomaly(&report));
+    report.path = 1U;
+    report.source = 0U;
+    TEST_ASSERT_FALSE(rf_handle_anomaly(&report));
+    TEST_ASSERT_FALSE(rf_handle_anomaly(NULL));
+    rf_anomaly_data_t data;
+    TEST_ASSERT_TRUE(rf_get_anomaly(5U, 1U, &data));
+    TEST_ASSERT_TRUE(data.is_active);
+    TEST_ASSERT_EQUAL_UINT32(99U, data.total);
+    const rf_anomaly_data_t before = data;
+    TEST_ASSERT_FALSE(rf_get_anomaly(5U, 2U, &data));
+    TEST_ASSERT_FALSE(rf_get_anomaly(0U, 1U, &data));
+    TEST_ASSERT_FALSE(rf_get_anomaly(5U, 1U, NULL));
+    TEST_ASSERT_EQUAL_MEMORY(&before, &data, sizeof(data));
+}
+
+void test_wrong_ordinal_consume_ack_requires_fresh_head_before_continuing(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    respond(&packet);
+    rf_events_process(tick);
+    confirm_consumption();
+    packet = capture(RF_SCP_CMD_LOG_CONSUME_IF, SCP_TYPE_ACK);
+    put_u32(&packet.data[4], 138U);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+}
+
+void test_event_drain_lifecycle_rejects_null_and_finish_clears_ready(void)
+{
+    TEST_ASSERT_FALSE(rf_events_drain_complete(NULL));
+    rf_events_request_drain();
+    rf_events_process(tick);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
+    scp_pack_u16(packet.data, 36U);
+    scp_pack_u16(&packet.data[8], 36U);
+    respond(&packet);
+    uint32_t total = 0U;
+    TEST_ASSERT_TRUE(rf_events_drain_complete(&total));
+    rf_events_finish_drain();
+    total = 123U;
+    TEST_ASSERT_FALSE(rf_events_drain_complete(&total));
+    TEST_ASSERT_EQUAL_UINT32(123U, total);
+}
+
+void test_alarm_without_cached_line_index_uses_matching_active_store_line(void)
+{
+    scp_packet_t packet = alarm_packet();
+    binding_entry_storage.line_index = UINT8_MAX;
+    rf_scp_event_t event;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_UINT8(2U, written_alarm.feeder);
+    TEST_ASSERT_EQUAL_UINT8(0U, written_alarm.phase);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+}
+
+void test_alarm_without_matching_active_store_line_is_not_acknowledged(void)
+{
+    scp_packet_t packet = alarm_packet();
+    binding_entry_storage.line_index = UINT8_MAX;
+    feeder.in_use = false;
+    rf_scp_event_t event;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    TEST_ASSERT_FALSE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(0U, alarm_writes);
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
+}
+
+void test_live_alarm_activation_and_resolution_both_reach_persistent_queue(void)
+{
+    rf_scp_live_t live = {.source = 5U, .uptime_sec = 1U,
+        .boot_counter = 1U, .trip_failed = true};
+    const cp56time2a_t time = cp56time2a_make(10000U, 0U, 12U,
+                                            7U, 3U, 10U, 26U);
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick, &time));
+    rf_alarm_live(5U, &time);
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    rf_alarm_process(tick);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+    TEST_ASSERT_EQUAL_UINT8(1U, written_alarm.active);
+    live.trip_failed = false;
+    live.uptime_sec++;
+    TEST_ASSERT_TRUE(rf_handle_live(&live, ++tick, &time));
+    rf_alarm_process(tick);
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    rf_alarm_process(tick);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+    TEST_ASSERT_EQUAL_UINT8(0U, written_alarm.active);
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
 }
 
 /*** end of file ***/

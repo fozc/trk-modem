@@ -98,6 +98,9 @@
         - -Isupport/uart_tx
         - -flto
         - -O2
+      test_rf_uart_bridge:
+        - -DUART_TX_HOST_TEST
+        - -Isupport/uart_tx
       # Link only the real delay entry from the monolithic BSP.
       test_bsp_delay_us:
         - -DBSP_DELAY_HOST_TEST
@@ -285,6 +288,7 @@
       - -m
       - gcovr
       - ${1}
+      - '$': GCOV_BUILD_OUTPUT_PATH
 
 :environment: []
 

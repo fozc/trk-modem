@@ -1,14 +1,14 @@
 /*
- * test_rf_scp.c
+ * test_rf_scp_codec_scenario.c
  *
  *  Created on: Aug 21, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Host tests for rf_scp - the pure SCP wire codec:
  * request builder, PING reply builder and GET_STATUS response decoder.
  *
- * (The request/response state machine now lives in rf_comm.c, which is
- * exercised on target; it depends on Contiki/HAL and is not built here.)
+ * The request state machine has its own real-wire host scenario suite.
  *
  * Usage: ceedling test:test_rf_scp_codec_scenario
  */
@@ -145,6 +145,73 @@ void setUp(void)
 
 void tearDown(void)
 {
+}
+
+void test_status_every_invalid_length_preserves_previous_output(void)
+{
+    scp_packet_t packet;
+    build_status_ack(&packet, 7U);
+    rf_hub_status_t previous;
+    (void)memset(&previous, 0xA5, sizeof(previous));
+    for (uint16_t length = 0U; 256U > length; length++)
+    {
+        if (RF_SCP_STATUS_BODY_LEN == length)
+        {
+            continue;
+        }
+        packet.data_len = (uint8_t)length;
+        rf_hub_status_t output = previous;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+            rf_scp_decode_status(&packet, &output));
+        TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+    }
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_NULL,
+        rf_scp_decode_status(&packet, NULL));
+}
+
+void test_status_unterminated_firmware_label_is_bounded_and_nul_terminated(void)
+{
+    scp_packet_t packet;
+    build_status_ack(&packet, 7U);
+    (void)memset(&packet.data[4], 'A', RF_SCP_FW_LABEL_LEN);
+    rf_hub_status_t output;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_status(&packet, &output));
+    TEST_ASSERT_EQUAL_size_t(RF_SCP_FW_LABEL_LEN - 1U,
+                             strlen(output.fw_version));
+    TEST_ASSERT_EQUAL_UINT32(0x00000101U, output.sched_cycle_count);
+}
+
+void test_request_step_and_body_length_matrix_accepts_only_defined_operations(void)
+{
+    const uint8_t body[7] = {0};
+    for (uint16_t step = 0U; 256U > step; step++)
+    {
+        for (uint8_t length = 0U; 9U > length; length++)
+        {
+            scp_packet_t output;
+            TEST_ASSERT_EQUAL_INT((0U == step) && (0U == length),
+                rf_scp_build_request(RF_OP_GET_STATUS, (uint8_t)step,
+                                      255U, NULL, length, &output));
+            TEST_ASSERT_EQUAL_INT((0U == step) && (7U == length),
+                rf_scp_build_request(RF_OP_TIME_SYNC, (uint8_t)step,
+                                      255U, body, length, &output));
+        }
+    }
+    TEST_ASSERT_FALSE(rf_scp_build_request(RF_OP_NONE, 0U, 0U,
+                                           body, 7U, NULL));
+}
+
+void test_ping_null_or_broadcast_does_not_overwrite_a_prepared_ack(void)
+{
+    scp_packet_t ping = {.dst = RF_SCP_ADDR_BROADCAST};
+    scp_packet_t output;
+    (void)memset(&output, 0xA5, sizeof(output));
+    const scp_packet_t previous = output;
+    TEST_ASSERT_FALSE(rf_scp_build_ping_reply(NULL, &output));
+    TEST_ASSERT_FALSE(rf_scp_build_ping_reply(&ping, NULL));
+    TEST_ASSERT_FALSE(rf_scp_build_ping_reply(&ping, &output));
+    TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
 }
 
 /*** end of file ***/
