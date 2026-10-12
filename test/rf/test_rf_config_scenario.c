@@ -510,4 +510,32 @@ void test_empty_eui_clears_assignment_and_null_inputs_preserve_output(void)
     TEST_ASSERT_EACH_EQUAL_UINT8('X', text, sizeof(text));
 }
 
+void test_null_arguments_keep_their_contract_without_touching_output(void)
+{
+    rf_feeder_config_t blk = *rf_config_default_block_get();
+    rf_feeder_config_t previous = blk;
+
+    rf_config_defaults(NULL);
+    rf_config_copy_writable(NULL, &blk);
+    rf_config_copy_writable(&blk, NULL);
+    TEST_CHECK(rf_config_crc_ok(NULL) == false, "crc_ok NULL reddi");
+    TEST_CHECK(rf_config_crc_compute(NULL) == 0U, "crc_compute NULL -> 0");
+    TEST_CHECK(rf_config_writable_crc(NULL) == 0U, "writable_crc NULL -> 0");
+    TEST_CHECK(rf_eui64_is_zero(NULL) == true, "is_zero NULL -> true");
+    TEST_CHECK(0 == memcmp(&previous, &blk, sizeof(blk)),
+               "NULL girdiler blogu degistirmez");
+}
+
+void test_block_crc_ok_accepts_computed_and_rejects_stale_crc(void)
+{
+    rf_feeder_config_t blk = *rf_config_default_block_get();
+
+    blk.crc16 = rf_config_crc_compute(&blk);
+    TEST_CHECK(rf_config_crc_ok(&blk) == true, "hesaplanan CRC gecerli");
+    blk.nominal_current = 99.0f;
+    TEST_CHECK(rf_config_crc_ok(&blk) == false, "bayt degisince CRC gecersiz");
+    blk = *rf_config_default_block_get();
+    TEST_CHECK(rf_config_crc_ok(&blk) == false, "sifir CRC gecersiz");
+}
+
 /*** end of file ***/

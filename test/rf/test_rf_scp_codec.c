@@ -1072,6 +1072,427 @@ void test_zero_crc_eui_hash_uses_ffff_instead_of_unknown_identity(void)
 {
     const uint8_t eui[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0x0EU, 0x10U};
     TEST_ASSERT_EQUAL_HEX16(UINT16_MAX, rf_scp_eui_hash(eui));
+    TEST_ASSERT_EQUAL_HEX16(0U, rf_scp_eui_hash(NULL));
+}
+
+/* Independent CRC-16/CCITT-FALSE used to re-seal mutated event records. */
+static uint16_t event_record_crc(const uint8_t *data)
+{
+    uint16_t crc = 0xFFFFU;
+
+    for (size_t index = 0U; 58U > index; index++)
+    {
+        crc = (uint16_t)(crc ^ (uint16_t)((uint32_t)data[index] << 8U));
+        for (uint8_t bit = 0U; 8U > bit; bit++)
+        {
+            crc = (uint16_t)((0U != (crc & 0x8000U)) ?
+                (((uint32_t)crc << 1U) ^ 0x1021U) : ((uint32_t)crc << 1U));
+        }
+    }
+    return crc;
+}
+
+void test_event_clock_quality_above_two_is_rejected(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_LOG_READ_RANGE,
+                                       SCP_TYPE_ACK);
+    rf_scp_event_t event;
+
+    packet.data[55] = 3U;
+    scp_pack_u16(&packet.data[58], event_record_crc(packet.data));
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+        rf_scp_decode_event(packet.data, RF_SCP_EVENT_SIZE, &event));
+    packet.data[55] = 255U;
+    scp_pack_u16(&packet.data[58], event_record_crc(packet.data));
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+        rf_scp_decode_event(packet.data, RF_SCP_EVENT_SIZE, &event));
+    packet.data[55] = 2U;
+    scp_pack_u16(&packet.data[58], event_record_crc(packet.data));
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, RF_SCP_EVENT_SIZE, &event));
+    TEST_ASSERT_EQUAL_UINT8(2U, event.clock_quality);
+}
+
+void test_power_config_rate_mask_keeps_zero_and_255_special_values(void)
+{
+    scp_packet_t packet = {0};
+    scp_packet_t out;
+    static const uint8_t rates[] = {19U, 20U, 200U, 201U, 0U, 255U};
+    static const rf_cmd_status_t expected[] =
+    {
+        RF_CMD_ERR_PARAM, RF_CMD_OK, RF_CMD_OK, RF_CMD_ERR_PARAM,
+        RF_CMD_OK, RF_CMD_OK
+    };
+
+    packet.type = SCP_TYPE_SET;
+    packet.cmd = RF_SCP_CMD_PWR_CFG2;
+    packet.data_len = 16U;
+    packet.data[0] = 1U;
+    scp_pack_u16(&packet.data[1], 0x0200U);
+    for (size_t index = 0U; index < sizeof(rates); index++)
+    {
+        packet.data[10] = rates[index];
+        TEST_ASSERT_EQUAL_INT(expected[index],
+                              rf_scp_build_packet(&packet, &out));
+    }
+}
+
+void test_incoming_ping_echo_decodes_and_unknown_command_is_rejected(void)
+{
+    scp_packet_t packet = {.cmd = 0x00U, .type = SCP_TYPE_ACK,
+        .src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU, .data_len = 0U};
+    rf_scp_message_t message;
+
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_HEX8(0x00U, message.cmd);
+    packet.type = SCP_TYPE_PING;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_TYPE,
+                          rf_scp_decode_message(&packet, &message));
+    packet.type = SCP_TYPE_ACK;
+    packet.cmd = 0x29U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_UNSUPPORTED,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_trip_notify_invalid_source_or_zone_is_rejected(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_TRIP_NOTIFY,
+        .type = SCP_TYPE_SET, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 12U};
+    rf_scp_message_t message;
+
+    packet.data[2] = 1U;
+    packet.data[3] = 0x09U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_UINT8(0x09U, message.body.trip.source);
+    packet.data[3] = 0x08U;   /* phase 0 */
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data[3] = 0x09U;
+    packet.data[2] = 8U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_anomaly_report_invalid_source_state_or_path_is_rejected(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_ANOMALY_REPORT,
+        .type = SCP_TYPE_SET, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 10U};
+    rf_scp_message_t message;
+
+    packet.data[0] = 0xFFU;
+    packet.data[1] = 2U;
+    packet.data[8] = 1U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_UINT8(0xFFU, message.body.anomaly.source);
+    packet.data[0] = 0x08U;   /* not 0xFF and phase 0 */
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data[0] = 0xFFU;
+    packet.data[1] = 3U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data[1] = 2U;
+    packet.data[8] = 2U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_power_alarm_version_and_state_bounds_are_rejected(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_PWR_ALARM,
+        .type = SCP_TYPE_SET, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 11U};
+    rf_scp_message_t message;
+
+    packet.data[0] = 1U;
+    packet.data[4] = 3U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_UINT8(3U, message.body.alarm.state);
+    packet.data[4] = 4U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data[4] = 3U;
+    packet.data[0] = 0U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_VERSION,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_cfg2_response_rejects_invalid_echo_flag(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_PWR_CFG2,
+        .type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 23U};
+    rf_scp_message_t message;
+
+    packet.data[0] = 1U;
+    packet.data[17] = 1U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_TRUE(message.body.power_config.echo_valid);
+    packet.data[17] = 2U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_fram_stats_degraded_byte_must_be_boolean(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_GET_FRAM_STATS,
+        .type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 8U};
+    rf_scp_message_t message;
+
+    packet.data[6] = 2U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_config_status_state_and_bitmap_bounds_are_rejected(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_CFG_STATUS_NOTIFY,
+        .type = SCP_TYPE_SET, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 8U};
+    rf_scp_message_t message;
+
+    packet.data[0] = 7U;
+    packet.data[1] = 4U;
+    packet.data[2] = 7U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_UINT8(4U, message.body.config.state);
+    packet.data[1] = 5U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data[1] = 4U;
+    packet.data[2] = 8U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_error_frame_length_rules(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_PWR_CFG2,
+        .type = SCP_TYPE_ERROR, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU};
+    rf_scp_message_t message;
+
+    packet.data[0] = RF_SCP_ERR_BUSY;
+    packet.data_len = 2U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data[0] = RF_SCP_ERR_INVALID_PARAM;
+    packet.data_len = 3U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data_len = 0U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data_len = 4U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data_len = 2U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data[0] = RF_SCP_ERR_BUSY;
+    packet.data_len = 3U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+                          rf_scp_decode_message(&packet, &message));
+    /* Extended error bodies are reserved for the powerboard config pair. */
+    packet.cmd = RF_SCP_CMD_CFG_READ_ALL;
+    packet.data_len = 2U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_time_sync_rejects_every_out_of_range_calendar_field(void)
+{
+    scp_packet_t packet;
+    scp_packet_t out;
+
+    /* Milliseconds 60000 is one past the valid maximum. */
+    packet = first_packet(RF_SCP_CMD_TIME_SYNC, SCP_TYPE_SET);
+    scp_pack_u16(packet.data, 60000U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    /* Minute 60, hour 24, day 0, month 13 and year 100 are rejected. */
+    packet = first_packet(RF_SCP_CMD_TIME_SYNC, SCP_TYPE_SET);
+    packet.data[2] = 60U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet = first_packet(RF_SCP_CMD_TIME_SYNC, SCP_TYPE_SET);
+    packet.data[3] = 24U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet = first_packet(RF_SCP_CMD_TIME_SYNC, SCP_TYPE_SET);
+    packet.data[4] = 0U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet = first_packet(RF_SCP_CMD_TIME_SYNC, SCP_TYPE_SET);
+    packet.data[5] = 13U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet = first_packet(RF_SCP_CMD_TIME_SYNC, SCP_TYPE_SET);
+    packet.data[6] = 100U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    /* The unchanged captured timestamp stays valid. */
+    packet = first_packet(RF_SCP_CMD_TIME_SYNC, SCP_TYPE_SET);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_build_packet(&packet, &out));
+}
+
+void test_inventory_body_rejects_zone_feeder_and_phase_bounds(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_INVENTORY_SET,
+                                       SCP_TYPE_SET);
+    scp_packet_t out;
+
+    packet.data[0] = 8U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet = first_packet(RF_SCP_CMD_INVENTORY_SET, SCP_TYPE_SET);
+    packet.data[1] = 8U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet = first_packet(RF_SCP_CMD_INVENTORY_SET, SCP_TYPE_SET);
+    packet.data[2] = 0U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet = first_packet(RF_SCP_CMD_INVENTORY_SET, SCP_TYPE_SET);
+    packet.data[2] = 4U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    /* UPDATE may address an unassigned feeder; SET may not. */
+    packet = first_packet(RF_SCP_CMD_INVENTORY_UPDATE, SCP_TYPE_SET);
+    packet.data[1] = 0U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_build_packet(&packet, &out));
+}
+
+void test_log_requests_reject_slot_hundred_and_empty_count(void)
+{
+    scp_packet_t packet = {.type = SCP_TYPE_SET};
+    scp_packet_t out;
+
+    packet.cmd = RF_SCP_CMD_LOG_CONSUME_TO;
+    packet.data_len = 2U;
+    scp_pack_u16(packet.data, 100U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet.type = SCP_TYPE_GET;
+    packet.cmd = RF_SCP_CMD_LOG_READ_RECORD;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    scp_pack_u16(packet.data, 99U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                          rf_scp_build_packet(&packet, &out));
+    packet.type = SCP_TYPE_GET;
+    packet.cmd = RF_SCP_CMD_LOG_READ_RANGE;
+    packet.data_len = 4U;
+    scp_pack_u16(packet.data, 100U);
+    scp_pack_u16(&packet.data[2], 1U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    scp_pack_u16(packet.data, 36U);
+    scp_pack_u16(&packet.data[2], 0U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+}
+
+void test_log_batch_length_rules_for_range_and_single_record(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_LOG_READ_RANGE,
+        .type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU};
+    rf_scp_message_t message;
+
+    packet.data_len = 246U;   /* Above the 240-byte transport limit. */
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+                          rf_scp_decode_message(&packet, &message));
+    packet.data_len = 61U;    /* Within the limit, not a record multiple. */
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+                          rf_scp_decode_message(&packet, &message));
+    packet.cmd = RF_SCP_CMD_LOG_READ_RECORD;
+    packet.data_len = 120U;   /* Multi-record body is not a single read. */
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_LEN,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_power_command_rejects_manufacturer_service_codes(void)
+{
+    scp_packet_t packet = {.type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_PWR_COMMAND,
+        .data_len = 2U};
+    scp_packet_t out;
+
+    packet.data[0] = 1U;
+    packet.data[1] = 0xA5U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet.data[0] = 4U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+    packet.data[0] = 5U;
+    packet.data[1] = 0x11U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+}
+
+void test_power_config_rejects_period_with_reserved_bit_set(void)
+{
+    scp_packet_t packet = {0};
+    scp_packet_t out;
+
+    packet.type = SCP_TYPE_SET;
+    packet.cmd = RF_SCP_CMD_PWR_CFG2;
+    packet.data_len = 16U;
+    packet.data[0] = 1U;
+    scp_pack_u16(&packet.data[1], 0x4000U);
+    packet.data[15] = 0xC0U;   /* Bit 7 is reserved and must be zero. */
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_build_packet(&packet, &out));
+}
+
+void test_live_notification_rejects_log_pending_above_capacity(void)
+{
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_LIVE_DATA,
+        .type = SCP_TYPE_SET, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 33U};
+    rf_scp_message_t message;
+
+    packet.data[0] = 0x05U;
+    packet.data[29] = 101U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+}
+
+void test_hub_counters_reject_slot_hundred_everywhere(void)
+{
+    scp_packet_t packet = {.type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU};
+    rf_scp_message_t message;
+
+    packet.cmd = RF_SCP_CMD_LOG_AVAILABLE;
+    packet.type = SCP_TYPE_SET;
+    packet.data_len = 4U;
+    scp_pack_u16(&packet.data[2], 100U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    packet.type = SCP_TYPE_ACK;
+    packet.cmd = RF_SCP_CMD_LOG_READ_HEAD;
+    packet.data_len = 10U;
+    scp_pack_u16(packet.data, 100U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
+    packet.cmd = RF_SCP_CMD_GET_FRAM_STATS;
+    packet.data_len = 8U;
+    scp_pack_u16(packet.data, 100U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                          rf_scp_decode_message(&packet, &message));
 }
 
 /*** end of file ***/
