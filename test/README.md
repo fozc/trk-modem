@@ -1070,7 +1070,7 @@ ve NVRAM integration paketine eklendi; NVRAM'de 433/433 kontrol geçti.
 
 **Kapsam sınırı:** WRITE×3/COMMIT/STATUS sıralayıcısı, APPLIED ve NVRAM
 ürün politikası henüz bu testlerin kapsamında değildir. Protokol soruları
-[BOLATeX belgesinde](../doc/BOLATEXE_SORULACAKLAR.md) takip edilir.
+doc/BOLATEXE_SORULACAKLAR.md'de (yerel dosya, git dışı) takip edilir.
 
 ## Grup durumunun shell üzerinden sorgulanması
 

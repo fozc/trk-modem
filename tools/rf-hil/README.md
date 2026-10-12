@@ -120,4 +120,4 @@ python test/system/rf_hil/run_hil.py --rf-port COM10 --console COM16
   head'de kesilen RANGE, EUI ozeti, LIVE boot sayaci, 45 B E1, E7 b4,
   pre-COMMIT ABORT ve korunmus grup kimligi sinanir. Planlanan firmware ozellikleri bugunku
   davranis yerine uygulanmaz. Ayrintili kontrol:
-  [RF-SCP yanıt kontrolü](../../doc/RF_SCP_BOLATEX_YANIT_KONTROLU.md).
+  doc/RF_SCP_BOLATEX_YANIT_KONTROLU.md (yerel dosya, git disi).

@@ -94,10 +94,13 @@ Headless CI/Docker işi kullanıcı kararıyla ertelidir.
 Mevcut NVRAM ABI korunmalıdır. Kaynaklar:
 [types.h](../Application/types.h), [nvram.c](../Application/nvram.c).
 
-KODDAN_OKUNDU: NVRAM_SCHEMA_VERSION 2U; nvram_t için sizeof assert
+KODDAN_OKUNDU: NVRAM_SCHEMA_VERSION 3U; nvram_t için sizeof assert
 2476U, crc ofseti 2472U. Header magic/version/length/sequence taşır.
 Bunlar kaynak assert değerleridir; bu paket çalışmasında hedef
 compiler ile yeniden ölçülmedi.
+(Düzeltme 12.10.2026: bu kayıt önce 2U yazmıştı; types.h 216-270
+satırlarından yeniden okunup 3U olarak güncellendi. sizeof/crc
+değerleri değişmedi. Şema değişikliği değildir.)
 
 Mevcut değişiklik kuralı: alanlar crc öncesinde kuyruğa eklenir;
 şema sürümü artırılır; hedef sizeof/offsetof kontrolleri güncellenir.
@@ -156,6 +159,7 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 | Lifetime mevcut NVRAM alanında kalır | 25 saatte bir ve mevcut periyodik reset öncesinde sync vardır. Ayrı Flash alanı/migration veya her reset için flush yetkisi verilmemiştir. Üretim raporu §9.1. |
 | Random altyapısı BSP'dedir | HTTP token doğrudan bsp_random_word kullanır; fallback bu API içindedir. HAL başlangıcı main/CubeMX'tedir. Erişilebilirlik fallback'i güvenli entropy sayılmaz. Üretim raporu §9.1. |
 | Geliştirme anahtarları şimdilik Git'te kalır | Anahtarlar otomatik silinmez/taşınmaz veya geçmiş yeniden yazılmaz. Saha öncesi yeni üretim anahtarları hazırlanıp doğrulanmalıdır. [keys/README.md](../keys/README.md), üretim raporu §9.5. |
+| BOLATeX teslim/iletişim belgeleri git dışıdır | 12.10.2026 kullanıcı kararı: dört BOLATeX belgesi (sorular, PowerBoard I2C protokolü, RF-SCP yanıt kontrolü, modem uygulama planı) tüm dallardan geçmişten silindi ve yalnız yerelde tutulur. Geçmiş yeniden yazma istisnası bu açık kararla verilmiştir; anahtar satırındaki yasağın kapsamı değişmez. |
 | RF modeli son dokümana göre kurulur | 05.10.2026 kullanıcı kararı: sahada cihaz yoktur; eski RF model/JSON/API uyumluluğu gerekmez. R1 EUI-64/signed RSSI/float modeline geçilmiş; sentetik RF örnekleri gerçek cache/envanterden ayrılmıştır. Güncel protokolün olay/alarm geçmişi yükümlülüğü sürer. Üretim raporu §10.12. |
 | Tam RF olay günlüğü ayrı 8 KB alandadır | 05.10.2026 kullanıcı kararı: kalıcı/geçici arıza alanları korunur; 60 B paket için spi_flash_log kullanılır. Yeni bölge 0x232000–0x233FFF; 64 B entry ile en çok 128 kayıt, sektör silinirken diğer 64 kayıt korunur. NVRAM düzeni değişmez. Üretim raporu §10.13. |
 | RF arızaları mevcut listelere de aktarılır | 05.10.2026 kullanıcı kararı: olay 1/7 kalıcı, 3 geçici; mevcut süre uint32_t olur. fault_log_t 20 B ve fider görüntüsü 1852 B; alan adresleri korunur, FAULT_LOG_SCHEMA_VERSION 2 olur. head=tail boş kabul edilir; pending=100 bildirimi dolu halkayı ayırır. Üretim raporu §10.15. |
@@ -165,8 +169,8 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 | RF enerji/yük ve ayrı kalite bloğu | 06.10.2026 kullanıcı kararı: doküman esas alınır, eski nominal gösterge adları korunmaz. Enerji/yük LIVE bit 0/1 kaynağıdır. Mevcut değer adresleri 0/1; 49500–49520 salt okunur faz kalite bloğunda bit 0 akım, bit 1 enerji, bit 2 yük geçerliliğidir. Eksik/eski örnek kalite=0; son Boolean korunur, hiç örnek yoksa 0 olur. Web/sunucu adres çakışmasını reddeder. NVRAM boyutu/sırası değişmez. Koruma nominal akımı ayrı anlamını korur. Üretim raporu §10.27. |
 | Anlık arıza özetleri kaldırılır | 06.10.2026 kullanıcı kararı: arıza akımı/süresi/tipi canlı göstergeleri kaldırılır, geçici/kalıcı listeler kalır. NVRAM yuvaları reserved olur; kalan adresler korunur. Olay yük biti doğrudan saklanır; eski ters anlamlı liste sürümü 2 reddedilir, yeni fault schema 3'tür. Spontane/replay ilk liste kaydı IOA'larından kendi olay zamanıyla gönderilir; hazırlanan paket 06.10.2026 kullanıcı commit talebiyle onaylandı. |
 | RF operatör onay kanalı sorulur | 06.10.2026 kullanıcı kararı: onayın yerel RTU operatörü veya SCADA merkezinden gelmesi BOLATeX'e BQ-16 ile sorulur. Yeni web düğmesi/yazma API'si cevap bekler. Mevcut terminal `rf alarm-ack` ve servis davranışı değiştirilmez. |
-| RF web Kaydet onayı uygulamayı başlatır | 08.10.2026 kullanıcı kararı önceki K5 web ayrımını güncelledi. Tüm etkin fiderler `rf_apply` ile sırayla uygulanır; grup kimliği otomatik seçilir. Ayrı Uygula/Yalnız kaydet yoktur. Güncel kurallar [uygulama planı 0.28](../doc/RF_SCP_MODEM_UYGULAMA_PLANI.md#rf-web-kaydet-onayı-ve-sıralı-uygulama--08102026); doğrulama üretim raporu §10.36. |
-| Powerboard tüketicileri SCP kaynağını kullanır | 06.10.2026 kullanıcı kararı: 49200 tabanı korunarak 38 register yeni harita kurulur. Özet/alarm modeli system_status, web, Modbus ve shell kaynağıdır; eski I²C process başlatılmaz. Kaynaklar silinmez; GPIO power-panic ve kapalı BMS reader korunur. E5–E8 müşteri kontrolü shell ile bağlıdır; GEN/yankı/E1 ve komut sonucu ayrımı korunur. Ayarsız ayar/periyot ve E7 bitiş ayrımı BQ-12–14'tedir. Web/Modbus yazma arayüzü ayrıca ele alınır. [Uygulama planı](../doc/RF_SCP_MODEM_UYGULAMA_PLANI.md#powerboard-tüketici-geçişi--06102026). |
+| RF web Kaydet onayı uygulamayı başlatır | 08.10.2026 kullanıcı kararı önceki K5 web ayrımını güncelledi. Tüm etkin fiderler `rf_apply` ile sırayla uygulanır; grup kimliği otomatik seçilir. Ayrı Uygula/Yalnız kaydet yoktur. Güncel kurallar uygulama planı 0.28'dir (doc/RF_SCP_MODEM_UYGULAMA_PLANI.md, yerel dosya, git dışı); doğrulama üretim raporu §10.36. |
+| Powerboard tüketicileri SCP kaynağını kullanır | 06.10.2026 kullanıcı kararı: 49200 tabanı korunarak 38 register yeni harita kurulur. Özet/alarm modeli system_status, web, Modbus ve shell kaynağıdır; eski I²C process başlatılmaz. Kaynaklar silinmez; GPIO power-panic ve kapalı BMS reader korunur. E5–E8 müşteri kontrolü shell ile bağlıdır; GEN/yankı/E1 ve komut sonucu ayrımı korunur. Ayarsız ayar/periyot ve E7 bitiş ayrımı BQ-12–14'tedir. Web/Modbus yazma arayüzü ayrıca ele alınır. Ayrıntılar modem uygulama planındadır (doc/RF_SCP_MODEM_UYGULAMA_PLANI.md, yerel dosya, git dışı). |
 | PowerBoard ertelemeleri korunur | BMS Y8.4–Y8.7 yazılım düzeltmeleri tamamlandı; reader init hâlâ kapalıdır. Düzeltme etkinleştirme yetkisi değildir. Üretim raporu §9.31–§9.33. |
 | GSM sabit ayarlar ve listener açılışı ayrılır | 10.10.2026 kullanıcı kararı: sabit web SCFG ve iki soketin SCFGEXT/SCFGEXT2 ayarları genel init'te kalır. İlk açılış ve reconnect, GSM listener süreçlerinden yürür. Dinamik IEC104 SCFG son başarılı timeout'u RAM'de tutar; değişmemiş değer atlanır, genel modem init tamamlandığında cache geçersiz sayılır. Ayrı Flash alanı yoktur. Üretim raporu §10.59. |
 
