@@ -1,5 +1,9 @@
 # Donanım Test ve Debug Rehberi (ST-Link + Seri Konsol)
 
+**Sürüm:** 1.1
+
+**Tarih:** 12.10.2026
+
 **Amaç:** Bu rehber, cihazın (troika-smart-breaker-modem) ST-Link ve seri
 konsol üzerinden nasıl derlenip yazılacağını, güncelleneceğini ve test
 edileceğini adım adım anlatır. 2026-09-19 tarihli donanım kabul test
@@ -18,6 +22,7 @@ yapılacağı her durumda kullanılır.
 | ARM toolchain | `C:\ST\STM32CubeIDE_2.1.1\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.14.3.rel1.win32_1.0.100.202602081740\tools\bin` |
 | STM32CubeProgrammer CLI | `C:\ST\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe` |
 | Seri konsol | **COM16** (USB Serial Port), **LPUART1 230400 8N1** (PC0/PC1) |
+| AY konsolları | **COM9 ve COM14, 230400 baud**; 12.10.2026 kullanıcı bilgisi, AY/EUI/faz eşleşmesi koşu başında doğrulanmalıdır |
 | ST-Link VCP | COM17 (konsol değildir; sadece tanıma) |
 | Python | pyserial kurulu olmalıdır (`pip install pyserial`) |
 | Yardımcı betikler | `tools/hwtest/serial_io.py`, `tools/hwtest/xmodem_send.py` |
@@ -62,6 +67,59 @@ printf 'help\nbootlog dump\n' | python tools/hwtest/serial_io.py \
   cihazı sıfırla (bkz. A.4), kayıt bitince dosyayı incele.
 - Konsolda AT trafiği ve `[Stack]` satırları arka plan günlüğüdür;
   filtrelemek için `grep -avE "AT TX|AT RX|\[Stack\]|SI\["` kullanılır.
+
+### A.2.1 AY konsolundan TEST kaydı oluşturma
+
+**Amaç:** Gerçek AY → RF → MH → RTU kayıt aktarımını, açma darbesi
+üretmeden sınamak. Gerçek MH süitindeki m4 için bekleyen kayıt oluşturmak.
+
+**Kaynak:** 12.10.2026 kullanıcı tarafından verilen AY komut açıklaması
+ve güncel port bilgisi. Bu bölümde ayrıca cihaz üzerinde doğrulama yapıldığı
+iddia edilmez. AY konsolları şu anda COM9 ve COM14 üzerinden 230400 baud
+ile erişilir. Portların hangi AY/EUI/faza bağlı olduğu henüz bu belgeyle
+tanımlanmaz; her koşuda doğrulanmalıdır. Diğer seri hat ayarları verilen
+bilgide bulunmaz; AY konsol ayarından doğrulanmalıdır.
+
+| AY komutu | Üretilen kayıt |
+|---|---|
+| `test evt` | Olay tipi 137 (TEST) |
+| `test evt <sayı>` | Olay tipi yine 137; sayı `total_permanent_faults` alanında taşınır |
+
+**Örnek:** `test evt 100` komutu olay tipi 137 üretir ve
+`total_permanent_faults=100` taşır. Gerçek olay tipi 100 üretmez.
+
+#### Kurallar
+
+- `test evt` ile solenoid çalıştırılmaz ve kart açma yapmaz; kayıt AY'nin
+  kayıt defterine düşer, RF ile MH'ye, SCP `0x42/0x44` üzerinden RTU'ya gelir.
+- Defterde bekleyen kayıt sayısı yarıyı geçerse komut `RED` verir;
+  gerçek kayıtları koruyan bu sınır aşılmaya çalışılmamalıdır.
+- Prod lock (üretim kilidi) açıkken test komutları reddedilir;
+  bu test için kilit izinsiz kaldırılmamalıdır.
+- **`test trip` kullanılmamalıdır:** gerçek açma darbesi verir.
+- Gerçek akımla 100/101 gibi arızalar üretmek için masada test akımı
+  gerekir; `test evt <sayı>` bu fiziksel arıza kabulünün yerine kullanılmamalıdır.
+
+#### Adımlar
+
+1. AY firmware kimliği, port/EUI/faz eşleşmesi, prod lock durumu ve
+   başlangıç kayıt durumu kaydedilmelidir.
+2. AY ve RTU konsol kayıtları başlatılmalıdır. m4 gözlem penceresi olay
+   üretilmeden önce açılmalıdır; hızlı tüketilen kayıt kaçırılmamalıdır.
+3. Seçilen AY konsolunda bir kez `test evt` gönderilmelidir. Alan taşıma
+   sınaması gerekiyorsa ayrı koşuda `test evt <sayı>` kullanılmalıdır.
+4. Komut kabulü veya `RED`/kilit reddi AY kaydında tutulmalıdır. Ret sonucu
+   başarılı kayıt aktarımı olarak gösterilmemelidir.
+5. Olay tipi 137'nin AY defteri, MH aktarımı ve RTU ham kaydındaki
+   kimlik/alanları karşılaştırılmalıdır. Verilen sayı varsa yalnız ilgili
+   TEST kayıt alanı olarak değerlendirilmelidir.
+6. m4 için HEAD ve okunmuş kayıtla ilişkili tüketme ACK'i ve ordinal/slot
+   ilerlemesi kaydedilmelidir. Yalnız istek veya etkisiz boot-protect ACK'i
+   tüketme başarısı sayılmamalıdır.
+
+**Doğrulama:** Aynı TEST kaydı gerçek aktarım zincirinde izlenebilir;
+bekleyen kayıt okunur ve tüketme ilerlemesi kanıtlanır. Bu sonuç gerçek
+100/101 arızası, açma mekanizması veya bütün fiziksel R2 kabulü değildir.
 
 ### A.3 Cihazı sıfırlama (yazılım reseti)
 
@@ -193,4 +251,5 @@ Bütçe 80 KB (81920 bayt, `text+data`). Ölçüm (2026-09-19): 53 996 bayt
 
 | Tarih | Açıklama |
 |---|---|
+| 2026-10-12 | v1.1 — A.2.1: AY COM9/COM14, TEST 137 üretimi, RED/prod lock sınırları, test trip yasağı ve m4 kanıt adımları |
 | 2026-09-19 | İlk sürüm — 2026-09-19 kabul test oturumunda doğrulanmış akışlar (APP-1/2/3 kabulleri, BSL geri alma davranışı, EWDT/UnderReset kuralı) |

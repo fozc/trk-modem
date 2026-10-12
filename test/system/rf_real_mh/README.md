@@ -1,7 +1,7 @@
 # Gerçek MH Duman Süiti (`rf_real_mh`)
 
-**Sürüm:** 1.1
-**Tarih:** 2026-10-10
+**Sürüm:** 1.2
+**Tarih:** 2026-10-12
 
 HIL süiti (`test/system/rf_hil`) PC'deki simülatörün oynadığı MH'ye karşı
 koşar; bu süit gerçek MH ve ayırıcı kartlarla doğrulama yapar. Üretim
@@ -21,6 +21,10 @@ bağlantısı henüz kurulmamıştı; bu gözlem MH firmware arızasını kanıt
    BLOCKED döner.
 2. Gerçek MH, SCP hattına (USART3) bağlı ve ayakta.
 3. Konsol portu erişilebilir (varsayılan COM16, 230400).
+4. m4 için kontrollü kayıt oluşturma yöntemi ve AY konsol erişimi
+   [donanım rehberi A.2.1](../../../doc/HW_TEST_VE_DEBUG_REHBERI.md#a21-ay-konsolundan-test-kaydı-oluşturma)
+   bölümündedir. TEST kaydı olay tipi 137'dir; gerçek arıza kabulünün yerine
+   kullanılmaz. Olay üretilmeden önce m4 gözlemi başlatılır.
 
 Aktif RF-SCP yolu **yüklenen imajın profili** belirler: RS-485 adaptörü
 (COM10) ve gerçek MH aynı anda takılı kalabilir. Profile-0'da SCP
@@ -57,7 +61,7 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
 | m1_hub_fw | GET_STATUS yanıtında beklenen fw kimliği | farklı kimlik = FAIL; yanıt yok = SKIP (MH bağlı değil olabilir) |
 | m2_inventory | RTU'da `Envanter: YUKLU` durumu | YUKLU değil = FAIL; fiziksel AY/EUI eşleşmesi ve giriş sayısını doğrulamaz |
 | m3_live_boot | LIVE_DATA akışı + telde Boot_Counter (gövde bayt 31–32, BQ-19) | akış yok = FAIL; sayaç 0 taşıyan kaynak = FAIL |
-| m4_ring_consume | 0x47 zilinin 0x48 tüketmesiyle kapanması | zil var tüketme yok = FAIL; ikisi de yok = SKIP (bekleyen kayıt zorlanamaz) |
+| m4_ring_consume | HEAD ve eşleşen tüketme ACK'iyle ordinal/slot ilerlemesi | gerçek ilerleme = PASS; kayıt tüketimi gözlenmezse SKIP; kontrollü kayıt için ön koşul 4 |
 | m5_epoch_201 | `--epoch`: olay 201 (+120) kayıtları gerçek halkadan okunur | 100 s içinde 201 yok = FAIL |
 | m6_bootless | `--reset-dut`: BOOT_NOTIFY gelmeden kurulum | BOOT geldi = FAIL (MH de yeniden başlamış; pencereyi kaydır) |
 | m7_asdu_quality | `--104-host`: canlı akan fiderlerin GI ölçüm noktalarında kalite VE CP56 damga geçerli | canlı akış + tüm noktalar IV = FAIL (VINCI belirtisi); geçerli ölçüm + iv=1 damga = FAIL |
@@ -80,6 +84,7 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-12 | 1.2 | m4 için AY TEST kaydı rehberine atıf; güncel tüketme kanıtı |
 | 2026-10-10 | 1.1 | AY bağlantı önkoşulu, m2 salt gözlem kapsamı ve merkezi host selftest'leri |
 - Gerçek ayırıcı arızası/olayı üretilemediği için olay zinciri
   (101/142/201 sınıflaması) cihaz tarafında yalnız gerçek trafik olduğunda
