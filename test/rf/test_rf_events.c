@@ -294,10 +294,24 @@ static void confirm_consumption(void)
 }
 
 /* Keep ordinal and slot metadata consistent for the fresh HEAD check. */
+static bool second_binding_active;
+static rf_inventory_entry_t second_binding_storage;
+
 static bool binding_entry(uint8_t source, rf_inventory_entry_t *entry,
                           int call_count)
 {
     (void)call_count;
+    if (second_binding_active &&
+        (source == (uint8_t)((second_binding_storage.feeder << 2U) |
+                             second_binding_storage.phase)))
+    {
+        if (rf_eui64_is_zero(second_binding_storage.eui64))
+        {
+            return false;
+        }
+        *entry = second_binding_storage;
+        return true;
+    }
     if (source != (uint8_t)((binding_entry_storage.feeder << 2U) |
                             binding_entry_storage.phase))
     {
@@ -357,6 +371,8 @@ void setUp(void)
     hash_collision = false;
     alarm_writes = 0U;
     alarm_emit_calls = 0U;
+    second_binding_active = false;
+    (void)memset(&second_binding_storage, 0, sizeof(second_binding_storage));
     (void)memset(&written_fault, 0, sizeof(written_fault));
     (void)memset(&request, 0, sizeof(request));
     (void)memset(&feeder, 0, sizeof(feeder));
@@ -1667,6 +1683,729 @@ void test_live_alarm_activation_and_resolution_both_reach_persistent_queue(void)
     TEST_ASSERT_TRUE(rf_alarm_is_idle());
     TEST_ASSERT_EQUAL_UINT8(0U, written_alarm.active);
     TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+}
+
+/* ------------------ R2 edge regressions, 12.10.2026 ------------------ */
+
+void test_boot_protect_rejects_busy_restart_and_gates_inventory_upload(void)
+{
+    inventory_status = RF_INVENTORY_LOADING;
+    rf_events_init();
+    TEST_ASSERT_FALSE(rf_events_inventory_allowed());
+    TEST_ASSERT_TRUE(rf_events_boot_protect());
+    TEST_ASSERT_FALSE(rf_events_boot_protect());
+    rf_events_process(tick);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
+
+    scp_pack_u16(packet.data, 12U);
+    scp_pack_u16(&packet.data[8], 9U);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_CONSUME_IF, request.cmd);
+    packet = capture(RF_SCP_CMD_LOG_CONSUME_IF, SCP_TYPE_ACK);
+    scp_pack_u16(packet.data, 9U);
+    scp_pack_u16(&packet.data[2], 3U);
+    rf_inventory_start_ExpectAndReturn(true);
+    respond(&packet);
+    TEST_ASSERT_TRUE(rf_events_inventory_allowed());
+}
+
+void test_drain_reason_reports_storage_while_persisting(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    raw_success = false;
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_STRING("storage", rf_events_drain_reason());
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+    TEST_ASSERT_EQUAL_STRING("storage", rf_events_drain_reason());
+}
+
+void test_drain_reason_reports_degraded_hub_storage(void)
+{
+    rf_events_process(tick);
+    scp_packet_t busy = {.type = SCP_TYPE_ERROR, .data_len = 2U,
+                         .data = {RF_SCP_ERR_BUSY, 0U}};
+
+    respond(&busy);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_GET_FRAM_STATS, request.cmd);
+    scp_packet_t packet = {.cmd = RF_SCP_CMD_GET_FRAM_STATS,
+        .type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 8U};
+    packet.data[6] = 1U;
+    respond(&packet);
+    TEST_ASSERT_EQUAL_STRING("mh_degraded", rf_events_drain_reason());
+    rf_events_process(tick + 60001U);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+}
+
+void test_late_response_after_idle_does_not_restart_a_cycle(void)
+{
+    rf_events_process(tick);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
+
+    scp_pack_u16(packet.data, 37U);
+    scp_pack_u16(&packet.data[8], 37U);
+    respond(&packet);
+    TEST_ASSERT_EQUAL_STRING("mh_records", rf_events_drain_reason());
+    const size_t before = requests;
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, requests);
+}
+
+void test_fault_line_falls_back_to_matching_store_feeder_when_zone_differs(void)
+{
+    binding_entry_storage.line_index = UINT8_MAX;
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    packet.data[7] = 101U;
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, fault_writes);
+    /* No cached line index: the matching store feeder line 2 must win. */
+    TEST_ASSERT_EQUAL_UINT8(2U, written_fault.info.feeder);
+}
+
+void test_fault_without_any_line_match_is_kept_raw_only(void)
+{
+    binding_entry_storage.line_index = UINT8_MAX;
+    feeder.in_use = false;
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    packet.data[7] = 101U;
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    /* Without a mapped alarm line the record is not acknowledged, so the
+     * MH tail is held until a line mapping exists. */
+    TEST_ASSERT_EQUAL_size_t(0U, alarm_writes);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+}
+
+void test_fault_with_invalid_load_flag_is_kept_raw_only(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    packet.data[7] = 101U;
+    packet.data[13] = 2U;
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+}
+
+void test_fault_with_nan_current_is_kept_raw_only(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    packet.data[7] = 101U;
+    /* IEEE-754 NaN (0x7FC00000) in the little-endian current field. */
+    packet.data[15] = 0x00U;
+    packet.data[16] = 0x00U;
+    packet.data[17] = 0xC0U;
+    packet.data[18] = 0x7FU;
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+}
+
+void test_clock_quality_zero_uses_local_time_with_invalid_marker(void)
+{
+    const bsp_rtc_t rtc = {.millisec = 1000U, .second = 12U, .minute = 10U,
+        .hour = 7U, .day = 3U, .month = 10U, .year = 26U};
+    bsp_get_datetime_IgnoreAndReturn(rtc);
+    scp_packet_t packet = alarm_packet();
+
+    packet.data[7] = 101U;
+    packet.data[55] = 0U;
+    update_crc(&packet);
+    start_read(36U, 37U);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, fault_writes);
+    TEST_ASSERT_TRUE(written_fault.tm.iv_bit);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_TRUE(written_alarm.time.iv_bit);
+}
+
+void test_alarm_record_with_invalid_or_unbound_source_stays_raw_only(void)
+{
+    scp_packet_t packet = alarm_packet();
+    rf_scp_event_t event;
+
+    packet.data[9] = 0U;               /* feeder 0 */
+    update_crc(&packet);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    packet.data[9] = 5U;               /* feeder above the supported range */
+    update_crc(&packet);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    packet.data[9] = 2U;               /* valid feeder, no binding */
+    update_crc(&packet);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    packet.data[9] = 1U;
+    packet.data[10] = 0U;              /* phase zero */
+    update_crc(&packet);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(0U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+}
+
+void test_alarm_backoff_and_binding_change_keep_pending_delivery(void)
+{
+    scp_packet_t packet = alarm_packet();
+    rf_scp_event_t event;
+
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    alarm_success = false;
+    TEST_ASSERT_FALSE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    /* Inside the retry window no new storage attempt is made. */
+    TEST_ASSERT_FALSE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    /* After the window a still-failing store retries the pending record. */
+    tick = 60000U;
+    TEST_ASSERT_FALSE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    /* After the window a changed EUI on the same slot is not the same job. */
+    alarm_success = true;
+    tick += 60000U;
+    binding_entry_storage.eui64[7] = 9U;
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    /* The original pending record still delivers for its own EUI. */
+    binding_entry_storage.eui64[7] = 0U;
+    tick += 60000U;
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(3U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+}
+
+void test_alarm_process_stops_retrying_at_the_first_failing_source(void)
+{
+    (void)alarm_packet();
+    second_binding_active = true;
+    second_binding_storage = (rf_inventory_entry_t)
+    {
+        .zone = 1U, .feeder = 2U, .phase = 1U, .eui64 = {3U},
+        .line_index = 2U
+    };
+    rf_init();
+    scp_packet_t packet = alarm_packet();
+    rf_scp_event_t event;
+
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+        rf_scp_decode_event(packet.data, 60U, &event));
+    alarm_success = false;
+    TEST_ASSERT_FALSE(rf_alarm_record(&event));
+    const cp56time2a_t time = cp56time2a_make(10000U, 0U, 12U,
+                                            7U, 3U, 10U, 26U);
+    rf_scp_live_t live = {.source = 9U, .uptime_sec = 10U,
+                          .boot_counter = 1U, .trip_failed = true};
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick, &time));
+    rf_alarm_live(9U, &time);
+    tick = 60000U;
+    rf_alarm_process(tick);
+    /* Only the first failing source is retried in this pass. */
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    alarm_success = true;
+    tick += 60000U;
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(4U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+}
+
+void test_alarm_process_without_live_timestamp_still_queues_local_time(void)
+{
+    const bsp_rtc_t rtc = {.millisec = 1000U, .second = 12U, .minute = 10U,
+        .hour = 7U, .day = 3U, .month = 10U, .year = 26U};
+    bsp_get_datetime_IgnoreAndReturn(rtc);
+    binding_entry_storage = (rf_inventory_entry_t)
+    {
+        .zone = 1U, .feeder = 1U, .phase = 1U, .eui64 = {1U}
+    };
+    rf_inventory_get_binding_StubWithCallback(binding_entry);
+    rf_init();
+    TEST_ASSERT_TRUE(rf_open_trip_failure_alarm(1U, 1U, 1U));
+    rf_alarm_process(tick);
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_EQUAL_UINT8(1U, written_alarm.active);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+}
+
+void test_alarm_live_repeat_with_unchanged_trip_state_does_not_requeue(void)
+{
+    (void)alarm_packet();
+    const cp56time2a_t time = cp56time2a_make(10000U, 0U, 12U,
+                                            7U, 3U, 10U, 26U);
+    rf_scp_live_t live = {.source = 5U, .uptime_sec = 10U,
+                          .trip_failed = true};
+
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick, &time));
+    rf_alarm_live(5U, &time);
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    rf_alarm_live(5U, &time);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+}
+
+void test_notify_rejects_out_of_range_pending_or_head_values(void)
+{
+    rf_events_process(tick);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
+
+    scp_pack_u16(packet.data, 37U);
+    scp_pack_u16(&packet.data[8], 37U);
+    respond(&packet);
+    tick = 59999U;
+    const rf_scp_message_t bad_pending =
+    {
+        .cmd = RF_SCP_CMD_LOG_AVAILABLE, .type = SCP_TYPE_SET,
+        .body.log_available = {.pending = 100U, .head = 37U}
+    };
+    rf_events_notify(&bad_pending);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, requests);
+    const rf_scp_message_t good =
+    {
+        .cmd = RF_SCP_CMD_LOG_AVAILABLE, .type = SCP_TYPE_SET,
+        .body.log_available = {.pending = 1U, .head = 38U}
+    };
+    rf_events_notify(&good);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    packet = capture(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
+    scp_pack_u16(packet.data, 38U);
+    scp_pack_u16(&packet.data[8], 38U);
+    respond(&packet);
+    const rf_scp_message_t bad_head =
+    {
+        .cmd = RF_SCP_CMD_LOG_AVAILABLE, .type = SCP_TYPE_SET,
+        .body.log_available = {.pending = 1U, .head = 100U}
+    };
+    rf_events_notify(&bad_head);
+    tick = 60000U;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+}
+
+/* --------- R2 dead-branch regressions, 12.10.2026 tur 2 --------- */
+
+void test_notify_ignores_null_and_foreign_messages(void)
+{
+    rf_events_notify(NULL);
+    const rf_scp_message_t wrong_type =
+    {
+        .cmd = RF_SCP_CMD_LOG_AVAILABLE, .type = SCP_TYPE_ACK,
+        .body.log_available = {.pending = 1U, .head = 38U}
+    };
+    rf_events_notify(&wrong_type);
+    const rf_scp_message_t wrong_cmd =
+    {
+        .cmd = RF_SCP_CMD_LIVE_DATA, .type = SCP_TYPE_SET,
+        .body.log_available = {.pending = 1U, .head = 38U}
+    };
+    rf_events_notify(&wrong_cmd);
+    tick = 59999U;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, requests);
+}
+
+void test_oversized_batch_stops_cycle_without_storing_or_consuming(void)
+{
+    start_read(36U, 37U);   /* One pending record is requested. */
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    (void)memcpy(&packet.data[60], packet.data, 60U);
+    packet.data_len = 120U;   /* The hub returned two records. */
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+}
+
+void test_verify_head_reanchors_when_total_advances_a_full_wrap(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    respond(&packet);
+    rf_events_process(tick);      /* Store the record. */
+    rf_events_process(tick);      /* Fresh HEAD before consume. */
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    packet = read_head;
+    /* Same modular position, but the lifetime total jumped one modulus. */
+    put_u32(&packet.data[4], 137U + 6553600U);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_RANGE, request.cmd);
+    TEST_ASSERT_EQUAL_UINT16(36U, scp_unpack_u16(request.data));
+}
+
+void test_ack_without_packet_stops_the_cycle(void)
+{
+    rf_events_process(tick);      /* HEAD request in flight. */
+    TEST_ASSERT_NOT_NULL(response_handler);
+    response_handler(SCP_CMD_OK, NULL);
+    const size_t before = requests;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, requests);
+}
+
+void test_undecodable_ok_reply_stops_the_cycle(void)
+{
+    rf_events_process(tick);      /* HEAD request in flight. */
+    scp_packet_t garbage = {.dst = RF_SCP_ADDR_RTU, .src = RF_SCP_ADDR_HUB,
+        .type = SCP_TYPE_ACK, .cmd = 0x29U, .data_len = 0U};
+
+    TEST_ASSERT_NOT_NULL(response_handler);
+    response_handler(SCP_CMD_OK, &garbage);
+    const size_t before = requests;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, requests);
+}
+
+void test_consume_error_replies_without_body_or_decodable_ok_stop(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    respond(&packet);
+    rf_events_process(tick);
+    verify_head_then_expect_consume(36U);
+    scp_packet_t empty = {.type = SCP_TYPE_ERROR, .data_len = 0U};
+    respond(&empty);
+    const size_t after_empty = requests;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(after_empty, requests);
+
+    rf_events_init();
+    start_read(36U, 37U);
+    packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    respond(&packet);
+    rf_events_process(tick);
+    verify_head_then_expect_consume(36U);
+    scp_packet_t garbage = {.dst = RF_SCP_ADDR_RTU, .src = RF_SCP_ADDR_HUB,
+        .type = SCP_TYPE_ACK, .cmd = 0x29U, .data_len = 0U};
+    respond(&garbage);            /* OK result that cannot be decoded. */
+    const size_t after_garbage = requests;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(after_garbage, requests);
+}
+
+void test_busy_reply_while_probing_fram_stops_the_cycle(void)
+{
+    rf_events_process(tick);      /* HEAD request. */
+    scp_packet_t busy = {.type = SCP_TYPE_ERROR, .data_len = 2U,
+                         .data = {RF_SCP_ERR_BUSY, 0U}};
+
+    respond(&busy);               /* -> FRAM probe. */
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_GET_FRAM_STATS, request.cmd);
+    scp_packet_t again = busy;
+    respond(&again);              /* Degenerate hub: still busy. */
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+    /* The normal poll window retries with a fresh head. */
+    rf_events_process(tick + 60001U);
+    TEST_ASSERT_EQUAL_size_t(3U, requests);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+}
+
+void test_healthy_fram_stats_reply_stops_the_cycle_cleanly(void)
+{
+    rf_events_process(tick);      /* HEAD request. */
+    scp_packet_t busy = {.type = SCP_TYPE_ERROR, .data_len = 2U,
+                         .data = {RF_SCP_ERR_BUSY, 0U}};
+
+    respond(&busy);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_GET_FRAM_STATS, request.cmd);
+    scp_packet_t healthy = {.cmd = RF_SCP_CMD_GET_FRAM_STATS,
+        .type = SCP_TYPE_ACK, .src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .data_len = 8U};
+    scp_pack_u16(healthy.data, 10U);
+    scp_pack_u16(&healthy.data[4], 90U);
+    respond(&healthy);
+    TEST_ASSERT_EQUAL_STRING("mh_records", rf_events_drain_reason());
+    rf_events_process(tick + 60001U);
+    TEST_ASSERT_EQUAL_size_t(3U, requests);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+}
+
+void test_error_replies_without_matching_code_stop_the_cycle(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t error = {.type = SCP_TYPE_ERROR, .data_len = 1U,
+                          .data = {RF_SCP_ERR_NOT_AVAILABLE}};
+
+    respond(&error);              /* Not RECORD_INVALID during a read. */
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+    TEST_ASSERT_EQUAL_size_t(0U, raw_writes);
+    /* Empty error body is equally unmatched. */
+    rf_events_init();
+    start_read(36U, 37U);
+    scp_packet_t empty = {.type = SCP_TYPE_ERROR, .data_len = 0U};
+    respond(&empty);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(4U, requests);
+}
+
+void test_consume_invalid_param_error_requires_fresh_head(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    respond(&packet);
+    rf_events_process(tick);
+    verify_head_then_expect_consume(36U);
+    scp_packet_t error = {.type = SCP_TYPE_ERROR, .data_len = 1U,
+                          .data = {RF_SCP_ERR_INVALID_PARAM}};
+    respond(&error);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    TEST_ASSERT_EQUAL_size_t(5U, requests);
+}
+
+void test_consume_unmatched_error_stops_the_cycle(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    respond(&packet);
+    rf_events_process(tick);
+    verify_head_then_expect_consume(36U);
+    scp_packet_t error = {.type = SCP_TYPE_ERROR, .data_len = 1U,
+                          .data = {RF_SCP_ERR_NOT_AVAILABLE}};
+    respond(&error);
+    const size_t before = requests;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, requests);
+}
+
+void test_protect_consume_with_moved_tail_fails_protection(void)
+{
+    inventory_status = RF_INVENTORY_IDLE;
+    rf_events_init();
+    TEST_ASSERT_TRUE(rf_events_boot_protect());
+    rf_events_process(tick);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
+
+    scp_pack_u16(packet.data, 12U);
+    scp_pack_u16(&packet.data[8], 9U);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_CONSUME_IF, request.cmd);
+    packet = capture(RF_SCP_CMD_LOG_CONSUME_IF, SCP_TYPE_ACK);
+    scp_pack_u16(packet.data, 10U);      /* Tail moved elsewhere. */
+    scp_pack_u16(&packet.data[2], 2U);
+    respond(&packet);
+    TEST_ASSERT_FALSE(rf_events_inventory_allowed());
+    rf_events_process(tick + 60001U);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+}
+
+void test_drain_continues_while_records_remain_even_at_left_zero(void)
+{
+    rf_events_request_drain();
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    respond(&packet);
+    rf_events_process(tick);
+    verify_head_then_expect_consume(36U);
+    packet = capture(RF_SCP_CMD_LOG_CONSUME_IF, SCP_TYPE_ACK);
+    scp_pack_u16(packet.data, 37U);
+    scp_pack_u16(&packet.data[2], 0U);   /* Nothing left, keep draining. */
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    packet = read_head;
+    scp_pack_u16(&packet.data[8], 37U);
+    respond(&packet);
+    uint32_t total = 0U;
+    TEST_ASSERT_TRUE(rf_events_drain_complete(&total));
+    TEST_ASSERT_EQUAL_UINT32(137U, total);
+}
+
+void test_fault_line_scan_skips_store_feeder_with_other_zone_or_feeder(void)
+{
+    binding_entry_storage.line_index = UINT8_MAX;
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    feeder.config.zone_id = 9U;          /* Same feeder number, other zone. */
+    packet.data[7] = 101U;
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    /* Zone matches again but the feeder number differs. */
+    rf_events_init();
+    feeder.config.zone_id = 1U;
+    feeder.config.fider_id = 5U;
+    start_read(36U, 37U);
+    packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 101U;
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    /* Restoring the identity lets the fallback find line 2 again. */
+    rf_events_init();
+    feeder.config.fider_id = 1U;
+    start_read(36U, 37U);
+    packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 101U;
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, fault_writes);
+    TEST_ASSERT_EQUAL_UINT8(2U, written_fault.info.feeder);
+}
+
+void test_fault_with_negative_or_huge_current_or_bad_energy_is_raw_only(void)
+{
+    const float negative = -1.0F;
+    const float huge = 1.0e38F;
+
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 101U;
+    (void)memcpy(&packet.data[15], &negative, 4U);
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+
+    rf_events_init();
+    start_read(36U, 37U);
+    packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 101U;
+    (void)memcpy(&packet.data[15], &huge, 4U);
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+
+    rf_events_init();
+    start_read(36U, 37U);
+    packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 101U;
+    packet.data[14] = 2U;   /* Energy status outside {0,1}. */
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    TEST_ASSERT_EQUAL_size_t(3U, raw_writes);
+}
+
+void test_quality_one_event_with_invalid_timestamp_is_marked_invalid(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+
+    packet.data[7] = 101U;
+    (void)memset(packet.data, 0U, 7U);   /* Calendar fields all zero. */
+    packet.data[55] = 1U;                /* Clock claims to be reliable. */
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, fault_writes);
+    TEST_ASSERT_TRUE(written_fault.tm.iv_bit);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_TRUE(written_alarm.time.iv_bit);
+}
+
+void test_events_process_waits_for_comm_and_inventory_states(void)
+{
+    rf_comm_can_load_inventory_StopIgnore();
+    rf_comm_can_load_inventory_ExpectAndReturn(false);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, requests);
+    rf_comm_can_load_inventory_IgnoreAndReturn(true);
+
+    inventory_status = RF_INVENTORY_IDLE;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, requests);
+    inventory_status = RF_INVENTORY_ERROR;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, requests);
+    inventory_status = RF_INVENTORY_EMPTY;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, requests);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+}
+
+void test_alarm_live_without_source_data_is_ignored(void)
+{
+    const cp56time2a_t time = cp56time2a_make(10000U, 0U, 12U,
+                                            7U, 3U, 10U, 26U);
+    rf_alarm_live(5U, &time);     /* Bound source, no live sample yet. */
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+    TEST_ASSERT_EQUAL_size_t(0U, alarm_writes);
+}
+
+void test_alarm_relatch_after_live_repeat_requeues_the_alarm(void)
+{
+    (void)alarm_packet();
+    const cp56time2a_t time = cp56time2a_make(10000U, 0U, 12U,
+                                            7U, 3U, 10U, 26U);
+    rf_scp_live_t live = {.source = 5U, .uptime_sec = 10U,
+                          .trip_failed = true};
+
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick, &time));
+    rf_alarm_live(5U, &time);
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+    /* Operator latches the still-failed phase; the queue re-opens. */
+    TEST_ASSERT_TRUE(rf_open_trip_failure_alarm(1U, 1U, 1U));
+    rf_alarm_live(5U, &time);
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    /* A repeat while the record is already pending changes nothing. */
+    rf_alarm_live(5U, &time);
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_EQUAL_UINT8(1U, written_alarm.active);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
 }
 
 /*** end of file ***/
