@@ -1,13 +1,47 @@
 # Test Altyapısı
 
-**Sürüm:** 1.48
-**Tarih:** 2026-10-11
+**Sürüm:** 1.49
+**Tarih:** 2026-10-12
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
+
+## 12.10.2026 R2 sınır regresyonları
+
+[R2 çalışma planının](../doc/RF_SCP_R2_AGENT_CALISMA_PLANI.md) uygulanması
+sırasında iki turda 73 yeni Unity testi eklendi (toplam 1212 → 1285, 0 hata).
+Birinci tur güncel coverage envanterinin alınmayan satırlarını, ikinci tur
+gcovr dal detayından "hiç alınmamış yönleri" (dead branch direction) kapattı.
+
+| Paket | Eklenen kontroller (tur 1) |
+|---|---|
+| `rf/test_rf_scp_codec.c` (+10) | Olay `clock_quality` 3+ reddi; PWR_CFG2 rate maskesi 0/255 özel değerleri ve 20-200 sınırı; gelen cmd-0 ACK çözümü ve bilinmeyen komut reddi; TRIP/ANOMALY geçersiz kaynak-bölge-durum-yol reddi; PWR_ALARM sürüm/durum sınırı; CFG2 echo_valid >1 reddi; FRAM degraded >1 reddi; CFG_STATUS state/bitmap sınırı; ERROR çerçeve uzunluk kuralları (geniş gövde yalnız PWR_CFG2) |
+| `rf/test_rf_events.c` (+15) | boot-protect meşgulken reddi ve envanter kapısı; drain_reason üç durumu; durdurulmuş döngüye geç yanıt zararsızlığı; fault satırı binding'ten store fallback'i ve eşleşme yoksa yalnız-ham; geçersiz yük bayrağı ve NaN akım yalnız-ham; `clock_quality=0` yerel saat + IV; alarm geçersiz/atansız kaynak; alarm geri çekilme penceresi, pencere sonrası yeniden deneme, slot EUI değişimi bekleyen kaydı bozmaz; süreç ilk başarısız kaynakta durur; LIVE damgası yoksa yerel saat; tekrar aynı durum yeniden kuyruğa almaz; LOG_AVAILABLE eşik dışı pending/head yoksayılır |
+| `rf/test_rf_group.c` (+8) | RESTARTED durumunda yalnız terminal sorgu formu kabulü; gecikmiş ilerleme bildirimi UNCERTAIN→WAITING geçişi ve ABORTING'i düşürmemesi; state-0 raporu UNCERTAIN; `SCP_CMD_RESTARTED` komut sonucu hub restart; başka gruba ait STATUS ACK UNCERTAIN; abort transport reddi durumu korur; komut bekleme sırasında process sessiz; UNCERTAIN salt-okunur probe iptali |
+| `rf/test_rf_config_scenario.c` (+2) | NULL sözleşme kontrolleri (defaults/copy/crc_ok/crc_compute/writable_crc/is_zero); `rf_config_crc_ok` geçerli CRC kabulü ve bayt değişimi/sıfır CRC reddi |
+
+Tur 2 (dal yönleri; 38 test):
+
+| Paket | Eklenen kontroller (tur 2) |
+|---|---|
+| `rf/test_rf_scp_codec.c` (+8) | TIME_SYNC her takvim alanının sınır dışı reddi; INVENTORY zone/fider/faz sınırları ve UPDATE'in atansız fideri kabulü; READ_RECORD/CONSUME_TO slot 100 reddi ve RANGE kuyruk 0/slot 100 reddi; 246/61/120 bayt gövde uzunluk kuralları; PWR_COMMAND üretici servis kodları reddi; CFG2 rezerv bit 7 reddi; LIVE log_pending 101 reddi; LOG_AVAILABLE/HEAD/FRAM slot 100 reddi |
+| `rf/test_rf_events.c` (+19) | notify NULL/yabancı mesaj yoksayma; istenenden büyük batch durdurur; total bir modül ilerleyince yeniden çapa; paketsiz ACK ve çözülemeyen OK yanıtı durdurur; BUSY→FRAM sorgusu sırasında tekrar BUSY durdurur; sağlıklı FRAM yanıtı temiz durdurur; eşleşmeyen/boş hata yanıtları durdurur; CONSUME INVALID_PARAM taze HEAD ister; protect tüketimi kayan kuyrukla başarısız; drain left=0 ile devam eder; store taraması başka bölge/fideri atlar; negatif/aşırı büyük akım ve hatalı enerji durumu yalnız-ham; `clock_quality=1` + geçersiz takvim IV işaretler; process iletişim/envanter durumlarını bekler; alarm verisiz kaynağı yoksayar; operatör yeniden mandalli alarm tekrar kuyruğa girer; pending iken tekrar live yoksayılır |
+| `rf/test_rf_group.c` (+11) | matches_config iş öncesi/sonrası ve fider/bölge/üye/in_use sapması; can_start/is_active matrisi (raporsuz, state-2 ilerleme, terminal gözlem); tam bitmap'li CRC uyuşmazlığı yeniden başlatılabilir, eksik bitmap kilitler ve poll beklemedeyken MISMATCH düşmez; start geçersiz satır/kullanılmayan store/meşgul transport/iletişim kapalı reddi; handle_status guard formları ve terminal durumlar; CHECKING boş gövde/BUSY kodu/paketsiz OK/çözülemeyen OK/yabancı grup UNCERTAIN, boşta grup WRITING; WAITING poll NULL/çözülemeyen yanıt UNCERTAIN; RESTARTED commit'siz poll etmez, hata yanıtı durumu korur, iletişim kapalıysa sorgulamaz; WRITING epoch/envanter kaybı UNCERTAIN; poll gönderim reddi tesisi korur; abort reddi matrisi (boşta, pending, meşgul, terminal) ve onaylı WRITE sonrası iptal |
+
+Kalan alınmayan satır/dallar sınıflandırılmıştır ve test edilmediği anlamına
+gelmez: codec statik tablo satırları, decode dispatch `default`ları ve
+döngü-instance/helper-inline dal yuvaları (gcovr satır-dal modeli her yinelemeyi
+ayrı yuva sayar), `rf_events` HEAD head/tail sınır çift-kontrolü (codec aynı
+sınırı zaten reddediyor), `rf_events` verify imleç değişmezi (tutarlı
+head/tail/total ile `cursor == next_slot(tail,pending)` hep korunur),
+`rf_alarm` set_pending öncesi binding kaybı (tek iş parçacıklı akışta araya
+giremez), `rf_faults` `UINT32_MAX` doygunluk savunması, `rf_config` tembel
+init (üretim açılışta `rf_store_init` çağırır) ve `rf_group` can_start/abort
+zincirlerinde kısa-devre ile erişilemez alt-koşullar. Ayrıntılar
+[R2 kapsam raporu](../doc/RF_SCP_R2_TEST_KAPSAM_VE_KABUL.md) §7.1'dedir.
 
 ## 11.10.2026 RF-SCP R2 test genişletmesi
 
@@ -1081,6 +1115,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-12 | 1.49 | R2 sınır regresyonları: iki turda 73 yeni Unity testi (1212→1285), ölü dal yönlerinin savunma/artefakt/gürültü sınıflandırması |
 | 2026-10-10 | 1.41 | Kalıcı IEC104 kayıtlarının N(R) sonrası tüketilmesi, gerçek TX/ACK/log regresyonu ve master ACK aralığına uygun replay toplama süresi |
 | 2026-10-10 | 1.40 | SCP R2 HIL seti: simülatör R2 modeli (81 self-test), cases_r2 (8 cihaz vakası, toplam 45), 0x48 tüketim taşıması; iec104 master i07 replay tutma vakası; rf_real_mh gerçek MH duman süiti; bench konsol yarışına yeniden deneme |
 | 2026-10-10 | 1.39 | Bütün üretim C dosyalarının coverage envanteri, eksiksiz JUnit kontrolü ve sekiz modülde mantık/hata yolu testleri |
