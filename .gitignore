@@ -76,9 +76,8 @@ dkms.conf
 # Burayi haric tut, en sonda olmali!
 !Middlewares/ST/touchgfx/**
 
-# doc/ local-only files: keep on disk, out of git (PowerBoard doc + writing guide stay tracked)
+# doc/ local-only files: keep on disk, out of git (writing guide stays tracked)
 doc/*
-!doc/PowerBoard_I2C_Protocol.md
 !doc/belge_yazim_rehberi.md
 !doc/HW_TEST_VE_DEBUG_REHBERI.md
 !doc/IEC104_YAPILANDIRMA_VE_ADRES_REHBERI.md
