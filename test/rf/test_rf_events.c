@@ -34,6 +34,7 @@ TEST_SOURCE_FILE("spi_flash_log.c")
 TEST_SOURCE_FILE("rf.c")
 TEST_SOURCE_FILE("rf_faults.c")
 TEST_SOURCE_FILE("rf_alarm.c")
+TEST_SOURCE_FILE("xprintf.c")
 TEST_SOURCE_FILE("cp56time2a.c")
 
 static uint32_t tick;
@@ -58,6 +59,14 @@ static size_t replay_writes;
 static bool replay_success;
 static bool alarm_success;
 static bool hash_collision;
+static int alarm_fail_on_write;
+static int sync_calls;
+static int sync_fail_at;
+static size_t consume_requests;
+static iec104_alarm_record_t written_alarms[8];
+static uint16_t alarm_replay_seqs[8];
+static size_t alarm_replay_count;
+static uint16_t alarm_seqs[8];
 static rf_inventory_entry_t binding_entry_storage;
 static size_t alarm_writes;
 static size_t alarm_emit_calls;
@@ -109,7 +118,11 @@ static bool send_replay(const iec104_event_record_t *record,
         TEST_ASSERT_EQUAL_UINT16(42U, seq);
         return iec104_emit_evtlog_record(&record->payload.fault);
     }
-    TEST_ASSERT_EQUAL_UINT16(43U, seq);
+    if (8U > alarm_replay_count)
+    {
+        alarm_replay_seqs[alarm_replay_count] = seq;
+    }
+    alarm_replay_count++;
     return iec104_emit_event_record(record);
 }
 
@@ -118,8 +131,18 @@ static bool save_alarm(const iec104_alarm_record_t *record, uint16_t *seq,
 {
     (void)call_count;
     written_alarm = *record;
+    if (8U > alarm_writes)
+    {
+        written_alarms[alarm_writes] = *record;
+        alarm_seqs[alarm_writes] = (uint16_t)(43U + alarm_writes);
+    }
+    *seq = (uint16_t)(43U + alarm_writes);
     alarm_writes++;
-    *seq = 43U;
+    if ((alarm_fail_on_write >= 0) &&
+        (alarm_fail_on_write == (int)(alarm_writes - 1U)))
+    {
+        return false;
+    }
     return alarm_success;
 }
 
@@ -142,6 +165,10 @@ static bool send_request(const scp_packet_t *packet,
     request = *packet;
     response_handler = done;
     requests++;
+    if (RF_SCP_CMD_LOG_CONSUME_IF == packet->cmd)
+    {
+        consume_requests++;
+    }
     return true;
 }
 
@@ -167,7 +194,7 @@ static bool save_fault(const fault_log_t *record, int call_count)
 static int sync_fault(int call_count)
 {
     (void)call_count;
-    return sync_result;
+    return (sync_fail_at == sync_calls++) ? -1 : sync_result;
 }
 
 static bool save_replay(const fault_log_t *record, uint16_t *seq,
@@ -368,6 +395,13 @@ void setUp(void)
     replay_writes = 0U;
     replay_success = true;
     alarm_success = true;
+    alarm_fail_on_write = -1;
+    sync_calls = 0;
+    sync_fail_at = -1;
+    consume_requests = 0U;
+    alarm_replay_count = 0U;
+    (void)memset(written_alarms, 0, sizeof(written_alarms));
+    (void)memset(alarm_seqs, 0, sizeof(alarm_seqs));
     hash_collision = false;
     alarm_writes = 0U;
     alarm_emit_calls = 0U;
@@ -2372,6 +2406,417 @@ void test_events_process_waits_for_comm_and_inventory_states(void)
     rf_events_process(tick);
     TEST_ASSERT_EQUAL_size_t(1U, requests);
     TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+}
+
+static void put_alarm_record(scp_packet_t *packet, size_t slot,
+                             uint8_t event_id, uint8_t phase, uint32_t uptime)
+{
+    const cp56time2a_t ts = cp56time2a_make((uint16_t)(10000U + slot), 0U,
+                                            12U, 7U, 3U, 10U, 26U);
+    uint8_t *rec = &packet->data[slot * 60U];
+
+    (void)memset(rec, 0U, 60U);
+    (void)memcpy(rec, &ts, sizeof(ts));
+    rec[7] = event_id;
+    rec[8] = 1U;                          /* zone */
+    rec[9] = 1U;                          /* MH feeder */
+    rec[10] = phase;
+    rec[49] = 1U;                         /* boot counter */
+    put_u32(&rec[51], uptime);
+    rec[55] = 1U;                         /* clock quality */
+    scp_pack_u16(&rec[56],
+                 (2U == phase) ?
+                 rf_scp_eui_hash(second_binding_storage.eui64) :
+                 rf_scp_eui_hash(binding_entry_storage.eui64));
+    scp_pack_u16(&rec[58], log_calculate_crc16(rec, 58U));
+}
+
+static scp_packet_t alarm_batch(uint8_t event_a, uint8_t phase_a,
+                                uint8_t event_b, uint8_t phase_b,
+                                uint32_t uptime_b)
+{
+    scp_packet_t packet = {0};
+
+    packet.dst = RF_SCP_ADDR_RTU;
+    packet.src = RF_SCP_ADDR_HUB;
+    packet.type = SCP_TYPE_ACK;
+    packet.cmd = RF_SCP_CMD_LOG_READ_RANGE;
+    packet.data_len = 120U;
+    put_alarm_record(&packet, 0U, event_a, phase_a, 1000U);
+    put_alarm_record(&packet, 1U, event_b, phase_b, uptime_b);
+    return packet;
+}
+
+static void store_batch_both_records(void)
+{
+    rf_events_process(tick);      /* Store the first record. */
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    rf_events_process(tick);      /* Store the second record. */
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+}
+
+static void assert_alarm_record(const iec104_alarm_record_t *record,
+                                uint8_t phase, uint16_t milliseconds)
+{
+    TEST_ASSERT_EQUAL_UINT8(2U, record->feeder);       /* line index 2 */
+    TEST_ASSERT_EQUAL_UINT8(phase, record->phase);    /* zero-based */
+    TEST_ASSERT_EQUAL_UINT8(1U, record->active);
+    TEST_ASSERT_EQUAL_UINT16(milliseconds, record->time.milliseconds);
+}
+
+static void enable_phase2_binding(void)
+{
+    second_binding_active = true;
+    second_binding_storage = (rf_inventory_entry_t)
+    {
+        .zone = 1U, .feeder = 1U, .phase = 2U, .eui64 = {3U},
+        .line_index = 2U
+    };
+}
+
+static void simulate_rtu_restart(void)
+{
+    rf_init();
+    rf_faults_init();
+    rf_alarm_init();
+    rf_events_init();
+}
+
+void test_batch_two_101_alarms_deliver_both_with_distinct_seq_numbers(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    link_active = true;
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 2U, 1001U);
+
+    start_read(36U, 38U);
+    respond(&packet);
+    store_batch_both_records();
+    assert_alarm_record(&written_alarms[0], 0U, 10000U);
+    assert_alarm_record(&written_alarms[1], 1U, 10001U);
+    /* Each delivered alarm went out with its own journal sequence. */
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_replay_count);
+    TEST_ASSERT_EQUAL_UINT16(43U, alarm_replay_seqs[0]);
+    TEST_ASSERT_EQUAL_UINT16(44U, alarm_replay_seqs[1]);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+}
+
+void test_batch_two_105_alarms_deliver_both_with_distinct_seq_numbers(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(105U, 1U, 105U, 2U, 1001U);
+
+    link_active = true;
+    start_read(36U, 38U);
+    respond(&packet);
+    store_batch_both_records();
+    assert_alarm_record(&written_alarms[0], 0U, 10000U);
+    assert_alarm_record(&written_alarms[1], 1U, 10001U);
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_replay_count);
+    TEST_ASSERT_EQUAL_UINT16(43U, alarm_replay_seqs[0]);
+    TEST_ASSERT_EQUAL_UINT16(44U, alarm_replay_seqs[1]);
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+}
+
+void test_batch_101_and_105_deliver_both_in_order(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 105U, 2U, 1001U);
+
+    link_active = true;
+    start_read(36U, 38U);
+    respond(&packet);
+    store_batch_both_records();
+    assert_alarm_record(&written_alarms[0], 0U, 10000U);
+    assert_alarm_record(&written_alarms[1], 1U, 10001U);
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_replay_count);
+    TEST_ASSERT_EQUAL_UINT16(43U, alarm_replay_seqs[0]);
+    TEST_ASSERT_EQUAL_UINT16(44U, alarm_replay_seqs[1]);
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+}
+
+void test_batch_second_alarm_add_failure_holds_tail_and_keeps_first(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 2U, 1001U);
+    alarm_fail_on_write = 1;      /* Second add_alarm attempt fails. */
+
+    start_read(36U, 38U);
+    respond(&packet);
+    rf_events_process(tick);      /* Record 1 stored and delivered. */
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    rf_events_process(tick);      /* Record 2 add fails; tail held. */
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, consume_requests);
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    alarm_fail_on_write = -1;
+    tick += 60000U;
+    rf_events_process(tick);      /* Retry delivers only record 2. */
+    TEST_ASSERT_EQUAL_size_t(3U, alarm_writes);
+    assert_alarm_record(&written_alarms[0], 0U, 10000U);
+    assert_alarm_record(&written_alarms[2], 1U, 10001U);
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+}
+
+void test_batch_second_alarm_sync_failure_recovers_without_readding_first(void)
+{
+    /* iec104_event_log_sync call order is deterministic: record 1 fault
+     * path, record 1 alarm delivery, record 2 fault path, record 2 alarm
+     * delivery (FAILS), then the retry re-enters save_fault first and the
+     * alarm delivery second — the already-added record is reused. */
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 2U, 1001U);
+    iec104_event_log_sync_StopIgnore();
+    iec104_event_log_sync_ExpectAndReturn(0);
+    iec104_event_log_sync_ExpectAndReturn(0);
+    iec104_event_log_sync_ExpectAndReturn(0);
+    iec104_event_log_sync_ExpectAndReturn(-1);
+    iec104_event_log_sync_ExpectAndReturn(0);   /* retry: save_fault */
+    iec104_event_log_sync_ExpectAndReturn(0);   /* retry: alarm delivery */
+
+    start_read(36U, 38U);
+    respond(&packet);
+    rf_events_process(tick);      /* Record 1 fully delivered. */
+    rf_events_process(tick);      /* Record 2 sync fails; tail held. */
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_FALSE(rf_alarm_is_idle());   /* Record 2 still pending. */
+    TEST_ASSERT_EQUAL_size_t(0U, consume_requests);
+    tick += 60000U;
+    rf_events_process(tick);      /* Retry syncs the already-added record. */
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    assert_alarm_record(&written_alarms[0], 0U, 10000U);
+    assert_alarm_record(&written_alarms[1], 1U, 10001U);
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+}
+
+void test_batch_second_record_bad_crc_consumes_only_valid_prefix(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 2U, 1001U);
+    packet.data[60 + 30] ^= 0xFFU;   /* Corrupt record 2 payload CRC. */
+
+    start_read(36U, 38U);
+    respond(&packet);
+    rf_events_process(tick);      /* Record 1 stored and delivered. */
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    rf_events_process(tick);      /* Record 2 undecodable; prefix kept. */
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(137U, read_u32(request.data));
+    scp_packet_t ack_packet =
+        capture(RF_SCP_CMD_LOG_CONSUME_IF, SCP_TYPE_ACK);
+    scp_pack_u16(ack_packet.data, 37U);
+    scp_pack_u16(&ack_packet.data[2], 0U);
+    respond(&ack_packet);
+    /* The corrupted record stays in the ring: the next cycle re-reads it,
+     * fails again and must not consume or add alarms. */
+    tick += 60001U;
+    rf_events_process(tick);
+    scp_packet_t head = read_head;
+    scp_pack_u16(head.data, 38U);
+    scp_pack_u16(&head.data[8], 37U);
+    respond(&head);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_RANGE, request.cmd);
+    TEST_ASSERT_EQUAL_UINT16(1U, scp_unpack_u16(&request.data[2]));
+    /* Only the corrupted record remains in the ring: answer with a
+     * single 60 B record so the CRC rejection path is really reached. */
+    scp_packet_t bad = {0};
+    bad.dst = RF_SCP_ADDR_RTU;
+    bad.src = RF_SCP_ADDR_HUB;
+    bad.type = SCP_TYPE_ACK;
+    bad.cmd = RF_SCP_CMD_LOG_READ_RANGE;
+    bad.data_len = 60U;
+    (void)memcpy(bad.data, &packet.data[60], 60U);   /* already corrupt */
+    respond(&bad);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, consume_requests);
+}
+
+void test_batch_same_source_distinct_identities_both_delivered(void)
+{
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 1U, 1001U);
+
+    start_read(36U, 38U);
+    respond(&packet);
+    store_batch_both_records();
+    assert_alarm_record(&written_alarms[0], 0U, 10000U);
+    assert_alarm_record(&written_alarms[1], 0U, 10001U);
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+}
+
+void test_batch_exact_duplicate_record_delivered_once(void)
+{
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 1U, 1000U);
+    (void)memcpy(&packet.data[60], packet.data, 60U);   /* byte-identical */
+
+    start_read(36U, 38U);
+    respond(&packet);
+    rf_events_process(tick);      /* First copy opens the alarm. */
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    rf_events_process(tick);      /* Exact duplicate is deduplicated. */
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+}
+
+void test_restart_before_local_journal_keeps_record_single_consume(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 2U, 1001U);
+    raw_success = false;
+
+    start_read(36U, 38U);
+    respond(&packet);
+    rf_events_process(tick);      /* Raw save stalls; nothing stored. */
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);   /* attempt, not stored */
+    TEST_ASSERT_EQUAL_size_t(0U, alarm_writes);
+    simulate_rtu_restart();
+    raw_success = true;
+    rf_events_process(tick);      /* Fresh cycle from the MH head. */
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    scp_packet_t head = read_head;
+    respond(&head);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_RANGE, request.cmd);
+    respond(&packet);
+    rf_events_process(tick);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_EQUAL_size_t(3U, raw_writes);   /* stall + both records */
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+    TEST_ASSERT_EQUAL_size_t(1U, consume_requests);
+}
+
+void test_restart_after_store_before_consume_reports_records_again(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 2U, 1001U);
+
+    start_read(36U, 38U);
+    respond(&packet);
+    store_batch_both_records();
+    /* Both records are durable locally, but the MH tail was not yet
+     * consumed when the RTU lost its RAM state. */
+    simulate_rtu_restart();
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    scp_packet_t head = read_head;
+    respond(&head);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_RANGE, request.cmd);
+    respond(&packet);
+    rf_events_process(tick);
+    rf_events_process(tick);
+    /* At-least-once: the RAM reset forgets the identities, so both
+     * alarms are reported again; the MH is consumed exactly once. */
+    TEST_ASSERT_EQUAL_size_t(4U, alarm_writes);
+    assert_alarm_record(&written_alarms[2], 0U, 10000U);
+    assert_alarm_record(&written_alarms[3], 1U, 10001U);
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
+    TEST_ASSERT_EQUAL_size_t(1U, consume_requests);
+}
+
+void test_consume_ack_loss_repolls_head_without_double_consume(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 2U, 1001U);
+
+    start_read(36U, 38U);
+    respond(&packet);
+    store_batch_both_records();
+    verify_head_then_expect_consume(36U);
+    TEST_ASSERT_NOT_NULL(response_handler);
+    response_handler(SCP_CMD_TIMEOUT, NULL);   /* 0x48 ACK lost. */
+    tick += 60001U;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    scp_packet_t head = read_head;
+    scp_pack_u16(&head.data[8], 38U);          /* MH already consumed. */
+    respond(&head);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, consume_requests);
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+}
+
+void test_consume_ack_loss_then_restart_repolls_without_loss_or_dup(void)
+{
+    enable_phase2_binding();
+    rf_init();
+    scp_packet_t packet = alarm_batch(101U, 1U, 101U, 2U, 1001U);
+
+    start_read(36U, 38U);
+    respond(&packet);
+    store_batch_both_records();
+    verify_head_then_expect_consume(36U);
+    response_handler(SCP_CMD_TIMEOUT, NULL);   /* 0x48 ACK lost. */
+    /* RTU RAM state is lost right after the MH already consumed. */
+    simulate_rtu_restart();
+    tick += 60001U;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    scp_packet_t head = read_head;
+    scp_pack_u16(&head.data[8], 38U);          /* MH tail advanced. */
+    respond(&head);
+    rf_events_process(tick);                   /* Empty ring: stop. */
+    TEST_ASSERT_EQUAL_size_t(1U, consume_requests);
+    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_EQUAL_size_t(2U, raw_writes);
+    const size_t before = requests;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, requests);
+}
+
+void test_alarm_announcement_edges_and_text(void)
+{
+    iec104_alarm_record_t record = {0};
+    char line[48];
+
+    record.feeder = 2U;    /* line index -> feeder 3 */
+    record.phase = 0U;     /* phase index -> phase 1 */
+    record.active = 1U;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ANNOUNCE_ACTIVE,
+        rf_alarm_announcement(line, sizeof(line), &record, false, false));
+    TEST_ASSERT_EQUAL_STRING("[RF] ALARM ACTIVE: feeder 3 phase 1", line);
+
+    /* Retry with an unchanged state must stay silent. */
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ANNOUNCE_NONE,
+        rf_alarm_announcement(line, sizeof(line), &record, true, true));
+
+    record.active = 0U;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ANNOUNCE_CLEARED,
+        rf_alarm_announcement(line, sizeof(line), &record, true, true));
+    TEST_ASSERT_EQUAL_STRING("[RF] ALARM CLEARED: feeder 3 phase 1", line);
+
+    /* A first report that is already passive announces nothing. */
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ANNOUNCE_NONE,
+        rf_alarm_announcement(line, sizeof(line), &record, false, false));
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ANNOUNCE_NONE,
+        rf_alarm_announcement(NULL, sizeof(line), &record, false, false));
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ANNOUNCE_NONE,
+        rf_alarm_announcement(line, sizeof(line), NULL, false, false));
 }
 
 void test_alarm_live_without_source_data_is_ignored(void)

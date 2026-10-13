@@ -80,6 +80,10 @@
         - -Wconversion
         - -Wdouble-promotion
         - -Wformat=2
+      # cslog config uses GNU named variadic macros; this package
+      # compiles the real CSLOG macros in (console_log_enabled.h).
+      test_rf_alarm_log:
+        - -Wno-variadic-macros
       test_at_engine_scenario:
         - -DAT_ENGINE_LOG_HOST_TEST
         - -flto
