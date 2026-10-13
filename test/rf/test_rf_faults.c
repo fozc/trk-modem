@@ -436,10 +436,10 @@ void test_first_idle_pending_zero_live_cannot_complete_both_barriers(void)
 {
     bind_phases();
     (void)classify(1U, 1U, 10000U);
-    observe_live(1U, 100U, 10U, 0U);
+    observe_live(1U, 1000U, 10U, 0U);
     rf_faults_ring_empty(rf_faults_head_started(), 11U);
     TEST_ASSERT_FALSE(counts(1U).is_final);
-    observe_live(1U, 101U, 20U, 0U);
+    observe_live(1U, 1001U, 20U, 0U);
     rf_faults_ring_empty(rf_faults_head_started(), 21U);
     TEST_ASSERT_TRUE(counts(1U).is_final);
 }
@@ -448,9 +448,9 @@ void test_head_started_before_latest_pending_zero_cannot_finalize(void)
 {
     bind_phases();
     (void)classify(1U, 1U, 10000U);
-    observe_live(1U, 100U, 10U, 1U);
+    observe_live(1U, 1000U, 10U, 1U);
     const uint64_t old_head = rf_faults_head_started();
-    observe_live(1U, 101U, 20U, 0U);
+    observe_live(1U, 1001U, 20U, 0U);
     rf_faults_ring_empty(old_head, 21U);
     TEST_ASSERT_FALSE(counts(1U).is_final);
     rf_faults_ring_empty(rf_faults_head_started(), 22U);
@@ -461,8 +461,8 @@ void test_repeated_live_cannot_supply_the_next_pending_zero_observation(void)
 {
     bind_phases();
     (void)classify(1U, 1U, 10000U);
-    observe_live(1U, 100U, 10U, 0U);
-    observe_live(1U, 100U, 20U, 0U);
+    observe_live(1U, 1000U, 10U, 0U);
+    observe_live(1U, 1000U, 20U, 0U);
     TEST_ASSERT_FALSE(rf_faults_needs_head(21U));
 }
 
@@ -471,10 +471,10 @@ void test_t_mem_dead_wait_prevents_early_idle_closure(void)
     bind_phases();
     feeder_config.config.t_mem_dead_sec = 30U;
     (void)classify(1U, 1U, 10000U); /* uptime 1 */
-    observe_live(1U, 30U, 10U, 0U);
-    observe_live(1U, 31U, 20U, 0U); /* First eligible idle sample. */
+    observe_live(1U, 600U, 10U, 0U);
+    observe_live(1U, 601U, 20U, 0U); /* First eligible idle sample. */
     TEST_ASSERT_FALSE(rf_faults_needs_head(21U));
-    observe_live(1U, 32U, 30U, 0U);
+    observe_live(1U, 602U, 30U, 0U);
     TEST_ASSERT_TRUE(rf_faults_needs_head(31U));
 }
 
@@ -623,10 +623,10 @@ void test_latest_1_or_7_is_the_t_mem_dead_origin_not_an_earlier_6(void)
     (void)classify(6U, 1U, 10000U); /* uptime 1 */
     event.uptime_sec = 10U;
     (void)classify(1U, 1U, 20000U); /* uptime 11 */
-    observe_live(1U, 40U, 10U, 0U);
-    observe_live(1U, 41U, 20U, 0U);
+    observe_live(1U, 610U, 10U, 0U);
+    observe_live(1U, 611U, 20U, 0U);
     TEST_ASSERT_FALSE(rf_faults_needs_head(21U));
-    observe_live(1U, 42U, 30U, 0U);
+    observe_live(1U, 612U, 30U, 0U);
     TEST_ASSERT_TRUE(rf_faults_needs_head(31U));
 }
 
@@ -718,6 +718,42 @@ void test_audit_opening_count_is_independent_of_phase_arrival_order(void)
             TEST_ASSERT_EQUAL_UINT32(0U, result.pending);
             TEST_ASSERT_EQUAL_INT(2U != sample, result.is_final);
         }
+    }
+}
+
+void test_audit_unapplied_shorter_t_mem_dead_is_not_closure_evidence(void)
+{
+    bind_phases();
+    feeder_config.config.t_mem_dead_sec = 180U;
+    (void)classify(1U, 1U, 10000U);
+    /* rf_store_sync publishes the desired value before CFG reaches APPLIED.
+     * A failed apply leaves the AY's previous 180 s unchanged. */
+    feeder_config.config.t_mem_dead_sec = 30U;
+    observe_live(1U, 32U, 10U, 0U);
+    observe_live(1U, 33U, 20U, 0U);
+    rf_faults_ring_empty(rf_faults_head_started(), 21U);
+    /* 32 s after the opening is before the last applied 180 s deadline. */
+    TEST_ASSERT_FALSE(counts(1U).is_final);
+}
+
+void test_desired_setting_never_shortens_protocol_maximum_wait(void)
+{
+    const uint16_t desired[] = {0U, 30U, 180U, 600U};
+    bind_phases();
+    for (size_t index = 0U; 4U > index; index++)
+    {
+        rf_faults_init();
+        event.uptime_sec = 0U;
+        feeder_config.config.t_mem_dead_sec = desired[index];
+        (void)classify(1U, 1U, 10000U);
+        observe_live(1U, 181U, 10U, 0U);
+        observe_live(1U, 600U, 20U, 0U);
+        TEST_ASSERT_FALSE(rf_faults_needs_head(21U));
+        observe_live(1U, 601U, 30U, 0U);
+        TEST_ASSERT_FALSE(rf_faults_needs_head(31U));
+        observe_live(1U, 602U, 40U, 0U);
+        rf_faults_ring_empty(rf_faults_head_started(), 41U);
+        TEST_ASSERT_TRUE(counts(1U).is_final);
     }
 }
 

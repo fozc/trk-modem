@@ -18,6 +18,9 @@
 #define RF_GROUPS 128U
 #define RF_PHASES 3U
 #define RF_LIVE_FRESH_MS 30000U
+/* R2 section 4.9: every accepted T_Mem_Dead_Sec is at most 600 s.
+ * Desired store values do not prove the setting used by a queued event. */
+#define RF_T_MEM_DEAD_MAX_SEC 600U
 #define NO_GROUP RF_GROUPS
 
 typedef enum
@@ -637,7 +640,7 @@ static void observe_participant(fault_group_t *group, size_t index,
     }
     if ((live->uptime_sec < phase->opening_uptime) ||
         ((live->uptime_sec - phase->opening_uptime) <
-         feeder->config.t_mem_dead_sec))
+         RF_T_MEM_DEAD_MAX_SEC))
     {
         phase->closure = CLOSURE_IDLE;
         return;
