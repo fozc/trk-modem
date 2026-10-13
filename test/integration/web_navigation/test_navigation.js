@@ -172,6 +172,40 @@ async function checkPage(html, label) {
               KartDurum2:null})`);
           assert.ok(powerNulls.includes('>-<'));
           assert.ok(!powerNulls.includes('NaN'));
+          /* Measurement summary must list exactly the missing families:
+           * voltages(2) currents(4+16384) power(8) SOC(32+16384)
+           * SOH(128) temperatures(256+512, BOTH required) charge(1024)
+           * capacity(2048) source(4096). */
+          {
+            const full = 2|4|8|32|128|256|512|1024|2048|4096|16384;
+            /* Poke ONE bit at a time; bit 14 (discharge) is shared by
+             * the currents and SOC families, so its absence lists both. */
+            const groups = language === 'tr'
+              ? [[2,'gerilimler'],[4,'akımlar'],[8,'güç'],[32,'SOC'],
+                 [128,'SOH'],[256,'sıcaklıklar'],[512,'sıcaklıklar'],
+                 [1024,'şarj fazı'],[2048,'kapasite'],[4096,'kaynak'],
+                 [16384,'akımlar, SOC']]
+              : [[2,'voltages'],[4,'currents'],[8,'power'],[32,'SOC'],
+                 [128,'SOH'],[256,'temperatures'],[512,'temperatures'],
+                 [1024,'charge phase'],[2048,'capacity'],[4096,'source'],
+                 [16384,'currents, SOC']];
+            const ok = language === 'tr'
+              ? 'Tüm ölçümler geçerli' : 'All measurements valid';
+            const all = run(`renderBoard({PowerValidFields:${full}})`);
+            assert.ok(all.includes(ok), 'full mask summary');
+            const invalidWord = language === 'tr' ? 'Geçersiz:' : 'Invalid:';
+            for (const [bit, label] of groups) {
+              const html = run(`renderBoard({PowerValidFields:${full & ~bit}})`);
+              /* The summary line must list exactly this one family. */
+              assert.ok(html.includes(`${invalidWord} ${label}<`),
+                  `${label} as the only listed group`);
+            }
+            /* One temperature bit alone is NOT enough (bit8 without bit9). */
+            const half = run(`renderBoard({PowerValidFields:${full & ~512}})`);
+            assert.ok(half.includes(`${invalidWord} `
+                + (language === 'tr' ? 'sıcaklıklar' : 'temperatures') + '<'),
+                'both temp bits required');
+          }
           assert.equal(run('formatAlarmMask(0)'),
               language === 'tr' ? 'Alarm yok' : 'No alarms');
           assert.ok(powerRows.includes(language === 'tr'
