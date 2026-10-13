@@ -565,7 +565,7 @@ static rf_cmd_status_t decode_notifications(const scp_packet_t *packet,
             break;
         case RF_SCP_CMD_LIVE_DATA:
             if (!valid_source(data[0]) || (6U < data[9]) ||
-                (1U < data[27]) || (1U < data[28]) || (100U < data[29]))
+                (1U < data[27]) || (1U < data[28]) || (99U < data[29]))
             {
                 return RF_CMD_ERR_PARAM;
             }
