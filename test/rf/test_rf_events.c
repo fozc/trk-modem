@@ -2671,6 +2671,7 @@ void test_batch_exact_duplicate_record_delivered_once(void)
     TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
     rf_events_process(tick);      /* Exact duplicate is deduplicated. */
     TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, fault_writes);
     TEST_ASSERT_TRUE(rf_alarm_is_idle());
     verify_head_then_expect_consume(36U);
     TEST_ASSERT_EQUAL_UINT32(138U, read_u32(request.data));
@@ -2851,6 +2852,71 @@ void test_alarm_relatch_after_live_repeat_requeues_the_alarm(void)
     TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
     TEST_ASSERT_EQUAL_UINT8(1U, written_alarm.active);
     TEST_ASSERT_TRUE(rf_alarm_is_idle());
+}
+
+static void prepare_counted_opening(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 1U;
+    packet.data[55] = 1U;
+    scp_pack_u16(&packet.data[49], 1U);
+    put_u32(&packet.data[51], 10U);
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+}
+
+static void supply_closure_live(void)
+{
+    rf_scp_live_t live = {.source = 5U, .state = 1U,
+        .boot_counter = 1U, .uptime_sec = 100U, .seq = 100U};
+    rf_faults_live(&live, tick);
+    live.uptime_sec++;
+    live.seq++;
+    rf_faults_live(&live, tick);
+}
+
+void test_feeder_count_requires_new_empty_head_after_live_and_consumption(void)
+{
+    prepare_counted_opening();
+    rf_fault_stats_t count;
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &count));
+    TEST_ASSERT_FALSE(count.is_final);
+    verify_head_then_expect_consume(36U);
+    scp_packet_t ack_packet = capture(RF_SCP_CMD_LOG_CONSUME_IF, SCP_TYPE_ACK);
+    scp_pack_u16(ack_packet.data, 37U);
+    scp_pack_u16(&ack_packet.data[2], 0U);
+    respond(&ack_packet);
+    supply_closure_live();
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    scp_packet_t empty = read_head;
+    scp_pack_u16(&empty.data[8], 37U);
+    respond(&empty);
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &count));
+    TEST_ASSERT_TRUE(count.is_final);
+    TEST_ASSERT_EQUAL_UINT32(1U, count.permanent);
+    TEST_ASSERT_EQUAL_UINT32(0U, count.pending);
+}
+
+void test_inflight_head_from_before_pending_zero_cannot_finalize_count(void)
+{
+    prepare_counted_opening();
+    rf_events_process(tick); /* Verification HEAD is already in flight. */
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    supply_closure_live();
+    scp_packet_t empty = read_head;
+    scp_pack_u16(&empty.data[8], 37U);
+    respond(&empty);
+    rf_fault_stats_t count;
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &count));
+    TEST_ASSERT_FALSE(count.is_final);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    respond(&empty);
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &count));
+    TEST_ASSERT_TRUE(count.is_final);
 }
 
 /*** end of file ***/

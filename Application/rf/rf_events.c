@@ -82,6 +82,7 @@ static uint32_t prev_position;   /* Difference modulo 6553600. */
 static bool drain_requested;
 static bool drain_ready;
 static uint32_t drain_total;
+static uint64_t head_version;
 
 static uint16_t next_slot(uint16_t slot, uint16_t count)
 {
@@ -106,6 +107,7 @@ static bool detect_store_reset(const rf_scp_message_t *message,
 
     if (reset)
     {
+        rf_faults_reset_sequences();
         CSLOG_WARN("[RF] MH event store reset detected "
                    "(total %lu -> %u); resuming from current tail\r\n",
                    (unsigned long)prev_total,
@@ -137,6 +139,7 @@ void rf_events_init(void)
     prev_position = 0U;
     drain_requested = false;
     drain_ready = false;
+    head_version = 0U;
 }
 
 void rf_events_request_drain(void)
@@ -239,6 +242,7 @@ static void head_received(const rf_scp_message_t *message)
     }
     if (0U == pending)
     {
+        rf_faults_ring_empty(head_version, HAL_GetTick());
         if (drain_requested)
         {
             drain_total = message->body.log_head.total;
@@ -306,6 +310,10 @@ static void verify_head(const rf_scp_message_t *message)
     }
     else
     {
+        if ((0U != distance) && (pending < distance))
+        {
+            rf_faults_reset_sequences();
+        }
         head_received(message);
     }
 }
@@ -353,6 +361,7 @@ static void command_done(scp_cmd_result_t result,
             range_received(&message);
             break;
         case EVENTS_BAD_SLOT:
+            rf_faults_reset_sequences();
             if (cursor == message.body.log_head.head)
             {
                 stop_cycle();
@@ -552,6 +561,7 @@ static void store_record(uint32_t now_ms)
             store_retry_ms = now_ms;
             return;
         }
+        rf_faults_record_stored(&event);
     }
     if (!rf_alarm_record(&event))
     {
@@ -586,6 +596,7 @@ static __attribute__((noinline)) void send_command(void)
         case EVENTS_VERIFY:
         case EVENTS_BAD_SLOT:
             request.cmd = RF_SCP_CMD_LOG_READ_HEAD;
+            head_version = rf_faults_head_started();
             break;
         case EVENTS_READ:
             request.cmd = RF_SCP_CMD_LOG_READ_RANGE;
@@ -627,7 +638,7 @@ void rf_events_process(uint32_t now_ms)
     }
     if (EVENTS_IDLE == state)
     {
-        if (requested ||
+        if (requested || rf_faults_needs_head(now_ms) ||
             (EVENT_POLL_MS <= (uint32_t)(now_ms - poll_ms)))
         {
             requested = false;

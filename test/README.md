@@ -1,7 +1,7 @@
 # Test Altyapısı
 
-**Sürüm:** 1.49
-**Tarih:** 2026-10-12
+**Sürüm:** 1.50
+**Tarih:** 2026-10-13
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
@@ -9,10 +9,41 @@ doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
 
+## 13.10.2026 v0.15 dizi eşleme ve kapanış regresyonları
+
+`rf/test_rf_faults.c` aynı fiderde kesişen 142 dizi aralıklarını,
+ayrık aralıkları, geç fazları ve aynı gruptaki 1/7 üstünlüğünü sınar.
+1/7 için 999/1000/1001 ms sınır testleri korunur. Clock_quality 0/2,
+eksik başlangıç, boot/kimlik değişimi ve kapasite kaybı kesin toplam
+üretmez. 128 grup kapasitesinde açık kanıtların ezilmediği ve tamamlanan
+grupların sayaçları korunarak yeniden kullanıldığı doğrulanır.
+
+Kapanış; T_Mem_Dead, taze idle LIVE, sonraki pending=0 LIVE ve bu
+kanıttan sonra gönderilmiş HEAD/boş halka sırasıyla sınanır. Başka bir
+fazın gecikmiş kayıtları erken kesinleşmeyi engeller. Yeni kayıt veya
+MH restart eski kapanış kanıtını iptal eder. Yazılım sahipliği cooperative
+process (işbirlikli süreç) bağlamındadır; ISR atomikliği gerektirmez.
+
+`rf/test_rf_events.c` gerçek kayıt/store/HEAD/tüketim girişlerinden
+kesinleşmeyi ve eski HEAD'in reddini doğrular. Ham olarak görülmüş kayıt
+ile kalıcı faz kaydı ayrılır; eşleme sonradan geçerli olduğunda kayıt
+atlanmaz, gerçekten kalıcı saklanan kopya ikinci kez listeye eklenmez.
+Web JSON `Pending` ve `IsFinal` taşır; source ve embedded sayfa kesin/
+kesinleşmedi görünümünü merkezi web_navigation paketinde sınar.
+
+Bu eklemede 26 Unity regresyonu eklendi. Son tam koşu 1327/1327,
+0 failure/error/skipped; kanıt `build/v015-unit-commit-2026-10-13.log`.
+Değişen beş üretim modülü Cortex-M33 C11/yedi zorunlu warning seçeneğiyle
+Werror altında derlendi. Release geçti. Bunlar fiziksel kabul değildir.
+
+v0.15 BQ-23 gereği m5 yalnız eşleşen ACK/201 kampanya gözlemidir.
+120 eksik/tekrarlı/eski kampanyadan olabilir; nihai başarı sonraki
+yapılandırmanın APPLIED/üye bitmap/CRC doğrulamasıdır.
+
 ## 12.10.2026 R2 sınır regresyonları
 
 [R2 çalışma planının](../doc/RF_SCP_R2_AGENT_CALISMA_PLANI.md) uygulanması
-sırasında iki turda 73 yeni Unity testi eklendi (toplam 1212 → 1285, 0 hata).
+sırasında iki turda 73 + tur 4/5/6 eklemeleriyle 85 yeni Unity testi eklendi (toplam 1212 → 1297, 0 hata).
 Birinci tur güncel coverage envanterinin alınmayan satırlarını, ikinci tur
 gcovr dal detayından "hiç alınmamış yönleri" (dead branch direction) kapattı.
 
@@ -1115,7 +1146,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
-| 2026-10-12 | 1.49 | R2 sınır regresyonları: iki turda 73 yeni Unity testi (1212→1285), ölü dal yönlerinin savunma/artefakt/gürültü sınıflandırması |
+| 2026-10-12 | 1.49 | R2 sınır regresyonları: 85 yeni Unity testi (1212→1297; son ekleme: çoklu alarm batch/hata/restart pencereleri), ölü dal yönlerinin savunma/artefakt/gürültü sınıflandırması |
 | 2026-10-10 | 1.41 | Kalıcı IEC104 kayıtlarının N(R) sonrası tüketilmesi, gerçek TX/ACK/log regresyonu ve master ACK aralığına uygun replay toplama süresi |
 | 2026-10-10 | 1.40 | SCP R2 HIL seti: simülatör R2 modeli (81 self-test), cases_r2 (8 cihaz vakası, toplam 45), 0x48 tüketim taşıması; iec104 master i07 replay tutma vakası; rf_real_mh gerçek MH duman süiti; bench konsol yarışına yeniden deneme |
 | 2026-10-10 | 1.39 | Bütün üretim C dosyalarının coverage envanteri, eksiksiz JUnit kontrolü ve sekiz modülde mantık/hata yolu testleri |
