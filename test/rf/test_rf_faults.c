@@ -684,4 +684,41 @@ void test_idle_other_phase_with_delayed_records_blocks_early_finality(void)
     TEST_ASSERT_TRUE(counts(1U).is_final);
 }
 
+void test_audit_opening_count_is_independent_of_phase_arrival_order(void)
+{
+    const uint8_t orders[6][3] =
+        {{0U, 1U, 2U}, {0U, 2U, 1U}, {1U, 0U, 2U},
+         {1U, 2U, 0U}, {2U, 0U, 1U}, {2U, 1U, 0U}};
+    const uint16_t times[4][3] =
+        {{10000U, 10500U, 10999U}, {10000U, 10500U, 11000U},
+         {10000U, 10999U, 11001U}, {10000U, 11001U, 12002U}};
+    const uint32_t permanent[] = {1U, 1U, 0U, 3U};
+    bind_phases();
+    for (size_t sample = 0U; 4U > sample; sample++)
+    {
+        for (size_t order = 0U; 6U > order; order++)
+        {
+            rf_faults_init();
+            event.uptime_sec = 0U;
+            for (size_t index = 0U; 3U > index; index++)
+            {
+                const uint8_t slot = orders[order][index];
+                (void)classify((0U == slot) ? 1U : 7U,
+                    (uint8_t)(slot + 1U), times[sample][slot]);
+            }
+            for (uint8_t phase = 1U; 3U >= phase; phase++)
+            {
+                ready_phase(phase, (uint32_t)phase * 10U);
+            }
+            rf_faults_ring_empty(rf_faults_head_started(), 32U);
+            const rf_fault_stats_t result = counts(1U);
+            TEST_ASSERT_EQUAL_UINT32(permanent[sample], result.permanent);
+            TEST_ASSERT_EQUAL_UINT32((2U == sample) ? 1U : 0U,
+                                    result.uncertain);
+            TEST_ASSERT_EQUAL_UINT32(0U, result.pending);
+            TEST_ASSERT_EQUAL_INT(2U != sample, result.is_final);
+        }
+    }
+}
+
 /*** end of file ***/

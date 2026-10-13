@@ -50,6 +50,7 @@ typedef struct
     cp56time2a_t start;
     cp56time2a_t end;
     cp56time2a_t opening_time;
+    cp56time2a_t opening_end;
     fault_participant_t phases[RF_PHASES];
     uint8_t zone;
     uint8_t feeder;
@@ -60,6 +61,7 @@ typedef struct
     bool opened;
     bool failed;
     bool temporary;
+    bool opening_ambiguous;
 } fault_group_t;
 
 typedef struct
@@ -160,7 +162,7 @@ static rf_fault_class_t group_type(const fault_group_t *group)
 
 static void add_group_count(const fault_group_t *group, rf_fault_stats_t *out)
 {
-    if (group->uncertain)
+    if (group->uncertain || group->opening_ambiguous)
     {
         increment(&out->uncertain);
     }
@@ -225,8 +227,12 @@ static bool groups_match(const fault_group_t *a, const fault_group_t *b)
     {
         const cp56time2a_t *ta = a->opened ? &a->opening_time : &a->end;
         const cp56time2a_t *tb = b->opened ? &b->opening_time : &b->end;
-        const int32_t difference = cp56time2a_diff_ms(ta, tb);
-        return (-1000 <= difference) && (1000 >= difference);
+        const cp56time2a_t *ea = a->opened ? &a->opening_end : ta;
+        const cp56time2a_t *eb = b->opened ? &b->opening_end : tb;
+        /* Keep a connected opening window independent of arrival order.
+         * A chain spanning more than one second is not an exact count. */
+        return (1000 >= cp56time2a_diff_ms(ta, eb)) &&
+               (1000 >= cp56time2a_diff_ms(tb, ea));
     }
     return overlaps(a, b);
 }
@@ -246,7 +252,16 @@ static void merge_group(fault_group_t *target, const fault_group_t *other)
     {
         target->opening_time = other->opening_time;
     }
+    if (other->opened && (!target->opened ||
+        (0 < cp56time2a_diff_ms(&other->opening_end, &target->opening_end))))
+    {
+        target->opening_end = other->opening_end;
+    }
     target->opened = target->opened || other->opened;
+    target->opening_ambiguous = target->opening_ambiguous ||
+        other->opening_ambiguous || (target->opened &&
+        (1000 < cp56time2a_diff_ms(&target->opening_end,
+                                  &target->opening_time)));
     target->failed = target->failed || other->failed;
     target->temporary = target->temporary || other->temporary;
     target->uncertain = target->uncertain || other->uncertain;
@@ -469,7 +484,6 @@ static bool record_result(fault_sequence_t *sequence,
     }
     candidate.zone = event->zone;
     candidate.feeder = event->feeder;
-    candidate.opened = candidate.opened || opened;
     candidate.failed = candidate.failed || (100U == event->event) ||
                        (101U == event->event);
     candidate.temporary = candidate.temporary || (142U == event->event);
@@ -482,7 +496,26 @@ static bool record_result(fault_sequence_t *sequence,
         ((142U == event->event) && !sequence->active);
     if (opened)
     {
-        candidate.opening_time = *time;
+        if (!candidate.opened)
+        {
+            candidate.opening_time = *time;
+            candidate.opening_end = *time;
+        }
+        else
+        {
+            if (0 > cp56time2a_diff_ms(time, &candidate.opening_time))
+            {
+                candidate.opening_time = *time;
+            }
+            if (0 < cp56time2a_diff_ms(time, &candidate.opening_end))
+            {
+                candidate.opening_end = *time;
+            }
+        }
+        candidate.opened = true;
+        candidate.opening_ambiguous = candidate.opening_ambiguous ||
+            (1000 < cp56time2a_diff_ms(&candidate.opening_end,
+                                      &candidate.opening_time));
     }
     if (candidate.opening_count < event->fault_count)
     {
