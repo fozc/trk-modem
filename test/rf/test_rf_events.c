@@ -2870,7 +2870,7 @@ static void prepare_counted_opening(void)
 static void supply_closure_live(void)
 {
     rf_scp_live_t live = {.source = 5U, .state = 1U,
-        .boot_counter = 1U, .uptime_sec = 100U, .seq = 100U};
+        .boot_counter = 1U, .uptime_sec = 610U, .seq = 100U};
     rf_faults_live(&live, tick);
     live.uptime_sec++;
     live.seq++;
