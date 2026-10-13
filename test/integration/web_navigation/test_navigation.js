@@ -97,6 +97,20 @@ async function checkPage(html, label) {
         assert.ok(countsTable.includes(language==='tr'
             ? 'kalıcı 1, geçici 2, belirsiz 3'
             : 'permanent 1, temporary 2, uncertain 3'));
+        assert.ok(countsTable.includes(language==='tr'
+            ? 'kesinleşmedi' : 'provisional'));
+        const confirmedCounts=run(`buildRfMonitorTable({Phases:[],
+            FaultCountsSinceStartup:{Permanent:1,Temporary:2,Uncertain:0,
+                Pending:0,IsFinal:true}})`);
+        assert.ok(confirmedCounts.includes(language==='tr'
+            ? 'bu RTU oturumu, kesin' : '(confirmed)'));
+        const pendingCounts=run(`buildRfMonitorTable({Phases:[],
+            FaultCountsSinceStartup:{Permanent:1,Temporary:2,Uncertain:0,
+                Pending:2,IsFinal:false}})`);
+        assert.ok(pendingCounts.includes(language==='tr'
+            ? 'kapanış bekleyen 2' : 'awaiting closure 2'));
+        assert.ok(pendingCounts.includes(language==='tr'
+            ? 'kesinleşmedi' : 'provisional'));
         const maintenance=run(`buildRfMonitorTable({Phases:[
             {HasData:true,Online:true,Live:{Flags:3,FsmError:true}}]})`);
         assert.ok(maintenance.includes(language==='tr'

@@ -1110,7 +1110,8 @@ function buildRfMonitorTable(d){
   html+='<div class="table-wrap"><table class="phase-table"><thead><tr><th>'+esc(t('thParam'))+'</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
   if(counts){
     const n=k=>Number.isInteger(counts[k])&&counts[k]>=0?counts[k]:'—';
-    const note=LNG==='tr'?`Fider sayımı (bu RTU oturumunda işlenen): kalıcı ${n('Permanent')}, geçici ${n('Temporary')}, belirsiz ${n('Uncertain')}`:`Feeder counts processed in this RTU session: permanent ${n('Permanent')}, temporary ${n('Temporary')}, uncertain ${n('Uncertain')}`;
+    const state=counts.IsFinal===true?(LNG==='tr'?'kesin':'confirmed'):(LNG==='tr'?'kesinleşmedi':'provisional');
+    const note=LNG==='tr'?`Fider sayımı (bu RTU oturumu, ${state}): kalıcı ${n('Permanent')}, geçici ${n('Temporary')}, belirsiz ${n('Uncertain')}, kapanış bekleyen ${n('Pending')}`:`Feeder counts in this RTU session (${state}): permanent ${n('Permanent')}, temporary ${n('Temporary')}, uncertain ${n('Uncertain')}, awaiting closure ${n('Pending')}`;
     html='<p>'+esc(note)+'</p>'+html;
   }
   for(const [key,label,unit,precision,mask] of fields){

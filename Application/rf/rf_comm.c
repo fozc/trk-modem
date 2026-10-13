@@ -659,6 +659,7 @@ static void handle_boot_notify(const scp_packet_t *pkt)
     time_sync_timer_started = false;
     rf_inventory_reset();
     rf_hub_restarted();
+    rf_faults_hub_restarted();
     if (cmd_ctx.busy)
     {
         finish_command(SCP_CMD_RESTARTED, NULL);
@@ -692,6 +693,7 @@ static void handle_live_notification(const rf_scp_live_t *live)
     }
     if (rf_handle_live(live, HAL_GetTick(), &received_time))
     {
+        rf_faults_live(live, HAL_GetTick());
         rf_alarm_live(live->source, &received_time);
     }
 }

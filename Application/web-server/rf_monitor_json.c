@@ -206,6 +206,9 @@ static void emit_fault_counts(json_writer_t *writer, size_t line)
     append(writer, text);
     emit_u32(writer, "Temporary", count.temporary);
     emit_u32(writer, "Uncertain", count.uncertain);
+    emit_u32(writer, "Pending", count.pending);
+    append(writer, count.is_final ? ",\"IsFinal\":true" :
+                                    ",\"IsFinal\":false");
     append(writer, "}");
 }
 
