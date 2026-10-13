@@ -12,6 +12,39 @@
 
 #include "rf_scp_codec.h"
 #include "iec104_types.h"
+#include "iec104_event_log.h"
+
+/**
+ * @brief Console announcement decision for one delivered alarm record.
+ *
+ * Rising-edge only: an announcement is produced when a delivery reports
+ * an active alarm for the first time, or when a previously reported
+ * alarm changes its active state. Unchanged states stay silent so
+ * retries never repeat the line.
+ */
+typedef enum
+{
+    RF_ALARM_ANNOUNCE_NONE = 0,   /**< No announcement. */
+    RF_ALARM_ANNOUNCE_ACTIVE,     /**< Alarm became active (red line). */
+    RF_ALARM_ANNOUNCE_CLEARED     /**< Previously active alarm cleared. */
+} rf_alarm_announce_t;
+
+/**
+ * @brief Decide and format the console announcement for a delivery.
+ *
+ * @param[in,out] out              Buffer receiving the NUL-terminated line.
+ * @param[in]     out_len          Size of out; 40 bytes suffice.
+ * @param[in]     record           Delivered alarm record; feeder/phase are
+ *                                 zero-based line indexes, printed as +1.
+ * @param[in]     previous_reported Whether this slot already reported once.
+ * @param[in]     previous_active  Active state of the previous report.
+ *
+ * @return Announcement kind; out is filled only when it is not NONE.
+ */
+rf_alarm_announce_t rf_alarm_announcement(char *out, unsigned int out_len,
+                                          const iec104_alarm_record_t *record,
+                                          bool previous_reported,
+                                          bool previous_active);
 
 void rf_alarm_init(void);
 void rf_alarm_live(uint8_t source, const cp56time2a_t *time);

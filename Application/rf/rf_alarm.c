@@ -14,7 +14,11 @@
 #include "stm32u3xx_hal.h"
 #include "iec104.h"
 #include "iec104_replay.h"
+#include "xprintf.h"
 #include <string.h>
+
+#define CSLOG_MODULE LOG_MOD_RF
+#include "console_logger_config.h"
 
 #define RF_ALARM_SOURCES 12U
 #define ALARM_RETRY_MS 60000U
@@ -124,6 +128,30 @@ static bool set_pending(alarm_delivery_t *delivery, bool active,
     return false;
 }
 
+rf_alarm_announce_t rf_alarm_announcement(char *out, unsigned int out_len,
+                                          const iec104_alarm_record_t *record,
+                                          bool previous_reported,
+                                          bool previous_active)
+{
+    if ((NULL == out) || (NULL == record) ||
+        (!previous_reported && (0U == record->active)))
+    {
+        return RF_ALARM_ANNOUNCE_NONE;
+    }
+    const bool active = (0U != record->active);
+    if (previous_reported && (previous_active == active))
+    {
+        return RF_ALARM_ANNOUNCE_NONE;
+    }
+    const rf_alarm_announce_t kind = active ? RF_ALARM_ANNOUNCE_ACTIVE :
+                                              RF_ALARM_ANNOUNCE_CLEARED;
+    (void)xsnprintf(out, out_len, "[RF] ALARM %s: feeder %u phase %u",
+                    active ? "ACTIVE" : "CLEARED",
+                    (unsigned)(record->feeder + 1U),
+                    (unsigned)(record->phase + 1U));
+    return kind;
+}
+
 static bool deliver(alarm_delivery_t *delivery)
 {
     if (!delivery->added)
@@ -147,6 +175,32 @@ static bool deliver(alarm_delivery_t *delivery)
     {
         return storage_failed();
     }
+#if defined(BSP_CONSOLE_LOG)
+    /* Rising-edge console announcement. Guarded so no formatting
+     * runs when logging is compiled out or the level is below
+     * NORMAL. */
+    if (console_logger_level_enabled(CSLOG_MODULE, LOG_LVL_NORMAL))
+    {
+        char announcement[48];
+        const rf_alarm_announce_t kind =
+            rf_alarm_announcement(announcement, sizeof(announcement),
+                                  &delivery->record,
+                                  delivery->has_report,
+                                  delivery->active);
+        if (RF_ALARM_ANNOUNCE_ACTIVE == kind)
+        {
+            CSLOG_ERR_NODT("%s\r\n", announcement);
+        }
+        else if (RF_ALARM_ANNOUNCE_CLEARED == kind)
+        {
+            CSLOG_WARN_NODT("%s\r\n", announcement);
+        }
+        else
+        {
+            /* Unchanged state: stay silent. */
+        }
+    }
+#endif
     delivery->has_report = true;
     delivery->active = (0U != delivery->record.active);
     delivery->pending = false;
