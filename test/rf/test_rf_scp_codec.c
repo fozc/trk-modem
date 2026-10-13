@@ -976,7 +976,7 @@ void test_r2_consume_ack_all_tail_and_pending_values_are_range_checked(void)
 void test_r2_all_live_boolean_and_state_values_are_validated(void)
 {
     const size_t offsets[] = {9U, 27U, 28U, 29U};
-    const uint8_t maxima[] = {6U, 1U, 1U, 100U};
+    const uint8_t maxima[] = {6U, 1U, 1U, 99U};
     const scp_packet_t original =
         first_packet(RF_SCP_CMD_LIVE_DATA, SCP_TYPE_SET);
     rf_scp_message_t previous;
@@ -1465,9 +1465,16 @@ void test_live_notification_rejects_log_pending_above_capacity(void)
     rf_scp_message_t message;
 
     packet.data[0] = 0x05U;
-    packet.data[29] = 101U;
-    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+    packet.data[29] = 99U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
                           rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_EQUAL_UINT8(99U, message.body.live.log_pending);
+    for (uint16_t value = 100U; 255U >= value; value++)
+    {
+        packet.data[29] = (uint8_t)value;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
+                              rf_scp_decode_message(&packet, &message));
+    }
 }
 
 void test_hub_counters_reject_slot_hundred_everywhere(void)
