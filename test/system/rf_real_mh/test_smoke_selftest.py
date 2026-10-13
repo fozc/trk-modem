@@ -131,31 +131,31 @@ class SmokeTests(unittest.TestCase):
                          run_smoke._crc16_ccitt_false(raw[:58]))
         return bytes(raw)
 
-    def test_epoch_requires_each_live_phase_and_matching_boot_identity(self):
+    def test_epoch_summary_does_not_require_120_or_matching_boot(self):
         summary = self.epoch_record(201)
         first = self.epoch_record(120, phase=1, boot=7)
         second = self.epoch_record(120, phase=2, boot=20)
-        expected = {1: 7, 2: 20}
-        self.assertFalse(run_smoke.epoch_records_complete([summary], expected))
-        self.assertFalse(run_smoke.epoch_records_complete(
-            [summary, first, first], expected))
-        self.assertTrue(run_smoke.epoch_records_complete(
-            [summary, first, second], expected))
+        self.assertEqual(summary, run_smoke.epoch_campaign_summary([summary]))
+        self.assertIsNone(run_smoke.epoch_campaign_summary([first, second]))
+        self.assertEqual(summary, run_smoke.epoch_campaign_summary(
+            [summary, first, first]))
         for bad in (self.epoch_record(120, phase=2, boot=19),
                     self.epoch_record(120, phase=2, boot=20, feeder=2),
                     self.epoch_record(120, phase=2, boot=20, zone=2)):
-            self.assertFalse(run_smoke.epoch_records_complete(
-                [summary, first, bad], expected))
+            self.assertEqual(summary, run_smoke.epoch_campaign_summary(
+                [summary, first, bad]))
 
-    def test_epoch_wrong_mask_or_foreign_summary_cannot_pass(self):
+    def test_epoch_partial_masks_are_observations_not_final_success(self):
         marks = [self.epoch_record(120, phase=1, boot=7),
                  self.epoch_record(120, phase=2, boot=20)]
-        for summary in (self.epoch_record(201, mask=0),
-                        self.epoch_record(201, mask=1),
-                        self.epoch_record(201, mask=7),
-                        self.epoch_record(201, feeder=2)):
-            self.assertFalse(run_smoke.epoch_records_complete(
-                [summary] + marks, {1: 7, 2: 20}))
+        for mask in (0, 1, 7):
+            summary = self.epoch_record(201, mask=mask)
+            self.assertEqual(summary, run_smoke.epoch_campaign_summary(
+                [summary] + marks))
+        for summary in (self.epoch_record(201, mask=8),
+                        self.epoch_record(201, feeder=2),
+                        self.epoch_record(120)):
+            self.assertIsNone(run_smoke.epoch_campaign_summary([summary]))
 
     def run_epoch(self, records, ack_seq=7):
         live = bytearray(33)
@@ -173,8 +173,8 @@ class SmokeTests(unittest.TestCase):
                                   side_effect=[0, 0, 101]):
                     return run_smoke.m5_epoch_201(ctx)[0]
 
-    def test_actual_epoch_case_does_not_stop_at_summary_only(self):
-        self.assertEqual("FAIL", self.run_epoch([
+    def test_actual_epoch_case_observes_summary_without_requiring_120(self):
+        self.assertEqual("PASS", self.run_epoch([
             self.epoch_record(201, mask=1)]))
 
     def test_actual_epoch_case_passes_after_summary_and_matching_phase(self):

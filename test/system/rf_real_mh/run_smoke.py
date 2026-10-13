@@ -12,7 +12,7 @@ Checks (see README.md):
   m2_inventory     inventory is loaded on the DUT
   m3_live_boot     LIVE_DATA flows and carries Boot_Counter (bytes 31-32)
   m4_ring_consume  a 0x47 bell is followed by a 0x48 consume
-  m5_epoch_201     (--epoch) renewal writes event 201 (+120) records
+  m5_epoch_201     (--epoch) observe ACK/201; 120 diagnostic, APPLIED final
   m6_bootless      (--reset-dut) DUT reboot rebuilds without BOOT_NOTIFY
 
 Prerequisites: production image (RTU image profile=0), the real MH
@@ -292,7 +292,7 @@ def m4_ring_consume(ctx):
                     (" (yalniz etkisiz koruma ACK'i)" if attempted else "")]
 
 
-@case("m5_epoch_201", "(--epoch) yenileme 201 + 120 kayitlari yazar")
+@case("m5_epoch_201", "(--epoch) 201 kampanya gozlemi; kesin basari APPLIED")
 def m5_epoch_201(ctx):
     if not ctx.args.epoch:
         return "SKIP", ["--epoch ile acilir (MH'ye 0x2A gonderir)"]
@@ -330,31 +330,33 @@ def m5_epoch_201(ctx):
                     if record not in seen:
                         seen.add(record)
                         records.append(record)
-        if accepted and epoch_records_complete(records, expected):
-            return "PASS", ["0x2A ACK + fider 1 olay 201 + faz 120: %s" %
-                            sorted(expected)]
+        summary = epoch_campaign_summary(records) if accepted else None
+        if summary is not None:
+            phases = sorted({record[10] for record in records
+                             if record[7] == 120
+                             and record[8:10] == summary[8:10]})
+            mask = summary[41] | (summary[42] << 8)
+            return "PASS", [
+                "0x2A ACK + fider 1 olay 201 mask=0x%X gozlemlendi" % mask,
+                "120 gozlenen fazlar=%s; yalniz tani, kampanya kimligi yok" %
+                phases,
+                "Bu PASS yenileme kabulunu tamamlamaz; sonraki "
+                "yapilandirmada APPLIED/uye bitmap/CRC dogrulanmalidir"]
         time.sleep(2.0)
-    return "FAIL", ["100 s icinde eslesen ACK/201/tum faz 120 tamamlanmadi; "
+    return "FAIL", ["100 s gozlem penceresinde eslesen ACK/201 gorulmedi; "
                     "ACK=%s kodlar=%s" %
                     (accepted, sorted({rec[7] for rec in records}))]
 
 
-def epoch_records_complete(records, expected):
-    """Require the same feeder/zone and the LIVE boot of each active AY."""
-    required = sum(1 << (phase - 1) for phase in expected)
+def epoch_campaign_summary(records):
+    """Observe an MH campaign result, never infer final success from 120."""
     for summary in records:
         if summary[7] != 201 or summary[9] != 1 or summary[56:58] != b"\0\0":
             continue
         mask = summary[41] | (summary[42] << 8)
-        if mask != required:
-            continue
-        phases = {record[10] for record in records
-                  if record[7] == 120 and record[8:10] == summary[8:10]
-                  and record[10] in expected and record[56:58] != b"\0\0"
-                  and (record[49] | (record[50] << 8)) == expected[record[10]]}
-        if phases == set(expected):
-            return True
-    return False
+        if mask <= 7:
+            return summary
+    return None
 
 
 @case("m6_bootless", "(--reset-dut) DUT reset: BOOT'suz kurulum")
