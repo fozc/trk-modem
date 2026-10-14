@@ -26,6 +26,14 @@ uint32_t __get_PRIMASK(void);
 void __disable_irq(void);
 void __set_PRIMASK(uint32_t state);
 void NVIC_SystemReset(void);
+typedef enum
+{
+    TIM17_IRQn,
+    EXTI15_IRQn
+} IRQn_Type;
+uint32_t NVIC_GetEnableIRQ(IRQn_Type irq);
+void NVIC_DisableIRQ(IRQn_Type irq);
+void NVIC_EnableIRQ(IRQn_Type irq);
 #define LPUART1 ((void *)0)
 uint32_t LL_LPUART_IsActiveFlag_TXE_TXFNF(void *uart);
 void LL_LPUART_TransmitData8(void *uart, uint8_t value);

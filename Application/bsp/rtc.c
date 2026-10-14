@@ -121,8 +121,16 @@ static void rtc_update_epoch(const rtc_t *dt)
 /* Copy a calendar time into the software RTC (calendar + milliseconds). */
 static void rtc_load_sw(const rtc_t *dt)
 {
-	bsp_set_rtc(dt->second, dt->minute, dt->hour, dt->day, dt->month, dt->year);
-	bsp_set_rtc_milisec(dt->millisec);
+    const bsp_rtc_t datetime = {
+        .millisec = dt->millisec,
+        .second = dt->second,
+        .minute = dt->minute,
+        .hour = dt->hour,
+        .day = dt->day,
+        .month = dt->month,
+        .year = dt->year
+    };
+    bsp_set_datetime(&datetime);
 }
 
 /* ------------------------------------------------------------------ */
@@ -367,3 +375,4 @@ uint32_t rtc_get_unix_epoch(void)
 	return bsp_get_epoch_time();
 }
 
+/*** end of file ***/

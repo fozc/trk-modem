@@ -110,6 +110,10 @@
         - -DBSP_DELAY_HOST_TEST
         - -flto
         - -O2
+      test_bsp_rtc_write:
+        - -DBSP_DELAY_HOST_TEST
+        - -flto
+        - -O2
       # LTO drops unrelated callbacks from the monolithic legacy GSM unit.
       test_gsm_response_scenario:
         - -Wno-sign-compare
@@ -229,6 +233,9 @@
         - -flto
         - -O2
       test_bsp_delay_us:
+        - -flto
+        - -O2
+      test_bsp_rtc_write:
         - -flto
         - -O2
       test_bms_reader_scenario:

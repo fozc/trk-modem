@@ -2,9 +2,11 @@
  * power_panic.c
  *
  *  Created on: 11 Eyl 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "power_panic.h"
+#include "bsp.h"
 #include "console_logger.h"
 #include "elog.h"
 #include "gpio.h"
@@ -13,7 +15,7 @@
 /* PE15 (LOW = panik) panik bolumu izleyici.
  * Dusen kenar bolumu acar, yukselen kenar kapatir; hat reset olmadan
  * HIGH'a donebildiginden her LOW dususu taze bolum acar. Bayraga yalniz
- * EXTI15 kesmesi yazar, ana dongu okur -> volatile yeterli. Ana dongu:
+ * EXTI15 kesmesi yazar; init yazimi ayni IRQ'yu dislar. Ana dongu:
  * bolum acik ve hat LOW -> bolum basina bir kez log + elog; hat HIGH ->
  * gecici darbe, log yok. PA7 aynasi ISR icinde (bkz. stm32u3xx_it.c). */
 static volatile uint8_t power_panic_flag = 1;
@@ -60,10 +62,14 @@ void power_panic_check(void)
 
 void power_panic_init(void)
 {
+	const uint32_t was_enabled = bsp_power_panic_irq_disable();
 	/* Aynayi acilista esitle (MX_GPIO_Init PA7'yi LOW baslatir); hat LOW
 	 * ise bolum acik dogar - kenar uretmeyen boot-dusuk hat loglanabilsin. */
 	uint8_t panic_level = gpio_read_pin(PWR_PANIC_BSP_GPIO, PWR_PANIC_BSP_PIN);
 
 	power_panic_flag = (panic_level == 0U) ? 1U : 0U;
 	gpio_set_pin(PWR_PANIC_MIRROR_GPIO, PWR_PANIC_MIRROR_PIN, panic_level);
+	bsp_power_panic_irq_restore(was_enabled);
 }
+
+/*** end of file ***/

@@ -63,24 +63,10 @@ unsigned int xsprintf(char *buffer, const char *format, ...)
     return 0U;
 }
 
-static void set_calendar(uint8_t second, uint8_t minute, uint8_t hour,
-                         uint8_t day, uint8_t month, uint8_t year,
-                         int call_count)
+static void set_datetime(const bsp_rtc_t *datetime, int call_count)
 {
     (void)call_count;
-    stored.second = second;
-    stored.minute = minute;
-    stored.hour = hour;
-    stored.day = day;
-    stored.month = month;
-    stored.year = year;
-    write_count++;
-}
-
-static void set_ms(uint16_t ms, int call_count)
-{
-    (void)call_count;
-    stored.millisec = ms;
+    stored = *datetime;
     write_count++;
 }
 
@@ -148,8 +134,7 @@ void setUp(void)
     expected_reads = 0U;
     time_status = HAL_OK;
     date_status = HAL_OK;
-    bsp_set_rtc_StubWithCallback(set_calendar);
-    bsp_set_rtc_milisec_StubWithCallback(set_ms);
+    bsp_set_datetime_StubWithCallback(set_datetime);
     bsp_set_epoch_time_StubWithCallback(set_epoch);
     HAL_RTC_SetTime_StubWithCallback(set_time);
     HAL_RTC_SetDate_StubWithCallback(set_date);
@@ -188,7 +173,7 @@ void test_rtc_sync_valid_time_updates_all_views(void)
 {
     const rtc_t value = valid_time();
     TEST_ASSERT_TRUE(rtc_sync(&value));
-    TEST_ASSERT_EQUAL_UINT32(6U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(5U, write_count);
     TEST_ASSERT_EQUAL_UINT16(value.millisec, stored.millisec);
     TEST_ASSERT_EQUAL_UINT8(value.month, stored.month);
     TEST_ASSERT_EQUAL_UINT32(1798761599U, epoch_value);
@@ -243,7 +228,7 @@ void test_rtc_sync_leap_february_29_is_accepted(void)
     value.month = 2U;
     value.day = 29U;
     TEST_ASSERT_TRUE(rtc_sync(&value));
-    TEST_ASSERT_EQUAL_UINT32(6U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(5U, write_count);
     TEST_ASSERT_EQUAL_UINT32(1835481599U, epoch_value);
 }
 
@@ -272,7 +257,7 @@ void test_rtc_sync_epoch_floor_is_accepted(void)
     const rtc_t value = {.day = 1U, .month = 1U, .year = 26U};
     TEST_ASSERT_TRUE(rtc_sync(&value));
     TEST_ASSERT_EQUAL_UINT32(1767225600U, epoch_value);
-    TEST_ASSERT_EQUAL_UINT32(6U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(5U, write_count);
 }
 
 void test_rtc_sync_year_99_is_accepted(void)
@@ -281,7 +266,7 @@ void test_rtc_sync_year_99_is_accepted(void)
     value.year = 99U;
     TEST_ASSERT_TRUE(rtc_sync(&value));
     TEST_ASSERT_EQUAL_UINT8(99U, hw_date.Year);
-    TEST_ASSERT_EQUAL_UINT32(6U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(5U, write_count);
 }
 
 void test_rtc_sync_year_100_is_rejected_before_any_write(void)
@@ -332,7 +317,7 @@ void test_rtc_resync_valid_hw_time_loads_calendar_ms_and_epoch_only(void)
     prepare_hw_time();
     expect_hw_read();
     rtc_resync_sw_from_hw();
-    TEST_ASSERT_EQUAL_UINT32(3U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(2U, write_count);
     TEST_ASSERT_EQUAL_UINT8(31U, stored.day);
     TEST_ASSERT_EQUAL_UINT8(12U, stored.month);
     TEST_ASSERT_EQUAL_UINT8(26U, stored.year);
@@ -407,7 +392,7 @@ void test_rtc_resync_subsecond_reload_and_zero_divider_are_valid(void)
     expect_hw_read();
     rtc_resync_sw_from_hw();
     TEST_ASSERT_EQUAL_UINT16(0U, stored.millisec);
-    TEST_ASSERT_EQUAL_UINT32(6U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(4U, write_count);
 }
 
 void test_rtc_boot_without_marker_keeps_existing_time(void)
@@ -444,7 +429,7 @@ void test_rtc_boot_keeps_pre_2026_hw_time_acceptance(void)
     rtc_boot_sync();
     TEST_ASSERT_EQUAL_UINT8(25U, stored.year);
     TEST_ASSERT_EQUAL_UINT32(1767225599U, epoch_value);
-    TEST_ASSERT_EQUAL_UINT32(3U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(2U, write_count);
 }
 
 void test_rtc_resync_accepts_leap_day_in_year_2000(void)
@@ -458,7 +443,7 @@ void test_rtc_resync_accepts_leap_day_in_year_2000(void)
     TEST_ASSERT_EQUAL_UINT8(29U, stored.day);
     TEST_ASSERT_EQUAL_UINT8(0U, stored.year);
     TEST_ASSERT_EQUAL_UINT32(951868799U, epoch_value);
-    TEST_ASSERT_EQUAL_UINT32(3U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(2U, write_count);
 }
 
 void test_rtc_resync_accepts_valid_time_after_rejected_read(void)
@@ -469,7 +454,7 @@ void test_rtc_resync_accepts_valid_time_after_rejected_read(void)
     prepare_hw_time();
     expect_hw_read();
     rtc_resync_sw_from_hw();
-    TEST_ASSERT_EQUAL_UINT32(3U, write_count);
+    TEST_ASSERT_EQUAL_UINT32(2U, write_count);
     TEST_ASSERT_EQUAL_UINT32(1798761599U, epoch_value);
 }
 void test_time_write_failure_preserves_software_epoch_and_invalidates_marker(void)

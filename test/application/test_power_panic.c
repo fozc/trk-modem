@@ -15,6 +15,7 @@
 #include "gpio_defs.h"
 #include "mock_elog.h"
 #include "mock_gpio.h"
+#include "mock_bsp.h"
 #include "power_panic.h"
 
 static uint8_t panic_level;
@@ -58,6 +59,8 @@ void setUp(void)
     mirror_pin = PIN_0;
     mirror_level = 0U;
 
+    bsp_power_panic_irq_disable_IgnoreAndReturn(1U);
+    bsp_power_panic_irq_restore_Ignore();
     gpio_read_pin_StubWithCallback(read_pin_callback);
     gpio_set_pin_StubWithCallback(set_pin_callback);
     elog_log_power_panic_StubWithCallback(log_panic_callback);
