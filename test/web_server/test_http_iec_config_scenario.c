@@ -9,6 +9,7 @@
  */
 #include "unity.h"
 #include "http_handlers.h"
+#include "http_request_parser.h"
 #include "json_config.h"
 #include "iec104_util.h"
 #include "mock_iec104_config.h"
@@ -23,6 +24,8 @@
 #include <string.h>
 
 TEST_SOURCE_FILE("http_handlers.c")
+TEST_SOURCE_FILE("http_request_parser.c")
+TEST_SOURCE_FILE("utils.c")
 TEST_SOURCE_FILE("iec104_util.c")
 TEST_SOURCE_FILE("xprintf.c")
 TEST_SOURCE_FILE("rf_scp_codec.c")
@@ -118,6 +121,49 @@ void test_get_reports_full_t3_without_narrowing(void)
     http_handlers_init(response, (int)sizeof(response));
     http_send_json_StubWithCallback(check_get_response);
     handle_get_iec_config_json();
+}
+
+static uint32_t firmware_init_calls;
+
+static int init_firmware(uint32_t size)
+{
+    TEST_ASSERT_EQUAL_UINT32(128U, size);
+    firmware_init_calls++;
+    return 0;
+}
+
+void test_bodyless_firmware_start_rejects_without_changing_progress(void)
+{
+    static char response[8192];
+    const fw_update_callbacks_t callbacks = {.fw_init = init_firmware};
+    char request_text[] = "POST /s HTTP/1.1\r\nContent-Length: 0\r\n\r\n";
+    http_request_t request;
+
+    http_handlers_init(response, (int)sizeof(response));
+    fw_update_register_callbacks(&callbacks);
+    firmware_init_calls = 0U;
+    http_send_json_Expect("{\"status\":\"ok\",\"cs\":4096,\"received\":0}", 38);
+    handle_fw_start("{\"s\":128,\"h\":1}");
+    TEST_ASSERT_EQUAL_INT(0, http_parse_request(request_text,
+        (int)strlen(request_text), &request));
+    TEST_ASSERT_NULL(request.body);
+    http_send_bad_request_Expect();
+    handle_fw_start(request.body);
+    const char *status =
+        "{\"active\":true,\"received\":0,\"total\":128,\"fh\":1}";
+    http_send_json_Expect(status, (int)strlen(status));
+    handle_get_fw_status();
+    TEST_ASSERT_EQUAL_UINT32(1U, firmware_init_calls);
+}
+
+void test_empty_firmware_start_rejects_without_initializing_flash(void)
+{
+    const fw_update_callbacks_t callbacks = {.fw_init = init_firmware};
+    fw_update_register_callbacks(&callbacks);
+    firmware_init_calls = 0U;
+    http_send_json_Expect("{\"status\":\"error\",\"error\":\"invalid size\"}", 40);
+    handle_fw_start("");
+    TEST_ASSERT_EQUAL_UINT32(0U, firmware_init_calls);
 }
 
 /*** end of file ***/

@@ -1984,6 +1984,12 @@ void handle_get_fw_status(void) {
 void handle_fw_start(const char *json_body) {
     CSLOG("[FW] POST /s (fw_start)\r\n");
 
+    if (NULL == json_body)
+    {
+        http_send_bad_request();
+        return;
+    }
+
     if (!fw_callbacks_registered || !fw_callbacks.fw_init) {
         CSLOG_ERR("[FW] ERROR: Callbacks not registered\r\n");
         http_send_json("{\"status\":\"error\",\"error\":\"not supported\"}", 41);
@@ -2356,3 +2362,5 @@ void handle_fw_apply(void) {
     http_send_json("{\"status\":\"ok\",\"reset_in\":10}", 29);
     reboot_system_delayed(10000U);
 }
+
+/*** end of file ***/

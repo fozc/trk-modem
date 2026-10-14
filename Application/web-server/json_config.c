@@ -921,6 +921,9 @@ static const char * const iec_address_keys[] =
     "PermanentFaultBase"
 };
 
+_Static_assert(17U == sizeof(iec_address_keys) / sizeof(iec_address_keys[0]),
+               "IEC address field mapping requires 17 keys");
+
 const char *json_config_get_iec_address_error(void)
 {
     return iec_address_error;
@@ -2471,3 +2474,5 @@ int set_modbus_config(const jmodbus_configs_t *config)
 
 	return -1;
 }
+
+/*** end of file ***/
