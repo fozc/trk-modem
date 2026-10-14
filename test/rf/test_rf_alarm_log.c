@@ -141,6 +141,20 @@ static bool binding_cb(uint8_t source, rf_inventory_entry_t *entry,
     return true;
 }
 
+static bool read_cleared_source(uint8_t source, uint32_t now_ms,
+                                rf_phase_data_t *out, int call_count)
+{
+    (void)call_count;
+    if (5U != source)
+    {
+        return false;
+    }
+    TEST_ASSERT_EQUAL_UINT32(tick, now_ms);
+    TEST_ASSERT_NOT_NULL(out);
+    *out = (rf_phase_data_t){.has_live = true};
+    return true;
+}
+
 static bool add_alarm_ok;
 static bool add_alarm_result(const iec104_alarm_record_t *record,
                              uint16_t *seq, int call_count)
@@ -176,6 +190,7 @@ void setUp(void)
     binding_ok = true;
     log_enabled = true;
     log_count = 0U;
+    ack_calls = 0U;
     (void)memset(log_lines, 0, sizeof(log_lines));
     (void)memset(log_colors, 0, sizeof(log_colors));
     link_up = false;
@@ -231,15 +246,9 @@ void test_cleared_announcement_is_yellow_and_level_off_is_silent(void)
                                             10U, 26U);
 
     TEST_ASSERT_TRUE(rf_alarm_record(&event));
-    {
-        rf_phase_data_t live = {0};
-
-        live.has_live = true;
-        rf_get_source_data_StopIgnore();
-        rf_get_source_data_ExpectAndReturn(5U, tick, &live, true);
-        rf_get_source_data_IgnoreAndReturn(false);
-        rf_alarm_live(5U, &ts);
-    }
+    rf_get_source_data_StopIgnore();
+    rf_get_source_data_StubWithCallback(read_cleared_source);
+    rf_alarm_live(5U, &ts);
     TEST_ASSERT_FALSE(rf_alarm_is_idle());
     rf_alarm_process(tick);
     TEST_ASSERT_EQUAL_size_t(2U, log_count);
