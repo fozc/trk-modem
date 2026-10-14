@@ -54,6 +54,20 @@ static const char *stop_reason_name(rf_apply_stop_reason_t reason)
     }
 }
 
+static const char *inventory_state_name(rf_inventory_status_t state)
+{
+    switch (state)
+    {
+        case RF_INVENTORY_LOADING: return "loading";
+        case RF_INVENTORY_EMPTY: return "empty";
+        case RF_INVENTORY_PARTIAL: return "partial";
+        case RF_INVENTORY_READY: return "ready";
+        case RF_INVENTORY_ERROR: return "error";
+        case RF_INVENTORY_DRAINING: return "draining";
+        default: return "idle";
+    }
+}
+
 bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
 {
     rf_group_status_t group;
@@ -78,6 +92,7 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
     {
         case RF_APPLY_RUNNING: batch_name = "running"; break;
         case RF_APPLY_COMPLETE: batch_name = "complete"; break;
+        case RF_APPLY_PARTIAL: batch_name = "partial"; break;
         case RF_APPLY_STOPPED: batch_name = "stopped"; break;
         default: batch_name = "idle"; break;
     }
@@ -86,9 +101,11 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         "\"WritesAcked\":%u,\"ExpectedCRC\":%u,\"MatchesDesired\":%s,"
         "\"HasReport\":%s,\"MHState\":%u,\"MemberBitmap\":%u,"
         "\"Reason\":%u,\"ReportedCRC\":%u,\"Attempts\":%u,"
-        "\"BatchState\":\"%s\",\"Targets\":%u,\"Applied\":%u,"
+        "\"BatchState\":\"%s\",\"Targets\":%u,\"Applied\":%u,\"Skipped\":%u,"
         "\"BatchLine\":%u,\"GroupStarted\":%s,\"SaveBlocked\":%s,"
-        "\"InventoryPending\":%s,\"StopReason\":\"%s\","
+        "\"InventoryPending\":%s,\"CanAbort\":%s,\"InventoryState\":\"%s\","
+        "\"InventoryRecoveryPending\":%s,"
+        "\"StopReason\":\"%s\","
         "\"WaitReason\":\"%s\",\"WaitTotalMs\":%u,\"WaitReasonMs\":%u}",
         state_name(group.state), (unsigned)group.line, (unsigned)group.feeder,
         (unsigned)group.group_id, (unsigned)group.writes_acked,
@@ -98,10 +115,13 @@ bool rf_group_status_json_build(char *buffer, size_t capacity, size_t *length)
         (unsigned)group.report.state, (unsigned)group.report.member_bitmap,
         (unsigned)group.report.reason, (unsigned)group.report.config_crc,
         (unsigned)group.report.attempts, batch_name,
-        (unsigned)batch.targets, (unsigned)batch.applied,
+        (unsigned)batch.targets, (unsigned)batch.applied, (unsigned)batch.skipped,
         (unsigned)batch.line, batch.group_started ? "true" : "false",
         rf_apply_can_save() ? "false" : "true",
         batch.inventory_pending ? "true" : "false",
+        rf_apply_can_abort() ? "true" : "false",
+        inventory_state_name(rf_inventory_get_status()),
+        rf_inventory_has_pending() ? "true" : "false",
         stop_reason_name(batch.stop_reason), wait.reason,
         (unsigned)wait.total_ms, (unsigned)wait.reason_ms);
 

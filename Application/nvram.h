@@ -48,6 +48,8 @@
 
 
 int nvram_init(void);
+/* Cooperative owner only; persist changes together with the desired RF store. */
+rf_inventory_journal_t *nvram_get_rf_inventory_journal(void);
 void nvram_dump(void);
 
 /* Degisiklikleri iki slota (A once, B sonra; oncesinde yedek tamamlama)

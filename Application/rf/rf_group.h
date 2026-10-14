@@ -59,11 +59,12 @@ bool rf_group_is_active(void);
 void rf_group_process(uint32_t now_ms);
 bool rf_group_handle_status(const rf_scp_message_t *message);
 
-/* Allowed only after this COMMIT's group identity is known to the MH.
- * Pre-COMMIT ABORT is unsupported by the current MH (BQ-11).
+/* R2 allows ABORT of a transmitted pre-COMMIT accumulation too.
  * A job with no transmitted WRITE can be cancelled locally, without ABORT.
  */
 bool rf_group_abort(void);
+/* Read-only capability for the same rules enforced by rf_group_abort. */
+bool rf_group_can_abort(void);
 
 #endif /* RF_GROUP_H */
 

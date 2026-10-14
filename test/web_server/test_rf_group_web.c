@@ -37,6 +37,9 @@ void setUp(void)
     rf_inventory_get_wait_StubWithCallback(inventory_wait);
     rf_apply_get_status_StubWithCallback(batch_status);
     rf_apply_can_save_IgnoreAndReturn(false);
+    rf_apply_can_abort_IgnoreAndReturn(false);
+    rf_inventory_get_status_IgnoreAndReturn(RF_INVENTORY_READY);
+    rf_inventory_has_pending_IgnoreAndReturn(false);
 }
 
 void tearDown(void)
@@ -69,6 +72,9 @@ void test_applied_snapshot_is_distinct_from_changed_desired_settings(void)
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"BatchState\":\"running\""));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"Targets\":68,\"Applied\":4"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"SaveBlocked\":true"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"CanAbort\":false"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"InventoryState\":\"ready\""));
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "\"InventoryRecoveryPending\":false"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"WaitReason\":\"storage\""));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"WaitTotalMs\":125000"));
     TEST_ASSERT_NOT_NULL(strstr(buffer, "\"WaitReasonMs\":7000"));

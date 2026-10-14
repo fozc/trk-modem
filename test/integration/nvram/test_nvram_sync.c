@@ -612,8 +612,67 @@ static void test_two_invalid_images_provision_verified_defaults(void)
     check(images_equal(), "defaults: verified copies agree");
 }
 
+static void test_rf_inventory_journal_survives_save_and_torn_clear(void)
+{
+    boot_virgin();
+    rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    journal->pending = 1U;
+    journal->count = 1U;
+    journal->entries[0].eui64[0] = 0x11U;
+    journal->entries[0].zone = 1U;
+    journal->entries[0].phase = 1U;
+    nvram_get_breaker_rw()->line[0].rf.r_eui64[0] = 0U;
+    check(NVRAM_SAVE_COMPLETE == nvram_save(false),
+          "RF journal: pending identity and desired target saved together");
+    reboot();
+    journal = nvram_get_rf_inventory_journal();
+    check(1U == journal->pending && 1U == journal->count &&
+          0x11U == journal->entries[0].eui64[0],
+          "RF journal: pending delete survives power cycle");
+    *journal = (rf_inventory_journal_t){0};
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_AFTER_ERASE);
+    check(NVRAM_SAVE_FAILED == nvram_save(false),
+          "RF journal: interrupted A clear is rejected");
+    reboot();
+    journal = nvram_get_rf_inventory_journal();
+    check(1U == journal->pending,
+          "RF journal: old backup keeps pending operation after torn clear");
+    *journal = (rf_inventory_journal_t){0};
+    mock_fail_write(MOCK_SLOT_B, MOCK_FAIL_AFTER_ERASE);
+    check(NVRAM_SAVE_PRIMARY_ONLY == nvram_save(false),
+          "RF journal: verified A clear is reported separately from B failure");
+    reboot();
+    check(0U == nvram_get_rf_inventory_journal()->pending && images_equal(),
+          "RF journal: newest verified clear wins and repairs backup");
+}
+
+static void test_schema_three_uses_defaults_without_migration(void)
+{
+    boot_virgin();
+    for (uint32_t slot = 0U; 2U > slot; slot++)
+    {
+        nvram_t *image = img(slot);
+        image->schema_version = 3U;
+        image->length = 2476U;
+        image->modem_config.serial_number = 12345U;
+        crc32_t crc = crc32_init();
+        crc = crc32_update(crc, image, 2472U);
+        const uint32_t stored_crc = crc32_finalize(crc);
+        memcpy((uint8_t *)image + 2472U, &stored_crc, sizeof(stored_crc));
+    }
+    reboot();
+    check(DEVICE_DEFAULT_SERIAL_NUMBER == nvram_get_device_serial_number(),
+          "Schema 3: development images reset settings as explicitly chosen");
+    check(4U == img(MOCK_SLOT_A)->schema_version && images_equal(),
+          "Schema 3: both slots become current schema without migration");
+    check(0U == nvram_get_rf_inventory_journal()->pending,
+          "Schema 3: no invented pending device operation");
+}
+
 int main(void)
 {
+    test_rf_inventory_journal_survives_save_and_torn_clear();
+    test_schema_three_uses_defaults_without_migration();
     test_invalid_header_or_crc_uses_valid_peer_without_data_loss();
     test_repair_interrupted_at_every_page_retains_committed_settings();
     test_two_invalid_images_provision_verified_defaults();

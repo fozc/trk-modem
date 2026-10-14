@@ -13,6 +13,7 @@
 #include "rf_group.h"
 #include "rf_comm.h"
 #include "rf_inventory.h"
+#include "nvram.h"
 #include <stddef.h>
 
 /* Cooperative context only. Web is the sole production settings writer
@@ -69,10 +70,17 @@ rf_apply_save_result_t rf_apply_save(void)
     {
         return RF_APPLY_SAVE_BUSY;
     }
+    rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    const rf_inventory_journal_t previous = *journal;
+    if (!rf_inventory_prepare_save())
+    {
+        return RF_APPLY_SAVE_BUSY;
+    }
     const int save_result = rf_store_sync();
 
     if (0 > save_result)
     {
+        *journal = previous;
         return RF_APPLY_SAVE_ERROR;
     }
     if (0 < save_result)
@@ -90,6 +98,12 @@ rf_apply_save_result_t rf_apply_save(void)
         if ((NULL != feeder) && feeder->in_use)
         {
             batch.targets |= (uint8_t)(1U << index);
+            if (rf_eui64_is_zero(feeder->r_eui64) ||
+                rf_eui64_is_zero(feeder->s_eui64) ||
+                rf_eui64_is_zero(feeder->t_eui64))
+            {
+                batch.skipped |= (uint8_t)(1U << index);
+            }
         }
     }
     if (!rf_inventory_matches_config())
@@ -205,11 +219,13 @@ void rf_apply_process(void)
                 return;
         }
     }
-    const uint8_t pending = (uint8_t)(batch.targets & (uint8_t)~batch.applied);
+    const uint8_t pending = (uint8_t)(batch.targets &
+        (uint8_t)~(batch.applied | batch.skipped));
 
     if (0U == pending)
     {
-        batch.state = RF_APPLY_COMPLETE;
+        batch.state = (0U == batch.skipped) ? RF_APPLY_COMPLETE :
+                                             RF_APPLY_PARTIAL;
         return;
     }
     for (size_t index = 0U; index < MAX_POWER_LINE_COUNT; index++)
@@ -223,10 +239,20 @@ void rf_apply_process(void)
     start_next_group();
 }
 
+bool rf_apply_can_abort(void)
+{
+    if (batch.inventory_pending)
+    {
+        return false;
+    }
+    return (rf_apply_is_running() && !batch.group_started) ||
+           rf_group_can_abort();
+}
+
 bool rf_apply_abort(void)
 {
     /* The inventory service owns draining/upload; it has no cancel API. */
-    if (batch.inventory_pending)
+    if (!rf_apply_can_abort())
     {
         return false;
     }

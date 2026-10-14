@@ -1673,6 +1673,14 @@ void handle_post_rf_config_json(const char *json_body)
     /* Save the candidate before publishing it or starting RF operations. */
     const rf_apply_save_result_t result = rf_apply_save();
 
+    if (RF_APPLY_SAVE_BUSY == result)
+    {
+        rf_store_stage_abort();
+        http_send_error(409,
+            "Pending inventory operation; retry saved configuration first");
+        return;
+    }
+
     if (RF_APPLY_SAVE_PRIMARY_ONLY == result)
     {
         elog_log_config_change(ELOG_CONFIG_RF_CHANGED, ELOG_SOURCE_WEB,

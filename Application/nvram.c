@@ -446,9 +446,9 @@ static void nvram_read_hdr(uint32_t addr, nvram_hdr_t *hdr)
  * tam dogrulama nvram_validate_slot'in CRC akisindadir). */
 static bool nvram_hdr_sane(const nvram_hdr_t *hdr)
 {
-    return (hdr->magic == NVRAM_MAGIC) &&
-           (hdr->length >= (uint32_t)(offsetof(nvram_t, crc) + 4U)) &&
-           (hdr->length <= (uint32_t)sizeof(nvram_t));
+    return (NVRAM_MAGIC == hdr->magic) &&
+           (sizeof(nvram_t) == hdr->length) &&
+           (NVRAM_SCHEMA_VERSION == hdr->schema_version);
 }
 
 /* ---- Kucuk yardimcilar (doc/nvram.md tablosu) ------------------------ */
@@ -470,10 +470,6 @@ static bool nvram_validate_slot(uint32_t slot, nvram_slot_state_t *st)
 
     nvram_read_hdr(addr, &hdr);
     if (!nvram_hdr_sane(&hdr))
-    {
-        return false;
-    }
-    if (hdr.schema_version != NVRAM_SCHEMA_VERSION)
     {
         return false;
     }
@@ -665,6 +661,11 @@ int nvram_init(void)
     nvram_dump();
 
     return res;
+}
+
+rf_inventory_journal_t *nvram_get_rf_inventory_journal(void)
+{
+    return &nvram.rf_inventory_journal;
 }
 
 /* ---- Save ------------------------------------------------------------- */

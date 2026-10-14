@@ -492,6 +492,9 @@ bool rf_group_get_status(rf_group_status_t *out)
 { *out = group; return true; }
 bool rf_group_matches_config(void) { return false; }
 bool rf_apply_abort(void) { abort_calls++; return accepts_abort; }
+bool rf_apply_can_abort(void) { return accepts_abort; }
+rf_inventory_status_t rf_inventory_get_status(void) { return RF_INVENTORY_READY; }
+bool rf_inventory_has_pending(void) { return false; }
 void rf_apply_get_status(rf_apply_status_t *out)
 { *out = (rf_apply_status_t){.state=RF_APPLY_RUNNING,.targets=5U}; }
 void rf_inventory_get_wait(rf_inventory_wait_t *out)

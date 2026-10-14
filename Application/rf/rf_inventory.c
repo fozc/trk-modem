@@ -37,6 +37,7 @@
 #include "rf_faults.h"
 #include "rf.h"
 #include "rf_group.h"
+#include "nvram.h"
 #include "contiki.h"
 #include "timer.h"
 #include "stm32u3xx_hal.h"
@@ -59,6 +60,9 @@ static uint8_t  phase_index;       /* 0=R, 1=S, 2=T             */
 static rf_inventory_status_t inventory_status = RF_INVENTORY_IDLE;
 static uint8_t  sent_count;
 static uint8_t  skipped_count;
+static size_t delete_index;
+static size_t saved_delete_index;
+static bool deleting_saved;
 static bool inventory_zone_set;
 static uint8_t inventory_zone;
 static rf_inventory_entry_t pending_update;
@@ -87,6 +91,7 @@ static uint32_t uploaded_bindings;
 
 static void begin_upload(void);
 static bool send_update(void);
+static bool complete_inventory_save(void);
 
 _Static_assert(MAX_POWER_LINE_COUNT >= 7,
                "MH inventory supports seven feeder IDs");
@@ -225,6 +230,11 @@ static void on_end_done(scp_cmd_result_t result, const scp_packet_t *rsp)
 
     if (SCP_CMD_OK == result)
     {
+        if ((0U == skipped_count) && !complete_inventory_save())
+        {
+            inventory_status = RF_INVENTORY_ERROR;
+            return;
+        }
         for (size_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
         {
             for (size_t phase = 0U; phase < 3U; phase++)
@@ -282,9 +292,110 @@ static bool is_entry_valid(const uint8_t *body)
  * Bu fonksiyon yalnizca komut mekanizmasi BOSKEN cagirilmalidir
  * (callback'ten veya rf_inventory_continue'dan).
  */
+static bool assignment_retained(const rf_inventory_entry_t *entry,
+                                bool staged)
+{
+    for (size_t line = 0U; MAX_POWER_LINE_COUNT > line; line++)
+    {
+        const rf_feeder_t *feeder = staged ?
+            rf_store_get_mutable((feeder_id_t)line) :
+            rf_store_get((feeder_id_t)line);
+        if ((NULL != feeder) && feeder->in_use &&
+            (feeder->config.zone_id == entry->zone) &&
+            (feeder->config.fider_id == entry->feeder))
+        {
+            const uint8_t *members[3] =
+                {feeder->r_eui64, feeder->s_eui64, feeder->t_eui64};
+            return 0 == memcmp(members[entry->phase - 1U], entry->eui64, 8U);
+        }
+    }
+    return false;
+}
+
+static void on_delete_done(scp_cmd_result_t result, const scp_packet_t *rsp)
+{
+    (void)rsp;
+    if (RF_INVENTORY_LOADING != inventory_status)
+    {
+        return;
+    }
+    if (SCP_CMD_OK != result)
+    {
+        /* Do not upload or prune local bindings after an unconfirmed delete. */
+        inventory_status = RF_INVENTORY_ERROR;
+        return;
+    }
+    if (deleting_saved)
+    {
+        saved_delete_index++;
+    }
+    else
+    {
+        delete_index++;
+    }
+}
+
+static bool send_delete(uint8_t zone, uint8_t phase,
+                         const uint8_t eui64[8], uint8_t channel)
+{
+    uint8_t body[RF_SCP_INV_SET_BODY_LEN] = {0};
+    body[0] = zone;
+    body[2] = phase;
+    (void)memcpy(&body[3], eui64, 8U);
+    body[11] = channel;
+    if (!scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_INVENTORY_UPDATE,
+                          body, sizeof(body), TIMEOUT_MS, RETRIES,
+                          on_delete_done) && scp_is_free())
+    {
+        inventory_status = RF_INVENTORY_ERROR;
+    }
+    return true;
+}
+
+static bool delete_next(void)
+{
+    const rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    if (journal->pending && (RF_INVENTORY_JOURNAL_CAPACITY < journal->count))
+    {
+        inventory_status = RF_INVENTORY_ERROR;
+        return true;
+    }
+    if (journal->pending && (journal->count > saved_delete_index))
+    {
+        const rf_inventory_delete_t *entry = &journal->entries[saved_delete_index];
+        if ((7U < entry->zone) || (1U > entry->phase) ||
+            (3U < entry->phase) || rf_eui64_is_zero(entry->eui64))
+        {
+            inventory_status = RF_INVENTORY_ERROR;
+            return true;
+        }
+        deleting_saved = true;
+        return send_delete(entry->zone, entry->phase, entry->eui64,
+                           entry->channel);
+    }
+    deleting_saved = false;
+    for (; MAX_POWER_LINE_COUNT * 3U > delete_index; delete_index++)
+    {
+        const rf_inventory_entry_t *entry =
+            &bindings[delete_index / 3U][delete_index % 3U];
+        if (rf_eui64_is_zero(entry->eui64) || assignment_retained(entry, false))
+        {
+            continue;
+        }
+        return send_delete(entry->zone, entry->phase, entry->eui64,
+                           entry->channel);
+    }
+    return false;
+}
+
 static void send_next(void)
 {
     uint8_t body[RF_SCP_INV_SET_BODY_LEN];
+
+    if (delete_next())
+    {
+        return;
+    }
 
     /* Skip empty and invalid assignments without stalling on a bad field. */
     for (;;)
@@ -382,6 +493,8 @@ static void begin_upload(void)
 {
     rf_hub_restarted();
     uploaded_bindings = 0U;
+    delete_index = 0U;
+    saved_delete_index = 0U;
     inventory_status = RF_INVENTORY_LOADING;
     feeder_index = 0U;
     phase_index  = 0U;
@@ -406,7 +519,7 @@ bool rf_inventory_is_active(void)
            (RF_INVENTORY_DRAINING == inventory_status);
 }
 
-bool rf_inventory_matches_config(void)
+static bool matches_store(bool staged)
 {
     size_t expected = 0U;
     size_t accepted = 0U;
@@ -418,7 +531,9 @@ bool rf_inventory_matches_config(void)
     }
     for (size_t line = 0U; line < MAX_POWER_LINE_COUNT; line++)
     {
-        const rf_feeder_t *feeder = rf_store_get((feeder_id_t)line);
+        const rf_feeder_t *feeder = staged ?
+            rf_store_get_mutable((feeder_id_t)line) :
+            rf_store_get((feeder_id_t)line);
 
         if ((NULL == feeder) || !feeder->in_use)
         {
@@ -462,6 +577,84 @@ bool rf_inventory_matches_config(void)
         }
     }
     return expected == accepted;
+}
+
+bool rf_inventory_has_pending(void)
+{
+    return 0U != nvram_get_rf_inventory_journal()->pending;
+}
+
+bool rf_inventory_matches_config(void)
+{
+    return !rf_inventory_has_pending() && matches_store(false);
+}
+
+bool rf_inventory_prepare_save(void)
+{
+    rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    if (nvram_is_busy())
+    {
+        return false;
+    }
+    if (journal->pending)
+    {
+        /* Retry the saved target; never replace an unfinished transaction. */
+        for (size_t line = 0U; MAX_POWER_LINE_COUNT > line; line++)
+        {
+            if (0 != memcmp(rf_store_get((feeder_id_t)line),
+                            rf_store_get_mutable((feeder_id_t)line),
+                            sizeof(rf_feeder_t)))
+            {
+                return false;
+            }
+        }
+        return RF_INVENTORY_JOURNAL_CAPACITY >= journal->count;
+    }
+    if (matches_store(true))
+    {
+        return true;
+    }
+    rf_inventory_journal_t candidate = {.pending = 1U};
+    for (size_t line = 0U; MAX_POWER_LINE_COUNT > line; line++)
+    {
+        for (size_t phase = 0U; 3U > phase; phase++)
+        {
+            const rf_inventory_entry_t *entry = &bindings[line][phase];
+            if (rf_eui64_is_zero(entry->eui64) ||
+                assignment_retained(entry, true))
+            {
+                continue;
+            }
+            if (RF_INVENTORY_JOURNAL_CAPACITY <= candidate.count)
+            {
+                return false;
+            }
+            rf_inventory_delete_t *saved = &candidate.entries[candidate.count++];
+            (void)memcpy(saved->eui64, entry->eui64, 8U);
+            saved->zone = entry->zone;
+            saved->phase = entry->phase;
+            saved->channel = entry->channel;
+        }
+    }
+    *journal = candidate;
+    return true;
+}
+
+static bool complete_inventory_save(void)
+{
+    rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    if (!journal->pending)
+    {
+        return true;
+    }
+    const rf_inventory_journal_t previous = *journal;
+    *journal = (rf_inventory_journal_t){0};
+    if (NVRAM_SAVE_COMPLETE != nvram_save(false))
+    {
+        *journal = previous;
+        return false;
+    }
+    return true;
 }
 
 static bool live_logs_empty(uint32_t now_ms)
@@ -606,6 +799,8 @@ void rf_inventory_reset(void)
     epoch_for_replacement = false;
     (void)memset(bindings, 0, sizeof(bindings));
     inventory_status = RF_INVENTORY_IDLE;
+    delete_index = 0U;
+    saved_delete_index = 0U;
     feeder_index = 0U;
     phase_index = 0U;
     sent_count = 0U;
@@ -626,7 +821,8 @@ void rf_inventory_request_sent(uint8_t cmd)
 {
     if (rf_inventory_is_active() &&
         ((RF_SCP_CMD_INVENTORY_SET == cmd) ||
-         (RF_SCP_CMD_INVENTORY_END == cmd)))
+         (RF_SCP_CMD_INVENTORY_END == cmd) ||
+         (RF_SCP_CMD_INVENTORY_UPDATE == cmd)))
     {
         timer_set(&upload_timer, CLOCK_SECOND * 10U + 1U);
         upload_timer_started = true;
