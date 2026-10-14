@@ -15,6 +15,7 @@
 #include "time_service.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 
 static const char *banner =  "\r\n+=================TROIKA======================+\r\n";
@@ -102,19 +103,64 @@ void bsp_rtc_process(void)
 	}
 }
 
+static uint32_t rtc_irq_disable(void)
+{
+    const uint32_t was_enabled = NVIC_GetEnableIRQ(TIM17_IRQn);
+    NVIC_DisableIRQ(TIM17_IRQn);
+    return was_enabled;
+}
+
+static void rtc_irq_restore(uint32_t was_enabled)
+{
+    if (0U != was_enabled)
+    {
+        NVIC_EnableIRQ(TIM17_IRQn);
+    }
+}
+
+void bsp_set_datetime(const bsp_rtc_t *datetime)
+{
+    if (NULL == datetime)
+    {
+        return;
+    }
+    const uint32_t was_enabled = rtc_irq_disable();
+    rtc = *datetime;
+    rtc_irq_restore(was_enabled);
+}
+
 void bsp_set_rtc_milisec(uint16_t milliseconds)
 {
+	const uint32_t was_enabled = rtc_irq_disable();
 	rtc.millisec = milliseconds;
+	rtc_irq_restore(was_enabled);
 }
 
 void bsp_set_rtc(uint8_t second, uint8_t minute, uint8_t hour, uint8_t day, uint8_t month, uint8_t year)
 {
+    const uint32_t was_enabled = rtc_irq_disable();
     rtc.second = second;
     rtc.minute = minute;
     rtc.hour = hour;
     rtc.day = day;
     rtc.month = month;
     rtc.year = year;
+    rtc_irq_restore(was_enabled);
+}
+
+uint32_t bsp_power_panic_irq_disable(void)
+{
+    const uint32_t was_enabled = NVIC_GetEnableIRQ(EXTI15_IRQn);
+    NVIC_DisableIRQ(EXTI15_IRQn);
+    return was_enabled;
+}
+
+void bsp_power_panic_irq_restore(uint32_t was_enabled)
+{
+    if (0U != was_enabled)
+    {
+        NVIC_EnableIRQ(EXTI15_IRQn);
+    }
 }
 
 /* rtc yapısı TIM17 ISR'i (bsp_rtc_process) içinde güncellenir; ana bağlamdan
@@ -338,3 +384,5 @@ void gsm_signal_led_apply(gsm_signal_tech_t  tech,
             break;
     }
 }
+
+/*** end of file ***/

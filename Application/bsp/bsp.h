@@ -44,6 +44,8 @@ typedef struct
     uint8_t year;
 }bsp_rtc_t;
 
+/** Load calendar and milliseconds together; NULL leaves the RTC unchanged. */
+void bsp_set_datetime(const bsp_rtc_t *datetime);
 void bsp_set_rtc_milisec(uint16_t milliseconds);
 void bsp_set_rtc(uint8_t second, uint8_t minute, uint8_t hour, uint8_t day, uint8_t month, uint8_t year);
 bsp_rtc_t bsp_get_datetime(void);
@@ -60,6 +62,9 @@ void bsp_delay(uint32_t);
 void bsp_delay_us(uint32_t);
 void bsp_delay_ms(uint32_t);
 void bsp_kick_wdt(void);
+/** Exclude EXTI15 during power-panic initialization, preserving its state. */
+uint32_t bsp_power_panic_irq_disable(void);
+void bsp_power_panic_irq_restore(uint32_t was_enabled);
 void bsp_putchr(int chr);
 
 void bsp_system_reset(void);
@@ -75,3 +80,5 @@ const char * bsp_get_banner(void);
 #endif
 
 #endif /* BSP_BSP_H_ */
+
+/*** end of file ***/
