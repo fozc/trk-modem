@@ -139,6 +139,19 @@ void http_send_html(const char *html, int html_length);
  * 
  * @param resource HTML resource structure (NULL-safe, uses default 404 page if NULL)
  */
+/**
+ * @brief Give the response layer the raw request headers for
+ *        conditional-GET decisions.
+ *
+ * The router calls this once per received request, before dispatching.
+ * Only If-None-Match is consulted; scanning is case-insensitive and
+ * bounded to the header block.
+ *
+ * @param[in] buffer Raw request bytes (header block).
+ * @param[in] length Number of header bytes to scan.
+ */
+void http_response_note_request_headers(const char *buffer, int length);
+
 void http_send_html_resource(const html_resource_t *resource);
 
 /**

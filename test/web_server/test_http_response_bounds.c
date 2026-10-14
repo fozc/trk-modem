@@ -14,6 +14,8 @@
 #include <limits.h>
 #include <string.h>
 
+TEST_SOURCE_FILE("sha256.c")
+
 static char output[2048];
 static size_t output_len;
 

@@ -31,6 +31,7 @@ header = r'''
 #include "http_server.h"
 #include "http_handlers.h"
 #include "http_response.h"
+#include "sha256.h"
 #include "web_server.h"
 #include "index_html.h"
 #include "fw_update_html.h"
@@ -84,7 +85,7 @@ stubs = []
 for name, parameters in re.findall(
         r'void ((?:handle_get_|handle_post_|handle_fw_)\w+)\(([^;]*?)\);',
         handlers, flags=re.S):
-    if name == "handle_post_login":
+    if name in ("handle_post_login", "handle_get_index"):
         continue
     ignored = []
     if parameters.strip() != "void":
@@ -111,7 +112,9 @@ static size_t wire_length;
 static bool authenticated;
 static web_server_io_t transport;
 static char handler_buffer[4096];
-static const html_resource_t page = {0};
+static const uint8_t page_data[] = {1U, 2U, 3U};
+static const html_resource_t page =
+    {page_data, sizeof(page_data), HTML_COMPRESS_GZIP, "text/html"};
 
 uint32_t gsm_tx_is_ready(void) { return tx_pending; }
 uint32_t gsm_get_listener_socket_state(void) { return socket_state; }
@@ -174,6 +177,7 @@ void handle_post_login(const char *body)
     (void)body;
     http_send_json("{}", 2);
 }
+void handle_get_index(void) { http_send_html_resource(&page); }
 void reboot_system_delayed(uint32_t delay) { (void)delay; }
 const html_resource_t *get_index_html(void) { return &page; }
 const html_resource_t *get_fw_update_html(void) { return &page; }
@@ -220,6 +224,15 @@ static void unauthorized_request(void)
     assert(NULL != strstr(wire, "HTTP/1.1 401 "));
     assert(NULL != strstr(wire, "\r\n\r\nUnauthorized"));
     gsm_http_server_process();
+}
+static void finish_response(void)
+{
+    for (size_t step = 0U; 8U > step; step++)
+    {
+        if (0U != tx_pending) complete_tx();
+        gsm_http_server_process();
+    }
+    assert(0U == tx_pending);
 }
 int main(void)
 {
@@ -309,6 +322,32 @@ int main(void)
     for (size_t tick = 0U; 4U > tick; tick++) gsm_http_server_process();
     assert(0U == close_count);
     puts("PASS: disconnect/reset clears deferred close for the next client");
+    reset_test();
+    receive_request("GET / HTTP/1.1\r\n\r\n");
+    finish_response();
+    assert(NULL != strstr(wire, "200 OK"));
+    const char *line = strstr(wire, "ETag: ");
+    assert(NULL != line);
+    char tag[67];
+    memcpy(tag, line + 6, 66U);
+    tag[66] = '\0';
+    char conditional[160];
+    snprintf(conditional, sizeof(conditional),
+        "GET / HTTP/1.1\r\nIf-None-Match: %s\r\n\r\n", tag);
+    wire_length = 0U;
+    receive_request(conditional);
+    finish_response();
+    assert(NULL != strstr(wire, "304 Not Modified"));
+    const char *boundary = strstr(wire, "\r\n\r\n");
+    assert(NULL != boundary && wire_length == (size_t)(boundary - wire) + 4U);
+    wire_length = 0U;
+    receive_request("GET / HTTP/1.1\r\n\r\n");
+    finish_response();
+    assert(NULL != strstr(wire, "200 OK"));
+    assert(0 == memcmp(wire + wire_length - sizeof(page_data),
+                       page_data, sizeof(page_data)));
+    puts("PASS: real GET router/transport emits 304 without body and clears stale request context");
+
     return 0;
 }
 /*** end of file ***/
@@ -324,6 +363,7 @@ command += sources + [str(output / "test_transport.c"),
                       str(root / "Application/web-server/http_request_parser.c"),
                       str(root / "Application/gsm/ring_buff.c"),
                       str(root / "Application/libs/xprintf.c"),
+                      str(root / "Application/libs/sha256.c"),
                       "-lm", "-o", str(output / "test_transport.exe")]
 subprocess.run(command, check=True)
 result = subprocess.run([str(output / "test_transport.exe")],
