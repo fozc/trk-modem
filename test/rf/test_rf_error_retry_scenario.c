@@ -9,6 +9,7 @@
  */
 #include "unity.h"
 #include "mock_bsp.h"
+#include "mock_nvram.h"
 #include "scp.h"
 #include "cobs.h"
 #include "rf_scp.h"
@@ -81,6 +82,25 @@ static scp_cmd_result_t done_result;
 static scp_packet_t done_packet;
 static bool has_done_packet;
 static rf_feeder_t feeder;
+static rf_inventory_journal_t journal;
+static rf_feeder_t *staged_feeder;
+static nvram_save_result_t journal_save_result;
+
+static nvram_save_result_t save_journal(bool force, int call_count)
+{
+    (void)force;
+    (void)call_count;
+    return journal_save_result;
+}
+
+rf_feeder_t *rf_store_get_mutable(feeder_id_t index)
+{
+    if ((0U == index) && (NULL != staged_feeder))
+    {
+        return staged_feeder;
+    }
+    return (rf_feeder_t *)rf_store_get(index);
+}
 static rf_feeder_t second_feeder;
 static rf_feeder_t extra_feeders[MAX_POWER_LINE_COUNT - 2U];
 static uint32_t event_notify_calls;
@@ -211,6 +231,12 @@ static bool protect_inventory(int call_count)
 
 void setUp(void)
 {
+    journal = (rf_inventory_journal_t){0};
+    staged_feeder = NULL;
+    nvram_get_rf_inventory_journal_IgnoreAndReturn(&journal);
+    nvram_is_busy_IgnoreAndReturn(false);
+    journal_save_result = NVRAM_SAVE_COMPLETE;
+    nvram_save_StubWithCallback(save_journal);
     rf_alarm_init_Ignore();
     rf_alarm_live_Ignore();
     rf_alarm_process_Ignore();
@@ -2667,10 +2693,15 @@ void test_full_inventory_change_preserves_old_binding_until_drain_and_ack(void)
     TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
     events_drained = true;
     rf_inventory_continue();
-    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
-    TEST_ASSERT_EQUAL_UINT8(0x22U, transmitted.data[3]);
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[1]);
+    TEST_ASSERT_EQUAL_UINT8(0x11U, transmitted.data[3]);
     TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &accepted));
     TEST_ASSERT_EQUAL_UINT8(0x11U, accepted.eui64[0]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x22U, transmitted.data[3]);
     complete_inventory();
     TEST_ASSERT_TRUE(rf_inventory_matches_config());
     TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &accepted));
@@ -2731,6 +2762,231 @@ void test_rf_log_invalid_or_missing_level_never_changes_persistent_settings(void
     char *args[] = {log, invalid};
     TEST_ASSERT_EQUAL_INT(-1, rf_shell_log(2, args));
     TEST_ASSERT_EQUAL_INT(0, rf_shell_log(1, args));
+}
+
+void test_removed_device_is_explicitly_deleted_before_inventory_end(void)
+{
+    load_one_phase();
+    (void)memset(feeder.r_eui64, 0, 8U);
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[1]);
+    TEST_ASSERT_EQUAL_UINT8(0x11U, transmitted.data[3]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_END, transmitted.cmd);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+    rf_inventory_entry_t entry;
+    TEST_ASSERT_FALSE(rf_inventory_get_binding(5U, &entry));
+}
+
+void test_failed_device_delete_preserves_binding_and_stops_upload(void)
+{
+    load_one_phase();
+    (void)memset(feeder.r_eui64, 0, 8U);
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_ERROR, rf_inventory_get_status());
+    rf_inventory_entry_t entry;
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &entry));
+    TEST_ASSERT_EQUAL_UINT8(0x11U, entry.eui64[0]);
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+}
+
+void test_phase_swap_deletes_old_assignments_before_loading_new_ones(void)
+{
+    feeder.s_eui64[0] = 0x22U;
+    load_one_phase();
+    feeder.r_eui64[0] = 0x22U;
+    feeder.s_eui64[0] = 0x11U;
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x11U, transmitted.data[3]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x22U, transmitted.data[3]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x22U, transmitted.data[3]);
+    complete_inventory();
+    rf_inventory_entry_t entry;
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &entry));
+    TEST_ASSERT_EQUAL_UINT8(0x22U, entry.eui64[0]);
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(6U, &entry));
+    TEST_ASSERT_EQUAL_UINT8(0x11U, entry.eui64[0]);
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+}
+
+void test_same_device_moves_to_a_different_feeder_without_old_binding(void)
+{
+    load_one_phase();
+    feeder.config.fider_id = 2U;
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[1]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(2U, transmitted.data[1]);
+    complete_inventory();
+    rf_inventory_entry_t entry;
+    TEST_ASSERT_FALSE(rf_inventory_get_binding(5U, &entry));
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(9U, &entry));
+    TEST_ASSERT_EQUAL_UINT8(0x11U, entry.eui64[0]);
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+}
+
+void test_unchanged_assignment_does_not_send_a_delete_on_reload(void)
+{
+    load_one_phase();
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x11U, transmitted.data[3]);
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+}
+
+void test_saved_delete_survives_rtu_state_reset_and_clears_only_at_end(void)
+{
+    load_one_phase();
+    (void)memset(feeder.r_eui64, 0, 8U);
+    TEST_ASSERT_TRUE(rf_inventory_prepare_save());
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.count);
+    TEST_ASSERT_EQUAL_UINT8(0x11U, journal.entries[0].eui64[0]);
+    rf_inventory_reset(); /* RAM-only state is lost; the journal is retained. */
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x11U, transmitted.data[3]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
+    rf_inventory_reset(); /* Lost progress after MH already deleted it. */
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x11U, transmitted.data[3]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_END, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_UINT8(0U, journal.pending);
+    TEST_ASSERT_EQUAL_UINT8(0U, journal.count);
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+}
+
+void test_journal_clear_failure_keeps_pending_work_and_blocks_final_match(void)
+{
+    load_one_phase();
+    (void)memset(feeder.r_eui64, 0, 8U);
+    TEST_ASSERT_TRUE(rf_inventory_prepare_save());
+    rf_inventory_reset();
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    journal_save_result = NVRAM_SAVE_FAILED;
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_ERROR, rf_inventory_get_status());
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    journal_save_result = NVRAM_SAVE_COMPLETE;
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    complete_inventory();
+    TEST_ASSERT_FALSE(rf_inventory_has_pending());
+}
+
+void test_pending_inventory_allows_same_target_but_rejects_replacement(void)
+{
+    load_one_phase();
+    journal.pending = 1U;
+    rf_feeder_t candidate = feeder;
+    candidate.r_eui64[0] = 0x22U;
+    staged_feeder = &candidate;
+    TEST_ASSERT_FALSE(rf_inventory_prepare_save());
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
+    candidate = feeder;
+    TEST_ASSERT_TRUE(rf_inventory_prepare_save());
+    nvram_is_busy_IgnoreAndReturn(true);
+    TEST_ASSERT_FALSE(rf_inventory_prepare_save());
+}
+
+void test_invalid_saved_delete_count_never_sends_an_inventory_command(void)
+{
+    journal.pending = 1U;
+    journal.count = RF_INVENTORY_JOURNAL_CAPACITY + 1U;
+    const uint32_t before = transmit_calls;
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_ERROR, rf_inventory_get_status());
+    TEST_ASSERT_TRUE(rf_inventory_has_pending());
+}
+
+void test_failed_new_assignment_keeps_saved_delete_until_successful_reload(void)
+{
+    feeder.s_eui64[0] = 0x33U;
+    load_one_phase();
+    feeder.r_eui64[0] = 0x22U;
+    TEST_ASSERT_TRUE(rf_inventory_prepare_save());
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0x33U, transmitted.data[3]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_END, transmitted.cmd);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_PARTIAL, rf_inventory_get_status());
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
+    TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    rf_inventory_continue();
+    rf_inventory_continue();
+    complete_inventory();
+    TEST_ASSERT_FALSE(rf_inventory_has_pending());
+    TEST_ASSERT_TRUE(rf_inventory_matches_config());
+}
+
+void test_full_saved_delete_list_is_replayed_without_overflow(void)
+{
+    journal.pending = 1U;
+    journal.count = RF_INVENTORY_JOURNAL_CAPACITY;
+    for (uint8_t index = 0U; RF_INVENTORY_JOURNAL_CAPACITY > index; index++)
+    {
+        journal.entries[index].eui64[0] = (uint8_t)(0x40U + index);
+        journal.entries[index].phase = (uint8_t)(index % 3U + 1U);
+    }
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    for (uint8_t index = 0U; RF_INVENTORY_JOURNAL_CAPACITY > index; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+        TEST_ASSERT_EQUAL_UINT8((uint8_t)(0x40U + index), transmitted.data[3]);
+        deliver_response(SCP_TYPE_ACK, 0U);
+        rf_inventory_continue();
+    }
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    complete_inventory();
+    TEST_ASSERT_FALSE(rf_inventory_has_pending());
 }
 
 /*** end of file ***/

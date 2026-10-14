@@ -446,13 +446,12 @@ static bool send_request(uint8_t command)
     return true;
 }
 
-bool rf_group_abort(void)
+bool rf_group_can_abort(void)
 {
     if (!group.write_sent && !group.commit_sent &&
         ((RF_GROUP_CHECKING == group.status.state) ||
          (RF_GROUP_UNCERTAIN == group.status.state)))
     {
-        group.status.state = RF_GROUP_CANCELLED;
         return true;
     }
     if ((!group.group_known && !group.write_sent) || !scp_is_free() ||
@@ -464,6 +463,20 @@ bool rf_group_abort(void)
          (RF_GROUP_MISMATCH != group.status.state)))
     {
         return false;
+    }
+    return true;
+}
+
+bool rf_group_abort(void)
+{
+    if (!rf_group_can_abort())
+    {
+        return false;
+    }
+    if (!group.write_sent && !group.commit_sent)
+    {
+        group.status.state = RF_GROUP_CANCELLED;
+        return true;
     }
     if (!send_request(RF_SCP_CMD_CFG_ABORT))
     {

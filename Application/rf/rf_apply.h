@@ -19,7 +19,8 @@ typedef enum
     RF_APPLY_IDLE,
     RF_APPLY_RUNNING,
     RF_APPLY_COMPLETE,
-    RF_APPLY_STOPPED
+    RF_APPLY_STOPPED,
+    RF_APPLY_PARTIAL
 } rf_apply_state_t;
 
 typedef enum
@@ -49,6 +50,7 @@ typedef struct
     rf_apply_state_t state;
     uint8_t targets;
     uint8_t applied;
+    uint8_t skipped;
     uint8_t line;
     bool group_started;
     bool inventory_pending;
@@ -63,6 +65,7 @@ bool rf_apply_can_save(void);
 rf_apply_save_result_t rf_apply_save(void);
 void rf_apply_process(void);
 bool rf_apply_abort(void);
+bool rf_apply_can_abort(void);
 void rf_apply_get_status(rf_apply_status_t *out);
 
 #endif /* RF_APPLY_H */

@@ -72,6 +72,9 @@ bool rf_inventory_get_binding(uint8_t source, rf_inventory_entry_t *out);
 
 /* True only when the complete accepted inventory matches desired rows. */
 bool rf_inventory_matches_config(void);
+/* Stage old identities before rf_store_sync publishes a new desired image. */
+bool rf_inventory_prepare_save(void);
+bool rf_inventory_has_pending(void);
 
 /** Send an operator-selected assignment/deletion (feeder zero deletes).
  * The caller owns persistence; this transport API does not alter NVRAM.

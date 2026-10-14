@@ -267,6 +267,9 @@ void setUp(void)
     rf_inventory_epoch_ready_StubWithCallback(is_epoch_ready);
     rf_inventory_get_binding_StubWithCallback(get_binding);
     rf_inventory_config_finished_Ignore();
+    rf_inventory_get_status_IgnoreAndReturn(RF_INVENTORY_READY);
+    rf_inventory_prepare_save_IgnoreAndReturn(true);
+    rf_inventory_has_pending_IgnoreAndReturn(false);
 }
 
 void tearDown(void)
@@ -1722,6 +1725,84 @@ void test_abort_rejections_for_idle_pending_and_terminal_states(void)
     TEST_ASSERT_TRUE(rf_group_handle_status(&cancelled));
     TEST_ASSERT_EQUAL_INT(RF_GROUP_CANCELLED, status().state);
     TEST_ASSERT_FALSE(rf_group_abort());
+}
+
+void test_incomplete_feeder_reports_partial_without_three_member_write(void)
+{
+    (void)memset(feeder.s_eui64, 0, 8U);
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_PARTIAL, batch_status().state);
+    TEST_ASSERT_EQUAL_HEX8(4U, batch_status().skipped);
+    TEST_ASSERT_EQUAL_HEX8(0U, batch_status().applied);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    TEST_ASSERT_TRUE(rf_apply_can_save());
+    char json[1024];
+    size_t length;
+    TEST_ASSERT_TRUE(rf_group_status_json_build(json, sizeof(json), &length));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatchState\":\"partial\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"Skipped\":4"));
+}
+
+void test_incomplete_feeder_does_not_block_a_complete_other_feeder(void)
+{
+    add_second_feeder();
+    (void)memset(feeder.s_eui64, 0, 8U);
+    TEST_ASSERT_TRUE(rf_store_set(2U, &feeder));
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_OK, rf_apply_save());
+    rf_apply_process();
+    TEST_ASSERT_EQUAL_UINT8(7U, status().line);
+    finish_batch_feeder(3U);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_PARTIAL, batch_status().state);
+    TEST_ASSERT_EQUAL_HEX8(0x40U, batch_status().applied);
+    TEST_ASSERT_EQUAL_HEX8(4U, batch_status().skipped);
+}
+
+void test_abort_capability_is_read_only_and_matches_transport_constraints(void)
+{
+    TEST_ASSERT_FALSE(rf_group_can_abort());
+    TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
+    const rf_group_status_t original = status();
+    TEST_ASSERT_TRUE(rf_group_can_abort());
+    const rf_group_status_t unchanged = status();
+    TEST_ASSERT_EQUAL_MEMORY(&original, &unchanged, sizeof(original));
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    unused_group();
+    rf_group_process(tick);
+    TEST_ASSERT_FALSE(rf_group_can_abort());
+    reply(SCP_CMD_TIMEOUT, NULL);
+    TEST_ASSERT_TRUE(rf_group_can_abort());
+    transport_free = false;
+    TEST_ASSERT_FALSE(rf_group_can_abort());
+    TEST_ASSERT_FALSE(rf_group_abort());
+    transport_free = true;
+    TEST_ASSERT_TRUE(rf_group_can_abort());
+    TEST_ASSERT_TRUE(rf_group_abort());
+}
+
+static bool stage_pending_inventory(int call_count)
+{
+    (void)call_count;
+    rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    journal->pending = 1U;
+    journal->count = 1U;
+    journal->entries[0].eui64[0] = 0x11U;
+    journal->entries[0].phase = 1U;
+    return true;
+}
+
+void test_failed_target_save_restores_journal_and_never_starts_rf(void)
+{
+    TEST_ASSERT_TRUE(rf_store_stage_begin());
+    rf_store_get_mutable(2U)->r_eui64[0] ^= 1U;
+    rf_inventory_prepare_save_StubWithCallback(stage_pending_inventory);
+    rf_nvram_fake_set_save_result(NVRAM_SAVE_FAILED);
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_ERROR, rf_apply_save());
+    TEST_ASSERT_EQUAL_UINT8(0U, nvram_get_rf_inventory_journal()->pending);
+    TEST_ASSERT_EQUAL_UINT8(0U, nvram_get_rf_inventory_journal()->count);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    TEST_ASSERT_EQUAL_MEMORY(&feeder, rf_store_get(2U), sizeof(feeder));
 }
 
 /*** end of file ***/

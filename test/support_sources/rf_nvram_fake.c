@@ -18,6 +18,12 @@ static breaker_t fake_breaker;
 static int sync_count;
 static int sync_result;
 static nvram_save_result_t save_result;
+static rf_inventory_journal_t fake_journal;
+
+rf_inventory_journal_t *nvram_get_rf_inventory_journal(void)
+{
+    return &fake_journal;
+}
 
 breaker_t *nvram_get_breaker_rw(void)
 {
@@ -46,6 +52,7 @@ int rf_nvram_fake_sync_count(void)
 void rf_nvram_fake_reset(void)
 {
     (void)memset(&fake_breaker, 0, sizeof(fake_breaker));
+    (void)memset(&fake_journal, 0, sizeof(fake_journal));
     sync_count = 0;
     sync_result = 0;
     save_result = NVRAM_SAVE_COMPLETE;

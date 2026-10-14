@@ -213,7 +213,25 @@ typedef struct
  *  NOT: gelistirme sirasindaki v2/v3 kuyruk eklemeleri (rf_log_level,
  *  iec104_log_level) uretime/saha cihazi olmadigi icin v1'e indirildi;
  *  ilk cikistan sonraki her layout degisikligi bump + migration ister. */
-#define NVRAM_SCHEMA_VERSION  3U
+#define NVRAM_SCHEMA_VERSION  4U
+#define RF_INVENTORY_JOURNAL_CAPACITY 12U
+
+typedef struct
+{
+    uint8_t eui64[8];
+    uint8_t zone;
+    uint8_t phase;
+    uint8_t channel;
+    uint8_t reserved;
+} rf_inventory_delete_t;
+
+typedef struct
+{
+    rf_inventory_delete_t entries[RF_INVENTORY_JOURNAL_CAPACITY];
+    uint8_t pending;
+    uint8_t count;
+    uint16_t reserved;
+} rf_inventory_journal_t;
 
 /* IEC104 olay gunlugu replay durumu. Gonderilmemis kayitlar her zaman tek
  * parca bir seq araligi olusturur: replay yeniden eskiye gider, hat acikken
@@ -248,6 +266,8 @@ typedef struct
 
     iec104_evtlog_state_t iec104_evtlog; /**< olay gunlugu replay durumu (v2) */
 
+    _Alignas(4) rf_inventory_journal_t rf_inventory_journal;
+
     uint32_t crc;
 }nvram_t;
 
@@ -266,8 +286,12 @@ _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
 _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
-_Static_assert(sizeof(nvram_t) == 2476U, "nvram_t layout degisti - NVRAM_SCHEMA_VERSION bump gerekebilir");
-_Static_assert(offsetof(nvram_t, crc) == 2472U, "nvram_t: crc kuyrugun sonunda");
+_Static_assert(sizeof(rf_inventory_journal_t) == 148U,
+               "RF inventory journal layout");
+_Static_assert(offsetof(nvram_t, rf_inventory_journal) == 2472U,
+               "Schema v3 prefix must remain unchanged");
+_Static_assert(sizeof(nvram_t) == 2624U, "nvram_t schema v4 layout");
+_Static_assert(offsetof(nvram_t, crc) == 2620U, "nvram_t: crc at tail");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */
