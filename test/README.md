@@ -127,6 +127,31 @@ komut/yanıt sırasını ve açılış öncesinde değişen ayarın yeniden uygu
 sınar. Config saklama, HTTP yanıt ve AT transport sınırları mock'tur.
 Sonuçlar ve fiziksel kabul sınırı üretim raporu §10.58–10.59'da tutulmalıdır.
 
+## 14.10.2026 tarama bulguları regresyonları
+
+`application/test_power_panic_init.c`, açılışta GPIO okuması sonrasında
+enjekte edilen düşen kenarın ve önceden kapalı IRQ'nun korunmasını sınar.
+Mevcut `test_power_panic.c` episode (panik dönemi) testleri korunmuştur.
+`bsp/test_bsp_rtc_write.c`, gerçek BSP setter'larında TIM17 korumasını,
+bekleyen tick'i, takvim/milisaniye bütünlüğünü ve NULL girdiyi sınar.
+`test_rtc_sync.c` gerçek RTC service (hizmet) doğrulamasını korur; birleşik
+BSP yazımı tek callback olduğundan yalnız yazma sayısı fixture'ı günceldir.
+
+`application/test_xmodem_update_scenario.c`, gerçek application callback
+ve watchdog üzerinden overflow+COMPLETE kapanışını, boş EOT'yi,
+geçersiz imaj başlığında IPC isteği gönderilmemesini ve 1 dakika timeout
+sınırını sınar. Transport/Flash/reset sınırları mock'tur. Web IEC104
+paketindeki gerçek parser/handler testi gövdesiz firmware POST'unu ve
+aktarımı koruyarak reddini içerir. Shell event-log paketi gerçek utils
+parser'ıyla geçersiz count reddini ve geçerli kayıt üretimini sınar.
+Xscanf edge paketi INT32_MIN, komşu değerler ve underflow'u içerir.
+
+Merkezi komut `ruby test/run_all.rb unit` olmalıdır. Bu eklemede 20 yeni
+Unity testi vardır; son koşu 1374/1374 PASS'tir. Host IRQ modeli fiziksel
+zamanlama kabulü değildir. Düzeltme ve kanıt sınırları
+[tarama raporu §13](../SKILL_TUM_REPO_TARAMA_RAPORU_2026-10-14.md#13-değerlendirme-ve-düzeltme--14102026)
+ve üretim raporunda tutulur.
+
 ## Kompakt dil tablosu doğrulaması
 
 Web navigation paketindeki `test_i18n_pack.js`, gerçek minifier üzerinden
