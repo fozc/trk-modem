@@ -1457,3 +1457,26 @@ varsayılan 7 korunur. Ayrı AY açılışları açıkça farklı kimlikle üret
 Donanım koşuları ve ilk başarısız izler `build/rf-hil-2026-10-08-*`
 altındadır. Sayısal sonuç ve kalan fiziksel sınırlar üretim hazırlık
 raporunun ilgili bölümünde tutulur; ilk koşu raporları sonradan değiştirilmez.
+
+## RF web doğrulama incelemesi — 14.10.2026
+
+26 kaynak dosyası `test/build/rf-web-final-evidence/source-hashes.json`
+ile birebir eşleşti. Son tam Ceedling koşusu 1354/1354; ajanın tekrar
+koşusu `build/e2e2-rf-unit.log` içinde 464/464'tür. Web auth ve kaynak/gömülü
+navigation sonuçları `build/e2e2-webauth.log` ve `build/e2e2-webnav.log`
+içindedir. Canlı web_device 15/15 sonucu ajan tarafından bildirildi;
+bu incelemede ayrı son koşu logu bulunmadığı için bağımsız doğrulanmış
+bir tam kabul sonucu olarak kullanılmamalıdır.
+
+`build/e2e2-move-watch.log` içinde silme ACK → SET ACK → END ACK sırası
+vardır. Ancak S→T taşımasından sonra LIVE paketlerinin source alanı 6
+olarak kaldı; `build/e2e2-mon1.json` T fazında HasData=false gösterir.
+RTU source alanından fider/faz çözer (`rf_inventory_get_binding`).
+ACK başarısı, taşınan cihazın LIVE akışının yeni fazda doğrulandığı
+anlamına gelmez. MH/AY davranışı ve RTU eşlemesi birlikte incelenmelidir;
+kök neden veya yenileme süresi bu kayıtlarla kesinleşmemiştir.
+
+Aynı hedef POST sonrası restart, kayıtlı hedefin korunmasını gösterir.
+Bekleyen silme işleminin ACK öncesinde fiziksel kesilmesi ve eski EUI
+listesinden kurtarılması bu koşuda yakalanmadı. Host replay/NOR kesinti
+testleri geçmiştir; fiziksel güç kesintisi kabulü ayrıca yapılmalıdır.
