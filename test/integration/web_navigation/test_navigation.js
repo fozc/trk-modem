@@ -714,6 +714,65 @@ async function checkPage(html, label) {
     assert.equal(automaticStatusReads,0,'opening RF must not refresh status');
     await run("savePageData('rf',{inUse:[true]})");
     assert.equal(automaticStatusReads,0,'save must leave status for manual refresh');
+    // Clearing a device updates the draft and the normalized cache without GET.
+    const removedEui = '1122334455667788';
+    const rfInput = document.getElementById('rf-R_DEVICEID-0');
+    rfInput.value = removedEui;
+    rfInput.dataset.original = removedEui;
+    rfInput.closest = () => null;
+    run("clearRfEui(0,'R_DEVICEID')");
+    assert.equal(rfInput.value, '');
+    assert.equal(run("hasDirty('rf')"), true);
+    const oldFetch = context.fetch;
+    let draftReads = 0;
+    context.fetch = async (url, options = {}) => {
+        if (options.method !== 'POST') draftReads++;
+        return {ok:true,status:200,json:async()=>({success:true})};
+    };
+    run(`pageCache.rf={root:{inUse:[true],HatID:[1],R_DEVICEID:['${removedEui}']}}`);
+    await run("savePageData('rf',{inUse:[true],HatID:[1],R_DEVICEID:['']})");
+    assert.equal(run('pageCache.rf.root.R_DEVICEID[0]'), '');
+    run("renderPage('rf',pageCache.rf)");
+    assert.ok(!body().includes(`value="${removedEui}"`));
+    assert.equal(draftReads, 0, 'clear/save/render must not re-read settings');
+    assert.equal(run("normalRfEui('0000000000000000')"), '');
+    for (const language of ['tr', 'en']) {
+        run(`LNG='${language}'`);
+        const removal = run(`rfChangeSummary({inUse:[true],HatID:[1],R_DEVICEID:['${removedEui}']},{inUse:[true],HatID:[1],R_DEVICEID:['']})`);
+        assert.ok(removal.includes(removedEui));
+        const move = run(`rfChangeSummary({inUse:[true],HatID:[1],R_DEVICEID:['${removedEui}']},{inUse:[true],HatID:[2],S_DEVICEID:['${removedEui}']})`);
+        assert.ok(move.includes(removedEui));
+        assert.ok(move.includes('L1') && move.includes('L2'));
+        const partial = run("buildRfGroupStatus({State:'idle',BatchState:'partial',Targets:1,Skipped:1,Applied:0,GroupStarted:false})");
+        assert.ok(partial.includes(run("t('rfMembersMissing')")));
+        assert.ok(!partial.includes('rfBatchPartial'));
+    }
+    run("LNG='tr'");
+    context.fetch = oldFetch;
+    // Status snapshots must not present an unrelated previous group as success.
+    for (const language of ['tr', 'en']) {
+        run(`LNG='${language}'`);
+        const oldApplied = run("buildRfGroupStatus({State:'applied',Line:8,GroupId:255,MatchesDesired:false,BatchState:'running',InventoryPending:true,InventoryState:'loading',Targets:1,Applied:0,GroupStarted:false})");
+        assert.ok(oldApplied.includes(run("t('rfStageSaved')")));
+        assert.ok(oldApplied.includes(run("t('rfInventoryLoading')")));
+        assert.ok(!oldApplied.includes(run("t('rfGroupChanged')")));
+        assert.ok(!oldApplied.includes('255'));
+        const completed = run("buildRfGroupStatus({State:'failed',BatchState:'complete',InventoryState:'ready',Targets:1,Applied:1,GroupStarted:false})");
+        assert.ok(completed.includes(run("t('rfInventoryReady')")));
+        assert.ok(!completed.includes(run("t('rfGroupFailed')")));
+        const empty = run("buildRfGroupStatus({State:'idle',BatchState:'complete',InventoryState:'empty',Targets:0,Applied:0,GroupStarted:false})");
+        assert.ok(empty.includes(run("t('rfInventoryEmpty')")));
+        const recovered = run("buildRfGroupStatus({State:'idle',BatchState:'idle',InventoryRecoveryPending:true,InventoryState:'loading'})");
+        assert.ok(recovered.includes(run("t('rfRecoveryPending')")));
+        assert.ok(!recovered.includes(run("t('rfBatchComplete')")));
+        const storage = run("buildRfGroupStatus({State:'applied',BatchState:'stopped',StopReason:'storage',InventoryState:'ready',GroupStarted:false})");
+        assert.ok(storage.includes(run("t('rfInventoryNotStarted')")));
+    }
+    run("LNG='tr'");
+    assert.equal(run("rfCanAbort({State:'waiting'})"), false);
+    assert.equal(run("rfCanAbort({State:'waiting',CanAbort:false})"), false);
+    assert.equal(run("rfCanAbort({State:'waiting',CanAbort:true})"), true);
+    assert.equal(run("rfCanAbort({CanAbort:true,InventoryPending:true})"), false);
     // RF refresh must acknowledge a successful read even if state is unchanged.
     let abortPosts=0;
     context.fetch=async(url,options={})=>{
@@ -737,7 +796,7 @@ async function checkPage(html, label) {
     context.fetch=async(url,options={})=>{
         if(options.method==='POST'){abortPosts++;return {ok:false,status:409,
             text:async()=> 'RF abort not started: check current group state'};}
-        return {ok:true,status:200,json:async()=>({State:'waiting',BatchState:'running',GroupStarted:true,SaveBlocked:true})};
+        return {ok:true,status:200,json:async()=>({State:'waiting',BatchState:'running',GroupStarted:true,SaveBlocked:true,CanAbort:true})};
     };
     await run('abortRfConfig()');
     assert.equal(abortPosts,1);

@@ -286,7 +286,7 @@ const I18N={
     rfStoreLineTpl:"Row {n}",
     rfGroupMHApplied:"Applied report",
     rfApplyTitle:"RF application progress",
-    rfApplyHint:"Save confirms and applies settings to every active feeder in sequence.",
+    rfApplyHint:"Save records the desired configuration, updates device assignments and applies settings to complete feeders. MH verification is separate.",
     rfGroupId:"Fresh group ID",
     rfAbort:"Abort",
     rfGroupRequested:"Request started; refresh the status to follow the result.",
@@ -305,6 +305,25 @@ const I18N={
     rfGroupCancelled:"Cancelled",
     rfGroupRestarted:"MH restarted",
     rfGroupUnknown:"Unknown status",
+    rfBatchPartial:"Inventory updated; incomplete feeders were not configured",
+    rfMembersMissing:"Phase members missing; settings not applied",
+    rfDeviceRemoved:"Remove {eui} from feeder {fid}, {phase}",
+    rfDeviceMoved:"Move {eui}: feeder {from}/{oldPhase} → feeder {to}/{phase}",
+    rfDeviceAdded:"Assign {eui}: feeder {fid}, {phase}",
+    rfClearEui:"Clear",
+    rfStageSaved:"Desired configuration saved on RTU",
+    rfStageInventory:"Device assignments",
+    rfStageSettings:"Protection settings",
+    rfInventoryReady:"MH inventory verified",
+    rfInventoryEmpty:"No assigned devices remain",
+    rfInventoryLoading:"Removing old assignments and loading the new inventory",
+    rfInventoryNotStarted:"Inventory update not started",
+    rfCounts:"Verified: {applied}/{total} · Missing members: {skipped} · Remaining: {pending}",
+    rfDetails:"Technical details",
+    rfRecoveryPending:"Saved device assignment update is pending",
+    rfRecoveryHint:"Resume the saved configuration before editing device assignments. Refresh to check completion.",
+    rfStatusAfterSave:"Desired configuration saved. MH verification is pending; refresh application status.",
+    rfStatusSnapshot:"Last received result; refresh to check current progress.",
     rfGroupMH:"Last MH report",
     rfGroupPrepared:"Prepared",
     rfGroupDelivered:"Delivered",
@@ -578,7 +597,7 @@ const I18N={
     rfStoreLineTpl:"Satır {n}",
     rfGroupMHApplied:"Uygulandı bildirimi",
     rfApplyTitle:"RF uygulama durumu",
-    rfApplyHint:"Kaydet onayı, ayarları tüm etkin fiderlere sırayla uygular.",
+    rfApplyHint:"Kaydet hedef tanımı kaydeder, cihaz eşlemelerini günceller ve tam üyeli fiderlerin ayarlarını uygular. MH doğrulaması ayrı izlenir.",
     rfGroupId:"Yeni grup kimliği",
     rfAbort:"İptal",
     rfGroupRequested:"İstek başlatıldı; sonucu izlemek için durumu yenileyin.",
@@ -597,6 +616,25 @@ const I18N={
     rfGroupCancelled:"İptal edildi",
     rfGroupRestarted:"MH yeniden başladı",
     rfGroupUnknown:"Bilinmeyen durum",
+    rfBatchPartial:"Envanter güncellendi; eksik üyeli fiderlere ayar uygulanmadı",
+    rfMembersMissing:"Faz üyeleri eksik; ayar uygulanmadı",
+    rfDeviceRemoved:"{eui}: Fider {fid}/{phase} konumundan çıkarılacak",
+    rfDeviceMoved:"{eui}: Fider {from}/{oldPhase} → Fider {to}/{phase} taşınacak",
+    rfDeviceAdded:"{eui}: Fider {fid}/{phase} konumuna atanacak",
+    rfClearEui:"Temizle",
+    rfStageSaved:"Hedef tanım RTU üzerinde kayıtlı",
+    rfStageInventory:"Cihaz eşlemeleri",
+    rfStageSettings:"Koruma ayarları",
+    rfInventoryReady:"MH envanteri doğrulandı",
+    rfInventoryEmpty:"Atanmış cihaz kalmadı",
+    rfInventoryLoading:"Eski eşlemeler kaldırılıyor ve yeni envanter yükleniyor",
+    rfInventoryNotStarted:"Envanter güncellemesi başlamadı",
+    rfCounts:"Doğrulanan: {applied}/{total} · Eksik üyeli: {skipped} · Kalan: {pending}",
+    rfDetails:"Teknik ayrıntılar",
+    rfRecoveryPending:"Kaydedilmiş cihaz eşleme işlemi bekliyor",
+    rfRecoveryHint:"Cihaz eşlemelerini değiştirmeden kayıtlı işlem tamamlanmalıdır. Durumu yenileyin; işlem hata ile durmuşsa aynı tanımla yeniden Kaydet seçin.",
+    rfStatusAfterSave:"Hedef tanım kaydedildi. MH doğrulaması bekleniyor; uygulama durumunu yenileyin.",
+    rfStatusSnapshot:"Son alınan sonuç; güncel ilerleme için yenileyin.",
     rfGroupMH:"Son MH raporu",
     rfGroupPrepared:"Hazırlandı",
     rfGroupDelivered:"Teslim edildi",
@@ -675,7 +713,7 @@ const hideLoad=()=>{loading=false;$('requestLoading')?.remove();document.querySe
 
 
 
-const confirmAction=(msg,fn)=>{const o=document.createElement('div');o.className='modal';o.innerHTML='<div class="modal-card"><h3>'+esc(t('confirmT'))+'</h3><p style="color:#64748b;line-height:1.5;margin-bottom:12px">'+esc(msg)+'</p><div class="modal-actions"><button class="btn btn-muted" id="cancelConfirm">'+esc(t('cancel'))+'</button><button class="btn btn-danger" id="okConfirm">'+esc(t('confirmBtn'))+'</button></div></div>';document.body.appendChild(o);$('cancelConfirm').onclick=()=>o.remove();$('okConfirm').onclick=()=>{o.remove();return fn()}};
+const confirmAction=(msg,fn)=>{const o=document.createElement('div');o.className='modal';o.innerHTML='<div class="modal-card"><h3>'+esc(t('confirmT'))+'</h3><p style="color:#64748b;line-height:1.5;white-space:pre-line;margin-bottom:12px">'+esc(msg)+'</p><div class="modal-actions"><button class="btn btn-muted" id="cancelConfirm">'+esc(t('cancel'))+'</button><button class="btn btn-danger" id="okConfirm">'+esc(t('confirmBtn'))+'</button></div></div>';document.body.appendChild(o);$('cancelConfirm').onclick=()=>o.remove();$('okConfirm').onclick=()=>{o.remove();return fn()}};
 
 /* Dil degistirme: statik etiketler + menu + aktif sayfa yeniden cizilir.
  * Terminal ve sistem gunlugu icerigi DOM'da tutuldugu icin dile geciste
@@ -804,44 +842,53 @@ function renderModbus(d){
 
 
 function buildRfGroupStatus(group){
-  if(!group)return '<div class="empty">'+esc(t('stNotRead'))+'</div>';
+  if(!group)return '<div class="empty">'+esc(t(rfStatusMessage||'stNotRead'))+'</div>';
+  if(group.BatchState==='idle'&&group.InventoryRecoveryPending)return '<p><strong>'+esc(t('rfRecoveryPending'))+'</strong></p><p>'+esc(group.InventoryState==='loading'?t('rfInventoryLoading'):group.InventoryState==='error'?t('rfStopInventory'):t('rfInventoryPending'))+'</p><p class="hint">'+esc(t('rfRecoveryHint'))+'</p>';
   const keys={idle:'rfGroupIdle',checking:'rfGroupChecking',writing:'rfGroupWriting',committing:'rfGroupCommitting',waiting:'rfGroupWaiting',applied:'rfGroupApplied',failed:'rfGroupFailed',uncertain:'rfGroupUncertain',id_in_use:'rfGroupIdUsed',mismatch:'rfGroupMismatch',aborting:'rfGroupAborting',cancelled:'rfGroupCancelled',restarted:'rfGroupRestarted'};
   let title=t(keys[group.State]||'rfGroupUnknown');
   if(group.State==='applied'&&!group.MatchesDesired)title=t('rfGroupChanged');
   let html='';
-    if(group.WaitReason&&group.WaitReason!=='none'){
+    if(group.BatchState==='running'&&group.InventoryPending&&group.WaitReason&&group.WaitReason!=='none'){
       html+='<p class="hint">'+esc(t('rfWait_'+group.WaitReason))+'<br>'+esc(t('rfWaitTotal'))+': '+Math.floor(group.WaitTotalMs/1000)+' s<br>'+esc(t('rfWaitCurrent'))+': '+Math.floor(group.WaitReasonMs/1000)+' s</p>';
     }
   if(group.BatchState&&group.BatchState!=='idle'){
-    const batchKeys={running:'rfBatchRunning',complete:'rfBatchComplete',stopped:'rfBatchStopped'};
+    const batchKeys={running:'rfBatchRunning',complete:'rfBatchComplete',partial:'rfBatchPartial',stopped:'rfBatchStopped'};
     html+='<p><strong>'+esc(t(batchKeys[group.BatchState]||'rfGroupUnknown'))+'</strong></p>';
-    if(group.InventoryPending)html+='<p class="hint">'+esc(t('rfInventoryPending'))+'</p>';
+    html+='<p>'+esc(t('rfStageSaved'))+'</p>';
+    let inventory=group.InventoryPending?(group.InventoryState==='loading'?t('rfInventoryLoading'):t('rfInventoryPending')):
+      group.StopReason==='storage'?t('rfInventoryNotStarted'):
+      group.StopReason==='inventory'?t('rfStopInventory'):
+      group.InventoryState==='empty'?t('rfInventoryEmpty'):
+      group.InventoryState==='ready'?t('rfInventoryReady'):t('rfGroupUnknown');
+    html+='<p><strong>'+esc(t('rfStageInventory'))+':</strong> '+esc(inventory)+'</p>';
+    const count=mask=>Array.from({length:FEEDER_COUNT},(_,i)=>!!(mask&(1<<i))).filter(Boolean).length;
+    html+='<p><strong>'+esc(t('rfStageSettings'))+':</strong> '+esc(tf('rfCounts',{applied:count(group.Applied),total:count(group.Targets),skipped:count(group.Skipped),pending:count(group.Targets&~((group.Applied||0)|(group.Skipped||0)))}))+'</p>';
+    html+='<p class="hint">'+esc(t('rfStatusSnapshot'))+'</p>';
+
     if(group.BatchState==='stopped'&&group.StopReason&&group.StopReason!=='none'){
       const reasons={start_rejected:'rfStopStart',id_exhausted:'rfStopIds',group_error:'rfStopGroup',peer_active:'rfStopPeer',hub_restarted:'rfStopRestart',cancelled:'rfStopCancelled',state_changed:'rfStopChanged',storage:'rfStopStorage',inventory:'rfStopInventory'};
       html+='<p class="hint">'+esc(t(reasons[group.StopReason]||'rfGroupUnknown'))+'</p>';
     }
     for(let i=0;i<FEEDER_COUNT;i++)if(group.Targets&(1<<i)){
       const done=!!(group.Applied&(1<<i)),current=group.BatchLine===i+1;
-      const result=done?t('rfGroupApplied'):current?(group.BatchState==='stopped'?(group.GroupStarted?title:t('rfBatchNotStarted')):t('rfBatchActive')):t('rfBatchPending');
+      const result=(group.Skipped&(1<<i))?t('rfMembersMissing'):done?t('rfGroupApplied'):current?(group.BatchState==='stopped'?(group.GroupStarted?title:t('rfBatchNotStarted')):t('rfBatchActive')):t('rfBatchPending');
       html+='<p>'+esc(tf('rfStoreLineTpl',{n:i+1}))+': '+esc(result)+'</p>';
     }
     if(!group.GroupStarted)return html;
   }
   html+='<p><strong>'+esc(title)+'</strong></p>';
+  html+='<details><summary>'+esc(t('rfDetails'))+'</summary>';
   if(group.Line)html+='<p>'+esc(tf('rfStoreLineTpl',{n:group.Line}))+' · '+esc(t('rfGroupId'))+': '+esc(group.GroupId)+'</p>';
   if(group.HasReport){const mh=['rfGroupIdle','rfGroupPrepared','rfGroupDelivered','rfGroupMHApplied','rfGroupFailed'];html+='<p>'+esc(t('rfGroupMH'))+': '+esc(t(mh[group.MHState]||'rfGroupUnknown'))+' · '+esc(t('rfGroupMembers'))+': '+esc(group.MemberBitmap)+' · '+esc(t('rfGroupReason'))+': '+esc(group.Reason)+' · CRC: '+esc(group.ReportedCRC)+' / '+esc(group.ExpectedCRC)+'</p>'}
+  html+='</details>';
   if(group.State==='failed'&&group.HasReport&&Number(group.Reason)===6)html+='<p class="hint">'+esc(t('rfPartialRetry'))+'</p>';
   return html;
 }
-function invalidateRfGroupStatus(){rfStatusRequest++;rfStatusBusy=false;delete pageCache.rfGroup;const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(null);updateRfSaveButton()}
+let rfStatusMessage='';
+function invalidateRfGroupStatus(message=''){rfStatusRequest++;rfStatusBusy=false;delete pageCache.rfGroup;rfStatusMessage=message;const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(null);updateRfSaveButton()}
 let rfStatusRequest=0;
 let rfStatusBusy=false;
-function rfCanAbort(group){
-  if(!group)return false;
-  if(group.InventoryPending)return false;
-  if(group.BatchState==='running'&&!group.GroupStarted)return true;
-  return ['checking','waiting','uncertain','mismatch'].includes(group.State);
-}
+function rfCanAbort(group){return group?.CanAbort===true&&!group.InventoryPending}
 function updateRfSaveButton(){
   const save=$('save-rf'),abort=$('rf-abort'),refresh=$('rf-status-refresh');
   if(save)save.disabled=loading||!!pageCache.rfGroup?.SaveBlocked;
@@ -895,7 +942,7 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
     ints.forEach(f=>s+=numField('rf-'+f[0]+'-'+i,t(f[1]),rows[f[0]]?.[i],f[2],f[3]));
     s+=selectFieldL('rf-HatFrekansi-'+i,t('fLineFreq'),rows.HatFrekansi?.[i],[[50,'50'],[60,'60']]);
     s+='</div>';
-    s+='<div class="phase-head" style="margin:12px 0 8px">'+esc(t('phaseDevIds'))+'</div><div class="grid g3 gt">'+dev.map(f=>textField('rf-'+f[0]+'-'+i,tf('devIdTpl',{ph:f[1]}),rows[f[0]]?.[i]||'','16')).join('')+'</div>';
+    s+='<div class="phase-head" style="margin:12px 0 8px">'+esc(t('phaseDevIds'))+'</div><div class="grid g3 gt">'+dev.map(f=>'<div>'+textField('rf-'+f[0]+'-'+i,tf('devIdTpl',{ph:f[1]}),normalRfEui(rows[f[0]]?.[i]),'16')+'<button type="button" class="btn btn-small" onclick="clearRfEui('+i+',\''+f[0]+'\')">'+esc(t('rfClearEui'))+'</button></div>').join('')+'</div>';
     s+='</div>';
   }
   s+='</div></div></div>';
@@ -937,6 +984,25 @@ function renderTerminal(){return '<div class="terminal"><div class="terminal-out
 
 // ---------------- PAGE LOAD / SAVE ----------------
 const readPage=async(page)=>{if(loading)return;try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;if(page==='rf')invalidateRfGroupStatus();pageCache[page]=d;renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}};
+const normalRfEui=value=>{const text=String(value||'').trim().toUpperCase();return /^0{16}$/.test(text)?'':text};
+function clearRfEui(index,key){
+  if(loading||!['R_DEVICEID','S_DEVICEID','T_DEVICEID'].includes(key))return;
+  const el=$('rf-'+key+'-'+index);if(!el)return;
+  el.value='';setDirty('rf',el,el.dataset.original!=='');
+}
+function rfChangeSummary(before,after){
+  const assignments=data=>{const rows=data?.root||data||{},result=new Map();
+    for(let i=0;i<FEEDER_COUNT;i++)if(rows.inUse?.[i])['R_DEVICEID','S_DEVICEID','T_DEVICEID'].forEach((key,phase)=>{
+      const eui=normalRfEui(rows[key]?.[i]);if(eui)result.set(eui,{fid:rows.HatID?.[i],phase:['L1','L2','L3'][phase]});
+    });return result;};
+  const old=assignments(before),next=assignments(after),changes=[];
+  old.forEach((slot,eui)=>{const target=next.get(eui);
+    if(!target)changes.push(tf('rfDeviceRemoved',{eui,fid:slot.fid,phase:slot.phase}));
+    else if(target.fid!==slot.fid||target.phase!==slot.phase)changes.push(tf('rfDeviceMoved',{eui,from:slot.fid,oldPhase:slot.phase,to:target.fid,phase:target.phase}));
+  });
+  next.forEach((slot,eui)=>{if(!old.has(eui))changes.push(tf('rfDeviceAdded',{eui,fid:slot.fid,phase:slot.phase}));});
+  return changes.join('\n');
+}
 const savePage=async(page)=>{
   if(loading)return;
   if(!pageCache[page]){toast(t('tReadFirst'),'err');return}
@@ -948,7 +1014,8 @@ const savePage=async(page)=>{
     if(group.SaveBlocked){toast(t('rfSaveBusy'),'err');return}
     const rows=d.root||d;
     const active=Array.from({length:FEEDER_COUNT},(_,i)=>rows.inUse?.[i]?tf('rfStoreLineTpl',{n:i+1})+(rows.HatID?.[i]?' (ID '+rows.HatID[i]+')':''):null).filter(Boolean);
-    confirmAction(active.length?tf('rfSaveConfirm',{rows:active.join(', ')}):t('rfSaveNone'),()=>savePageData(page,d));
+    const changes=rfChangeSummary(pageCache.rf,d);
+    confirmAction((active.length?tf('rfSaveConfirm',{rows:active.join(', ')}):t('rfSaveNone'))+(changes?'\n'+changes:''),()=>savePageData(page,d));
     return;
   }
   return savePageData(page,d);
@@ -960,8 +1027,8 @@ async function savePageData(page,d){
     const r=await api('/config/'+page,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
     hideLoad();
     if(r.success===false)throw new Error(r.error||t('tSaveFailed'));
-    pageCache[page]={...pageCache[page],...d};
-    if(page==='rf')invalidateRfGroupStatus();
+    pageCache[page]=page==='rf'&&pageCache.rf?.root?{...pageCache.rf,root:{...pageCache.rf.root,...(d.root||d)}}:{...pageCache[page],...d};
+    if(page==='rf')invalidateRfGroupStatus('rfStatusAfterSave');
     markOriginals($('body'));clearDirty(page);
     if(page==='rf'&&r.warning==='backup_failed')toast(t('rfStopStorage'),'err');
     else toast(page==='rf'&&(d.root||d).inUse?.some(Boolean)?t('rfSavedApplying'):t('tSaveOk'),'ok');
