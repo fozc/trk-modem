@@ -154,7 +154,15 @@ static const char* parse_signed(const char *s, const char *end,
     }
     
     if (*err == XSCANF_OK) {
-        *out = negative ? -(int32_t)abs_val : (int32_t)abs_val;
+        if (negative && (0U != abs_val))
+        {
+            /* abs_val - 1 fits even when the result is INT32_MIN. */
+            *out = -(int32_t)(abs_val - 1U) - 1;
+        }
+        else
+        {
+            *out = (int32_t)abs_val;
+        }
     }
     
     return s;
@@ -1032,3 +1040,5 @@ int xscanf_run_all_tests(void (*print_func)(const char *fmt, ...))
 }
 
 #endif /* XSCANF_ENABLE_TESTS */
+
+/*** end of file ***/

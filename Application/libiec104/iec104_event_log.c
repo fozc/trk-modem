@@ -416,9 +416,10 @@ typedef struct
     uint32_t printed_count;
 } evtlog_dump_range_t;
 
-static bool evtlog_parse_seq(const char *text, uint16_t *seq)
+static bool evtlog_parse_value(const char *text, uint16_t maximum,
+                              uint16_t *value_out)
 {
-    if ((NULL == text) || (NULL == seq) ||
+    if ((NULL == text) || (NULL == value_out) ||
         (5U < strlen(text)) || (0 == is_numeric(text)))
     {
         return false;
@@ -426,13 +427,12 @@ static bool evtlog_parse_seq(const char *text, uint16_t *seq)
 
     const int32_t value = xstrtoi(text);
 
-    if ((0 > value) || (65534 < value))
+    if ((0 > value) || ((int32_t)maximum < value))
     {
         return false;
     }
 
-    /* The value is within the valid sequence range. */
-    *seq = (uint16_t)value;
+    *value_out = (uint16_t)value;
     return true;
 }
 
@@ -664,8 +664,8 @@ static int shell_iec104evtlog(int argc, char *argv[])
 
         if ((2 != argc) &&
             ((4 != argc) ||
-             !evtlog_parse_seq(argv[2], &first_seq) ||
-             !evtlog_parse_seq(argv[3], &last_seq) ||
+             !evtlog_parse_value(argv[2], 65534U, &first_seq) ||
+             !evtlog_parse_value(argv[3], 65534U, &last_seq) ||
              (first_seq > last_seq)))
         {
             SHELL_LOG("Kullanim: iec104evtlog dump [ilk_seq son_seq]\r\n");
@@ -677,7 +677,15 @@ static int shell_iec104evtlog(int argc, char *argv[])
     }
     else if (0 == strcmp(argv[1], "test"))
     {
-        iec104_event_log_test((argc > 2) ? (uint16_t)atoi(argv[2]) : 10U);
+        uint16_t count = 10U;
+        if ((2 != argc) &&
+            ((3 != argc) ||
+             !evtlog_parse_value(argv[2], UINT16_MAX, &count)))
+        {
+            SHELL_LOG("Kullanim: iec104evtlog test [0..65535]\r\n");
+            return 0;
+        }
+        iec104_event_log_test(count);
     }
     else if (0 == strcmp(argv[1], "clear"))
     {
