@@ -8,6 +8,7 @@
 
 #define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_response.h"
+#include "sha256.h"
 #include "console_logger.h"
 #include "html_resources.h"  /* For HTML_COMPRESS_* constants */
 #include "xprintf.h"  /* For xsprintf */
@@ -51,6 +52,7 @@ static const status_code_entry_t STATUS_CODES[] = {
 void http_response_init(int (*send_callback)(const void *data, int length))
 {
     response_state.send_callback = send_callback;
+    http_response_note_request_headers(NULL, 0);
 }
 
 
@@ -182,6 +184,164 @@ void http_send_html(const char *html, int html_length)
     http_send_response(200, "OK", "text/html", html, html_length);
 }
 
+/* Conditional-GET context: the router copies the incoming
+ * If-None-Match header here before dispatching a request. */
+#define ETAG_MAX_LEN 67U
+#define ETAG_REQUEST_MAX_LEN 256U
+
+static char etag_request[ETAG_REQUEST_MAX_LEN];
+static bool etag_request_valid;
+
+static char lower_ascii(char c)
+{
+    return (('A' <= c) && ('Z' >= c)) ? (char)(c + ('a' - 'A')) : c;
+}
+
+static bool header_name_matches(const char *line, size_t length)
+{
+    static const char name[] = "if-none-match:";
+    if (sizeof(name) - 1U > length)
+    {
+        return false;
+    }
+    for (size_t index = 0U; sizeof(name) - 1U > index; index++)
+    {
+        if (lower_ascii(line[index]) != name[index])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void http_response_note_request_headers(const char *buffer, int length)
+{
+    etag_request_valid = false;
+    etag_request[0] = '\0';
+    if ((NULL == buffer) || (0 >= length))
+    {
+        return;
+    }
+    const size_t end = (size_t)length;
+    size_t start = 0U;
+    while (end > start)
+    {
+        size_t next = start;
+        while ((end > next) && ('\r' != buffer[next]) &&
+               ('\n' != buffer[next]))
+        {
+            next++;
+        }
+        if (next == start)
+        {
+            return; /* Never scan a request body. */
+        }
+        if (header_name_matches(&buffer[start], next - start))
+        {
+            size_t value = start + 14U;
+            while ((next > value) &&
+                   ((' ' == buffer[value]) || ('\t' == buffer[value])))
+            {
+                value++;
+            }
+            while ((next > value) &&
+                   ((' ' == buffer[next - 1U]) || ('\t' == buffer[next - 1U])))
+            {
+                next--;
+            }
+            const size_t count = next - value;
+            if ((0U < count) && (sizeof(etag_request) > count))
+            {
+                (void)memcpy(etag_request, &buffer[value], count);
+                etag_request[count] = '\0';
+                etag_request_valid = true;
+            }
+            return;
+        }
+        start = next;
+        if ((end > start) && ('\r' == buffer[start]))
+        {
+            start++;
+        }
+        if ((end > start) && ('\n' == buffer[start]))
+        {
+            start++;
+        }
+    }
+}
+
+static void build_resource_etag(const html_resource_t *resource,
+                               char out[ETAG_MAX_LEN])
+{
+    static const char hex[] = "0123456789abcdef";
+    uint8_t hash[32];
+    sha256_ctx context;
+    sha256_init(&context);
+    sha256_update(&context, &resource->is_gzipped, 1U);
+    sha256_update(&context, resource->data, resource->length);
+    sha256_final(&context, hash);
+    out[0] = '"';
+    for (size_t index = 0U; sizeof(hash) > index; index++)
+    {
+        out[1U + index * 2U] = hex[hash[index] >> 4U];
+        out[2U + index * 2U] = hex[hash[index] & 15U];
+    }
+    out[65] = '"';
+    out[66] = '\0';
+}
+
+static bool resource_not_modified(const char *etag)
+{
+    if (!etag_request_valid)
+    {
+        return false;
+    }
+    if (0 == strcmp(etag_request, "*"))
+    {
+        return true;
+    }
+    const char *value = etag_request;
+    while ('\0' != *value)
+    {
+        while ((' ' == *value) || ('\t' == *value) || (',' == *value))
+        {
+            value++;
+        }
+        if (('W' == value[0]) && ('/' == value[1]))
+        {
+            value += 2;
+        }
+        if ('"' != *value)
+        {
+            return false;
+        }
+        const char *tag = value++;
+        while (('\0' != *value) && ('"' != *value))
+        {
+            value++;
+        }
+        if ('"' != *value)
+        {
+            return false;
+        }
+        value++;
+        const size_t count = (size_t)(value - tag);
+        while ((' ' == *value) || ('\t' == *value))
+        {
+            value++;
+        }
+        if (('\0' != *value) && (',' != *value))
+        {
+            return false;
+        }
+        if ((strlen(etag) == count) && (0 == memcmp(tag, etag, count)))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 void http_send_html_resource(const html_resource_t *resource)
 {
     /* NULL-safe: fall back to default 404 page if resource is NULL */
@@ -197,27 +357,45 @@ void http_send_html_resource(const html_resource_t *resource)
     if (resource->is_gzipped != HTML_COMPRESS_NONE) {
         /* Determine Content-Encoding based on compression type */
         const char *encoding = (resource->is_gzipped == HTML_COMPRESS_BR) ? "br" : "gzip";
-        
+        char etag[ETAG_MAX_LEN];
+        build_resource_etag(resource, etag);
+
+        /* Conditional GET: the page never changes within one immutable
+         * representation, so a matching If-None-Match (or "*") saves the full
+         * GSM transfer. Cache-Control stays no-cache: the browser must
+         * still revalidate on every visit (stale-shell protection). */
+        if (resource_not_modified(etag))
+        {
+            char not_modified[256];
+            unsigned int not_modified_length =
+                xsnprintf(not_modified, sizeof(not_modified),
+                    "HTTP/1.1 304 Not Modified\r\n"
+                    "ETag: %s\r\n"
+                    "Cache-Control: no-cache\r\n"
+                    "Connection: keep-alive\r\n"
+                    "Server: EmbeddedHTTP/1.0\r\n"
+                    "\r\n",
+                    etag);
+            (void)send_header(not_modified, not_modified_length);
+            return;
+        }
+
         /* Build HTTP headers with compression encoding */
-        char header_buffer[256];
+        char header_buffer[384];
         unsigned int header_length = xsnprintf(header_buffer, sizeof(header_buffer),
             "HTTP/1.1 200 OK\r\n"
             "Content-Type: text/html; charset=utf-8\r\n"
             "Content-Encoding: %s\r\n"
             "Content-Length: %lu\r\n"
+            "ETag: %s\r\n"
             "Cache-Control: no-cache\r\n"
             "Connection: keep-alive\r\n"
             "Server: EmbeddedHTTP/1.0\r\n"
             "\r\n",
             encoding,
-            resource->length
+            resource->length,
+            etag
         );
-
-        /* Print response for debugging */
-        CSLOG("\r\n=== HTTP RESPONSE (%s) ===\r\n", encoding);
-        CSLOG("%s", header_buffer);
-        CSLOG("[Body: %lu bytes compressed]\r\n", resource->length);
-        CSLOG("=== END RESPONSE ===\r\n\r\n");
 
         /* Send headers and compressed body */
         if (!send_header(header_buffer, header_length)) {

@@ -3,7 +3,8 @@
 
 Drives the real device HTTP server over the GSM link: session handling,
 board-status schema (including the 2026-10-08 power-board extras),
-RF config/group status endpoints and the removed apply route.
+RF config/group status endpoints, the removed apply route and the
+content-based ETag revalidation (If-None-Match -> 304).
 No store-writing request is sent: the only POST body is an intentional
 parse error, which must be rejected before any state changes.
 
@@ -130,6 +131,46 @@ def check(name, condition, detail=""):
         FAILURES.append(name)
 
 
+def request_once(method, path, extra_headers=""):
+    """One Connection:close request; returns (status, head, body).
+
+    The ETag revalidation checks need response headers, which the
+    keep-alive DeviceSession.request discards. Each call opens its own
+    short-lived connection exactly like a revalidating browser fetch;
+    the device serves one client at a time, so callers must not race
+    this with an open DeviceSession.
+    """
+    last = None
+    for _ in range(4):
+        time.sleep(1.0)
+        try:
+            s = socket.create_connection((HOST, PORT), timeout=15)
+            s.settimeout(45)
+            req = (f"{method} {path} HTTP/1.1\r\nHost: {HOST}\r\n"
+                   "Connection: close\r\n" + extra_headers + "\r\n")
+            s.sendall(req.encode())
+            data = b""
+            while True:
+                try:
+                    chunk = s.recv(4096)
+                except socket.timeout:
+                    break
+                if not chunk:
+                    break
+                data += chunk
+            s.close()
+            head, _, payload = data.partition(b"\r\n\r\n")
+            parts = head.split(b" ", 2)
+            if 2 <= len(parts) and parts[1].isdigit():
+                return (int(parts[1]), head.decode("utf-8", "replace"),
+                        payload.decode("utf-8", "replace"))
+            last = "no status line (%d bytes)" % len(data)
+        except OSError as err:
+            last = repr(err)
+    raise RuntimeError("HTTP failed after retries: %s (%s %s)"
+                       % (last, method, path))
+
+
 def main():
     # Hold the single web client slot; retry while the server settles
     # after a reset so an external page cannot re-grab it first.
@@ -212,6 +253,30 @@ def main():
           after.get("inUse") == rf.get("inUse"))
 
     sess.close()
+
+    # Icerik ozeti tasiyan ETag ile kosullu GET: eslesen deger 304 +
+    # bos govde, eslesmeyen deger tam sayfa dondurmelidir.
+    st, head, body = request_once("GET", "/")
+    etag = ""
+    for line in head.split("\r\n"):
+        if line.lower().startswith("etag:"):
+            etag = line.split(":", 1)[1].strip()
+    check("etag_present_on_root", st == 200 and etag.startswith('"'),
+          "ETag=%s" % etag)
+
+    if etag:
+        st, _, body = request_once(
+            "GET", "/", "If-None-Match: %s\r\n" % etag)
+        check("etag_match_revalidates_304_empty",
+              st == 304 and 0 == len(body),
+              "HTTP %d, %d B" % (st, len(body)))
+
+        st, _, body = request_once(
+            "GET", "/", 'If-None-Match: "stale"\r\n')
+        check("etag_mismatch_returns_full_body",
+              st == 200 and 1000 < len(body),
+              "HTTP %d, %d B" % (st, len(body)))
+
     return 1 if FAILURES else 0
 
 

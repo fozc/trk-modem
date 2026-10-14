@@ -514,6 +514,10 @@ void http_server_on_receive(const uint8_t *data, int length)
     
     CSLOG("[HTTP] Request complete - processing...\r\n");
     
+    /* Conditional-GET context for embedded-page responses. */
+    http_response_note_request_headers(server_state.rx_buffer,
+        server_state.cached_request.header_end_offset);
+
     /* Request is complete - route and handle it */
     route_and_handle_request(&server_state.cached_request);
     
