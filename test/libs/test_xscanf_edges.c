@@ -24,6 +24,30 @@ void tearDown(void)
 {
 }
 
+void test_signed_32_bit_minimum_and_adjacent_values(void)
+{
+    int32_t value = 7;
+    TEST_ASSERT_EQUAL_INT(1,
+        xscanf("-2147483648", 11U, "%s32", &value));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, value);
+    TEST_ASSERT_EQUAL_INT(XSCANF_OK, xscanf_get_last_error());
+    TEST_ASSERT_EQUAL_INT(1,
+        xscanf("-2147483647", 11U, "%s32", &value));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN + 1, value);
+    TEST_ASSERT_EQUAL_INT(1,
+        xscanf("2147483647", 10U, "%d", &value));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, value);
+}
+
+void test_signed_32_bit_underflow_preserves_destination(void)
+{
+    int32_t value = 7;
+    TEST_ASSERT_EQUAL_INT(0,
+        xscanf("-2147483649", 11U, "%s32", &value));
+    TEST_ASSERT_EQUAL_INT(XSCANF_ERR_UNDERFLOW, xscanf_get_last_error());
+    TEST_ASSERT_EQUAL_INT32(7, value);
+}
+
 void test_raw_string_requires_width(void)
 {
     char buffer[8] = "keep";
