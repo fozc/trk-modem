@@ -152,6 +152,15 @@ zamanlama kabulü değildir. Düzeltme ve kanıt sınırları
 [tarama raporu §13](../SKILL_TUM_REPO_TARAMA_RAPORU_2026-10-14.md#13-değerlendirme-ve-düzeltme--14102026)
 ve üretim raporunda tutulur.
 
+Sonraki RF alarm log incelemesinde, `test_rf_alarm_log.c` içindeki CMock
+`ExpectAndReturn`/`IgnoreAndReturn` dizisinin `true` döndürürken `out`
+verisini doldurmadığı yürütülen bir probe (kanıt programı) ile gösterildi.
+Fixture artık gerçek getter sözleşmesine uygun callback ile LIVE verisini
+doldurur; ACK sayacı her testte sıfırlanır. ACTIVE/CLEARED renk, satır sayısı
+ve log OFF sessizlik beklentileri korunmuştur. Odaklı
+`ceedling test:test_rf_alarm_log` ve `ceedling gcov:test_rf_alarm_log`
+koşuları 3/3 PASS'tir; bu sonuç yeni bir tam GCOV koşusu değildir.
+
 ## Kompakt dil tablosu doğrulaması
 
 Web navigation paketindeki `test_i18n_pack.js`, gerçek minifier üzerinden
