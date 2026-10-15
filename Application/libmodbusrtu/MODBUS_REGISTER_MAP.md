@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 1.10 |
-| Tarih | 2026-10-06 |
+| Dokuman surumu | 2.0 |
+| Tarih | 2026-10-15 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -20,15 +20,21 @@ Modbus RTU **slave** olarak yayinlar. Bir ust seviye cihaz (SCADA, RTU, PLC veya
 baska bir master) bu verileri **Read Holding Registers (FC03)** ile okur.
 
 - Veri okuma: `0x03` (Read Holding Registers)
-- Komut yazma: `0x06` (Write Single Register) - sadece ozel kontrol register'lari
-- Adresleme: her fider (feeder) icin **bitisik** ve **sabit** bir register blogu
+- Komut yazma: `0x06` (Write Single Register) - yalnizca modem-reset register'i
+- Adresleme: **tum register adresleri sabittir** (derleme zamani haritasi);
+  web'den veya NVRAM'den adres degistirilemez. Yapilandirilabilir olanlar
+  yalnizca CihazID ve baud rate'dir (bkz. bolum 10).
 
-Cihaz en fazla **7 fider** (Fider 1..7) destekler. Her fider icin uc faz
-bilgisi tutulur: **L1, L2, L3**. Faz isimlendirilmesi IEC104 tarafi ile
-aynidir (L1/L2/L3); onceki surumlerde kullanilan R/S/T gostermi ile
-eslesme: **L1 = R, L2 = S, L3 = T**.
+Harita **4 fider** (Fider 1..4) yayinlar; Modbus Fider N blogu RF tarafinda
+`Fider_ID == N` atamis olan hatti yansitir. Her fider icin uc faz bilgisi
+tutulur: **L1, L2, L3** (L1 = R, L2 = S, L3 = T). Her fider blogu, IEC104
+tarafinda yayinlanan bilgilerin aynasini (anlik akim, enerji/yuk/RF
+durumlari, trip basarisizligi, gecici ve kalici ariza listeleri) ve RF canli
+olcumlerinin SCADA'ya anlamlı olanlarini tek blokta tasir.
 
----
+**Gecerlilik (kalite) kurali:** her fider ve faz kendi kalite register'iyla
+yayinlanir. Bir deger yalnizca ilgili kalite biti 1 iken gerceldir; kalite 0
+ise yayinlanan 0 degerleri gercek olcum degildir (bkz. 5.2).
 
 ## 2. Seri Port Ayarlari
 
@@ -108,388 +114,184 @@ Zaman bilgisi **standart Unix epoch** (1 Ocak 1970 00:00:00 UTC referansli),
 
 ---
 
-## 5. Register Haritasi (Fider Basina Blok)
-
-Her fider icin register blogu, fider taban adresinden itibaren **bitisik**
-yerlesir. Boylece bir master, bir fiderin tum verisini **tek okuma
-penceresinde** alabilir.
+## 5. Fider Bloklari (Sabit Harita)
 
 ### 5.1 Fider Taban Adresleri
 
 ```
-Fider taban adresi (mantiksal) = 40000 + (fider_index * 100)
-Fider taban adresi (base-0)    = fider_index * 100
+Fider taban adresi (mantiksal) = 40000 + (fider_no - 1) * 1000
+Fider taban adresi (base-0)    = (fider_no - 1) * 1000
 ```
 
-| Fider | fider_index | Taban (mantiksal) | Taban (base-0) |
+| Fider | Taban (mantiksal) | Taban (base-0) | Blogun kapsami (mantiksal) |
 |---|---|---|---|
-| Fider 1 | 0 | 40000 | 0 |
-| Fider 2 | 1 | 40100 | 100 |
-| Fider 3 | 2 | 40200 | 200 |
-| Fider 4 | 3 | 40300 | 300 |
-| Fider 5 | 4 | 40400 | 400 |
-| Fider 6 | 5 | 40500 | 500 |
-| Fider 7 | 6 | 40600 | 600 |
+| Fider 1 | 40000 | 0 | 40000 .. 40999 |
+| Fider 2 | 41000 | 1000 | 41000 .. 41999 |
+| Fider 3 | 42000 | 2000 | 42000 .. 42999 |
+| Fider 4 | 43000 | 3000 | 43000 .. 43999 |
 
-### 5.1.1 Fider Adres Araliklari (Canli Veri Blogu)
+Modbus Fider N blogu, RF tarafinda Fider_ID == N atamis olan hatti yansitir.
+44000 ve uzeri **desteklenmez**; master bu araligi okursa exception 02
+(ILLEGAL DATA ADDRESS) alir. Bloklarin icindeki tum adresler FC03 ile normal
+yanit verir; tanimli olmayan alanlar (rezerve bolgeler, bos kayitlar) 0 doner.
 
-Her fiderin canli veri blogu 27 register'dir (offset 0..26). Asagidaki tablo,
-her fider icin tek pencerede okunacak adres araligini ve okuma parametrelerini
-verir.
+### 5.2 Gecerlilik (Kalite) Kurallari
 
-| Fider | Canli blok (mantiksal) | Canli blok (base-0) | FC03 okuma (base-0) |
-|---|---|---|---|
-| Fider 1 | 40000 .. 40026 | 0 .. 26 | Address 0,   Quantity 27 |
-| Fider 2 | 40100 .. 40126 | 100 .. 126 | Address 100, Quantity 27 |
-| Fider 3 | 40200 .. 40226 | 200 .. 226 | Address 200, Quantity 27 |
-| Fider 4 | 40300 .. 40326 | 300 .. 326 | Address 300, Quantity 27 |
-| Fider 5 | 40400 .. 40426 | 400 .. 426 | Address 400, Quantity 27 |
-| Fider 6 | 40500 .. 40526 | 500 .. 526 | Address 500, Quantity 27 |
-| Fider 7 | 40600 .. 40626 | 600 .. 626 | Address 600, Quantity 27 |
+Fider ve faz gecerliligi kalite register'lariyla tasinir. Bir degerin gercek
+olcum sayilabilmesi icin ilgili kalite biti isaretli olmalidir.
 
-> **Aktif olmayan fiderler:** Cihaz 7 fider destekler (v1.4'te kesinlesti)
-> ancak sahada hepsi aktif olmayabilir. Aktif olmayan bir fiderin register
-> aralığında tüm register değerleri 0 döner; FC03 normal yanıt verir.
-> Tek başına 0 değeri, gerçek ölçümün sıfır olduğunu veya fiderin aktif
-> olmadığını ayırt ettirmez; fiderin kullanım ayarı ayrıca kontrol edilmelidir.
-> 40700 ve uzeri (8. fider) **desteklenmez** - master bu araligi okursa
-> exception 02 (ILLEGAL DATA ADDRESS) alir.
+**fider_kalite (blogun +0 register'i):**
 
-> **Offset 27..99 araligi:** Her fider blogunda canli veriden sonra gelen bu
-> aralik ileride ariza kayit (fault-log) bloklari icin **rezerve** edilmistir;
-> Mevcut sürümde bu adresler de 0 döner ve FC03 normal yanıt verir.
-> Bu değerler ölçüm olarak kullanılmamalıdır.
+| Bit | 1 anlami |
+|---:|---|
+| 0 | Fider tanimli (RF tarafinda Fider_ID atamasi yapilmis) |
+| 1 | En az bir faz canli veri ulastirmis |
+| 2-15 | Rezerve, 0 okunur |
 
-### 5.2 Blok Icerigi (taban adresinden offset)
+**faz_kalite (her faz alt blogunun +0 register'i):**
 
-Asagidaki tablo Fider 1 (taban 40000 / base-0 0) icin gosterilmistir. Diger
-fiderler icin tablodaki adreslere fider taban adresini ekleyin. Kayit
-(register) duzeyinde tum alt adreslerin tek tek listelendigi dizin icin
-bkz. 5.3.
+| Bit | 1 anlami |
+|---:|---|
+| 0 | Fider tanimli |
+| 1 | Bu faz icin canli (LIVE) ornek alindi |
+| 2 | Baglanti taze: son ornek 30 s icinde |
+| 3 | Anlik akim gecerli (sayisal RMS kullanilabilir) |
+| 4 | Trip gerilimi gecerli |
+| 5 | Harvest gerilimi gecerli |
+| 6 | Zaman damgasi gecerli (ornek saglam bir saatle alinmis) |
+| 7-15 | Rezerve, 0 okunur |
 
-| Offset | Mantiksal | Base-0 | Alan | Faz | Tip | Birim/Anlam |
-|---:|---:|---:|---|:---:|---|---|
-| 0  | 40000 | 0  | reserved | L1 | UINT16 x2 | 0; geçerli arıza alanı değildir |
-| 2  | 40002 | 2  | reserved | L2 | UINT16 x2 | 0; geçerli arıza alanı değildir |
-| 4  | 40004 | 4  | reserved | L3 | UINT16 x2 | 0; geçerli arıza alanı değildir |
-| 6  | 40006 | 6  | anlik_akim | L1 | FLOAT32 | Anlik akim (A) |
-| 8  | 40008 | 8  | anlik_akim | L2 | FLOAT32 | Anlik akim (A) |
-| 10 | 40010 | 10 | anlik_akim | L3 | FLOAT32 | Anlik akim (A) |
-| 12 | 40012 | 12 | reserved | L1 | UINT16 | 0; geçerli arıza alanı değildir |
-| 13 | 40013 | 13 | reserved | L2 | UINT16 | 0; geçerli arıza alanı değildir |
-| 14 | 40014 | 14 | reserved | L3 | UINT16 | 0; geçerli arıza alanı değildir |
-| 15 | 40015 | 15 | reserved | L1 | UINT16 | 0; geçerli arıza alanı değildir |
-| 16 | 40016 | 16 | reserved | L2 | UINT16 | 0; geçerli arıza alanı değildir |
-| 17 | 40017 | 17 | reserved | L3 | UINT16 | 0; geçerli arıza alanı değildir |
-| 18 | 40018 | 18 | enerji_varyok | L1 | UINT16 | 0/1 |
-| 19 | 40019 | 19 | enerji_varyok | L2 | UINT16 | 0/1 |
-| 20 | 40020 | 20 | enerji_varyok | L3 | UINT16 | 0/1 |
-| 21 | 40021 | 21 | yuk_akimi_varyok | L1 | UINT16 | 0/1 |
-| 22 | 40022 | 22 | yuk_akimi_varyok | L2 | UINT16 | 0/1 |
-| 23 | 40023 | 23 | yuk_akimi_varyok | L3 | UINT16 | 0/1 |
-| 24 | 40024 | 24 | rf_haberlesme_varyok | L1 | UINT16 | 0/1 |
-| 25 | 40025 | 25 | rf_haberlesme_varyok | L2 | UINT16 | 0/1 |
-| 26 | 40026 | 26 | rf_haberlesme_varyok | L3 | UINT16 | 0/1 |
+Kurallar:
 
-- **Canli veri blogu**: offset 0..26 (toplam **27 register**), bitisik.
-- FLOAT32 degerler cift adrese hizalanmistir (offset 6,8,10); her
-  FLOAT32 alan iki register kaplar (yuksek kelime once, bkz. 4.1).
-- Offset 27..99 araligi ileride kullanim icin **rezerve** (arz/ariza kayit
-  bloklari) edilmistir; bu surumde tanimsizdir.
+- Fider **tanimli degilse** fider_kalite ve uc fazin faz_kalite degerleri 0'dir
+  ve blogun tum veri register'lari 0 yayinlanir. Bu sifirlar olcum olarak
+  yorumlanmamalidir.
+- Fider **tanimli ama hic canli veri gelmemisse** kalitede yalnizca bit 0
+  isaretlidir; veri register'lari 0'dir. Master degerleri yalnizca bit 1
+  isaretliyken kullanmalidir ("tanimli ama veri yok" ile "gercek sifir olcum"
+  boyle ayristirilir).
+- Ornek **bayatsa** (bit 2 = 0): son degerler korunur, sifirlanmaz; tazelik
+  yalnizca bit 2 ile anlatilir.
+- Akim ornegi **gecersizse** (negatif/NaN/Inf): anlik_akim FLOAT32 NaN yayinlar
+  ve bit 3 sifirdir. NaN sifir akim diye yorumlanmamalidir.
+- **trip_failed** olcumden bagimsizdir: alarm olayi (BQ-01/BQ-16) canli
+  ornek gelmeden de acilabilir; deger dogrudan faz onbelleginden yayinlanir
+  ve kalite bitleri onu gecersiz kilmaz.
+- Zaman damgasi alanlari ilgili fazin **son canli orneginin** kabul zamanini
+  Unix epoch (UINT32, ABCD) olarak tasir. Ornek hic gelmediyse, ya da ornek
+  saat kurulmamis/gecersiz (CP56 IV biti ya da imkansiz takvim degeri)
+  iken alindiysa alan 0'dir ve kalite bit 6 sifirdir: gecersiz saat asla
+  gercek bir tarih gibi yayinlanmaz.
 
-06.10.2026 kullanıcı kararıyla anlık arıza akımı/süresi/tipi alanları
-kaldırıldı. Offset 0–5 ve 12–17 ayrılmıştır ve 0 döner; arıza bilgisi
-olarak kullanılmamalıdır. Kalan canlı alanların adresleri değişmez.
-Geçici/kalıcı arıza listeleri web ve IEC104 üzerinden korunur. Modbus
-liste blokları bu adımda eklenmedi; offset 27–99 hâlâ ayrılmıştır.
+### 5.3 Blok Yerlesimi (fider tabanindan offset)
 
-### 5.2.1 SCP canlı akım ve RF haberleşme kaynağı
+| Offset | Alan | Boyut | Aciklama |
+|---:|---|---:|---|
+| 0 | fider_kalite | 1 | Bolum 5.2 |
+| 1-3 | reserved | 3 | 0 doner |
+| 4-27 | faz[L1] | 24 | Faz alt blogu (5.4) |
+| 28-51 | faz[L2] | 24 | Faz alt blogu (5.4) |
+| 52-75 | faz[L3] | 24 | Faz alt blogu (5.4) |
+| 76-78 | temp_fault_count[L1..L3] | 3 | Gecerli gecici ariza kayit sayilari |
+| 79-81 | perm_fault_count[L1..L3] | 3 | Gecerli kalici ariza kayit sayilari |
+| 82-99 | reserved | 18 | 0 doner |
+| 100-459 | temp_fault[3][15] | 360 | Gecici ariza kayitlari (5.5) |
+| 460-499 | reserved | 40 | 0 doner |
+| 500-859 | perm_fault[3][15] | 360 | Kalici ariza kayitlari (5.5) |
+| 860-999 | reserved | 140 | 0 doner |
 
-06.10.2026 kullanıcı kararıyla mevcut anlık akım adresleri FLOAT32 olarak
-SCP `Live_Irms` değerini A biriminde taşır. RF haberleşme adresleri aynı
-atanmış EUI/fazın son LIVE_DATA tazeliğini gösterir. Bu geçiş sabit ve
-NVRAM üzerinden yapılandırılan adres haritalarında geçerlidir; adresler
-ve yüksek word (16 bit parça) önce sırası değişmez.
+### 5.4 Faz Alt Blogu (24 register)
 
-Etkin Modbus satırında, atanmış fazın canlı akımı hiç yoksa, MH restart'ı
-ile geçersiz olmuşsa, 30 s eskiyse veya ölçüm negatif/NaN/Inf ise FLOAT32
-NaN döner. NaN sıfır akım diye yorumlanmamalıdır. RF haberleşme 1=son LIVE
-verisi güncel, 0=güncel canlı bağlantı bilgisi yok şeklindedir. Geçersiz
-akım örneği alındığında RF bağlantısı güncelse RF alanı 1 kalır; akım
-geçerliliği ve haberleşme durumu karıştırılmamalıdır.
+| Faz offset | Alan | Tip | Anlam |
+|---:|---|---|---|
+| 0 | kalite | UINT16 | faz_kalite (5.2) |
+| 1-2 | anlik_akim | FLOAT32 | Anlik akim (A), SCP Live_Irms |
+| 3-4 | anlik_zaman | UINT32 | Son canli ornek zamani (unix) |
+| 5 | enerji_varyok | UINT16 | 0/1, LIVE Status_Flags bit 0 |
+| 6-7 | enerji_zaman | UINT32 | unix |
+| 8 | yuk_akimi_varyok | UINT16 | 0/1, LIVE Status_Flags bit 1 |
+| 9-10 | yuk_zaman | UINT32 | unix |
+| 11 | rf_haberlesme_varyok | UINT16 | 0/1, baglanti taze |
+| 12-13 | rf_zaman | UINT32 | unix |
+| 14 | trip_failed | UINT16 | 0/1, SCP trip basarisizlik alarmi |
+| 15-16 | trip_zaman | UINT32 | unix |
+| 17-18 | trip_gerilimi | FLOAT32 | Trip gerilimi (V) |
+| 19-20 | harvest_gerilimi | FLOAT32 | Harvest gerilimi (V) |
+| 21 | sicaklik | INT16 | Ayirici sicakligi (degC) |
+| 22 | rssi | INT16 | RF sinyal gucu (ham) |
+| 23 | fault_count | UINT16 | Ayirici ariza sayaci |
 
-Aynı FC03 yanıtındaki RF alanları tek alım zamanı örneğiyle değerlendirilir.
-30 s sınırında FLOAT32'nin yüksek/düşük register'ları farklı tazelik
-kararları kullanmaz. Bu kural diğer telemetri bloklarına ortak bir
-snapshot (anlık kopya) eklendiği anlamına gelmez. Etkin olmayan Modbus
-satırı ve rezerve adreslerdeki mevcut 0 davranışı korunur (§5.1).
+32-bit alanlar ust word once (ABCD, bolum 4.1). IEC104 aynasi alanlar
+(anlik_akim, enerji/yuk/rf durumleri, trip_failed) IEC104 tarafindaki
+bilgilerle ayni kaynaklardan beslenir; her alanin zaman damgasi ayri
+register'lardan okunabilir (IEC104 nesnelerindeki CP56 zamaninin Unix epoch
+karsiligi).
 
-Enerji göstergesi LIVE_DATA `Status_Flags` bit 0, yük akımı göstergesi
-bit 1 kaynağını kullanmalıdır. İkisi UINT16 0/1 değeridir. Modem bu
-bitleri RMS veya nominal koruma ayarından yeniden hesaplamamalıdır.
-Değerlerin geçerliliği §7.5 kalite bloğundan okunmalıdır. Son canlı
-örnek eskiyse son bit korunur, hiç yoksa 0 döner; kalite=0 durumundaki
-değer geçerli yok bilgisi olarak kullanılmamalıdır. Kalan arıza/alarm
-eşlemelerinin tamamlandığı bu geçişten çıkarılmamalıdır.
+### 5.5 Ariza Kaydi Bolgeleri
 
-### 5.3 Tam Alt Adres Dizini (Tum Fiderler, Kayit Bazinda)
+Gecici bolge +100'den, kalici bolge +500'den baslar. Her bolgede fazlar ust
+uste yatar (L1, L2, L3 sirasiyla; her faz 15 kayit) ve her kayit 8
+register'dir. `temp_fault_count[faz]` / `perm_fault_count[faz]` gecerli kayit
+sayisini verir; sayi disindaki kayitlar 0 doner (zaman = 0 bos kayit anlami).
 
-Asagida 7 fiderin canli veri blogundaki **tum register'lar** tek tek
-listelenmistir. FLOAT32 alanlarin yuksek/dusuk kelime register'lari ayri
-satirlarda gosterilir (yuksek kelime once gelir, bkz. 4.1).
+| Kayit offset | Alan | Tip | Anlam |
+|---:|---|---|---|
+| 0-1 | ariza_akimi | FLOAT32 | Ariza anindaki akim (A) |
+| 2-3 | ariza_suresi_ms | UINT32 | Ariza suresi (ms) |
+| 4 | enerji_varyok | UINT16 | Ariza aninda enerji durumu (0/1) |
+| 5 | yuk_akimi_varyok | UINT16 | Ariza aninda yuk akimi durumu (0/1) |
+| 6-7 | zaman | UINT32 | Kayit zamani (unix); 0 = bos kayit |
 
-#### Fider 1 (taban 40000 / base-0 0)
+Ariza kayitlari IEC104 tarafindaki gecici/kalici ariza listeleriyle ayni
+kaynaktan (fault log) okunur; icerik ve kayit sayilari birebir uyusur.
 
-| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
-|---:|---:|---|:---:|:---:|---|
-| 40000 | 0 | reserved | L1 | yuksek | UINT16 |
-| 40001 | 1 | reserved | L1 | dusuk | UINT16 |
-| 40002 | 2 | reserved | L2 | yuksek | UINT16 |
-| 40003 | 3 | reserved | L2 | dusuk | UINT16 |
-| 40004 | 4 | reserved | L3 | yuksek | UINT16 |
-| 40005 | 5 | reserved | L3 | dusuk | UINT16 |
-| 40006 | 6 | anlik_akim | L1 | yuksek | FLOAT32 |
-| 40007 | 7 | anlik_akim | L1 | dusuk | FLOAT32 |
-| 40008 | 8 | anlik_akim | L2 | yuksek | FLOAT32 |
-| 40009 | 9 | anlik_akim | L2 | dusuk | FLOAT32 |
-| 40010 | 10 | anlik_akim | L3 | yuksek | FLOAT32 |
-| 40011 | 11 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40012 | 12 | reserved | L1 | - | UINT16 |
-| 40013 | 13 | reserved | L2 | - | UINT16 |
-| 40014 | 14 | reserved | L3 | - | UINT16 |
-| 40015 | 15 | reserved | L1 | - | UINT16 |
-| 40016 | 16 | reserved | L2 | - | UINT16 |
-| 40017 | 17 | reserved | L3 | - | UINT16 |
-| 40018 | 18 | enerji_varyok | L1 | - | UINT16 |
-| 40019 | 19 | enerji_varyok | L2 | - | UINT16 |
-| 40020 | 20 | enerji_varyok | L3 | - | UINT16 |
-| 40021 | 21 | yuk_akimi_varyok | L1 | - | UINT16 |
-| 40022 | 22 | yuk_akimi_varyok | L2 | - | UINT16 |
-| 40023 | 23 | yuk_akimi_varyok | L3 | - | UINT16 |
-| 40024 | 24 | rf_haberlesme_varyok | L1 | - | UINT16 |
-| 40025 | 25 | rf_haberlesme_varyok | L2 | - | UINT16 |
-| 40026 | 26 | rf_haberlesme_varyok | L3 | - | UINT16 |
+### 5.6 Ornek Okuma Pencereleri
 
-#### Fider 2 (taban 40100 / base-0 100)
-
-| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
-|---:|---:|---|:---:|:---:|---|
-| 40100 | 100 | reserved | L1 | yuksek | UINT16 |
-| 40101 | 101 | reserved | L1 | dusuk | UINT16 |
-| 40102 | 102 | reserved | L2 | yuksek | UINT16 |
-| 40103 | 103 | reserved | L2 | dusuk | UINT16 |
-| 40104 | 104 | reserved | L3 | yuksek | UINT16 |
-| 40105 | 105 | reserved | L3 | dusuk | UINT16 |
-| 40106 | 106 | anlik_akim | L1 | yuksek | FLOAT32 |
-| 40107 | 107 | anlik_akim | L1 | dusuk | FLOAT32 |
-| 40108 | 108 | anlik_akim | L2 | yuksek | FLOAT32 |
-| 40109 | 109 | anlik_akim | L2 | dusuk | FLOAT32 |
-| 40110 | 110 | anlik_akim | L3 | yuksek | FLOAT32 |
-| 40111 | 111 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40112 | 112 | reserved | L1 | - | UINT16 |
-| 40113 | 113 | reserved | L2 | - | UINT16 |
-| 40114 | 114 | reserved | L3 | - | UINT16 |
-| 40115 | 115 | reserved | L1 | - | UINT16 |
-| 40116 | 116 | reserved | L2 | - | UINT16 |
-| 40117 | 117 | reserved | L3 | - | UINT16 |
-| 40118 | 118 | enerji_varyok | L1 | - | UINT16 |
-| 40119 | 119 | enerji_varyok | L2 | - | UINT16 |
-| 40120 | 120 | enerji_varyok | L3 | - | UINT16 |
-| 40121 | 121 | yuk_akimi_varyok | L1 | - | UINT16 |
-| 40122 | 122 | yuk_akimi_varyok | L2 | - | UINT16 |
-| 40123 | 123 | yuk_akimi_varyok | L3 | - | UINT16 |
-| 40124 | 124 | rf_haberlesme_varyok | L1 | - | UINT16 |
-| 40125 | 125 | rf_haberlesme_varyok | L2 | - | UINT16 |
-| 40126 | 126 | rf_haberlesme_varyok | L3 | - | UINT16 |
-
-#### Fider 3 (taban 40200 / base-0 200)
-
-| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
-|---:|---:|---|:---:|:---:|---|
-| 40200 | 200 | reserved | L1 | yuksek | UINT16 |
-| 40201 | 201 | reserved | L1 | dusuk | UINT16 |
-| 40202 | 202 | reserved | L2 | yuksek | UINT16 |
-| 40203 | 203 | reserved | L2 | dusuk | UINT16 |
-| 40204 | 204 | reserved | L3 | yuksek | UINT16 |
-| 40205 | 205 | reserved | L3 | dusuk | UINT16 |
-| 40206 | 206 | anlik_akim | L1 | yuksek | FLOAT32 |
-| 40207 | 207 | anlik_akim | L1 | dusuk | FLOAT32 |
-| 40208 | 208 | anlik_akim | L2 | yuksek | FLOAT32 |
-| 40209 | 209 | anlik_akim | L2 | dusuk | FLOAT32 |
-| 40210 | 210 | anlik_akim | L3 | yuksek | FLOAT32 |
-| 40211 | 211 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40212 | 212 | reserved | L1 | - | UINT16 |
-| 40213 | 213 | reserved | L2 | - | UINT16 |
-| 40214 | 214 | reserved | L3 | - | UINT16 |
-| 40215 | 215 | reserved | L1 | - | UINT16 |
-| 40216 | 216 | reserved | L2 | - | UINT16 |
-| 40217 | 217 | reserved | L3 | - | UINT16 |
-| 40218 | 218 | enerji_varyok | L1 | - | UINT16 |
-| 40219 | 219 | enerji_varyok | L2 | - | UINT16 |
-| 40220 | 220 | enerji_varyok | L3 | - | UINT16 |
-| 40221 | 221 | yuk_akimi_varyok | L1 | - | UINT16 |
-| 40222 | 222 | yuk_akimi_varyok | L2 | - | UINT16 |
-| 40223 | 223 | yuk_akimi_varyok | L3 | - | UINT16 |
-| 40224 | 224 | rf_haberlesme_varyok | L1 | - | UINT16 |
-| 40225 | 225 | rf_haberlesme_varyok | L2 | - | UINT16 |
-| 40226 | 226 | rf_haberlesme_varyok | L3 | - | UINT16 |
-
-#### Fider 4 (taban 40300 / base-0 300)
-
-| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
-|---:|---:|---|:---:|:---:|---|
-| 40300 | 300 | reserved | L1 | yuksek | UINT16 |
-| 40301 | 301 | reserved | L1 | dusuk | UINT16 |
-| 40302 | 302 | reserved | L2 | yuksek | UINT16 |
-| 40303 | 303 | reserved | L2 | dusuk | UINT16 |
-| 40304 | 304 | reserved | L3 | yuksek | UINT16 |
-| 40305 | 305 | reserved | L3 | dusuk | UINT16 |
-| 40306 | 306 | anlik_akim | L1 | yuksek | FLOAT32 |
-| 40307 | 307 | anlik_akim | L1 | dusuk | FLOAT32 |
-| 40308 | 308 | anlik_akim | L2 | yuksek | FLOAT32 |
-| 40309 | 309 | anlik_akim | L2 | dusuk | FLOAT32 |
-| 40310 | 310 | anlik_akim | L3 | yuksek | FLOAT32 |
-| 40311 | 311 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40312 | 312 | reserved | L1 | - | UINT16 |
-| 40313 | 313 | reserved | L2 | - | UINT16 |
-| 40314 | 314 | reserved | L3 | - | UINT16 |
-| 40315 | 315 | reserved | L1 | - | UINT16 |
-| 40316 | 316 | reserved | L2 | - | UINT16 |
-| 40317 | 317 | reserved | L3 | - | UINT16 |
-| 40318 | 318 | enerji_varyok | L1 | - | UINT16 |
-| 40319 | 319 | enerji_varyok | L2 | - | UINT16 |
-| 40320 | 320 | enerji_varyok | L3 | - | UINT16 |
-| 40321 | 321 | yuk_akimi_varyok | L1 | - | UINT16 |
-| 40322 | 322 | yuk_akimi_varyok | L2 | - | UINT16 |
-| 40323 | 323 | yuk_akimi_varyok | L3 | - | UINT16 |
-| 40324 | 324 | rf_haberlesme_varyok | L1 | - | UINT16 |
-| 40325 | 325 | rf_haberlesme_varyok | L2 | - | UINT16 |
-| 40326 | 326 | rf_haberlesme_varyok | L3 | - | UINT16 |
-
-#### Fider 5 (taban 40400 / base-0 400)
-
-| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
-|---:|---:|---|:---:|:---:|---|
-| 40400 | 400 | reserved | L1 | yuksek | UINT16 |
-| 40401 | 401 | reserved | L1 | dusuk | UINT16 |
-| 40402 | 402 | reserved | L2 | yuksek | UINT16 |
-| 40403 | 403 | reserved | L2 | dusuk | UINT16 |
-| 40404 | 404 | reserved | L3 | yuksek | UINT16 |
-| 40405 | 405 | reserved | L3 | dusuk | UINT16 |
-| 40406 | 406 | anlik_akim | L1 | yuksek | FLOAT32 |
-| 40407 | 407 | anlik_akim | L1 | dusuk | FLOAT32 |
-| 40408 | 408 | anlik_akim | L2 | yuksek | FLOAT32 |
-| 40409 | 409 | anlik_akim | L2 | dusuk | FLOAT32 |
-| 40410 | 410 | anlik_akim | L3 | yuksek | FLOAT32 |
-| 40411 | 411 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40412 | 412 | reserved | L1 | - | UINT16 |
-| 40413 | 413 | reserved | L2 | - | UINT16 |
-| 40414 | 414 | reserved | L3 | - | UINT16 |
-| 40415 | 415 | reserved | L1 | - | UINT16 |
-| 40416 | 416 | reserved | L2 | - | UINT16 |
-| 40417 | 417 | reserved | L3 | - | UINT16 |
-| 40418 | 418 | enerji_varyok | L1 | - | UINT16 |
-| 40419 | 419 | enerji_varyok | L2 | - | UINT16 |
-| 40420 | 420 | enerji_varyok | L3 | - | UINT16 |
-| 40421 | 421 | yuk_akimi_varyok | L1 | - | UINT16 |
-| 40422 | 422 | yuk_akimi_varyok | L2 | - | UINT16 |
-| 40423 | 423 | yuk_akimi_varyok | L3 | - | UINT16 |
-| 40424 | 424 | rf_haberlesme_varyok | L1 | - | UINT16 |
-| 40425 | 425 | rf_haberlesme_varyok | L2 | - | UINT16 |
-| 40426 | 426 | rf_haberlesme_varyok | L3 | - | UINT16 |
-
-#### Fider 6 (taban 40500 / base-0 500)
-
-| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
-|---:|---:|---|:---:|:---:|---|
-| 40500 | 500 | reserved | L1 | yuksek | UINT16 |
-| 40501 | 501 | reserved | L1 | dusuk | UINT16 |
-| 40502 | 502 | reserved | L2 | yuksek | UINT16 |
-| 40503 | 503 | reserved | L2 | dusuk | UINT16 |
-| 40504 | 504 | reserved | L3 | yuksek | UINT16 |
-| 40505 | 505 | reserved | L3 | dusuk | UINT16 |
-| 40506 | 506 | anlik_akim | L1 | yuksek | FLOAT32 |
-| 40507 | 507 | anlik_akim | L1 | dusuk | FLOAT32 |
-| 40508 | 508 | anlik_akim | L2 | yuksek | FLOAT32 |
-| 40509 | 509 | anlik_akim | L2 | dusuk | FLOAT32 |
-| 40510 | 510 | anlik_akim | L3 | yuksek | FLOAT32 |
-| 40511 | 511 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40512 | 512 | reserved | L1 | - | UINT16 |
-| 40513 | 513 | reserved | L2 | - | UINT16 |
-| 40514 | 514 | reserved | L3 | - | UINT16 |
-| 40515 | 515 | reserved | L1 | - | UINT16 |
-| 40516 | 516 | reserved | L2 | - | UINT16 |
-| 40517 | 517 | reserved | L3 | - | UINT16 |
-| 40518 | 518 | enerji_varyok | L1 | - | UINT16 |
-| 40519 | 519 | enerji_varyok | L2 | - | UINT16 |
-| 40520 | 520 | enerji_varyok | L3 | - | UINT16 |
-| 40521 | 521 | yuk_akimi_varyok | L1 | - | UINT16 |
-| 40522 | 522 | yuk_akimi_varyok | L2 | - | UINT16 |
-| 40523 | 523 | yuk_akimi_varyok | L3 | - | UINT16 |
-| 40524 | 524 | rf_haberlesme_varyok | L1 | - | UINT16 |
-| 40525 | 525 | rf_haberlesme_varyok | L2 | - | UINT16 |
-| 40526 | 526 | rf_haberlesme_varyok | L3 | - | UINT16 |
-
-#### Fider 7 (taban 40600 / base-0 600)
-
-| Mantiksal | Base-0 | Alan | Faz | Kelime | Tip |
-|---:|---:|---|:---:|:---:|---|
-| 40600 | 600 | reserved | L1 | yuksek | UINT16 |
-| 40601 | 601 | reserved | L1 | dusuk | UINT16 |
-| 40602 | 602 | reserved | L2 | yuksek | UINT16 |
-| 40603 | 603 | reserved | L2 | dusuk | UINT16 |
-| 40604 | 604 | reserved | L3 | yuksek | UINT16 |
-| 40605 | 605 | reserved | L3 | dusuk | UINT16 |
-| 40606 | 606 | anlik_akim | L1 | yuksek | FLOAT32 |
-| 40607 | 607 | anlik_akim | L1 | dusuk | FLOAT32 |
-| 40608 | 608 | anlik_akim | L2 | yuksek | FLOAT32 |
-| 40609 | 609 | anlik_akim | L2 | dusuk | FLOAT32 |
-| 40610 | 610 | anlik_akim | L3 | yuksek | FLOAT32 |
-| 40611 | 611 | anlik_akim | L3 | dusuk | FLOAT32 |
-| 40612 | 612 | reserved | L1 | - | UINT16 |
-| 40613 | 613 | reserved | L2 | - | UINT16 |
-| 40614 | 614 | reserved | L3 | - | UINT16 |
-| 40615 | 615 | reserved | L1 | - | UINT16 |
-| 40616 | 616 | reserved | L2 | - | UINT16 |
-| 40617 | 617 | reserved | L3 | - | UINT16 |
-| 40618 | 618 | enerji_varyok | L1 | - | UINT16 |
-| 40619 | 619 | enerji_varyok | L2 | - | UINT16 |
-| 40620 | 620 | enerji_varyok | L3 | - | UINT16 |
-| 40621 | 621 | yuk_akimi_varyok | L1 | - | UINT16 |
-| 40622 | 622 | yuk_akimi_varyok | L2 | - | UINT16 |
-| 40623 | 623 | yuk_akimi_varyok | L3 | - | UINT16 |
-| 40624 | 624 | rf_haberlesme_varyok | L1 | - | UINT16 |
-| 40625 | 625 | rf_haberlesme_varyok | L2 | - | UINT16 |
-| 40626 | 626 | rf_haberlesme_varyok | L3 | - | UINT16 |
-
-### 5.4 Durum Register Anlamlari
-
-Durum register'lari 0/1 mantiksal degerdir:
-
-| Alan | 0 | 1 |
-|---|---|---|
-| ariza_kalicimi | Gecici / ariza yok | Kalici ariza |
-| enerji_varyok | Enerji yok | Enerji var |
-| yuk_akimi_varyok | Yük akımı yok | Yük akımı var |
-| rf_haberlesme_varyok | Güncel canlı bağlantı yok | Güncel canlı bağlantı var |
-
-> Enerji/yük değerleri yalnız §7.5 kalite biti 1 iken kullanılmalıdır.
-
----
+| Amac | Address (base-0) | Quantity |
+|---|---:|---:|
+| Fider 1 kalite + 3 faz canli blogu | 0 | 76 |
+| Fider 1 L1 faz alt blogu | 4 | 24 |
+| Fider 1 L1 anlik akim | 5 | 2 |
+| Fider 2 fider_kalite | 1000 | 1 |
+| Fider 1 ariza kayit sayilari | 76 | 6 |
+| Fider 1 gecici L1 kayit 0 | 100 | 8 |
+| Fider 3 kalici L2 kayit 7 | 7560 | 8 |
 
 ## 6. Ozel Kontrol Register'lari
 
-Bu register'lar fider bloklarindan bagimsizdir.
+Bu register'lar fider bloklarindan bagimsizdir ve adresleri **sabittir**.
 
 | Mantiksal | Base-0 | Islev | Erisim | Aciklama |
 |---:|---:|---|---|---|
-| 50000 | 10000 | Aku uyarisi | Okuma (FC03) | Aku/besleme uyari durumu |
+| 50000 | 10000 | Aku uyarisi | Okuma (FC03) | Canli aku uyarisi (bkz. asagida) |
 | 50001 | 10001 | Modem reset | Yazma (FC06) | Deger = 1 yazilirsa cihaz yeniden baslar |
 
-> Modem reset: `FC06`, adres 50001 (base-0 10001), deger `0x0001`. Bu komut
-> cihazi guvenli sekilde yeniden baslatir.
+**Aku uyarisi (50000):** guc kartindan RF-SCP ile gelen guncel alarm
+maskesinin **aku ile ilgili** bolumudur. Register 16 bit genisligindedir ve
+kod numaralari 15'i asan alarmlar (18 SOC_DUSUK, 20 AKU_YOK) bit indeksi
+olarak kod numarasini koruyamaz; bu yuzden her aku alarmi tablo siraasiyla
+**kendi adanmis register bitini** alir (bit eslemesi asagidaki tabloda):
 
----
+| Bit | Alarm kodu | Kod no |
+|---:|---|---:|
+| 0 | AKU_COK_DUSUK | 0 |
+| 1 | AKU_SOGUK | 2 |
+| 2 | AKU_SICAK | 3 |
+| 3 | AKU_DUSUK | 4 |
+| 4 | AKU_YUKSEK | 5 |
+| 5 | AKU_OVP_SARJ_YASAGI | 7 |
+| 6 | AKU_OVP_KALICI | 8 |
+| 7 | SOC_DUSUK | 18 |
+| 8 | AKU_YOK | 20 |
+| 9-15 | Rezerve, 0 okunur | - |
+
+Deger 0 = aku uyarisinin olmamasi (veya gecerli guc karti ozeti yoklugu /
+alarm maskesinin bayatlamiş olmasi). Master uyarı varlığini tek değerin
+sifirdan farkiyla, nedenini bitlerle okuyabilir; aku disi kart alarmlari
+(besleme, sicaklik, telemetri vb.) bu register'a girmez.
+
+> Modem reset: `FC06`, adres 50001 (base-0 10001), deger `0x0001`. Bu komut
+> cihazi guvenli sekilde yeniden baslatir. Adresler degistirilemez.
 
 ## 7. Sistem ve Guc Telemetri Bloklari (Salt Okunur)
 
@@ -741,47 +543,7 @@ modul: `Application/modbus_gsm_stats.c`.
 - `modbus-tools/gsm_stats.mbp` durum/kusak/hata/soket alanlarini "Normal",
   "2G", "Hata Yok", "Dinliyor" gibi metinlerle gosterir (value-name eslemesi).
 
-### 7.5 RF kalite bloğu (49500 / base-0 9500)
-
-Amaç: anlık akım, enerji ve yük göstergelerinin geçerliliğini taşımak.
-Kaynak `Application/modbus_rf_stats.c`; 21 UINT16 register salt okunurdur.
-Adres formülü `49500 + 3 × satır_indeksi + faz_indeksi` olmalıdır.
-İndeksler 0 tabanlıdır; satır ayar sırası, fazlar L1/L2/L3 sırasıdır.
-
-| Ayar satırı | L1 | L2 | L3 | Base-0 aralığı |
-|---:|---:|---:|---:|---|
-| 1 | 49500 | 49501 | 49502 | 9500–9502 |
-| 2 | 49503 | 49504 | 49505 | 9503–9505 |
-| 3 | 49506 | 49507 | 49508 | 9506–9508 |
-| 4 | 49509 | 49510 | 49511 | 9509–9511 |
-| 5 | 49512 | 49513 | 49514 | 9512–9514 |
-| 6 | 49515 | 49516 | 49517 | 9515–9517 |
-| 7 | 49518 | 49519 | 49520 | 9518–9520 |
-
-| Bit | 1 anlamı |
-|---:|---|
-| 0 | Anlık akım geçerli: doğru eşleme, taze LIVE, sayısal RMS geçerli |
-| 1 | Enerji göstergesi geçerli: doğru eşleme ve taze LIVE |
-| 2 | Yük akımı göstergesi geçerli: doğru eşleme ve taze LIVE |
-| 3–15 | Rezerve, 0 olmalıdır |
-
-Taze geçerli RMS için kalite 7, taze geçersiz RMS için 6, eksik/eski
-örnek veya etkin olmayan Modbus satırı için 0 olur. Enerji/yük durum
-bitinin 0 olması kalite bitini sıfırlamaz; kalite değer değil geçerlilik
-taşır. RF tazelik göstergesi (§5.2.1) ayrı değerlendirilmelidir.
-
-Bu ürün haritası kullanıcı kararıdır; Modbus'un zorunlu kalite bitleri
-olarak sunulmamalıdır. Genel geçersiz Boolean için 0xFFFF tanımı yoktur
-([Modbus Organization açıklaması](https://www.modbus.org/introduction-to-modbus)).
-İstemci saklanan Boolean değeri kullanmadan kaliteyi okumalıdır.
-Farklı FC03 istekleri arasına yeni LIVE gelebilir; ayrı yanıtların
-atomik bir görüntü olduğu varsayılmamalıdır.
-
-FC06 bu bloğa yazmayı reddeder. Web ve sunucu yapılandırılabilir
-adreslerin bu blokla çakışmasını reddetmelidir; iki register'lık
-FLOAT32'nin ikinci parçası da denetlenmelidir. NVRAM'e alan eklenmez.
-
-### 7.6 Toplu Okuma (FC03)
+### 7.5 Toplu Okuma (FC03)
 
 | Blok | Address (base-0) | Quantity |
 |---|---:|---:|
@@ -789,7 +551,6 @@ FLOAT32'nin ikinci parçası da denetlenmelidir. NVRAM'e alan eklenmez.
 | Guc karti telemetri | 9200 | 38 |
 | BMS telemetri | 9300 | 79 |
 | GSM durumu | 9400 | 9 |
-| RF kalite | 9500 | 21 |
 
 > UINT32 (ABCD) alanlari icin master tarafinda "32-bit Unsigned" ve big-endian
 > (ABCD) word order secilmelidir (bolum 4.1).
@@ -798,42 +559,42 @@ FLOAT32'nin ikinci parçası da denetlenmelidir. NVRAM'e alan eklenmez.
 
 ## 8. Okuma Ornekleri
 
-### 8.1 Bir Fiderin Tum Verisini Okuma (FC03)
+### 8.1 Bir Fiderin Canli Blogunu Okuma (FC03)
 
-Fider 1'in tum canli verisini tek pencerede okumak icin:
+Fider 1'in kalite ve uc faz canli verisini tek pencerede okumak icin:
 
 | Alan | Deger |
 |---|---|
 | Slave ID | 23 |
 | Function | 03 (Read Holding Registers) |
 | Address (base-0) | 0 |
-| Quantity | 27 |
+| Quantity | 76 |
 
-Fider 2 icin Address = 100, Quantity = 27; Fider 3 icin Address = 200; ...
+Fider 2 icin Address = 1000; Fider 3 icin 2000; Fider 4 icin 3000.
 
 ### 8.2 Sadece Anlik Akimlari Okuma
 
-Fider 1 anlik akim (L1/L2/L3) icin:
+Fider 1 fazlarinin anlik akimlarini ayri pencerelerle okumak icin L1 ornegi:
 
 | Alan | Deger |
 |---|---|
 | Function | 03 |
-| Address (base-0) | 6 |
-| Quantity | 6 |
+| Address (base-0) | 5 |
+| Quantity | 2 |
 
-Donen 6 register, 3 adet FLOAT32 (L1, L2, L3) olarak yorumlanir.
+Donen 2 register FLOAT32 (L1) olarak yorumlanir; L2 icin Address = 29,
+L3 icin Address = 53. Degerin gecerliligi ayni faz alt blogunun kalite
+register'indan (Address 4 / 28 / 52) kontrol edilmelidir.
 
 ### 8.3 ModbusPoll Ayar Ozeti
 
 - Connection: Serial, 115200 8N1
 - Slave ID: 23
 - Function: 03
-- Address: ilgili base-0 adres (orn. 0)
-- Quantity: 27
+- Address: ilgili base-0 adres (orn. fider blogu icin 0)
+- Quantity: 76 (fider canli blogu) veya 8 (tek ariza kaydi)
 - Display format: FLOAT32 alanlar icin "32-bit Float", word order **ABCD
   (big-endian)**; durum/sure alanlari icin "Unsigned 16-bit".
-
----
 
 ## 9. Exception (Hata) Yanitlari
 
@@ -884,14 +645,16 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 
 ## 10. Yapilandirilabilir Ayarlar Ozeti
 
+Register adresleri sabittir; yapilandirma yalnizca seri hat ayarlarini kapsar:
+
 | Ayar | Varsayilan | Aralik | Notu |
 |---|---|---|---|
-| Slave adresi | 23 | 1..247 | Multidrop bus icin benzersiz olmali |
+| Slave adresi (CihazID) | 23 | 1..247 | Multidrop bus icin benzersiz olmali |
 | Baud rate | 115200 | standart hizlar | Master ile eslesmeli |
-| Aku uyarisi register | 50000 | - | Ozel register adresi |
-| Modem reset register | 50001 | - | Ozel register adresi |
 
----
+Web arayuzu (Modbus Yaplandirmasi sayfasi) yalnizca bu iki ayari sunar;
+fider kartlarindaki adres girileri kaldirilmis ve yerini sabit harita bilgi
+satiri almistir.
 
 ## 11. Revizyon Gecmisi
 
@@ -910,4 +673,5 @@ Deger anlamlari, yukaridaki exception kodlari ile aynidir:
 | 1.8 | 2026-10-04 | Cihaz adresi 0 sunucuda reddedildi; pasif fider ve ayrılmış offset 27..99 için sıfır yanıtının anlamı açıklandı. |
 | 1.9 | 2026-10-06 | SCP enerji/yük göstergeleri; yük alanı adları; 49500–49520 salt okunur kalite bloğu ve adres çakışması koruması. |
 
+| 2.0 | 2026-10-15 | Register haritasi tamamen sabitlesti (modbus_map.h): adresler NVRAM/web uzerinden degistirilemez. Fider bloklari yeniden tasarlandi: 4 fider x 1000 register (40000-43999); IEC104 bilgi aynasi (anlik akim, enerji/yuk/rf/trip_failed + alan bazli zaman damgalari), SCADA'ya yonelik RF canli olcumleri ve fider/faz kalite register'lari tek blokta. Gecici/kalici ariza kayit listeleri (faz basina 15 kayit) Modbus tarafina eklendi. 49500 RF kalite blogu kaldirildi (kalite fider bloklarina gomuldu). Aku uyarisi/modem reset adresleri sabitlendi (50000/50001). Yapilandirilabilir ayarlar CihazID + baud rate e indirildi. |
 | 1.10 | 2026-10-06 | Anlık arıza alanları kaldırıldı; offset 0–5/12–17 ayrıldı. Durum polariteleri SCP ile eşitlendi. |
