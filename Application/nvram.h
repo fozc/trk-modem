@@ -152,8 +152,6 @@ bool nvram_iec104_set_line_config(uint32_t line_index, const iec104_line_config_
 const modbus_configs_t *nvram_get_modbus_config(void);
 modbus_configs_t *nvram_get_modbus_config_rw(void);
 void nvram_set_modbus_config(const modbus_configs_t *cfg);
-const modbus_line_config_t* nvram_modbus_get_line_config(uint32_t line_index);
-bool nvram_modbus_set_line_config(uint32_t line_index, const modbus_line_config_t* config);
 
 /* RF ayirici konfigurasyonu: erisim rf_config.h uzerinden (rf_store_*),
  * kalici kopya nvram.breaker.line[i].rf (rf_feeder_t). */

@@ -432,25 +432,16 @@ static void test_iec_default_address_regions(void)
     }
 }
 
-static void test_factory_register_addresses_are_unchanged(void)
+static void test_factory_iec_addresses_are_unchanged(void)
 {
     boot_virgin();
     const breaker_t *breaker = nvram_get_breaker();
     for (uint32_t i = 0U; i < MAX_POWER_LINE_COUNT; i++)
     {
-        const modbus_line_config_t *line = &breaker->line[i].modbus;
         const iec104_line_config_t *iec = &breaker->line[i].iec104;
-        const uint32_t offsets[] = {6U, 18U, 21U, 24U};
-        const uint32_t base = 40000U + (i * 100U);
+
         for (uint32_t phase = 0U; phase < 3U; phase++)
         {
-            /* Copy packed members by value; never take their address. */
-            const uint16_t fields[] =
-            {
-                line->anlik_akim[phase],
-                line->enerji_varyok[phase], line->yuk_akimi_varyok[phase],
-                line->rf_haberlesme_varyok[phase]
-            };
             const uint32_t iec_fields[] =
             {
                 iec104_ioa_3byte_to_uint32(iec->anlik_akim[phase]),
@@ -460,10 +451,6 @@ static void test_factory_register_addresses_are_unchanged(void)
             };
             for (size_t field = 0U; field < 4U; field++)
             {
-                const uint32_t stride = (0U == field) ? 2U : 1U;
-                check(fields[field] ==
-                      (base + offsets[field] + (phase * stride)),
-                      "factory Modbus: every default address unchanged");
                 check(iec_fields[field] ==
                       (1000U + (i * 100U) + (((uint32_t)field + 3U) * 10U) + phase),
                       "factory IEC: every point address unchanged");
@@ -471,7 +458,6 @@ static void test_factory_register_addresses_are_unchanged(void)
         }
     }
 }
-
 static void test_detailed_save_distinguishes_failed_and_primary_only(void)
 {
     boot_virgin();
@@ -663,7 +649,7 @@ static void test_schema_three_uses_defaults_without_migration(void)
     reboot();
     check(DEVICE_DEFAULT_SERIAL_NUMBER == nvram_get_device_serial_number(),
           "Schema 3: development images reset settings as explicitly chosen");
-    check(4U == img(MOCK_SLOT_A)->schema_version && images_equal(),
+    check(NVRAM_SCHEMA_VERSION == img(MOCK_SLOT_A)->schema_version && images_equal(),
           "Schema 3: both slots become current schema without migration");
     check(0U == nvram_get_rf_inventory_journal()->pending,
           "Schema 3: no invented pending device operation");
@@ -678,7 +664,7 @@ int main(void)
     test_two_invalid_images_provision_verified_defaults();
     test_rf_staged_save_with_real_flash_failures();
     test_detailed_save_distinguishes_failed_and_primary_only();
-    test_factory_register_addresses_are_unchanged();
+    test_factory_iec_addresses_are_unchanged();
     test_iec_default_address_regions();
     test_lifetime_persistence_boundary();
     test_normal_flow();
