@@ -290,7 +290,6 @@ __attribute__ ((noreturn)) void app_main(void)
 	CSLOG("sizeof(iec104_config_t)= %d bytes\r\n", sizeof(iec104_config_t));
 	CSLOG("sizeof(modem_config_t) = %d bytes\r\n", sizeof(modem_config_t));
 	CSLOG("sizeof(iec104_line_config_t) = %d bytes\r\n", sizeof(iec104_line_config_t));
-	CSLOG("sizeof(modbus_line_config_t) = %d bytes\r\n", sizeof(modbus_line_config_t));
 
 	CSLOG("sizeof(nvram_t)        = %08d bytes\r\n", sizeof(nvram_t));
 	CSLOG("sizeof(breaker_t)      = 0x%08X bytes\r\n", sizeof(breaker_t));
