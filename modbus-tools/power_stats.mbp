@@ -134,8 +134,8 @@
          <F f="1" v="0" />
          <F f="1" v="0" />
          <F f="1" v="0" />
-         <F f="1" v="0" />
-         <F f="1" v="0" />
+         <F f="17" v="0"/>
+         <F f="16" v="--"/>
          <F f="1" v="0" />
          <F f="1" v="0" />
       </Formats>
@@ -221,234 +221,249 @@
          <Cell idx="0">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Summary seen</Name>
+            <Name>Ozet Alindi (0/1)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="1">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Valid fields</Name>
+            <Name>Gecerli Alanlar (bitmask)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="2">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Seq</Name>
+            <Name>E1 Sira (0..255)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="3">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Flags</Name>
+            <Name>E1 Durum Bayti (flags)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="4">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Flags2</Name>
+            <Name>E1 Durum2 Bayti (flags2)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="5">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Age (s)</Name>
+            <Name>Telemetri Yasi (s, 255 doygun)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="6">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Source</Name>
+            <Name>Kaynak</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="7">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Charge phase</Name>
+            <Name>Sarj Fazi</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="8">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Session</Name>
+            <Name>PWRB Oturum (1..255)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="9">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>PV (mV)</Name>
+            <Name>PV Gerilimi (mV)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="10">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>DC (mV)</Name>
+            <Name>DC Gerilimi (mV)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="11">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Input (mA) signed</Name>
+            <Name>Giris Akimi (mA, signed)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="12">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>System (mV)</Name>
+            <Name>Sistem Gerilimi (mV)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="13">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Battery (mV)</Name>
+            <Name>Aku Gerilimi (mV)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="14">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Battery (mA) signed</Name>
+            <Name>Aku Akimi (mA, signed; + sarj)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="15">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Input power (10mW) signed</Name>
+            <Name>Giris Gucu (10mW, signed)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="16">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Battery power (10mW) signed</Name>
+            <Name>Aku Gucu (10mW, signed; + sarj)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="17">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>System power (10mW) signed</Name>
+            <Name>Sistem Gucu (10mW, signed; - tuketim)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="18">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>SOC x10 % signed</Name>
+            <Name>SOC (0.1%, signed)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="19">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>SOH %</Name>
+            <Name>SOH (%)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="20">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Battery temp (C) signed</Name>
+            <Name>Aku Sicakligi (degC, signed; -128 gecersiz)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="21">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Board temp (C) signed</Name>
+            <Name>Kart Sicakligi (degC, signed; -128 gecersiz)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="22">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Capacity (Ah)</Name>
+            <Name>Kapasite (Ah)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="23">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Charge rate permille</Name>
+            <Name>Sarj Orani (binde C)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="24">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Last gasp count</Name>
+            <Name>Son Nefes Sayaci</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="25">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Alarm mask high</Name>
+            <Name>Guncel Alarm Maskesi (ust word)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="26">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Alarm mask low</Name>
+            <Name>Guncel Alarm Maskesi (alt word)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="27">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>SOC flags</Name>
+            <Name>SOC Bayraklari (E1 soc_capa)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="28">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Alarm seq</Name>
+            <Name>Son E3 Sirasi</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="29">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Suppressed count</Name>
+            <Name>Bastirilan E3 Kenar Sayisi</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="30">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Last gasp seen</Name>
+            <Name>Son Nefes Goruldu (0/1)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="31">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Last gasp cancelled</Name>
+            <Name>Son Nefes Iptal Edildi (0/1)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="32">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Last gasp session</Name>
+            <Name>Son Nefes Oturumu</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="33">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Last gasp cause</Name>
+            <Name>Son Nefes Nedeni</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="34">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Receipt age ms high</Name>
-            <Font used="false" />
-         </Cell>
-         <Cell idx="35">
-            <Colors />
-            <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Receipt age ms low</Name>
+            <Name>Alim Yasi (ms)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="36">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Summary layout</Name>
+            <Name>Desteklenen E1 Yerlesimi (=1)</Name>
             <Font used="false" />
          </Cell>
          <Cell idx="37">
             <Colors />
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0" />
-            <Name>Map version</Name>
+            <Name>Harita Surumu (=1)</Name>
             <Font used="false" />
          </Cell>
       </CellData>
       <Scales />
-      <ValueNames />
+      <ValueNames>
+         <Names idx="6" enabled="1">
+            <Name value="0" name="Aku"/>
+            <Name value="1" name="PV"/>
+            <Name value="2" name="DC"/>
+            <Name value="3" name="Belirsiz"/>
+            <Name value="4" name="Akimsiz giris"/>
+            <Name value="255" name="Bilinmiyor"/>
+         </Names>
+         <Names idx="7" enabled="1">
+            <Name value="0" name="Yok"/>
+            <Name value="1" name="On sarj"/>
+            <Name value="2" name="CC"/>
+            <Name value="3" name="CV"/>
+            <Name value="4" name="Tamamlama"/>
+            <Name value="5" name="Tamam"/>
+         </Names>
+         <Names idx="33" enabled="1">
+            <Name value="1" name="Ani dusum"/>
+            <Name value="2" name="Ongorulen kesinti"/>
+         </Names>
+      </ValueNames>
       <ChartSeries />
       <BinNames />
    </Data>
