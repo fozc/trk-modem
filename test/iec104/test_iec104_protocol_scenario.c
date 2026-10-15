@@ -267,11 +267,14 @@ static void build_reset_process(uint8_t *frame, uint16_t send_seq, uint16_t rece
 
 /* The interrogation path reads live measurements through these; constant
  * answers keep the emitted objects deterministic. */
+static bool test_invalid_quality;
+
 static int fake_get_measured(uint32_t power_line_index, uint8_t phase, float *value,
                              qds_t *quality, cp56time2a_t *timestamp)
 {
     *value     = (float)((power_line_index * 10U) + phase);
     *quality   = (qds_t){0};
+    quality->invalid = test_invalid_quality && (2U == phase);
     *timestamp = (cp56time2a_t){0};
 
     return 0;
@@ -282,6 +285,7 @@ static int fake_get_state(uint32_t power_line_index, uint8_t phase, siq_t *value
 {
     *value     = (siq_t){0};
     value->spi = (uint8_t)((power_line_index + phase) & 0x01U);
+    value->invalid = test_invalid_quality && (2U == phase);
     *timestamp = (cp56time2a_t){0};
 
     return 0;
@@ -303,6 +307,7 @@ static void setup_mode(uint8_t k_max, uint8_t w_max, bool alarms)
 
     mock_platform_reset();
     tx_clear();
+    test_invalid_quality = false;
 
     transport_budget = -1;
     transport_reject_index = -1;
@@ -760,6 +765,129 @@ void test_incomplete_interrogation_terminates_negatively(void)
                "a dropped object makes ACT_TERM negative");
 }
 
+void test_station_interrogation_sends_untimed_values_and_quality(void)
+{
+    setup_mode(64U, 32U, true);
+    test_invalid_quality = true;
+    start_link();
+    for (uint8_t feeder = 0U; MAX_POWER_LINE_COUNT > feeder; feeder++)
+    {
+        iec104_line_config_t line = {.in_use = 1U};
+        for (size_t phase = 0U; 3U > phase; phase++)
+        {
+            const uint32_t base = 1000U + (uint32_t)feeder * 100U +
+                                  (uint32_t)phase;
+            line.anlik_akim[phase] = iec104_make_ioa_3byte(base + 30U);
+            line.enerji_varyok[phase] = iec104_make_ioa_3byte(base + 40U);
+            line.yuk_akimi_varyok[phase] = iec104_make_ioa_3byte(base + 50U);
+            line.rf_haberlesme_varyok[phase] =
+                iec104_make_ioa_3byte(base + 60U);
+            line.trip_failed[phase] = iec104_make_ioa_3byte(base + 70U);
+        }
+        TEST_ASSERT_TRUE(iec104_set_line_config(feeder, &line));
+    }
+    uint8_t frame[16];
+    build_interrogation(frame, 0U, iec104_get_send_sn(),
+                        TEST_COMMON_ADDRESS, QOI_STATION_REQ);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    size_t counts[5] = {0U};
+    for (size_t index = 0U; tx_count > index; index++)
+    {
+        if (!frame_is_i(tx_log[index]) ||
+            (COT_INTERROGATED_STATION != frame_asdu_cot(tx_log[index])))
+        {
+            continue;
+        }
+        const uint8_t type = frame_asdu_type(tx_log[index]);
+        TEST_ASSERT_TRUE((M_ME_NC_1 == type) || (M_SP_NA_1 == type));
+        const size_t object_size = (M_ME_NC_1 == type) ? 8U : 4U;
+        const size_t count = tx_log[index][7] & 0x7FU;
+        TEST_ASSERT_EQUAL_UINT8(0U, tx_log[index][7] & 0x80U);
+        TEST_ASSERT_EQUAL_UINT32(12U + count * object_size, tx_log_len[index]);
+        TEST_ASSERT_EQUAL_UINT16(tx_log_len[index] - 2U, tx_log[index][1]);
+        for (size_t object = 0U; count > object; object++)
+        {
+            const uint8_t *data = &tx_log[index][12U + object * object_size];
+            const uint32_t ioa = (uint32_t)data[0] |
+                ((uint32_t)data[1] << 8U) | ((uint32_t)data[2] << 16U);
+            const uint32_t feeder = (ioa - 1000U) / 100U;
+            const uint32_t field = (ioa - 1000U) % 100U;
+            const uint32_t phase = field % 10U;
+            const size_t category = (size_t)(field / 10U - 3U);
+            TEST_ASSERT_LESS_THAN_UINT32(MAX_POWER_LINE_COUNT, feeder);
+            TEST_ASSERT_LESS_THAN_UINT32(3U, phase);
+            TEST_ASSERT_LESS_THAN_UINT32(5U, category);
+            counts[category]++;
+            if (0U == category)
+            {
+                float value;
+                TEST_ASSERT_EQUAL_UINT8(M_ME_NC_1, type);
+                memcpy(&value, &data[3], sizeof(value));
+                TEST_ASSERT_EQUAL_FLOAT((float)(feeder * 10U + phase), value);
+                TEST_ASSERT_EQUAL_UINT8((2U == phase) ? 0x80U : 0U, data[7]);
+            }
+            else
+            {
+                TEST_ASSERT_EQUAL_UINT8(M_SP_NA_1, type);
+                TEST_ASSERT_EQUAL_UINT8(((feeder + phase) & 1U) |
+                    ((2U == phase) ? 0x80U : 0U), data[3]);
+            }
+        }
+    }
+    for (size_t category = 0U; 5U > category; category++)
+    {
+        TEST_ASSERT_EQUAL_UINT32(MAX_POWER_LINE_COUNT * 3U, counts[category]);
+    }
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_TERM,
+                          frame_asdu_cot(tx_log[tx_count - 1U]));
+    TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[tx_count - 1U]));
+}
+
+void test_group_two_keeps_timestamps_after_station_format_change(void)
+{
+    setup(64U, 32U);
+    start_link();
+    enable_all_lines();
+    uint8_t frame[16];
+    build_interrogation(frame, 0U, iec104_get_send_sn(),
+                        TEST_COMMON_ADDRESS, QOI_GROUP_2);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    size_t objects = 0U;
+    for (size_t index = 0U; tx_count > index; index++)
+    {
+        if (!frame_is_i(tx_log[index]) ||
+            (COT_INTERROGATED_GROUP2 != frame_asdu_cot(tx_log[index])))
+        {
+            continue;
+        }
+        const size_t count = tx_log[index][7] & 0x7FU;
+        TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, frame_asdu_type(tx_log[index]));
+        TEST_ASSERT_EQUAL_UINT32(12U + count * 11U, tx_log_len[index]);
+        objects += count;
+    }
+    TEST_ASSERT_EQUAL_UINT32(MAX_POWER_LINE_COUNT * 9U, objects);
+}
+
+void test_station_interrogation_without_active_lines_has_only_confirmations(void)
+{
+    setup(64U, 32U);
+    start_link();
+    uint8_t frame[16];
+    build_interrogation(frame, 0U, iec104_get_send_sn(),
+                        TEST_COMMON_ADDRESS, QOI_STATION_REQ);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(C_IC_NA_1, frame_asdu_type(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(C_IC_NA_1, frame_asdu_type(tx_log[1]));
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_TERM, frame_asdu_cot(tx_log[1]));
+    TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[1]));
+}
+
 void test_complete_interrogation_terminates_positively(void)
 {
     uint8_t frame[16];
@@ -819,7 +947,7 @@ void test_interrogation_response_echoes_originator_address(void)
 
     const int con  = find_asdu(C_IC_NA_1, COT_ACTIVATION_CON);
     const int term = find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM);
-    const int data = find_asdu(M_ME_TF_1, COT_INTERROGATED_STATION);
+    const int data = find_asdu(M_ME_NC_1, COT_INTERROGATED_STATION);
 
     TEST_CHECK((con >= 0) && (7U == frame_asdu_oa(tx_log[con])),
                "ACT_CON echoes the originator address of the command");
