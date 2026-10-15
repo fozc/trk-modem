@@ -132,16 +132,17 @@ async function checkPage(html, label) {
         const rfMonitor = run(`buildRfMonitorTable({Phases:[
             {HasData:true,Eui64:'00124B0038C9F1CB',Online:true,
              Live:{RSSI:-128,Temp:300,Irms:1.25,VTrip:32,VRec:13,Flags:2},
-             TripFailedAlarm:true,TripFailureLatched:true},
+             Trip:{InstantAmps:99.25},TripFailedAlarm:true,TripFailureLatched:true},
             {HasData:false},{HasData:false}]})`);
         assert.ok(rfMonitor.includes('00124B0038C9F1CB'));
         assert.ok(rfMonitor.includes('-128'));
         assert.ok(rfMonitor.includes('300'));
         assert.ok(rfMonitor.includes('1.250'));
+        assert.ok(rfMonitor.includes('99.250 A'),'keep physical trip current');
         const energyLabel = language === 'tr' ? 'Enerji Var/Yok' : 'Energy Present';
         const loadLabel = language === 'tr' ? 'Yük Akımı Var/Yok' : 'Load Current Present';
-        assert.ok(rfMonitor.includes(`<td>${energyLabel}</td><td>0</td>`));
-        assert.ok(rfMonitor.includes(`<td>${loadLabel}</td><td>1</td>`));
+        assert.ok(rfMonitor.includes(`<td>${energyLabel}</td><td>${run("t('absent')")}</td>`));
+        assert.ok(rfMonitor.includes(`<td>${loadLabel}</td><td>${run("t('present')")}</td>`));
         for (const phase of [
             '{HasData:true,Online:false,Live:{Flags:3}}',
             '{HasData:true,Online:true,UptimeStalled:true,Live:{Flags:3}}',
@@ -151,12 +152,27 @@ async function checkPage(html, label) {
             '{HasData:false,Online:true,Live:{Flags:3}}'
         ]) {
             const unavailable = run(`buildRfMonitorTable({Phases:[${phase}]})`);
-            assert.ok(unavailable.includes(`<td>${energyLabel}</td><td>—</td>`));
-            assert.ok(unavailable.includes(`<td>${loadLabel}</td><td>—</td>`));
+            assert.ok(unavailable.includes(`<td>${energyLabel}</td><td>${run("t('notAvailable')")}</td>`));
+            assert.ok(unavailable.includes(`<td>${loadLabel}</td><td>${run("t('notAvailable')")}</td>`));
         }
         assert.ok(!rfMonitor.includes('5V DC'));
         assert.ok(!rfMonitor.includes('LQI'));
         assert.ok(!rfMonitor.includes('undefined'));
+        for(const raw of ['SEQ','FSM','Halka sarma','Log wrap','Açılış sayacı','Boot counter','Anomali','Anomaly','Live.FaultCount'])
+            assert.ok(!rfMonitor.includes(raw),'raw RF diagnostic removed: '+raw);
+        const alarmWithoutLive=run(`buildRfMonitorTable({Phases:[{HasData:false,TripFailedAlarm:true,TripFailureLatched:true}]})`);
+        assert.ok(alarmWithoutLive.includes(run("t('alarmActive')")));
+        assert.ok(alarmWithoutLive.includes(run("t('ackRequired')")));
+        assert.ok(run('fmtEpoch(1700000000)').endsWith(' UTC'));
+        assert.equal(run('fmtEpoch(0)'),run("t('timeUnavailable')"));
+        assert.ok(run('iecFaultRanges(1,{TemporaryFaultBase:[0,101000],PermanentFaultBase:[0,201000]})').includes('101180–101359'));
+        assert.ok(!run('iecFaultRanges(1,{TemporaryFaultBase:[0,0]})').includes('180–359'));
+        assert.match(run("renderDevice({SimKartAPNSifresi:'secret'})"),/id="dev-SimKartAPNSifresi"[^>]*type="password"/);
+        assert.ok(run('renderTerminal()').includes(run("t('consoleHelp')")));
+        assert.ok(run('renderModbusMap(null)').includes(run("t('modMapUnavailable')")));
+        assert.equal(run('modbusErrorText(0)'),run("t('modbusNoError')"));
+        assert.ok(run('modbusErrorText(2)').includes(run("t('exception2')")));
+
         const countsTable=run(`buildRfMonitorTable({Phases:[],
             FaultCountsSinceStartup:{Permanent:1,Temporary:2,Uncertain:3}})`);
         assert.ok(countsTable.includes(language==='tr'
@@ -180,14 +196,14 @@ async function checkPage(html, label) {
             {HasData:true,Online:true,Live:{Flags:3,FsmError:true}}]})`);
         assert.ok(maintenance.includes(language==='tr'
             ? 'Bakım gerekli' : 'Maintenance required'));
-        assert.ok(maintenance.includes(`<td>${energyLabel}</td><td>1</td>`));
+        assert.ok(maintenance.includes(`<td>${energyLabel}</td><td>${run("t('present')")}</td>`));
         const service=run(`buildRfMonitorTable({Phases:[],Maintenance:{
             SourceMismatches:2,StoreResetReason:3,CounterStatus:4,
             EpochFeeder:1,EpochPhases:7,EpochDurationMs:19600}})`);
-        assert.ok(service.includes(language==='tr'?'servis silmesi':'service clear'));
-        assert.ok(service.includes('143/4'));
-        assert.ok(service.includes('19600 ms'));
-        assert.ok(service.includes(language==='tr'?'doğrulanamayan 2':'2 events'));
+        assert.ok(!service.includes(language==='tr'?'servis silmesi':'service clear'));
+        assert.ok(!service.includes('143/4'));
+        assert.ok(!service.includes('19600 ms'));
+        assert.ok(!service.includes(language==='tr'?'doğrulanamayan 2':'2 events'));
         for(const unavailable of ['Online:false','Online:true,UptimeStalled:true']){
             const stale=run(`buildRfMonitorTable({Phases:[
                 {HasData:true,${unavailable},Live:{Irms:9.75,Temp:300}}]})`);
@@ -413,6 +429,11 @@ async function checkPage(html, label) {
         input.type = 'number';
         input.value = String(value);
     }
+    document.getElementById('dev-SimKartPin').value='12';
+    assert.equal(run("validatePage('device')"),false,'PIN matches existing backend constraints');
+    document.getElementById('dev-SimKartPin').value='0';
+    assert.equal(run("validatePage('device')"),true);
+    document.getElementById('dev-SimKartPin').value='1234';
     document.getElementById('dev-SimKartAPN').value = 'new-apn';
     run("pageCache.device = {SeriNumarasi: 'SERIAL-123', SimKartAPN: 'old-apn', PeriyodikModemResetPeriyodu: 3600};");
     let request;
@@ -475,6 +496,8 @@ async function checkPage(html, label) {
     const sbo = document.getElementById('iec-SBO');
     sbo.type = 'checkbox';
     sbo.checked = true;
+    run('updateSboRange()');
+    assert.equal(document.getElementById('iec-SBOTimeout').max,'300');
     document.getElementById('iec-OriginatorAddr').value = '0';
     document.getElementById('iec-CommonAddr').value = '300';
     assert.equal(run("validatePage('iec104')"), true);
@@ -489,6 +512,8 @@ async function checkPage(html, label) {
     document.getElementById('iec-SBOTimeout').value = '301';
     assert.equal(run("validatePage('iec104')"), false);
     sbo.checked = false;
+    run('updateSboRange()');
+    assert.equal(document.getElementById('iec-SBOTimeout').max,'65535');
     document.getElementById('iec-SBOTimeout').value = '65535';
     assert.equal(run("validatePage('iec104')"), true);
     document.getElementById('iec-SBOTimeout').value = '65536';
@@ -749,7 +774,7 @@ async function checkPage(html, label) {
     assert.ok(progress.includes('Satır 2: Uygulama başarısız'));
     assert.ok(progress.includes('Satır 3: Uygulanmadı'));
     const stopped = run("buildRfGroupStatus({State:'idle',BatchState:'stopped',Targets:1,BatchLine:1,GroupStarted:false,StopReason:'start_rejected'})");
-    assert.ok(stopped.includes('Envanteri, atamaları'));
+    assert.ok(stopped.includes('Faz cihazı atamalarını'));
     const partial = run("buildRfGroupStatus({State:'failed',HasReport:true,Reason:6})");
     assert.ok(partial.includes('Kısmi uygulama'));
     assert.ok(partial.includes('otomatik tekrar yapılmaz'));
@@ -909,6 +934,71 @@ async function checkPage(html, label) {
         'a late status response for older desired settings must be ignored');
     assert.equal(document.getElementById('rf-status-refresh').disabled,false,
         'invalidated old reads must not leave refresh locked');
+    // Exercise actual page actions: draft preservation, read confirmation,
+    // accepted-save state and browser read timestamps.
+    run("loading=false;pageCache.modbus={CihazID:37,BaudRate:19200};renderPage('modbus');");
+    const oldBodyQuery=document.getElementById('body').querySelectorAll;
+    const input=element();input.type='number';input.id='mod-CihazID';
+    input.value='41';input.dataset.original='37';input.closest=()=>null;
+    const bodyElement=document.getElementById('body');
+    let renderedBody=bodyElement.innerHTML;
+    bodyElement.querySelectorAll=selector=>selector==='[data-dirty]'?[input]:[];
+    Object.defineProperty(bodyElement,'innerHTML',{configurable:true,
+        get:()=>renderedBody,set:value=>{
+            renderedBody=value;
+            const match=value.match(/id="mod-CihazID"[^>]*value="([^"]*)"/);
+            if(match)input.value=match[1];
+        }});
+    context.draftInput=input;
+    run("dirtyPages.modbus=new Set([draftInput]);LNG='tr';setLang('en');");
+    assert.equal(input.value,'41','language change preserves edited value');
+    assert.equal(input.dataset.original,'37','original value remains the device value');
+    assert.equal(run("hasDirty('modbus')"),true,'language change preserves dirty state');
+    let readCalls=0;
+    context.fetch=async()=>{readCalls++;return {ok:true,status:200,json:async()=>({CihazID:38,BaudRate:19200})};};
+    await run("readPage('modbus')");
+    assert.equal(readCalls,0,'read waits for explicit discard confirmation');
+    document.getElementById('cancelConfirm').onclick();
+    assert.equal(input.value,'41','cancelling read preserves edits');
+    await run("readPage('modbus')");
+    await document.getElementById('okConfirm').onclick();
+    assert.equal(readCalls,1);
+    assert.equal(run('pageCache.modbus.CihazID'),38);
+    assert.equal(run("hasDirty('modbus')"),false);
+    assert.ok(run("readStamp('modbus')").includes('UTC'));
+    Object.defineProperty(bodyElement,'innerHTML',{configurable:true,writable:true,value:renderedBody});
+    bodyElement.querySelectorAll=oldBodyQuery;
+    await run("savePageData('modbus',{CihazID:38,BaudRate:19200})");
+    assert.equal(document.getElementById('state-modbus').textContent,run("t('stSaved')"));
+    context.fetch=async()=>({ok:false,status:500});
+    await run("readPage('modbus')");
+    assert.equal(document.getElementById('state-modbus').textContent,run("t('stSaved')"),'failed read must not invent a read result');
+    const euiInput=document.getElementById('rf-R_DEVICEID-0');euiInput.dispatchEvent=()=>{};
+    document.getElementById('rf-assign-f-0011223344556677').value='0';
+    context.Event=class {constructor(type){this.type=type;}};
+    run("rfAssignEui('0011223344556677','R')");
+    assert.ok(notices.at(-1).textContent.includes('L1'));
+    assert.ok(notices.at(-1).textContent.includes(run("t('tEuiAssigned')").split('{n}')[0]));
+    assert.ok(!notices.at(-1).textContent.includes('phase R'));
+    const consoleLines=[];context.consoleLines=consoleLines;
+    run('const appendBeforeTest=trmAppend;trmAppend=text=>consoleLines.push(text)');
+    document.getElementById('trmCmd').value='status';
+    context.fetch=async()=>({ok:true,status:200,json:async()=>({pending:false})});
+    await run('trmSend()');
+    assert.equal(consoleLines.at(-1),run("t('commandUnknown')"));
+    assert.equal(run('terminalBusy'),false);
+    const realTimer=context.setTimeout;
+    context.setTimeout=(callback,delay)=>{if(delay===1000)queueMicrotask(callback);return 1;};
+    context.Date=class extends Date {static now(){this.tick=(this.tick||0)+4000;return this.tick;}};
+    let polls=0;context.fetch=async(url,options={})=>{if(options.method!=='POST')polls++;return {ok:true,status:200,json:async()=>({pending:true})};};
+    document.getElementById('trmCmd').value='status';
+    await run('trmSend()');
+    assert.ok(polls>0,'pending command must poll the actual GET path');
+    assert.equal(consoleLines.at(-1),run("t('commandUnknown')"),'pending timeout reports unknown outcome');
+    assert.equal(run('terminalBusy'),false);
+    context.setTimeout=realTimer;context.Date=Date;
+    run('trmAppend=appendBeforeTest;LNG="tr";');
+    console.log('PASS:',label,'- operator messages, drafts, UTC, read/save state, console outcome');
     for (const error of ['Invalid credentials',
                          'Too many attempts, try again later']) {
         document.getElementById('loginUser').value = 'admin';
@@ -916,7 +1006,7 @@ async function checkPage(html, label) {
         context.fetch = async () => ({ok: false, status: 401,
             json: async () => ({success: false, error})});
         await run('doLogin()');
-        assert.equal(document.getElementById('loginErr').textContent, error);
+        assert.equal(document.getElementById('loginErr').textContent,run(error==='Invalid credentials'?"t('loginInvalid')":"t('loginWait')"));
     }
     document.getElementById('loginPass').value = 'correct';
     context.fetch = async () => ({ok: true, status: 200,
@@ -945,7 +1035,7 @@ async function checkFirmwareLogin(html, label) {
             if (!elements.has(id)) elements.set(id, {
                 value: '', textContent: '', style: {}, dataset: {},
                 classList: {toggle() {}, add() {}, remove() {}},
-                appendChild() {}, addEventListener() {}
+                children:[],appendChild(child) {this.children.push(child);}, addEventListener() {}
             });
             return elements.get(id);
         },
@@ -955,7 +1045,7 @@ async function checkFirmwareLogin(html, label) {
     const context = vm.createContext({document, console,
         localStorage: {getItem: () => 'tr', setItem() {}},
         sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
-        location: {search: ''}, AbortController,
+        location: {search: ''}, AbortController,confirm:()=>true,
         setTimeout: () => 1, clearTimeout() {}
     });
     vm.runInContext(html.match(/<script[^>]*>([\s\S]*?)<\/script>/i)[1], context);
@@ -967,7 +1057,7 @@ async function checkFirmwareLogin(html, label) {
         context.fetch = async () => ({ok: false, status: 401,
             json: async () => ({success: false, error})});
         await run('doLogin()');
-        assert.equal(document.getElementById('lerr').textContent, error);
+        assert.equal(document.getElementById('lerr').textContent,run(error==='Invalid credentials'?"t('loginInvalid')":"t('loginWait')"));
     }
     document.getElementById('loginPass').value = 'correct';
     context.fetch = async url => ({ok: true, status: 200,
@@ -986,6 +1076,36 @@ async function checkFirmwareLogin(html, label) {
     await assert.rejects(run("apiFetch('/fw_status')"));
     assert.equal(run('s_token'), null);
     assert.equal(document.getElementById('loginCard').style.display, '');
+    for(const language of ['tr','en']){
+        run(`LNG='${language}'`);
+        for(const response of [
+            {ok:true,status:200,json:async()=>({status:'ok'})},
+            {ok:true,status:200,json:async()=>({status:'error',error:'not supported'})},
+            {ok:false,status:500},
+            {ok:true,status:200,json:async()=>{throw new Error('malformed JSON')}}
+        ]){
+            context.fetch=async()=>response;
+            await run('doReboot()');
+            const result=document.getElementById('actionResult');
+            if(response.ok&&await response.json().then(x=>x.status==='ok',()=>false)){
+                assert.equal(result.textContent,run("t('mRebootSent')"));
+                assert.equal(result.className,'sec done');
+            }else{
+                assert.notEqual(result.textContent,run("t('mRebootSent')"));
+                assert.notEqual(result.className,'sec done');
+            }
+        }
+        context.fetch=async()=>{throw new Error('connection lost')};
+        await run('doReboot()');
+        assert.equal(document.getElementById('actionResult').textContent,run("t('rebootUnknown')"));
+        run("setPhase('DONE')");
+        assert.ok(document.getElementById('phase').textContent.includes(run("t('phaseDone')")));
+        assert.ok(!run("t('forceRestart')").includes(language==='tr'?'yeniden başlat':'Force restart'));
+        context.confirm=()=>false;let posts=0;
+        context.fetch=async()=>{posts++;return {};};
+        await run('doReboot()');assert.equal(posts,0,'cancelled reboot sends no POST');
+        context.confirm=()=>true;
+    }
     console.log('PASS:', label, '- firmware login 401, success, malformed JSON, protected endpoint');
 }
 
