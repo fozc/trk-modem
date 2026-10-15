@@ -2,7 +2,8 @@
  * modbus_gsm_stats.c
  *
  *  Created on: Sep 16, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * GSM-status register block (holding space, base
  * MODBUS_GSM_STATS_ADDR_BASE == 49400): modem state/signal/RAT, socket
@@ -31,20 +32,7 @@
  * padding: the range is dense and contiguous, which lets a master bulk-read
  * the whole block in a single FC03 window without an exception (0x02).
  */
-typedef struct
-{
-    uint16_t gsm_state;             /* gsm_states_t: 0=COMMON_INIT 1=MODULE_INIT
-                                     * 2=SIM_ERROR 3=NORMAL 4=POWER_OUTAGE
-                                     * 5=POWER_SAVING                     */
-    uint16_t gsm_signal_csq;        /* raw AT+CSQ: 0..31, 99 = unknown   */
-    uint16_t gsm_rat;               /* network_generation_t: 0/2/3/4     */
-    uint16_t mb_last_error_code;    /* SonHataKodu: last exception 0..3  */
-    uint16_t mb_last_error_time_hi; /* SonHataZamani UINT32 ABCD hi word */
-    uint16_t mb_last_error_time_lo; /* SonHataZamani UINT32 ABCD lo word */
-    uint16_t socket_state_web;      /* socket_state_t: web listener      */
-    uint16_t socket_state_iec104;   /* socket_state_t: IEC104 listener   */
-    uint16_t socket_state_dialer;   /* socket_state_t: HES dialer client */
-} modbus_gsm_stats_map_t;
+
 
 /* Logical Modbus address of a layout member. Constant expression, so it is
  * usable as a switch case label; for an array member it yields the address

@@ -24,6 +24,7 @@
 #include <string.h>
 
 TEST_SOURCE_FILE("http_handlers.c")
+TEST_SOURCE_FILE("modbus_map_json.c")
 TEST_SOURCE_FILE("http_request_parser.c")
 TEST_SOURCE_FILE("utils.c")
 TEST_SOURCE_FILE("iec104_util.c")
@@ -164,6 +165,43 @@ void test_empty_firmware_start_rejects_without_initializing_flash(void)
     http_send_json_Expect("{\"status\":\"error\",\"error\":\"invalid size\"}", 40);
     handle_fw_start("");
     TEST_ASSERT_EQUAL_UINT32(0U, firmware_init_calls);
+}
+
+static char modbus_response[8192];
+static modbus_configs_t modbus_settings;
+
+static void check_modbus_response(const char *json, int length, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_UINT32(strlen(json), (size_t)length);
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"CihazID\":37"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BaudRate\":19200"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"RegisterMap\":{\"AddressBase\":40000"));
+    TEST_ASSERT_NOT_NULL(strstr(json,
+        "[\"anlik_akim\",1,2,\"FLOAT32\",\"A\"]"));
+    TEST_ASSERT_EQUAL_CHAR('}', json[(size_t)length - 1U]);
+}
+
+void test_modbus_get_returns_settings_and_read_only_register_metadata(void)
+{
+    modbus_settings = (modbus_configs_t){.device_addr = 37U,
+                                          .baud_rate = 19200U};
+    http_handlers_init(modbus_response, sizeof(modbus_response));
+    modbus_config_get_ExpectAndReturn(&modbus_settings);
+    modbus_config_get_last_error_time_ExpectAndReturn(123U);
+    http_send_json_StubWithCallback(check_modbus_response);
+    handle_get_modbus_config_json();
+    TEST_ASSERT_EQUAL_UINT8(37U, modbus_settings.device_addr);
+    TEST_ASSERT_EQUAL_UINT32(19200U, modbus_settings.baud_rate);
+}
+
+void test_modbus_get_rejects_an_undersized_response_buffer(void)
+{
+    http_handlers_init(modbus_response, 256);
+    modbus_config_get_ExpectAndReturn(&modbus_settings);
+    modbus_config_get_last_error_time_ExpectAndReturn(0U);
+    http_send_error_Expect(500, "Modbus register map exceeds response buffer");
+    handle_get_modbus_config_json();
 }
 
 /*** end of file ***/

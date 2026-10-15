@@ -1,7 +1,7 @@
 /*
  * modbus_system_stats.c
  *
- *  Created on: 11 Tem 2026
+ *  Created on: Jul 11, 2026
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  */
@@ -32,23 +32,7 @@
  * base-relative and sizeof()-driven, so they track the struct without naming any
  * field — reordering or renaming members can never desynchronise them.
  */
-typedef struct {
-	uint16_t rtc_sec;        /* rtc time, seconds            */
-	uint16_t rtc_min;        /* rtc time, minutes            */
-	uint16_t rtc_hour;       /* rtc time, hours              */
-	uint16_t rtc_day;        /* rtc time, days               */
-	uint16_t rtc_month;      /* rtc time, month              */
-	uint16_t rtc_year;       /* rtc time, year               */
-	uint16_t rtc_unix[2];    /* rtc time, unix timestamp     */
-	uint16_t uptime_sec;     /* uptime, seconds              */
-	uint16_t reset_reason;   /* decoded reset-cause bitmask  */
-	uint16_t mcu_temp;       /* die temperature, celsius     */
-	uint16_t v5v;            /* 5V rail, millivolts          */
-	uint16_t v3v3;           /* 3V3 rail, millivolts         */
-	uint16_t v3v8;           /* 3V8 rail, millivolts         */
-	uint16_t uptime_raw[2];  /* uptime, full UINT32 (ABCD)   */
-	uint16_t dinput_states;  /* digital input states, bitmask */
-} modbus_sys_stats_map_t;
+
 
 /* Logical Modbus address of a layout member. For a 2-register member this
  * resolves to its first (high) word; the low word is at +1. Constant
