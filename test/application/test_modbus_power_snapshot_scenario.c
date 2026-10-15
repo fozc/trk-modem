@@ -23,14 +23,15 @@ TEST_SOURCE_FILE("power_board_scp.c")
 #include "mock_modbus_gsm_stats.h"
 #include "mock_breaker.h"
 #include "mock_rf.h"
-#include "mock_modbus_rf_stats.h"
 #include "mock_nvram.h"
+#include "mock_fault_log.h"
 #include "modbus_rtu_slave.h"
 #include "modbus_power_stats.h"
 
 #define MODBUS_TX_USE_DMA 0
 uint32_t HAL_GetTick(void);
 #include "../../Application/modbus_process.c"
+#include "../../Application/modbus_line_data.c"
 
 static modbus_slave_t receiver;
 static uint32_t fake_tick;
@@ -64,6 +65,23 @@ static void prepare_sample(uint8_t sequence, uint16_t voltage)
     };
     message.body.power.seq = sequence;
     message.body.power.battery_mv = voltage;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, fake_tick));
+}
+
+static void prepare_sample_alarms(uint8_t sequence, uint32_t active_alarms)
+{
+    rf_scp_message_t message =
+    {
+        .cmd = RF_SCP_CMD_PWR_SUMMARY, .type = SCP_TYPE_SET,
+        .body.power =
+        {
+            .flags = 0x83U, .flags2 = 5U, .soc_flags = 3U,
+            .source = 1U, .session = 7U, .charge_phase = 2U,
+            .battery_mv = 24000U
+        }
+    };
+    message.body.power.seq = sequence;
+    message.body.power.active_alarms = active_alarms;
     TEST_ASSERT_TRUE(power_board_handle_summary(&message, fake_tick));
 }
 
@@ -122,9 +140,28 @@ static uint16_t response_register(size_t index)
                        response[offset + 1U]);
 }
 
+const rf_feeder_t *rf_store_get(feeder_id_t line)
+{
+    (void)line;
+    return NULL;   /* no RF feeder: feeder blocks read zero */
+}
+
+bool rf_eui64_is_zero(const uint8_t eui[RF_EUI64_LEN])
+{
+    uint8_t combined = 0U;
+    for (size_t index = 0U; index < RF_EUI64_LEN; index++)
+    {
+        combined |= eui[index];
+    }
+    return 0U == combined;
+}
+
 void setUp(void)
 {
-    modbus_rf_stats_read_IgnoreAndReturn(false);
+    fault_log_get_temp_count_IgnoreAndReturn(0U);
+    fault_log_get_perm_count_IgnoreAndReturn(0U);
+    fault_log_read_nth_IgnoreAndReturn(false);
+    rf_get_phase_data_IgnoreAndReturn(false);
     power_board_control_init_Ignore();
     fake_tick = 0U;
     response_len = 0U;
@@ -135,8 +172,6 @@ void setUp(void)
     prepare_sample(7U, 24000U);
     libmodbusrtu_slave_init(&receiver, 1U, get_tick, capture_response);
     libmodbusrtu_register_read_callback(&receiver, fc03_read_callback);
-    modbus_config_get_addr_aku_uyarisi_IgnoreAndReturn(50000U);
-    modbus_config_get_addr_modem_reset_IgnoreAndReturn(50001U);
     modbus_system_stats_read_IgnoreAndReturn(false);
 }
 
@@ -167,6 +202,36 @@ void test_stale_power_block_retains_raw_values_but_clears_quality(void)
     TEST_ASSERT_EQUAL_UINT16(8U, response_register(2U));
     TEST_ASSERT_EQUAL_UINT16(28000U, response_register(13U));
     TEST_ASSERT_TRUE(0U != (response_register(1U) & POWER_VALID_SUMMARY));
+}
+
+void test_battery_warning_register_masks_non_battery_alarms(void)
+{
+    uint16_t value = 0xFFFFU;
+
+    /* setUp delivered a summary without alarms: no warning. */
+    TEST_ASSERT_EQUAL_INT(MODBUS_REG_OK, fc03_read_callback(50000U, &value));
+    TEST_ASSERT_EQUAL_UINT16(0U, value);
+
+    /* Battery codes 0, 4, 18, 20 pass; supply(1) and board(9) codes drop.
+     * Register bits are dedicated (table order), so codes above 15 survive:
+     * bit0=kod0, bit3=kod4, bit7=kod18, bit8=kod20. */
+    prepare_sample_alarms(8U, (1U << 0U) | (1U << 1U) | (1U << 4U) |
+                                (1U << 9U) | (1U << 18U) | (1U << 20U));
+    TEST_ASSERT_EQUAL_INT(MODBUS_REG_OK, fc03_read_callback(50000U, &value));
+    TEST_ASSERT_EQUAL_HEX16(0x189U, value);
+
+    /* Regression: codes 18/20 alone must still light their register bits -
+     * they used to vanish in the uint16_t truncation. */
+    prepare_sample_alarms(9U, 1U << 18U);
+    TEST_ASSERT_EQUAL_INT(MODBUS_REG_OK, fc03_read_callback(50000U, &value));
+    TEST_ASSERT_EQUAL_HEX16(0x80U, value);
+    prepare_sample_alarms(10U, 1U << 20U);
+    TEST_ASSERT_EQUAL_INT(MODBUS_REG_OK, fc03_read_callback(50000U, &value));
+    TEST_ASSERT_EQUAL_HEX16(0x100U, value);
+
+    /* Write-only reset register still reads back zero. */
+    TEST_ASSERT_EQUAL_INT(MODBUS_REG_OK, fc03_read_callback(50001U, &value));
+    TEST_ASSERT_EQUAL_UINT16(0U, value);
 }
 
 void test_power_read_rejects_out_of_range_and_null_without_write(void)
