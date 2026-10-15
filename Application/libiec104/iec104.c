@@ -2126,6 +2126,51 @@ void iec104_send_breaker_states(const breaker_t *breaker)
 #endif
  
 
+/* GI 20 keeps the value/quality prefix and omits each CP56Time2a tail. */
+static bool send_live_snapshot(iec104_package_t *pkt, size_t length)
+{
+    if (COT_INTERROGATED_STATION == pkt->frame.asdu_header.cot.cause)
+    {
+        size_t source_size;
+        size_t object_size;
+
+        _Static_assert(offsetof(m_me_tf_1_t, timestamp) ==
+                       sizeof(m_me_nc_1_t), "Measured value prefix size");
+        _Static_assert(offsetof(m_sp_tb_1_t, timestamp) ==
+                       sizeof(m_sp_na_1_t), "Single point prefix size");
+
+        switch (pkt->frame.asdu_header.type_id)
+        {
+            case M_ME_TF_1:
+                source_size = sizeof(m_me_tf_1_t);
+                object_size = sizeof(m_me_nc_1_t);
+                pkt->frame.asdu_header.type_id = M_ME_NC_1;
+                break;
+
+            case M_SP_TB_1:
+                source_size = sizeof(m_sp_tb_1_t);
+                object_size = sizeof(m_sp_na_1_t);
+                pkt->frame.asdu_header.type_id = M_SP_NA_1;
+                break;
+
+            default:
+                return false;
+        }
+
+        const size_t count = pkt->frame.asdu_header.vsq.number_of_objects;
+        for (size_t index = 0U; count > index; index++)
+        {
+            memmove(&pkt->data[DATA_START_IDX + index * object_size],
+                    &pkt->data[DATA_START_IDX + index * source_size],
+                    object_size);
+        }
+        length = DATA_START_IDX + count * object_size;
+        pkt->frame.apci.apdu_length = (uint8_t)(length - 2U);
+    }
+
+    return iec104_send(pkt->data, length);
+}
+
 bool iec104_send_phase_currents(cause_of_transmission_t cause)
 {
     CSLOG("Sending phase currents\r\n");
@@ -2195,7 +2240,7 @@ bool iec104_send_phase_currents(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_me_tf_1_t) * batch);
 
         CSLOG("Sending phase currents: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+        if (!send_live_snapshot(&pkt, total_len + 2U)) {
             break;
         }
 
@@ -2275,7 +2320,7 @@ bool iec104_send_energy_states(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
 
         CSLOG("Sending energy states: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+        if (!send_live_snapshot(&pkt, total_len + 2U)) {
             break;
         }
 
@@ -2366,7 +2411,7 @@ bool iec104_send_load_current_states(cause_of_transmission_t cause)
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
 
         CSLOG("Sending load current states: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        if (!iec104_send((uint8_t *)&pkt, apdu_len + 2)) {
+        if (!send_live_snapshot(&pkt, (size_t)apdu_len + 2U)) {
             break;
         }
 
@@ -2413,7 +2458,7 @@ static bool send_rf_state_objects(cause_of_transmission_t cause,
         memcpy(&pkt.data[DATA_START_IDX], &objects[sent], sizeof(m_sp_tb_1_t) * batch);
 
         CSLOG("Sending RF communication states: %d objects (sent: %d/%d)\r\n", batch, sent + batch, obj_count);
-        if (!iec104_send((uint8_t *)&pkt, total_len + 2)) {
+        if (!send_live_snapshot(&pkt, total_len + 2U)) {
             break;
         }
 
@@ -2754,3 +2799,5 @@ void iec104_send_periodic_update(void)
     //iec104_send_all_phase_currents();
     //iec104_send_all_breaker_states();
 }
+
+/*** end of file ***/
