@@ -72,6 +72,10 @@ typedef struct {
 #define SYS_STATS_ADDR_LAST    \
 	((uint16_t)(MODBUS_SYS_STATS_ADDR_BASE + SYS_STATS_REG_COUNT - 1U))
 
+/* The fixed map owns the block extent; this layout must prove it. */
+_Static_assert(SYS_STATS_REG_COUNT == MODBUS_MAP_SYS_REG_COUNT,
+               "system-stats layout does not match the fixed map extent");
+
 /* High / low 16-bit words of a 32-bit value (ABCD word order). */
 static uint16_t sys_stats_high_word(uint32_t value)
 {

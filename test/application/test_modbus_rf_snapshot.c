@@ -5,12 +5,12 @@
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * Exercise real RF cache and Modbus FC03 current/link consumers.
+ * Exercise the real RF cache through the fixed feeder blocks: quality
+ * semantics, live values, energy/load flags and reserved gaps.
  */
 
 #include "unity.h"
 #include "rf.h"
-#include "modbus_rf_stats.h"
 #include "mock_rf_inventory.h"
 #include "mock_bsp.h"
 #include "mock_modbus_config.h"
@@ -18,6 +18,10 @@
 #include "mock_modbus_power_stats.h"
 #include "mock_modbus_bms_stats.h"
 #include "mock_modbus_gsm_stats.h"
+#include "mock_fault_log.h"
+#include "mock_elog.h"
+#include "mock_shell.h"
+#include "mock_power_board_control.h"
 #include "mock_breaker.h"
 #include "mock_nvram.h"
 #include "modbus_rtu_slave.h"
@@ -25,6 +29,10 @@
 #include <string.h>
 
 TEST_SOURCE_FILE("rf.c")
+TEST_SOURCE_FILE("rf_scp_codec.c")
+TEST_SOURCE_FILE("rf_scp.c")
+TEST_SOURCE_FILE("cp56time2a.c")
+TEST_SOURCE_FILE("power_board_scp.c")
 #include "../support/modbus_rf_snapshot_fixture.h"
 
 void setUp(void)
@@ -36,71 +44,59 @@ void tearDown(void)
 {
 }
 
-void test_real_scp_current_replaces_dummy_and_rf_link_is_online(void)
+void test_live_current_link_and_quality(void)
 {
-    check_real_scp_current_replaces_dummy_and_rf_link_is_online();
+    check_live_current_link_and_quality();
 }
 
-void test_missing_and_stale_current_are_nan_and_link_is_offline(void)
+void test_missing_and_stale_sample_zero_then_aged_value(void)
 {
-    check_missing_and_stale_current_are_nan_and_link_is_offline();
+    check_missing_and_stale();
 }
 
-void test_invalid_current_does_not_turn_fresh_rf_link_offline(void)
+void test_invalid_current_keeps_link_online(void)
 {
-    check_invalid_current_does_not_turn_fresh_rf_link_offline();
+    check_invalid_current_keeps_link_online();
 }
 
-void test_both_float_words_use_the_same_age_check_at_timeout_boundary(void)
+void test_freshness_flips_at_timeout_boundary(void)
 {
-    check_float_word_age_at_timeout_boundary();
+    check_freshness_flips_at_timeout_boundary();
 }
 
-void test_mh_restart_does_not_reuse_dummy_or_old_rf_value(void)
+void test_mh_restart_drops_freshness(void)
 {
-    check_mh_restart_does_not_reuse_dummy_or_old_rf_value();
+    check_mh_restart_drops_freshness();
 }
 
-void test_energy_and_quality_are_separate_and_preserve_last_value(void)
+void test_energy_and_load_flags_follow_live_sample(void)
 {
-    check_energy_and_quality_use_the_same_real_live_sample();
+    check_energy_and_load_flags_follow_live_sample();
 }
 
-void test_fixed_quality_block_is_read_only_and_has_checked_bounds(void)
+void test_undefined_feeder_reports_zero_quality(void)
 {
-    check_quality_block_is_read_only_and_bounds_preserve_value();
+    check_undefined_feeder_reports_zero_quality();
 }
 
-void test_load_indicator_uses_mh_flag_in_fixed_map(void)
+void test_reserved_gaps_read_zero_and_write_rejected(void)
 {
-    check_load_indicator_uses_mh_flag();
+    check_reserved_gaps_read_zero_and_write_rejected();
 }
 
-void test_retired_fault_summary_offsets_are_reserved_zero(void)
+void test_stalled_uptime_clears_validity_but_keeps_link(void)
 {
-    read_regs(0U, 6U);
-    for (size_t index = 0U; 6U > index; index++)
-    {
-        TEST_ASSERT_EQUAL_UINT16(0U, word(index));
-    }
-    read_regs(12U, 6U);
-    for (size_t index = 0U; 6U > index; index++)
-    {
-        TEST_ASSERT_EQUAL_UINT16(0U, word(index));
-    }
+    check_stalled_uptime_clears_validity_but_keeps_link();
 }
 
-void test_stalled_uptime_returns_nan_and_zero_quality_with_online_link(void)
+void test_valid_sample_time_sets_time_bit_and_unix(void)
 {
-    live(1.25F);
-    tick = 5000U;
-    live(1.25F);
-    read_regs(MODBUS_OFF_ANLIK_AKIM, 2U);
-    TEST_ASSERT_TRUE(isnan(current()));
-    read_regs(MODBUS_RF_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE, 1U);
-    TEST_ASSERT_EQUAL_UINT16(0U, word(0U));
-    read_regs(MODBUS_OFF_RF_VARYOK, 1U);
-    TEST_ASSERT_EQUAL_UINT16(1U, word(0U));
+    check_valid_sample_time_sets_time_bit_and_unix();
+}
+
+void test_trip_failure_publishes_without_live(void)
+{
+    check_trip_failure_publishes_without_live();
 }
 
 /*** end of file ***/
