@@ -1542,3 +1542,23 @@ ayrıca çalıştırılmalıdır.
 Web navigation, oturum/taşıma testleri ve imzalı Release self-check geçti.
 Koşu kayıtları `.temp_files/modbus-register-ui-*.log` altındadır.
 Bu değişiklik cihazda denenmedi.
+
+
+## Web operatör metinleri ve durum regresyonları — 15.10.2026
+
+`make -C test/integration/web_navigation run`, kaynak ve gömülü iki web
+sayfasını Türkçe/İngilizce sınar. Form değerleri dil değişiminde korunur;
+yeniden GET, kaydedilmemiş değişikliklerde onay bekler. İptal edilen okuma
+istek göndermez. POST kabulü cihazdan yeni okuma gibi gösterilmez.
+
+RF izleme testleri ham sayaç/FSM/servis kodlarının görünmediğini,
+fiziksel ölçümlerin ve LIVE örneğinden bağımsız açma alarmının korunduğunu
+doğrular. UTC etiketleri, gerçek arıza IOA aralıkları ve PIN/SBO sınırları
+üretim JavaScript girişleriyle sınanır. Konsol bekleme süresi sonu belirsiz
+sonuç olarak bildirilir.
+
+Firmware sayfası yeniden başlatma testleri kabul, ret, HTTP hatası,
+bozuk JSON, bağlantı hatası ve kullanıcı iptalini kapsar. Yalnız doğrulanmış
+kabulde başarı mesajı beklenir. Bu host kontrolleri cihazın fiziksel olarak
+yeniden başladığını kanıtlamaz. Web paketi, oturum/taşıma testleri ve son
+imzalı Release self-check geçti; cihaz yüklemesi yapılmadı.

@@ -91,6 +91,8 @@ button:disabled{opacity:.3;cursor:not-allowed}
     </div>
   </div>
 
+  <p class="sec" data-i="forceHint">Kayıtlı ilerlemeyi kullanmadan aktarımı baştan başlatır.</p>
+  <p class="sec" id="actionResult" role="status" aria-live="polite"></p>
   <!-- Progress section -->
   <div class="sec">
     <div class="stitle" data-i="progress">İlerleme</div>
@@ -109,7 +111,7 @@ button:disabled{opacity:.3;cursor:not-allowed}
       <div class="stitle" style="margin-bottom:0" data-i="log">Günlük</div>
       <button class="b-cl" onclick="clearLog()" data-i="clear">Temizle</button>
     </div>
-    <div id="lg"></div>
+    <details><summary data-i="log">Teknik aktarım günlüğü</summary><div id="lg"></div></details>
   </div>
 </div>
 
@@ -117,41 +119,75 @@ button:disabled{opacity:.3;cursor:not-allowed}
 /* ── I18N ──────────────────────────────────────────────────── */
 const I18N={
 en:{
+rebootUnknown:"Restart acceptance could not be verified. Reconnect and check device status before repeating.",
+rebootRejected:"The device rejected restart. Check the technical log.",
+forceHint:"Discards stored transfer progress and sends the selected file from the beginning. This option does not reboot the device.",
+loginInvalid:"Invalid username or password",
+loginWait:"Too many attempts. Wait before trying again.",
+phaseIdle:"Ready for file selection",
+phaseChecking:"Checking status",
+phaseHello:"Starting transfer",
+phaseData:"Transferring",
+phaseResumed:"Resuming transfer",
+phaseFinish:"Verifying transfer",
+phaseDone:"Transfer complete; firmware not applied",
+phaseError:"Operation failed",
+phaseStopped:"Transfer paused",
+phaseReady:"Transfer complete; ready to apply",
+phaseUnknown:"Status unknown",
+
 docTitle:'Smart Breaker \u2014 Firmware Update',fwTitle:'Firmware Update',loginRequired:'Login required',username:'Username',password:'Password',loginBtn:'Login',
-mainH1:'RFWU \u2014 Firmware Update',fwFile:'Firmware File',resumeAvail:'Resume available:',resumeHint:'Load the same .efw file to continue from where it stopped.',
-dzHint:'Click or drag a .efw file here',actions:'Actions',checkStatus:'Check Status',startResume:'Start / Resume',stop:'Stop',abort:'Abort',
-forceRestart:'Force restart',applyFw:'Apply Firmware',rebootDevice:'Reboot Device',progress:'Progress',log:'Log',clear:'Clear',
+mainH1:"Firmware update",fwFile:'Firmware File',resumeAvail:'Resume available:',resumeHint:'Load the same .efw file to continue from where it stopped.',
+dzHint:'Click or drag a .efw file here',actions:'Actions',checkStatus:'Check Status',startResume:'Start / Resume',stop:"Pause",abort:'Abort',
+forceRestart:"Restart transfer from beginning",applyFw:'Apply Firmware',rebootDevice:'Reboot Device',progress:'Progress',log:"Technical transfer log",clear:"Clear screen",
 authRequired:'Auth required',enterCred:'Enter credentials',loginFailed:'Login failed',invalidCred:'Invalid credentials',connError:'Connection error',
 onlyEfw:'Only .efw files accepted',elapsed:'Elapsed: ',etaLbl:'ETA: ',chunksTpl:'{n} chunks   {m} errors',
-mReady:'Transfer complete ({v} bytes). Ready to apply \u2014 click Apply Firmware.',mSession:'Session found: {v}',mUploaded:'already uploaded',mConnected:'Connected. No active session.',
-mStatusFail:'Status check failed: ',mFileMismatch:'File ID mismatch with server session \u2014 enable Force restart',mFileMatch:'File matches server session \u2014 will resume',mQuerying:'Querying status...',
+mReady:"Transfer complete ({v} bytes). Firmware is not installed yet. Select Apply firmware to install it.",mSession:'Session found: {v}',mUploaded:'already uploaded',mConnected:'Connected. No active session.',
+mStatusFail:'Status check failed: ',mFileMismatch:"The file differs from the stored transfer. Select Restart transfer from beginning to send the selected file.",mFileMatch:'File matches server session \u2014 will resume',mQuerying:'Querying status...',
 stReady:'Status: READY (transfer complete, image NOT applied)',stActive:'Status: ACTIVE',stInactive:'Status: INACTIVE (no session)',
 lblTotal:'  Total:    ',lblReceived:'  Received: ',lblFileId:'  File ID:  ',lblFile:'  File:     ',mMatch:'MATCH (same file loaded)',mMismatch:'MISMATCH (different file)',mStatusQueryFail:'Status query failed: ',
 mInitFail:'Init failed: ',mInitRej:'Init rejected: ',mResuming:'Resuming from {a} / {b} bytes  ({p}%)',mNewTransfer:'Starting new transfer  ({v})...',
-mStopped:'Transfer stopped. MCU session preserved \u2014 click Start to resume.',mFailAt:'Transfer failed at offset {v}. Session preserved.',mComplete:'Transfer complete!',
+mStopped:"Transfer paused. Its progress is preserved; select Start / Resume to continue.",mFailAt:'Transfer failed at offset {v}. Session preserved.',mComplete:'Transfer complete!',
 mFinishRej:'Finish rejected: ',mFinishFail:'Finish failed: ',mStopReq:'Stop requested \u2014 pausing after current chunk...',
 mAbortBusy:'Abort \u2014 transfer will stop. Session cleared on next Start.',mAbortIdle:'Abort \u2014 MCU session will be cleared on next Start.',
-cAbort:'Abort transfer?\nThe MCU session will be cleared on the next Start.',cReboot:'Reboot device?',mRebootSent:'Reboot command sent. Reconnect after ~30 s.',
-cApply:'Apply downloaded firmware?\nDevice will reboot into bootloader update mode.',mApplyOk:'Apply command accepted. Device rebooting into update mode...',
+cAbort:'Abort transfer?\nThe MCU session will be cleared on the next Start.',cReboot:"The device will restart. Web and communication connections may be interrupted. Continue?",mRebootSent:"Restart command accepted. Communication connections may be interrupted.",
+cApply:"Apply the transferred firmware? The device will enter bootloader update mode and communication connections may be interrupted.",mApplyOk:'Apply command accepted. Device rebooting into update mode...',
 mApplyRej:'Apply rejected: ',mApplyFail:'Apply failed: ',unknownErr:'unknown error',serverErr:'server error'
 },
 tr:{
+rebootUnknown:"Yeniden başlatma isteğinin kabul edildiği doğrulanamadı. Yinelemeden önce yeniden bağlanıp cihaz durumunu kontrol edin.",
+rebootRejected:"Cihaz yeniden başlatma isteğini reddetti. Teknik günlüğü kontrol edin.",
+forceHint:"Kayıtlı aktarım ilerlemesini kullanmaz; seçilen dosyayı baştan gönderir. Bu seçenek cihazı yeniden başlatmaz.",
+loginInvalid:"Geçersiz kullanıcı adı veya şifre",
+loginWait:"Çok fazla giriş denemesi. Yeniden denemeden önce bekleyin.",
+phaseIdle:"Dosya seçimi bekleniyor",
+phaseChecking:"Durum sorgulanıyor",
+phaseHello:"Aktarım başlatılıyor",
+phaseData:"Aktarılıyor",
+phaseResumed:"Aktarıma devam ediliyor",
+phaseFinish:"Aktarım doğrulanıyor",
+phaseDone:"Aktarım tamamlandı; yazılım uygulanmadı",
+phaseError:"İşlem başarısız",
+phaseStopped:"Aktarım duraklatıldı",
+phaseReady:"Aktarım tamamlandı; uygulamaya hazır",
+phaseUnknown:"Durum bilinmiyor",
+
 docTitle:'Akıllı Ayırıcı \u2014 Yazılım Güncelleme',fwTitle:'Yazılım Güncelleme',loginRequired:'Giriş gerekli',username:'Kullanıcı Adı',password:'Şifre',loginBtn:'Giriş',
-mainH1:'RFWU \u2014 Yazılım Güncelleme',fwFile:'Yazılım Dosyası',resumeAvail:'Devam edilebilir:',resumeHint:'Kaldığı yerden devam etmek için aynı .efw dosyasını yükleyin.',
-dzHint:'.efw dosyasını buraya tıklayarak veya sürükleyerek seçin',actions:'İşlemler',checkStatus:'Durumu Kontrol Et',startResume:'Başlat / Devam',stop:'Durdur',abort:'İptal Et',
-forceRestart:'Zorla yeniden başlat',applyFw:'Yazılımı Uygula',rebootDevice:'Cihazı Yeniden Başlat',progress:'İlerleme',log:'Günlük',clear:'Temizle',
+mainH1:"Yazılım güncelleme",fwFile:'Yazılım Dosyası',resumeAvail:'Devam edilebilir:',resumeHint:'Kaldığı yerden devam etmek için aynı .efw dosyasını yükleyin.',
+dzHint:'.efw dosyasını buraya tıklayarak veya sürükleyerek seçin',actions:'İşlemler',checkStatus:'Durumu Kontrol Et',startResume:'Başlat / Devam',stop:"Duraklat",abort:'İptal Et',
+forceRestart:"Aktarımı baştan başlat",applyFw:'Yazılımı Uygula',rebootDevice:'Cihazı Yeniden Başlat',progress:'İlerleme',log:"Teknik aktarım günlüğü",clear:"Ekranı temizle",
 authRequired:'Kimlik doğrulaması gerekli',enterCred:'Kullanıcı adı ve şifre girin',loginFailed:'Giriş başarısız',invalidCred:'Geçersiz kullanıcı adı veya şifre',connError:'Bağlantı hatası',
 onlyEfw:'Yalnızca .efw dosyaları kabul edilir',elapsed:'Geçen süre: ',etaLbl:'Kalan: ',chunksTpl:'{n} parça   {m} hata',
-mReady:'Aktarım tamamlandı ({v} bayt). Uygulamaya hazır \u2014 Yazılımı Uygula düğmesine basın.',mSession:'Oturum bulundu: {v}',mUploaded:'zaten yüklendi',mConnected:'Bağlantı kuruldu. Etkin oturum yok.',
-mStatusFail:'Durum sorgusu başarısız: ',mFileMismatch:'Dosya kimliği sunucu oturumuyla uyuşmuyor \u2014 Zorla yeniden başlat seçeneğini etkinleştirin',mFileMatch:'Dosya sunucu oturumuyla eşleşiyor \u2014 devam edilecek',mQuerying:'Durum sorgulanıyor...',
+mReady:"Aktarım tamamlandı ({v} bayt). Yazılım henüz kurulmadı. Kurulum için Yazılımı uygula’yı seçin.",mSession:'Oturum bulundu: {v}',mUploaded:'zaten yüklendi',mConnected:'Bağlantı kuruldu. Etkin oturum yok.',
+mStatusFail:'Durum sorgusu başarısız: ',mFileMismatch:"Dosya kayıtlı aktarımla eşleşmiyor. Seçilen dosyayı göndermek için Aktarımı baştan başlat’ı seçin.",mFileMatch:'Dosya sunucu oturumuyla eşleşiyor \u2014 devam edilecek',mQuerying:'Durum sorgulanıyor...',
 stReady:'Durum: HAZIR (aktarım tamam, yazılım uygulanmadı)',stActive:'Durum: ETKİN',stInactive:'Durum: ETKİN DEĞİL (oturum yok)',
 lblTotal:'  Toplam:   ',lblReceived:'  Alınan:   ',lblFileId:'  Dosya No: ',lblFile:'  Dosya:    ',mMatch:'EŞLEŞTİ (aynı dosya yüklü)',mMismatch:'EŞLEŞMEDİ (farklı dosya)',mStatusQueryFail:'Durum sorgusu başarısız: ',
 mInitFail:'Başlatma başarısız: ',mInitRej:'Başlatma reddedildi: ',mResuming:'Devam ediliyor: {a} / {b} bayt  (%{p})',mNewTransfer:'Yeni aktarım başlatılıyor  ({v})...',
-mStopped:'Aktarım durduruldu. MCU oturumu korundu \u2014 devam etmek için Başlat düğmesine basın.',mFailAt:'Aktarım {v}. baytta başarısız oldu. Oturum korundu.',mComplete:'Aktarım tamamlandı!',
+mStopped:"Aktarım duraklatıldı. İlerleme korundu; sürdürmek için Başlat / Devam’ı seçin.",mFailAt:'Aktarım {v}. baytta başarısız oldu. Oturum korundu.',mComplete:'Aktarım tamamlandı!',
 mFinishRej:'Bitirme reddedildi: ',mFinishFail:'Bitirme başarısız: ',mStopReq:'Durdurma istendi \u2014 geçerli parçadan sonra duraklatılıyor...',
 mAbortBusy:'İptal \u2014 aktarım duracak. Oturum sonraki Başlat komutunda temizlenecek.',mAbortIdle:'İptal \u2014 MCU oturumu sonraki Başlat komutunda temizlenecek.',
-cAbort:'Aktarım iptal edilsin mi?\nMCU oturumu sonraki Başlat komutunda temizlenecek.',cReboot:'Cihaz yeniden başlatılsın mı?',mRebootSent:'Yeniden başlatma komutu gönderildi. ~30 s sonra yeniden bağlanın.',
-cApply:'İndirilen yazılım uygulansın mı?\nCihaz önyükleyici güncelleme kipinde yeniden başlayacak.',mApplyOk:'Uygulama komutu alındı. Cihaz güncelleme kipinde yeniden başlatılıyor...',
+cAbort:'Aktarım iptal edilsin mi?\nMCU oturumu sonraki Başlat komutunda temizlenecek.',cReboot:"Cihaz yeniden başlatılacak. Web ve haberleşme bağlantıları kesilebilir. Devam edilsin mi?",mRebootSent:"Yeniden başlatma komutu kabul edildi. Haberleşme bağlantıları kesilebilir.",
+cApply:"Aktarılan yazılım uygulansın mı? Cihaz önyükleyici güncelleme moduna geçecek ve haberleşme bağlantıları kesilebilir.",mApplyOk:'Uygulama komutu alındı. Cihaz güncelleme kipinde yeniden başlatılıyor...',
 mApplyRej:'Uygulama reddedildi: ',mApplyFail:'Uygulama başarısız: ',unknownErr:'bilinmeyen hata',serverErr:'sunucu hatası'
 }};
 let LNG=(()=>{try{const l=localStorage.getItem('tsb23lang');return(l==='en'||l==='tr')?l:'tr'}catch(e){return 'tr'}})();
@@ -166,6 +202,7 @@ function setLang(l){
   document.getElementById('langTr').classList.toggle('active',l==='tr');
   document.getElementById('langEn').classList.toggle('active',l==='en');
   if(!busy)document.title=t('docTitle');
+  const current=document.getElementById('phase')?.dataset.phase;if(current)setPhase(current);
   if(document.getElementById('dp')&&document.getElementById('dp').dataset.touched!=='1')
     document.getElementById('dp').textContent=t('dzHint');
 }
@@ -222,6 +259,7 @@ function log(msg,cls){
   while(lg.children.length>400) lg.removeChild(lg.firstChild);
 }
 
+function showActionResult(message,kind){const result=document.getElementById('actionResult');result.textContent=message;result.className='sec '+kind;log(message,kind)}
 function clearLog(){document.getElementById('lg').innerHTML='';}
 
 const PHASE_CLR={
@@ -231,9 +269,10 @@ const PHASE_CLR={
 };
 function setPhase(p){
   const el=document.getElementById('phase');
-  el.textContent='\u25cf '+p;
+  const labels={IDLE:'phaseIdle',CHECKING:'phaseChecking',HELLO:'phaseHello',DATA:'phaseData',RESUMED:'phaseResumed',FINISH:'phaseFinish',DONE:'phaseDone',ERROR:'phaseError',STOPPED:'phaseStopped',READY:'phaseReady'};
+  el.dataset.phase=p;el.textContent='\u25cf '+t(labels[p]||'phaseUnknown');
   el.style.color=PHASE_CLR[p]||'#64748b';
-  if(busy) document.title='RFWU \u2014 '+p;
+  if(busy) document.title=t('fwTitle')+' — '+el.textContent;
   else document.title=t('docTitle');
 }
 
@@ -321,7 +360,7 @@ async function doLogin(){
     if(!r.ok&&r.status!==401){err.textContent=t('loginFailed');return;}
     const d=await r.json();
     if(d.success&&d.token){s_token=d.token;sessionStorage.setItem('st',d.token);showMain();await init();}
-    else err.textContent=d.error||t('invalidCred');
+    else err.textContent=d.error==='Invalid credentials'?t('loginInvalid'):d.error==='Too many attempts, try again later'?t('loginWait'):d.error||t('invalidCred');
   }catch(e){err.textContent=t('connError');}
 }
 
@@ -545,10 +584,14 @@ async function doAbort(){
 }
 
 async function doReboot(){
-  if(!confirm(t('cReboot'))) return;
+  if(!confirm(t('cReboot')))return;
   log('TX  REBOOT');
-  try{await apiFetch('/rb',{method:'POST'});}catch(e){}
-  log(t('mRebootSent'),'done');
+  try{
+    const response=await apiFetch('/rb',{method:'POST'});
+    const reply=await response.json();
+    if(reply.status==='ok')showActionResult(t('mRebootSent'),'done');
+    else showActionResult(t('rebootRejected')+(reply.error?' ('+reply.error+')':''),'err');
+  }catch(error){showActionResult(t('rebootUnknown'),'warn')}
 }
 
 async function doApply(){
@@ -558,11 +601,11 @@ async function doApply(){
     const r=await apiFetch('/fw_apply',{method:'POST'});
     const d=await r.json();
     if(d.status==='ok'){
-      log(t('mApplyOk'),'done');
+      showActionResult(t('mApplyOk'),'done');
     }else{
-      log(t('mApplyRej')+(d.error||t('unknownErr')),'err');
+      showActionResult(t('mApplyRej')+(d.error||t('unknownErr')),'err');
     }
-  }catch(e){log(t('mApplyFail')+e.message,'err');}
+  }catch(e){showActionResult(t('mApplyFail')+e.message,'err');}
 }
 
 /* ── Startup ───────────────────────────────────────────────── */
