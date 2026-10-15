@@ -3,7 +3,7 @@
    <FileSchema r="0" c="1"/>
    <Version major="13" minor="2" patch="1" build="2558"/>
    <dpi>96</dpi>
-   <WP left="897" right="1248" top="2" bottom="649" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
+   <WP left="625" right="887" top="308" bottom="759" ShowCmd="1" MaxPosX="-1" MaxPosY="-1" MinPosX="-1" MinPosY="-1"/>
    <ScanRate>1000</ScanRate>
    <SlaveID>23</SlaveID>
    <Enable>1</Enable>
@@ -16,8 +16,8 @@
    <ColCount>2</ColCount>
    <RowCount>17</RowCount>
    <ColumnWidth>
-      <CW>1620</CW>
-      <CW>1230</CW>
+      <CW>880</CW>
+      <CW>670</CW>
    </ColumnWidth>
    <RowHight>
       <RH>200</RH>
@@ -36,8 +36,8 @@
       <RH>200</RH>
       <RH>200</RH>
       <RH>200</RH>
-            <RH>200</RH>
-</RowHight>
+      <RH>200</RH>
+   </RowHight>
    <ScrollPosV>0</ScrollPosV>
    <ScrollPosH>0</ScrollPosH>
    <FocusRow>15</FocusRow>
@@ -79,60 +79,60 @@
       <Quantity>17</Quantity>
       <EnronMode>0</EnronMode>
       <Formats>
-         <F f="1" v="30"/>
-         <F f="1" v="14"/>
-         <F f="1" v="17"/>
-         <F f="1" v="1"/>
-         <F f="1" v="8"/>
+         <F f="1" v="21"/>
+         <F f="1" v="57"/>
+         <F f="1" v="15"/>
+         <F f="1" v="15"/>
+         <F f="1" v="10"/>
          <F f="1" v="2026"/>
-         <F f="17" v="1785604470"/>
+         <F f="17" v="1792079841"/>
          <F f="16" v="--"/>
-         <F f="1" v="1"/>
-         <F f="2" v="0x5500"/>
-         <F f="0" v="27"/>
-         <F f="1" v="4734"/>
-         <F f="1" v="3259"/>
-         <F f="1" v="3782"/>
-         <F f="17" v="110710"/>
+         <F f="1" v="39"/>
+         <F f="2" v="0x000C"/>
+         <F f="0" v="28"/>
+         <F f="1" v="4464"/>
+         <F f="1" v="3310"/>
+         <F f="1" v="3843"/>
+         <F f="17" v="2392798"/>
          <F f="16" v="--"/>
-               <F f="1" v="0"/>
-</Formats>
+         <F f="1" v="0"/>
+      </Formats>
       <Bytes>
-         <B>30</B>
+         <B>21</B>
          <B>0</B>
-         <B>14</B>
+         <B>57</B>
          <B>0</B>
-         <B>17</B>
+         <B>15</B>
          <B>0</B>
-         <B>1</B>
+         <B>15</B>
          <B>0</B>
-         <B>8</B>
+         <B>10</B>
          <B>0</B>
          <B>234</B>
          <B>7</B>
-         <B>110</B>
+         <B>208</B>
          <B>106</B>
-         <B>118</B>
-         <B>41</B>
-         <B>1</B>
+         <B>225</B>
+         <B>247</B>
+         <B>39</B>
          <B>0</B>
-         <B>0</B>
-         <B>85</B>
-         <B>27</B>
-         <B>0</B>
-         <B>126</B>
-         <B>18</B>
-         <B>187</B>
          <B>12</B>
-         <B>198</B>
-         <B>14</B>
-         <B>1</B>
          <B>0</B>
-         <B>118</B>
-         <B>176</B>
-               <B>0</B>
+         <B>28</B>
          <B>0</B>
-</Bytes>
+         <B>112</B>
+         <B>17</B>
+         <B>238</B>
+         <B>12</B>
+         <B>3</B>
+         <B>15</B>
+         <B>36</B>
+         <B>0</B>
+         <B>222</B>
+         <B>130</B>
+         <B>0</B>
+         <B>0</B>
+      </Bytes>
       <CellData>
          <Cell idx="0">
             <Colors/>
@@ -218,13 +218,13 @@
             <Name>UpTime (msec)</Name>
             <Font used="false"/>
          </Cell>
-               <Cell idx="16">
+         <Cell idx="16">
             <Colors/>
             <Compare compare1="0" compare2="0" conditional1="0" conditional2="0" cnc="0"/>
             <Name>DInput States</Name>
             <Font used="false"/>
          </Cell>
-</CellData>
+      </CellData>
       <Scales/>
       <ValueNames/>
       <ChartSeries/>
