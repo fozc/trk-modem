@@ -195,7 +195,7 @@ NVRAM şeması ve kalıcı alan genişlikleri değiştirilmemiştir.
 
 | İstek / yol | Aktif davranış |
 |---|---|
-| C_IC_NA_1, QOI=20 | Son arıza akımı/süresi, anlık akım; enerji, nominal akım ve RF durumu |
+| C_IC_NA_1, QOI=20 | Anlık akım: M_ME_NC_1 (13); enerji, yük akımı, RF ve trip-failed durumları: M_SP_NA_1 (1); zaman etiketsiz, COT=20 |
 | QOI=21, grup 1 | Son arıza akımı/süresi ve anlık akım |
 | QOI=22, grup 2 | Enerji, nominal akım ve RF durumu |
 | QOI=23, grup 3 | Geçici arıza kayıtları; aktif fiderler, bütün fazlar |
@@ -206,6 +206,12 @@ NVRAM şeması ve kalıcı alan genişlikleri değiştirilmemiştir.
 Grup 3/4 gönderimi kuyruk veya pencere dolarsa kaldığı yerden devam eder.
 Bağlantı kapanırsa süreç sonlandırılır. Bu süreçler replay ile mevcut
 semafor üzerinden sıraya girer.
+
+15.10.2026 kullanıcı kararıyla GI 20 veri cevapları zaman etiketsiz
+gönderilmelidir. IOA, değer ve kalite alanları korunmalıdır. Float nesnesi
+8 bayt, tek bit durum nesnesi 4 bayttır (IOA dahil, SQ=0).
+ACT_CON → veri → ACT_TERM sırası korunur. Grup 1/2 sorguları, spontane
+bildirimler ve arıza geçmişinin zaman etiketleri bu karardan etkilenmez.
 
 Replay kayıt geçmişinin taban adreslerini kullanmaz; yukarıdaki beş son
 olay noktasını kullanır. Bir fider sonradan kapatılmış olsa da kayıtlı
