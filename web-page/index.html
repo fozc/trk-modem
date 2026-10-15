@@ -59,6 +59,7 @@ const FEEDER_COUNT=7;    // store/array length (backend MAX_POWER_LINE_COUNT)
 const FEEDER_TABS=4;     // visible feeder tabs, first stage - single switch point for ALL pages
 let s_sessionToken=null,s_role=null,loading=false,curId=null;
 const pageCache={};
+const pageReadAt={},pageSaved={};
 const dirtyPages={};
 const rfFaultCache={};
 let faultFeeder=0,terminalBusy=false,sessionTimeout=null;
@@ -73,34 +74,85 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 /* ---------------- I18N ---------------- */
 const I18N={
   en:{
+    errPin:"Enter 0 or a four-digit numeric PIN (1000–9999).",
+    timeUnavailable:"Time unavailable",
+    dataUnavailable:"Data unavailable",
+    loginInvalid:"Invalid username or password",
+    loginWait:"Too many attempts. Wait before trying again.",
+    stSaved:"Save accepted",
+    lastRead:"Last read (browser time, UTC)",
+    notAvailable:"Measurement unavailable",
+    notRead:"Not read yet",
+    readDiscard:"Reading again will discard unsaved changes. Read from device?",
+    discardRead:"Discard and read",
+    leavePage:"Leave page",
+    iecUseFeeder:"Use in IEC104 configuration",
+    iecTimingHelp:"T0: connection establishment; T1: acknowledgement wait; T2: delayed acknowledgement; T3: idle connection test. T2 must be less than T1. K: maximum unacknowledged sends; W: received-frame acknowledgement threshold.",
+    iecSboHelp:"SBO: select before operate. The timeout is used when SBO is enabled. A periodic interval of 0 must not be interpreted as disabled.",
+    errT2:"T2 must be less than T1.",
+    actualIoa:"Actual IOA range",
+    rfRowHelp:"The row number is a configuration slot, not the assigned feeder number. Zone changes require MH restart; Save does not restart MH automatically.",
+    rfCancelRequested:"Cancellation requested. Refresh status to check the result.",
+    rfMaintenance:"Maintenance required. Check the phase device and its communication.",
+    present:"Present",
+    absent:"Absent",
+    alarmActive:"Active",
+    alarmInactive:"Inactive",
+    ackRequired:"Required",
+    ackNotRequired:"Not required",
+    rfCurrentData:"Up to date",
+    rfNoCurrentData:"Not up to date",
+    qualityHelp:"For phase quality, bits 0–6 mean: feeder defined, sample received, fresh connection, valid current, valid trip voltage, valid harvest voltage, valid timestamp. Feeder quality uses bits 0–1 only. A zero measurement without the corresponding quality bit is not a valid zero.",
+    maskHelp:"Masks contain independent bits; a numeric mask is not an alarm count. See the register map for bit definitions.",
+    zeroOff:"0 disables this timeout. Active web sessions are exempt from the web idle timeout.",
+    resetHelp:"0 disables periodic restart. Other values are hours.",
+    zoneHelp:"Example: enter 3 for UTC+3. Dates on this page are displayed in UTC.",
+    networkHelp:"Save stores the settings. Check communication after changing network settings; a save response does not verify reconnection.",
+    pinHelp:"SIM PIN is stored numerically: 0 or 1000–9999. Leading zeroes cannot be represented.",
+    showPassword:"Show password",
+    maxChars:"Up to {n} characters",
+    consoleHelp:"Commands are sent directly to the device; their effect depends on the command. Clear screen does not erase device logs.",
+    commandUnknown:"No response received within the waiting period. The command result could not be verified.",
+    connectionUnknown:"Communication failed. If a write was sent, its result may be unknown; read the configuration or status before repeating it.",
+    httpBusy:"The request conflicts with the current operation. Refresh status before retrying.",
+    httpInvalid:"The device rejected the input. Check the marked fields and technical details.",
+    httpServer:"The device could not complete the request. Verify the current configuration or status.",
+    httpAuth:"Sign in again to continue.",
+    btnReadRecords:"Read records",
+    faultHelp:"Records below are returned by the device. Record timestamps and durations are shown as stored.",
+    modbusNoError:"No exception recorded",
+    exception1:"Illegal function",
+    exception2:"Illegal data address",
+    exception3:"Illegal data value",
+
     docTitle:"TSB23 Device Configuration",
-    brand:"Device Config",
+    brand:"TSB23 Configuration",
     loginTitle:"Device Login",
     username:"Username",
     password:"Password",
     loginBtn:"Login",
     logout:"Logout",
-    hint:"Data is read only when requested",
+    hint:"Automatic refresh is off",
     webUi:"Web UI",
     mIec:"IEC 104",
     mModbus:"Modbus",
     mRfCfg:"RF Config",
     mRfMon:"RF Monitor",
-    mBoard:"Board Status",
+    mBoard:"Device status",
     mFaults:"Fault Records",
     mLogs:"System Logs",
-    mDevice:"Device",
-    mTerm:"Console",
+    mDevice:"Device management",
+    mTerm:"Service console",
     mFwUpd:"Firmware Update",
-    btnRead:"Read",
+    btnRead:"Read from device",
     btnSave:"Save",
-    btnRefresh:"Refresh",
+    btnRefresh:"Refresh status",
     btnNext:"Next Records",
-    btnLogRestart:"Start Over",
+    btnLogRestart:"Read from first record",
     btnSend:"Send",
-    btnClear:"Clear",
+    btnClear:"Clear screen",
     stNotRead:"Not read yet",
-    stLoaded:"Loaded from device",
+    stLoaded:"Read from device",
     stDirty:"Unsaved changes",
     confirmT:"Confirm",
     cancel:"Cancel",
@@ -110,7 +162,7 @@ const I18N={
     pressRead:"Press <strong>Read</strong> to load current values from the device.",
     feedTpl:"Feeder {n}",
     phase:"Phase ",
-    useFeeder:"Use feeder",
+    useFeeder:"Include in RF configuration",
     tAuthReq:"Authentication required",
     tConnErr:"Connection error, please retry",
     tSessExp:"Session expired",
@@ -129,8 +181,8 @@ const I18N={
     tReadFailed:"Read failed",
     tSaveFailed:"Save failed",
     tFailed:"Failed",
-    tLeaveDirty:"There are unsaved changes on this page. Leave and discard them?",
-    tRebootAsk:"Are you sure you want to reboot the device?",
+    tLeaveDirty:"Unsaved changes will be discarded. Leave this page?",
+    tRebootAsk:"The device will restart. Web and communication connections may be interrupted. Continue?",
     tRebootOk:"Reboot command accepted",
     tFeedRead:"Feeder {n} read successfully",
     tFaultsLoaded:"Feeder {n}: {m} fault records loaded",
@@ -139,19 +191,19 @@ const I18N={
     tRefreshErr:"Refresh error: ",
     tNoData:"No data",
     tTargetNotFound:"Target field not found",
-    tEuiAssigned:"EUI-64 assigned to Feeder {n} phase {ph}",
+    tEuiAssigned:"Device ID added to the form for row {n}, {ph}. Select Save to send it to the device.",
     iecTitle:"IEC104 Configuration",
     iecSub:"IEC 60870-5-104 communication configuration",
     genSettings:"General Settings",
     iecGenSub:"IEC 60870-5-104 communication parameters",
     fTempBase:"Temporary Fault Base IOA",
     fPermBase:"Permanent Fault Base IOA",
-    faultAddressNote:"Each fault base uses 180 addresses, with feeder index (0..6) × 180 added. See the IEC104 address guide.",
+    faultAddressNote:"Each feeder uses 180 IOAs per fault list. The actual range below includes the row offset.",
     errAddressConflict:"Address overlaps with {field}",
     errRegisterConflict:"Register {address} is also used by {field}",
     errAddressRange:"Address range exceeds {max}",
-    fPort:"Port",
-    fPeriodic:"Periodic Send (s)",
+    fPort:"TCP port",
+    fPeriodic:"Periodic send interval (s)",
     fOrigAddr:"Originator Address",
     fCommonAddr:"Common Address",
     fSboTo:"SBO Timeout (s)",
@@ -159,7 +211,7 @@ const I18N={
     fAkuIOA:"Battery Warning IOA",
     fResetIOA:"Modem Reboot IOA",
     feeders:"Feeders",
-    iecFeedSub:"Select a feeder to edit its IOA addresses",
+    iecFeedSub:"Configure IOAs for the selected feeder. This selection does not operate the breaker.",
     catAnlik:"Load Current",
     catEnerji:"Energy Present",
     catLoad:"Load Current Present",
@@ -170,13 +222,13 @@ const I18N={
     modGenSub:"Modbus RTU parameters",
     modMapT:"Register addresses",
     modMapSub:"Read-only address reference",
-    modMapNote:"PDU addresses start at 0. Read: FC03. 32-bit values use the high word first (ABCD). Times are Unix seconds.",
+    modMapNote:"PDU addresses start at 0. Read: FC03. 32-bit values use the high word first (ABCD). Unix timestamps use seconds; see Unit / value for other fields.",
     modMapBlock:"Data group",
     modMapPhase:"Phase",
     modMapFeeder:"Feeder",
     modMapView:"Data set",
     modMapRecord:"Record number",
-    modMapLive:"Live data",
+    modMapLive:"Measurement and status addresses",
     modMapTemp:"Temporary faults",
     modMapPerm:"Permanent faults",
     modMapSystem:"System",
@@ -192,7 +244,7 @@ const I18N={
     modMapAccess:"Access",
     modMapRead:"Read only",
     modMapWrite:"Command · FC06 = 1",
-    modMapUnavailable:"Register addresses could not be read from the device. Refresh the page.",
+    modMapUnavailable:"Register addresses could not be read. Select Read from device to retry.",
     modMapQuality:"Use the quality register to check sample availability, freshness and value validity. Trip-failure alarms are independent of live samples.",
     modMapRecordNote:"Record 1 is the newest. Check the record count before using a slot.",
     mb_kalite:"Data quality",
@@ -253,14 +305,14 @@ const I18N={
     mb_board_temperature:"Board temperature",
     mb_capacity_ah:"Battery capacity",
     mb_charge_rate_permille:"Charge rate",
-    mb_last_gasp_count:"Last-gasp counter",
+    mb_last_gasp_count:"Last-gasp notification counter",
     mb_active_alarms_hi:"Active alarms — high word",
     mb_active_alarms_lo:"Active alarms — low word",
     mb_soc_flags:"SOC / capacity flags",
     mb_alarm_seq:"Alarm sequence",
     mb_suppressed:"Suppressed alarm count",
-    mb_has_last_gasp:"Last-gasp received",
-    mb_last_gasp_cancelled:"Last-gasp cancelled",
+    mb_has_last_gasp:"Last-gasp notification received",
+    mb_last_gasp_cancelled:"Last-gasp notification cancelled",
     mb_last_gasp_session:"Last-gasp session",
     mb_last_gasp_cause:"Last-gasp cause",
     mb_summary_age_ms_hi:"Telemetry age — high word",
@@ -328,17 +380,17 @@ const I18N={
     mb_perm_count:"Permanent fault record count",
     fDevId:"Device ID",
     fBaud:"Baud Rate",
-    fLastErr:"Last Error Code",
-    fLastErrT:"Last Error Time",
+    fLastErr:"Last Modbus exception",
+    fLastErrT:"Last Modbus error time (UTC)",
     rfTitle:"RF Configuration",
     rfSub:"Feeder configuration with L1 / L2 / L3 phase settings",
     rfCard:"RF Feeders Configuration",
-    rfCardSub:"Feeder IDs 1–4 are configurable. Feeder ID 0 means unprovisioned (device stays out of RF coordination).",
-    rfProv:"Feeder ID is 0: device is unprovisioned and does not join RF coordination. Assign a feeder ID (1–4) to commission it.",
+    rfCardSub:"Rows are storage slots. Feeder number identifies the RF feeder (1–4); 0 means no feeder number is assigned.",
+    rfProv:"No feeder number is assigned. Enter 1–4 to include this row in RF configuration.",
     fFeedId:"Feeder ID",
     fZoneId:"Zone ID",
     fWorkMode:"Working Mode",
-    modeThreshold:"Threshold",
+    modeThreshold:"Current threshold",
     fFaultCount:"Fault Cycle Count",
     fVerify:"Dead-Line Verify Time (ms)",
     fReset:"Cycle Reset Time (s)",
@@ -354,18 +406,18 @@ const I18N={
     thAssign:"Assign to",
     discNone:"No pending devices. Press Refresh after the hub discovers new devices.",
     errHex:"16 hex characters or empty",
-    errFid0:"0 = unprovisioned; set 1–4 or uncheck Use",
+    errFid0:"Enter feeder number 1–4, or exclude this row from RF configuration.",
     errDupFid:"Duplicate Feeder ID",
     errIaMin:"Must be ≥ 1.2 x Nominal ({v} A)",
     rfmonCard:"RF Feeders Status",
-    rfmonSub:"Read one feeder at a time to minimize GSM traffic",
+    rfmonSub:"Read the required feeder. Displayed values are snapshots; automatic refresh is off.",
     monNoData:"No data read yet.",
     thParam:"Parameter",
     monPhCur:"Phase Current",
     monActFault:"Active Fault Counter",
     boardSub:"On-demand device status read",
     boardPress:"Press <strong>Read</strong> to read current board status.",
-    gGsm:"GSM Information",
+    gGsm:"Mobile network",
     gSolar:"Solar Panel",
     gBattery:"Battery",
     gRails:"Power Rails",
@@ -405,21 +457,21 @@ const I18N={
     permTpl:"Permanent ({n})",
     noRecords:"No records",
     logsSub:"Records are read in pages to limit GSM traffic.",
-    logsPress:"Press Next Records to load logs.",
+    logsPress:"Select Read records to load the first page.",
     devTitle:"Device Management",
     devSub:"Device information and configuration",
     devInfo:"Device Information",
     devInfoSub:"Read-only device information",
     fSerial:"Serial Number",
     fMfg:"Manufacturing Date",
-    fLife:"Life Time (d:h:m:s)",
-    fRun:"Run Time (d:h:m:s)",
+    fLife:"Total operating time (days:hours:min:sec)",
+    fRun:"Time since last start (days:hours:min:sec)",
     fMfw:"Modem Firmware Version",
     fRfw:"RF Firmware Version",
     fFwDate:"Firmware Installation Date",
     fCell:"Cell Info (MCC/MNC/LAC/CI)",
-    fComm:"Commissioning Time",
-    fRtc:"Modem RTC",
+    fComm:"Commissioning time (UTC)",
+    fRtc:"Device clock (UTC)",
     devCfg:"Device Configuration",
     devCfgSub:"Network, SIM and time settings",
     fWebPort:"Web Interface Port",
@@ -429,23 +481,23 @@ const I18N={
     fApnPass:"SIM Card APN Password",
     fNtp:"NTP Server",
     fNtpPort:"NTP Server Port",
-    fTz:"Time Zone (UTC offset)",
-    fModemRst:"Modem Reset Period (h)",
+    fTz:"UTC offset (hours)",
+    fModemRst:"Periodic device restart (hours)",
     fWebFd:"Web First-Data Timeout (s)",
     fWebIdle:"Web Idle Timeout (s)",
     fIecFd:"IEC104 First-Data Timeout (s)",
     fIecIdle:"IEC104 Idle Timeout (s)",
     devActions:"Device Actions",
-    devActionsSub:"Actions are sent immediately.",
+    devActionsSub:"Restart requests may interrupt communication connections.",
     btnReboot:"Reboot Device",
     termPh:"Enter command...",
     errRFQualityOverlap:"Address overlaps RF quality registers 49500–49520.",
     rfStoreLineTpl:"Row {n}",
     rfGroupMHApplied:"Applied report",
     rfApplyTitle:"RF application progress",
-    rfApplyHint:"Save records the desired configuration, updates device assignments and applies settings to complete feeders. MH verification is separate.",
+    rfApplyHint:"Save stores the configuration and updates device assignments. Settings are sent to feeders with all three phase devices assigned. Track verification below.",
     rfGroupId:"Fresh group ID",
-    rfAbort:"Abort",
+    rfAbort:"Cancel application",
     rfGroupRequested:"Request started; refresh the status to follow the result.",
     rfGroupChanged:"Previous settings applied; desired settings have changed.",
     rfGroupIdle:"No application started",
@@ -468,7 +520,7 @@ const I18N={
     rfDeviceMoved:"Move {eui}: feeder {from}/{oldPhase} → feeder {to}/{phase}",
     rfDeviceAdded:"Assign {eui}: feeder {fid}, {phase}",
     rfClearEui:"Clear",
-    rfStageSaved:"Desired configuration saved on RTU",
+    rfStageSaved:"Configuration stored on RTU",
     rfStageInventory:"Device assignments",
     rfStageSettings:"Protection settings",
     rfInventoryReady:"MH inventory verified",
@@ -479,7 +531,7 @@ const I18N={
     rfDetails:"Technical details",
     rfRecoveryPending:"Saved device assignment update is pending",
     rfRecoveryHint:"Resume the saved configuration before editing device assignments. Refresh to check completion.",
-    rfStatusAfterSave:"Desired configuration saved. MH verification is pending; refresh application status.",
+    rfStatusAfterSave:"Configuration saved. Device verification is pending; refresh application status.",
     rfStatusSnapshot:"Last received result; refresh to check current progress.",
     rfGroupMH:"Last MH report",
     rfGroupPrepared:"Prepared",
@@ -497,7 +549,7 @@ const I18N={
     rfBatchNotStarted:"Application could not start",
     rfBatchActive:"In progress",
     iecApplyHint:"Timing and connection settings apply on the next IEC104 connection.",
-    rfStopStart:"Application could not start. Check inventory, assignments, settings and EPOCH wait.",
+    rfStopStart:"Application could not start. Check phase assignments and settings, then refresh the status for the reason.",
     rfStopIds:"No free group ID found.",
     rfStopGroup:"Group failed or its outcome is uncertain. Check the result before starting another operation.",
     rfStopPeer:"Another MH operation is active; its status is being checked.",
@@ -540,34 +592,85 @@ const I18N={
     rfWait_hub_ready:"Waiting for MH readiness"
   },
   tr:{
+    errPin:"0 veya dört basamaklı sayısal PIN girin (1000–9999).",
+    timeUnavailable:"Zaman bilgisi yok",
+    dataUnavailable:"Veri yok",
+    loginInvalid:"Geçersiz kullanıcı adı veya şifre",
+    loginWait:"Çok fazla giriş denemesi. Yeniden denemeden önce bekleyin.",
+    stSaved:"Kaydetme kabul edildi",
+    lastRead:"Son okuma (tarayıcı saati, UTC)",
+    notAvailable:"Ölçüm yok",
+    notRead:"Henüz okunmadı",
+    readDiscard:"Yeniden okuma kaydedilmemiş değişiklikleri silecek. Cihazdan okunsun mu?",
+    discardRead:"Değişiklikleri sil ve oku",
+    leavePage:"Sayfadan ayrıl",
+    iecUseFeeder:"IEC104 yapılandırmasında kullan",
+    iecTimingHelp:"T0: bağlantı kurma; T1: onay bekleme; T2: gecikmeli onay; T3: boşta bağlantı testi. T2, T1’den küçük olmalıdır. K: onaysız gönderim sınırı; W: alınan kareler için onay eşiği.",
+    iecSboHelp:"SBO: komuttan önce seçim (select before operate). Süre, SBO etkin olduğunda kullanılır. Periyodik gönderimde 0 değeri devre dışı olarak yorumlanmamalıdır.",
+    errT2:"T2, T1’den küçük olmalıdır.",
+    actualIoa:"Gerçek IOA aralığı",
+    rfRowHelp:"Satır numarası yapılandırma yuvasıdır; atanan Fider No değildir. Bölge değişikliği MH’nin yeniden başlatılmasını gerektirir; Kaydet MH’yi otomatik yeniden başlatmaz.",
+    rfCancelRequested:"İptal isteği gönderildi. Sonucu kontrol etmek için durumu yenileyin.",
+    rfMaintenance:"Bakım gerekli. Faz cihazını ve haberleşmesini kontrol edin.",
+    present:"Var",
+    absent:"Yok",
+    alarmActive:"Alarm var",
+    alarmInactive:"Alarm yok",
+    ackRequired:"Gerekli",
+    ackNotRequired:"Gerekli değil",
+    rfCurrentData:"Güncel",
+    rfNoCurrentData:"Güncel değil",
+    qualityHelp:"Faz kalitesinde bit 0–6: fider tanımlı, örnek alındı, bağlantı güncel, akım geçerli, açma gerilimi geçerli, enerji toplama gerilimi geçerli, zaman damgası geçerli. Fider kalitesinde yalnız bit 0–1 kullanılır. İlgili kalite biti olmadan sıfır değeri geçerli sıfır ölçüm sayılmaz.",
+    maskHelp:"Maskeler bağımsız bitler içerir; sayısal maske alarm adedi değildir. Bit tanımları için register haritasını kullanın.",
+    zeroOff:"0 bu zaman aşımını kapatır. Etkin web oturumlarında web boşta kalma zaman aşımı uygulanmaz.",
+    resetHelp:"0 periyodik yeniden başlatmayı kapatır. Diğer değerler saat cinsindedir.",
+    zoneHelp:"Örnek: UTC+3 için 3 girin. Bu sayfadaki tarihler UTC gösterilir.",
+    networkHelp:"Kaydet ayarları saklar. Ağ ayarları değiştirildikten sonra haberleşmeyi kontrol edin; kaydetme yanıtı yeniden bağlantının doğrulandığı anlamına gelmez.",
+    pinHelp:"SIM PIN sayısal saklanır: 0 veya 1000–9999. Baştaki sıfırlar temsil edilemez.",
+    showPassword:"Şifreyi göster",
+    maxChars:"En fazla {n} karakter",
+    consoleHelp:"Komutlar doğrudan cihaza gönderilir; etkisi komuta bağlıdır. Ekranı temizle, cihaz günlüklerini silmez.",
+    commandUnknown:"Bekleme süresinde yanıt alınamadı. Komut sonucu doğrulanamadı.",
+    connectionUnknown:"Haberleşme başarısız. Yazma isteği gönderildiyse sonucu belirsiz olabilir; yinelemeden önce yapılandırmayı veya durumu okuyun.",
+    httpBusy:"İstek mevcut işlemle çakışıyor. Yeniden denemeden önce durumu yenileyin.",
+    httpInvalid:"Cihaz girilen değerleri reddetti. İşaretli alanları ve teknik ayrıntıları kontrol edin.",
+    httpServer:"Cihaz isteği tamamlayamadı. Mevcut yapılandırmayı veya durumu kontrol edin.",
+    httpAuth:"Devam etmek için yeniden giriş yapın.",
+    btnReadRecords:"Kayıtları oku",
+    faultHelp:"Aşağıdaki kayıtlar cihazdan alınır. Kayıt zamanları ve süreleri saklandıkları biçimde gösterilir.",
+    modbusNoError:"Kayıtlı hata yok",
+    exception1:"Desteklenmeyen fonksiyon",
+    exception2:"Geçersiz veri adresi",
+    exception3:"Geçersiz veri değeri",
+
     docTitle:"TSB23 Cihaz Yapılandırması",
-    brand:"Cihaz Yapılandırma",
+    brand:"TSB23 Yapılandırma",
     loginTitle:"Cihaz Girişi",
     username:"Kullanıcı Adı",
     password:"Şifre",
     loginBtn:"Giriş",
     logout:"Çıkış",
-    hint:"Veriler yalnızca istendiğinde okunur",
+    hint:"Otomatik yenileme kapalı",
     webUi:"Web Arayüzü",
     mIec:"IEC 104",
     mModbus:"Modbus",
     mRfCfg:"RF Yapılandırma",
     mRfMon:"RF İzleme",
-    mBoard:"Pano Durumu",
+    mBoard:"Cihaz durumu",
     mFaults:"Arıza Kayıtları",
     mLogs:"Sistem Günlükleri",
-    mDevice:"Cihaz",
-    mTerm:"Konsol",
+    mDevice:"Cihaz yönetimi",
+    mTerm:"Servis konsolu",
     mFwUpd:"Yazılım Güncelleme",
-    btnRead:"Oku",
+    btnRead:"Cihazdan oku",
     btnSave:"Kaydet",
-    btnRefresh:"Yenile",
+    btnRefresh:"Durumu yenile",
     btnNext:"Sonraki Kayıtlar",
-    btnLogRestart:"Baştan Yükle",
+    btnLogRestart:"İlk kayıttan oku",
     btnSend:"Gönder",
-    btnClear:"Temizle",
+    btnClear:"Ekranı temizle",
     stNotRead:"Henüz okunmadı",
-    stLoaded:"Cihazdan yüklendi",
+    stLoaded:"Cihazdan okundu",
     stDirty:"Kaydedilmemiş değişiklikler",
     confirmT:"Onay",
     cancel:"İptal",
@@ -577,7 +680,7 @@ const I18N={
     pressRead:"Güncel değerleri cihazdan yüklemek için <strong>Oku</strong> düğmesine basın.",
     feedTpl:"Fider {n}",
     phase:"Faz ",
-    useFeeder:"Fider aktif",
+    useFeeder:"RF yapılandırmasına dahil et",
     tAuthReq:"Kimlik doğrulaması gerekli",
     tConnErr:"Bağlantı hatası, lütfen yeniden deneyin",
     tSessExp:"Oturum süresi doldu",
@@ -596,8 +699,8 @@ const I18N={
     tReadFailed:"Okuma başarısız",
     tSaveFailed:"Kaydetme başarısız",
     tFailed:"Başarısız",
-    tLeaveDirty:"Bu sayfada kaydedilmemiş değişiklikler var. Ayrılıp yok sayılsın mı?",
-    tRebootAsk:"Cihazı yeniden başlatmak istediğinize emin misiniz?",
+    tLeaveDirty:"Kaydedilmemiş değişiklikler silinecek. Sayfadan ayrılsın mı?",
+    tRebootAsk:"Cihaz yeniden başlatılacak. Web ve haberleşme bağlantıları kesilebilir. Devam edilsin mi?",
     tRebootOk:"Yeniden başlatma komutu alındı",
     tFeedRead:"Fider {n} okundu",
     tFaultsLoaded:"Fider {n}: {m} arıza kaydı yüklendi",
@@ -606,19 +709,19 @@ const I18N={
     tRefreshErr:"Yenileme hatası: ",
     tNoData:"Veri yok",
     tTargetNotFound:"Hedef alan bulunamadı",
-    tEuiAssigned:"EUI-64, Fider {n} {ph} fazına atandı",
+    tEuiAssigned:"Cihaz kimliği {n}. satır, {ph} için forma eklendi. Cihaza göndermek için Kaydet’i seçin.",
     iecTitle:"IEC104 Yapılandırması",
     iecSub:"IEC 60870-5-104 haberleşme yapılandırması",
     genSettings:"Genel Ayarlar",
     iecGenSub:"IEC 60870-5-104 haberleşme parametreleri",
     fTempBase:"Geçici Arıza Taban IOA",
     fPermBase:"Kalıcı Arıza Taban IOA",
-    faultAddressNote:"Her arıza tabanı 180 adres kullanır; fider indeksi (0..6) × 180 eklenir. IEC104 adres rehberine bakınız.",
+    faultAddressNote:"Her fider, arıza listesi başına 180 IOA kullanır. Aşağıdaki gerçek aralık satır ofsetini içerir.",
     errAddressConflict:"{field} ile adres çakışıyor",
     errRegisterConflict:"{address} register adresi {field} ile ortak kullanılıyor",
     errAddressRange:"Adres aralığı {max} sınırını aşıyor",
-    fPort:"Port",
-    fPeriodic:"Periyodik Gönderim (s)",
+    fPort:"TCP portu",
+    fPeriodic:"Periyodik gönderim aralığı (s)",
     fOrigAddr:"Gönderici Adresi (Originator)",
     fCommonAddr:"Ortak Adres (CA)",
     fSboTo:"SBO Zaman Aşımı (s)",
@@ -626,7 +729,7 @@ const I18N={
     fAkuIOA:"Akü Uyarısı IOA",
     fResetIOA:"Modem Yeniden Başlatma IOA",
     feeders:"Fiderler",
-    iecFeedSub:"Düzenlenecek fiderin IOA adreslerini seçin",
+    iecFeedSub:"Seçili fiderin IOA adreslerini düzenleyin. Bu seçim ayırıcıyı çalıştırmaz.",
     catAnlik:"Anlık Akım",
     catEnerji:"Enerji Var/Yok",
     catLoad:"Yük Akımı Var/Yok",
@@ -637,13 +740,13 @@ const I18N={
     modGenSub:"Modbus RTU parametreleri",
     modMapT:"Register adresleri",
     modMapSub:"Salt okunur adres listesi",
-    modMapNote:"PDU adresleri 0’dan başlar. Okuma: FC03. 32 bit değerlerde üst word önce gelir (ABCD). Zamanlar Unix saniyesidir.",
+    modMapNote:"PDU adresleri 0’dan başlar. Okuma: FC03. 32 bit değerlerde üst word önce gelir (ABCD). Unix zaman damgaları saniyedir; diğer alanlarda Birim / değer sütununu kullanın.",
     modMapBlock:"Veri grubu",
     modMapPhase:"Faz",
     modMapFeeder:"Fider",
     modMapView:"Veri listesi",
     modMapRecord:"Kayıt no.",
-    modMapLive:"Canlı veriler",
+    modMapLive:"Ölçüm ve durum adresleri",
     modMapTemp:"Geçici arızalar",
     modMapPerm:"Kalıcı arızalar",
     modMapSystem:"Sistem",
@@ -659,7 +762,7 @@ const I18N={
     modMapAccess:"Erişim",
     modMapRead:"Salt okunur",
     modMapWrite:"Komut · FC06 = 1",
-    modMapUnavailable:"Register adresleri cihazdan okunamadı. Sayfayı yenileyin.",
+    modMapUnavailable:"Register adresleri okunamadı. Yeniden denemek için Cihazdan oku’yu seçin.",
     modMapQuality:"Örnek varlığını, tazeliğini ve değer geçerliliğini kalite register’ından kontrol edin. Açma başarısızlığı alarmı canlı örnekten bağımsızdır.",
     modMapRecordNote:"Kayıt 1 en yenidir. Bir kaydı kullanmadan önce kayıt sayısını kontrol edin.",
     mb_kalite:"Veri kalitesi",
@@ -720,16 +823,16 @@ const I18N={
     mb_board_temperature:"Kart sıcaklığı",
     mb_capacity_ah:"Akü kapasitesi",
     mb_charge_rate_permille:"Şarj oranı",
-    mb_last_gasp_count:"Son bildirim sayacı",
+    mb_last_gasp_count:"Last-gasp bildirim sayacı",
     mb_active_alarms_hi:"Aktif alarmlar — üst word",
     mb_active_alarms_lo:"Aktif alarmlar — alt word",
     mb_soc_flags:"SOC / kapasite bitleri",
     mb_alarm_seq:"Alarm sıra numarası",
     mb_suppressed:"Bastırılan alarm sayısı",
-    mb_has_last_gasp:"Son bildirim alındı",
-    mb_last_gasp_cancelled:"Son bildirim iptal edildi",
-    mb_last_gasp_session:"Son bildirim oturumu",
-    mb_last_gasp_cause:"Son bildirim nedeni",
+    mb_has_last_gasp:"Last-gasp bildirimi alındı",
+    mb_last_gasp_cancelled:"Last-gasp bildirimi iptal edildi",
+    mb_last_gasp_session:"Last-gasp oturumu",
+    mb_last_gasp_cause:"Last-gasp nedeni",
     mb_summary_age_ms_hi:"Telemetri yaşı — üst word",
     mb_summary_age_ms_lo:"Telemetri yaşı — alt word",
     mb_supported_summary_version:"Telemetri biçim sürümü",
@@ -795,17 +898,17 @@ const I18N={
     mb_perm_count:"Kalıcı arıza kayıt sayısı",
     fDevId:"Cihaz Adresi (ID)",
     fBaud:"Baud Hızı",
-    fLastErr:"Son Hata Kodu",
-    fLastErrT:"Son Hata Zamanı",
+    fLastErr:"Son Modbus hata kodu",
+    fLastErrT:"Son Modbus hata zamanı (UTC)",
     rfTitle:"RF Yapılandırması",
     rfSub:"L1 / L2 / L3 faz ayarlarıyla fider yapılandırması",
     rfCard:"RF Fider Yapılandırması",
-    rfCardSub:"Fider 1–4 yapılandırılabilir. Fider No 0, provizyonsuz demektir (cihaz RF koordinasyonuna katılmaz).",
-    rfProv:"Fider No 0: cihaz provizyonsuz, RF koordinasyonuna katılmaz. Göreve almak için 1–4 arası bir Fider No atayın.",
+    rfCardSub:"Satırlar yapılandırma yuvalarıdır. Fider No RF fiderini belirtir (1–4); 0, fider numarası atanmadığını gösterir.",
+    rfProv:"Fider numarası atanmamış. Bu satırı RF yapılandırmasına dahil etmek için 1–4 arası bir numara girin.",
     fFeedId:"Fider No",
     fZoneId:"Bölge No",
     fWorkMode:"Çalışma Modu",
-    modeThreshold:"Eşik",
+    modeThreshold:"Akım eşiği",
     fFaultCount:"Arıza Çevrim Sayısı",
     fVerify:"Enerjisiz Hat Doğrulama Süresi (ms)",
     fReset:"Döngü Sıfırlama Süresi (s)",
@@ -821,18 +924,18 @@ const I18N={
     thAssign:"Atanacağı Fider",
     discNone:"Bekleyen cihaz yok. Haberleşme ünitesi yeni cihaz keşfettikten sonra Yenile düğmesine basın.",
     errHex:"16 onaltılık karakter ya da boş",
-    errFid0:"0 = provizyonsuz; 1–4 arası bir değer girin ya da Fider aktif seçeneğini kapatın",
+    errFid0:"1–4 arası bir fider numarası girin veya RF yapılandırmasına dahil et seçimini kaldırın.",
     errDupFid:"Fider No tekrar ediyor",
     errIaMin:"Nominal akımın en az 1,2 katı olmalı ({v} A)",
     rfmonCard:"RF Fider Durumu",
-    rfmonSub:"GSM trafiğini azaltmak için aynı anda tek fider okunun",
+    rfmonSub:"İstenen fideri okuyun. Gösterilen değerler son okuma anına aittir; otomatik yenileme kapalıdır.",
     monNoData:"Henüz veri okunmadı.",
     thParam:"Parametre",
     monPhCur:"Faz Akımı",
     monActFault:"Aktif Arıza Sayacı",
     boardSub:"Durum bilgisi istendiğinde okunur",
     boardPress:"Güncel pano durumunu okumak için <strong>Oku</strong> düğmesine basın.",
-    gGsm:"GSM Bilgisi",
+    gGsm:"Mobil şebeke",
     gSolar:"Güneş Paneli",
     gBattery:"Akü",
     gRails:"Besleme Gerilimleri",
@@ -872,21 +975,21 @@ const I18N={
     permTpl:"Kalıcı ({n})",
     noRecords:"Kayıt yok",
     logsSub:"GSM trafiğini sınırlamak için kayıtlar sayfa sayfa okunur.",
-    logsPress:"Günlükleri yüklemek için Sonraki Kayıtlar düğmesine basın.",
+    logsPress:"İlk sayfayı yüklemek için Kayıtları oku’yu seçin.",
     devTitle:"Cihaz Yönetimi",
     devSub:"Cihaz bilgileri ve yapılandırması",
     devInfo:"Cihaz Bilgisi",
     devInfoSub:"Salt okunur cihaz bilgileri",
     fSerial:"Seri Numarası",
     fMfg:"Üretim Tarihi",
-    fLife:"Toplam Ömür (g:s:dk:sn)",
-    fRun:"Çalışma Süresi (g:s:dk:sn)",
+    fLife:"Toplam çalışma süresi (gün:saat:dk:sn)",
+    fRun:"Son açılıştan beri süre (gün:saat:dk:sn)",
     fMfw:"Modem Yazılım Sürümü",
     fRfw:"RF Yazılım Sürümü",
     fFwDate:"Yazılım Kurulum Tarihi",
     fCell:"Baz Bilgisi (MCC/MNC/LAC/CI)",
-    fComm:"Devreye Alma Zamanı",
-    fRtc:"Modem Saati (RTC)",
+    fComm:"Devreye alma zamanı (UTC)",
+    fRtc:"Cihaz saati (UTC)",
     devCfg:"Cihaz Yapılandırması",
     devCfgSub:"Ağ, SIM ve zaman ayarları",
     fWebPort:"Web Arayüzü Portu",
@@ -896,23 +999,23 @@ const I18N={
     fApnPass:"SIM Kart APN Şifresi",
     fNtp:"NTP Sunucusu",
     fNtpPort:"NTP Sunucu Portu",
-    fTz:"Saat Dilimi (UTC sapması)",
-    fModemRst:"Periyodik Modem Sıfırlama (saat)",
+    fTz:"UTC sapması (saat)",
+    fModemRst:"Periyodik cihaz yeniden başlatma (saat)",
     fWebFd:"Web İlk Veri Zaman Aşımı (s)",
     fWebIdle:"Web Boşta Kalma Zaman Aşımı (s)",
     fIecFd:"IEC104 İlk Veri Zaman Aşımı (s)",
     fIecIdle:"IEC104 Boşta Kalma Zaman Aşımı (s)",
     devActions:"Cihaz İşlemleri",
-    devActionsSub:"İşlemler anında uygulanır.",
+    devActionsSub:"Yeniden başlatma istekleri haberleşme bağlantılarını kesebilir.",
     btnReboot:"Cihazı Yeniden Başlat",
     termPh:"Komut girin...",
     errRFQualityOverlap:"Adres RF kalite alanıyla çakışıyor (49500–49520).",
     rfStoreLineTpl:"Satır {n}",
     rfGroupMHApplied:"Uygulandı bildirimi",
     rfApplyTitle:"RF uygulama durumu",
-    rfApplyHint:"Kaydet hedef tanımı kaydeder, cihaz eşlemelerini günceller ve tam üyeli fiderlerin ayarlarını uygular. MH doğrulaması ayrı izlenir.",
+    rfApplyHint:"Kaydet, yapılandırmayı kaydeder ve cihaz eşlemelerini günceller. Ayarlar, üç faz cihazı da atanmış fiderlere gönderilir. Doğrulama sonucunu aşağıdan izleyin.",
     rfGroupId:"Yeni grup kimliği",
-    rfAbort:"İptal",
+    rfAbort:"Uygulamayı iptal et",
     rfGroupRequested:"İstek başlatıldı; sonucu izlemek için durumu yenileyin.",
     rfGroupChanged:"Önceki ayar uygulandı; istenen ayar değişti.",
     rfGroupIdle:"Uygulama başlatılmadı",
@@ -935,7 +1038,7 @@ const I18N={
     rfDeviceMoved:"{eui}: Fider {from}/{oldPhase} → Fider {to}/{phase} taşınacak",
     rfDeviceAdded:"{eui}: Fider {fid}/{phase} konumuna atanacak",
     rfClearEui:"Temizle",
-    rfStageSaved:"Hedef tanım RTU üzerinde kayıtlı",
+    rfStageSaved:"Yapılandırma RTU üzerinde kayıtlı",
     rfStageInventory:"Cihaz eşlemeleri",
     rfStageSettings:"Koruma ayarları",
     rfInventoryReady:"MH envanteri doğrulandı",
@@ -946,7 +1049,7 @@ const I18N={
     rfDetails:"Teknik ayrıntılar",
     rfRecoveryPending:"Kaydedilmiş cihaz eşleme işlemi bekliyor",
     rfRecoveryHint:"Cihaz eşlemelerini değiştirmeden kayıtlı işlem tamamlanmalıdır. Durumu yenileyin; işlem hata ile durmuşsa aynı tanımla yeniden Kaydet seçin.",
-    rfStatusAfterSave:"Hedef tanım kaydedildi. MH doğrulaması bekleniyor; uygulama durumunu yenileyin.",
+    rfStatusAfterSave:"Yapılandırma kaydedildi. Cihaz doğrulaması bekleniyor; uygulama durumunu yenileyin.",
     rfStatusSnapshot:"Son alınan sonuç; güncel ilerleme için yenileyin.",
     rfGroupMH:"Son MH raporu",
     rfGroupPrepared:"Hazırlandı",
@@ -964,7 +1067,7 @@ const I18N={
     rfBatchNotStarted:"Uygulama başlatılamadı",
     rfBatchActive:"İşlem sürüyor",
     iecApplyHint:"Zamanlama ve bağlantı ayarları sonraki IEC104 bağlantısında uygulanır.",
-    rfStopStart:"Uygulama başlayamadı. Envanteri, atamaları, ayarları ve EPOCH beklemesini kontrol edin.",
+    rfStopStart:"Uygulama başlatılamadı. Faz cihazı atamalarını ve ayarları kontrol edin; nedeni görmek için durumu yenileyin.",
     rfStopIds:"Uygun grup kimliği bulunamadı.",
     rfStopGroup:"Grup işlemi hata veya belirsizlikle durdu. Yeni işlemden önce sonucu kontrol edin.",
     rfStopPeer:"MH üzerinde başka işlem sürüyor; durumu yeniden sorgulanıyor.",
@@ -1013,12 +1116,12 @@ let LNG=(()=>{try{const l=localStorage.getItem('tsb23lang');return(l==='en'||l==
 const t=k=>{const d=I18N[LNG];return (d&&d[k]!==undefined)?d[k]:((I18N.en[k]!==undefined)?I18N.en[k]:k)};
 const tf=(k,map)=>t(k).replace(/\{(\w+)\}/g,(_,x)=>(map&&map[x]!==undefined)?map[x]:('{'+x+'}'));
 const feederLbl=n=>tf('feedTpl',{n:n+1});
-const fmtEpoch=v=>v?new Date(v*1000).toLocaleString(LNG==='tr'?'tr-TR':'en-GB',{timeZone:'UTC'}):t('tNoData');
-const fmtLifetime=v=>{if(v===undefined||v===null||v==='')return '-';const s=parseInt(v,10)||0;const p=n=>String(n).padStart(2,'0');return String(Math.floor(s/86400)).padStart(4,'0')+':'+p(Math.floor(s/3600)%24)+':'+p(Math.floor(s/60)%60)+':'+p(s%60)};
+const fmtEpoch=v=>v?new Date(v*1000).toLocaleString(LNG==='tr'?'tr-TR':'en-GB',{timeZone:'UTC'})+' UTC':t('timeUnavailable');
+const fmtLifetime=v=>{if(v===undefined||v===null||v==='')return t('dataUnavailable');const s=parseInt(v,10)||0;const p=n=>String(n).padStart(2,'0');return String(Math.floor(s/86400)).padStart(4,'0')+':'+p(Math.floor(s/3600)%24)+':'+p(Math.floor(s/60)%60)+':'+p(s%60)};
 function formatNetwork(d){const names={2:'2G / GSM',3:'3G / UMTS',4:'4G / LTE'};const tech=names[d.GsmRAT];if(!tech)return t('signalUnknown');const regs=d.GsmRAT===4?[d.GsmCEREG]:[d.GsmCREG,d.GsmCGREG];const known=regs.some(v=>v===0||v===2||v===3);const registered=regs.some(v=>v===1||v===5);return tech+' — '+t(registered?'networkRegistered':known?'networkNotRegistered':'signalUnknown')}
 function formatSignal(raw,kind){const specs={rxlev:{max:63,offset:-111,step:1,low:-110,high:-48,unit:'dBm',limits:[-60,-75,-85,-95]},rscp:{max:96,offset:-121,step:1,low:-120,high:-25,unit:'dBm',limits:[-60,-75,-85,-95]},rsrp:{max:97,offset:-141,step:1,low:-140,high:-44,unit:'dBm',limits:[-80,-90,-100,-110]},rsrq:{max:34,offset:-20,step:0.5,low:-19.5,high:-3,unit:'dB',limits:[-10,-15,-18,-20]}};const spec=specs[kind];if(!Number.isInteger(raw)||raw<0||raw>spec.max)return t('signalUnknown');const value=raw===0?spec.low:raw===spec.max?spec.high:raw*spec.step+spec.offset;const labels=['signalExcellent','signalStrong','signalMid','signalWeak','signalVeryWeak'];const index=raw===0?4:spec.limits.findIndex(limit=>value>=limit);const rating=t(labels[index<0?4:index]);const measured=raw===0?'< '+value:raw===spec.max?'≥ '+value:value+' … < '+(value+spec.step);return measured+' '+spec.unit+' — '+rating}
 const fmtCsq=v=>Number.isInteger(v)&&v>=0&&v<=31?String(v):t('signalUnknown');
-const fmt=(v,u,dec)=>{if(v===undefined||v===null||v==='')return '-';let s=dec!==undefined?parseFloat(v).toFixed(dec):String(v);return u?s+' '+u:s};
+const fmt=(v,u,dec)=>{if(v===undefined||v===null||v==='')return t('notAvailable');let s=dec!==undefined?parseFloat(v).toFixed(dec):String(v);return u?s+' '+u:s};
 const toast=(m,t2='info')=>{const e=document.createElement('div');e.className='toast '+t2;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),CFG_TOAST_DURATION_MS)};
 const showLoad=()=>{if(loading)return;loading=true;const e=document.createElement('div');e.id='requestLoading';e.className='loading';e.innerHTML='<div class="spinner"></div>';document.body.appendChild(e);document.querySelectorAll('button').forEach(b=>b.disabled=true)};
 const hideLoad=()=>{loading=false;$('requestLoading')?.remove();document.querySelectorAll('button').forEach(b=>b.disabled=false);updateRfSaveButton()};
@@ -1026,13 +1129,14 @@ const hideLoad=()=>{loading=false;$('requestLoading')?.remove();document.querySe
 
 
 
-const confirmAction=(msg,fn)=>{const o=document.createElement('div');o.className='modal';o.innerHTML='<div class="modal-card"><h3>'+esc(t('confirmT'))+'</h3><p style="color:#64748b;line-height:1.5;white-space:pre-line;margin-bottom:12px">'+esc(msg)+'</p><div class="modal-actions"><button class="btn btn-muted" id="cancelConfirm">'+esc(t('cancel'))+'</button><button class="btn btn-danger" id="okConfirm">'+esc(t('confirmBtn'))+'</button></div></div>';document.body.appendChild(o);$('cancelConfirm').onclick=()=>o.remove();$('okConfirm').onclick=()=>{o.remove();return fn()}};
+const confirmAction=(msg,fn,action='confirmBtn')=>{const o=document.createElement('div');o.className='modal';o.innerHTML='<div class="modal-card"><h3>'+esc(t('confirmT'))+'</h3><p style="color:#64748b;line-height:1.5;white-space:pre-line;margin-bottom:12px">'+esc(msg)+'</p><div class="modal-actions"><button class="btn btn-muted" id="cancelConfirm">'+esc(t('cancel'))+'</button><button class="btn btn-danger" id="okConfirm">'+esc(t(action))+'</button></div></div>';document.body.appendChild(o);$('cancelConfirm').onclick=()=>o.remove();$('okConfirm').onclick=()=>{o.remove();return fn()}};
 
 /* Dil degistirme: statik etiketler + menu + aktif sayfa yeniden cizilir.
  * Terminal ve sistem gunlugu icerigi DOM'da tutuldugu icin dile geciste
  * korunur (pageCache'te degiller). */
 function setLang(l){
   if(l!=='tr'&&l!=='en')l='tr';
+  const form=curId&&hasDirty(curId)?Array.from($('body').querySelectorAll('[data-dirty]'),el=>({value:el.value,checked:el.checked,original:el.dataset.original})):null;
   LNG=l;
   try{localStorage.setItem('tsb23lang',l)}catch(e){}
   document.documentElement.lang=l;
@@ -1047,10 +1151,19 @@ function setLang(l){
     let keepTerm=null;
     if(curId==='terminal')keepTerm=$('trmOut')?$('trmOut').innerHTML:null;
     renderPage(curId,pageCache[curId]);
+    if(form)Array.from($('body').querySelectorAll('[data-dirty]')).forEach((el,i)=>{const saved=form[i];if(!saved)return;el.value=saved.value;el.checked=saved.checked;el.dataset.original=saved.original;setDirty(curId,el,(el.type==='checkbox'?String(el.checked):el.value)!==saved.original)});if(curId==='iec104'&&form){updateIecRanges();updateSboRange();}
     if(curId==='terminal'&&keepTerm!==null&&$('trmOut')){$('trmOut').innerHTML=keepTerm;$('trmCmd')?.focus()}
   }
 }
 
+const authError=message=>message==='Invalid credentials'?t('loginInvalid'):message==='Too many attempts, try again later'?t('loginWait'):message;
+function userError(error){
+  const message=error?.message||String(error);
+  if(error?.name==='AbortError'||error?.name==='TypeError')return t('connectionUnknown');
+  const code=/^HTTP (\d+)/.exec(message);
+  if(code)return t(code[1]==='401'?'httpAuth':code[1]==='409'?'httpBusy':code[1]==='400'?'httpInvalid':'httpServer')+' ('+message+')';
+  return message;
+}
 // ---------------- HTTP / SESSION ----------------
 const api=async(url,opt={})=>{
   const skipAuthCheck=!!opt.skipAuthCheck; delete opt.skipAuthCheck;
@@ -1060,7 +1173,7 @@ const api=async(url,opt={})=>{
     const r=await fetch(url,{...opt,signal:ctrl.signal});clearTimeout(tid);
     if(r.status===401&&!skipAuthCheck){s_sessionToken=null;s_role=null;buildMenu();showLoginModal();toast(t('tAuthReq'),'info');throw new Error(t('tAuthReq'))}
     if(r.status===401&&skipAuthCheck&&url.split('?')[0]==='/auth/login')return await r.json();
-    if(!r.ok){const message=(r.status===400||r.status===409)?await r.text():'';throw new Error(message||'HTTP '+r.status)}
+    if(!r.ok){const message=(r.status===400||r.status===409)?await r.text():'';throw new Error(message?(t(r.status===409?'httpBusy':'httpInvalid')+' · '+message):'HTTP '+r.status)}
     return await r.json();
   }catch(e){clearTimeout(tid);if(!skipAuthCheck&&e.name!=='Error'&&!!s_sessionToken)toast(t('tConnErr'),'err');throw e}
 };
@@ -1068,33 +1181,34 @@ const showLoginModal=()=>{const m=$('loginModal');m.style.display='flex';$('logi
 const hideLoginModal=()=>{$('loginModal').style.display='none'};
 const startSessionTimeout=()=>{if(sessionTimeout)clearTimeout(sessionTimeout);sessionTimeout=setTimeout(()=>{toast(t('tSessExp'),'info');doLogout()},CFG_SESSION_TIMEOUT_MS)};
 const resetSessionTimeout=()=>{if(s_sessionToken)startSessionTimeout()};
-const doLogin=async()=>{const username=$('loginUser').value.substring(0,16),password=$('loginPass').value.substring(0,16);$('loginErr').textContent='';if(!username||!password){$('loginErr').textContent=t('tEnterCred');return}$('loginPass').value='';try{showLoad();const r=await api('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password}),skipAuthCheck:true});hideLoad();if(r.success===true){s_sessionToken=r.token||null;s_role=r.role||null;if(s_sessionToken)sessionStorage.setItem('sessionToken',s_sessionToken);sessionStorage.setItem('sessionRole',s_role);buildMenu();hideLoginModal();toast(t('tLoginOk'),'ok');startSessionTimeout()}else{$('loginErr').textContent=r.error||t('tInvalidCred');$('loginPass').focus()}}catch(e){hideLoad();$('loginErr').textContent=t('tLoginFail');$('loginPass').focus()}};
+const doLogin=async()=>{const username=$('loginUser').value.substring(0,16),password=$('loginPass').value.substring(0,16);$('loginErr').textContent='';if(!username||!password){$('loginErr').textContent=t('tEnterCred');return}$('loginPass').value='';try{showLoad();const r=await api('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password}),skipAuthCheck:true});hideLoad();if(r.success===true){s_sessionToken=r.token||null;s_role=r.role||null;if(s_sessionToken)sessionStorage.setItem('sessionToken',s_sessionToken);sessionStorage.setItem('sessionRole',s_role);buildMenu();hideLoginModal();toast(t('tLoginOk'),'ok');startSessionTimeout()}else{$('loginErr').textContent=authError(r.error)||t('tInvalidCred');$('loginPass').focus()}}catch(e){hideLoad();$('loginErr').textContent=t('tLoginFail');$('loginPass').focus()}};
 const doLogout=async()=>{try{await api('/auth/logout',{method:'POST',skipAuthCheck:true})}catch(e){}s_sessionToken=null;s_role=null;sessionStorage.removeItem('sessionToken');sessionStorage.removeItem('sessionRole');buildMenu();if(sessionTimeout)clearTimeout(sessionTimeout);showLoginModal();toast(t('tLogoutOk'),'info')};
 
 // ---------------- DIRTY STATE ----------------
 const setDirty=(page,el,dirty)=>{if(!dirtyPages[page])dirtyPages[page]=new Set();if(dirty)dirtyPages[page].add(el);else dirtyPages[page].delete(el);el.classList.toggle('dirty',dirty);const dot=el.closest('.field')?.querySelector('.dirty-dot');if(dot)dot.style.display=dirty?'inline-block':'none';updatePageState(page)};
 const clearDirty=page=>{(dirtyPages[page]||new Set()).forEach(el=>el.classList.remove('dirty'));dirtyPages[page]=new Set();document.querySelectorAll('#body .dirty-dot').forEach(e=>e.style.display='none');updatePageState(page)};
 const hasDirty=page=>(dirtyPages[page]?.size||0)>0;
-const updatePageState=page=>{const e=$('state-'+page);if(!e)return;e.className='read-state '+(hasDirty(page)?'dirty':pageCache[page]?'loaded':'');e.textContent=hasDirty(page)?t('stDirty'):pageCache[page]?t('stLoaded'):t('stNotRead')};
+const updatePageState=page=>{const e=$('state-'+page);if(!e)return;e.className='read-state '+(hasDirty(page)?'dirty':pageCache[page]?'loaded':'');e.textContent=hasDirty(page)?t('stDirty'):pageSaved[page]?t('stSaved'):pageCache[page]?t('stLoaded'):t('stNotRead')};
 const bindDirty=(page,root=document)=>{root.querySelectorAll('[data-dirty]').forEach(el=>{const original=el.dataset.original;const current=el.type==='checkbox'?String(el.checked):el.value;el.addEventListener('input',()=>setDirty(page,el,(el.type==='checkbox'?String(el.checked):el.value)!==el.dataset.original));el.addEventListener('change',()=>setDirty(page,el,(el.type==='checkbox'?String(el.checked):el.value)!==el.dataset.original));if(current!==original)setDirty(page,el,true)})};
 const markOriginals=root=>root.querySelectorAll('[data-dirty]').forEach(el=>{el.dataset.original=el.type==='checkbox'?String(el.checked):el.value;el.classList.remove('dirty')});
 
 // ---------------- COMMON FORM HELPERS ----------------
-const numField=(id,label,v,min,max,ro=false,unit='',stp='')=>{const rng=(!ro&&min!=null&&max!=null)?`<span class="fld-hint">${min}–${max}${unit?' '+esc(unit):''}</span>`:(!ro&&unit?`<span class="fld-hint">${esc(unit)}</span>`:'');return `<div class="field"><label>${esc(label)}${rng}${!ro?'<span class="dirty-dot" style="display:none"></span>':''}</label><input id="${id}" data-dirty="1" type="number" value="${v??''}" min="${min??''}" max="${max??''}"${stp?` step="${stp}"`:''} ${ro?'disabled class="readonly"':''}><div class="err" id="err-${id}"></div></div>`};
-const textField=(id,label,v,max,ro=false)=>{const rng=(!ro&&max!=null&&max!=='')?`<span class="fld-hint">max ${max}</span>`:'';return `<div class="field"><label>${esc(label)}${rng}${!ro?'<span class="dirty-dot" style="display:none"></span>':''}</label><input id="${id}" data-dirty="1" type="text" value="${esc(v??'')}" maxlength="${max??''}" ${ro?'disabled class="readonly"':''}><div class="err" id="err-${id}"></div></div>`};
+const numField=(id,label,v,min,max,ro=false,unit='',stp='')=>{const rng=(!ro&&min!=null&&max!=null)?`<span class="fld-hint">${min}–${max}${unit?' '+esc(unit):''}</span>`:(!ro&&unit?`<span class="fld-hint">${esc(unit)}</span>`:'');return `<div class="field"><label for="${id}">${esc(label)}${rng}${!ro?'<span class="dirty-dot" style="display:none"></span>':''}</label><input id="${id}" data-dirty="1" type="number" value="${v??''}" min="${min??''}" max="${max??''}"${stp?` step="${stp}"`:''} ${ro?'disabled class="readonly"':''}><div class="err" id="err-${id}"></div></div>`};
+const textField=(id,label,v,max,ro=false,secret=false)=>{const rng=(!ro&&max!=null&&max!=='')?`<span class="fld-hint">${esc(tf('maxChars',{n:max}))}</span>`:'';return `<div class="field"><label for="${id}">${esc(label)}${rng}${!ro?'<span class="dirty-dot" style="display:none"></span>':''}</label><input id="${id}" data-dirty="1" type="${secret?'password':'text'}" value="${esc(v??(ro?t('dataUnavailable'):''))}" maxlength="${max??''}" ${ro?'disabled class="readonly"':''}>${secret?`<label class="check"><input type="checkbox" onchange="document.getElementById('${id}').type=this.checked?'text':'password'">${esc(t('showPassword'))}</label>`:''}<div class="err" id="err-${id}"></div></div>`};
 const checkField=(id,label,v)=>`<div class="field"><label>&nbsp;</label><label class="check"><input id="${id}" data-dirty="1" type="checkbox" ${v?'checked':''}><span>${esc(label)}</span><span class="dirty-dot" style="display:none"></span></label></div>`;
-const feederField=(prefix,key,i,label,v,min=1,max=65535)=>`<div class="field"><label>${esc(label)}</label><input type="number" data-id="${prefix}" data-key="${key}" data-i="${i}" data-dirty="1" value="${v??0}" min="${min}" max="${max}"><div class="err"></div></div>`;
+const feederField=(prefix,key,i,label,v,min=1,max=65535)=>`<div class="field"><label >${esc(label)}</label><input type="number" data-id="${prefix}" data-key="${key}" data-i="${i}" data-dirty="1" value="${v??0}" min="${min}" max="${max}"><div class="err"></div></div>`;
 const feederCheck=(prefix,i,label,checked)=>`<div class="field"><label class="check"><input type="checkbox" data-id="${prefix}" data-key="inUse" data-i="${i}" data-dirty="1" ${checked?'checked':''}><span>${esc(label)}</span></label></div>`;
-const selectField=(id,label,value,opts)=>{const all=(opts.map(String).includes(String(value))?opts:[value,...opts]);return `<div class="field"><label>${esc(label)}</label><select id="${id}" data-dirty="1">${all.map(o=>`<option value="${o}" ${String(o)===String(value)?'selected':''}>${o}</option>`).join('')}</select><div class="err" id="err-${id}"></div></div>`};
-const selectFieldL=(id,label,value,opts)=>{if(!opts.map(o=>String(o[0])).includes(String(value)))opts=[[value,String(value)],...opts];return `<div class="field"><label>${esc(label)}</label><select id="${id}" data-dirty="1">${opts.map(o=>`<option value="${o[0]}" ${String(o[0])===String(value)?'selected':''}>${esc(o[1])}</option>`).join('')}</select><div class="err" id="err-${id}"></div></div>`};
+const selectField=(id,label,value,opts)=>{const all=(opts.map(String).includes(String(value))?opts:[value,...opts]);return `<div class="field"><label for="${id}">${esc(label)}</label><select id="${id}" data-dirty="1">${all.map(o=>`<option value="${o}" ${String(o)===String(value)?'selected':''}>${o}</option>`).join('')}</select><div class="err" id="err-${id}"></div></div>`};
+const selectFieldL=(id,label,value,opts)=>{if(!opts.map(o=>String(o[0])).includes(String(value)))opts=[[value,String(value)],...opts];return `<div class="field"><label for="${id}">${esc(label)}</label><select id="${id}" data-dirty="1">${opts.map(o=>`<option value="${o[0]}" ${String(o[0])===String(value)?'selected':''}>${esc(o[1])}</option>`).join('')}</select><div class="err" id="err-${id}"></div></div>`};
 /* shared feeder scaffolding: tab bar + pane wrapper (tabs visible up to
  * FEEDER_TABS; panes for all FEEDER_COUNT kept in DOM so POST data of
  * hidden feeders is preserved unchanged) */
 const feederTabs=(sel,act=0)=>'<div class="tabbar">'+Array.from({length:FEEDER_TABS},(_,i)=>'<button class="tab '+(i===act?'active':'')+'" onclick="'+sel+'('+i+')">'+esc(feederLbl(i))+'</button>').join('')+'</div>';
 const paneOpen=(pfx,i)=>'<div id="'+pfx+'-pane-'+i+'" class="pane '+(i===0?'active':'')+'"'+(i>=FEEDER_TABS?' style="display:none"':'')+'>';
 const sectionHead=(title,page,desc='')=>`<div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div></div>`;
-const pageHead=(title,page,desc='',rw=true)=>`<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button>${rw?`<button class="btn btn-save btn-small" id="save-${page}" onclick="savePage('${page}')">${esc(t('btnSave'))}</button>`:''}</div></div></div>`;
-const emptyCard=(title,page,desc='')=>`<div class="card"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button></div></div><div class="card-body"><div class="empty">${t('pressRead')}</div></div></div>`;
+const readStamp=page=>'<p class="hint">'+esc(pageReadAt[page]?t('lastRead')+': '+fmtEpoch(pageReadAt[page]/1000):t('notRead'))+'</p>';
+const pageHead=(title,page,desc='',rw=true)=>`<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}${readStamp(page)}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button>${rw?`<button class="btn btn-save btn-small" id="save-${page}" onclick="savePage('${page}')">${esc(t('btnSave'))}</button>`:''}</div></div></div>`;
+const emptyCard=(title,page,desc='')=>`<div class="card"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}${readStamp(page)}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button></div></div><div class="card-body"><div class="empty">${t('pressRead')}</div></div></div>`;
 const getInt=id=>{const v=$(id)?.value;return v===''?0:parseInt(v,10)||0};
 const getFloat=id=>{const v=$(id)?.value;return v===''?0:parseFloat(v)||0};
 const getText=id=>$(id)?.value||'';
@@ -1106,16 +1220,35 @@ const menuPages=[['iec104','mIec'],['modbus','mModbus'],['rf','mRfCfg'],['rfmon'
 
 
 
+function iecFaultRanges(index,hat){
+  const range=base=>{const input=Number(base),n=input+index*180;return Number.isInteger(input)&&input>0&&Number.isInteger(n)&&n+179<=16777215?n+'–'+(n+179):'—'};
+  return '<p class="hint" id="iec-range-'+index+'">'+esc(t('actualIoa'))+': '+esc(t('modMapTemp'))+' '+range(hat.TemporaryFaultBase?.[index])+' · '+esc(t('modMapPerm'))+' '+range(hat.PermanentFaultBase?.[index])+'</p>';
+}
+function updateIecRanges(){
+  for(let i=0;i<FEEDER_COUNT;i++){
+    const row=$('iec-range-'+i);if(!row)continue;
+    const read=key=>document.querySelector('[data-id="iec"][data-key="'+key+'"][data-i="'+i+'"]')?.value;
+    const hat={TemporaryFaultBase:[],PermanentFaultBase:[]};
+    hat.TemporaryFaultBase[i]=read('TemporaryFaultBase');hat.PermanentFaultBase[i]=read('PermanentFaultBase');
+    row.outerHTML=iecFaultRanges(i,hat);
+  }
+}
+function updateSboRange(){
+  const field=$('iec-SBOTimeout');if(!field)return;
+  const enabled=getBool('iec-SBO');field.min=enabled?'1':'0';field.max=enabled?'300':'65535';
+  const hint=field.closest?.('.field')?.querySelector('.fld-hint');
+  if(hint)hint.textContent=field.min+'–'+field.max+' s';
+}
 function renderIec104(d){
   const x=d||{};let page=pageHead(t('iecTitle'),'iec104',t('iecSub'));const h=x.Hatlar||{};
   let s=page+'<div class="card"><div class="card-head"><div><h3>'+esc(t('genSettings'))+'</h3><div class="sub">'+esc(t('iecGenSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';
-  s+=numField('iec-Port',t('fPort'),x.Port,1,65535)+numField('iec-PeriodicSend',t('fPeriodic'),x.PeriodicSend,0,86400)+numField('iec-T0','T0',x.T0,1,255,false,'s')+numField('iec-T1','T1',x.T1,1,255,false,'s')+numField('iec-T2','T2',x.T2,1,255,false,'s')+numField('iec-T3','T3',x.T3,20,65525,false,'s')+numField('iec-K','K',x.K,1,255)+numField('iec-W','W',x.W,1,255)+numField('iec-OriginatorAddr',t('fOrigAddr'),x.OriginatorAddr,0,255)+numField('iec-CommonAddr',t('fCommonAddr'),x.CommonAddr,1,65535)+numField('iec-SBOTimeout',t('fSboTo'),x.SBOTimeout,0,65535,false,'s')+checkField('iec-SBO',t('fSboEn'),x.SBO)+numField('iec-AkuUyarisi',t('fAkuIOA'),x.AkuUyarisi,1,16777215)+numField('iec-ModemReset',t('fResetIOA'),x.ModemReset,1,16777215);
-  s+='</div><div class="sub">'+esc(t('iecApplyHint'))+'</div></div></div>';
+  s+=numField('iec-Port',t('fPort'),x.Port,1,65535)+numField('iec-PeriodicSend',t('fPeriodic'),x.PeriodicSend,0,86400)+numField('iec-T0','T0',x.T0,1,255,false,'s')+numField('iec-T1','T1',x.T1,1,255,false,'s')+numField('iec-T2','T2',x.T2,1,255,false,'s')+numField('iec-T3','T3',x.T3,20,65525,false,'s')+numField('iec-K','K',x.K,1,255)+numField('iec-W','W',x.W,1,255)+numField('iec-OriginatorAddr',t('fOrigAddr'),x.OriginatorAddr,0,255)+numField('iec-CommonAddr',t('fCommonAddr'),x.CommonAddr,1,65535)+numField('iec-SBOTimeout',t('fSboTo'),x.SBOTimeout,x.SBO?1:0,x.SBO?300:65535,false,'s')+checkField('iec-SBO',t('fSboEn'),x.SBO)+numField('iec-AkuUyarisi',t('fAkuIOA'),x.AkuUyarisi,1,16777215)+numField('iec-ModemReset',t('fResetIOA'),x.ModemReset,1,16777215);
+  s+='</div><div class="sub">'+esc(t('iecApplyHint'))+'</div><p class="hint">'+esc(t('iecTimingHelp'))+'</p><p class="hint">'+esc(t('iecSboHelp'))+'</p></div></div>';
   s+='<div class="card">'+sectionHead(t('feeders'),'iec104',t('iecFeedSub'))+'<div class="card-body">';
   s+=feederTabs('selectIecTab');
   const cats=[['AnlikAkim','catAnlik'],['EnerjiVarYok','catEnerji'],['YukAkimiVarYok','catLoad'],['RfhabVarYok','catRf'],['TripFailed','catTripFailed']];
   const phs=[['R','L1'],['S','L2'],['T','L3']];
-  for(let i=0;i<FEEDER_COUNT;i++){s+=paneOpen('iec',i)+feederCheck('iec',i,t('useFeeder'),h.inUse?.[i])+'<div class="grid g2">'+feederField('iec','TemporaryFaultBase',i,t('fTempBase'),h.TemporaryFaultBase?.[i],1,16777215)+feederField('iec','PermanentFaultBase',i,t('fPermBase'),h.PermanentFaultBase?.[i],1,16777215)+'</div><p>'+esc(t('faultAddressNote'))+'</p><div class="grid g3 gt" style="margin-top:8px;align-items:start">';phs.forEach(p=>{s+='<div><div class="phase-head">'+esc(t('phase'))+p[1]+'</div><div class="grid" style="gap:8px">';cats.forEach(c=>s+=feederField('iec','IOA_'+p[0]+'_'+c[0],i,t(c[1]),h['IOA_'+p[0]+'_'+c[0]]?.[i],1,16777215));s+='</div></div>'});s+='</div></div>'}
+  for(let i=0;i<FEEDER_COUNT;i++){s+=paneOpen('iec',i)+feederCheck('iec',i,t('iecUseFeeder'),h.inUse?.[i])+'<div class="grid g2">'+feederField('iec','TemporaryFaultBase',i,t('fTempBase'),h.TemporaryFaultBase?.[i],1,16777215)+feederField('iec','PermanentFaultBase',i,t('fPermBase'),h.PermanentFaultBase?.[i],1,16777215)+'</div><p>'+esc(t('faultAddressNote'))+'</p>'+iecFaultRanges(i,h)+'<div class="grid g3 gt" style="margin-top:8px;align-items:start">';phs.forEach(p=>{s+='<div><div class="phase-head">'+esc(t('phase'))+p[1]+'</div><div class="grid" style="gap:8px">';cats.forEach(c=>s+=feederField('iec','IOA_'+p[0]+'_'+c[0],i,t(c[1]),h['IOA_'+p[0]+'_'+c[0]]?.[i],1,16777215));s+='</div></div>'});s+='</div></div>'}
   s+='</div></div></div>';return s;
 }
 
@@ -1146,7 +1279,7 @@ function buildModbusMapTable(map,block,phase=0,view='live',record=0){
   rows.forEach(row=>{
     const array=row.count>(row.type==='UINT32'||row.type==='FLOAT32'?2:1);
     const type=row.type+(array?' × '+row.count:'');
-    html+='<tr><th scope="row">'+esc(t('mb_'+row.field))+'</th><td>'+esc(range(row.address,row.count))+'</td><td>'+esc(range(row.address-map.AddressBase,row.count))+'</td><td>'+esc(type)+'</td><td>'+esc(row.unit==='degC'?'°C':(row.unit||'—'))+'</td><td><span class="register-access">'+esc(t(row.command?'modMapWrite':'modMapRead'))+'</span></td></tr>';
+    html+='<tr><th scope="row">'+esc(t('mb_'+row.field))+'</th><td>'+esc(range(row.address,row.count))+'</td><td>'+esc(range(row.address-map.AddressBase,row.count))+'</td><td>'+esc(type)+'</td><td>'+esc(row.unit==='degC'?'°C':row.unit==='0/1'?(row.field==='trip_failed'?'0: '+t('alarmInactive')+' · 1: '+t('alarmActive'):'0: '+t('absent')+' · 1: '+t('present')):(row.unit||'—'))+'</td><td><span class="register-access">'+esc(t(row.command?'modMapWrite':'modMapRead'))+'</span></td></tr>';
   });
   return html+'</tbody></table></div>';
 }
@@ -1157,7 +1290,7 @@ function renderModbusMap(map){
   const select=(id,label,options)=>'<div class="field"><label for="'+id+'">'+esc(label)+'</label><select id="'+id+'" onchange="updateModbusMap()">'+options.map(([value,text])=>'<option value="'+esc(value)+'">'+esc(text)+'</option>').join('')+'</select></div>';
   let html='<div class="grid g2">'+select('mod-map-block',t('modMapBlock'),blockOptions)+'<div id="mod-map-phase-wrap">'+select('mod-map-phase',t('modMapPhase'),Array.from({length:map.PhaseCount},(_,i)=>[i,'L'+(i+1)]))+'</div></div>';
   html+='<div id="mod-map-feeder-controls" class="grid g2" style="margin-top:12px">'+select('mod-map-view',t('modMapView'),[['live',t('modMapLive')],['temp',t('modMapTemp')],['perm',t('modMapPerm')]])+'<div id="mod-map-record-wrap" style="display:none">'+select('mod-map-record',t('modMapRecord'),Array.from({length:map.FaultRecords},(_,i)=>[i,String(i+1)]))+'</div></div>';
-  return html+'<p class="hint" id="mod-map-context">'+esc(t('modMapQuality'))+'</p><div id="mod-map-table">'+buildModbusMapTable(map,'feeder:0')+'</div><p class="hint">'+esc(t('modMapNote'))+'</p>';
+  return html+'<p class="hint" id="mod-map-context">'+esc(t('modMapQuality'))+'</p><div id="mod-map-table">'+buildModbusMapTable(map,'feeder:0')+'</div><p class="hint">'+esc(t('modMapNote'))+'</p><details><summary>'+esc(t('mb_kalite'))+'</summary><p class="hint">'+esc(t('qualityHelp'))+'</p><p class="hint">'+esc(t('maskHelp'))+'</p></details>';
 }
 function updateModbusMap(){
   const map=pageCache.modbus?.RegisterMap;
@@ -1171,9 +1304,10 @@ function updateModbusMap(){
   $('mod-map-table').innerHTML=buildModbusMapTable(map,block,phase,view,record);
 }
 
+function modbusErrorText(code){const n=Number(code);return code==null?t('notAvailable'):n===0?t('modbusNoError'):n+' · '+t(({1:'exception1',2:'exception2',3:'exception3'})[n]||'tFailed')}
 function renderModbus(d){
   const x=d||{};let page=pageHead(t('modTitle'),'modbus',t('modSub'));let s=page+'<div class="card"><div class="card-head"><div><h3>'+esc(t('genSettings'))+'</h3><div class="sub">'+esc(t('modGenSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';
-  s+=numField('mod-CihazID',t('fDevId'),x.CihazID,1,247)+selectField('mod-BaudRate',t('fBaud'),x.BaudRate,[9600,19200,38400,57600,115200,230400])+numField('mod-SonHataKodu',t('fLastErr'),x.SonHataKodu,0,65535,true)+textField('mod-SonHataZamani',t('fLastErrT'),fmtEpoch(x.SonHataZamani),64,true);s+='</div></div></div>';
+  s+=numField('mod-CihazID',t('fDevId'),x.CihazID,1,247)+selectField('mod-BaudRate',t('fBaud'),x.BaudRate,[9600,19200,38400,57600,115200,230400])+textField('mod-SonHataKodu',t('fLastErr'),modbusErrorText(x.SonHataKodu),64,true)+textField('mod-SonHataZamani',t('fLastErrT'),fmtEpoch(x.SonHataZamani),64,true);s+='</div></div></div>';
   s+='<div class="card">'+sectionHead(t('modMapT'),'modbus',t('modMapSub'))+'<div class="card-body">'+renderModbusMap(x.RegisterMap)+'</div></div>';
   return s;
 }
@@ -1246,7 +1380,7 @@ async function readRfGroupStatus(manual=false){
     if(manual)toast(t('rfStatusUpdated'),'ok');
     return group;
   }catch(e){
-    if(request===rfStatusRequest){if(feedback)feedback.textContent=t('tReadErr')+e.message;toast(t('tReadErr')+e.message,'err')}
+    if(request===rfStatusRequest){if(feedback)feedback.textContent=t('tReadErr')+e.message;toast(t('tReadErr')+userError(e),'err')}
     return null;
   }finally{
     if(request===rfStatusRequest)rfStatusBusy=false;
@@ -1258,11 +1392,11 @@ async function abortRfConfig(){
   const group=await readRfGroupStatus();
   if(!group)return;
   if(!rfCanAbort(group)){toast(t('rfAbortNone'),'info');return}
-  try{showLoad();await api('/config/rf/abort',{method:'POST'});hideLoad();toast(t('rfGroupRequested'),'info');await readRfGroupStatus()}catch(e){hideLoad();toast(t('tErr')+e.message,'err');await readRfGroupStatus()}
+  try{showLoad();await api('/config/rf/abort',{method:'POST'});hideLoad();toast(t('rfCancelRequested'),'info');await readRfGroupStatus()}catch(e){hideLoad();toast(t('tErr')+e.message,'err');await readRfGroupStatus()}
 }
 function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[]).filter(u=>u&&u.EUI64);
-  let s=pageHead(t('rfTitle'),'rf',t('rfSub'))+'<div class="card"><div class="card-head"><div><h3>'+esc(t('rfCard'))+'</h3><div class="sub">'+esc(t('rfCardSub'))+'</div></div></div><div class="card-body">';
-  s+=feederTabs('selectRfTab');
+  let s=pageHead(t('rfTitle'),'rf',t('rfSub'))+'<div class="card"><div class="card-head"><div><h3>'+esc(t('rfCard'))+'</h3><div class="sub">'+esc(t('rfCardSub'))+'</div><p class="hint">'+esc(t('rfRowHelp'))+'</p></div></div><div class="card-body">';
+  s+= '<div class="tabbar">'+Array.from({length:FEEDER_TABS},(_,i)=>'<button class="tab '+(i===0?'active':'')+'" onclick="selectRfTab('+i+')">'+esc(tf('rfStoreLineTpl',{n:i+1})+' · '+t('fFeedId')+' '+(rows.HatID?.[i]??0))+'</button>').join('')+'</div>';
   const ints=[['SetEdilebilirAcmaArizaSayisi','fFaultCount',1,4],['OluHatAkimiDogrulamaSuresi','fVerify',80,200],['YenilenmeSifirlamaSuresi','fReset',10,300]];
   const floats=[['SistemNominalAkimi','fNomCur',2,200],['SetEdilebilirActirmaEsikAkimi','fIa',5,240],['ArtimliAkimEsigi','fDidt',1,2200],['HatKopukHatBosta','fBreak',0.3,5]];
   const dev=[['R_DEVICEID','L1'],['S_DEVICEID','L2'],['T_DEVICEID','L3']];
@@ -1288,13 +1422,13 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
   else{s+=buildDiscoveryTable(un)}
   return s+'</div></div>';
 }
-function rfAssignEui(eui,phase){const fsel=$('rf-assign-f-'+eui);const i=fsel?parseInt(fsel.value,10):0;const key={R:'R_DEVICEID',S:'S_DEVICEID',T:'T_DEVICEID'}[phase];const el=$('rf-'+key+'-'+i);if(!el){toast(t('tTargetNotFound'),'err');return}el.value=eui.toUpperCase();el.dispatchEvent(new Event('input'));selectRfTab(i);toast(tf('tEuiAssigned',{n:i+1,ph:phase}),'ok')}
-async function readRfDiscovery(){if(loading)return;try{showLoad();const r=await api('/discovery/rf');hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const un=(r.data?.Unassigned||[]).filter(u=>u&&u.EUI64);const el=$('rf-discovery-panel');if(el){el.innerHTML=un.length?buildDiscoveryTable(un):'<div class="empty">'+esc(t('discNone'))+'</div>';toast(tf('tDiscovery',{n:un.length}),'ok')}}catch(e){hideLoad();toast(t('tRefreshErr')+e.message,'err')}}
+function rfAssignEui(eui,phase){const fsel=$('rf-assign-f-'+eui);const i=fsel?parseInt(fsel.value,10):0;const key={R:'R_DEVICEID',S:'S_DEVICEID',T:'T_DEVICEID'}[phase];const el=$('rf-'+key+'-'+i);if(!el){toast(t('tTargetNotFound'),'err');return}el.value=eui.toUpperCase();el.dispatchEvent(new Event('input'));selectRfTab(i);toast(tf('tEuiAssigned',{n:i+1,ph:{R:'L1',S:'L2',T:'L3'}[phase]}),'ok')}
+async function readRfDiscovery(){if(loading)return;try{showLoad();const r=await api('/discovery/rf');hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const un=(r.data?.Unassigned||[]).filter(u=>u&&u.EUI64);const el=$('rf-discovery-panel');if(el){el.innerHTML=un.length?buildDiscoveryTable(un):'<div class="empty">'+esc(t('discNone'))+'</div>';toast(tf('tDiscovery',{n:un.length}),'ok')}}catch(e){hideLoad();toast(t('tRefreshErr')+userError(e),'err')}}
 function buildDiscoveryTable(un){const dev=[['R_DEVICEID','L1'],['S_DEVICEID','L2'],['T_DEVICEID','L3']];return '<div class="table-wrap"><table class="phase-table"><thead><tr><th>EUI-64</th><th>'+esc(t('thAssign'))+'</th></tr></thead><tbody>'+un.map(u=>'<tr><td>'+esc(u.EUI64)+'</td><td><select id="rf-assign-f-'+esc(u.EUI64)+'">'+Array.from({length:FEEDER_TABS},(_,k)=>'<option value="'+k+'">'+esc(feederLbl(k))+'</option>').join('')+'</select> '+dev.map(dv=>'<button class="btn btn-read btn-small" onclick="rfAssignEui(\''+esc(u.EUI64)+'\',\''+dv[0][0]+'\')">'+dv[1]+'</button>').join(' ')+'</td></tr>').join('')+'</tbody></table></div>'}
 function rfUpdateProv(i){const el=$('rf-HatID-'+i),b=$('rf-prov-'+i);if(el&&b)b.style.display=(parseInt(el.value,10)||0)===0?'block':'none'}
 function rfBindLive(){for(let i=0;i<FEEDER_COUNT;i++){const el=$('rf-HatID-'+i);if(el){el.addEventListener('input',()=>rfUpdateProv(i));rfUpdateProv(i)}}}
 
-function renderRfMon(d){let s='<div class="card">'+sectionHead(t('rfmonCard'),'rfmon',t('rfmonSub'))+'<div class="card-body">';for(let i=0;i<FEEDER_TABS;i++){const ld=pageCache.rfmon?.[i];s+='<div class="card" id="rfmon-'+i+'" style="box-shadow:none;margin-bottom:9px"><div class="card-head"><h3>'+esc(feederLbl(i))+'</h3><button class="btn btn-read btn-small" onclick="readRfFeeder('+i+')">'+esc(t('btnRead'))+'</button></div><div class="card-body">'+(ld?buildRfMonitorTable(ld):'<div class="empty">'+esc(t('monNoData'))+'</div>')+'</div></div>'}return s+'</div></div>'}
+function renderRfMon(d){let s='<div class="card">'+sectionHead(t('rfmonCard'),'rfmon',t('rfmonSub'))+'<div class="card-body">';for(let i=0;i<FEEDER_TABS;i++){const ld=pageCache.rfmon?.[i];s+='<div class="card" id="rfmon-'+i+'" style="box-shadow:none;margin-bottom:9px"><div class="card-head"><h3>'+esc(feederLbl(i))+'</h3>'+readStamp('rfmon:'+i)+'<button class="btn btn-read btn-small" onclick="readRfFeeder('+i+')">'+esc(t('btnRead'))+'</button></div><div class="card-body">'+(ld?buildRfMonitorTable(ld):'<div class="empty">'+esc(t('monNoData'))+'</div>')+'</div></div>'}return s+'</div></div>'}
 
 function formatChargePhase(value){if(value==null)return '-';const names=LNG==='tr'?['Yok','Ön şarj','Sabit akım','Sabit gerilim','Tamamlama','Tamam']:['None','Precharge','Constant current','Constant voltage','Termination','Complete'];return names[value]||'-'}
 function formatPowerSource(value){if(value==null)return '-';const names=LNG==='tr'?['Akü','PV (güneş)','DC','Belirsiz','Giriş var, akım yok']:['Battery','PV (solar)','DC','Unknown','Input present, no current'];return value===255?(LNG==='tr'?'Bilinmiyor':'Unknown'):names[value]||'-'}
@@ -1307,19 +1441,19 @@ function formatBoardState(v){if(v==null)return '-';const tr=LNG==='tr';const p=[
 function formatBoardState2(v){if(v==null)return '-';const tr=LNG==='tr';const p=[];if(v&128)p.push(tr?'Kart ölçümü güncel değil':'Board measurement stale');const ve=(v>>4)&7,sr=(v>>2)&3,pw=v&3;p.push((tr?'Ayar doğrulama: ':'Setting verification: ')+(tr?['doğrulandı','kullanılmıyor','kırpıldı','kaynak MH değil','uygulanıyor','reddedildi','beklemede','bilinmiyor'][ve]:['verified','unused','clipped','source not MH','applying','rejected','waiting','unknown'][ve]));p.push((tr?'Ayar kaynağı: ':'Setting source: ')+(tr?['yok','MH','servis','bilinmiyor'][sr]:['none','MH','service','unknown'][sr]));p.push((tr?'Sistem gücü ölçümü: ':'System power measurement: ')+(tr?['hazırlanıyor','ölçülüyor','güncel değil','geçersiz'][pw]:['initializing','measuring','stale','invalid'][pw]));return p.join(' · ')}
   const NOSensor={OrtamSicakligi:1,HeaterState:1,HeaterPower:1,PanelAkimi:1};const PBITS={PanelVoltaji:2,DcVoltaji:2,BataryaVoltaji:2,GirisAkimi:4,BataryaAkimi:4|1<<14,GirisGucu:8,AkuGucu:8,Kaynak:1<<12,TelemetriYasi:1,KartDurum:1,KartDurum2:1,AlarmMaskesi:1<<13,ChargeState:1<<10,ChargePertance:32|1<<14,BatterySOC:32|1<<14,Capacity:1<<11,BatteryTemp:1<<8,BatterySOH:1<<7,Temp:1<<9};
 function measState(x){if(typeof x.PowerValidFields!=='number')return null;const m=x.PowerValidFields;const miss=[];if(!(m&2))miss.push(t('msVolt'));if((m&16388)!==16388)miss.push(t('msCur'));if(!(m&8))miss.push(t('msPow'));if((m&16416)!==16416)miss.push(t('msSoc'));if(!(m&128))miss.push(t('msSoh'));if((m&768)!==768)miss.push(t('msTemp'));if(!(m&1024))miss.push(t('msCharge'));if(!(m&2048))miss.push(t('msCap'));if(!(m&4096))miss.push(t('msSrc'));const stale=(typeof x.TelemetriYasi==='number'&&x.TelemetriYasi>30&&x.TelemetriYasi<255)||x.tlmNone;const txt=(miss.length?t('msInvalid')+': '+miss.join(', '):t('msAll'))+(stale?' · '+t('msStaleTlm'):'');return{txt:txt,bad:miss.length>0,stale:stale}}
-function renderBoard(d){const x=d||{};if(typeof x.BatteryTemp==='number'&&x.BatteryTemp<=-990)x.BatteryTemp=null;if(x.BatterySOH===2550)x.BatterySOH=null;if(x.TelemetriYasi===255){x.TelemetriYasi=null;x.tlmNone=1}const ms=measState(x);let s=pageHead(t('mBoard'),'board',t('boardSub'),false);if(!d)return s+'<div class="card"><div class="card-body"><div class="empty">'+t('boardPress')+'</div></div></div>';const groups=[[t('gGsm'),[['GsmRAT',t('fNetworkTech'),''],['GsmRxlev','2G RSSI',''],['GsmRscp','3G RSCP',''],['GsmRsrp','4G RSRP',''],['GsmRsrq','4G RSRQ',''],['GsmSig',t('fSignal'),'']]],[t('gSolar'),[['PanelAkimi',t('fCur'),'mA'],['PanelVoltaji',t('fVolt'),'mV'],['DcVoltaji',t('fDcIn'),'mV'],['GirisAkimi',t('fInCur'),'mA'],['GirisGucu',t('fInPw'),'mW',10,1],['Kaynak',t('fSrc'),'']]],[t('gBattery'),[['BataryaVoltaji',t('fVolt'),'mV'],['BataryaAkimi',t('fCur'),'mA'],['BatteryTemp',t('fTemp'),'°C',10,1],['ChargePertance',t('fCharge'),'%',10,1],['ChargeState',t('fChargeSt'),''],['BatterySOC','SOC','%',10,1],['BatterySOH','SOH','%',10,1],['Capacity',t('fCap'),'Ah'],['AkuGucu',t('fBatPw'),'mW',10,1]]],[t('gPwrInfo'),[['KartDurum',t('fBoardState'),''],['KartDurum2',t('fBoardState2'),''],['TelemetriYasi',t('fTlmAge'),'s'],['AlarmMaskesi',t('fAlarms'),''],['OlcumDurumu',t('fMeasState'),'']]],[t('gRails'),[['3V3','3.3V','mV'],['3V8','3.8V','mV'],['5V','5V','mV']]],[t('gSystem'),[['OrtamSicakligi',t('fAmb'),'°C'],['HeaterState',t('fHeatSt'),''],['HeaterPower',t('fHeatPw'),'']]],[t('gTemp'),[['Temp',t('fTemp'),'°C'],['TempMax',t('fTmax'),'°C'],['TempMin',t('fTmin'),'°C'],['TDIE',t('fDie'),'°C'],['TDIEMax',t('fDieMax'),'°C'],['TDIEMin',t('fDieMin'),'°C']]]];s+='<div class="grid g2" style="align-items:start">';groups.forEach(g=>{s+='<div class="card"><div class="card-head"><h3>'+esc(g[0])+'</h3></div><div class="kv-list">';g[1].forEach(f=>{const pb=PBITS[f[0]];const inv=(pb!==undefined&&typeof x.PowerValidFields==='number'&&(pb&x.PowerValidFields)!==pb)||(f[0]==='TelemetriYasi'&&(x.tlmNone||x.TelemetriYasi>=255))||(f[0]==='OlcumDurumu'&&ms&&ms.bad);const stale=(f[0]==='TelemetriYasi'&&typeof x.TelemetriYasi==='number'&&x.TelemetriYasi>30&&x.TelemetriYasi<255)||(f[0]==='OlcumDurumu'&&ms&&!ms.bad&&ms.stale);s+='<div class="kv"><span class="k">'+esc(f[1])+'</span><span class="v'+(inv?' vinv':stale?' vstale':'')+'"'+((inv||stale)?' title="'+esc(inv?t('invData'):t('staleData'))+'"':'')+'>'+esc(f[0]==='GsmRAT'?formatNetwork(x):f[0]==='GsmRxlev'?formatSignal(x.GsmRxlev,'rxlev'):f[0]==='GsmRscp'?formatSignal(x.GsmRscp,'rscp'):f[0]==='GsmRsrp'?formatSignal(x.GsmRsrp,'rsrp'):f[0]==='GsmRsrq'?formatSignal(x.GsmRsrq,'rsrq'):f[0]==='GsmSig'?fmtCsq(x.GsmSig):f[0]==='OlcumDurumu'?(ms?ms.txt:'-'):NOSensor[f[0]]||x[f[0]]==null?'-':f[0]==='KartDurum'?formatBoardState(x.KartDurum):f[0]==='KartDurum2'?formatBoardState2(x.KartDurum2):f[0]==='Kaynak'?formatPowerSource(x.Kaynak):f[0]==='AlarmMaskesi'?formatAlarmMask(x.AlarmMaskesi):f[0]==='ChargeState'?formatChargePhase(x[f[0]]):f[3]!==undefined?fmt(x[f[0]]/f[3],f[2],f[4]!==undefined?f[4]:2):fmt(x[f[0]],f[2]))+'</span></div>';});s+='</div>'+(g[0]===t('gPwrInfo')&&Number(x.AlarmMaskesi)>0?'<p class="hint">'+esc(alarmDetail(x.AlarmMaskesi))+'</p>':'')+(g[0]===t('gBattery')&&Number(x.BatteryCapacityUnknown)===1?'<p class="hint">'+esc(t('rfCapacityUnknown'))+'</p>':'')+(g[0]===t('gGsm')?'<p class="hint">'+esc(t('signalHint'))+'</p>':'')+'</div>'});s+='<div class="card"><div class="card-head"><h3>'+esc(t('dio'))+'</h3></div><div class="kv-list"><div class="kv"><span class="k">'+esc(t('dins'))+'</span><span class="v">'+(x.DIN||[]).map((v,i)=>'<span class="led '+(v?'on':'off')+'"><i></i>DIN'+(i+1)+'</span>').join('')+'</span></div><div class="kv"><span class="k">'+esc(t('relays'))+'</span><span class="v">'+(x.RLY||[]).map((v,i)=>'<span class="led '+(v?'on':'off')+'"><i></i>RLY'+(i+1)+'</span>').join('')+'</span></div></div></div>';s+='</div>';return s}
+function renderBoard(d){const x=d||{};if(typeof x.BatteryTemp==='number'&&x.BatteryTemp<=-990)x.BatteryTemp=null;if(x.BatterySOH===2550)x.BatterySOH=null;if(x.TelemetriYasi===255){x.TelemetriYasi=null;x.tlmNone=1}const ms=measState(x);let s=pageHead(t('mBoard'),'board',t('boardSub'),false);if(!d)return s+'<div class="card"><div class="card-body"><div class="empty">'+t('boardPress')+'</div></div></div>';const groups=[[t('gGsm'),[['GsmRAT',t('fNetworkTech'),''],['GsmRxlev','2G RSSI',''],['GsmRscp','3G RSCP',''],['GsmRsrp','4G RSRP',''],['GsmRsrq','4G RSRQ',''],['GsmSig',t('fSignal'),'']]],[t('gSolar'),[['PanelAkimi',t('fCur'),'mA'],['PanelVoltaji',t('fVolt'),'mV'],['DcVoltaji',t('fDcIn'),'mV'],['GirisAkimi',t('fInCur'),'mA'],['GirisGucu',t('fInPw'),'mW',10,1],['Kaynak',t('fSrc'),'']]],[t('gBattery'),[['BataryaVoltaji',t('fVolt'),'mV'],['BataryaAkimi',t('fCur'),'mA'],['BatteryTemp',t('fTemp'),'°C',10,1],['ChargePertance',t('fCharge'),'%',10,1],['ChargeState',t('fChargeSt'),''],['BatterySOC','SOC','%',10,1],['BatterySOH','SOH','%',10,1],['Capacity',t('fCap'),'Ah'],['AkuGucu',t('fBatPw'),'mW',10,1]]],[t('gPwrInfo'),[['KartDurum',t('fBoardState'),''],['KartDurum2',t('fBoardState2'),''],['TelemetriYasi',t('fTlmAge'),'s'],['AlarmMaskesi',t('fAlarms'),''],['OlcumDurumu',t('fMeasState'),'']]],[t('gRails'),[['3V3','3.3V','mV'],['3V8','3.8V','mV'],['5V','5V','mV']]],[t('gSystem'),[['OrtamSicakligi',t('fAmb'),'°C'],['HeaterState',t('fHeatSt'),''],['HeaterPower',t('fHeatPw'),'']]],[t('gTemp'),[['Temp',t('fTemp'),'°C'],['TempMax',t('fTmax'),'°C'],['TempMin',t('fTmin'),'°C'],['TDIE',t('fDie'),'°C'],['TDIEMax',t('fDieMax'),'°C'],['TDIEMin',t('fDieMin'),'°C']]]];s+='<div class="grid g2" style="align-items:start">';groups.forEach(g=>{s+='<div class="card"><div class="card-head"><h3>'+esc(g[0])+'</h3></div><div class="kv-list">';g[1].forEach(f=>{const pb=PBITS[f[0]];const inv=(pb!==undefined&&typeof x.PowerValidFields==='number'&&(pb&x.PowerValidFields)!==pb)||(f[0]==='TelemetriYasi'&&(x.tlmNone||x.TelemetriYasi>=255))||(f[0]==='OlcumDurumu'&&ms&&ms.bad);const stale=(f[0]==='TelemetriYasi'&&typeof x.TelemetriYasi==='number'&&x.TelemetriYasi>30&&x.TelemetriYasi<255)||(f[0]==='OlcumDurumu'&&ms&&!ms.bad&&ms.stale);s+='<div class="kv"><span class="k">'+esc(f[1])+'</span><span class="v'+(inv?' vinv':stale?' vstale':'')+'"'+((inv||stale)?' title="'+esc(inv?t('invData'):t('staleData'))+'"':'')+'>'+esc(f[0]==='GsmRAT'?formatNetwork(x):f[0]==='GsmRxlev'?formatSignal(x.GsmRxlev,'rxlev'):f[0]==='GsmRscp'?formatSignal(x.GsmRscp,'rscp'):f[0]==='GsmRsrp'?formatSignal(x.GsmRsrp,'rsrp'):f[0]==='GsmRsrq'?formatSignal(x.GsmRsrq,'rsrq'):f[0]==='GsmSig'?fmtCsq(x.GsmSig):f[0]==='OlcumDurumu'?(ms?ms.txt:'-'):NOSensor[f[0]]||x[f[0]]==null?t('notAvailable'):f[0]==='KartDurum'?formatBoardState(x.KartDurum):f[0]==='KartDurum2'?formatBoardState2(x.KartDurum2):f[0]==='Kaynak'?formatPowerSource(x.Kaynak):f[0]==='AlarmMaskesi'?formatAlarmMask(x.AlarmMaskesi):f[0]==='ChargeState'?formatChargePhase(x[f[0]]):f[3]!==undefined?fmt(x[f[0]]/f[3],f[2],f[4]!==undefined?f[4]:2):fmt(x[f[0]],f[2]))+(f[0]!=='OlcumDurumu'&&(inv||stale)?' · '+esc(t(inv?'msInvalid':'staleData')):'')+'</span></div>';});s+='</div>'+(g[0]===t('gPwrInfo')&&Number(x.AlarmMaskesi)>0?'<p class="hint">'+esc(alarmDetail(x.AlarmMaskesi))+'</p>':'')+(g[0]===t('gBattery')&&Number(x.BatteryCapacityUnknown)===1?'<p class="hint">'+esc(t('rfCapacityUnknown'))+'</p>':'')+(g[0]===t('gGsm')?'<p class="hint">'+esc(t('signalHint'))+'</p>':'')+'</div>'});s+='<div class="card"><div class="card-head"><h3>'+esc(t('dio'))+'</h3></div><div class="kv-list"><div class="kv"><span class="k">'+esc(t('dins'))+'</span><span class="v">'+(x.DIN||[]).map((v,i)=>'<span class="led '+(v?'on':'off')+'"><i></i>DIN'+(i+1)+'</span>').join('')+'</span></div><div class="kv"><span class="k">'+esc(t('relays'))+'</span><span class="v">'+(x.RLY||[]).map((v,i)=>'<span class="led '+(v?'on':'off')+'"><i></i>RLY'+(i+1)+'</span>').join('')+'</span></div></div></div>';s+='</div>';return s}
 
-function renderDevice(d){const x=d||{};let s=pageHead(t('devTitle'),'device',t('devSub'));s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devInfo'))+'</h3><div class="sub">'+esc(t('devInfoSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=textField('dev-SeriNumarasi',t('fSerial'),x.SeriNumarasi,'64',true)+textField('dev-UretimTarihi',t('fMfg'),fmtEpoch(x.UretimTarihi),'64',true)+textField('dev-LifeTime',t('fLife'),fmtLifetime(x.LifeTime),'64',true)+textField('dev-RunTime',t('fRun'),fmtLifetime(x.RunTime),'64',true)+textField('dev-ModemYazilimVeriyonu',t('fMfw'),x.ModemYazilimVeriyonu,'64',true)+textField('dev-RFYazilimVeriyonu',t('fRfw'),x.RFYazilimVeriyonu,'64',true)+textField('dev-KurulumTarihi',t('fFwDate'),x.KurulumTarihi?fmtEpoch(x.KurulumTarihi):'-----','64',true)+textField('dev-CihazKoordinati',t('fCell'),x.CihazKoordinati&&typeof x.CihazKoordinati==='object'?`MCC:${x.CihazKoordinati.MCC} MNC:${x.CihazKoordinati.MNC} LAC:${x.CihazKoordinati.LAC} CI:${x.CihazKoordinati.CI}`:x.CihazKoordinati||'-','128',true)+textField('dev-DevreyeAlinmaZamani',t('fComm'),fmtEpoch(x.DevreyeAlinmaZamani),'64',true)+textField('dev-Time',t('fRtc'),fmtEpoch(x.Time),'64',true);s+='</div></div></div>';
-  s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devCfg'))+'</h3><div class="sub">'+esc(t('devCfgSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=numField('dev-WebArayuzuPortu',t('fWebPort'),x.WebArayuzuPortu,1,65535)+numField('dev-SimKartPin',t('fPin'),x.SimKartPin,0,9999)+textField('dev-SimKartAPN',t('fApn'),x.SimKartAPN,16)+textField('dev-SimKartAPNUsername',t('fApnUser'),x.SimKartAPNUsername,16)+textField('dev-SimKartAPNSifresi',t('fApnPass'),x.SimKartAPNSifresi,16)+textField('dev-NtpServer',t('fNtp'),x.NtpServer,64)+numField('dev-NtpServerPortu',t('fNtpPort'),x.NtpServerPortu,1,65535)+numField('dev-TimeZone',t('fTz'),x.TimeZone,-12,14)+numField('dev-PeriyodikModemResetPeriyodu',t('fModemRst'),Math.floor(x.PeriyodikModemResetPeriyodu/3600),0,720)+numField('dev-WebIlkVeriZamanAsimi',t('fWebFd'),x.WebIlkVeriZamanAsimi,0,3600)+numField('dev-WebBostaKalmaZamanAsimi',t('fWebIdle'),x.WebBostaKalmaZamanAsimi,0,3600)+numField('dev-IEC104IlkVeriZamanAsimi',t('fIecFd'),x.IEC104IlkVeriZamanAsimi,0,3600)+numField('dev-IEC104BostaKalmaZamanAsimi',t('fIecIdle'),x.IEC104BostaKalmaZamanAsimi,0,3600);s+='</div></div></div>';
+function renderDevice(d){const x=d||{};let s=pageHead(t('devTitle'),'device',t('devSub'));s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devInfo'))+'</h3><div class="sub">'+esc(t('devInfoSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=textField('dev-SeriNumarasi',t('fSerial'),x.SeriNumarasi,'64',true)+textField('dev-UretimTarihi',t('fMfg'),fmtEpoch(x.UretimTarihi),'64',true)+textField('dev-LifeTime',t('fLife'),fmtLifetime(x.LifeTime),'64',true)+textField('dev-RunTime',t('fRun'),fmtLifetime(x.RunTime),'64',true)+textField('dev-ModemYazilimVeriyonu',t('fMfw'),x.ModemYazilimVeriyonu,'64',true)+textField('dev-RFYazilimVeriyonu',t('fRfw'),x.RFYazilimVeriyonu,'64',true)+textField('dev-KurulumTarihi',t('fFwDate'),fmtEpoch(x.KurulumTarihi),'64',true)+textField('dev-CihazKoordinati',t('fCell'),x.CihazKoordinati&&typeof x.CihazKoordinati==='object'?`MCC:${x.CihazKoordinati.MCC} MNC:${x.CihazKoordinati.MNC} LAC:${x.CihazKoordinati.LAC} CI:${x.CihazKoordinati.CI}`:x.CihazKoordinati||'-','128',true)+textField('dev-DevreyeAlinmaZamani',t('fComm'),fmtEpoch(x.DevreyeAlinmaZamani),'64',true)+textField('dev-Time',t('fRtc'),fmtEpoch(x.Time),'64',true);s+='</div></div></div>';
+  s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devCfg'))+'</h3><div class="sub">'+esc(t('devCfgSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=numField('dev-WebArayuzuPortu',t('fWebPort'),x.WebArayuzuPortu,1,65535)+numField('dev-SimKartPin',t('fPin'),x.SimKartPin,0,9999)+textField('dev-SimKartAPN',t('fApn'),x.SimKartAPN,16)+textField('dev-SimKartAPNUsername',t('fApnUser'),x.SimKartAPNUsername,16)+textField('dev-SimKartAPNSifresi',t('fApnPass'),x.SimKartAPNSifresi,16,false,true)+textField('dev-NtpServer',t('fNtp'),x.NtpServer,64)+numField('dev-NtpServerPortu',t('fNtpPort'),x.NtpServerPortu,1,65535)+numField('dev-TimeZone',t('fTz'),x.TimeZone,-12,14)+numField('dev-PeriyodikModemResetPeriyodu',t('fModemRst'),Math.floor(x.PeriyodikModemResetPeriyodu/3600),0,720)+numField('dev-WebIlkVeriZamanAsimi',t('fWebFd'),x.WebIlkVeriZamanAsimi,0,3600)+numField('dev-WebBostaKalmaZamanAsimi',t('fWebIdle'),x.WebBostaKalmaZamanAsimi,0,3600)+numField('dev-IEC104IlkVeriZamanAsimi',t('fIecFd'),x.IEC104IlkVeriZamanAsimi,0,3600)+numField('dev-IEC104BostaKalmaZamanAsimi',t('fIecIdle'),x.IEC104BostaKalmaZamanAsimi,0,3600);s+='</div><p class="hint">'+esc(t('networkHelp'))+'</p><p class="hint">'+esc(t('zoneHelp'))+'</p><p class="hint">'+esc(t('zeroOff'))+'</p><p class="hint">'+esc(t('resetHelp'))+'</p><p class="hint">'+esc(t('pinHelp'))+'</p></div></div>';
   s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devActions'))+'</h3><div class="sub">'+esc(t('devActionsSub'))+'</div></div></div><div class="card-body"><button class="btn btn-danger" onclick="rebootDevice()">'+esc(t('btnReboot'))+'</button></div></div>';return s}
 
-function renderFaults(){let s='<div class="card"><div class="card-head"><div><h3>'+esc(t('mFaults'))+'</h3><div class="sub">'+esc(t('faultsSub'))+'</div></div><div class="card-actions"><button class="btn btn-read btn-small" onclick="loadFaults()">'+esc(t('btnRead'))+'</button></div></div><div class="card-body">'+feederTabs('selectFaultFeeder',faultFeeder)+'<div id="faultContent">'+(rfFaultCache[faultFeeder]?buildFaults(rfFaultCache[faultFeeder]):'<div class="empty">'+esc(t('faultsPress'))+'</div>')+'</div></div></div>';return s}
-function buildFaults(r){const phases=[['L1T','L1P','L1'],['L2T','L2P','L2'],['L3T','L3P','L3']];let h='<div class="grid g3">';const tc=r.tc||[0,0,0],pc=r.pc||[0,0,0];phases.forEach((p,i)=>{h+='<div class="card" style="box-shadow:none;border:1px solid var(--line)"><div class="card-body"><h3 style="font-size:13px;margin-bottom:8px">'+p[2]+'</h3><div class="sub" style="font-weight:700;color:#a86e00;margin-bottom:4px">'+esc(tf('tempTpl',{n:tc[i]}))+'</div>';const tempRecords=r[p[0]]?r[p[0]].split('\n').filter(x=>x.trim()):[];h+=tempRecords.length?tempRecords.map(x=>'<div class="log" style="border-left-color:#d98c00">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='<div class="sub" style="font-weight:700;color:#a33;margin:10px 0 4px">'+esc(tf('permTpl',{n:pc[i]}))+'</div>';const pRec=r[p[1]]?r[p[1]].split('\n').filter(x=>x.trim()):[];h+=pRec.length?pRec.map(x=>'<div class="log" style="border-left-color:#b33">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='</div></div>'});return h+'</div>'}
-function renderLogs(){const done=sysLogLines.length>0&&sysLogOffset>=sysLogTotal;const inner=sysLogLines.length?sysLogLines.map(x=>'<div class="log">'+esc(x)+'</div>').join(''):esc(t('logsPress'));return '<div class="card"><div class="card-head"><div><h3>'+esc(t('mLogs'))+'</h3><div class="sub">'+esc(t('logsSub'))+'</div></div><div class="card-actions"><button id="sysLogBtn" class="btn btn-read btn-small" onclick="loadSysLogs()">'+esc(done?t('btnLogRestart'):t('btnNext'))+'</button></div></div><div class="card-body"><div id="sysLogContent"'+(sysLogLines.length?'':' class="empty"')+'>'+inner+'</div></div></div>'}
-function renderTerminal(){return '<div class="terminal"><div class="terminal-out" id="trmOut"></div><div class="terminal-in"><input id="trmCmd" maxlength="64" autocomplete="off" placeholder="'+esc(t('termPh'))+'"><button class="btn btn-read" onclick="trmSend()">'+esc(t('btnSend'))+'</button><button class="btn btn-muted" onclick="trmClr()">'+esc(t('btnClear'))+'</button></div></div>'}
+function renderFaults(){let s='<div class="card"><div class="card-head"><div><h3>'+esc(t('mFaults'))+'</h3><div class="sub">'+esc(t('faultsSub'))+'</div>'+readStamp('faults:'+faultFeeder)+'</div><div class="card-actions"><button class="btn btn-read btn-small" onclick="loadFaults()">'+esc(t('btnRead'))+'</button></div></div><div class="card-body">'+feederTabs('selectFaultFeeder',faultFeeder)+'<div id="faultContent">'+(rfFaultCache[faultFeeder]?buildFaults(rfFaultCache[faultFeeder]):'<div class="empty">'+esc(t('faultsPress'))+'</div>')+'</div></div></div>';return s}
+function buildFaults(r){const phases=[['L1T','L1P','L1'],['L2T','L2P','L2'],['L3T','L3P','L3']];let h='<p class="hint">'+esc(t('faultHelp'))+'</p><div class="grid g3">';const tc=r.tc||[0,0,0],pc=r.pc||[0,0,0];phases.forEach((p,i)=>{h+='<div class="card" style="box-shadow:none;border:1px solid var(--line)"><div class="card-body"><h3 style="font-size:13px;margin-bottom:8px">'+p[2]+'</h3><div class="sub" style="font-weight:700;color:#a86e00;margin-bottom:4px">'+esc(tf('tempTpl',{n:tc[i]}))+'</div>';const tempRecords=r[p[0]]?r[p[0]].split('\n').filter(x=>x.trim()):[];h+=tempRecords.length?tempRecords.map(x=>'<div class="log" style="border-left-color:#d98c00">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='<div class="sub" style="font-weight:700;color:#a33;margin:10px 0 4px">'+esc(tf('permTpl',{n:pc[i]}))+'</div>';const pRec=r[p[1]]?r[p[1]].split('\n').filter(x=>x.trim()):[];h+=pRec.length?pRec.map(x=>'<div class="log" style="border-left-color:#b33">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='</div></div>'});return h+'</div>'}
+function renderLogs(){const done=sysLogLines.length>0&&sysLogOffset>=sysLogTotal;const inner=sysLogLines.length?sysLogLines.map(x=>'<div class="log">'+esc(x)+'</div>').join(''):esc(t('logsPress'));return '<div class="card"><div class="card-head"><div><h3>'+esc(t('mLogs'))+'</h3><div class="sub">'+esc(t('logsSub'))+'</div></div><div class="card-actions"><button id="sysLogBtn" class="btn btn-read btn-small" onclick="loadSysLogs()">'+esc(done?t('btnLogRestart'):sysLogLines.length?t('btnNext'):t('btnReadRecords'))+'</button></div></div><div class="card-body"><div id="sysLogContent"'+(sysLogLines.length?'':' class="empty"')+'>'+inner+'</div></div></div>'}
+function renderTerminal(){return '<p class="hint">'+esc(t('consoleHelp'))+'</p><div class="terminal"><div class="terminal-out" id="trmOut"></div><div class="terminal-in"><input id="trmCmd" maxlength="64" autocomplete="off" placeholder="'+esc(t('termPh'))+'"><button class="btn btn-read" onclick="trmSend()">'+esc(t('btnSend'))+'</button><button class="btn btn-muted" onclick="trmClr()">'+esc(t('btnClear'))+'</button></div></div>'}
 
 // ---------------- PAGE LOAD / SAVE ----------------
-const readPage=async(page)=>{if(loading)return;try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;if(page==='rf')invalidateRfGroupStatus();pageCache[page]=d;renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}};
+const readPage=async(page,confirmed=false)=>{if(loading)return;if(hasDirty(page)&&!confirmed){confirmAction(t('readDiscard'),()=>readPage(page,true),'discardRead');return;}try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;if(page==='rf')invalidateRfGroupStatus();pageCache[page]=d;pageReadAt[page]=Date.now();delete pageSaved[page];renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+userError(e),'err')}};
 const normalRfEui=value=>{const text=String(value||'').trim().toUpperCase();return /^0{16}$/.test(text)?'':text};
 function clearRfEui(index,key){
   if(loading||!['R_DEVICEID','S_DEVICEID','T_DEVICEID'].includes(key))return;
@@ -1351,7 +1485,7 @@ const savePage=async(page)=>{
     const rows=d.root||d;
     const active=Array.from({length:FEEDER_COUNT},(_,i)=>rows.inUse?.[i]?tf('rfStoreLineTpl',{n:i+1})+(rows.HatID?.[i]?' (ID '+rows.HatID[i]+')':''):null).filter(Boolean);
     const changes=rfChangeSummary(pageCache.rf,d);
-    confirmAction((active.length?tf('rfSaveConfirm',{rows:active.join(', ')}):t('rfSaveNone'))+(changes?'\n'+changes:''),()=>savePageData(page,d));
+    confirmAction((active.length?tf('rfSaveConfirm',{rows:active.join(', ')}):t('rfSaveNone'))+(changes?'\n'+changes:''),()=>savePageData(page,d),'btnSave');
     return;
   }
   return savePageData(page,d);
@@ -1365,10 +1499,10 @@ async function savePageData(page,d){
     if(r.success===false)throw new Error(r.error||t('tSaveFailed'));
     pageCache[page]=page==='rf'&&pageCache.rf?.root?{...pageCache.rf,root:{...pageCache.rf.root,...(d.root||d)}}:{...pageCache[page],...d};
     if(page==='rf')invalidateRfGroupStatus('rfStatusAfterSave');
-    markOriginals($('body'));clearDirty(page);
+    pageSaved[page]=true;markOriginals($('body'));clearDirty(page);
     if(page==='rf'&&r.warning==='backup_failed')toast(t('rfStopStorage'),'err');
     else toast(page==='rf'&&(d.root||d).inUse?.some(Boolean)?t('rfSavedApplying'):t('tSaveOk'),'ok');
-  }catch(e){hideLoad();if(page==='iec104'&&markIecServerErrors(e.message))toast(t('tFixVal'),'err');else toast(t('tSaveErr')+e.message,'err')}
+  }catch(e){hideLoad();if(page==='iec104'&&markIecServerErrors(e.message))toast(t('tFixVal'),'err');else toast(t('tSaveErr')+userError(e),'err')}
 }
 const addressError=(el,message)=>{
   el.classList.add('invalid');
@@ -1437,7 +1571,7 @@ const markIecServerErrors=message=>{
   if(first){selectIecTab(Number(first.dataset.i));first.focus()}
   return true;
 };
-const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',1,255],['iec-T1',1,255],['iec-T2',1,255],['iec-T3',20,65525],['iec-K',1,255],['iec-W',1,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validationEl($(x[0]),x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(getInt('iec-T2')>=getInt('iec-T1')){addressError($('iec-T2'),'T2 < T1');ok=false}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,4],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',5,240],['ArtimliAkimEsigi',1,2200],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
+const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',1,255],['iec-T1',1,255],['iec-T2',1,255],['iec-T3',20,65525],['iec-K',1,255],['iec-W',1,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validationEl($(x[0]),x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(getInt('iec-T2')>=getInt('iec-T1')){addressError($('iec-T2'),t('errT2'));ok=false}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,4],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',5,240],['ArtimliAkimEsigi',1,2200],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
   for(let i=0;i<FEEDER_COUNT;i++){const cb=$('rf-inUse-'+i);const inUse=!cb||cb.checked;
     ['R_DEVICEID','S_DEVICEID','T_DEVICEID'].forEach(k=>{const el=$('rf-'+k+'-'+i);if(!el)return;const v=(el.value||'').trim();const err=$('err-rf-'+k+'-'+i);el.classList.remove('invalid');if(err)err.textContent='';if(v==='')return;
       if(!euiRe.test(v)){el.classList.add('invalid');if(err)err.textContent=t('errHex');ok=false}
@@ -1451,7 +1585,7 @@ const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],
     else usedFids.push(fid);
     const nom=parseFloat($('rf-SistemNominalAkimi-'+i)?.value),ia=parseFloat($('rf-SetEdilebilirActirmaEsikAkimi-'+i)?.value);
     if(Number.isFinite(nom)&&Number.isFinite(ia)&&ia*5<nom*6){const el=$('rf-SetEdilebilirActirmaEsikAkimi-'+i),err=$('err-rf-SetEdilebilirActirmaEsikAkimi-'+i);el.classList.add('invalid');if(err)err.textContent=tf('errIaMin',{v:(nom*1.2).toFixed(1)});ok=false}
-  }}else if(page==='device'){[['dev-WebArayuzuPortu',1,65535],['dev-SimKartPin',0,9999],['dev-NtpServerPortu',1,65535],['dev-TimeZone',-12,14],['dev-PeriyodikModemResetPeriyodu',0,720],['dev-WebIlkVeriZamanAsimi',0,3600],['dev-WebBostaKalmaZamanAsimi',0,3600],['dev-IEC104IlkVeriZamanAsimi',0,3600],['dev-IEC104BostaKalmaZamanAsimi',0,3600]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false})}if(!ok)toast(t('tFixVal'),'err');return ok};
+  }}else if(page==='device'){[['dev-WebArayuzuPortu',1,65535],['dev-SimKartPin',0,9999],['dev-NtpServerPortu',1,65535],['dev-TimeZone',-12,14],['dev-PeriyodikModemResetPeriyodu',0,720],['dev-WebIlkVeriZamanAsimi',0,3600],['dev-WebBostaKalmaZamanAsimi',0,3600],['dev-IEC104IlkVeriZamanAsimi',0,3600],['dev-IEC104BostaKalmaZamanAsimi',0,3600]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false});const pin=getInt('dev-SimKartPin');if(pin!==0&&pin<1000){addressError($('dev-SimKartPin'),t('errPin'));ok=false}}if(!ok)toast(t('tFixVal'),'err');return ok};
 const validationEl=(el,min,max)=>{el.classList.remove('invalid');const err=el.closest?.('.field')?.querySelector('.err');if(err)err.textContent='';const n=Number(el.value);if(el.value===''||!Number.isInteger(n)||n<min||n>max){addressError(el,t('range')+min+' .. '+max);return false}return true};
 
 function extractPage(page){if(page==='iec104'){const d={};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','TemporaryFaultBase','PermanentFaultBase','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_YukAkimiVarYok','IOA_S_YukAkimiVarYok','IOA_T_YukAkimiVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok','IOA_R_TripFailed','IOA_S_TripFailed','IOA_T_TripFailed'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
@@ -1464,9 +1598,9 @@ const getIntEl=e=>e.value===''?0:parseInt(e.value,10)||0;
 function extractDevice(){return {WebArayuzuPortu:getInt('dev-WebArayuzuPortu'),SimKartPin:getInt('dev-SimKartPin'),SimKartAPN:getText('dev-SimKartAPN'),SimKartAPNUsername:getText('dev-SimKartAPNUsername'),SimKartAPNSifresi:getText('dev-SimKartAPNSifresi'),NtpServer:getText('dev-NtpServer'),NtpServerPortu:getInt('dev-NtpServerPortu'),TimeZone:getInt('dev-TimeZone'),PeriyodikModemResetPeriyodu:getInt('dev-PeriyodikModemResetPeriyodu')*3600,WebIlkVeriZamanAsimi:getInt('dev-WebIlkVeriZamanAsimi'),WebBostaKalmaZamanAsimi:getInt('dev-WebBostaKalmaZamanAsimi'),IEC104IlkVeriZamanAsimi:getInt('dev-IEC104IlkVeriZamanAsimi'),IEC104BostaKalmaZamanAsimi:getInt('dev-IEC104BostaKalmaZamanAsimi')}}
 
 // ---------------- NAVIGATION / RENDER ----------------
-function renderPage(id,d){let html='';if(id==='iec104')html=pageCache.iec104?renderIec104(pageCache.iec104):emptyCard(t('iecTitle'),'iec104',t('iecSub'));else if(id==='modbus')html=pageCache.modbus?renderModbus(pageCache.modbus):emptyCard(t('modTitle'),'modbus',t('modSub'));else if(id==='rf')html=pageCache.rf?renderRf(pageCache.rf):emptyCard(t('rfTitle'),'rf',t('rfSub'));else if(id==='rfmon')html=renderRfMon(pageCache.rfmon);else if(id==='board')html=pageCache.board?renderBoard(pageCache.board):renderBoard(null);else if(id==='iec-faults')html=renderFaults();else if(id==='syslogs')html=renderLogs();else if(id==='device')html=pageCache.device?renderDevice(pageCache.device):emptyCard(t('devTitle'),'device',t('devSub'));else if(id==='terminal')html=renderTerminal();$('body').innerHTML=html;curId=id;$('title').textContent=t(menuPages.find(p=>p[0]===id)?.[1]||id);document.querySelectorAll('.mi').forEach(e=>e.classList.toggle('a',e.dataset.id===id));dirtyPages[id]=new Set();if(id==='terminal'){$('trmCmd')?.addEventListener('keydown',e=>{if(e.key==='Enter')trmSend()});$('trmCmd')?.focus()}if(id==='rf'&&pageCache.rf){selectRfTab(0);rfBindLive();updateRfSaveButton()}markOriginals($('body'));bindDirty(id,$('body'));updatePageState(id)}
+function renderPage(id,d){let html='';if(id==='iec104')html=pageCache.iec104?renderIec104(pageCache.iec104):emptyCard(t('iecTitle'),'iec104',t('iecSub'));else if(id==='modbus')html=pageCache.modbus?renderModbus(pageCache.modbus):emptyCard(t('modTitle'),'modbus',t('modSub'));else if(id==='rf')html=pageCache.rf?renderRf(pageCache.rf):emptyCard(t('rfTitle'),'rf',t('rfSub'));else if(id==='rfmon')html=renderRfMon(pageCache.rfmon);else if(id==='board')html=pageCache.board?renderBoard(pageCache.board):renderBoard(null);else if(id==='iec-faults')html=renderFaults();else if(id==='syslogs')html=renderLogs();else if(id==='device')html=pageCache.device?renderDevice(pageCache.device):emptyCard(t('devTitle'),'device',t('devSub'));else if(id==='terminal')html=renderTerminal();$('body').innerHTML=html;curId=id;$('title').textContent=t(menuPages.find(p=>p[0]===id)?.[1]||id);document.querySelectorAll('.mi').forEach(e=>e.classList.toggle('a',e.dataset.id===id));dirtyPages[id]=new Set();if(id==='terminal'){$('trmCmd')?.addEventListener('keydown',e=>{if(e.key==='Enter')trmSend()});$('trmCmd')?.focus()}if(id==='rf'&&pageCache.rf){selectRfTab(0);rfBindLive();updateRfSaveButton()}markOriginals($('body'));bindDirty(id,$('body'));if(id==='iec104')$('iec-SBO')?.addEventListener('change',updateSboRange);if(id==='iec104')$('body').querySelectorAll('[data-key="TemporaryFaultBase"],[data-key="PermanentFaultBase"]').forEach(el=>el.addEventListener('input',updateIecRanges));updatePageState(id)}
 function switchPageNow(id){renderPage(id,pageCache[id])}
-function switchPage(id){if(loading||id===curId)return;if(curId&&hasDirty(curId)){confirmAction(t('tLeaveDirty'),()=>switchPageNow(id));return}switchPageNow(id)}
+function switchPage(id){if(loading||id===curId)return;if(curId&&hasDirty(curId)){confirmAction(t('tLeaveDirty'),()=>switchPageNow(id),'leavePage');return}switchPageNow(id)}
 function buildMenu(){const m=$('menu');m.innerHTML='';menuPages.forEach(p=>{if(p[0]==='fwupdate'&&s_role!=='admin')return;const e=document.createElement('div');e.className='mi';e.dataset.id=p[0];e.textContent=t(p[1]);e.onclick=()=>{if(p[0]==='fwupdate'){window.open('/fw_update.html?t='+encodeURIComponent(s_sessionToken||''),'_blank');return}switchPage(p[0])};m.appendChild(e)})}
 function selectRfTab(i){document.querySelectorAll('#body .tab').forEach((e,n)=>e.classList.toggle('active',n===i));for(let n=0;n<FEEDER_COUNT;n++)$('rf-pane-'+n)?.classList.toggle('active',n===i)}
 function selectIecTab(i){document.querySelectorAll('#body .tab').forEach((e,n)=>e.classList.toggle('active',n===i));for(let n=0;n<FEEDER_COUNT;n++)$('iec-pane-'+n)?.classList.toggle('active',n===i)}
@@ -1474,7 +1608,7 @@ function selectModTab(i){document.querySelectorAll('#body .tab').forEach((e,n)=>
 function selectFaultFeeder(i){faultFeeder=i;renderPage('iec-faults')}
 
 // ---------------- MONITORING ----------------
-async function readRfFeeder(i){if(loading)return;try{showLoad();const r=await api('/monitor/rf/'+i);hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const d=r.data?.lines?.[0]||r.lines?.[0]||r.data||r;if(!pageCache.rfmon)pageCache.rfmon=[];pageCache.rfmon[i]=d;renderPage('rfmon');const card=$('rfmon-'+i);if(card){const body=card.querySelector('.card-body');body.innerHTML=buildRfMonitorTable(d)}toast(tf('tFeedRead',{n:i+1}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}}
+async function readRfFeeder(i){if(loading)return;try{showLoad();const r=await api('/monitor/rf/'+i);hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const d=r.data?.lines?.[0]||r.lines?.[0]||r.data||r;if(!pageCache.rfmon)pageCache.rfmon=[];pageCache.rfmon[i]=d;pageReadAt['rfmon:'+i]=Date.now();renderPage('rfmon');toast(tf('tFeedRead',{n:i+1}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+userError(e),'err')}}
 function rfLiveFlag(phase,mask){
   const flags=phase?.Live?.Flags;
   return phase?.HasData&&phase.Online===true&&phase.UptimeStalled!==true&&Number.isInteger(flags)&&flags>=0&&flags<=255?((flags&mask)!==0?1:0):null;
@@ -1483,44 +1617,20 @@ function buildRfMonitorTable(d){
   const phases=d.Phases||[];
   const counts=d.FaultCountsSinceStartup;
   const fields=[
-    ['Eui64','EUI-64',''],['Online',(LNG==='tr'?'RF haberleşmesi':'RF online'),''],
-    ['Live.Seq','SEQ',''],['Live.Uptime',(LNG==='tr'?'Çalışma süresi':'Uptime'),'s'],
-    ['Live.BootCounter',(LNG==='tr'?'Açılış sayacı':'Boot counter'),''],
-    ['Live.State',(LNG==='tr'?'Koruma durumu':'Current state'),''],['Live.FaultCount',t('monActFault'),''],
+    ['Eui64','EUI-64',''],['Online',LNG==='tr'?'RF haberleşmesi':'RF communication',''],
     ['Live.Irms',t('monPhCur'),'A',3],
     ['Live.Flags',t('catEnerji'),'',undefined,1],
     ['Live.Flags',t('catLoad'),'',undefined,2],
-    ['Live.VTrip',(LNG==='tr'?'Açma kondansatörü':'Trip capacitor'),'V',3],
-    ['Live.VRec',(LNG==='tr'?'Hasat gerilimi':'Harvest voltage'),'V',3],
-    ['Live.Temp',(LNG==='tr'?'MCU sıcaklığı':'MCU temperature'),'°C'],
-    ['Live.RSSI','RSSI','dBm'],['Live.Flags',(LNG==='tr'?'Durum bayrakları':'Status flags'),''],
-    ['Live.FsmError',(LNG==='tr'?'FSM iç hatası':'FSM error'),''],['Live.TripFailed',(LNG==='tr'?'Canlı açma başarısızlığı':'Trip_Failed live'),''],
-    ['TripFailedAlarm',(LNG==='tr'?'Açma başarısızlığı alarmı':'Trip failure alarm'),''],
-    ['TripFailureLatched',(LNG==='tr'?'Operatör onayı gerekli':'Operator acknowledgement required'),''],
-    ['Live.LogPending',(LNG==='tr'?'Bekleyen olay kaydı':'Pending event records'),''],
-    ['Live.LogWrapLow',(LNG==='tr'?'Halka sarma düşük baytı':'Log wrap low'),''],['UptimeStalled',(LNG==='tr'?'Çalışma süresi ilerlemiyor':'Uptime stalled'),''],
-    ['LiveAgeMs',(LNG==='tr'?'Son veri yaşı':'Live data age'),'ms'],
-    ['Trip.InstantAmps',(LNG==='tr'?'Açma anındaki anlık akım':'Trip instant current'),'A',3],
-    ['Trip.RxMs',(LNG==='tr'?'Açma bildirimi alım sayacı':'Trip receive tick'),'ms'],
-    ['AnomalyLive.Active',(LNG==='tr'?'Canlı veri anomalisi':'Live anomaly'),''],
-    ['AnomalyLive.Window',(LNG==='tr'?'Canlı veri anomali penceresi':'Live anomaly window'),''],
-    ['AnomalyLive.Total',(LNG==='tr'?'Canlı veri anomali toplamı':'Live anomaly total'),''],
-    ['AnomalyTrip.Active',(LNG==='tr'?'Açma anomalisi':'Trip anomaly'),''],
-    ['AnomalyTrip.Window',(LNG==='tr'?'Açma anomali penceresi':'Trip anomaly window'),''],
-    ['AnomalyTrip.Total',(LNG==='tr'?'Açma anomali toplamı':'Trip anomaly total'),'']
+    ['Live.VTrip',LNG==='tr'?'Açma kondansatörü':'Trip capacitor','V',3],
+    ['Live.VRec',t('mb_harvest_gerilimi'),'V',3],
+    ['Live.Temp',t('mb_sicaklik'),'°C'],['Live.RSSI','RSSI','dBm'],
+    ['Trip.InstantAmps',LNG==='tr'?'Açma anındaki akım':'Current at trip','A',3],
+    ['TripFailedAlarm',t('catTripFailed'),''],
+    ['TripFailureLatched',LNG==='tr'?'Operatör onayı':'Operator acknowledgement',''],
+    ['LiveAgeMs',LNG==='tr'?'Okuma anındaki son veri yaşı':'Data age at read time','ms']
   ];
   const maintenance=phases.some(p=>p?.UptimeStalled===true||p?.Live?.FsmError===true);
-  let html=maintenance?'<p class="muted">'+esc(LNG==='tr'?'Bakım gerekli: uptime ilerlemiyor veya FSM hata bildirimi var.':'Maintenance required: stalled uptime or FSM error reported.')+'</p>':'';
-  const service=d.Maintenance;
-  if(service){
-    const messages=[];
-    if(service.SourceMismatches>0)messages.push(LNG==='tr'?`Kaynağı doğrulanamayan ${service.SourceMismatches} olay ham günlükte tutuldu; mevcut ayırıcıya bağlanmadı.`:`${service.SourceMismatches} events with unverified sources were retained in the raw log without binding to the current device.`);
-    const resetLabels=LNG==='tr'?['','biçimlendirme','durum kaybı','servis silmesi']:['','formatting','state loss','service clear'];
-    if(service.StoreResetReason>0)messages.push((LNG==='tr'?'Son MH olay deposu işlemi: ':'Last MH event store operation: ')+(resetLabels[service.StoreResetReason]||service.StoreResetReason));
-    if(service.CounterStatus>0)messages.push(LNG==='tr'?`Son RF güvenlik sayacı kaydı: 143/${service.CounterStatus}. 4–6 kodları RF iletiminin kilitlendiğini bildirir; anahtarsız yeni kartta 5 beklenir.`:`Last RF security counter record: 143/${service.CounterStatus}. Codes 4–6 report locked RF transmission; code 5 is expected on an unprovisioned new board.`);
-    if(service.EpochFeeder>0)messages.push(LNG==='tr'?`Son MH yenilemesi: fider ${service.EpochFeeder}, faz maskesi ${service.EpochPhases}, süre ${service.EpochDurationMs} ms.`:`Last MH refresh: feeder ${service.EpochFeeder}, phase mask ${service.EpochPhases}, duration ${service.EpochDurationMs} ms.`);
-    html+=messages.map(message=>'<p class="muted">'+esc(message)+'</p>').join('');
-  }
+  let html=maintenance?'<p class="hint">'+esc(t('rfMaintenance'))+'</p>':'';
   html+='<div class="table-wrap"><table class="phase-table"><thead><tr><th>'+esc(t('thParam'))+'</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
   if(counts){
     const n=k=>Number.isInteger(counts[k])&&counts[k]>=0?counts[k]:'—';
@@ -1534,8 +1644,9 @@ function buildRfMonitorTable(d){
       const phase=phases[index];
       const measurement=['Live.Irms','Live.VTrip','Live.VRec','Live.Temp'].includes(key);
       const unavailable=measurement&&(phase?.Online!==true||phase?.UptimeStalled===true);
-      const value=unavailable?null:mask?rfLiveFlag(phase,mask):phase?.HasData?key.split('.').reduce((v,k)=>v?.[k],phase):null;
-      const shown=value==null?'—':typeof value==='boolean'?(value?'1':'0'):typeof value==='string'?value:fmt(value,unit,precision);
+      const independent=['Eui64','Online','TripFailedAlarm','TripFailureLatched'].includes(key);
+      const value=unavailable?null:mask?rfLiveFlag(phase,mask):(independent||phase?.HasData)?key.split('.').reduce((v,k)=>v?.[k],phase):null;
+      const shown=value==null?t('notAvailable'):key==='Online'?t(value?'rfCurrentData':'rfNoCurrentData'):key==='TripFailedAlarm'?t(value?'alarmActive':'alarmInactive'):key==='TripFailureLatched'?t(value?'ackRequired':'ackNotRequired'):mask?t(value?'present':'absent'):typeof value==='string'?value:fmt(value,unit,precision);
       html+='<td>'+esc(shown)+'</td>';
     }
     html+='</tr>';
@@ -1545,14 +1656,33 @@ function buildRfMonitorTable(d){
 async function readBoard(){await readPage('board')}
 
 // ---------------- FAULTS / LOGS ----------------
-async function loadFaults(){if(loading)return;try{showLoad();const r=await api('/faults?feeder='+faultFeeder);hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));rfFaultCache[faultFeeder]=r;renderPage('iec-faults');const total=(r.tc||[0,0,0]).reduce((a,b)=>a+b,0)+(r.pc||[0,0,0]).reduce((a,b)=>a+b,0);toast(tf('tFaultsLoaded',{n:faultFeeder+1,m:total}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}}
-async function loadSysLogs(){if(loading)return;const restart=sysLogLines.length>0&&sysLogOffset>=sysLogTotal;if(restart){sysLogLines=[];sysLogOffset=0;const c0=$('sysLogContent');if(c0){c0.classList.add('empty');c0.innerHTML=esc(t('logsPress'))}}try{showLoad();const r=await api('/syslogs?offset='+sysLogOffset+'&limit=30');hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const logs=r.recs?r.recs.split('\n').filter(x=>x.trim()):[];sysLogTotal=Number(r.t)||0;sysLogLines=sysLogLines.concat(logs);sysLogOffset+=logs.length;const c=$('sysLogContent');if(c){c.classList.remove('empty');c.innerHTML=sysLogLines.map(x=>'<div class="log">'+esc(x)+'</div>').join('')}const b=$('sysLogBtn');if(b)b.textContent=(sysLogLines.length>0&&sysLogOffset>=sysLogTotal)?t('btnLogRestart'):t('btnNext');toast(tf('tLogsLoaded',{n:logs.length}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+e.message,'err')}}
+async function loadFaults(){if(loading)return;try{showLoad();const r=await api('/faults?feeder='+faultFeeder);hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));rfFaultCache[faultFeeder]=r;pageReadAt['faults:'+faultFeeder]=Date.now();renderPage('iec-faults');const total=(r.tc||[0,0,0]).reduce((a,b)=>a+b,0)+(r.pc||[0,0,0]).reduce((a,b)=>a+b,0);toast(tf('tFaultsLoaded',{n:faultFeeder+1,m:total}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+userError(e),'err')}}
+async function loadSysLogs(){if(loading)return;const restart=sysLogLines.length>0&&sysLogOffset>=sysLogTotal;if(restart){sysLogLines=[];sysLogOffset=0;const c0=$('sysLogContent');if(c0){c0.classList.add('empty');c0.innerHTML=esc(t('logsPress'))}}try{showLoad();const r=await api('/syslogs?offset='+sysLogOffset+'&limit=30');hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const logs=r.recs?r.recs.split('\n').filter(x=>x.trim()):[];sysLogTotal=Number(r.t)||0;sysLogLines=sysLogLines.concat(logs);sysLogOffset+=logs.length;const c=$('sysLogContent');if(c){c.classList.remove('empty');c.innerHTML=sysLogLines.map(x=>'<div class="log">'+esc(x)+'</div>').join('')}const b=$('sysLogBtn');if(b)b.textContent=(sysLogLines.length>0&&sysLogOffset>=sysLogTotal)?t('btnLogRestart'):t('btnNext');toast(tf('tLogsLoaded',{n:logs.length}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+userError(e),'err')}}
 
 // ---------------- ACTIONS / TERMINAL ----------------
-function rebootDevice(){confirmAction(t('tRebootAsk'),async()=>{try{showLoad();const r=await api('/device/reboot',{method:'POST'});hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));toast(r.message||t('tRebootOk'),'ok')}catch(e){hideLoad();toast(t('tErr')+e.message,'err')}})}
+function rebootDevice(){confirmAction(t('tRebootAsk'),async()=>{try{showLoad();const r=await api('/device/reboot',{method:'POST'});hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));toast(t('tRebootOk'),'ok')}catch(e){hideLoad();toast(t('tErr')+userError(e),'err')}},'btnReboot')}
 const trmTs=()=>{const n=new Date(),p=(v,l=2)=>String(v).padStart(l,'0');return p(n.getHours())+':'+p(n.getMinutes())+':'+p(n.getSeconds())+'.'+p(n.getMilliseconds(),3)};
 function trmAppend(text,cls){const out=$('trmOut');if(!out)return;const e=document.createElement('div');e.className='term-line '+cls;e.innerHTML='<span class="term-ts">'+trmTs()+'</span>';const t2=document.createElement('span');t2.textContent=(cls==='cmd'?'> ':'< ')+text;e.appendChild(t2);out.appendChild(e);out.scrollTop=out.scrollHeight}
-async function trmSend(){if(terminalBusy)return;const inp=$('trmCmd');if(!inp)return;const cmd=inp.value;if(!cmd)return;inp.value='';trmAppend(cmd,'cmd');terminalBusy=true;inp.disabled=true;try{const post=await api('/serial',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tx:cmd})});if(post.rx)trmAppend(post.rx,'res');else if(post.pending){const deadline=Date.now()+12000;while(Date.now()<deadline){await new Promise(r=>setTimeout(r,1000));const r=await api('/serial',{method:'GET'});if(r.rx){trmAppend(r.rx,'res');break}}}}catch(e){trmAppend(t('tErr')+e.message,'cmd')}terminalBusy=false;inp.disabled=false;inp.focus()}
+async function trmSend(){
+  if(terminalBusy)return;
+  const inp=$('trmCmd');if(!inp||!inp.value)return;
+  const cmd=inp.value;inp.value='';trmAppend(cmd,'cmd');terminalBusy=true;inp.disabled=true;
+  try{
+    const post=await api('/serial',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tx:cmd})});
+    let received=false;
+    if(post.rx){trmAppend(post.rx,'res');received=true}
+    else if(post.pending){
+      const deadline=Date.now()+12000;
+      while(Date.now()<deadline){
+        await new Promise(resolve=>setTimeout(resolve,1000));
+        const reply=await api('/serial',{method:'GET'});
+        if(reply.rx){trmAppend(reply.rx,'res');received=true;break}
+      }
+    }
+    if(!received)trmAppend(t('commandUnknown'),'res');
+  }catch(error){trmAppend(t('tErr')+userError(error),'res')}
+  finally{terminalBusy=false;inp.disabled=false;inp.focus()}
+}
 function trmClr(){if($('trmOut'))$('trmOut').innerHTML=''}
 
 // ---------------- INIT ----------------
