@@ -1514,3 +1514,31 @@ Aynı hedef POST sonrası restart, kayıtlı hedefin korunmasını gösterir.
 Bekleyen silme işleminin ACK öncesinde fiziksel kesilmesi ve eski EUI
 listesinden kurtarılması bu koşuda yakalanmadı. Host replay/NOR kesinti
 testleri geçmiştir; fiziksel güç kesintisi kabulü ayrıca yapılmalıdır.
+
+
+## Modbus register adresleri web doğrulaması — 15.10.2026
+
+**Amaç:** Cihazdan okunan salt okunur register listesinin adres, veri türü
+ve arayüz davranışını doğrulamak.
+
+`web_server/test_modbus_map_json.c`, gerçek JSON üreticisinin alanlarını,
+buffer (tampon) sınırlarını ve hata çıktısını sınar.
+`test_http_iec_config_scenario.c`, Modbus GET yanıtındaki mevcut ayarlar
+ile `RegisterMap` alanını ve yetersiz yanıt tamponunda HTTP 500 davranışını
+üretim handler (istek işleyici) girişinden doğrular.
+
+`make -C test/integration/web_navigation run`, aynı üreticiyi host üzerinde
+çalıştırır. JSON alanları register bloklarını boşluksuz ve çakışmasız
+kapsamalıdır. Kaynak ve gömülü sayfa testleri; cihazdan gelen adreslerin
+kullanılmasını, fider/faz/kayıt seçimini, iki dili ve Kaydet isteğinin yalnız
+`CihazID` ile `BaudRate` içermesini doğrular. Komut adresi belgelenir;
+web üzerinden reset komutu verilmez.
+
+**Sınır:** Host testleri ve Release derlemesi fiziksel cihaz kabulü değildir.
+`web_device` paketindeki yeni harita kontrolleri cihaz yüklendikten sonra
+ayrıca çalıştırılmalıdır.
+
+**Sonuç:** 15.10.2026 koşusunda tam Ceedling paketi 1381/1381 geçti.
+Web navigation, oturum/taşıma testleri ve imzalı Release self-check geçti.
+Koşu kayıtları `.temp_files/modbus-register-ui-*.log` altındadır.
+Bu değişiklik cihazda denenmedi.

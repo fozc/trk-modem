@@ -64,6 +64,71 @@ async function checkPage(html, label) {
     }
     for (const language of ['tr', 'en']) {
         run(`LNG = '${language}';`);
+        const registerMap = {
+            AddressBase:40000,FeederBase:40000,FeederStride:1000,
+            FeederCount:4,FeederQualityOffset:0,
+            PhaseOffset:4,PhaseStride:24,PhaseCount:3,
+            TempOffset:100,PermOffset:500,FaultRecords:15,
+            RecordStride:8,TempCountOffset:76,PermCountOffset:79,
+            Phase:[['anlik_akim',1,2,'FLOAT32','A'],['enerji_varyok',5,1,'UINT16','0/1']],
+            Record:[['ariza_akimi',0,2,'FLOAT32','A'],['zaman',6,2,'UINT32','Unix s']],
+            System:[['rtc_unix',49006,2,'UINT32','Unix s']],
+            Power:[['battery_ma',49214,1,'INT16','mA']],
+            Bms:[['cell_voltage_mv',49345,16,'UINT16','mV']],
+            Gsm:[['gsm_state',49400,1,'UINT16','']],
+            Control:[['battery_warning',50000,1,'UINT16',''],['modem_reset',50001,1,'UINT16','1']]
+        };
+        const emittedMapPath=path.resolve(__dirname,'../../build/modbus-map-web/metadata.json');
+        if(fs.existsSync(emittedMapPath)){
+            const emittedMap=JSON.parse(fs.readFileSync(emittedMapPath,'utf8'));
+            context.emittedMap=emittedMap;
+            for(const group of ['Phase','Record','System','Power','Bms','Gsm','Control']){
+                for(const field of emittedMap[group]){
+                    assert.notEqual(run('t('+JSON.stringify('mb_'+field[0])+')'),'mb_'+field[0]);
+                }
+            }
+            assert.ok(run('renderModbus({RegisterMap:emittedMap})').includes('40005–40006'));
+        }
+        context.registerMap=registerMap;
+        const modbusPage=run('renderModbus({CihazID:37,BaudRate:19200,RegisterMap:registerMap})');
+        assert.ok(modbusPage.includes(language==='tr'?'Register adresleri':'Register addresses'));
+        assert.ok(modbusPage.includes('40005–40006'));
+        assert.ok(modbusPage.includes('<td>5–6</td>'));
+        assert.ok(!modbusPage.includes('data-id="mod"'));
+        assert.ok(!modbusPage.includes('Sabit Register Haritası'));
+        assert.ok(!modbusPage.includes('Compile-time'));
+        assert.ok(!modbusPage.slice(modbusPage.indexOf('mod-map-block')).includes('data-dirty'));
+        const recordRows=run("modbusMapRows(registerMap,'feeder:3',2,'perm',14)");
+        assert.equal(recordRows.find(row=>row.field==='ariza_akimi').address,43852);
+        assert.equal(recordRows.find(row=>row.field==='zaman').address,43858);
+        const controls=run("buildModbusMapTable(registerMap,'Control')");
+        assert.ok(controls.includes('10001'));
+        assert.ok(controls.includes('FC06 = 1'));
+        assert.ok(!controls.includes('<button'));
+        const bmsTable=run("buildModbusMapTable(registerMap,'Bms')");
+        assert.ok(bmsTable.includes('49345–49360'));
+        assert.ok(bmsTable.includes('UINT16 × 16'));
+        assert.ok(run('renderModbus({})').includes(run("t('modMapUnavailable')")));
+        registerMap.FeederBase=41000;
+        assert.ok(run("buildModbusMapTable(registerMap,'feeder:0')").includes('41005–41006'));
+        registerMap.FeederBase=40000;
+        run('pageCache.modbus={CihazID:37,BaudRate:19200,RegisterMap:registerMap};');
+        document.getElementById('mod-map-block').value='Power';
+        document.getElementById('mod-map-phase').value='0';
+        document.getElementById('mod-map-view').value='live';
+        document.getElementById('mod-map-record').value='0';
+        run('updateModbusMap()');
+        assert.equal(document.getElementById('mod-map-feeder-controls').style.display,'none');
+        assert.ok(document.getElementById('mod-map-table').innerHTML.includes('49214'));
+        document.getElementById('mod-map-block').value='feeder:3';
+        document.getElementById('mod-map-phase').value='2';
+        document.getElementById('mod-map-view').value='perm';
+        document.getElementById('mod-map-record').value='14';
+        run('updateModbusMap()');
+        assert.ok(document.getElementById('mod-map-table').innerHTML.includes('43852–43853'));
+        document.getElementById('mod-CihazID').value='37';
+        document.getElementById('mod-BaudRate').value='19200';
+        assert.equal(JSON.stringify(run("extractPage('modbus')")),JSON.stringify({CihazID:37,BaudRate:19200}));
         const rfMonitor = run(`buildRfMonitorTable({Phases:[
             {HasData:true,Eui64:'00124B0038C9F1CB',Online:true,
              Live:{RSSI:-128,Temp:300,Irms:1.25,VTrip:32,VRec:13,Flags:2},

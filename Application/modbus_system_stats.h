@@ -1,8 +1,9 @@
 /*
  * modbus_system_stats.h
  *
- *  Created on: 11 Tem 2026
- *      Author: fatih
+ *  Created on: Jul 11, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef MODBUS_SYSTEM_STATS_H_
@@ -15,10 +16,31 @@
 /* First logical Modbus address of the read-only system-statistics block
  * (uptime, RTC, reset reason, supply voltages, ...). Lives in the holding-
  * register space so it is reachable via FC03. The base and length are owned
- * by the fixed map (modbus_map.h); the layout struct in the .c proves its
+ * by the fixed map (modbus_map.h); the layout struct in the header proves its
  * register count against that contract. */
 #define MODBUS_SYS_STATS_ADDR_BASE   MODBUS_MAP_SYS_BASE
+
+/* Register layout shared by the reader and RO web metadata. */
+typedef struct {
+	uint16_t rtc_sec;        /* rtc time, seconds            */
+	uint16_t rtc_min;        /* rtc time, minutes            */
+	uint16_t rtc_hour;       /* rtc time, hours              */
+	uint16_t rtc_day;        /* rtc time, days               */
+	uint16_t rtc_month;      /* rtc time, month              */
+	uint16_t rtc_year;       /* rtc time, year               */
+	uint16_t rtc_unix[2];    /* rtc time, unix timestamp     */
+	uint16_t uptime_sec;     /* uptime, seconds              */
+	uint16_t reset_reason;   /* decoded reset-cause bitmask  */
+	uint16_t mcu_temp;       /* die temperature, celsius     */
+	uint16_t v5v;            /* 5V rail, millivolts          */
+	uint16_t v3v3;           /* 3V3 rail, millivolts         */
+	uint16_t v3v8;           /* 3V8 rail, millivolts         */
+	uint16_t uptime_raw[2];  /* uptime, full UINT32 (ABCD)   */
+	uint16_t dinput_states;  /* digital input states, bitmask */
+} modbus_sys_stats_map_t;
 
 bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value);
 
 #endif /* MODBUS_SYSTEM_STATS_H_ */
+
+/*** end of file ***/

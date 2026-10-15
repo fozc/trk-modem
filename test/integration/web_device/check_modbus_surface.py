@@ -62,8 +62,8 @@ def main():
         print("anahtarlar:", keys)
         leftover = [k for k in keys if k == "Hat" or k.startswith("ADDR")]
         print("Hat/ADDR kalinti:", leftover)
-        assert keys == ["BaudRate", "CihazID", "SonHataKodu",
-                        "SonHataZamani"], keys
+        assert keys == ["BaudRate", "CihazID", "RegisterMap",
+                        "SonHataKodu", "SonHataZamani"], keys
         assert not leftover
 
         # POST echoes exactly what was read: no unknown keys, no mutation.

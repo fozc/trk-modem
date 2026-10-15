@@ -675,3 +675,23 @@ satiri almistir.
 
 | 2.0 | 2026-10-15 | Register haritasi tamamen sabitlesti (modbus_map.h): adresler NVRAM/web uzerinden degistirilemez. Fider bloklari yeniden tasarlandi: 4 fider x 1000 register (40000-43999); IEC104 bilgi aynasi (anlik akim, enerji/yuk/rf/trip_failed + alan bazli zaman damgalari), SCADA'ya yonelik RF canli olcumleri ve fider/faz kalite register'lari tek blokta. Gecici/kalici ariza kayit listeleri (faz basina 15 kayit) Modbus tarafina eklendi. 49500 RF kalite blogu kaldirildi (kalite fider bloklarina gomuldu). Aku uyarisi/modem reset adresleri sabitlendi (50000/50001). Yapilandirilabilir ayarlar CihazID + baud rate e indirildi. |
 | 1.10 | 2026-10-06 | Anlık arıza alanları kaldırıldı; offset 0–5/12–17 ayrıldı. Durum polariteleri SCP ile eşitlendi. |
+
+## Web arayüzünde register adresleri
+
+**Kullanım yeri:** Modbus yapılandırma sayfasındaki “Register adresleri”
+bölümü, SCADA eşlemesi için salt okunur bir adres listesidir.
+
+`GET /config/modbus` yanıtındaki `RegisterMap`, çalışan firmware’in register
+okuyucularıyla aynı C yerleşimlerinden üretilir. Fider, faz, geçici/kalıcı
+arıza listesi ve kayıt numarası seçimi yalnız görünümü değiştirir.
+Sistem, güç kartı, BMS, GSM ve kontrol alanları da aynı listede yer alır.
+Tablo veri adını, register ve 0 tabanlı PDU adres aralığını, veri türünü,
+birimi ve erişimi gösterir. Birden çok register kullanan diziler ayrıca
+uzunluklarıyla gösterilir.
+
+Adresler bu ekrandan değiştirilememelidir. Modbus Kaydet isteğine yalnız
+`CihazID` ve `BaudRate` eklenmelidir; `RegisterMap` yazılmamalıdır.
+Kontrol tablosundaki modem reset satırı yalnız FC06 komutunun adresini ve
+1 değerini belgeler; web sayfasında komut çalıştıran düğme yoktur.
+Harita cihazdan okunamadığında adres tahmini yerine okunamadı bilgisi
+verilmelidir. 32 bit word sırası ve zaman birimi için §4 uygulanır.

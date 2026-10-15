@@ -265,9 +265,15 @@ def main():
     st, body = http_req("GET", "/config/modbus?" + t)
     modbus_after = json.loads(body) if st == 200 else {}
     check("modbus_config_shape_is_fixed",
-          sorted(modbus_after.keys()) == ["BaudRate", "CihazID",
+          sorted(modbus_after.keys()) == ["BaudRate", "CihazID", "RegisterMap",
                                           "SonHataKodu", "SonHataZamani"],
           str(sorted(modbus_after.keys())))
+    register_map = modbus_after.get("RegisterMap", {})
+    check("modbus_register_map_from_device",
+          register_map.get("AddressBase") == 40000 and
+          register_map.get("FeederCount") == 4 and
+          ["anlik_akim", 1, 2, "FLOAT32", "A"] in
+          register_map.get("Phase", []))
     check("modbus_config_settings_untouched",
           modbus_after.get("CihazID") == modbus_before.get("CihazID") and
           modbus_after.get("BaudRate") == modbus_before.get("BaudRate"),
