@@ -252,6 +252,29 @@ def main():
     check("rf_config_unchanged_after_parse_error",
           after.get("inUse") == rf.get("inUse"))
 
+    # Fixed register map: the Modbus page carries only the serial-line
+    # settings; register addresses are compile-time fixed (modbus_map.h).
+    # The POST body carries only a stray unknown key: the handler seeds
+    # CihazID/BaudRate from NVRAM, so a bench device keeps its settings.
+    st, body = http_req("GET", "/config/modbus?" + t)
+    modbus_before = json.loads(body) if st == 200 else {}
+    legacy_payload = '{"Hat":{"inUse":[true],"ADDR_R_AnlikAkim":[40006]}}'
+    st, body = http_req("POST", "/config/modbus?" + t, legacy_payload)
+    check("modbus_config_post_ignores_unknown_keys", st == 200,
+          "HTTP %d %s" % (st, body[:60]))
+    st, body = http_req("GET", "/config/modbus?" + t)
+    modbus_after = json.loads(body) if st == 200 else {}
+    check("modbus_config_shape_is_fixed",
+          sorted(modbus_after.keys()) == ["BaudRate", "CihazID",
+                                          "SonHataKodu", "SonHataZamani"],
+          str(sorted(modbus_after.keys())))
+    check("modbus_config_settings_untouched",
+          modbus_after.get("CihazID") == modbus_before.get("CihazID") and
+          modbus_after.get("BaudRate") == modbus_before.get("BaudRate"),
+          "%s -> %s" % (modbus_before.get("CihazID"),
+                        modbus_after.get("CihazID")))
+
+
     sess.close()
 
     # Icerik ozeti tasiyan ETag ile kosullu GET: eslesen deger 304 +

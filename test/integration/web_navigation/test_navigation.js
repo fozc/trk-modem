@@ -450,9 +450,11 @@ async function checkPage(html, label) {
     assert.equal(run('JSON.stringify(pageCache.iec104)'), iecCache);
     assert.equal(run('loading'), false);
     // Real Save path: a collision must mark both fields and make no POST.
+    // (Modbus address inputs were removed with the fixed register map; the
+    // collision coverage now applies to the IEC104 IOA page only.)
     const originalQuery = document.querySelector;
     const originalQueryAll = document.querySelectorAll;
-    for (const page of ['iec104', 'modbus']) {
+    for (const page of ['iec104']) {
         const prefix = page === 'iec104' ? 'iec' : 'mod';
         const makeField = (key, index, value, label) => {
             const input = element(), error = element(), hint = element();
