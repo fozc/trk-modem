@@ -30,6 +30,7 @@
 #include "system_status.h"
 #include "index_html.h"
 #include "modbus_config.h"
+#include "modbus_map_json.h"
 #include "iec104_config.h"
 #include "iec104_util.h"
 #include "rf.h"
@@ -1281,27 +1282,29 @@ void handle_get_modbus_config_json(void)
     }
     
     char *buf = handler_state.tx_buffer;
-    const size_t buf_size =
-        (size_t)handler_state.tx_buffer_size;
-    size_t pos = 0U;
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "{");
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"CihazID\":%u,", config->device_addr);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SonHataKodu\":%u,", config->last_error_code);
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SonHataZamani\":%lu,", modbus_config_get_last_error_time());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BaudRate\":%lu", config->baud_rate);
-    
-    /* Register addresses are fixed (modbus_map.h): no per-line Hat block. */
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
-    
-    CSLOG("[HTTP] Modbus config JSON size: %u bytes\r\n", (unsigned int)pos);
-    
-    /* Buffer overflow check */
-    if (pos >= buf_size - 1U) {
-        CSLOG_ERR("[HTTP] WARNING: Buffer nearly full! pos=%u, buf_size=%u\r\n",
-                  (unsigned int)pos, (unsigned int)buf_size);
+    const size_t capacity = (size_t)handler_state.tx_buffer_size;
+    if ((NULL == buf) || (256U > capacity))
+    {
+        http_send_error(500, "Modbus response buffer too small");
+        return;
     }
-    
+    size_t pos = xsnprintf(buf, (unsigned int)capacity,
+        "{\"CihazID\":%u,\"SonHataKodu\":%u,"
+        "\"SonHataZamani\":%lu,\"BaudRate\":%lu,\"RegisterMap\":",
+        (unsigned int)config->device_addr,
+        (unsigned int)config->last_error_code,
+        (unsigned long)modbus_config_get_last_error_time(),
+        (unsigned long)config->baud_rate);
+    size_t map_length = 0U;
+    if (!modbus_map_json_build(&buf[pos], capacity - pos, &map_length) ||
+        (pos + map_length + 1U >= capacity))
+    {
+        http_send_error(500, "Modbus register map exceeds response buffer");
+        return;
+    }
+    pos += map_length;
+    buf[pos++] = '}';
+    buf[pos] = '\0';
     http_send_json(buf, (int)pos);
 }
 
