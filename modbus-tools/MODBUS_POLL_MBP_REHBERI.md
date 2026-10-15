@@ -30,6 +30,10 @@ Ayrica sabitler: `<ColCount>` = `2` ve `<ColumnWidth>` icinde **2** adet `<CW>`.
 > **Yaygin hata:** `<Bytes>` adedini N yerine 2N yazmayi unutmak. Modbus Poll
 > o zaman `File error: bytes count mismatch: Line ...` verir. N register icin
 > daima **2 x N** adet `<B>` gereklidir (her register 16-bit = 2 byte).
+>
+> **Yaygin hata (2):** `</CellData>` sonrasi `<Scales/>`, `<ValueNames/>`,
+> `<ChartSeries/>`, `<BinNames/>` ogrelerini atmak - Modbus Poll o zaman
+> `File error: element scales not found` verir ve dosyayi acmaz.
 
 Kontrol formulu:
 ```
@@ -225,8 +229,9 @@ Buyuk N icin ilgili bloklari cogalt.
 | `power_stats.mbp` | Guc karti (PowerBoard) telemetrisi | 49200 / 9200 |
 | `bms_stats.mbp` | BMS pak telemetrisi (hucre gerilimleri, sicakliklar, hata kodlari) | 49300 / 9300 |
 | `gsm_stats.mbp` | GSM durumu (durum/CSQ/RAT, soket durumları, SonHata; value-name metinleri ile) | 49400 / 9400 |
-| `Mbpoll1.mbp` | Hat olcum blogu ornegi (Line 1, base 0) | 40000 / 0 |
-| `hat2.mbp` | Hat olcum blogu ornegi | - |
+| `fider1.mbp` .. `fider4.mbp` | Fider blogu: kalite + 3 faz canli verisi (akim/gerilimler/sicaklik/RSSI/zamanlar) + ariza sayaclari (82 register) | 40000/41000/42000/43000 uzerinden (N-1)x1000 / ayni |
+| `Mbpoll1.mbp` | ESKI (v1.x 7-fider haritasi) hat olcum blogu ornegi - v2.0 ile uyumsuz | - |
+| `hat2.mbp` | ESKI (v1.x 7-fider haritasi) hat olcum blogu ornegi - v2.0 ile uyumsuz | - |
 
 Yeni bir blok eklerken bu tabloyu ve
 [MODBUS_REGISTER_MAP.md](../Application/libmodbusrtu/MODBUS_REGISTER_MAP.md)
