@@ -12,6 +12,10 @@
 #include <stdbool.h>
 #include "types.h"
 
+/* Register addresses are NOT configurable: the map is compile-time fixed in
+ * modbus_map.h. What remains stored in NVRAM are the serial-line settings
+ * (device address, baud rate) and the RAM-only last-exception mirror. */
+
 // Basic Functions
 int modbus_config_sync(void);
 
@@ -36,18 +40,5 @@ void modbus_config_set_last_error_time(uint32_t unix_time);
 // baud_rate
 uint32_t modbus_config_get_baud_rate(void);
 void modbus_config_set_baud_rate(uint32_t baud);
-
-// addr_aku_uyarisi
-uint16_t modbus_config_get_addr_aku_uyarisi(void);
-void modbus_config_set_addr_aku_uyarisi(uint16_t addr);
-
-// addr_modem_reset
-uint16_t modbus_config_get_addr_modem_reset(void);
-void modbus_config_set_addr_modem_reset(uint16_t addr);
-
-// Line Config Access
-const modbus_line_config_t* modbus_get_line_config(uint32_t line_index);
-bool modbus_set_line_config(uint32_t line_index, const modbus_line_config_t* line_config);
-bool modbus_is_line_in_use(uint32_t line_index);
 
 #endif /* LIBMODBUSRTU_MODBUS_CONFIG_H_ */

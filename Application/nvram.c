@@ -187,15 +187,10 @@ void nvram_set_defaults(void)
     nvram.iec104_config.ioa_aku_uyarisi = iec104_make_ioa_3byte(10000);
     nvram.iec104_config.ioa_modem_reset = iec104_make_ioa_3byte(10001);
 
-    /* All computed default registers fit the stored 16-bit address. */
-    _Static_assert(MAX_POWER_LINE_COUNT > 0U, "At least one line required");
-    _Static_assert((40000U + ((MAX_POWER_LINE_COUNT - 1U) * 100U) + 26U)
-                   <= UINT16_MAX, "Default Modbus register out of range");
     /* Initialize all power lines with default values */
     for (uint32_t i = 0U; i < MAX_POWER_LINE_COUNT; i++) {
         // Mark all lines as unused
         nvram.breaker.line[i].iec104.in_use = 0;
-        nvram.breaker.line[i].modbus.in_use = 0;
         
         // Initialize IEC104 line config with default IOA values
         uint32_t base_ioa = 1000U + (i * 100U);  // Line 0: 1000, Line 1: 1100, etc.
@@ -216,36 +211,11 @@ void nvram_set_defaults(void)
         nvram.breaker.line[i].iec104.permanent_fault =
             iec104_make_ioa_3byte(200000U + ((uint32_t)i * 1000U));
         
-        // Initialize Modbus line config with default register addresses.
-        // Contiguous map (see MODBUS_REGISTER_MAP.md): FLOAT32 fields take two
-        // registers (the configured address is the high word, address+1 the low
-        // word), UINT16 fields take one. Per-line stride is 100.
-        //   ariza_akimi  R/S/T -> base + 0 / 2 / 4   (FLOAT32)
-        //   anlik_akim   R/S/T -> base + 6 / 8 / 10  (FLOAT32)
-        //   ariza_suresi R/S/T -> base + 12 / 13 / 14 (UINT16, ms)
-        //   ariza_kalicimi      -> base + 15 / 16 / 17 (UINT16)
-        //   enerji_varyok       -> base + 18 / 19 / 20 (UINT16)
-        //   yuk_akimi_varyok -> base + 21 / 22 / 23 (UINT16)
-        //   rf_haberlesme_varyok-> base + 24 / 25 / 26 (UINT16)
-        uint32_t base_addr = 40000U + (i * 100U);  // Line 0: 40000, Line 1: 40100, etc.
-        for(uint32_t ph = 0U; ph < PHASE_MAX; ++ph)
-		{
-            nvram.breaker.line[i].modbus.anlik_akim[ph] = (uint16_t)(base_addr + 6 + (ph * 2));
-            nvram.breaker.line[i].modbus.enerji_varyok[ph] = (uint16_t)(base_addr + 18 + ph);
-            nvram.breaker.line[i].modbus.yuk_akimi_varyok[ph] = (uint16_t)(base_addr + 21 + ph);
-            nvram.breaker.line[i].modbus.rf_haberlesme_varyok[ph] = (uint16_t)(base_addr + 24 + ph);
-
-            // Fault-log blocks are reserved (offsets 27..99) and not yet mapped.
-            nvram.breaker.line[i].modbus.temporary_fault[ph].ariza_akimi = 0;
-            nvram.breaker.line[i].modbus.temporary_fault[ph].ariza_suresi = 0;
-        }
     }
 
     nvram.modbus_config.device_addr = 23;
     nvram.modbus_config.baud_rate = 115200;
     nvram.modbus_config.last_error_code = 0;
-    nvram.modbus_config.addr_aku_uyarisi = 50000;
-    nvram.modbus_config.addr_modem_reset = 50001;
 
     /* RF ayirici default'lari - spec R2 section 3 (codec default blogu tek
      * kaynak). in_use=false, fider=0 (provizyonsuz), EUI'ler atanmamis. */
@@ -364,23 +334,6 @@ void nvram_dump()
 		CSLOG_NODT("        - Phase R            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L1]));
 		CSLOG_NODT("        - Phase S            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L2]));
 		CSLOG_NODT("        - Phase T            : %lu\r\n", ioa_to_u32(nvram.breaker.line[i].iec104.m_me_tf_1_ioa[PHASE_L3]));
-		CSLOG_NODT("    Modbus Address Config:\r\n");
-		CSLOG_NODT("      Anlik Akim Addr:\r\n");
-		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.anlik_akim[PHASE_L1]);
-		CSLOG_NODT("        - Phase S            : %u\r\n", nvram.breaker.line[i].modbus.anlik_akim[PHASE_L2]);
-		CSLOG_NODT("        - Phase T            : %u\r\n", nvram.breaker.line[i].modbus.anlik_akim[PHASE_L3]);
-		CSLOG_NODT("      Enerji VarYok Addr:\r\n");
-		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.enerji_varyok[PHASE_L1]);
-		CSLOG_NODT("        - Phase S            : %u\r\n", nvram.breaker.line[i].modbus.enerji_varyok[PHASE_L2]);
-		CSLOG_NODT("        - Phase T            : %u\r\n", nvram.breaker.line[i].modbus.enerji_varyok[PHASE_L3]);
-		CSLOG_NODT("      Yuk Akimi VarYok Addr:\r\n");
-		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.yuk_akimi_varyok[PHASE_L1]);
-		CSLOG_NODT("        - Phase S            : %u\r\n", nvram.breaker.line[i].modbus.yuk_akimi_varyok[PHASE_L2]);
-		CSLOG_NODT("        - Phase T            : %u\r\n", nvram.breaker.line[i].modbus.yuk_akimi_varyok[PHASE_L3]);
-		CSLOG_NODT("      RF Haberlesme VarYok Addr:\r\n");
-		CSLOG_NODT("        - Phase R            : %u\r\n", nvram.breaker.line[i].modbus.rf_haberlesme_varyok[PHASE_L1]);
-		CSLOG_NODT("        - Phase S            : %u\r\n", nvram.breaker.line[i].modbus.rf_haberlesme_varyok[PHASE_L2]);
-		CSLOG_NODT("        - Phase T            : %u\r\n", nvram.breaker.line[i].modbus.rf_haberlesme_varyok[PHASE_L3]);
 		CSLOG_NODT("\r\n");
 
 		/* Phase details */
@@ -1107,25 +1060,6 @@ bool nvram_iec104_set_line_config(uint32_t line_index, const iec104_line_config_
 	}
 
 	nvram.breaker.line[line_index].iec104 = *config;
-	return true;
-}
-
-const modbus_line_config_t* nvram_modbus_get_line_config(uint32_t line_index)
-{
-	if(line_index >= MAX_POWER_LINE_COUNT) {
-		return NULL;
-	}
-
-	return &nvram.breaker.line[line_index].modbus;
-}
-
-bool nvram_modbus_set_line_config(uint32_t line_index, const modbus_line_config_t* config)
-{
-	if(line_index >= MAX_POWER_LINE_COUNT || config == NULL) {
-		return false;
-	}
-
-	nvram.breaker.line[line_index].modbus = *config;
 	return true;
 }
 

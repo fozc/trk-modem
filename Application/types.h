@@ -95,36 +95,9 @@ typedef struct
 
 typedef struct
 {
-	uint16_t ariza_akimi;
-	uint16_t ariza_suresi;
-	uint16_t enerji_varyok;
-	uint16_t yuk_akimi_varyok;
-
-}__attribute__((packed)) modbus_fault_log_config_t;
-
-typedef struct
-{
-	uint16_t reserved_fault_current[PHASE_MAX]; /* Retired live field. */
-	uint16_t reserved_fault_duration[PHASE_MAX]; /* Retired live field. */
-	uint16_t reserved_fault_type[PHASE_MAX]; /* Retired live field. */
-	uint16_t anlik_akim[PHASE_MAX]; 
-	uint16_t enerji_varyok[PHASE_MAX];
-	uint16_t yuk_akimi_varyok[PHASE_MAX];
-	uint16_t rf_haberlesme_varyok[PHASE_MAX];
-
-    modbus_fault_log_config_t temporary_fault[PHASE_MAX]; // 15 kayit icin baz adres
-	modbus_fault_log_config_t permanent_fault[PHASE_MAX]; // 15 kayit icin baz adres
-
-	uint8_t in_use;
-}__attribute__((packed)) modbus_line_config_t;
-
-typedef struct
-{
     uint8_t device_addr;      // Modbus cihaz adresi 1-247
     uint8_t last_error_code;
     uint32_t baud_rate;
-	uint16_t addr_aku_uyarisi;
-    uint16_t addr_modem_reset;
 }__attribute__((packed)) modbus_configs_t;
 
 typedef struct
@@ -137,7 +110,6 @@ typedef struct
 typedef struct
 {
 	iec104_line_config_t iec104; // IEC104 ile ilgili konfigurasyon bilgileri
-	modbus_line_config_t modbus; // Modbus RTU ile ilgili konfigurasyon bilgileri
 	rf_feeder_t rf;              // RF ayirici konfigurasyonu (tek-blok modeli) - NVRAM last-known aynasi
 	sbo_state_t sbo_state;
 	uint8_t breaker_state;
@@ -212,8 +184,12 @@ typedef struct
  *  kopyada taze (yuksek sequence) olan kazanir.
  *  NOT: gelistirme sirasindaki v2/v3 kuyruk eklemeleri (rf_log_level,
  *  iec104_log_level) uretime/saha cihazi olmadigi icin v1'e indirildi;
- *  ilk cikistan sonraki her layout degisikligi bump + migration ister. */
-#define NVRAM_SCHEMA_VERSION  4U
+ *  ilk cikistan sonraki her layout degisikligi bump + migration ister.
+ *  v5: Modbus register adresleri NVRAM'den cikarildi - harita derleme
+ *  zamani sabitti (modbus_map.h); modbus_line_config_t ve addr_aku/
+ *  addr_modem_reset alanlari kaldirildi. Saha cihazi yok: eski goruntuler
+ *  bilincli default-reset ile karsilanir. */
+#define NVRAM_SCHEMA_VERSION  5U
 #define RF_INVENTORY_JOURNAL_CAPACITY 12U
 
 typedef struct
@@ -279,6 +255,10 @@ typedef struct
  * BL-21: rfwu oturumuna fw_crc+fw_size (8 bayt) eklendi - kuyruk
  * kaydi; eski goruntuler length bekcisinden dusup default-reset olur
  * (uretim oncesi kural, types.h NVRAM_SCHEMA_VERSION notu).
+ * v5 olcumu: modbus_line_config_t (91 B/hat x 7) power_line_t icinden ve
+ * modbus_configs_t addr_aku/addr_reset (4 B) kaldirildi; nvram_t 2624 ->
+ * 1984, crc 2620 -> 1980, journal 2472 -> 1832 (host GCC olcumu; tipler
+ * pak'li/4B hizali, ARM ABI ile ayni - proje derlemesi teyit eder).
  * CRC goruntunun length-4 bayti uzerinde hesaplanir - layout kaysa
  * eski flash goruntuleri sessizce CRC'den dusup default-reset
  * olurdu; bu bekci kaymayi derleme zamaninda yakalar. */
@@ -288,10 +268,10 @@ _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
 _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
 _Static_assert(sizeof(rf_inventory_journal_t) == 148U,
                "RF inventory journal layout");
-_Static_assert(offsetof(nvram_t, rf_inventory_journal) == 2472U,
-               "Schema v3 prefix must remain unchanged");
-_Static_assert(sizeof(nvram_t) == 2624U, "nvram_t schema v4 layout");
-_Static_assert(offsetof(nvram_t, crc) == 2620U, "nvram_t: crc at tail");
+_Static_assert(offsetof(nvram_t, rf_inventory_journal) == 1832U,
+               "Schema v5 journal offset (v4: 2472 - modbus adres alanlari cikti)");
+_Static_assert(sizeof(nvram_t) == 1984U, "nvram_t schema v5 layout");
+_Static_assert(offsetof(nvram_t, crc) == 1980U, "nvram_t: crc at tail");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */
