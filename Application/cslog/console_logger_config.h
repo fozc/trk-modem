@@ -105,6 +105,24 @@ typedef enum
 				xcprintf(XCOLOR_YELLOW, a); \
 				}\
 				}while(0)
+		/* Zaman damgali uyari/hata da >= NORMAL gecmeli (basliktaki soz:
+		 * "CSLOG_ERR / CSLOG_WARN -> en az NORMAL"). Eskiden CCSLOG'a
+		 * (VERBOSE) baglanmislardi; NORMAL seviyesindeki modullerin
+		 * hata/uyari satirlari bu yuzden konsola dusmuyordu. */
+		#define CSLOG_ERR(a...)\
+				do{ \
+				if(console_logger_level_enabled(CSLOG_MODULE, LOG_LVL_NORMAL)){ \
+				rtc_print_now(); \
+				xcprintf(XCOLOR_RED, a); \
+				}\
+				}while(0)
+		#define CSLOG_WARN(a...)\
+				do{ \
+				if(console_logger_level_enabled(CSLOG_MODULE, LOG_LVL_NORMAL)){ \
+				rtc_print_now(); \
+				xcprintf(XCOLOR_YELLOW, a); \
+				}\
+				}while(0)
 
 	#else
 	/* -- Modul tanimsiz dosya: yalniz cslog on/off kapisi (eski
@@ -140,11 +158,24 @@ typedef enum
 				}while(0)
 		#define CSLOG_ERR_NODT(a...)  CCSLOG_NODT(XCOLOR_RED, a)
 		#define CSLOG_WARN_NODT(a...) CCSLOG_NODT(XCOLOR_YELLOW, a)
+		/* Modul tanimsiz dosyalar: eski gorunurluk (cslog on/off kapisi),
+		 * zaman damgasi + renk ile. */
+		#define CSLOG_ERR(a...)\
+				do{ \
+				if(console_logger_is_enabled()){ \
+				rtc_print_now(); \
+				xcprintf(XCOLOR_RED, a); \
+				}\
+				}while(0)
+		#define CSLOG_WARN(a...)\
+				do{ \
+				if(console_logger_is_enabled()){ \
+				rtc_print_now(); \
+				xcprintf(XCOLOR_YELLOW, a); \
+				}\
+				}while(0)
 
 	#endif /* CSLOG_MODULE */
-
-	#define CSLOG_ERR(a...)  CCSLOG(XCOLOR_RED, a)
-	#define CSLOG_WARN(a...) CCSLOG(XCOLOR_YELLOW, a)
 
 #else
 	#ifndef CSLOG_NODT
