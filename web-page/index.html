@@ -167,11 +167,13 @@ const I18N={
     modTitle:"Modbus Configuration",
     modSub:"Modbus RTU configuration",
     modGenSub:"Modbus RTU parameters",
+    modMapT:"Fixed Register Map",
+    modMapSub:"Compile-time fixed addresses",
+    modMapNote:"Register addresses are fixed at compile time. Feeder blocks: 40000 + (n-1) x 1000, n = 1..4 (Fider 1..4). System stats 49000, power board 49200, BMS 49300, GSM 49400, control 50000/50001. Feeder and phase quality registers mark the validity of every published value.",
     fDevId:"Device ID",
     fBaud:"Baud Rate",
     fLastErr:"Last Error Code",
     fLastErrT:"Last Error Time",
-    modFeedSub:"Select a feeder to edit its register addresses",
     rfTitle:"RF Configuration",
     rfSub:"Feeder configuration with L1 / L2 / L3 phase settings",
     rfCard:"RF Feeders Configuration",
@@ -282,7 +284,6 @@ const I18N={
     btnReboot:"Reboot Device",
     termPh:"Enter command...",
     errRFQualityOverlap:"Address overlaps RF quality registers 49500–49520.",
-    rfQualityNote:"RF validity: registers 49500–49520. Bit 0: current; bit 1: energy; bit 2: load current. Read quality before using a saved Boolean value.",
     rfStoreLineTpl:"Row {n}",
     rfGroupMHApplied:"Applied report",
     rfApplyTitle:"RF application progress",
@@ -478,11 +479,13 @@ const I18N={
     modTitle:"Modbus Yapılandırması",
     modSub:"Modbus RTU yapılandırması",
     modGenSub:"Modbus RTU parametreleri",
+    modMapT:"Sabit Register Haritası",
+    modMapSub:"Derleme zamanında sabit adresler",
+    modMapNote:"Register adresleri derleme zamanında sabittir. Fider blokları: 40000 + (n-1) x 1000, n = 1..4 (Fider 1..4). Sistem istatistikleri 49000, güç kartı 49200, BMS 49300, GSM 49400, kontrol 50000/50001. Fider ve faz kalite register'ları yayımlanan her değerin geçerliliğini işaretler.",
     fDevId:"Cihaz Adresi (ID)",
     fBaud:"Baud Hızı",
     fLastErr:"Son Hata Kodu",
     fLastErrT:"Son Hata Zamanı",
-    modFeedSub:"Düzenlenecek fiderin register adreslerini seçin",
     rfTitle:"RF Yapılandırması",
     rfSub:"L1 / L2 / L3 faz ayarlarıyla fider yapılandırması",
     rfCard:"RF Fider Yapılandırması",
@@ -593,7 +596,6 @@ const I18N={
     btnReboot:"Cihazı Yeniden Başlat",
     termPh:"Komut girin...",
     errRFQualityOverlap:"Adres RF kalite alanıyla çakışıyor (49500–49520).",
-    rfQualityNote:"RF geçerliliği: 49500–49520. Bit 0: akım; bit 1: enerji; bit 2: yük akımı. Saklanan Boolean değeri kullanmadan kaliteyi okuyun.",
     rfStoreLineTpl:"Satır {n}",
     rfGroupMHApplied:"Uygulandı bildirimi",
     rfApplyTitle:"RF uygulama durumu",
@@ -770,18 +772,7 @@ const markOriginals=root=>root.querySelectorAll('[data-dirty]').forEach(el=>{el.
 const numField=(id,label,v,min,max,ro=false,unit='',stp='')=>{const rng=(!ro&&min!=null&&max!=null)?`<span class="fld-hint">${min}–${max}${unit?' '+esc(unit):''}</span>`:(!ro&&unit?`<span class="fld-hint">${esc(unit)}</span>`:'');return `<div class="field"><label>${esc(label)}${rng}${!ro?'<span class="dirty-dot" style="display:none"></span>':''}</label><input id="${id}" data-dirty="1" type="number" value="${v??''}" min="${min??''}" max="${max??''}"${stp?` step="${stp}"`:''} ${ro?'disabled class="readonly"':''}><div class="err" id="err-${id}"></div></div>`};
 const textField=(id,label,v,max,ro=false)=>{const rng=(!ro&&max!=null&&max!=='')?`<span class="fld-hint">max ${max}</span>`:'';return `<div class="field"><label>${esc(label)}${rng}${!ro?'<span class="dirty-dot" style="display:none"></span>':''}</label><input id="${id}" data-dirty="1" type="text" value="${esc(v??'')}" maxlength="${max??''}" ${ro?'disabled class="readonly"':''}><div class="err" id="err-${id}"></div></div>`};
 const checkField=(id,label,v)=>`<div class="field"><label>&nbsp;</label><label class="check"><input id="${id}" data-dirty="1" type="checkbox" ${v?'checked':''}><span>${esc(label)}</span><span class="dirty-dot" style="display:none"></span></label></div>`;
-const modbusRegisterCount=key=>/_AnlikAkim$/.test(key)?2:1;
-const modbusRegisterInfo=(key,value)=>{
-  const count=modbusRegisterCount(key),first=Number(value);
-  const range=value!==''&&Number.isInteger(first)&&first>0?
-    (count===2?first+'–'+(first+1):String(first)):'—';
-  return (count===2?'FLOAT32':'UINT16')+' · '+count+' register · '+range;
-};
-const updateModbusRegisterHint=el=>{
-  const hint=el.closest('.field').querySelector('.register-info');
-  if(hint)hint.textContent=modbusRegisterInfo(el.dataset.key,el.value);
-};
-const feederField=(prefix,key,i,label,v,min=1,max=65535)=>`<div class="field"><label>${esc(label)}</label><input type="number" data-id="${prefix}" data-key="${key}" data-i="${i}" data-dirty="1" value="${v??0}" min="${min}" max="${max}"${prefix==='mod'?' oninput="updateModbusRegisterHint(this)"':''}>${prefix==='mod'?'<div class="sub register-info">'+modbusRegisterInfo(key,v??0)+'</div>':''}<div class="err"></div></div>`;
+const feederField=(prefix,key,i,label,v,min=1,max=65535)=>`<div class="field"><label>${esc(label)}</label><input type="number" data-id="${prefix}" data-key="${key}" data-i="${i}" data-dirty="1" value="${v??0}" min="${min}" max="${max}"><div class="err"></div></div>`;
 const feederCheck=(prefix,i,label,checked)=>`<div class="field"><label class="check"><input type="checkbox" data-id="${prefix}" data-key="inUse" data-i="${i}" data-dirty="1" ${checked?'checked':''}><span>${esc(label)}</span></label></div>`;
 const selectField=(id,label,value,opts)=>{const all=(opts.map(String).includes(String(value))?opts:[value,...opts]);return `<div class="field"><label>${esc(label)}</label><select id="${id}" data-dirty="1">${all.map(o=>`<option value="${o}" ${String(o)===String(value)?'selected':''}>${o}</option>`).join('')}</select><div class="err" id="err-${id}"></div></div>`};
 const selectFieldL=(id,label,value,opts)=>{if(!opts.map(o=>String(o[0])).includes(String(value)))opts=[[value,String(value)],...opts];return `<div class="field"><label>${esc(label)}</label><select id="${id}" data-dirty="1">${opts.map(o=>`<option value="${o[0]}" ${String(o[0])===String(value)?'selected':''}>${esc(o[1])}</option>`).join('')}</select><div class="err" id="err-${id}"></div></div>`};
@@ -818,29 +809,11 @@ function renderIec104(d){
 }
 
 function renderModbus(d){
-  const x=d||{},h=x.Hat||{};let page=pageHead(t('modTitle'),'modbus',t('modSub'));let s=page+'<div class="card"><div class="card-head"><div><h3>'+esc(t('genSettings'))+'</h3><div class="sub">'+esc(t('modGenSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';
+  const x=d||{};let page=pageHead(t('modTitle'),'modbus',t('modSub'));let s=page+'<div class="card"><div class="card-head"><div><h3>'+esc(t('genSettings'))+'</h3><div class="sub">'+esc(t('modGenSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';
   s+=numField('mod-CihazID',t('fDevId'),x.CihazID,1,247)+selectField('mod-BaudRate',t('fBaud'),x.BaudRate,[9600,19200,38400,57600,115200,230400])+numField('mod-SonHataKodu',t('fLastErr'),x.SonHataKodu,0,65535,true)+textField('mod-SonHataZamani',t('fLastErrT'),fmtEpoch(x.SonHataZamani),64,true);s+='</div></div></div>';
-  const cats=[['AnlikAkim','catAnlik'],['EnerjiVarYok','catEnerji'],['YukAkimiVarYok','catLoad'],['RfhabVarYok','catRf']];
-  const phs=[['R','L1'],['S','L2'],['T','L3']];
-  s+='<div class="card">'+sectionHead(t('feeders'),'modbus',t('modFeedSub'))+'<div class="card-body">';
-  s+=feederTabs('selectModTab');
-  for(let i=0;i<FEEDER_COUNT;i++){s+=paneOpen('mod',i)+feederCheck('mod',i,t('useFeeder'),h.inUse?.[i])+'<div class="grid g3 gt" style="margin-top:8px;align-items:start">';phs.forEach(p=>{s+='<div><div class="phase-head">'+esc(t('phase'))+p[1]+'</div><div class="grid" style="gap:8px">';cats.forEach(c=>s+=feederField('mod','ADDR_'+p[0]+'_'+c[0],i,t(c[1]),h['ADDR_'+p[0]+'_'+c[0]]?.[i]));s+='</div></div>'});s+='</div></div>'}
-  s+='</div></div></div>';return s+'<p class="hint">'+esc(t('rfQualityNote'))+'</p>';
+  s+='<div class="card">'+sectionHead(t('modMapT'),'modbus',t('modMapSub'))+'<div class="card-body"><p class="hint">'+esc(t('modMapNote'))+'</p></div></div>';
+  return s;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function buildRfGroupStatus(group){
   if(!group)return '<div class="empty">'+esc(t(rfStatusMessage||'stNotRead'))+'</div>';
   if(group.BatchState==='idle'&&group.InventoryRecoveryPending)return '<p><strong>'+esc(t('rfRecoveryPending'))+'</strong></p><p>'+esc(group.InventoryState==='loading'?t('rfInventoryLoading'):group.InventoryState==='error'?t('rfStopInventory'):t('rfInventoryPending'))+'</p><p class="hint">'+esc(t('rfRecoveryHint'))+'</p>';
@@ -1055,7 +1028,7 @@ const validateAddresses=page=>{
   const check=(el,index=0)=>{
     const value=Number(el.value),key=el.dataset.key||'';
     const fault=iec&&(key==='TemporaryFaultBase'||key==='PermanentFaultBase');
-    const length=fault?180:(iec?1:modbusRegisterCount(key));
+    const length=fault?180:1;
     const first=value+(fault?index*180:0),last=first+length-1;
     if(el.value===''||!Number.isInteger(value)||value<1||last>max){
       addressError(el,tf('errAddressRange',{max}));ok=false;firstInvalid??=el;return;
@@ -1101,7 +1074,7 @@ const markIecServerErrors=message=>{
   if(first){selectIecTab(Number(first.dataset.i));first.focus()}
   return true;
 };
-const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',1,255],['iec-T1',1,255],['iec-T2',1,255],['iec-T3',20,65525],['iec-K',1,255],['iec-W',1,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validationEl($(x[0]),x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(getInt('iec-T2')>=getInt('iec-T1')){addressError($('iec-T2'),'T2 < T1');ok=false}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false;for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="mod"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="mod"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,65535))ok=false})}if(!validateAddresses(page))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,4],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',5,240],['ArtimliAkimEsigi',1,2200],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
+const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',1,255],['iec-T1',1,255],['iec-T2',1,255],['iec-T3',20,65525],['iec-K',1,255],['iec-W',1,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validationEl($(x[0]),x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(getInt('iec-T2')>=getInt('iec-T1')){addressError($('iec-T2'),'T2 < T1');ok=false}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,4],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',5,240],['ArtimliAkimEsigi',1,2200],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
   for(let i=0;i<FEEDER_COUNT;i++){const cb=$('rf-inUse-'+i);const inUse=!cb||cb.checked;
     ['R_DEVICEID','S_DEVICEID','T_DEVICEID'].forEach(k=>{const el=$('rf-'+k+'-'+i);if(!el)return;const v=(el.value||'').trim();const err=$('err-rf-'+k+'-'+i);el.classList.remove('invalid');if(err)err.textContent='';if(v==='')return;
       if(!euiRe.test(v)){el.classList.add('invalid');if(err)err.textContent=t('errHex');ok=false}
@@ -1119,7 +1092,7 @@ const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],
 const validationEl=(el,min,max)=>{el.classList.remove('invalid');const err=el.closest?.('.field')?.querySelector('.err');if(err)err.textContent='';const n=Number(el.value);if(el.value===''||!Number.isInteger(n)||n<min||n>max){addressError(el,t('range')+min+' .. '+max);return false}return true};
 
 function extractPage(page){if(page==='iec104'){const d={};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','TemporaryFaultBase','PermanentFaultBase','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_YukAkimiVarYok','IOA_S_YukAkimiVarYok','IOA_T_YukAkimiVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok','IOA_R_TripFailed','IOA_S_TripFailed','IOA_T_TripFailed'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
-  if(page==='modbus'){const d={CihazID:getInt('mod-CihazID'),BaudRate:getInt('mod-BaudRate')},h={};const keys=['inUse','ADDR_R_AnlikAkim','ADDR_S_AnlikAkim','ADDR_T_AnlikAkim','ADDR_R_EnerjiVarYok','ADDR_S_EnerjiVarYok','ADDR_T_EnerjiVarYok','ADDR_R_YukAkimiVarYok','ADDR_S_YukAkimiVarYok','ADDR_T_YukAkimiVarYok','ADDR_R_RfhabVarYok','ADDR_S_RfhabVarYok','ADDR_T_RfhabVarYok'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="mod"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hat=h;return d}
+  if(page==='modbus'){return {CihazID:getInt('mod-CihazID'),BaudRate:getInt('mod-BaudRate')}}
   if(page==='rf'){const d={};const iKeys=['HatID','ZoneID','SetEdilebilirAcmaArizaSayisi','OluHatAkimiDogrulamaSuresi','YenilenmeSifirlamaSuresi'];const fKeys=['SistemNominalAkimi','SetEdilebilirActirmaEsikAkimi','ArtimliAkimEsigi','HatKopukHatBosta'];const sKeys=['R_DEVICEID','S_DEVICEID','T_DEVICEID'];['inUse','CalismaModu','HatFrekansi',...iKeys,...fKeys,...sKeys].forEach(k=>d[k]=[]);
     for(let i=0;i<FEEDER_COUNT;i++){d.inUse[i]=getBool('rf-inUse-'+i);d.CalismaModu[i]=getInt('rf-CalismaModu-'+i);d.HatFrekansi[i]=getInt('rf-HatFrekansi-'+i);iKeys.forEach(k=>d[k][i]=getInt('rf-'+k+'-'+i));fKeys.forEach(k=>d[k][i]=getFloat('rf-'+k+'-'+i));sKeys.forEach(k=>d[k][i]=getText('rf-'+k+'-'+i).trim().toUpperCase())}return d}
   if(page==='device')return extractDevice();return {};

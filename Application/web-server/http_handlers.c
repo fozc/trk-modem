@@ -1289,112 +1289,9 @@ void handle_get_modbus_config_json(void)
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"CihazID\":%u,", config->device_addr);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SonHataKodu\":%u,", config->last_error_code);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"SonHataZamani\":%lu,", modbus_config_get_last_error_time());
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BaudRate\":%lu,", config->baud_rate);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"BaudRate\":%lu", config->baud_rate);
     
-    /* Hat bilgisi */
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Hat\":{");
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"inUse\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%s%s", (line && line->in_use) ? "true" : "false", (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_AnlikAkim\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->anlik_akim[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_AnlikAkim\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->anlik_akim[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_AnlikAkim\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->anlik_akim[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_EnerjiVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->enerji_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_EnerjiVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->enerji_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_EnerjiVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->enerji_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_YukAkimiVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->yuk_akimi_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_YukAkimiVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->yuk_akimi_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_YukAkimiVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->yuk_akimi_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_R_RfhabVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L1] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_S_RfhabVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L2] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "],");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"ADDR_T_RfhabVarYok\":[");
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "%u%s", line ? line->rf_haberlesme_varyok[PHASE_L3] : 0, (i < MAX_ARRAYS - 1) ? "," : "");
-    }
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "]");
-    
-    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
-    
+    /* Register addresses are fixed (modbus_map.h): no per-line Hat block. */
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "}");
     
     CSLOG("[HTTP] Modbus config JSON size: %u bytes\r\n", (unsigned int)pos);
@@ -1437,30 +1334,6 @@ void handle_post_modbus_config_json(const char *json_body)
     config.device_addr = nvram_config->device_addr;
     config.last_error_code = nvram_config->last_error_code;
     config.baud_rate = nvram_config->baud_rate;
-    config.addr_aku_uyarisi = nvram_config->addr_aku_uyarisi;
-    config.addr_modem_reset = nvram_config->addr_modem_reset;
-    
-    // Convert line configs
-    for (uint32_t i = 0U; i < MAX_ARRAYS; i++) {
-        const modbus_line_config_t *line = modbus_get_line_config(i);
-        if (line && line->in_use) {
-            config.line.in_use[i] = true;
-            config.line.addr_r_anlik_akim[i] = line->anlik_akim[PHASE_L1];
-            config.line.addr_s_anlik_akim[i] = line->anlik_akim[PHASE_L2];
-            config.line.addr_t_anlik_akim[i] = line->anlik_akim[PHASE_L3];
-            config.line.addr_r_enerji_varyok[i] = line->enerji_varyok[PHASE_L1];
-            config.line.addr_s_enerji_varyok[i] = line->enerji_varyok[PHASE_L2];
-            config.line.addr_t_enerji_varyok[i] = line->enerji_varyok[PHASE_L3];
-            config.line.addr_r_yuk_akimi_varyok[i] = line->yuk_akimi_varyok[PHASE_L1];
-            config.line.addr_s_yuk_akimi_varyok[i] = line->yuk_akimi_varyok[PHASE_L2];
-            config.line.addr_t_yuk_akimi_varyok[i] = line->yuk_akimi_varyok[PHASE_L3];
-            config.line.addr_r_rfhab_varyok[i] = line->rf_haberlesme_varyok[PHASE_L1];
-            config.line.addr_s_rfhab_varyok[i] = line->rf_haberlesme_varyok[PHASE_L2];
-            config.line.addr_t_rfhab_varyok[i] = line->rf_haberlesme_varyok[PHASE_L3];
-        } else {
-            config.line.in_use[i] = false;
-        }
-    }
     
     if (!parse_modbus_config(json_body, &config)) {
         CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");

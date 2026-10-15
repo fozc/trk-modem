@@ -28,7 +28,6 @@ static iec104_config_t saved_iec;
 static iec104_line_config_t current_lines[MAX_ARRAYS];
 static iec104_line_config_t saved_line;
 static modbus_configs_t saved_modbus;
-static modbus_line_config_t saved_modbus_line;
 
 static void capture_iec(const iec104_config_t *config, int call_count)
 {
@@ -42,18 +41,6 @@ static void capture_modbus(const modbus_configs_t *config, int call_count)
     saved_modbus = *config;
 }
 
-static bool capture_modbus_line(uint32_t line_index,
-                               const modbus_line_config_t *config,
-                               int call_count)
-{
-    (void)call_count;
-    if (0U == line_index)
-    {
-        saved_modbus_line = *config;
-    }
-    return true;
-}
-
 void setUp(void)
 {
     memset(current_lines, 0, sizeof(current_lines));
@@ -61,7 +48,6 @@ void setUp(void)
     memset(&iec, 0, sizeof(iec));
     memset(&saved_iec, 0, sizeof(saved_iec));
     memset(&saved_modbus, 0, sizeof(saved_modbus));
-    memset(&saved_modbus_line, 0, sizeof(saved_modbus_line));
     iec104_process_config_changed_Ignore();
     (void)strcpy(iec.scada_ip_address, "192.168.1.2");
     iec.scada_port = 2404U;
@@ -126,7 +112,6 @@ void test_modbus_device_id_247_reaches_storage_unchanged(void)
     config.baud_rate = 9600U;
     modbus_config_get_IgnoreAndReturn(NULL);
     modbus_config_set_Stub(capture_modbus);
-    modbus_set_line_config_Stub(capture_modbus_line);
     modbus_config_sync_ExpectAndReturn(0);
     modbus_process_notify_config_changed_Expect();
     TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
@@ -167,23 +152,24 @@ void test_inactive_sbo_rejects_storage_overflow(void)
         parse_iec_config("{\"SBO\":false,\"SBOTimeout\":65536}", &iec));
 }
 
-void test_modbus_line_address_rejects_storage_overflow(void)
+void test_wellformed_unknown_key_is_skipped(void)
 {
     jmodbus_configs_t config = {0};
     config.device_addr = 1U;
     config.baud_rate = 9600U;
 
-    TEST_ASSERT_EQUAL_INT(0,
+    /* Unknown keys (e.g. a stray Hat block) are skipped when well-formed;
+     * only malformed structure is rejected (see the malformed test). */
+    TEST_ASSERT_EQUAL_INT(1,
         parse_modbus_config(
             "{\"Hat\":{\"ADDR_R_AnlikAkim\":[65536]}}", &config));
 }
 
-void test_modbus_setter_rejects_overflow_before_writing(void)
+void test_modbus_setter_rejects_invalid_device_id_before_writing(void)
 {
     jmodbus_configs_t config = {0};
-    config.device_addr = 1U;
+    config.device_addr = 0U;
     config.baud_rate = 9600U;
-    config.addr_modem_reset = 65536U;
 
     /* No mock write is expected on invalid input. */
     TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
@@ -227,77 +213,17 @@ void test_sbo_keeps_existing_active_timeout_limits(void)
         parse_iec_config("{\"SBO\":true,\"SBOTimeout\":301}", &iec));
 }
 
-void test_all_modbus_line_address_fields_check_16_bit_boundary(void)
-{
-    const char *keys[] =
-    {
-        "ADDR_R_AnlikAkim",
-        "ADDR_S_AnlikAkim",
-        "ADDR_T_AnlikAkim",
-        "ADDR_R_EnerjiVarYok",
-        "ADDR_S_EnerjiVarYok",
-        "ADDR_T_EnerjiVarYok",
-        "ADDR_R_YukAkimiVarYok",
-        "ADDR_S_YukAkimiVarYok",
-        "ADDR_T_YukAkimiVarYok",
-        "ADDR_R_RfhabVarYok",
-        "ADDR_S_RfhabVarYok",
-        "ADDR_T_RfhabVarYok"
-    };
-    char json[96];
-
-    for (size_t field = 0U; field < (sizeof(keys) / sizeof(keys[0])); field++)
-    {
-        jmodbus_configs_t config = {0};
-        config.device_addr = 1U;
-        config.baud_rate = 9600U;
-        (void)snprintf(json, sizeof(json),
-                       "{\"Hat\":{\"%s\":[65535]}}", keys[field]);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(1, parse_modbus_config(json, &config),
-                                      keys[field]);
-        (void)snprintf(json, sizeof(json),
-                       "{\"Hat\":{\"%s\":[65536]}}", keys[field]);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, parse_modbus_config(json, &config),
-                                      keys[field]);
-    }
-}
-
-void test_modbus_setter_rejects_last_slot_before_writing(void)
-{
-    jmodbus_configs_t config = {0};
-    config.addr_aku_uyarisi = 65536U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-    config.addr_aku_uyarisi = 0U;
-    config.line.addr_t_rfhab_varyok[MAX_ARRAYS - 1U] = 65536U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-}
-
 void test_modbus_valid_boundary_values_reach_storage_unchanged(void)
 {
     jmodbus_configs_t config = {0};
     config.device_addr = 1U;
     config.baud_rate = 9600U;
-    config.addr_aku_uyarisi = 65535U;
-    config.addr_modem_reset = 0U;
-    config.line.in_use[0] = true;
-    config.line.addr_r_anlik_akim[0] = 65533U;
-    config.line.addr_s_anlik_akim[0] = 65531U;
-    config.line.addr_t_anlik_akim[0] = 65529U;
-    config.line.addr_t_rfhab_varyok[0] = 65528U;
     modbus_config_get_IgnoreAndReturn(NULL);
     modbus_config_set_Stub(capture_modbus);
-    modbus_set_line_config_Stub(capture_modbus_line);
     modbus_config_sync_ExpectAndReturn(0);
     modbus_process_notify_config_changed_Expect();
 
     TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
-    TEST_ASSERT_EQUAL_UINT16(65535U, saved_modbus.addr_aku_uyarisi);
-    TEST_ASSERT_EQUAL_UINT16(0U, saved_modbus.addr_modem_reset);
-    TEST_ASSERT_EQUAL_UINT16(65533U, saved_modbus_line.anlik_akim[PHASE_L1]);
-    TEST_ASSERT_EQUAL_UINT16(65531U, saved_modbus_line.anlik_akim[PHASE_L2]);
-    TEST_ASSERT_EQUAL_UINT16(65529U, saved_modbus_line.anlik_akim[PHASE_L3]);
-    TEST_ASSERT_EQUAL_UINT16(65528U,
-                            saved_modbus_line.rf_haberlesme_varyok[PHASE_L3]);
 }
 
 static const iec104_line_config_t *read_line(uint32_t index, int calls)
@@ -488,84 +414,6 @@ void test_iec_fault_bases_can_be_repaired_without_factory_reset(void)
     iec.line.in_use[0] = false;
     iec.line.temporary_fault_base[0] = 0x1000000U;
     TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
-}
-
-void test_modbus_rejects_duplicate_and_overlapping_active_addresses(void)
-{
-    jmodbus_configs_t config = {0};
-    config.device_addr = 1U;
-    config.baud_rate = 9600U;
-    config.line.in_use[0] = true;
-    config.line.in_use[1] = true;
-    config.line.addr_r_anlik_akim[0] = 100U;
-    config.line.addr_r_anlik_akim[1] = 100U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-    config.line.addr_r_anlik_akim[1] = 101U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-    config.line.addr_r_anlik_akim[1] = 102U;
-    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config("{}", &config));
-    config.line.addr_s_anlik_akim[1] = 103U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-    config.line.in_use[1] = false;
-    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config("{}", &config));
-    config.addr_aku_uyarisi = 101U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-    config.addr_aku_uyarisi = 0U;
-    config.line.addr_s_anlik_akim[0] = 65535U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-}
-
-void test_all_modbus_address_categories_reject_cross_feeder_duplicates(void)
-{
-    jmodbus_configs_t config = {0};
-    config.device_addr = 1U;
-    config.baud_rate = 9600U;
-    config.line.in_use[0] = true;
-    config.line.in_use[1] = true;
-    config.line.addr_r_anlik_akim[0] = 100U;
-    uint32_t *addresses[] =
-    {
-        config.line.addr_r_anlik_akim,
-        config.line.addr_s_anlik_akim,
-        config.line.addr_t_anlik_akim,
-        config.line.addr_r_enerji_varyok,
-        config.line.addr_s_enerji_varyok,
-        config.line.addr_t_enerji_varyok,
-        config.line.addr_r_yuk_akimi_varyok,
-        config.line.addr_s_yuk_akimi_varyok,
-        config.line.addr_t_yuk_akimi_varyok,
-        config.line.addr_r_rfhab_varyok,
-        config.line.addr_s_rfhab_varyok,
-        config.line.addr_t_rfhab_varyok
-    };
-    for (size_t field = 0U;
-         field < (sizeof(addresses) / sizeof(addresses[0])); field++)
-    {
-        addresses[field][1] = 100U;
-        TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-        TEST_ASSERT_EQUAL_INT(0, parse_modbus_config("{}", &config));
-        addresses[field][1] = 0U;
-    }
-}
-
-void test_modbus_rf_quality_block_rejects_overlapping_address_ranges(void)
-{
-    jmodbus_configs_t config = {0};
-    config.device_addr = 1U;
-    config.baud_rate = 9600U;
-    config.line.in_use[0] = true;
-    config.line.addr_r_enerji_varyok[0] = 49500U;
-    TEST_ASSERT_EQUAL_INT(0, parse_modbus_config("{}", &config));
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-    config.line.addr_r_enerji_varyok[0] = 0U;
-    config.line.addr_r_anlik_akim[0] = 49499U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-    config.line.addr_r_anlik_akim[0] = 0U;
-    config.addr_modem_reset = 49520U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
-    config.addr_modem_reset = 0U;
-    config.addr_aku_uyarisi = 49500U;
-    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
 }
 
 void test_trip_failure_ioas_parse_validate_and_reach_the_saved_line(void)

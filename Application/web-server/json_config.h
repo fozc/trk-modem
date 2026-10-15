@@ -16,6 +16,11 @@
 #define MAX_STRING_LEN 64
 #define MAX_ARRAYS MAX_POWER_LINE_COUNT
 
+/* Ic ice bilinmeyen JSON degerlerinin kabul edilen maksimum derinligi
+ * (parser sozlesmesi; testler de bu sabiti kullanir). */
+#define JSON_SKIP_MAX_DEPTH  32U
+
+
 #define MAX_LINE_COUNT MAX_POWER_LINE_COUNT
 
 /* Board Status Structure */
@@ -68,33 +73,13 @@ typedef struct
     jiec_line_config_t line;
 } jiec_config_t;
 
-/* Modbus Config Structure */
+/* Modbus Config Structure - register addresses are compile-time fixed
+ * (modbus_map.h); only the serial-line settings travel over the web. */
 typedef struct
- {
-    bool in_use[MAX_LINE_COUNT];                // Hat kullaniliyor mu
-
-    uint32_t addr_r_anlik_akim[MAX_LINE_COUNT];    
-    uint32_t addr_s_anlik_akim[MAX_LINE_COUNT];    
-    uint32_t addr_t_anlik_akim[MAX_LINE_COUNT];    
-    uint32_t addr_r_enerji_varyok[MAX_LINE_COUNT]; 
-    uint32_t addr_s_enerji_varyok[MAX_LINE_COUNT]; 
-    uint32_t addr_t_enerji_varyok[MAX_LINE_COUNT]; 
-    uint32_t addr_r_yuk_akimi_varyok[MAX_LINE_COUNT];
-    uint32_t addr_s_yuk_akimi_varyok[MAX_LINE_COUNT];
-    uint32_t addr_t_yuk_akimi_varyok[MAX_LINE_COUNT];
-    uint32_t addr_r_rfhab_varyok[MAX_LINE_COUNT];    
-    uint32_t addr_s_rfhab_varyok[MAX_LINE_COUNT];    
-    uint32_t addr_t_rfhab_varyok[MAX_LINE_COUNT];  
-} jmodbus_line_config_t;
-
-typedef struct 
 {
     uint8_t device_addr;                     // Modbus cihaz adresi 1-247
     uint8_t last_error_code;
     uint32_t baud_rate;
-    uint32_t addr_aku_uyarisi;
-    uint32_t addr_modem_reset;
-    jmodbus_line_config_t line;
 } jmodbus_configs_t;
 
 /* RF Config Structure */

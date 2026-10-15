@@ -242,15 +242,79 @@ void test_partial_update_starts_from_current_persistent_config(void)
     TEST_ASSERT_EQUAL_STRING("base", device.apn.apn);
 }
 
-void test_modbus_bool_array_literals_and_unknown_nested_key(void)
+void test_unknown_value_number_grammar_is_complete(void)
 {
+    jmodbus_configs_t config = {0};
+    config.device_addr = 1U;
+    config.baud_rate = 9600U;
+
+    /* Gecerli JSON sayilari atlanmalidir. */
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"New\":[1e3]}", &config));
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"New\":[1E-2]}", &config));
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"New\":[-7.5e+2]}", &config));
+    /* Bastan sifir yalnizca tek basina gecerlidir. */
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"New\":[0]}", &config));
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"New\":[-0]}", &config));
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"New\":[0.5]}", &config));
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"New\":[0e3]}", &config));
+    /* Bicim bozuk sayilar reddedilmelidir. */
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"New\":[01]}", &config));
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"New\":[-01]}", &config));
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"New\":[1.]}", &config));
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"New\":[1e]}", &config));
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"New\":[.5]}", &config));
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"New\":[1.2.3]}", &config));
+}
+
+void test_unknown_value_depth_is_limited(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 1U;
+    config.baud_rate = 9600U;
+    char json[3U * JSON_SKIP_MAX_DEPTH + 32U];
+
+    /* Sinir derinligi (32) kabul, bir fazlasi red. */
+    for (uint32_t depth = 31U; depth <= 33U; depth++)
+    {
+        size_t pos = 0U;
+        json[pos++] = '{';
+        json[pos++] = '"';
+        json[pos++] = 'N';
+        json[pos++] = '"';
+        json[pos++] = ':';
+        (void)memset(&json[pos], '[', depth);
+        pos += depth;
+        (void)memset(&json[pos], ']', depth);
+        pos += depth;
+        json[pos++] = '}';
+        json[pos] = 0;
+        const int expected = (depth <= JSON_SKIP_MAX_DEPTH) ? 1 : 0;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected, parse_modbus_config(json, &config), json);
+    }
+}
+
+void test_modbus_legacy_hat_block_and_bool_literals_are_tolerated(void)
+{
+    /* Legacy Hat blocks (with nested unknown objects and bool arrays) are
+     * skipped as unknown keys; the parse must still succeed. */
     static const char json[] =
         "{\"Hat\":{\"YeniAlan\":{\"nested\":[1,2]},"
         "\"inUse\":[true,false]}}";
 
     TEST_ASSERT_EQUAL_INT(1, parse_modbus_config(json, &modbus));
-    TEST_ASSERT_TRUE(modbus.line.in_use[0]);
-    TEST_ASSERT_FALSE(modbus.line.in_use[1]);
 }
 
 /*** end of file ***/

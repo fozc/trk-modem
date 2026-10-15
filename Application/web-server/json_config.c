@@ -22,7 +22,6 @@
 #include "iec104_process.h"
 #include "modbus_config.h"
 #include "modbus_process.h"
-#include "modbus_rf_stats.h"
 #include "rf_config.h"
 #include "rf.h"
 #include "system_status.h"
@@ -42,89 +41,143 @@ static const char* skip_whitespace(const char *str) {
 }
 
 /* Skip value (for unknown fields) */
-static bool skip_value(const char **str) {
-    const char *s = skip_whitespace(*str);
-    if (!s || !*s) return false;
-    
-    /* String */
-    if (*s == '"') {
-        s++;
-        while (*s && *s != '"') {
-            if (*s == '\\') {
-                s++;
-                if (!*s) return false;
-            }
+/* JSON string: cift tirnak arasi, kacis karakterleri es gecilir. */
+static bool skip_json_string(const char **str) {
+    const char *s = *str;
+    if ('"' != *s) return false;
+    s++;
+    while (*s && '"' != *s) {
+        if ('\\' == *s) {
             s++;
+            if (!*s) return false;
         }
-        if (*s != '"') return false;
         s++;
     }
-    /* Number */
-    else if (*s == '-' || isdigit((unsigned char)*s)) {
-        if (*s == '-') s++;
-        if (!isdigit((unsigned char)*s)) return false;
+    if ('"' != *s) return false;
+    *str = s + 1;
+    return true;
+}
+
+/* Tam JSON sayi grameri: -?(0|[1-9][0-9]*)(.rakamlar)?([eE][+-]?rakamlar)?.
+ * Tamsayi bolumu tek "0" ya da bastan sifursuz rakamlardir ("01"/"-01"
+ * gecersiz); nokta ve exponent'ten sonra en az bir rakam zorunludur
+ * ("1.", "1e" gecersiz; "0", "-0", "0.5", "0e3", "1e3" gecerli). */
+static bool skip_json_number(const char **str) {
+    const char *s = *str;
+    if ('-' == *s) s++;
+    if ('0' == *s) {
+        s++;
+    } else if (isdigit((unsigned char)*s)) {
         while (isdigit((unsigned char)*s)) s++;
-        if (*s == '.') {
-            s++;
-            while (isdigit((unsigned char)*s)) s++;
-        }
-    }
-    /* Boolean */
-    else if (strncmp(s, "true", 4) == 0) {
-        s += 4;
-    }
-    else if (strncmp(s, "false", 5) == 0) {
-        s += 5;
-    }
-    /* Null */
-    else if (strncmp(s, "null", 4) == 0) {
-        s += 4;
-    }
-    /* Array */
-    else if (*s == '[') {
-        s++;
-        int depth = 1;
-        while (*s && depth > 0) {
-            if (*s == '[') depth++;
-            else if (*s == ']') depth--;
-            else if (*s == '"') {
-                s++;
-                while (*s && *s != '"') {
-                    if (*s == '\\') s++;
-                    if (*s) s++;
-                }
-            }
-            if (*s) s++;
-        }
-        if (depth != 0) return false;
-    }
-    /* Object */
-    else if (*s == '{') {
-        s++;
-        int depth = 1;
-        while (*s && depth > 0) {
-            if (*s == '{') depth++;
-            else if (*s == '}') depth--;
-            else if (*s == '"') {
-                s++;
-                while (*s && *s != '"') {
-                    if (*s == '\\') s++;
-                    if (*s) s++;
-                }
-            }
-            if (*s) s++;
-        }
-        if (depth != 0) return false;
-    }
-    else {
+    } else {
         return false;
     }
-    
+    if ('.' == *s) {
+        s++;
+        if (!isdigit((unsigned char)*s)) return false;
+        while (isdigit((unsigned char)*s)) s++;
+    }
+    if (('e' == *s) || ('E' == *s)) {
+        s++;
+        if (('+' == *s) || ('-' == *s)) s++;
+        if (!isdigit((unsigned char)*s)) return false;
+        while (isdigit((unsigned char)*s)) s++;
+    }
     *str = s;
     return true;
 }
 
-/* Compare string with keyword */
+/* Bir JSON degerini (skaler, dizi ya da nesne) atlar. Iteratif: kapanis
+ * karakterleri sabit yiginda tutulur, dizi yalnizca ']' ve nesne yalnizca
+ * '}' ile kapanabilir - tipte disi kapanis reddedilir. Ozyineleme yok. */
+typedef enum {
+    JSON_SKIP_VALUE,      /* bir degerin basi bekleniyor        */
+    JSON_SKIP_ELEM_DONE,  /* eleman bitti: virgul ya da kapanis */
+    JSON_SKIP_OBJ_KEY     /* nesne elemani: "anahtar": bekleniyor */
+} json_skip_state_t;
+
+static bool skip_value(const char **str) {
+    const char *s = skip_whitespace(*str);
+    if (!s || !*s) return false;
+
+    uint8_t closer[JSON_SKIP_MAX_DEPTH];
+    size_t depth = 0U;
+    json_skip_state_t state = JSON_SKIP_VALUE;
+
+    for (;;) {
+        if (JSON_SKIP_VALUE == state) {
+            if ('"' == *s) {
+                if (!skip_json_string(&s)) return false;
+                state = JSON_SKIP_ELEM_DONE;
+            } else if (('-' == *s) || isdigit((unsigned char)*s)) {
+                if (!skip_json_number(&s)) return false;
+                state = JSON_SKIP_ELEM_DONE;
+            } else if (strncmp(s, "true", 4) == 0) {
+                s += 4;
+                state = JSON_SKIP_ELEM_DONE;
+            } else if (strncmp(s, "false", 5) == 0) {
+                s += 5;
+                state = JSON_SKIP_ELEM_DONE;
+            } else if (strncmp(s, "null", 4) == 0) {
+                s += 4;
+                state = JSON_SKIP_ELEM_DONE;
+            } else if ('[' == *s) {
+                if (depth >= JSON_SKIP_MAX_DEPTH) return false;
+                closer[depth++] = (uint8_t)']';
+                s = skip_whitespace(s + 1);
+                if (!s || !*s) return false;
+                if (']' == *s) { /* bos dizi */
+                    depth--;
+                    s++;
+                    state = JSON_SKIP_ELEM_DONE;
+                }
+                /* degilse sonraki eleman yine deger basi */
+            } else if ('{' == *s) {
+                if (depth >= JSON_SKIP_MAX_DEPTH) return false;
+                closer[depth++] = (uint8_t)'}';
+                s = skip_whitespace(s + 1);
+                if (!s || !*s) return false;
+                if ('}' == *s) { /* bos nesne */
+                    depth--;
+                    s++;
+                    state = JSON_SKIP_ELEM_DONE;
+                } else {
+                    state = JSON_SKIP_OBJ_KEY;
+                }
+            } else {
+                return false;
+            }
+        } else if (JSON_SKIP_OBJ_KEY == state) {
+            if ('"' != *s) return false;
+            if (!skip_json_string(&s)) return false;
+            s = skip_whitespace(s);
+            if (!s || ':' != *s) return false;
+            s = skip_whitespace(s + 1);
+            if (!s || !*s) return false;
+            state = JSON_SKIP_VALUE;
+        } else { /* JSON_SKIP_ELEM_DONE */
+            s = skip_whitespace(s);
+            if (!s) return false;
+            if (0U == depth) {
+                *str = s;
+                return true;
+            }
+            if (',' == *s) {
+                s = skip_whitespace(s + 1);
+                if (!s || !*s) return false;
+                state = ('}' == closer[depth - 1U])
+                            ? JSON_SKIP_OBJ_KEY : JSON_SKIP_VALUE;
+            } else if (*s == closer[depth - 1U]) {
+                s++;
+                depth--;
+                /* ust seviyede yine eleman-sonu beklenir */
+            } else {
+                return false;
+            }
+        }
+    }
+}
+
 static bool match_key(const char **str, const char *key) {
     const char *s = skip_whitespace(*str);
     
@@ -1227,135 +1280,6 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
 }
 
 /* Modbus Hat parse et */
-static bool parse_modbus_line_config(const char **str, jmodbus_line_config_t *hat) {
-    if (!expect_object_start(str)) return false;
-    
-    while (!is_object_end(str)) {
-        if (match_key(str, "inUse")) {
-            if (!parse_bool_array(str, hat->in_use, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_R_AnlikAkim")) {
-            if (!parse_uint32_array(str, hat->addr_r_anlik_akim, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_S_AnlikAkim")) {
-            if (!parse_uint32_array(str, hat->addr_s_anlik_akim, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_T_AnlikAkim")) {
-            if (!parse_uint32_array(str, hat->addr_t_anlik_akim, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_R_EnerjiVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_r_enerji_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_S_EnerjiVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_s_enerji_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_T_EnerjiVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_t_enerji_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_R_YukAkimiVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_r_yuk_akimi_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_S_YukAkimiVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_s_yuk_akimi_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_T_YukAkimiVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_t_yuk_akimi_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_R_RfhabVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_r_rfhab_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_S_RfhabVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_s_rfhab_varyok, MAX_ARRAYS)) return false;
-        } else if (match_key(str, "ADDR_T_RfhabVarYok")) {
-            if (!parse_uint32_array(str, hat->addr_t_rfhab_varyok, MAX_ARRAYS)) return false;
-        } else {
-            /* Bilinmeyen key - atla */
-            if (!skip_unknown_key_value(str)) return false;
-        }
-        skip_comma(str);
-    }
-    
-    return true;
-}
-
-/* Validate addresses before any 32-bit JSON value is stored in 16 bits. */
-static bool validate_modbus_addresses(const jmodbus_configs_t *config)
-{
-    if (((MODBUS_RF_STATS_ADDR_BASE <= config->addr_aku_uyarisi) &&
-         (MODBUS_RF_STATS_ADDR_LAST >= config->addr_aku_uyarisi)) ||
-        ((MODBUS_RF_STATS_ADDR_BASE <= config->addr_modem_reset) &&
-         (MODBUS_RF_STATS_ADDR_LAST >= config->addr_modem_reset)))
-    {
-        return false;
-    }
-    if ((UINT16_MAX < config->addr_aku_uyarisi) ||
-        (UINT16_MAX < config->addr_modem_reset))
-    {
-        return false;
-    }
-
-    const uint32_t *addresses[] =
-    {
-        config->line.addr_r_anlik_akim,
-        config->line.addr_s_anlik_akim,
-        config->line.addr_t_anlik_akim,
-        config->line.addr_r_enerji_varyok,
-        config->line.addr_s_enerji_varyok,
-        config->line.addr_t_enerji_varyok,
-        config->line.addr_r_yuk_akimi_varyok,
-        config->line.addr_s_yuk_akimi_varyok,
-        config->line.addr_t_yuk_akimi_varyok,
-        config->line.addr_r_rfhab_varyok,
-        config->line.addr_s_rfhab_varyok,
-        config->line.addr_t_rfhab_varyok
-    };
-
-    if ((0U != config->addr_aku_uyarisi) &&
-        (config->addr_aku_uyarisi == config->addr_modem_reset))
-    {
-        return false;
-    }
-    for (size_t field = 0U;
-         field < (sizeof(addresses) / sizeof(addresses[0])); field++)
-    {
-        for (size_t line = 0U; line < MAX_ARRAYS; line++)
-        {
-            if (UINT16_MAX < addresses[field][line])
-            {
-                return false;
-            }
-            const uint32_t first = addresses[field][line];
-            if (!config->line.in_use[line] || (0U == first))
-            {
-                continue;
-            }
-            /* Fault/current measurements are FLOAT32, all others one word. */
-            const uint32_t length = (field < 3U) ? 2U : 1U;
-            const uint32_t last = first + length - 1U;
-            if ((first <= MODBUS_RF_STATS_ADDR_LAST) &&
-                (MODBUS_RF_STATS_ADDR_BASE <= last))
-            {
-                return false;
-            }
-            if ((UINT16_MAX < last) ||
-                ((first <= config->addr_aku_uyarisi) &&
-                 (config->addr_aku_uyarisi <= last)) ||
-                ((first <= config->addr_modem_reset) &&
-                 (config->addr_modem_reset <= last)))
-            {
-                return false;
-            }
-            for (size_t previous = 0U;
-                 previous < ((field * MAX_ARRAYS) + line); previous++)
-            {
-                const size_t prev_field = previous / MAX_ARRAYS;
-                const size_t prev_line = previous % MAX_ARRAYS;
-                const uint32_t prev_first = addresses[prev_field][prev_line];
-                if (!config->line.in_use[prev_line] || (0U == prev_first))
-                {
-                    continue;
-                }
-                const uint32_t prev_length = (prev_field < 3U) ? 2U : 1U;
-                if ((first <= (prev_first + prev_length - 1U)) &&
-                    (prev_first <= last))
-                {
-                    return false;
-                }
-            }
-        }
-    }
-    return true;
-}
-
 /* Modbus Config parse et */
 static bool parse_modbus_config_internal(const char **str, jmodbus_configs_t *modbus) {
     if (!expect_object_start(str)) return false;
@@ -1366,17 +1290,12 @@ static bool parse_modbus_config_internal(const char **str, jmodbus_configs_t *mo
             if (!parse_uint8(str, &modbus->last_error_code)) return false;
         } else if (match_key(str, "BaudRate")) {
             if (!parse_uint32(str, &modbus->baud_rate)) return false;
-        } else if (match_key(str, "Hat")) {
-            if (!parse_modbus_line_config(str, &modbus->line)) return false;
         } else {
+            /* Bilinmeyen anahtarlar (Hat/ADDR_* gibi eski alanlar dahil)
+             * yalnizca iyi bicimli iseler atlanir; bozuk icerik reddedilir. */
             if (!skip_unknown_key_value(str)) return false;
         }
         skip_comma(str);
-    }
-    if (!validate_modbus_addresses(modbus))
-    {
-        CSLOG_ERR("[JSON] ERROR: Modbus address exceeds storage range\r\n");
-        return false;
     }
     if (!validate_modbus_device_id(modbus->device_addr)) {
         CSLOG_ERR( "[JSON] ERROR: Modbus device ID validation failed\r\n");
@@ -2410,13 +2329,12 @@ int set_modbus_config(const jmodbus_configs_t *config)
     	return -1;
     }
 
-    if (!validate_modbus_addresses(config) ||
-        !validate_modbus_device_id(config->device_addr))
+    if (!validate_modbus_device_id(config->device_addr))
     {
         return -1;
     }
 
-    // Create local config struct from current NVRAM state
+    /* Create local config struct from current NVRAM state */
     modbus_configs_t config_to_write = {0};
 
     const modbus_configs_t *current_config = modbus_config_get();
@@ -2424,43 +2342,12 @@ int set_modbus_config(const jmodbus_configs_t *config)
         config_to_write = *current_config;  // Copy current config
     }
 
-    // Update fields from JSON config
+    /* Update fields from JSON config (register addresses fixed) */
     config_to_write.device_addr = config->device_addr;
     config_to_write.last_error_code = config->last_error_code;
     config_to_write.baud_rate = config->baud_rate;
-    config_to_write.addr_aku_uyarisi = (uint16_t)config->addr_aku_uyarisi;
-    config_to_write.addr_modem_reset = (uint16_t)config->addr_modem_reset;
 
-    // Write global config using config manager
     modbus_config_set(&config_to_write);
-
-    // Write line config fields
-    for(uint32_t i = 0U; i < MAX_ARRAYS; i++)
-    {
-		modbus_line_config_t line = {0};
-
-		if(!config->line.in_use[i])
-		{
-			modbus_set_line_config(i, &line);
-			continue;
-		}
-
-		line.in_use = true;
-		line.anlik_akim[PHASE_L1] = (uint16_t)config->line.addr_r_anlik_akim[i];
-		line.anlik_akim[PHASE_L2] = (uint16_t)config->line.addr_s_anlik_akim[i];
-		line.anlik_akim[PHASE_L3] = (uint16_t)config->line.addr_t_anlik_akim[i];
-		line.enerji_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_enerji_varyok[i];
-		line.enerji_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_enerji_varyok[i];
-		line.enerji_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_enerji_varyok[i];
-		line.yuk_akimi_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_yuk_akimi_varyok[i];
-		line.yuk_akimi_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_yuk_akimi_varyok[i];
-		line.yuk_akimi_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_yuk_akimi_varyok[i];
-		line.rf_haberlesme_varyok[PHASE_L1] = (uint16_t)config->line.addr_r_rfhab_varyok[i];
-		line.rf_haberlesme_varyok[PHASE_L2] = (uint16_t)config->line.addr_s_rfhab_varyok[i];
-		line.rf_haberlesme_varyok[PHASE_L3] = (uint16_t)config->line.addr_t_rfhab_varyok[i];
-
-		modbus_set_line_config(i, &line);
-    }
 
     int res =  modbus_config_sync();
 	CCSLOG(res == 0 ? XCOLOR_GREEN : XCOLOR_RED,
