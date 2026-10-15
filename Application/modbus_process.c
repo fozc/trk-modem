@@ -8,13 +8,14 @@
 #include "modbus_process.h"
 #include "modbus_rtu_slave.h"
 #include "modbus_config.h"
+#include "modbus_map.h"
+#include "modbus_line_data.h"
 #include "modbus_system_stats.h"
 #include "modbus_power_stats.h"
 #include "modbus_bms_stats.h"
 #include "modbus_gsm_stats.h"
-#include "modbus_rf_stats.h"
+#include "power_board_scp.h"
 #include "breaker.h"
-#include "rf.h"
 #include "rf_hil_transport.h"
 #include "bsp.h"
 #include "reboot.h"
@@ -27,49 +28,14 @@
 #include "main.h"
 #include "stm32u3xx_hal.h"
 #include <string.h>
-#include <math.h>
 
 /*
- * Per-line register address space. Each power line owns a contiguous block of
- * MODBUS_LINE_ADDR_STRIDE registers starting at MODBUS_HOLDING_REG_BASE. Any
- * address that falls inside this space but does not map to a live field reads
- * back as 0 (inactive lines and reserved gaps); addresses outside the space
- * raise an illegal-address exception. See MODBUS_REGISTER_MAP.md.
+ * Feeder block address space (fixed map, modbus_map.h). Every address inside
+ * MODBUS_MAP_LINE_ADDR_FIRST..LAST answers FC03: live fields resolve to
+ * their measurement, undefined feeders and reserved gaps read back as 0 with
+ * the quality registers marking the values invalid. Addresses outside every
+ * mapped block raise an illegal-address exception. See MODBUS_REGISTER_MAP.md.
  */
-#define MODBUS_LINE_ADDR_STRIDE   100U
-#define MODBUS_LINE_ADDR_FIRST    MODBUS_HOLDING_REG_BASE
-#define MODBUS_LINE_ADDR_LAST     ((uint16_t)(MODBUS_HOLDING_REG_BASE + \
-                                   (MAX_POWER_LINE_COUNT * MODBUS_LINE_ADDR_STRIDE) - 1U))
-
-/*
- * Per-line field resolution model (compile-time selectable):
- *   1 (default): fixed address map. The firmware derives each field from the
- *                line base plus a fixed offset (see MODBUS_REGISTER_MAP.md); the
- *                per-field addresses stored in NVRAM are ignored. This is the
- *                industry-standard slave behaviour and guarantees a contiguous,
- *                bulk-readable block.
- *   0          : configurable map. Field addresses are taken from NVRAM
- *                configuration, allowing them to be changed at runtime.
- */
-#ifndef MODBUS_USE_FIXED_ADDR_MAP
-#define MODBUS_USE_FIXED_ADDR_MAP   1
-#endif
-
-/*
- * Fixed-map register offsets from the line base (used when
- * MODBUS_USE_FIXED_ADDR_MAP == 1). FLOAT32 fields occupy two registers per phase
- * (high word first, ABCD); UINT16 fields occupy one. Live block spans offsets
- * 0..26; offsets 27..MODBUS_LINE_ADDR_STRIDE-1 are reserved (read back as 0).
- */
-#define MODBUS_OFF_ARIZA_AKIMI      0U    /* FLOAT32 x3 phases -> 0..5   */
-#define MODBUS_OFF_ANLIK_AKIM       6U    /* FLOAT32 x3 phases -> 6..11  */
-#define MODBUS_OFF_ARIZA_SURESI     12U   /* UINT16  x3 phases -> 12..14 */
-#define MODBUS_OFF_ARIZA_KALICIMI   15U   /* UINT16  x3 phases -> 15..17 */
-#define MODBUS_OFF_ENERJI_VARYOK    18U   /* UINT16  x3 phases -> 18..20 */
-#define MODBUS_OFF_YUK_VARYOK   21U   /* UINT16  x3 phases -> 21..23 */
-#define MODBUS_OFF_RF_VARYOK        24U   /* UINT16  x3 phases -> 24..26 */
-#define MODBUS_OFF_LIVE_END         27U   /* first reserved offset       */
-#define MODBUS_FLOAT_REG_PER_PHASE  2U    /* registers per FLOAT32 phase */
 
 /* Modbus slave instance for the UART4 bus. Kept private so the ISR stays trivial. */
 static modbus_slave_t s_modbus;
@@ -186,218 +152,6 @@ void modbus_process_tx_complete_callback(void)
 #endif /* MODBUS_TX_USE_DMA */
 }
 
-/**
- * @brief Extract one 16-bit word of an IEEE-754 float for Modbus transmission.
- *
- * 32-bit values are transmitted big-endian, high word first (ABCD): the field's
- * configured address holds the high word and address+1 holds the low word.
- *
- * @param[in] value          Measurement value (e.g. current in amperes).
- * @param[in] want_high_word  true for the high word, false for the low word.
- * @return The selected 16-bit word.
- */
-static uint16_t modbus_float_to_word(float value, bool want_high_word)
-{
-    uint32_t bits = 0U;
-    (void)memcpy(&bits, &value, sizeof(bits));
-
-    if (want_high_word) {
-        return (uint16_t)(bits >> 16);
-    }
-
-    return (uint16_t)(bits & 0xFFFFU);
-}
-
-static uint16_t modbus_rf_current_word(uint32_t line_index, uint8_t phase,
-                                       bool high_word)
-{
-    rf_phase_data_t data;
-    float current = NAN;
-
-    if (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
-                         rf_sample_ms, &data) && data.has_live &&
-        data.is_online && data.current_valid)
-    {
-        current = data.live.current_amps;
-    }
-    return modbus_float_to_word(current, high_word);
-}
-
-static uint16_t modbus_rf_online(uint32_t line_index, uint8_t phase)
-{
-    rf_phase_data_t data;
-
-    return (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
-                             rf_sample_ms, &data) && data.is_online) ? 1U : 0U;
-}
-
-static uint16_t modbus_rf_flag(uint32_t line_index, uint8_t phase, uint8_t mask)
-{
-    rf_phase_data_t data;
-
-    return (rf_get_phase_data((size_t)line_index, (phase_id_t)phase,
-                             rf_sample_ms, &data) && data.has_live &&
-            (0U != (data.live.flags & mask))) ? 1U : 0U;
-}
-
-
-/**
- * @brief Test whether an address lies within the per-line register space.
- * @param[in] reg_addr Requested holding-register address.
- * @return true if the address is inside [first .. last] line space.
- */
-static bool modbus_addr_in_line_space(uint16_t reg_addr)
-{
-    return (reg_addr >= MODBUS_LINE_ADDR_FIRST) && (reg_addr <= MODBUS_LINE_ADDR_LAST);
-}
-
-#if (MODBUS_USE_FIXED_ADDR_MAP == 1)
-
-/**
- * @brief Resolve a fixed-map register offset to a live phase measurement.
- *
- * Maps an offset within a line block (0..MODBUS_LINE_ADDR_STRIDE-1) to the
- * matching phase field. FLOAT32 fields span two registers (high word first).
- *
- * @param[in]  offset  Register offset from the line base.
- * @param[out] p_value Destination for the resolved value on a match.
- * @return true if the offset maps to a live field, false for reserved gaps.
- */
-static bool modbus_resolve_offset(uint32_t line_index,
-                                  uint16_t offset,
-                                  uint16_t *p_value)
-{
-    bool matched = true;
-
-    if (offset < MODBUS_OFF_ANLIK_AKIM)
-    {
-        *p_value = 0U;
-    }
-    else if (offset < MODBUS_OFF_ARIZA_SURESI)
-    {
-        uint16_t rel = (uint16_t)(offset - MODBUS_OFF_ANLIK_AKIM);
-        uint8_t  ph  = (uint8_t)(rel / MODBUS_FLOAT_REG_PER_PHASE);
-        bool     high = ((rel % MODBUS_FLOAT_REG_PER_PHASE) == 0U);
-        *p_value = modbus_rf_current_word(line_index, ph, high);
-    } 
-    else if (offset < MODBUS_OFF_ENERJI_VARYOK)
-    {
-        *p_value = 0U;
-    }
-    else if (offset < MODBUS_OFF_YUK_VARYOK)
-    {
-        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_ENERJI_VARYOK);
-        *p_value = modbus_rf_flag(line_index, ph, 1U);
-    } 
-    else if (offset < MODBUS_OFF_RF_VARYOK) 
-    {
-        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_YUK_VARYOK);
-        *p_value = modbus_rf_flag(line_index, ph, 2U);
-    } 
-    else if (offset < MODBUS_OFF_LIVE_END) 
-    {
-        uint8_t ph = (uint8_t)(offset - MODBUS_OFF_RF_VARYOK);
-        *p_value = modbus_rf_online(line_index, ph);
-    } 
-    else 
-    {
-        /* Reserved gap (fault-log blocks, not yet mapped). */
-        matched = false;
-    }
-
-    return matched;
-}
-
-/**
- * @brief Resolve a holding-register address using the fixed address map.
- *
- * The line index and offset are derived from the address arithmetically; the
- * per-field NVRAM addresses are not consulted. Addresses on inactive lines or
- * reserved gaps do not match (the caller reads them back as 0).
- *
- * @param[in]  reg_addr Requested holding-register address.
- * @param[out] p_value  Destination for the resolved value on a match.
- * @return true if the address mapped to a live value, false otherwise.
- */
-static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
-{
-    if (!modbus_addr_in_line_space(reg_addr)) {
-        return false;
-    }
-
-    uint16_t rel    = (uint16_t)(reg_addr - MODBUS_LINE_ADDR_FIRST);
-    uint32_t line   = (uint32_t)(rel / MODBUS_LINE_ADDR_STRIDE);
-    uint16_t offset = (uint16_t)(rel % MODBUS_LINE_ADDR_STRIDE);
-
-    if (!modbus_is_line_in_use(line)) {
-        return false;
-    }
-
-    return modbus_resolve_offset(line, offset, p_value);
-
-}
-
-#else /* MODBUS_USE_FIXED_ADDR_MAP == 0 : configurable NVRAM address map */
-
-/**
- * @brief Resolve a holding-register address to a live per-line measurement.
- *
- * Walks every in-use power line and phase, comparing the requested address
- * against the per-field Modbus addresses held in configuration. Float fields
- * (instant current) occupy two registers: the configured address carries
- * the high word and address+1 the low word (big-endian, ABCD).
- * A configured address of 0 is treated as unmapped and never matches.
- *
- * @param[in]  reg_addr Requested holding-register address.
- * @param[out] p_value  Destination for the resolved value on a match.
- * @return true if the address mapped to a live value, false otherwise.
- */
-static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
-{
-    for (uint32_t line = 0U; line < MAX_POWER_LINE_COUNT; line++) {
-        if (!modbus_is_line_in_use(line)) {
-            continue;
-        }
-
-        const modbus_line_config_t *p_cfg = modbus_get_line_config(line);
-
-        if (NULL == p_cfg) {
-            continue;
-        }
-
-        for (uint8_t ph = 0U; ph < PHASE_MAX; ph++) {
-
-            /* anlik_akim: FLOAT32 across two registers (high at addr, low at addr+1). */
-            if (p_cfg->anlik_akim[ph] != 0U) {
-                if (reg_addr == p_cfg->anlik_akim[ph]) {
-                    *p_value = modbus_rf_current_word(line, ph, true);
-                    return true;
-                }
-                if (reg_addr == (uint16_t)(p_cfg->anlik_akim[ph] + 1U)) {
-                    *p_value = modbus_rf_current_word(line, ph, false);
-                    return true;
-                }
-            }
-
-            if ((p_cfg->enerji_varyok[ph] != 0U) && (reg_addr == p_cfg->enerji_varyok[ph])) {
-                *p_value = modbus_rf_flag(line, ph, 1U);
-                return true;
-            }
-            if ((p_cfg->yuk_akimi_varyok[ph] != 0U) && (reg_addr == p_cfg->yuk_akimi_varyok[ph])) {
-                *p_value = modbus_rf_flag(line, ph, 2U);
-                return true;
-            }
-            if ((p_cfg->rf_haberlesme_varyok[ph] != 0U) && (reg_addr == p_cfg->rf_haberlesme_varyok[ph])) {
-                *p_value = modbus_rf_online(line, ph);
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-#endif /* MODBUS_USE_FIXED_ADDR_MAP */
 
 /*
  * RX-timeout (T3.5) idle gap in bit-times. Modbus RTU fixes T3.5 at 1.75 ms for
@@ -411,6 +165,49 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
 /* Inter-frame gap re-poll period (ticks) for software frame-end detection. */
 #define MODBUS_RX_GAP_TICKS         MODBUS_TIMEOUT_MS
 
+/*
+ * Battery-warning register (fixed 50000): each battery alarm of the power
+ * board (R2 section 5.3) gets one dedicated register bit, in table order.
+ * The register is 16 bits wide, so alarm codes above 15 cannot keep their
+ * code number as a bit index - the mapping below is the contract, mirrored
+ * in MODBUS_REGISTER_MAP.md section 6:
+ *   bit 0 = kod 0  AKU_COK_DUSUK      bit 5 = kod 7  AKU_OVP_SARJ_YASAGI
+ *   bit 1 = kod 2  AKU_SOGUK          bit 6 = kod 8  AKU_OVP_KALICI
+ *   bit 2 = kod 3  AKU_SICAK          bit 7 = kod 18 SOC_DUSUK
+ *   bit 3 = kod 4  AKU_DUSUK          bit 8 = kod 20 AKU_YOK
+ *   bit 4 = kod 5  AKU_YUKSEK
+ */
+#define MODBUS_AKU_ALARM_COUNT  9U
+static const uint8_t aku_alarm_codes[MODBUS_AKU_ALARM_COUNT] =
+{
+    0U, 2U, 3U, 4U, 5U, 7U, 8U, 18U, 20U
+};
+
+/* Live battery-warning word: the battery-related power-board alarm mask.
+ * Zero when no summary has arrived or the alarm mask is no longer current
+ * (stale summaries drop POWER_VALID_ALARMS); a nonzero value means a
+ * battery warning is present and the bits name it. */
+static uint16_t aku_uyarisi_value(void)
+{
+    power_board_snapshot_t power;
+    uint16_t value = 0U;
+
+    (void)power_board_get_snapshot(HAL_GetTick(), &power);
+    if (power.has_summary &&
+        (0U != (power.valid_fields & POWER_VALID_ALARMS)))
+    {
+        for (uint32_t i = 0U; i < MODBUS_AKU_ALARM_COUNT; i++)
+        {
+            if (0U != (power.active_alarms & (1UL << aku_alarm_codes[i])))
+            {
+                value |= (uint16_t)(1U << i);
+            }
+        }
+    }
+
+    return value;
+}
+
 /**
  * @brief Read-register callback for FC03 (Read Holding Registers).
  * @param[in]  reg_addr Resolved logical register reference.
@@ -419,64 +216,53 @@ static bool modbus_resolve_register(uint16_t reg_addr, uint16_t *p_value)
  */
 static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_value)
 {
-    /* Reserve the fixed quality block before configurable global fields. */
-    if (modbus_rf_stats_read(reg_addr, rf_sample_ms, p_value))
+    /* Feeder blocks (fixed map, modbus_map.h): every address inside the four
+     * feeder blocks answers OK; undefined feeders and reserved gaps read back
+     * as 0 with the quality registers marking the values invalid. */
+    if ((reg_addr >= MODBUS_MAP_LINE_ADDR_FIRST) &&
+        (reg_addr <= MODBUS_MAP_LINE_ADDR_LAST))
     {
-        return MODBUS_REG_OK;
-    }
-    /* Global status/command registers. */
-    if (reg_addr == modbus_config_get_addr_aku_uyarisi()) {
-        /* TODO: bind to the real battery-warning source once available. */
-        *p_value = 23U;
+        (void)modbus_line_data_read(reg_addr, rf_sample_ms, p_value);
         return MODBUS_REG_OK;
     }
 
-    if (reg_addr == modbus_config_get_addr_modem_reset()) {
+    /* Fixed control registers. */
+    if (reg_addr == MODBUS_MAP_CTRL_AKU_UYARISI) {
+        *p_value = aku_uyarisi_value();
+        return MODBUS_REG_OK;
+    }
+
+    if (reg_addr == MODBUS_MAP_CTRL_MODEM_RESET) {
         /* Write-only command register: reads back as 0. */
         *p_value = 0U;
         return MODBUS_REG_OK;
     }
 
-    /* System statistics block (base MODBUS_SYS_STATS_ADDR_BASE == 49000):
-     * uptime, RTC, reset reason, supply voltages... Read-only, contiguous and
-     * bulk-readable in a single FC03 window. */
+    /* System statistics block (base 49000): uptime, RTC, reset reason,
+     * supply voltages... Read-only, contiguous and bulk-readable in a single
+     * FC03 window. */
     if (modbus_system_stats_read(reg_addr, p_value)) {
         return MODBUS_REG_OK;
     }
 
-    /* PowerBoard telemetry block (base MODBUS_PWR_STATS_ADDR_BASE == 49200):
-     * battery/PV/DC voltages, charge & bus currents, temperatures, SoC/SoH, BQ
-     * faults and alarms. Read-only, contiguous and bulk-readable in a single
-     * FC03 window. */
+    /* PowerBoard telemetry block (base 49200): battery/PV/DC voltages,
+     * charge & bus currents, temperatures, SoC/SoH and alarms. Read-only,
+     * contiguous and bulk-readable in a single FC03 window. */
     if (modbus_power_stats_read(reg_addr, p_value)) {
         return MODBUS_REG_OK;
     }
 
-    /* BMS telemetry block (base MODBUS_BMS_STATS_ADDR_BASE == 49300): pack
-     * voltage/current, SoC/SoH, per-cell voltages, temperatures, work state,
-     * MOS and fault bitfields. Read-only, contiguous and bulk-readable in a
-     * single FC03 window. */
+    /* BMS telemetry block (base 49300): pack voltage/current, SoC/SoH,
+     * per-cell voltages, temperatures, work state, MOS and fault bitfields.
+     * Read-only, contiguous and bulk-readable in a single FC03 window. */
     if (modbus_bms_stats_read(reg_addr, p_value)) {
         return MODBUS_REG_OK;
     }
 
-    /* GSM-status block (base MODBUS_GSM_STATS_ADDR_BASE == 49400): GSM modem
-     * state/signal/RAT and the last Modbus exception code/time. Read-only,
-     * contiguous and bulk-readable in a single FC03 window. */
+    /* GSM-status block (base 49400): GSM modem state/signal/RAT and the
+     * last Modbus exception code/time. Read-only, contiguous and
+     * bulk-readable in a single FC03 window. */
     if (modbus_gsm_stats_read(reg_addr, p_value)) {
-        return MODBUS_REG_OK;
-    }
-
-    /*
-     * Per-line measurement space. An address in this space always answers OK: a
-     * live field resolves to its value; an inactive line or a reserved gap (e.g.
-     * fault-log blocks) reads back as 0. That lets a master bulk-read a whole
-     * line block in one FC03 window without hitting exception 0x02.
-     */
-    if (modbus_addr_in_line_space(reg_addr)) {
-        if (!modbus_resolve_register(reg_addr, p_value)) {
-            *p_value = 0U;
-        }
         return MODBUS_REG_OK;
     }
 
@@ -495,15 +281,11 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
  */
 static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value)
 {
-    if ((MODBUS_RF_STATS_ADDR_BASE <= reg_addr) &&
-        (MODBUS_RF_STATS_ADDR_LAST >= reg_addr))
-    {
-        return MODBUS_REG_ERR_ADDRESS;
-    }
     CSLOG("FC06 Request - Addr: %d, Value: 0x%04X (%d)\r\n", reg_addr, value, value);
 
-    /* Only the modem-reset command register is writable. */
-    if (reg_addr != modbus_config_get_addr_modem_reset()) {
+    /* Only the fixed modem-reset command register is writable; every other
+     * address of the fixed map is read-only. */
+    if (reg_addr != MODBUS_MAP_CTRL_MODEM_RESET) {
         CSLOG_WARN("MODBUS FC06 hata: salt-okunur adres %u (exception 0x02)\r\n",
                    reg_addr);
         return MODBUS_REG_ERR_ADDRESS;

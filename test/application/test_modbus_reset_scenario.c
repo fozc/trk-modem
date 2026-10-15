@@ -93,7 +93,6 @@ void setUp(void)
     memset(response, 0, sizeof(response));
     libmodbusrtu_slave_init(&receiver, 1U, get_tick, capture_response);
     libmodbusrtu_register_write_callback(&receiver, fc06_write_callback);
-    modbus_config_get_addr_modem_reset_IgnoreAndReturn(50001U);
     reboot_system_delayed_Stub(schedule_reset);
 }
 

@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "modbus_map.h"
 
 /* First logical Modbus address of the read-only GSM-status block.
  * Lives in the holding-register space so it is reachable via FC03, exactly
@@ -21,8 +22,9 @@
  *
  * Wire (PDU) address = MODBUS_GSM_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE
  * (49400 - 40000 = 9400): that is the address a master (e.g. Modbus Poll)
- * must use, the same 49000/9000 split of the system-stats block. */
-#define MODBUS_GSM_STATS_ADDR_BASE   49400U
+ * must use, the same 49000/9000 split of the system-stats block. The base
+ * and length are owned by the fixed map (modbus_map.h). */
+#define MODBUS_GSM_STATS_ADDR_BASE   MODBUS_MAP_GSM_BASE
 
 bool modbus_gsm_stats_read(uint16_t reg_addr, uint16_t* value);
 

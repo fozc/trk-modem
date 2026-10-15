@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "modbus_map.h"
 
 /* First logical Modbus address of the read-only BMS telemetry block (pack
  * voltage/current, SoC/SoH, per-cell voltages, temperatures, work state, MOS
@@ -20,8 +21,9 @@
  *
  * Wire (PDU) address = MODBUS_BMS_STATS_ADDR_BASE - MODBUS_HOLDING_REG_BASE
  * (49300 - 40000 = 9300): that is the address a master (e.g. Modbus Poll) must
- * use, exactly like the 49200/9200 split of the power-stats block. */
-#define MODBUS_BMS_STATS_ADDR_BASE   49300U
+ * use, exactly like the 49200/9200 split of the power-stats block. The base
+ * and length are owned by the fixed map (modbus_map.h). */
+#define MODBUS_BMS_STATS_ADDR_BASE   MODBUS_MAP_BMS_BASE
 
 bool modbus_bms_stats_read(uint16_t reg_addr, uint16_t* value);
 

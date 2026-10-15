@@ -107,6 +107,10 @@ typedef struct {
 #define BMS_STATS_ADDR_LAST    \
 	((uint16_t)(MODBUS_BMS_STATS_ADDR_BASE + BMS_STATS_REG_COUNT - 1U))
 
+/* The fixed map owns the block extent; this layout must prove it. */
+_Static_assert(BMS_STATS_REG_COUNT == MODBUS_MAP_BMS_REG_COUNT,
+               "BMS layout does not match the fixed map extent");
+
 /* Round a physical float to an unsigned 0.1-unit register, saturating. */
 static uint16_t bms_f_to_u16_x10(float value)
 {

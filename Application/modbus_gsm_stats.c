@@ -61,7 +61,11 @@ typedef struct
  * renaming fields can never desynchronise them. */
 #define GSM_STATS_ADDR_FIRST  ((uint16_t)MODBUS_GSM_STATS_ADDR_BASE)
 #define GSM_STATS_ADDR_LAST \
-    ((uint16_t)(MODBUS_GSM_STATS_ADDR_BASE + GSM_STATS_REG_COUNT - 1U))
+	((uint16_t)(MODBUS_GSM_STATS_ADDR_BASE + GSM_STATS_REG_COUNT - 1U))
+
+/* The fixed map owns the block extent; this layout must prove it. */
+_Static_assert(GSM_STATS_REG_COUNT == MODBUS_MAP_GSM_REG_COUNT,
+               "GSM layout does not match the fixed map extent");
 
 bool modbus_gsm_stats_read(uint16_t reg_addr, uint16_t* value)
 {
