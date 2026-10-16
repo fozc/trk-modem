@@ -1687,7 +1687,7 @@ function trmClr(){if($('trmOut'))$('trmOut').innerHTML=''}
 
 // ---------------- INIT ----------------
 document.addEventListener('click',resetSessionTimeout);document.addEventListener('change',e=>{const el=e.target;if(el&&el.tagName==='INPUT'&&el.type==='number'&&!el.disabled&&el.value!==''){const mn=el.min!==''?parseFloat(el.min):-Infinity,mx=el.max!==''?parseFloat(el.max):Infinity,v=parseFloat(el.value);if(Number.isFinite(v)){if(v<mn){el.value=mn;el.dispatchEvent(new Event('input',{bubbles:true}))}else if(v>mx){el.value=mx;el.dispatchEvent(new Event('input',{bubbles:true}))}}}});document.addEventListener('keypress',e=>{resetSessionTimeout();if(e.key==='Enter'&&$('loginModal').style.display==='flex')doLogin()});
-function init(){const saved=sessionStorage.getItem('sessionToken');if(saved)s_sessionToken=saved;s_role=sessionStorage.getItem('sessionRole');setLang(LNG);switchPage('iec104');$('initialLoading').remove();showLoginModal()}
+function init(){const saved=sessionStorage.getItem('sessionToken');if(saved)s_sessionToken=saved;s_role=sessionStorage.getItem('sessionRole');setLang(LNG);switchPage('iec104');$('initialLoading').remove();const session=window.pageSession;delete window.pageSession;if(session&&session.token===s_sessionToken&&session.role===s_role){hideLoginModal();startSessionTimeout()}else showLoginModal()}
 init();
 </script>
 </body>

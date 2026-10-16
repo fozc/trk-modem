@@ -45,10 +45,15 @@ async function checkPage(html, label) {
         body: element(), documentElement: {}
     };
     const scheduledTimers = [];
+    const storage = new Map();
+    const window = {};
     const context = vm.createContext({
+        window,
         document, console,
         localStorage: {getItem: () => 'tr', setItem() {}},
-        sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
+        sessionStorage: {getItem: key => storage.get(key) ?? null,
+            setItem: (key, value) => storage.set(key, value),
+            removeItem: key => storage.delete(key)},
         setTimeout: (callback, delay) => {scheduledTimers.push({callback, delay});return 1;}, clearTimeout() {}, AbortController,
         fetch: async () => ({ok: true, status: 200, json: async () => ({})})
     });
@@ -56,6 +61,28 @@ async function checkPage(html, label) {
     vm.runInContext(script.replace(/init\(\);\s*$/, ''), context);
     const run = code => vm.runInContext(code, context);
     const body = () => document.getElementById('body').innerHTML;
+    assert.ok(!html.includes('startup-progress'),
+        'the main page must not contain the experimental progress bar');
+    run('init()');
+    assert.equal(document.getElementById('initialLoading').removed, true);
+    assert.equal(document.getElementById('loginModal').style.display, 'flex');
+    const freshToken = '0123456789abcdef0123456789abcdef';
+    storage.set('sessionToken', freshToken);
+    storage.set('sessionRole', 'admin');
+    window.pageSession = {token: freshToken, role: 'admin'};
+    run('init()');
+    assert.equal(document.getElementById('loginModal').style.display, 'none');
+    assert.equal(window.pageSession, undefined, 'handoff must be consumed once');
+    run('init()');
+    assert.equal(document.getElementById('loginModal').style.display, 'flex',
+        'direct entry must prompt even with a previously stored token');
+    window.pageSession = {token: 'wrong', role: 'admin'};
+    run('init()');
+    assert.equal(document.getElementById('loginModal').style.display, 'flex');
+    storage.clear();
+    run('s_sessionToken=null;s_role=null;');
+    console.log('PASS:', label,
+        '- direct login, one-time loading page handoff, invalid handoff');
     for (const id of ['iec104', 'modbus', 'rf', 'rfmon', 'board',
                       'iec-faults', 'syslogs', 'device', 'terminal']) {
         const item = element();
@@ -1042,9 +1069,14 @@ async function checkFirmwareLogin(html, label) {
         querySelectorAll: () => [], addEventListener() {},
         createElement: () => ({}), documentElement: {}
     };
-    const context = vm.createContext({document, console,
+    const storage = new Map();
+    const window = {};
+    const context = vm.createContext({
+        window,document, console,
         localStorage: {getItem: () => 'tr', setItem() {}},
-        sessionStorage: {getItem: () => null, setItem() {}, removeItem() {}},
+        sessionStorage: {getItem: key => storage.get(key) ?? null,
+            setItem: (key, value) => storage.set(key, value),
+            removeItem: key => storage.delete(key)},
         location: {search: ''}, AbortController,confirm:()=>true,
         setTimeout: () => 1, clearTimeout() {}
     });

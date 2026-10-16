@@ -342,6 +342,55 @@ static bool resource_not_modified(const char *etag)
     return false;
 }
 
+static bool send_not_modified(const char *etag, const char *cache_control)
+{
+    if (!resource_not_modified(etag))
+    {
+        return false;
+    }
+    char header[256];
+    const unsigned int length = xsnprintf(header, sizeof(header),
+        "HTTP/1.1 304 Not Modified\r\n"
+        "ETag: %s\r\n"
+        "Cache-Control: %s\r\n"
+        "Connection: keep-alive\r\n"
+        "Server: EmbeddedHTTP/1.0\r\n\r\n", etag, cache_control);
+    (void)send_header(header, length);
+    return true;
+}
+
+void http_send_gzip_package(const html_resource_t *resource)
+{
+    if ((NULL == resource) || (NULL == resource->data) ||
+        (0U == resource->length) || (INT_MAX < resource->length) ||
+        (HTML_COMPRESS_GZIP != resource->is_gzipped))
+    {
+        http_send_error(500, "Application package unavailable");
+        return;
+    }
+    char etag[ETAG_MAX_LEN];
+    build_resource_etag(resource, etag);
+    if (send_not_modified(etag, "private, no-cache"))
+    {
+        return;
+    }
+    /* The authenticated loader counts and decompresses the raw gzip. */
+    char header[384];
+    const unsigned int length = xsnprintf(header, sizeof(header),
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/gzip\r\n"
+        "Content-Length: %lu\r\n"
+        "ETag: %s\r\n"
+        "Cache-Control: private, no-cache\r\n"
+        "Connection: keep-alive\r\n"
+        "Server: EmbeddedHTTP/1.0\r\n\r\n", resource->length, etag);
+    if (send_header(header, length))
+    {
+        (void)http_send_data((const char *)resource->data,
+                             (int)resource->length);
+    }
+}
+
 void http_send_html_resource(const html_resource_t *resource)
 {
     /* NULL-safe: fall back to default 404 page if resource is NULL */
@@ -364,19 +413,8 @@ void http_send_html_resource(const html_resource_t *resource)
          * representation, so a matching If-None-Match (or "*") saves the full
          * GSM transfer. Cache-Control stays no-cache: the browser must
          * still revalidate on every visit (stale-shell protection). */
-        if (resource_not_modified(etag))
+        if (send_not_modified(etag, "no-cache"))
         {
-            char not_modified[256];
-            unsigned int not_modified_length =
-                xsnprintf(not_modified, sizeof(not_modified),
-                    "HTTP/1.1 304 Not Modified\r\n"
-                    "ETag: %s\r\n"
-                    "Cache-Control: no-cache\r\n"
-                    "Connection: keep-alive\r\n"
-                    "Server: EmbeddedHTTP/1.0\r\n"
-                    "\r\n",
-                    etag);
-            (void)send_header(not_modified, not_modified_length);
             return;
         }
 

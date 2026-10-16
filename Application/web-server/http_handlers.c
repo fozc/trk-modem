@@ -16,6 +16,7 @@
 #include "http_request_parser.h"
 #include "index_html.h"
 #include "fw_update_html.h"
+#include "loading_html.h"
 #include "web_shell.h"
 #include "json_config.h"
 #include "xprintf.h"
@@ -202,6 +203,16 @@ void handle_get_index(void)
 {
     /* Serve index.html from flash */
     http_send_html_resource(get_index_html());
+}
+
+void handle_get_loading(void)
+{
+    http_send_html_resource(get_loading_html());
+}
+
+void handle_get_index_package(void)
+{
+    http_send_gzip_package(get_index_html());
 }
 
 
