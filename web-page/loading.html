@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSB23</title>
+<link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f6f8;color:#40566b;font:14px system-ui,Arial,sans-serif}main{width:min(300px,calc(100vw - 40px));text-align:center}h1{font-size:18px;margin:0 0 24px}label{display:block;text-align:left;margin:16px 0 6px}input,button{width:100%;padding:11px;border:1px solid #b9c9d7;border-radius:4px;font:inherit}button{margin-top:20px;background:#1769aa;color:white;border:0;cursor:pointer}button:disabled{opacity:.6;cursor:wait}progress{display:block;width:100%;height:8px;appearance:none;border:0;border-radius:4px;background:#dce6ef;overflow:hidden}progress::-webkit-progress-bar{background:#dce6ef}progress::-webkit-progress-value{background:#1769aa}progress::-moz-progress-bar{background:#1769aa}#amount{font-variant-numeric:tabular-nums}#message{line-height:1.5;color:#b42318}a{display:inline-block;margin:12px 8px;color:#1769aa}
+</style>
+</head>
+<body>
+<main id="loader">
+<h1 id="status">TSB23</h1>
+<form id="login">
+<label for="username">Kullanıcı adı</label>
+<input id="username" name="username" maxlength="16" autocomplete="username" autocapitalize="none" required autofocus>
+<label for="password">Şifre</label>
+<input id="password" name="password" type="password" maxlength="16" autocomplete="current-password" required>
+<button id="submit">Giriş yap</button>
+</form>
+<div id="transfer" hidden>
+<progress id="progress" max="1" value="0" aria-labelledby="status"></progress>
+<p id="amount">0 KB</p>
+</div>
+<p id="message" role="alert" hidden></p>
+<a href="/" id="retry" hidden>Tekrar dene</a>
+<a href="/index.html" id="direct" hidden>Doğrudan aç</a>
+</main>
+<script>
+(function(){
+  const element=id=>document.getElementById(id);
+  const cacheKey='tsb23.pageCache';
+  const validTag=tag=>/^"[a-f0-9]{64}"$/.test(tag);
+  element('login').onsubmit=async event=>{
+    event.preventDefault();
+    if(element('submit').disabled)return;
+    const username=element('username').value,password=element('password').value;
+    if(!username||!password)return;
+    element('password').value='';
+    element('submit').disabled=true;
+    element('message').hidden=true;
+    element('direct').hidden=true;
+    const controller=new AbortController();
+    let timer,transferring=false,cacheUsed=false,failureMessage='Giriş yapılamadı. Tekrar deneyin.';
+    const resetTimeout=()=>{clearTimeout(timer);timer=setTimeout(()=>controller.abort(),30000)};
+    try{
+      if(typeof DecompressionStream!=='function')throw new Error('unsupported');
+      resetTimeout();
+      const login=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password}),signal:controller.signal});
+      const session=await login.json();
+      if(!login.ok||session.success!==true){
+        failureMessage=session.error==='Invalid credentials'?'Kullanıcı adı veya şifre yanlış.':session.error==='Too many attempts, try again later'?'Çok fazla deneme yapıldı. Bir süre sonra tekrar deneyin.':'Giriş yapılamadı. Tekrar deneyin.';
+        throw new Error('login');
+      }
+      if(!/^[a-f0-9]{32}$/i.test(session.token)||(session.role!=='admin'&&session.role!=='user'))throw new Error('Giriş yanıtı geçersiz.');
+      sessionStorage.setItem('sessionToken',session.token);
+      sessionStorage.setItem('sessionRole',session.role);
+      transferring=true;
+      element('login').hidden=true;
+      element('transfer').hidden=false;
+      element('loader').setAttribute('aria-busy','true');
+      element('status').textContent='Sayfa yükleniyor…';
+      resetTimeout();
+      let cached;
+      try{
+        const saved=JSON.parse(localStorage.getItem(cacheKey));
+        if(saved&&validTag(saved.etag)&&typeof saved.data==='string'&&saved.data.length<=65536){
+          const data=atob(saved.data);
+          if(data.length>0&&data.length<=48*1024)cached={etag:saved.etag,data};
+        }
+      }catch(error){}
+      const headers=cached?{'If-None-Match':cached.etag}:{};
+      const response=await fetch('/index.html.gz?t='+encodeURIComponent(session.token),{headers,cache:'no-store',signal:controller.signal});
+      const chunks=[];
+      if(response.status===304){
+        if(!cached||response.headers.get('ETag')!==cached.etag)throw new Error('cache');
+        cacheUsed=true;
+        chunks.push(Uint8Array.from(cached.data,c=>c.charCodeAt(0)));
+        element('progress').hidden=true;
+        element('amount').textContent='Önbellekten açılıyor';
+      }else{
+      if(!response.ok||!response.body)throw new Error('Sayfa yüklenemedi. Tekrar deneyin.');
+      const length=response.headers.get('Content-Length'),total=Number(length);
+      if(!/^[1-9][0-9]*$/.test(length)||!Number.isSafeInteger(total)||total>48*1024||response.headers.get('Content-Encoding'))throw new Error('Sayfa verisi geçersiz.');
+      const reader=response.body.getReader();
+      let received=0;
+      element('progress').max=total;
+      element('amount').textContent=`0.0 / ${(total/1000).toFixed(1)} KB — %0`;
+      for(;;){
+        const {done,value}=await reader.read();
+        if(done)break;
+        received+=value.byteLength;
+        if(received>total)throw new Error('Sayfa verisi geçersiz.');
+        chunks.push(value);
+        element('progress').value=received;
+        element('amount').textContent=`${(received/1000).toFixed(1)} / ${(total/1000).toFixed(1)} KB — %${Math.floor(received*100/total)}`;
+        resetTimeout();
+      }
+      clearTimeout(timer);
+      if(received!==total)throw new Error('Sayfa aktarımı tamamlanamadı.');
+      }
+      element('status').textContent='Sayfa açılıyor…';
+      clearTimeout(timer);
+      const packageData=new Blob(chunks);
+      const stream=packageData.stream().pipeThrough(new DecompressionStream('gzip'));
+      const html=await new Response(stream).text();
+      if(!cacheUsed&&validTag(response.headers.get('ETag'))){
+        try{
+          const data=new Uint8Array(await packageData.arrayBuffer());
+          const binary=Array.from(data,byte=>String.fromCharCode(byte)).join('');
+          localStorage.setItem(cacheKey,JSON.stringify({etag:response.headers.get('ETag'),data:btoa(binary)}));
+        }catch(error){}
+      }
+      window.pageSession={token:session.token,role:session.role};
+      document.open();
+      document.write(html);
+      document.close();
+    }catch(error){
+      controller.abort();
+      if(cacheUsed){try{localStorage.removeItem(cacheKey)}catch(error){}}
+      element('loader').setAttribute('aria-busy','false');
+      element('message').textContent=error.message==='unsupported'?'Bu tarayıcı yükleme ekranını desteklemiyor. Doğrudan aç bağlantısını kullanın.':error.name==='AbortError'?'Bağlantı yanıt vermiyor. Tekrar deneyin.':transferring?'Sayfa yüklenemedi. Tekrar deneyin.':failureMessage;
+      element('message').hidden=false;
+      element('submit').disabled=false;
+      element('direct').hidden=!(transferring||error.message==='unsupported');
+      if(transferring){element('status').textContent='Yükleme tamamlanamadı';element('retry').hidden=false}
+      else element('password').focus();
+    }finally{clearTimeout(timer)}
+  };
+})();
+</script>
+</body>
+</html>

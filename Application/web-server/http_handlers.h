@@ -136,6 +136,11 @@ bool http_handlers_is_admin(void);
  */
 void handle_get_index(void);
 
+/* Public login/loader and authenticated application gzip package.
+ * The router enforces session access before sending the package. */
+void handle_get_loading(void);
+void handle_get_index_package(void);
+
 
 /**
  * @brief Handle GET /fw_update.html

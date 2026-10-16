@@ -353,4 +353,45 @@ void test_overlong_conditional_header_cannot_match_a_truncated_prefix(void)
     TEST_ASSERT_NOT_NULL(strstr(output, "200 OK"));
 }
 
+
+
+void test_gzip_package_is_raw_binary_with_private_revalidation(void)
+{
+    static const uint8_t data[] = {0x1FU, 0x8BU, 0U, 0xFFU};
+    const html_resource_t resource =
+        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html"};
+
+    http_send_gzip_package(&resource);
+    TEST_ASSERT_NOT_NULL(strstr(output, "Content-Type: application/gzip"));
+    TEST_ASSERT_NULL(strstr(output, "Content-Encoding:"));
+    TEST_ASSERT_NOT_NULL(strstr(output, "Cache-Control: private, no-cache"));
+    TEST_ASSERT_NOT_NULL(strstr(output, "ETag: "));
+    TEST_ASSERT_EQUAL_MEMORY(data, output + output_len - sizeof(data),
+                             sizeof(data));
+}
+
+void test_gzip_package_rejects_invalid_resources_before_hashing(void)
+{
+    const html_resource_t invalid[] =
+    {
+        {NULL, 1U, HTML_COMPRESS_GZIP, "text/html"},
+        {(const uint8_t *)"x", 0U, HTML_COMPRESS_GZIP, "text/html"},
+        {(const uint8_t *)"x", 1U, HTML_COMPRESS_NONE, "text/html"},
+        {(const uint8_t *)"x", (uint32_t)INT_MAX + 1U,
+         HTML_COMPRESS_GZIP, "text/html"}
+    };
+
+    for (size_t index = 0U; index < sizeof(invalid) / sizeof(invalid[0]);
+         index++)
+    {
+        output_len = 0U;
+        output[0] = '\0';
+        http_send_gzip_package(&invalid[index]);
+        TEST_ASSERT_NOT_NULL(strstr(output, "500 Internal Server Error"));
+    }
+    output_len = 0U;
+    http_send_gzip_package(NULL);
+    TEST_ASSERT_NOT_NULL(strstr(output, "500 Internal Server Error"));
+}
+
 /*** end of file ***/

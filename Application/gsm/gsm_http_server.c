@@ -12,6 +12,7 @@
 #include "web_server.h"
 #include "index_html.h"
 #include "fw_update_html.h"
+#include "loading_html.h"
 #include "gsm_log.h"
 #include "ring_buff.h"
 #include <string.h>
@@ -29,6 +30,9 @@ _Static_assert(INDEX_HTML_DATA_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
 _Static_assert(FW_UPDATE_HTML_DATA_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
                GSM_HTTP_SERVER_TX_BUFFER_SIZE - 1U,
                "fw_update.html exceeds the HTTP response queue");
+_Static_assert(LOADING_HTML_DATA_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
+               GSM_HTTP_SERVER_TX_BUFFER_SIZE - 1U,
+               "loading.html exceeds the HTTP response queue");
 
 static uint8_t http_tx_buff[GSM_HTTP_SERVER_TX_BUFFER_SIZE] = {0};
 static rbuff_t tx_rb_ctx = {0};

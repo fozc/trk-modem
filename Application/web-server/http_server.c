@@ -97,11 +97,12 @@ static void route_and_handle_request(http_request_t *request)
     /* Check authentication for protected endpoints */
     bool is_public_endpoint = false;
     
-    /* Allow unauthenticated access to login, logout and index page only.
-     * fw_update.html is authenticated: it is reached from the main page
-     * with the session token in the query string (?t=...). */
+    /* Loader and direct HTML login remain public. The raw application
+     * package and firmware page require the existing session token
+     * in the query string (?t=...). */
     if (strcmp(request->path, "/") == 0 ||
         strcmp(request->path, "/index.html") == 0 ||
+        strcmp(request->path, "/loading.html") == 0 ||
         strcmp(request->path, "/auth/login") == 0 ||
         strcmp(request->path, "/auth/logout") == 0) {
         is_public_endpoint = true;
@@ -141,9 +142,19 @@ static void route_and_handle_request(http_request_t *request)
             }
         }
 
-        /* GET / or GET /index.html */
-        if (strcmp(request->path, "/") == 0 || 
-            strcmp(request->path, "/index.html") == 0) {
+        /* Root loader and direct configuration page. */
+        if ((0 == strcmp(request->path, "/")) ||
+            (0 == strcmp(request->path, "/loading.html")))
+        {
+            handle_get_loading();
+            return;
+        }
+        if (0 == strcmp(request->path, "/index.html.gz"))
+        {
+            handle_get_index_package();
+            return;
+        }
+        if (strcmp(request->path, "/index.html") == 0) {
             handle_get_index();
             return;
         }
