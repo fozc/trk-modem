@@ -1,9 +1,11 @@
 /**
  * @file  ring_buff.h
  * @brief Lock-free SPSC ring buffer for ISR/main communication.
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
- * Buffer size must be a power of two. Uses C11 atomics for the
- * head/tail indices so that one context can write while another reads
+ * Any nonzero buffer size is supported; usable capacity is size - 1.
+ * C11 atomic head/tail indices let one context write while another reads
  * without disabling interrupts.
  *
  * SPSC contract (single producer, single consumer):
@@ -32,25 +34,55 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 201112L)
+#error "ring_buff requires C11 atomics; compile as C11 or later"
+#elif defined(__STDC_NO_ATOMICS__) && (__STDC_NO_ATOMICS__ != 0)
+#error "ring_buff requires <stdatomic.h>; atomics are unavailable"
+#else
+#if defined(__has_include)
+#if !__has_include(<stdatomic.h>)
+#error "ring_buff requires the <stdatomic.h> header"
+#endif
+#endif
 #include <stdatomic.h>
+#endif
+
+/* Check the actual index type, including wider host fast32 typedefs.
+ * No IRQ/volatile fallback: non-lock-free runtime locks are unsafe in ISR.
+ * Cortex-M0/M0+ builds must pass the same check as every other target. */
+#if defined(__GNUC__) || defined(__clang__)
+__extension__ _Static_assert(
+    __atomic_always_lock_free(sizeof(atomic_uint_fast32_t), 0),
+    "ring_buff requires lock-free index atomics (check CPU/toolchain)");
+#else
+_Static_assert(_Generic((uint_fast32_t)0,
+    unsigned short: ATOMIC_SHORT_LOCK_FREE,
+    unsigned int: ATOMIC_INT_LOCK_FREE,
+    unsigned long: ATOMIC_LONG_LOCK_FREE,
+    unsigned long long: ATOMIC_LLONG_LOCK_FREE,
+    default: 0) == 2,
+    "ring_buff requires always-lock-free index atomics");
+#endif
 
 typedef struct
 {
 	uint8_t              *buff;
-	uint32_t              buff_size; /**< Must be power of two */
+	uint32_t              buff_size; /**< Nonzero backing-store size */
 	atomic_uint_fast32_t  head;      /**< Written by producer only */
 	atomic_uint_fast32_t  tail;      /**< Written by consumer only */
 } rbuff_t;
 
 /**
  * Initialize the ring buffer. Must fully complete before the buffer is
- * shared between contexts.
+ * shared between contexts. Reinitialization requires both sides stopped.
+ * The backing store and instance must not overlap, and callers must not
+ * modify buff/buff_size or pack/misalign the atomic index members.
  *
  * @param p_rb    Ring buffer instance
  * @param p_buff  Backing store; must stay valid for the instance lifetime
- * @param size    Size in bytes; must be a power of two
+ * @param size    Size in bytes; nonzero (size 1 has no usable capacity)
  *
- * @return true on success; false on NULL arguments or non-power-of-two size
+ * @return true on success; false on NULL arguments or zero size
  */
 bool     rbuff_init                (rbuff_t *p_rb, uint8_t *p_buff, uint32_t size);
 
@@ -210,3 +242,5 @@ bool     rbuff_get_read_block     (rbuff_t *p_rb, uint8_t **pp_data, uint32_t *p
 uint32_t rbuff_skip                (rbuff_t *p_rb, uint32_t len);
 
 #endif /* RING_BUFF_H_ */
+
+/*** end of file ***/

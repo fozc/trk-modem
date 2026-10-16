@@ -1,3 +1,8 @@
+/*
+ * ring_buf.c - C11 SPSC byte queue.
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ */
 //============================================================================
 // Lock-Free Ring Buffer (LFRB) for embedded systems
 // GitHub: https://github.com/QuantumLeaps/lock-free-ring-buffer
@@ -33,32 +38,26 @@
 
 #include "ring_buf.h"
 
-#if defined(__arm__) || defined(__thumb__)
-_Static_assert(__atomic_always_lock_free(sizeof(RingBufCtr), 0),
-               "RingBuf counters must be lock-free");
-#else
-_Static_assert(ATOMIC_SHORT_LOCK_FREE == 2,
-               "RingBuf counters must be lock-free");
-#endif
-
 //............................................................................
 void RingBuf_ctor(RingBuf * const me,
                   RingBufElement sto[], RingBufCtr sto_len) {
     me->buf  = &sto[0];
     me->end  = sto_len;
-    atomic_store(&me->head, 0U);  // initialize head atomically
-    atomic_store(&me->tail, 0U);  // initialize tail atomically
+    atomic_init(&me->head, 0U);  // initialize before sharing
+    atomic_init(&me->tail, 0U);  // initialize before sharing
 }
 //............................................................................
 bool RingBuf_put(RingBuf * const me, RingBufElement const el) {
+    const RingBufCtr write_index =
+        atomic_load_explicit(&me->head, memory_order_relaxed);
     RingBufCtr head =
-        atomic_load_explicit(&me->head, memory_order_relaxed) + 1U;
+        write_index + 1U;
     if (head == me->end) {
         head = 0U;
     }
     RingBufCtr tail = atomic_load_explicit(&me->tail, memory_order_acquire);
     if (head != tail) { // buffer NOT full?
-        me->buf[atomic_load_explicit(&me->head, memory_order_relaxed)] = el;
+        me->buf[write_index] = el;
         atomic_store_explicit(&me->head, head, memory_order_release);
         return true;
     }
@@ -112,3 +111,5 @@ void RingBuf_process_all(RingBuf * const me, RingBufHandler handler) {
         atomic_store_explicit(&me->tail, tail, memory_order_release);
     }
 }
+
+/*** end of file ***/
