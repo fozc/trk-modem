@@ -22,6 +22,7 @@
 #include "xprintf.h"
 #include <string.h>
 #include <stdint.h>
+#include <math.h>
 #include "rf_discovery.h"
 #include "rf_config.h"
 #include "rf_comm.h"
@@ -301,56 +302,126 @@ static int rf_shell_log(int argc, char **argv)
  * Ana komut dispatch
  * ====================================================================== */
 
-static bool parse_source_args(int argc, char **argv, uint8_t *source)
+static bool parse_live_args(int argc, char **argv, uint8_t *source)
 {
-    if ((3 != argc) || (NULL == argv) || (NULL == argv[1]) ||
-        (NULL == argv[2]) || ('1' > argv[1][0]) || ('4' < argv[1][0]) ||
-        ('\0' != argv[1][1]) || ('1' > argv[2][0]) || ('3' < argv[2][0]) ||
-        ('\0' != argv[2][1]))
+    if (((2 != argc) && (3 != argc)) || (NULL == argv) ||
+        (NULL == argv[1]) || ('1' > argv[1][0]) || ('4' < argv[1][0]) ||
+        ('\0' != argv[1][1]))
+    {
+        return false;
+    }
+    if ((3 == argc) && ((NULL == argv[2]) || ('1' > argv[2][0]) ||
+        ('3' < argv[2][0]) || ('\0' != argv[2][1])))
     {
         return false;
     }
     uint8_t feeder = (uint8_t)(argv[1][0] - '0');
-    uint8_t phase = (uint8_t)(argv[2][0] - '0');
+    uint8_t phase = (3 == argc) ? (uint8_t)(argv[2][0] - '0') : 1U;
 
     *source = (uint8_t)(((uint32_t)feeder << 2U) | (uint32_t)phase);
+    return true;
+}
+
+#ifndef DISABLE_SHELL_LOG
+static void print_live_measurement(const char *label, float value,
+                                    const char *unit, bool is_valid)
+{
+    if (isfinite(value))
+    {
+        SHELL_LOG("  %-18s : %.3f %s [%s]\r\n", label, (double)value,
+                  unit, is_valid ? "GECERLI" : "GECERSIZ");
+    }
+    else
+    {
+        SHELL_LOG("  %-18s : GECERSIZ (NaN/Inf)\r\n", label);
+    }
+}
+
+static void print_live_payload(const rf_phase_data_t *data)
+{
+    const rf_scp_live_t *live = &data->live;
+
+    SHELL_LOG("  -- LIVE_DATA: son alinan paket --\r\n");
+    SHELL_LOG("  Source             : 0x%02X\r\n", (unsigned)live->source);
+    SHELL_LOG("  Sequence           : %lu\r\n", (unsigned long)live->seq);
+    SHELL_LOG("  Uptime             : %lu s\r\n",
+              (unsigned long)live->uptime_sec);
+    SHELL_LOG("  Boot counter       : %u\r\n", (unsigned)live->boot_counter);
+    SHELL_LOG("  State              : %u\r\n", (unsigned)live->state);
+    SHELL_LOG("  Fault count        : %u\r\n", (unsigned)live->fault_count);
+    print_live_measurement("Irms", live->current_amps, "A",
+                           data->current_valid);
+    print_live_measurement("VTrip", live->trip_voltage, "V",
+                           data->trip_voltage_valid);
+    print_live_measurement("VHarvest", live->harvest_voltage, "V",
+                           data->harvest_voltage_valid);
+    SHELL_LOG("  MCU temperature    : %ld C\r\n", (long)live->temperature);
+    SHELL_LOG("  RSSI               : %ld dBm\r\n", (long)live->rssi);
+    SHELL_LOG("  Status flags       : 0x%02X\r\n", (unsigned)live->flags);
+    SHELL_LOG("  FSM error          : %u\r\n", (unsigned)live->fsm_error);
+    SHELL_LOG("  Trip failed (LIVE) : %u\r\n", (unsigned)live->trip_failed);
+    SHELL_LOG("  Log pending        : %u\r\n", (unsigned)live->log_pending);
+    SHELL_LOG("  Log wrap low       : %u\r\n", (unsigned)live->log_wrap_low);
+}
+#endif
+
+static bool print_live_phase(uint8_t source, uint32_t now_ms)
+{
+    rf_phase_data_t data;
+
+    SHELL_LOG("\r\n+--------------------------------------------------+\r\n"
+              "  RF LIVE | Fider %u | Faz L%u\r\n"
+              "+--------------------------------------------------+\r\n",
+              (unsigned)(source >> 2U), (unsigned)(source & 3U));
+    if (!rf_get_source_data(source, now_ms, &data))
+    {
+        SHELL_LOG("  ACK verilmis envanter/canli veri yok\r\n");
+        return false;
+    }
+#ifndef DISABLE_SHELL_LOG
+    char eui64[RF_EUI64_HEX_LEN];
+    rf_eui64_to_hex(data.eui64, eui64);
+    SHELL_LOG("  EUI-64             : %s\r\n", eui64);
+#endif
+    SHELL_LOG("  RF baglantisi      : %s\r\n",
+              data.is_online ? "ONLINE" : "OFFLINE / TAZE LIVE YOK");
+    SHELL_LOG("  Acma alarmi        : %u (latched=%u)\r\n",
+              (unsigned)data.trip_failed, (unsigned)data.trip_failure_latched);
+    if (!data.has_live)
+    {
+        SHELL_LOG("  LIVE_DATA          : Henuz alinmadi\r\n");
+        return true;
+    }
+    SHELL_LOG("  Son LIVE yasi      : %lu ms\r\n",
+              (unsigned long)(now_ms - data.last_live_ms));
+    SHELL_LOG("  Uptime stalled     : %u\r\n", (unsigned)data.uptime_stalled);
+#ifndef DISABLE_SHELL_LOG
+    print_live_payload(&data);
+#endif
     return true;
 }
 
 static int rf_shell_live(int argc, char **argv)
 {
     uint8_t source;
-    rf_phase_data_t data;
+    const bool all_phases = (2 == argc);
 
-    if (!parse_source_args(argc, argv, &source))
+    if (!parse_live_args(argc, argv, &source))
     {
-        SHELL_LOG("Kullanim: rf live <fider 1..4> <faz 1..3>\r\n");
+        SHELL_LOG("Kullanim: rf live <fider 1..4> [faz 1..3]\r\n");
         return -1;
     }
-    if (!rf_get_source_data(source, HAL_GetTick(), &data))
+    const uint32_t now_ms = HAL_GetTick();
+    bool has_data = false;
+    const uint8_t phase_count = all_phases ? 3U : 1U;
+    for (uint8_t index = 0U; index < phase_count; index++)
     {
-        SHELL_LOG("ACK verilmis envanter/canli veri yok\r\n");
-        return -1;
-    }
-    SHELL_LOG("RF %s, has_live=%u, trip_failed=%u, latched=%u\r\n",
-              data.is_online ? "VAR" : "YOK", (unsigned)data.has_live,
-              (unsigned)data.trip_failed, (unsigned)data.trip_failure_latched);
-    if (data.has_live)
-    {
-        SHELL_LOG("seq=%lu uptime=%lu RSSI=%ld dBm temp=%ld C\r\n",
-                  (unsigned long)data.live.seq,
-                  (unsigned long)data.live.uptime_sec,
-                  (long)data.live.rssi, (long)data.live.temperature);
-        if (data.current_valid)
+        if (print_live_phase((uint8_t)(source + index), now_ms))
         {
-            SHELL_LOG("Irms=%.3f A\r\n", (double)data.live.current_amps);
-        }
-        else
-        {
-            SHELL_LOG("Irms gecersiz\r\n");
+            has_data = true;
         }
     }
-    return 0;
+    return has_data ? 0 : -1;
 }
 
 static uint8_t requested_group;
@@ -512,7 +583,7 @@ static int rf_shell_command(int argc, char *argv[])
                  "  time   : saati esitle (envanteri yeniden yuklemez)\r\n"
                  "  epoch N: MH degisimi bakimi; ilk TIMEOUT'ta tek "
                  "epoch tekrari\r\n"
-                 "  live F P: fider/faz canli veri ve alarm\r\n"
+                 "  live F [P]: fiderin 3 fazi veya tek faz LIVE paketi\r\n"
                  "  cfg-status N: MH group status (0..255)\r\n"
                  "  cfg-apply L N: apply stored line config with fresh ID\r\n"
                  "  cfg-state: local verified group result\r\n"
@@ -589,7 +660,7 @@ void rf_shell_init(void)
                 "\trf inv                  - envanter push baslat\r\n"
                 "\trf time                 - saat esitleme iste\r\n"
                 "\trf epoch <1..4>         - epoch yenile (MH degisimi)\r\n"
-                "\trf live <fider> <faz>   - canli veri ve alarm\r\n"
+                "\trf live <fider> [faz]   - tam LIVE paketi (3 faz/tek faz)\r\n"
                 "\trf cfg-status <group_id> - MH config group status\r\n"
                 "\trf cfg-apply <line> <group_id> - apply stored config\r\n"
                 "\trf cfg-state            - local verified group result\r\n"
