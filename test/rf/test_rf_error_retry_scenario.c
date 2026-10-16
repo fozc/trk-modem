@@ -42,6 +42,7 @@ static uint32_t fake_tick;
 static bool bridge_enabled;
 static bool rtc_valid;
 static bsp_rtc_t fake_rtc;
+static void load_one_phase(void);
 uint32_t HAL_GetTick(void);
 uint32_t HAL_GetTick(void)
 {
@@ -1208,8 +1209,70 @@ void test_update_assignment_deletion_and_failed_ack_preserve_discovery(void)
     TEST_ASSERT_TRUE(start_update(&entry, command_done));
     TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[1]);
     deliver_response(SCP_TYPE_ACK, 0U);
+    rf_discovery_entry_t discovered;
+    TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
+    TEST_ASSERT_TRUE(rf_discovery_get(0U, &discovered));
+    TEST_ASSERT_EQUAL_MEMORY(entry.eui64, discovered.eui64, 8U);
+    TEST_ASSERT_FALSE(discovered.has_rssi);
     entry.zone = 1U;
     TEST_ASSERT_FALSE(start_update(&entry, command_done));
+}
+
+void test_delete_ack_preserves_existing_discovery_rssi_without_duplicates(void)
+{
+    load_one_phase();
+    rf_inventory_entry_t entry;
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &entry));
+    TEST_ASSERT_TRUE(rf_discovery_report(entry.eui64, -63));
+    entry.feeder = 0U;
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_discovery_entry_t discovered;
+    TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
+    TEST_ASSERT_TRUE(rf_discovery_get(0U, &discovered));
+    TEST_ASSERT_EQUAL_MEMORY(entry.eui64, discovered.eui64, 8U);
+    TEST_ASSERT_TRUE(discovered.has_rssi);
+    TEST_ASSERT_EQUAL_INT8(-63, discovered.rssi);
+}
+
+void test_delete_ack_with_full_discovery_preserves_existing_devices(void)
+{
+    load_one_phase();
+    for (uint8_t index = 0U; RF_DISCOVERY_MAX > index; index++)
+    {
+        const uint8_t identity[8] = {0xAAU, index};
+        TEST_ASSERT_TRUE(rf_discovery_report(identity, -60));
+    }
+    rf_inventory_entry_t entry;
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &entry));
+    entry.feeder = 0U;
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_FALSE(rf_inventory_get_binding(5U, &entry));
+    TEST_ASSERT_EQUAL_UINT8(RF_DISCOVERY_MAX, rf_discovery_get_count());
+    for (uint8_t index = 0U; RF_DISCOVERY_MAX > index; index++)
+    {
+        const uint8_t identity[8] = {0xAAU, index};
+        rf_discovery_entry_t discovered;
+        TEST_ASSERT_TRUE(rf_discovery_get(index, &discovered));
+        TEST_ASSERT_EQUAL_MEMORY(identity, discovered.eui64, 8U);
+        TEST_ASSERT_TRUE(discovered.has_rssi);
+        TEST_ASSERT_EQUAL_INT8(-60, discovered.rssi);
+    }
+}
+
+void test_invalid_inventory_ack_does_not_publish_discovery_identity(void)
+{
+    scp_packet_t request = {.type = SCP_TYPE_SET,
+        .src = RF_SCP_ADDR_RTU, .dst = RF_SCP_ADDR_HUB,
+        .cmd = RF_SCP_CMD_INVENTORY_UPDATE, .data_len = 12U};
+    request.data[3] = 0x11U;
+    rf_inventory_record_ack(&request); /* Invalid phase zero. */
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_discovery_get_count());
+    request.data[2] = 1U;
+    request.data[3] = 0U; /* An empty EUI is not assignable. */
+    rf_inventory_record_ack(&request);
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_discovery_get_count());
 }
 
 void test_epoch_requires_inventory_and_feeder_range(void)
@@ -2767,6 +2830,7 @@ void test_rf_log_invalid_or_missing_level_never_changes_persistent_settings(void
 void test_removed_device_is_explicitly_deleted_before_inventory_end(void)
 {
     load_one_phase();
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_discovery_get_count());
     (void)memset(feeder.r_eui64, 0, 8U);
     TEST_ASSERT_TRUE(rf_inventory_start());
     rf_inventory_continue();
@@ -2774,13 +2838,21 @@ void test_removed_device_is_explicitly_deleted_before_inventory_end(void)
     TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
     TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[1]);
     TEST_ASSERT_EQUAL_UINT8(0x11U, transmitted.data[3]);
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_discovery_get_count());
     deliver_response(SCP_TYPE_ACK, 0U);
+    rf_discovery_entry_t discovered;
+    TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
+    TEST_ASSERT_TRUE(rf_discovery_get(0U, &discovered));
+    TEST_ASSERT_EQUAL_UINT8(0x11U, discovered.eui64[0]);
+    TEST_ASSERT_FALSE(discovered.has_rssi);
     rf_inventory_continue();
     TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_END, transmitted.cmd);
     deliver_response(SCP_TYPE_ACK, 0U);
     TEST_ASSERT_TRUE(rf_inventory_matches_config());
     rf_inventory_entry_t entry;
     TEST_ASSERT_FALSE(rf_inventory_get_binding(5U, &entry));
+    rf_phase_data_t data;
+    TEST_ASSERT_FALSE(rf_get_source_data(5U, fake_tick, &data));
 }
 
 void test_failed_device_delete_preserves_binding_and_stops_upload(void)
@@ -2797,6 +2869,7 @@ void test_failed_device_delete_preserves_binding_and_stops_upload(void)
     TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &entry));
     TEST_ASSERT_EQUAL_UINT8(0x11U, entry.eui64[0]);
     TEST_ASSERT_FALSE(rf_inventory_matches_config());
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_discovery_get_count());
 }
 
 void test_phase_swap_deletes_old_assignments_before_loading_new_ones(void)
@@ -2846,6 +2919,7 @@ void test_same_device_moves_to_a_different_feeder_without_old_binding(void)
     TEST_ASSERT_TRUE(rf_inventory_get_binding(9U, &entry));
     TEST_ASSERT_EQUAL_UINT8(0x11U, entry.eui64[0]);
     TEST_ASSERT_TRUE(rf_inventory_matches_config());
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_discovery_get_count());
 }
 
 void test_unchanged_assignment_does_not_send_a_delete_on_reload(void)
@@ -2874,6 +2948,7 @@ void test_saved_delete_survives_rtu_state_reset_and_clears_only_at_end(void)
     TEST_ASSERT_EQUAL_UINT8(0x11U, transmitted.data[3]);
     deliver_response(SCP_TYPE_ACK, 0U);
     TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
+    TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
     rf_inventory_reset(); /* Lost progress after MH already deleted it. */
     TEST_ASSERT_TRUE(rf_inventory_start());
     TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
@@ -2886,6 +2961,7 @@ void test_saved_delete_survives_rtu_state_reset_and_clears_only_at_end(void)
     TEST_ASSERT_EQUAL_UINT8(0U, journal.pending);
     TEST_ASSERT_EQUAL_UINT8(0U, journal.count);
     TEST_ASSERT_TRUE(rf_inventory_matches_config());
+    TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
 }
 
 void test_journal_clear_failure_keeps_pending_work_and_blocks_final_match(void)

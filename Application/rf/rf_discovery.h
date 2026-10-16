@@ -34,7 +34,7 @@ typedef struct
 /** A repeated report refreshes RSSI even when the queue is full. */
 bool rf_discovery_report(const uint8_t *eui64, int8_t rssi);
 
-/** Remove only after an acknowledged inventory update/deletion. */
+/** Remove after an acknowledged assignment (SET or UPDATE). */
 bool rf_discovery_remove(const uint8_t *eui64);
 
 /** Copy the discovered identity and optional signal measurement. */
@@ -46,7 +46,7 @@ bool rf_discovery_get(size_t index, rf_discovery_entry_t *out);
 void rf_discovery_reset(void);
 
 /**
- * @brief Kesif bildirimi isle: EUI-64'yu kuyruga ekle.
+ * @brief Kesif veya onaylanmis silme kimligini RSSI uretmeden ekle.
  *
  * Kuyruk doluysa yeni EUI yok sayilir (en eski bekleyen kurulum silinmez).
  *

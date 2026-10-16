@@ -6,8 +6,8 @@
  *              fatihozcan@gmail.com
  *
  * Kesif (discovery) kuyrugu: hatta katilan ama atanmamis cihazlarin
- * EUI-64 kimlikleri. Kaynak SCP 0x14 DISCOVERY_REPORT; SCP yokken kuyruk
- * bos kalir.
+ * EUI-64 kimlikleri. SCP 0x14 DISCOVERY_REPORT ve onaylanmis envanter
+ * silmeleri kuyrugu besler; silme onayi yeni RSSI olcumu uretmez.
  */
 
 #include "rf_discovery.h"
