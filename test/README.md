@@ -1721,6 +1721,25 @@ vardır. İlk ekran yaklaşık 2,7 KB'dır; büyük aktarım başarılı girişe
 ertelenir. Fiziksel GSM aktarımı ve cihaz kabulü henüz yapılmamıştır.
 Cihaza yükleme yapılmamıştır.
 
+## RF silme ACK'i ve yeniden atama regresyonu — 16.10.2026
+
+**Amaç:** Silme onayından sonra RF kimliğinin yeni keşif bildirimi
+beklemeden yeniden atama listesine dönmesini doğrulamak.
+
+**Kullanım yeri:** `test/` içinde aşağıdaki merkezi seçim çalıştırılır:
+
+```text
+ruby -S ceedling "test:pattern[(test_rf_error_retry_scenario|test_rf_discovery|test_rf_config_scenario|test_http_rf_group_routes|test_rf_config_parse)]"
+```
+
+Tek cihaz/toplu silme, ret yanıtı, ACK sonrası yeniden atama, kayıtlı
+silmenin yeniden başlatma sonrası tekrarı, kimlik tekilleştirme ve RSSI
+koruması üretim girişlerinden sınanır. Boş/geçersiz kimlik ve dolu liste
+kontrolleri vardır; silme onayı ölçüm oluşturmamalıdır. Çalışma ağacında
+156/156, yalnız commit'e seçilen bağımsız kopyada 144/144 geçti.
+Bu sonuç fiziksel cihaz kabulü değildir. Davranış ve kalan sınırlar
+üretim hazırlık raporunun aynı tarihli RF silme bölümündedir.
+
 
 ## RF ayar aktarımı hata açıklamaları — 16.10.2026
 
