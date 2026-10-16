@@ -9,10 +9,12 @@
  */
 #include "unity.h"
 #include "console_log_enabled.h"
+#include "shell_log_enabled.h"
 #define CSLOG_MODULE LOG_MOD_RF
 #include "mock_bsp.h"
 #include "mock_nvram.h"
 #include "scp.h"
+#include "scp_endian.h"
 #include "cobs.h"
 #include "rf_scp.h"
 #include "rf_scp_codec.h"
@@ -47,6 +49,8 @@ static bsp_rtc_t fake_rtc;
 static log_lvl_t console_level;
 static char console_output[2048];
 static size_t console_length;
+static char shell_output[8192];
+static size_t shell_length;
 static scp_packet_t captured_notification(uint8_t cmd);
 static void load_one_phase(void);
 static void put_u32(uint8_t *bytes, uint32_t value);
@@ -84,6 +88,22 @@ uint32_t HAL_GetTick(void)
 #include "../../Application/rf/rf_inventory.c"
 #include "../../Application/rf/rf_shell.c"
 #include "../../contiki-kernel/sys/timer.c"
+
+void shell_putchr(int character)
+{
+    if ((sizeof(shell_output) - 1U) > shell_length)
+    {
+        shell_output[shell_length] = (char)character;
+        shell_length++;
+        shell_output[shell_length] = '\0';
+    }
+}
+
+const fw_info_t *boot_get_installed_fw_info(void)
+{
+    static const fw_info_t image = {0};
+    return &image;
+}
 
 clock_time_t clock_time(void)
 {
@@ -197,6 +217,16 @@ bool rf_eui64_is_zero(const uint8_t eui[RF_EUI64_LEN])
     return true;
 }
 
+/* rf_config boundary: this scenario owns its feeder store above. */
+void rf_eui64_to_hex(const uint8_t eui[RF_EUI64_LEN],
+                      char out[RF_EUI64_HEX_LEN])
+{
+    (void)xsnprintf(out, RF_EUI64_HEX_LEN,
+        "%02X%02X%02X%02X%02X%02X%02X%02X",
+        (unsigned)eui[0], (unsigned)eui[1], (unsigned)eui[2], (unsigned)eui[3],
+        (unsigned)eui[4], (unsigned)eui[5], (unsigned)eui[6], (unsigned)eui[7]);
+}
+
 static void deliver_response(uint8_t type, uint8_t error)
 {
     scp_packet_t packet = {0};
@@ -266,6 +296,8 @@ void setUp(void)
     console_level = LOG_LVL_OFF;
     console_length = 0U;
     console_output[0] = '\0';
+    shell_length = 0U;
+    shell_output[0] = '\0';
     xdev_out(capture_console);
     console_logger_level_enabled_StubWithCallback(console_level_enabled);
     journal = (rf_inventory_journal_t){0};
@@ -2984,6 +3016,8 @@ void test_rf_log_invalid_or_missing_level_never_changes_persistent_settings(void
     char invalid[] = "invalid";
     char *args[] = {log, invalid};
     TEST_ASSERT_EQUAL_INT(-1, rf_shell_log(2, args));
+    console_logger_get_level_ExpectAndReturn(LOG_MOD_RF, LOG_LVL_NORMAL);
+    console_logger_get_level_ExpectAndReturn(LOG_MOD_RF, LOG_LVL_NORMAL);
     TEST_ASSERT_EQUAL_INT(0, rf_shell_log(1, args));
 }
 
@@ -3223,6 +3257,178 @@ void test_full_saved_delete_list_is_replayed_without_overflow(void)
     TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
     complete_inventory();
     TEST_ASSERT_FALSE(rf_inventory_has_pending());
+}
+
+static void receive_shell_live(uint8_t source)
+{
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    packet.data[0] = source;
+    put_u32(&packet.data[1], UINT32_MAX);
+    put_u32(&packet.data[5], 1234U);
+    packet.data[9] = 3U;
+    packet.data[10] = 4U;
+    put_u32(&packet.data[11], 0x3FC00000U);
+    put_u32(&packet.data[15], 0x42000000U);
+    put_u32(&packet.data[19], 0x41400000U);
+    packet.data[23] = 0xF4U;
+    packet.data[24] = 0xFFU;
+    packet.data[25] = 0xB3U;
+    packet.data[26] = 0xA5U;
+    packet.data[27] = 1U;
+    packet.data[28] = 1U;
+    packet.data[29] = 99U;
+    packet.data[30] = 254U;
+    scp_pack_u16(&packet.data[31], 0x1234U);
+    inject_packet(&packet);
+}
+
+void test_live_shell_formats_every_live_field_without_sending_request(void)
+{
+    static const char *const expected[] =
+    {
+        "RF LIVE | Fider 1 | Faz L1", "1100000000000000",
+        "RF baglantisi      : ONLINE", "Source             : 0x05",
+        "Sequence           : 4294967295", "Uptime             : 1234 s",
+        "Boot counter       : 4660", "State              : 3",
+        "Fault count        : 4", "Irms               : 1.500 A [GECERLI]",
+        "VTrip              : 32.000 V [GECERLI]",
+        "VHarvest           : 12.000 V [GECERLI]",
+        "MCU temperature    : -12 C", "RSSI               : -77 dBm",
+        "Status flags       : 0xA5", "FSM error          : 1",
+        "Trip failed (LIVE) : 1", "Log pending        : 99",
+        "Log wrap low       : 254", "Son LIVE yasi      : 0 ms"
+    };
+    load_one_phase();
+    receive_shell_live(5U);
+    const uint32_t previous_calls = transmit_calls;
+    char *args[] = {"rf", "live", "1", "1"};
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_command(4, args));
+    for (size_t index = 0U; index < (sizeof(expected) / sizeof(expected[0]));
+         index++)
+    {
+        TEST_ASSERT_NOT_NULL_MESSAGE(strstr(shell_output, expected[index]),
+                                      expected[index]);
+    }
+    TEST_ASSERT_EQUAL_UINT32(previous_calls, transmit_calls);
+    TEST_ASSERT_NULL(strstr(console_output, "RF LIVE |"));
+}
+
+void test_live_shell_feeder_prints_three_phase_blocks_and_missing_data(void)
+{
+    feeder.s_eui64[0] = 0x22U;
+    feeder.t_eui64[0] = 0x33U;
+    load_one_phase();
+    receive_shell_live(5U);
+    receive_shell_live(7U);
+    char *args[] = {"rf", "live", "1"};
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_command(3, args));
+    const char *first = strstr(shell_output, "Fider 1 | Faz L1");
+    const char *second = strstr(shell_output, "Fider 1 | Faz L2");
+    const char *third = strstr(shell_output, "Fider 1 | Faz L3");
+    TEST_ASSERT_NOT_NULL(first);
+    TEST_ASSERT_NOT_NULL(second);
+    TEST_ASSERT_NOT_NULL(third);
+    TEST_ASSERT_TRUE(first < second);
+    TEST_ASSERT_TRUE(second < third);
+    const char *missing = strstr(second, "ACK verilmis envanter/canli veri yok");
+    TEST_ASSERT_NOT_NULL(missing);
+    TEST_ASSERT_TRUE(missing < third);
+    TEST_ASSERT_NOT_NULL(strstr(third, "Source             : 0x07"));
+}
+
+void test_live_shell_stale_and_invalid_values_remain_explicit(void)
+{
+    load_one_phase();
+    receive_shell_live(5U);
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    packet.data[0] = 5U;
+    put_u32(&packet.data[5], 1235U);
+    put_u32(&packet.data[11], 0x7FC00000U);
+    put_u32(&packet.data[15], 0x7F800000U);
+    inject_packet(&packet);
+    fake_tick += 30000U;
+    char *args[] = {"rf", "live", "1", "1"};
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_command(4, args));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "OFFLINE / TAZE LIVE YOK"));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "Son LIVE yasi      : 30000 ms"));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output,
+        "Irms               : GECERSIZ (NaN/Inf)"));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output,
+        "VTrip              : GECERSIZ (NaN/Inf)"));
+}
+
+void test_live_shell_feeder_shows_complete_payload_for_each_available_phase(void)
+{
+    feeder.s_eui64[0] = 0x22U;
+    feeder.t_eui64[0] = 0x33U;
+    load_one_phase();
+    receive_shell_live(5U);
+    receive_shell_live(6U);
+    receive_shell_live(7U);
+    fake_tick = 123U;
+    const uint32_t previous_calls = transmit_calls;
+    char *args[] = {"rf", "live", "1"};
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_command(3, args));
+    const char *position = shell_output;
+    for (uint8_t phase = 1U; phase <= 3U; phase++)
+    {
+        char heading[32];
+        (void)xsnprintf(heading, sizeof(heading), "Fider 1 | Faz L%u",
+                        (unsigned)phase);
+        position = strstr(position, heading);
+        TEST_ASSERT_NOT_NULL(position);
+        position = strstr(position, "Son LIVE yasi      : 123 ms");
+        TEST_ASSERT_NOT_NULL(position);
+        position = strstr(position, "Log wrap low       : 254");
+        TEST_ASSERT_NOT_NULL(position);
+    }
+    TEST_ASSERT_EQUAL_UINT32(previous_calls, transmit_calls);
+}
+
+void test_live_shell_event_only_alarm_does_not_invent_live_payload(void)
+{
+    load_one_phase();
+    TEST_ASSERT_TRUE(rf_open_trip_failure_alarm(0U, 1U, 1U));
+    char *args[] = {"rf", "live", "1", "1"};
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_command(4, args));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "Acma alarmi        : 1"));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "LIVE_DATA          : Henuz alinmadi"));
+    TEST_ASSERT_NULL(strstr(shell_output, "Sequence"));
+    TEST_ASSERT_NULL(strstr(shell_output, "Irms"));
+}
+
+void test_live_shell_rejects_invalid_input_without_reading_or_sending(void)
+{
+    static char *args[][5] =
+    {
+        {"rf", "live"}, {"rf", "live", "0"},
+        {"rf", "live", "5"}, {"rf", "live", "11"},
+        {"rf", "live", "1", "0"}, {"rf", "live", "1", "4"},
+        {"rf", "live", "1", "11"}, {"rf", "live", "1", "1", "extra"}
+    };
+    static const int32_t counts[] = {2, 3, 3, 3, 4, 4, 4, 5};
+    for (size_t index = 0U; index < (sizeof(counts) / sizeof(counts[0])); index++)
+    {
+        shell_length = 0U;
+        shell_output[0] = '\0';
+        TEST_ASSERT_EQUAL_INT(-1, rf_shell_command(counts[index], args[index]));
+        TEST_ASSERT_NOT_NULL(strstr(shell_output, "Kullanim: rf live"));
+        TEST_ASSERT_NULL(strstr(shell_output, "RF LIVE |"));
+    }
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_live(2, NULL));
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_live(3, NULL));
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
+}
+
+void test_live_shell_unassigned_feeder_still_prints_all_three_phases(void)
+{
+    char *args[] = {"rf", "live", "4"};
+    TEST_ASSERT_EQUAL_INT(-1, rf_shell_command(3, args));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "Fider 4 | Faz L1"));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "Fider 4 | Faz L2"));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "Fider 4 | Faz L3"));
+    TEST_ASSERT_NULL(strstr(shell_output, "Sequence"));
+    TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
 }
 
 /*** end of file ***/
