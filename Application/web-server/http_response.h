@@ -1,6 +1,9 @@
 /**
  * @file http_response.h
  * @brief HTTP response building and sending utilities
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  * 
  * Provides functions for:
  * - Building HTTP responses with status, headers, and body
@@ -153,6 +156,9 @@ void http_send_html(const char *html, int html_length);
 void http_response_note_request_headers(const char *buffer, int length);
 
 void http_send_html_resource(const html_resource_t *resource);
+
+/* Raw gzip with content ETag; caller must enforce authentication. */
+void http_send_gzip_package(const html_resource_t *resource);
 
 /**
  * @brief Send JSON response with 200 OK

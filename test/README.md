@@ -1632,3 +1632,91 @@ WCET'i veya cihaz üzerinde GSM/RF kabulünü kanıtlamaz. TSan çalıştırılm
 `web_auth` integration hedefleri geçti. ARM platform matrisi ve M33 assembly
 kontrolü ayrıca çalıştırıldı; imzalı Release self-check geçti. Koşu kayıtları
 `.temp_files/web-startup/ring-*.log` altındadır. Cihaza yükleme yapılmadı.
+
+
+## Giriş ve gerçek ilerlemeli açılış — 16.10.2026
+
+**Amaç:** Ana adreste küçük giriş ekranı sunmak, yalnız başarılı girişten
+sonra yapılandırma sayfasını aktarmak ve gerçek ilerlemeyi göstermek.
+
+**Kullanım yeri:** `/` ve `/loading.html` aynı küçük ekranı sunar.
+`/index.html`, yükleme ekranına uğramadan mevcut yapılandırma sayfasını
+ve kendi giriş ekranını açar. Doğrudan HTML erişimi bilerek herkese
+çıktı verir; yapılandırma API'leri oturum korumasını sürdürür.
+
+**Akış:** Gzip ile 2.662 baytlık giriş ekranı mevcut `/auth/login` ucunu
+kullanır. Başarısız girişte büyük sayfa istenmez; mevcut deneme sınırı
+korunur. Token ve rol doğrulandıktan sonra `/index.html.gz?t=...`
+istenir. Bu uç oturum gerektirir; normal HTML'den farklı olarak
+`Content-Encoding` olmadan `application/gzip` sunar. Uygulama gövdesi
+38.192 bayttır. İlerleme `Content-Length` üzerinden hesaplanmalıdır;
+KB gösterimi 1.000 bayt tabanlıdır. HTTP/TCP başlıkları, giriş isteği
+ve küçük giriş ekranı bu göstergede sayılmaz.
+
+Alınan toplam bildirilen boyutla eşleştiğinde tarayıcının
+`DecompressionStream` API'si gzip verisini açar. Belge yapılandırma
+HTML'iyle değiştirilir. Aynı pencerede bir kez tüketilen token/rol
+bilgisi ikinci giriş ekranını önler; API yetkisini sunucu denetler.
+Önceden saklanmış token tek başına doğrudan giriş ekranını atlatmaz.
+Şifre tarayıcıda saklanmaz; POST başlatılırken formdan temizlenir.
+
+**Arayüz:** Türkçe giriş formunu “Sayfa yükleniyor…” başlığı, gerçek KB
+ve yüzde izler. Çift yükleme animasyonu, İngilizce başlıklar ve sürekli
+gezinti bağlantıları kaldırılmıştır. Sistem yazı tipi kullanılır; dış
+font, resim veya JavaScript paketi gerekmez. HTML/CSS/JavaScript mevcut
+minifier (küçültücü) ile işlenir ve gzip ile sıkıştırılır. Aktarım veya tarayıcı uyumluluğu hatasında
+tekrar deneme veya `/index.html` için “Doğrudan aç” bağlantısı sunulur.
+Yanlış şifrede bu bağlantı gösterilmez.
+Desteklenmeyen tarayıcı, geçersiz oturum yanıtı, HTTP hatası,
+eksik/fazla veri, bozuk gzip ve 30 saniye yanıtsızlık denetlenir.
+
+**Cache (önbellek):** Doğrulanmış gzip paketi ve ETag tarayıcının
+`localStorage` alanında, `tsb23.pageCache` anahtarındaki tek JSON değeriyle
+saklanır. Şifre, token veya rol bu kayda eklenmemelidir. Her giriş token'ı
+paketin URL'sini değiştirdiği için yalnız tarayıcının normal URL cache'i
+tekrar girişte yeterli değildir. Küçük ekran, güncel token'la yaptığı
+isteğe `If-None-Match` ekler. Sunucu önce oturumu doğrular; aynı gzip
+baytları için 304, değişen içerik için 200 ve tam gövde gönderir. Yanıt
+ETag'i sıkıştırma türü ve gerçek içerikten SHA-256 ile üretilir. Paket
+`private, no-cache` politikasındadır; loader'ın manuel doğrulama isteği
+`cache: no-store` kullanarak otomatik tarayıcı cache'ini devreye almaz.
+304 yanıtında saklanan ETag ile yanıt ETag'i eşleşmelidir.
+
+304 sonrasında “Önbellekten açılıyor” gösterilir; ağdan alınmamış veri
+indirilmiş gibi sayılmaz. Gzip yine açılıp doğrulanmalıdır; bozuk cached
+gzip silinir ve hata bildirilir. Saklama alanı kapalı/doluysa veya kayıt
+biçimi bozuksa normal indirme sürer. Ağdan doğrulama başarısızken eski
+sayfa otomatik açılmaz; uygulama kaydı çevrimdışı giriş sağlamaz.
+
+**Doğrulama:** `web_navigation/test_loading.js`, kaynak ve gömülü
+script'in üretim girişini gerçek gzip/stream API'leriyle çalıştırır.
+Giriş öncesi sıfır istek, admin/user rolü, çift gönderimi önleme,
+şifreyi temizleme, token devri, gerçek bayt ilerlemesi ve 22 hata yolu
+kapsanır. `test_navigation.js`, doğrudan giriş ile bir kez tüketilen
+başarılı giriş devrini ve eşleşmeyen token davranışını sınar. Cache
+testleri farklı giriş token'larıyla 304, değişen ETag, bozuk gzip, hatalı
+304, kota ve depolama engelini kapsar.
+`web_auth/run_transport_tests.py`, gerçek router ve handler'ları modem
+sınırına kadar çalıştırır: ana adres küçük sayfayı sunmalı, oturumsuz
+paket 401 vermeli, oturumlu paket ve doğrudan HTML baytları korunmalıdır.
+304 yanıtı gövdesiz olmalı; içerik değişince tam paket gönderilmeli;
+If-None-Match oturum denetimini atlatmamalıdır.
+HTTP birim/senaryo testleri 91/91; iki web integration hedefi ve imzalı
+ARM Release self-check geçmiştir. CubeIDE Debug/Release pre-build
+adımları yeni HTML kaynağını da üretir; `loading_html.c` managed build'in
+kaynak keşfine dahildir.
+
+**Yerel tarayıcı denemesi:**
+`python test/integration/web_navigation/serve_loading_preview.py`
+komutu `http://127.0.0.1:8769/` adresini sunar. Yalnız bu yerel fixture
+(örnek test sunucusu) için giriş `admin / preview` olur; gerçek cihaz
+şifresi kullanılmamalıdır. `--chunk-delay`, her 1.024 baytlık parça
+arasındaki gecikmedir. Fiziksel modem zamanlamasını temsil etmez.
+Tarayıcıda yanlış giriş, ölçülen ilerleme ve ikinci kez giriş sormadan
+uygulamanın açılması ayrıca gözlenmiştir.
+
+**Sınır:** Büyük uygulama bu değişiklikte bölünmemiştir. İki HTML
+gövdesinin toplamı 40.854 bayttır; giriş ve paket için ek HTTP istekleri
+vardır. İlk ekran yaklaşık 2,7 KB'dır; büyük aktarım başarılı girişe
+ertelenir. Fiziksel GSM aktarımı ve cihaz kabulü henüz yapılmamıştır.
+Cihaza yükleme yapılmamıştır.

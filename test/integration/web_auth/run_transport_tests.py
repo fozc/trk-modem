@@ -35,6 +35,7 @@ header = r'''
 #include "web_server.h"
 #include "index_html.h"
 #include "fw_update_html.h"
+#include "loading_html.h"
 #include "ring_buff.h"
 #include "xprintf.h"
 #define CSLOG(...) ((void)0)
@@ -85,7 +86,8 @@ stubs = []
 for name, parameters in re.findall(
         r'void ((?:handle_get_|handle_post_|handle_fw_)\w+)\(([^;]*?)\);',
         handlers, flags=re.S):
-    if name in ("handle_post_login", "handle_get_index"):
+    if name in ("handle_post_login", "handle_get_index",
+                "handle_get_loading", "handle_get_index_package"):
         continue
     ignored = []
     if parameters.strip() != "void":
@@ -96,7 +98,7 @@ for name, parameters in re.findall(
                  'http_send_json("{}", 2); }')
 
 resources = []
-for name in ["index", "fw_update"]:
+for name in ["index", "fw_update", "loading"]:
     embedded = (root / f"Application/web-server/{name}_html.c").read_text(encoding="utf-8")
     payload = bytes(int(value, 16) for value in re.findall(
         r"0x([0-9a-fA-F]{2})", embedded.split("};")[0]))
@@ -106,6 +108,15 @@ for name in ["index", "fw_update"]:
                      "{real_" + name + "_data, sizeof(real_" + name +
                      "_data), HTML_COMPRESS_GZIP, \"text/html\"};\n")
 (output / "real_resources.h").write_text("".join(resources), encoding="ascii")
+
+production_handlers = (root / "Application/web-server/http_handlers.c").read_text(
+    encoding="utf-8")
+for name in ["handle_get_loading", "handle_get_index_package"]:
+    match = re.search(r'^void ' + name + r'\(void\)\n\{.*?\n\}',
+                      production_handlers, flags=re.M | re.S)
+    if not match:
+        raise RuntimeError("Cannot extract production handler: " + name)
+    stubs.append(match.group(0))
 
 test = r'''
 /*
@@ -194,8 +205,9 @@ void handle_post_login(const char *body)
 }
 void handle_get_index(void) { http_send_html_resource(selected_page); }
 void reboot_system_delayed(uint32_t delay) { (void)delay; }
-const html_resource_t *get_index_html(void) { return &page; }
+const html_resource_t *get_index_html(void) { return selected_page; }
 const html_resource_t *get_fw_update_html(void) { return &page; }
+const html_resource_t *get_loading_html(void) { return &real_loading; }
 const html_resource_t *get_default_html(void) { return &page; }
 
 static void complete_tx(void)
@@ -338,7 +350,7 @@ int main(void)
     assert(0U == close_count);
     puts("PASS: disconnect/reset clears deferred close for the next client");
     reset_test();
-    receive_request("GET / HTTP/1.1\r\n\r\n");
+    receive_request("GET /index.html HTTP/1.1\r\n\r\n");
     finish_response();
     assert(NULL != strstr(wire, "200 OK"));
     const char *line = strstr(wire, "ETag: ");
@@ -348,7 +360,7 @@ int main(void)
     tag[66] = '\0';
     char conditional[160];
     snprintf(conditional, sizeof(conditional),
-        "GET / HTTP/1.1\r\nIf-None-Match: %s\r\n\r\n", tag);
+        "GET /index.html HTTP/1.1\r\nIf-None-Match: %s\r\n\r\n", tag);
     wire_length = 0U;
     receive_request(conditional);
     finish_response();
@@ -356,7 +368,7 @@ int main(void)
     const char *boundary = strstr(wire, "\r\n\r\n");
     assert(NULL != boundary && wire_length == (size_t)(boundary - wire) + 4U);
     wire_length = 0U;
-    receive_request("GET / HTTP/1.1\r\n\r\n");
+    receive_request("GET /index.html HTTP/1.1\r\n\r\n");
     finish_response();
     assert(NULL != strstr(wire, "200 OK"));
     assert(0 == memcmp(wire + wire_length - sizeof(page_data),
@@ -368,7 +380,7 @@ int main(void)
     {
         reset_test();
         selected_page = resources[index];
-        receive_request("GET / HTTP/1.1\r\n\r\n");
+        receive_request("GET /index.html HTTP/1.1\r\n\r\n");
         finish_response();
         const char *body = strstr(wire, "\r\n\r\n");
         assert(NULL != body);
@@ -386,6 +398,86 @@ int main(void)
     }
     puts("PASS: actual embedded index and firmware pages reach the modem byte-for-byte");
     selected_page = &page;
+
+    reset_test();
+    receive_request("GET /loading.html HTTP/1.1\r\n\r\n");
+    finish_response();
+    assert(NULL != strstr(wire, "200 OK"));
+    assert(NULL != strstr(wire, "Content-Encoding: gzip"));
+    const char *loading_body = strstr(wire, "\r\n\r\n") + 4;
+    assert(real_loading.length == wire_length -
+           (size_t)(loading_body - wire));
+    assert(0 == memcmp(loading_body, real_loading.data, real_loading.length));
+
+    reset_test();
+    receive_request("GET / HTTP/1.1\r\n\r\n");
+    finish_response();
+    assert(NULL != strstr(wire, "200 OK"));
+    assert(0 == memcmp(wire + wire_length - real_loading.length,
+                       real_loading.data, real_loading.length));
+    reset_test();
+    receive_request("GET /index.html.gz HTTP/1.1\r\n\r\n");
+    finish_response();
+    assert(NULL != strstr(wire, "HTTP/1.1 401 "));
+    puts("PASS: root serves loader; application package requires a session");
+
+    reset_test();
+    selected_page = &real_index;
+    receive_request("GET /index.html.gz?t=valid HTTP/1.1\r\n\r\n");
+    finish_response();
+    assert(NULL != strstr(wire, "200 OK"));
+    assert(NULL != strstr(wire, "Content-Type: application/gzip"));
+    assert(NULL == strstr(wire, "Content-Encoding:"));
+    const char *package_body = strstr(wire, "\r\n\r\n") + 4;
+    assert(real_index.length == wire_length -
+           (size_t)(package_body - wire));
+    assert(0 == memcmp(package_body, real_index.data, real_index.length));
+    puts("PASS: public loading page and protected raw gzip use production handlers and exact bytes");
+    const char *package_tag_line = strstr(wire, "ETag: ");
+    assert(NULL != package_tag_line);
+    char package_tag[67];
+    memcpy(package_tag, package_tag_line + 6, 66U);
+    package_tag[66] = '\0';
+    snprintf(conditional, sizeof(conditional),
+        "GET /index.html.gz?t=valid HTTP/1.1\r\nIf-None-Match: %s\r\n\r\n",
+        package_tag);
+    wire_length = 0U;
+    receive_request(conditional);
+    finish_response();
+    assert(NULL != strstr(wire, "304 Not Modified"));
+    assert(NULL != strstr(wire, "Cache-Control: private, no-cache"));
+    boundary = strstr(wire, "\r\n\r\n");
+    assert(NULL != boundary && wire_length == (size_t)(boundary - wire) + 4U);
+    selected_page = &real_fw_update;
+    wire_length = 0U;
+    receive_request(conditional);
+    finish_response();
+    assert(NULL != strstr(wire, "200 OK"));
+    assert(0 == memcmp(wire + wire_length - real_fw_update.length,
+                       real_fw_update.data, real_fw_update.length));
+    wire_length = 0U;
+    snprintf(conditional, sizeof(conditional),
+        "GET /index.html.gz HTTP/1.1\r\nIf-None-Match: %s\r\n\r\n",
+        package_tag);
+    receive_request(conditional);
+    finish_response();
+    assert(NULL != strstr(wire, "HTTP/1.1 401 "));
+    puts("PASS: validated package saves body bytes; changed content sends new bytes; ETag never bypasses auth");
+
+
+    const html_resource_t invalid_package = {
+        page_data, sizeof(page_data), HTML_COMPRESS_NONE, "text/html"};
+    const html_resource_t *invalid_resources[] = {NULL, &invalid_package};
+    for (size_t index = 0U; 2U > index; index++)
+    {
+        reset_test();
+        selected_page = invalid_resources[index];
+        receive_request("GET /index.html.gz?t=valid HTTP/1.1\r\n\r\n");
+        finish_response();
+        assert(NULL != strstr(wire, "500 Internal Server Error"));
+    }
+    selected_page = &page;
+    puts("PASS: unavailable/non-gzip application package fails explicitly");
 
     reset_test();
     static uint8_t full_queue[48U * 1024U - 1U];
