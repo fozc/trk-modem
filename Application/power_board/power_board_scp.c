@@ -8,6 +8,7 @@
  * Own SCP power-board data; I2C snapshots never enter this model.
  */
 
+#define CSLOG_MODULE LOG_MOD_RF
 #include "power_board_scp.h"
 #include "power_board_control.h"
 #include "elog.h"
@@ -15,7 +16,6 @@
 #include "stm32u3xx_hal.h"
 #include "rtc.h"
 #include "console_logger.h"
-#define CSLOG_MODULE LOG_MOD_RF
 #include <string.h>
 
 #define SUMMARY_TIMEOUT_MS 30000U
@@ -29,6 +29,9 @@ static bool alarms_current;
 static bool have_alarm_seq;
 static bool have_restart_session;
 static uint8_t restart_session;
+#if defined(BSP_CONSOLE_LOG)
+static uint32_t announced_alarms;
+#endif
 
 static int power_board_scp_shell(int argc, char **argv);
 
@@ -40,6 +43,9 @@ void power_board_scp_init(void)
     alarms_current = false;
     have_alarm_seq = false;
     have_restart_session = false;
+#if defined(BSP_CONSOLE_LOG)
+    announced_alarms = 0U;
+#endif
     (void)shell_register_command(&(shell_cmd_t)
     {
         .cmd = "pwrboard",
@@ -119,6 +125,33 @@ const char *power_board_alarm_name(uint8_t code)
     return ((size_t)code < count) ? alarm_names[code] : NULL;
 }
 
+static void announce_alarm_changes(void)
+{
+#if defined(BSP_CONSOLE_LOG)
+    if (!console_logger_level_enabled(LOG_MOD_RF, LOG_LVL_NORMAL))
+    {
+        return;
+    }
+    const uint32_t changed = snapshot.active_alarms ^ announced_alarms;
+
+    for (uint8_t code = 0U; code < 32U; code++)
+    {
+        const uint32_t bit = (uint32_t)1U << code;
+        if (0U != (changed & bit))
+        {
+            const char *name = power_board_alarm_name(code);
+            const char *state = (0U != (snapshot.active_alarms & bit)) ?
+                                "basladi" : "kapandi";
+
+            CSLOG_WARN("[PB] alarm %s: %s (kod=%u maske=0x%08lX)\r\n",
+                       state, (NULL != name) ? name : "?", (unsigned)code,
+                       (unsigned long)snapshot.active_alarms);
+        }
+    }
+    announced_alarms = snapshot.active_alarms;
+#endif
+}
+
 static power_summary_raw_t last_summary_raw;
 
 void power_board_capture_summary_raw(const uint8_t *data, uint8_t len,
@@ -173,21 +206,9 @@ bool power_board_handle_summary(const rf_scp_message_t *message,
     alarms_current = true;
     if (previous != snapshot.active_alarms)
     {
-        const uint32_t newly_active = snapshot.active_alarms & ~previous;
-
-        for (uint8_t code = 0U; code < 32U; code++)
-        {
-            if (0U != (newly_active & ((uint32_t)1U << code)))
-            {
-                const char *name = power_board_alarm_name(code);
-
-                CSLOG_WARN("[PB] alarm basladi: %s (kod=%u maske=0x%08lX)\r\n",
-                           (NULL != name) ? name : "?", (unsigned)code,
-                           (unsigned long)snapshot.active_alarms);
-            }
-        }
         store_alarm(RF_SCP_CMD_PWR_SUMMARY, message, previous);
     }
+    announce_alarm_changes();
     return true;
 }
 
@@ -217,6 +238,7 @@ bool power_board_handle_alarm(const rf_scp_message_t *message,
         alarms_current = true;
         alarm_ms = now_ms;
         store_alarm(RF_SCP_CMD_PWR_ALARM, message, previous);
+        announce_alarm_changes();
         return true;
     }
     if (duplicate)
@@ -279,6 +301,7 @@ bool power_board_handle_alarm(const rf_scp_message_t *message,
     {
         store_alarm(RF_SCP_CMD_PWR_ALARM, message, previous);
     }
+    announce_alarm_changes();
     return true;
 }
 

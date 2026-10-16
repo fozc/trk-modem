@@ -84,6 +84,8 @@
       # compiles the real CSLOG macros in (console_log_enabled.h).
       test_rf_alarm_log:
         - -Wno-variadic-macros
+      test_power_board_scp:
+        - -Wno-variadic-macros
       test_at_engine_scenario:
         - -DAT_ENGINE_LOG_HOST_TEST
         - -flto
