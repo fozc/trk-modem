@@ -1649,7 +1649,7 @@ kullanır. Başarısız girişte büyük sayfa istenmez; mevcut deneme sınırı
 korunur. Token ve rol doğrulandıktan sonra `/index.html.gz?t=...`
 istenir. Bu uç oturum gerektirir; normal HTML'den farklı olarak
 `Content-Encoding` olmadan `application/gzip` sunar. Uygulama gövdesi
-38.192 bayttır. İlerleme `Content-Length` üzerinden hesaplanmalıdır;
+39.791 bayttır. İlerleme `Content-Length` üzerinden hesaplanmalıdır;
 KB gösterimi 1.000 bayt tabanlıdır. HTTP/TCP başlıkları, giriş isteği
 ve küçük giriş ekranı bu göstergede sayılmaz.
 
@@ -1716,7 +1716,43 @@ Tarayıcıda yanlış giriş, ölçülen ilerleme ve ikinci kez giriş sormadan
 uygulamanın açılması ayrıca gözlenmiştir.
 
 **Sınır:** Büyük uygulama bu değişiklikte bölünmemiştir. İki HTML
-gövdesinin toplamı 40.854 bayttır; giriş ve paket için ek HTTP istekleri
+gövdesinin toplamı 42.453 bayttır; giriş ve paket için ek HTTP istekleri
 vardır. İlk ekran yaklaşık 2,7 KB'dır; büyük aktarım başarılı girişe
 ertelenir. Fiziksel GSM aktarımı ve cihaz kabulü henüz yapılmamıştır.
 Cihaza yükleme yapılmamıştır.
+
+
+## RF ayar aktarımı hata açıklamaları — 16.10.2026
+
+**Amaç:** Genel “Uygulama başarısız” sonucunun arkasındaki fideri, MH
+nedenini ve sonraki kontrol adımını operatöre göstermek.
+
+**Kullanım yeri:** RF Yapılandırma → RF ayar aktarımı. Mevcut
+`/status/rf-group` JSON alanları kullanılır; RF protokolü, API alanları
+ve otomatik tekrar davranışı değiştirilmez.
+
+**Gösterim:** Başarısız işlemde ayar satırı ve fider, anlaşılır MH nedeni
+ve yapılacak işlem teknik ayrıntılar açılmadan gösterilir. NOT_LIVE,
+NO_INV, TIMEOUT, PARTIAL_COMMIT, MH yeniden başlaması ve CRC uyuşmazlığı
+ayrı açıklanır. Bilinmeyen neden kodu saklanmaz; rapor yokken neden
+uydurulmaz. UNCERTAIN sonucu ayar uygulanmamış gibi sunulmamalıdır.
+Başlamamış gruba önceki grubun hata raporu bağlanmamalıdır. İptal düğmesi
+yalnız mevcut `CanAbort` koşulu izin verdiğinde gösterilir. “Sonuç okundu”
+mesajı aktarımın başarılı olduğu anlamına gelmez; alttaki işlem sonucu
+ayrıca gösterilir.
+
+**Kaynak ve sınır:** Güncel R2 belgesinin §4.9 tablosu ve
+`rf_group.c` kaynak yolu esas alınır. FAILED bitmap'i başarısız üyeleri
+kabul edilen WRITE sırasına göre belirtir; genel protokol faz sırası
+varsayılmamalıdır. Mevcut JSON işlem üyesinin EUI snapshot'ını taşımaz.
+Bu nedenle rapordan kesin cihaz/faz kimliği türetilmez; RF İzleme'de
+ilgili fiderin üç fazının kontrolü istenir. Kullanıcının paylaştığı
+metinde sayısal neden yoktur; o olayın fiziksel nedeni bu metinden
+kesinleştirilemez.
+
+**Doğrulama:** `web_navigation/test_navigation.js` gerçek kaynak ve
+gömülü script'te neden 1–10, bilinmeyen kod, fider/satır, ana sonuçta
+neden ve yapılacak işlem, belirsiz sonuç ve eski grubun gizlenmesini
+Türkçe/İngilizce denetler. Yerel `serve_loading_preview.py --rf-preview`
+yalnız örnek NOT_LIVE sonucu sunar; gerçek cihaza ulaşmaz. Cihazdaki RF
+hatası giderildiği veya fiziksel neden bulunduğu iddia edilmez.
