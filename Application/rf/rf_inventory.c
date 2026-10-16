@@ -892,6 +892,7 @@ void rf_inventory_record_ack(const scp_packet_t *request)
         rf_inventory_entry_t *entry =
             &bindings[(size_t)body[1] - 1U][(size_t)body[2] - 1U];
 
+        (void)rf_discovery_remove(&body[3]);
         entry->zone = body[0];
         entry->feeder = body[1];
         entry->phase = body[2];
@@ -909,6 +910,15 @@ void rf_inventory_record_ack(const scp_packet_t *request)
                 break;
             }
         }
+    }
+    else if (!rf_eui64_is_zero(&body[3]))
+    {
+        /* A confirmed removal is assignable without a new RF report. */
+        (void)rf_discovery_add(&body[3]);
+    }
+    else
+    {
+        /* An empty identity cannot be offered for assignment. */
     }
 }
 
@@ -947,10 +957,6 @@ static void on_update_done(scp_cmd_result_t result,
     if (SCP_CMD_OK != result)
     {
         has_boundary = false;
-    }
-    if (SCP_CMD_OK == result)
-    {
-        (void)rf_discovery_remove(pending_update.eui64);
     }
     if (NULL != done)
     {
