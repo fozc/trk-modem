@@ -376,6 +376,9 @@ const I18N={
     mb_socket_state_dialer:"Dialer connection state",
     mb_battery_warning:"Battery warning mask",
     mb_modem_reset:"Restart device",
+    mb_relay1:"Relay 1 commanded state",
+    mb_relay2:"Relay 2 commanded state",
+    modMapRelayAccess:"Read FC03 / Write FC06 (0=OFF, 1=ON)",
     mb_feeder_quality:"Feeder quality",
     mb_temp_count:"Temporary fault record count",
     mb_perm_count:"Permanent fault record count",
@@ -918,6 +921,9 @@ const I18N={
     mb_socket_state_dialer:"Arama bağlantısı durumu",
     mb_battery_warning:"Akü uyarı maskesi",
     mb_modem_reset:"Cihazı yeniden başlat",
+    mb_relay1:"Röle 1 komut durumu",
+    mb_relay2:"Röle 2 komut durumu",
+    modMapRelayAccess:"Okuma FC03 / Yazma FC06 (0=OFF, 1=ON)",
     mb_feeder_quality:"Fider veri kalitesi",
     mb_temp_count:"Geçici arıza kayıt sayısı",
     mb_perm_count:"Kalıcı arıza kayıt sayısı",
@@ -1303,7 +1309,7 @@ function renderIec104(d){
 
 function modbusMapRows(map, block, phase=0, view='live', record=0){
   if(!map)return [];
-  if(!block.startsWith('feeder:'))return (map[block]||[]).map(f=>({...{field:f[0],address:f[1],count:f[2],type:f[3],unit:f[4]},command:block==='Control'&&f[0]==='modem_reset'}));
+  if(!block.startsWith('feeder:'))return (map[block]||[]).map(f=>({...{field:f[0],address:f[1],count:f[2],type:f[3],unit:f[4]},command:block==='Control'&&f[0]==='modem_reset',relay:block==='Control'&&['relay1','relay2'].includes(f[0])}));
   const base=map.FeederBase+Number(block.split(':')[1])*map.FeederStride;
   const rows=[];
   const add=(field,address,count,type,unit)=>rows.push({field,address,count,type,unit});
@@ -1328,7 +1334,7 @@ function buildModbusMapTable(map,block,phase=0,view='live',record=0){
   rows.forEach(row=>{
     const array=row.count>(row.type==='UINT32'||row.type==='FLOAT32'?2:1);
     const type=row.type+(array?' × '+row.count:'');
-    html+='<tr><th scope="row">'+esc(t('mb_'+row.field))+'</th><td>'+esc(range(row.address,row.count))+'</td><td>'+esc(range(row.address-map.AddressBase,row.count))+'</td><td>'+esc(type)+'</td><td>'+esc(row.unit==='degC'?'°C':row.unit==='0/1'?(row.field==='trip_failed'?'0: '+t('alarmInactive')+' · 1: '+t('alarmActive'):'0: '+t('absent')+' · 1: '+t('present')):(row.unit||'—'))+'</td><td><span class="register-access">'+esc(t(row.command?'modMapWrite':'modMapRead'))+'</span></td></tr>';
+    html+='<tr><th scope="row">'+esc(t('mb_'+row.field))+'</th><td>'+esc(range(row.address,row.count))+'</td><td>'+esc(range(row.address-map.AddressBase,row.count))+'</td><td>'+esc(type)+'</td><td>'+esc(row.unit==='degC'?'°C':row.unit==='0/1'?(row.relay?'0: OFF · 1: ON':row.field==='trip_failed'?'0: '+t('alarmInactive')+' · 1: '+t('alarmActive'):'0: '+t('absent')+' · 1: '+t('present')):(row.unit||'—'))+'</td><td><span class="register-access">'+esc(t(row.relay?'modMapRelayAccess':row.command?'modMapWrite':'modMapRead'))+'</span></td></tr>';
   });
   return html+'</tbody></table></div>';
 }
