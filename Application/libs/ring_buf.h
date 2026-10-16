@@ -1,3 +1,8 @@
+/*
+ * ring_buf.h - C11 SPSC byte queue (local integration requirements).
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ */
 //============================================================================
 // Lock-Free Ring Buffer (LFRB) for embedded systems
 // GitHub: https://github.com/QuantumLeaps/lock-free-ring-buffer
@@ -31,28 +36,40 @@
 #ifndef RING_BUF_H
 #define RING_BUF_H
 
+#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 201112L)
+#error "RingBuf requires C11 atomics; compile as C11 or later"
+#elif defined(__STDC_NO_ATOMICS__) && (__STDC_NO_ATOMICS__ != 0)
+#error "RingBuf requires <stdatomic.h>; atomics are unavailable"
+#else
+#if defined(__has_include)
+#if !__has_include(<stdatomic.h>)
+#error "RingBuf requires the <stdatomic.h> header"
+#endif
+#endif
 #include <stdatomic.h>
+#endif
 #include <stdint.h>
 #include <stdbool.h>
 
-//! Ring buffer counter/index
-//
-// @attention
-// The following RingBufCtr type is assumed to be "atomic" in a target CPU,
-// meaning that the CPU needs to write the whole RingBufCtr in one machine
-// instruction. An example of violating this assumption would be an 8-bit
-// CPU, which writes uint16_t (2-bytes) in 2 machine instructions. For such
-// 8-bit CPU, the maximum size of RingBufCtr would be uint8_t (1-byte).
-//
-// Another case of violating the "atomic" writes to RingBufCtr type would
-// be misalignment of a RingBufCtr variable in memory, which could cause
-// the compiler to generate multiple instructions to write a RingBufCtr value.
-// Therefore, it is further assumed that all RingBufCtr variables in the
-// following RingBuf struct *are* correctly aligned for "atomic" access.
-//In practice, most C compilers should provide such natural alignment
-// (by inserting some padding into the ::RingBuf struct, if necessary).
-//
+/* SPSC only: one producer calls put; one consumer calls get/process_all.
+ * num_free is a consumer-side advisory snapshot, not a reservation.
+ * ctor runs with both sides stopped. The instance, storage and callback
+ * must be valid; zero-length storage and packed instances are forbidden.
+ * Data slots are ordinary memory; release/acquire indices transfer their
+ * ownership. Extra IRQ masking or atomic data slots are not required. */
 typedef uint16_t RingBufCtr;
+
+#if defined(__GNUC__) || defined(__clang__)
+__extension__ _Static_assert(
+    __atomic_always_lock_free(sizeof(_Atomic(RingBufCtr)), 0),
+    "RingBuf requires lock-free counters (check CPU/toolchain)");
+#else
+_Static_assert(_Generic((RingBufCtr)0,
+    unsigned short: ATOMIC_SHORT_LOCK_FREE,
+    unsigned int: ATOMIC_INT_LOCK_FREE,
+    default: 0) == 2,
+    "RingBuf requires always-lock-free counters");
+#endif
 
 //! Ring buffer element type
 //
@@ -95,3 +112,5 @@ typedef void (*RingBufHandler)(RingBufElement const el);
 void RingBuf_process_all(RingBuf * const me, RingBufHandler handler);
 
 #endif // RING_BUF_H
+
+/*** end of file ***/

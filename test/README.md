@@ -1562,3 +1562,51 @@ bozuk JSON, bağlantı hatası ve kullanıcı iptalini kapsar. Yalnız doğrulan
 kabulde başarı mesajı beklenir. Bu host kontrolleri cihazın fiziksel olarak
 yeniden başladığını kanıtlamaz. Web paketi, oturum/taşıma testleri ve son
 imzalı Release self-check geçti; cihaz yüklemesi yapılmadı.
+
+## Ortak ring buffer ve atomik destek kontrolleri — 16.10.2026
+
+**Amaç:** Her pozitif tampon boyutunda SPSC davranışını ve desteklenmeyen
+derleme hedeflerinin açıkça reddedilmesini doğrulamak.
+
+**Kullanım yeri:** `gsm/test_ring_buff.c` merkezi Ceedling paketindedir.
+11 boyutta toplam 55.000 işlem doğrusal modelle karşılaştırılır. Küçük
+boyutlarda 1.785 head/tail durumu, 48 KiB tam/dolu ve sarılmış bloklar,
+zero-copy sınırları, geçersiz yeniden başlatmada verinin korunması ve
+`libs/ring_buf` ile ortak byte işlevlerinin karşılaştırması kapsanır.
+
+`make -C test/integration/libs run`, mevcut Flash log testleriyle birlikte
+`run_ring_buffer_checks.py` çalıştırır. İki gerçek kütüphane, iki thread
+ile 7 boyutta ve hem `-O0` hem `-O2` altında sınanır. Toplam 5.600.000 byte
+sırası/içeriği denetlenir. GSM sürümünde byte, blok ve zero-copy yolları
+karıştırılır. C99, `__STDC_NO_ATOMICS__=1` ve eksik `stdatomic.h` için
+beklenen derleme hataları kontrol edilir.
+
+ARM kontrolü aynı girişe `ARM_CC=arm-none-eabi-gcc` verilerek etkinleştirilir;
+derleyici PATH'te yoksa tam yolu kullanılmalıdır. GCC 14.3.rel1 ile M0/M0+
+lock-free koşulunu sağlamadığı için reddedilir; M23/M3/M4/M7/M33 kabul
+edilir. Karar CPU adından değil, gerçek atomik indeks türünün derleyici
+garantisinden alınır. M33 `-O0`/`-O2` assembly çıktıları acquire/release
+komutlarını ve atomik runtime, bölme, exclusive RMW veya IRQ maskelemesi
+bulunmadığını sınar. ARM aracı verilmezse bu bölüm açıkça SKIP yazmalıdır.
+Kanıt dosyaları `test/build/ring_buffer/` altındadır.
+
+**Atomik erişim sınırı:** GSM USART1 ISR üreticidir; AT process tüketicidir.
+RF için normal derlemede USART3, HIL derlemesinde UART4 üreticidir;
+RF process tüketicidir. İndekslerin hazırlanması alım kesmesi açılmadan
+önce tamamlanır. Veri sahipliği acquire/release ile devredilir; aynı
+kuyrukta ikinci üretici veya tüketici desteklenmez. Veri byte'ları ve
+değişmeyen boyut/pointer alanları atomik değildir. HTTP tek process
+bağlamında aynı kütüphaneyi kullanır; ayrı atomik doluluk sayacı veya IRQ
+kilidi yoktur. Kütüphane atomiklerini HTTP için kaldıran ikinci bir sürüm
+eklenmemiştir. `libs` kurucusunda gereksiz `seq_cst` yerine paylaşım öncesi
+`atomic_init` kullanılır. Blok okuma/yazma ve `libs` byte yazmada aynı
+indeksin gereksiz ikinci kez okunması kaldırılmıştır; her işlem tek
+snapshot kullanır.
+
+**Sınır:** Thread testleri ve assembly incelemesi fiziksel ISR gecikmesini,
+WCET'i veya cihaz üzerinde GSM/RF kabulünü kanıtlamaz. TSan çalıştırılmamıştır.
+
+**Sonuç:** Son tam Ceedling paketi 1406/1406 geçti. `libs`, `gsm` ve
+`web_auth` integration hedefleri geçti. ARM platform matrisi ve M33 assembly
+kontrolü ayrıca çalıştırıldı; imzalı Release self-check geçti. Koşu kayıtları
+`.temp_files/web-startup/ring-*.log` altındadır. Cihaza yükleme yapılmadı.

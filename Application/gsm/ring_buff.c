@@ -1,6 +1,8 @@
 /**
  * @file  ring_buff.c
  * @brief Lock-free SPSC ring buffer using C11 atomics.
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * Memory ordering contract (ARM Cortex-M single-core):
  *   - Producer: store data, then store head with memory_order_release.
@@ -18,26 +20,25 @@
 #include "ring_buff.h"
 #include <string.h>
 
-/* ISR uretici baglaminda kullanilir: 32-bit atomikler lock-free
- * olmali (GCC 14.3.rel1 / Cortex-M33: LDREX/STREX dongusu, kutuphane
- * cagrisi yok - cortex-m-atomic-isr.instructions.md 10. madde). */
-#if !defined(UNIT_TEST)
-_Static_assert(__atomic_always_lock_free(4, 0),
-               "ring indices must be lock-free in ISR context");
-#endif
-
-static inline bool is_power_of_two(uint32_t x)
+/* Indices and counts stay below size. Subtract before adding so even
+ * capacities near UINT32_MAX do not overflow during a wrap. */
+static inline uint32_t wrap_index(const rbuff_t *rb, uint32_t index,
+                                  uint32_t count)
 {
-    return (x != 0U) && ((x & (x - 1U)) == 0U);
+    const uint32_t remaining = rb->buff_size - index;
+    return (count >= remaining) ? count - remaining : index + count;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-static inline uint32_t mask(const rbuff_t *p_rb)
+static inline uint32_t used_space(const rbuff_t *rb, uint32_t head,
+                                  uint32_t tail)
 {
-    return p_rb->buff_size - 1U;
+    return (head >= tail) ? head - tail : rb->buff_size - (tail - head);
+}
+
+static inline uint32_t free_space(const rbuff_t *rb, uint32_t head,
+                                  uint32_t tail)
+{
+    return rb->buff_size - 1U - used_space(rb, head, tail);
 }
 
 static inline bool rbuff_is_valid(const rbuff_t *p_rb)
@@ -46,8 +47,8 @@ static inline bool rbuff_is_valid(const rbuff_t *p_rb)
 }
 
 /* Index loads may be wider than uint32_t on LP64 hosts. The casts below
- * are safe: initialization stores zero and every index update is masked
- * by buff_size - 1U, so indices stay within the uint32_t buffer size. */
+ * are safe: initialization stores zero and every index update wraps
+ * within buff_size, so indices stay within the uint32_t buffer size. */
 
 /* ------------------------------------------------------------------ */
 /*  Init / Clear                                                       */
@@ -55,15 +56,15 @@ static inline bool rbuff_is_valid(const rbuff_t *p_rb)
 
 bool rbuff_init(rbuff_t *p_rb, uint8_t *p_buff, uint32_t size)
 {
-    if ((p_rb == NULL) || (p_buff == NULL) || (size == 0U) || !is_power_of_two(size))
+    if ((p_rb == NULL) || (p_buff == NULL) || (size == 0U))
     {
         return false;
     }
 
     p_rb->buff      = p_buff;
     p_rb->buff_size = size;
-    atomic_store_explicit(&p_rb->head, 0U, memory_order_relaxed);
-    atomic_store_explicit(&p_rb->tail, 0U, memory_order_relaxed);
+    atomic_init(&p_rb->head, 0U);
+    atomic_init(&p_rb->tail, 0U);
 
     return true;
 }
@@ -96,7 +97,7 @@ uint32_t rbuff_available_for_write(rbuff_t *p_rb)
     uint32_t t =
         (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_acquire);
 
-    return (t - h - 1U) & mask(p_rb);
+    return free_space(p_rb, h, t);
 }
 
 uint32_t rbuff_write_byte(rbuff_t *p_rb, uint8_t c)
@@ -108,7 +109,7 @@ uint32_t rbuff_write_byte(rbuff_t *p_rb, uint8_t c)
 
     uint32_t h =
         (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_relaxed);
-    uint32_t next_h = (h + 1U) & mask(p_rb);
+    uint32_t next_h = wrap_index(p_rb, h, 1U);
 
     /* Full check: load tail with acquire to see latest consumer progress */
     if (next_h == atomic_load_explicit(&p_rb->tail, memory_order_acquire))
@@ -135,16 +136,18 @@ uint32_t rbuff_write_buff(rbuff_t *p_rb, const void *p_data, uint32_t len)
     }
 
     /* SPSC invariant: consumer can only advance tail (increase free space),
-     * so free_space is a lower bound — actual free space >= free_space.
+     * so the snapshot is a lower bound on the actual free space.
      * This makes the check-then-write pattern safe without locking. */
-    uint32_t free_space = rbuff_available_for_write(p_rb);
-    if (free_space < len)
+    const uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_relaxed);
+    const uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_acquire);
+    const uint32_t available_space = free_space(p_rb, h, t);
+    if (available_space < len)
     {
         return 1U;
     }
 
-    uint32_t h =
-        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_relaxed);
     uint32_t first_chunk = p_rb->buff_size - h;
 
     if (first_chunk > len)
@@ -160,7 +163,8 @@ uint32_t rbuff_write_buff(rbuff_t *p_rb, const void *p_data, uint32_t len)
         memcpy(&p_rb->buff[0], (const uint8_t *)p_data + first_chunk, remaining);
     }
 
-    atomic_store_explicit(&p_rb->head, (h + len) & mask(p_rb), memory_order_release);
+    atomic_store_explicit(&p_rb->head, wrap_index(p_rb, h, len),
+                          memory_order_release);
 
     return 0U;
 }
@@ -186,16 +190,16 @@ bool rbuff_get_write_block(rbuff_t *p_rb, uint8_t **pp_data, uint32_t *p_len)
 
     /* The -1 reserve is built into the free-space formula: the block can
      * never reach the tail, so wrapping head to 0 stays unambiguous. */
-    uint32_t free_space = (t - h - 1U) & mask(p_rb);
-    if (free_space == 0U)
+    uint32_t available_space = free_space(p_rb, h, t);
+    if (available_space == 0U)
     {
         return false;
     }
 
     uint32_t len = p_rb->buff_size - h;
-    if (len > free_space)
+    if (len > available_space)
     {
-        len = free_space;
+        len = available_space;
     }
 
     *pp_data = &p_rb->buff[h];
@@ -215,13 +219,13 @@ uint32_t rbuff_advance(rbuff_t *p_rb, uint32_t len)
     uint32_t t =
         (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_acquire);
 
-    uint32_t free_space = (t - h - 1U) & mask(p_rb);
-    if (len > free_space)
+    uint32_t available_space = free_space(p_rb, h, t);
+    if (len > available_space)
     {
-        len = free_space;
+        len = available_space;
     }
 
-    atomic_store_explicit(&p_rb->head, (h + len) & mask(p_rb),
+    atomic_store_explicit(&p_rb->head, wrap_index(p_rb, h, len),
                           memory_order_release);
     return len;
 }
@@ -242,7 +246,7 @@ uint32_t rbuff_available(rbuff_t *p_rb)
     uint32_t t =
         (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
-    return (h - t) & mask(p_rb);
+    return used_space(p_rb, h, t);
 }
 
 bool rbuff_peek(rbuff_t *p_rb, uint8_t *p_out)
@@ -278,13 +282,13 @@ uint32_t rbuff_peek_buff(rbuff_t *p_rb, uint32_t skip, void *p_out, uint32_t len
     uint32_t t =
         (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
-    uint32_t avail = (h - t) & mask(p_rb);
+    uint32_t avail = used_space(p_rb, h, t);
     if (skip >= avail)
     {
         return 0U;
     }
     avail -= skip;
-    t = (t + skip) & mask(p_rb);
+    t = wrap_index(p_rb, t, skip);
 
     uint32_t to_peek = (len > avail) ? avail : len;
 
@@ -323,7 +327,8 @@ bool rbuff_read_safe(rbuff_t *p_rb, uint8_t *p_out)
     }
 
     *p_out = p_rb->buff[t];
-    atomic_store_explicit(&p_rb->tail, (t + 1U) & mask(p_rb), memory_order_release);
+    atomic_store_explicit(&p_rb->tail, wrap_index(p_rb, t, 1U),
+                          memory_order_release);
 
     return true;
 }
@@ -335,7 +340,11 @@ uint32_t rbuff_read_buff(rbuff_t *p_rb, void *p_out, uint32_t len)
         return 0U;
     }
 
-    uint32_t avail = rbuff_available(p_rb);
+    const uint32_t h =
+        (uint32_t)atomic_load_explicit(&p_rb->head, memory_order_acquire);
+    const uint32_t t =
+        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
+    const uint32_t avail = used_space(p_rb, h, t);
     if (avail == 0U)
     {
         return 0U;
@@ -343,8 +352,6 @@ uint32_t rbuff_read_buff(rbuff_t *p_rb, void *p_out, uint32_t len)
 
     uint32_t to_read = (len > avail) ? avail : len;
 
-    uint32_t t =
-        (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
     uint32_t first_chunk = p_rb->buff_size - t;
 
     if (first_chunk > to_read)
@@ -360,7 +367,8 @@ uint32_t rbuff_read_buff(rbuff_t *p_rb, void *p_out, uint32_t len)
         memcpy((uint8_t *)p_out + first_chunk, &p_rb->buff[0], remaining);
     }
 
-    atomic_store_explicit(&p_rb->tail, (t + to_read) & mask(p_rb), memory_order_release);
+    atomic_store_explicit(&p_rb->tail, wrap_index(p_rb, t, to_read),
+                          memory_order_release);
 
     return to_read;
 }
@@ -384,7 +392,7 @@ bool rbuff_get_read_block(rbuff_t *p_rb, uint8_t **pp_data, uint32_t *p_len)
     uint32_t t =
         (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
-    uint32_t avail = (h - t) & mask(p_rb);
+    uint32_t avail = used_space(p_rb, h, t);
     if (avail == 0U)
     {
         return false;
@@ -413,13 +421,15 @@ uint32_t rbuff_skip(rbuff_t *p_rb, uint32_t len)
     uint32_t t =
         (uint32_t)atomic_load_explicit(&p_rb->tail, memory_order_relaxed);
 
-    uint32_t avail = (h - t) & mask(p_rb);
+    uint32_t avail = used_space(p_rb, h, t);
     if (len > avail)
     {
         len = avail;
     }
 
-    atomic_store_explicit(&p_rb->tail, (t + len) & mask(p_rb),
+    atomic_store_explicit(&p_rb->tail, wrap_index(p_rb, t, len),
                           memory_order_release);
     return len;
 }
+
+/*** end of file ***/
