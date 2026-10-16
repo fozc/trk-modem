@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 2.0 |
-| Tarih | 2026-10-15 |
+| Dokuman surumu | 2.1 |
+| Tarih | 2026-10-16 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -20,7 +20,7 @@ Modbus RTU **slave** olarak yayinlar. Bir ust seviye cihaz (SCADA, RTU, PLC veya
 baska bir master) bu verileri **Read Holding Registers (FC03)** ile okur.
 
 - Veri okuma: `0x03` (Read Holding Registers)
-- Komut yazma: `0x06` (Write Single Register) - yalnizca modem-reset register'i
+- Komut yazma: `0x06` (Write Single Register) - modem-reset ve röle kontrol register'ları
 - Adresleme: **tum register adresleri sabittir** (derleme zamani haritasi);
   web'den veya NVRAM'den adres degistirilemez. Yapilandirilabilir olanlar
   yalnizca CihazID ve baud rate'dir (bkz. bolum 10).
@@ -265,6 +265,33 @@ Bu register'lar fider bloklarindan bagimsizdir ve adresleri **sabittir**.
 |---:|---:|---|---|---|
 | 50000 | 10000 | Aku uyarisi | Okuma (FC03) | Canli aku uyarisi (bkz. asagida) |
 | 50001 | 10001 | Modem reset | Yazma (FC06) | Deger = 1 yazilirsa cihaz yeniden baslar |
+| 50002 | 10002 | Röle 1 | Okuma (FC03), yazma (FC06) | 0 = OFF, 1 = ON |
+| 50003 | 10003 | Röle 2 | Okuma (FC03), yazma (FC06) | 0 = OFF, 1 = ON |
+
+### 6.1 Röle kontrolü ve durum okuma
+
+**Amaç:** Kart üzerindeki iki yerel röleyi kontrol etmek ve komut durumunu
+okumaktır. IEC104 kontrolü bu eklemenin kapsamı dışındadır.
+
+**Kurallar:**
+
+- Master (sorgulayan cihaz), ilgili register'a FC06 ile yalnız 0 veya 1
+  yazmalıdır. Diğer değerler exception (hata yanıtı) 0x03 ile reddedilmeli
+  ve iki rölenin mevcut durumu korunmalıdır.
+- Durum aynı adresten FC03 ile okunmalıdır. Yanıt mevcut röle sürücüsünün
+  komut durumunu göstermelidir; fiziksel kontak geri bildirimi olarak
+  kullanılmamalıdır. Henüz uygulanmamış bekleyen komut da bu değere dahildir.
+- İki rölenin durumu base-0 10002 adresinden 2 register okunarak birlikte
+  alınmalıdır. Shell üzerinden değiştirilen durum da aynı kaynaktan okunmalıdır.
+- Broadcast (tüm cihazlara gönderim) FC06 yazması mevcut kurala göre
+  uygulanmalı ve yanıt üretilmemelidir.
+
+Örnek: Röle 1 için base-0 10002 adresine FC06 ile 1 yazılır; aynı adrese
+FC03 ile yapılan tek register sorgusu 1 döndürür. 0 yazılması OFF komutudur.
+Röle durumu için yeni bir kalıcılık mekanizması eklenmemiştir; mevcut
+sürücü açılışta iki kanalı OFF başlatır.
+
+### 6.2 Akü uyarısı
 
 **Aku uyarisi (50000):** guc kartindan RF-SCP ile gelen guncel alarm
 maskesinin **aku ile ilgili** bolumudur. Register 16 bit genisligindedir ve
@@ -674,6 +701,7 @@ satiri almistir.
 | 1.9 | 2026-10-06 | SCP enerji/yük göstergeleri; yük alanı adları; 49500–49520 salt okunur kalite bloğu ve adres çakışması koruması. |
 
 | 2.0 | 2026-10-15 | Register haritasi tamamen sabitlesti (modbus_map.h): adresler NVRAM/web uzerinden degistirilemez. Fider bloklari yeniden tasarlandi: 4 fider x 1000 register (40000-43999); IEC104 bilgi aynasi (anlik akim, enerji/yuk/rf/trip_failed + alan bazli zaman damgalari), SCADA'ya yonelik RF canli olcumleri ve fider/faz kalite register'lari tek blokta. Gecici/kalici ariza kayit listeleri (faz basina 15 kayit) Modbus tarafina eklendi. 49500 RF kalite blogu kaldirildi (kalite fider bloklarina gomuldu). Aku uyarisi/modem reset adresleri sabitlendi (50000/50001). Yapilandirilabilir ayarlar CihazID + baud rate e indirildi. |
+| 2.1 | 2026-10-16 | Yerel röle 1/2 için 50002/50003 adresleri eklendi. Aynı adreslerde FC03 komut durumu okuma ve FC06 0/1 yazma desteklenir; ayrıntılar §6.1. |
 | 1.10 | 2026-10-06 | Anlık arıza alanları kaldırıldı; offset 0–5/12–17 ayrıldı. Durum polariteleri SCP ile eşitlendi. |
 
 ## Web arayüzünde register adresleri

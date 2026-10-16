@@ -9,6 +9,31 @@ doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
 
+## 16.10.2026 Modbus röle kontrolü ve durum okuma
+
+**Amaç:** Yerel röle 1/2 için 50002/50003 adreslerinde FC06 yazma ve
+FC03 komut durumu okuma davranışını doğrulamaktır. Adres sözleşmesi
+[Modbus haritası §6.1](../Application/libmodbusrtu/MODBUS_REGISTER_MAP.md#61-röle-kontrolü-ve-durum-okuma)
+içindedir. IEC104 kontrolü bu değişikliğin kapsamı dışındadır.
+
+`application/test_modbus_reset_scenario.c` gerçek RTU byte alımından
+üretim callback'lerine ve yanıt paketine kadar çalışır; röle sürücüsü
+sınırında test double (test karşılığı) kullanılır. Beş yeni test; iki
+kanalın ON/OFF ve toplu durum okumasını, başka bir kaynaktan değişen
+komut durumunu, geçersiz değerlerde iki kanalın korunmasını, broadcast
+ve tanımsız adres davranışını sınar. Yanıt CRC ve FC06 echo doğrulanır.
+Mevcut reset testleri korunur. Röle sürücüsünün kendi peak/hold testleri
+de aynı koşuya dahildir.
+
+Modbus/röle alt kümesi 86/86 geçti; failure/ignored yoktur. Kanıt:
+`test/build/modbus-relay-unit-2026-10-16.log`. Web metadata JSON ve
+kaynak/gömülü sayfa TR/EN adres tablosu testleri
+`make -C test/integration/web_navigation run` ile geçti. Release derlemesi
+ve paket self-check geçti; kanıt:
+`test/build/modbus-relay-release-2026-10-16.log`.
+Bu sonuçlar host ve derleme kanıtıdır; cihaza yükleme veya fiziksel kontak
+ölçümü yapılmamıştır.
+
 ## 13.10.2026 v0.15 dizi eşleme ve kapanış regresyonları
 
 `rf/test_rf_faults.c` aynı fiderde kesişen 142 dizi aralıklarını,

@@ -103,7 +103,7 @@ async function checkPage(html, label) {
             Power:[['battery_ma',49214,1,'INT16','mA']],
             Bms:[['cell_voltage_mv',49345,16,'UINT16','mV']],
             Gsm:[['gsm_state',49400,1,'UINT16','']],
-            Control:[['battery_warning',50000,1,'UINT16',''],['modem_reset',50001,1,'UINT16','1']]
+            Control:[['battery_warning',50000,1,'UINT16',''],['modem_reset',50001,1,'UINT16','1'],['relay1',50002,1,'UINT16','0/1'],['relay2',50003,1,'UINT16','0/1']]
         };
         const emittedMapPath=path.resolve(__dirname,'../../build/modbus-map-web/metadata.json');
         if(fs.existsSync(emittedMapPath)){
@@ -131,6 +131,10 @@ async function checkPage(html, label) {
         const controls=run("buildModbusMapTable(registerMap,'Control')");
         assert.ok(controls.includes('10001'));
         assert.ok(controls.includes('FC06 = 1'));
+        assert.ok(controls.includes('10002'));
+        assert.ok(controls.includes('10003'));
+        assert.ok(controls.includes('0=OFF, 1=ON'));
+        assert.ok(controls.includes('FC03 /'));
         assert.ok(!controls.includes('<button'));
         const bmsTable=run("buildModbusMapTable(registerMap,'Bms')");
         assert.ok(bmsTable.includes('49345–49360'));

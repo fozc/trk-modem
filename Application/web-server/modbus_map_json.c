@@ -338,9 +338,13 @@ static void emit_layout(map_writer_t *writer)
     append(writer, text);
     (void)xsnprintf(text, sizeof(text),
         ",\"Control\":[[\"battery_warning\",%u,1,\"UINT16\",\"\"],"
-        "[\"modem_reset\",%u,1,\"UINT16\",\"1\"]]",
+        "[\"modem_reset\",%u,1,\"UINT16\",\"1\"],"
+        "[\"relay1\",%u,1,\"UINT16\",\"0/1\"],"
+        "[\"relay2\",%u,1,\"UINT16\",\"0/1\"]]",
         (unsigned int)MODBUS_MAP_CTRL_AKU_UYARISI,
-        (unsigned int)MODBUS_MAP_CTRL_MODEM_RESET);
+        (unsigned int)MODBUS_MAP_CTRL_MODEM_RESET,
+        (unsigned int)MODBUS_MAP_CTRL_RELAY1,
+        (unsigned int)MODBUS_MAP_CTRL_RELAY2);
     append(writer, text);
 }
 

@@ -46,6 +46,10 @@ void test_metadata_uses_production_addresses_and_field_widths(void)
         "[\"gsm_state\",49400,1,\"UINT16\",\"\"]"));
     TEST_ASSERT_NOT_NULL(strstr(buffer,
         "[\"modem_reset\",50001,1,\"UINT16\",\"1\"]"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer,
+        "[\"relay1\",50002,1,\"UINT16\",\"0/1\"]"));
+    TEST_ASSERT_NOT_NULL(strstr(buffer,
+        "[\"relay2\",50003,1,\"UINT16\",\"0/1\"]"));
     TEST_ASSERT_EQUAL_CHAR('}', buffer[length - 1U]);
 }
 

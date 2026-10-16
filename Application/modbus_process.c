@@ -19,6 +19,7 @@
 #include "rf_hil_transport.h"
 #include "bsp.h"
 #include "reboot.h"
+#include "relay.h"
 #include "rtc.h"
 #include "nvram.h"
 #include "uart.h"
@@ -227,6 +228,15 @@ static modbus_reg_status_t fc03_read_callback(uint16_t reg_addr, uint16_t *p_val
     }
 
     /* Fixed control registers. */
+    if ((MODBUS_MAP_CTRL_RELAY1 == reg_addr) ||
+        (MODBUS_MAP_CTRL_RELAY2 == reg_addr))
+    {
+        const relay_channel_t channel =
+            (MODBUS_MAP_CTRL_RELAY1 == reg_addr) ? RELAY_CH_1 : RELAY_CH_2;
+        *p_value = relay_is_on(channel) ? 1U : 0U;
+        return MODBUS_REG_OK;
+    }
+
     if (reg_addr == MODBUS_MAP_CTRL_AKU_UYARISI) {
         *p_value = aku_uyarisi_value();
         return MODBUS_REG_OK;
@@ -283,8 +293,20 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
 {
     CSLOG("FC06 Request - Addr: %d, Value: 0x%04X (%d)\r\n", reg_addr, value, value);
 
-    /* Only the fixed modem-reset command register is writable; every other
-     * address of the fixed map is read-only. */
+    if ((MODBUS_MAP_CTRL_RELAY1 == reg_addr) ||
+        (MODBUS_MAP_CTRL_RELAY2 == reg_addr))
+    {
+        if (1U < value)
+        {
+            return MODBUS_REG_ERR_VALUE;
+        }
+        const relay_channel_t channel =
+            (MODBUS_MAP_CTRL_RELAY1 == reg_addr) ? RELAY_CH_1 : RELAY_CH_2;
+        relay_set(channel, 1U == value);
+        return MODBUS_REG_OK;
+    }
+
+    /* All other writes must target the existing modem-reset command. */
     if (reg_addr != MODBUS_MAP_CTRL_MODEM_RESET) {
         CSLOG_WARN("MODBUS FC06 hata: salt-okunur adres %u (exception 0x02)\r\n",
                    reg_addr);
@@ -464,3 +486,5 @@ void modbus_process_isr_rx_timeout(void)
 	process_poll(&modbus_process);
 }
 #endif
+
+/*** end of file ***/

@@ -14,6 +14,7 @@
 #include "mock_rf_inventory.h"
 #include "mock_bsp.h"
 #include "mock_modbus_config.h"
+#include "mock_relay.h"
 #include "mock_modbus_system_stats.h"
 #include "mock_modbus_power_stats.h"
 #include "mock_modbus_bms_stats.h"
