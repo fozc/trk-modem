@@ -8,19 +8,47 @@
  * Verify SCP power quality, alarm correction and session deduplication.
  */
 #include "unity.h"
+#include "console_log_enabled.h"
+#define CSLOG_MODULE LOG_MOD_RF
 #include "power_board_scp.h"
 #include "mock_power_board_control.h"
 #include "mock_elog.h"
 #include "mock_shell.h"
 #include "mock_rtc.h"
+#include "mock_console_logger.h"
 #include "../fixtures/rf_scp_vectors.h"
 #include <string.h>
 
 TEST_SOURCE_FILE("rf_scp_codec.c")
 TEST_SOURCE_FILE("rf_scp.c")
+TEST_SOURCE_FILE("xprintf.c")
+
+/* Compile production with the real CSLOG macros enabled. */
+#include "power_board_scp.c"
 
 static size_t log_calls;
 static uint8_t log_info[16];
+static log_lvl_t console_level;
+static char console_output[4096];
+static size_t console_length;
+
+static void capture_console(int character)
+{
+    if ((sizeof(console_output) - 1U) > console_length)
+    {
+        console_output[console_length] = (char)character;
+        console_length++;
+        console_output[console_length] = '\0';
+    }
+}
+
+static bool console_level_enabled(log_mod_t module, log_lvl_t min_level,
+                                  int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_INT(LOG_MOD_RF, module);
+    return console_level >= min_level;
+}
 uint32_t HAL_GetTick(void);
 uint32_t HAL_GetTick(void)
 {
@@ -80,6 +108,12 @@ static rf_scp_message_t alarm(uint8_t seq, uint8_t code,
 
 void setUp(void)
 {
+    console_level = LOG_LVL_NORMAL;
+    console_length = 0U;
+    console_output[0] = '\0';
+    xdev_out(capture_console);
+    console_logger_level_enabled_StubWithCallback(console_level_enabled);
+    rtc_print_now_Ignore();
     power_board_control_init_Ignore();
     shell_register_command_IgnoreAndReturn(0);
     power_board_scp_init();
@@ -89,6 +123,7 @@ void setUp(void)
 
 void tearDown(void)
 {
+    xdev_out(NULL);
 }
 
 void test_summary_raw_capture_keeps_last_packet_with_reception_time(void)
@@ -367,6 +402,121 @@ void test_r2_unknown_soh_is_retained_with_invalid_soh_quality(void)
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, out.summary.soh_percent);
     TEST_ASSERT_EQUAL_HEX16(0U, out.valid_fields & POWER_VALID_SOH);
     TEST_ASSERT_NOT_EQUAL(0U, out.valid_fields & POWER_VALID_SUMMARY);
+}
+
+void test_console_summary_announces_only_changed_alarm_bits(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.active_alarms = 16U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[PB] alarm basladi: AKU_DUSUK (kod=4 maske=0x00000010)"));
+    const size_t previous_length = console_length;
+    message.body.power.seq++;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+
+    console_length = 0U;
+    console_output[0] = '\0';
+    message.body.power.active_alarms = 1U << 18U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 2U));
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[PB] alarm kapandi: AKU_DUSUK (kod=4 maske=0x00040000)"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[PB] alarm basladi: SOC_DUSUK (kod=18 maske=0x00040000)"));
+}
+
+void test_console_alarm_and_summary_share_last_announced_mask(void)
+{
+    rf_scp_message_t message = alarm(1U, 4U, 1U, 0U);
+    message.body.alarm.active = 16U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 0U));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "alarm basladi: AKU_DUSUK"));
+    const size_t previous_length = console_length;
+    message = summary();
+    message.body.power.active_alarms = 16U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    message = alarm(2U, 4U, 1U, 0U);
+    message.body.alarm.active = 16U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 2U));
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    message = alarm(3U, 4U, 0U, 0U);
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 3U));
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[PB] alarm kapandi: AKU_DUSUK (kod=4 maske=0x00000000)"));
+    const size_t cleared_length = console_length;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 4U));
+    message = summary();
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 5U));
+    TEST_ASSERT_EQUAL_size_t(cleared_length, console_length);
+}
+
+void test_console_reset_announces_all_closures_once(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.active_alarms = (1U << 4U) | (1U << 18U);
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    console_length = 0U;
+    console_output[0] = '\0';
+    message = alarm(1U, 0xFFU, 3U, 0U);
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 1U));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "alarm kapandi: AKU_DUSUK"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "alarm kapandi: SOC_DUSUK"));
+    const size_t previous_length = console_length;
+    message.body.alarm.seq++;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 2U));
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+}
+
+void test_console_mh_restart_does_not_repeat_unchanged_alarms(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.active_alarms = 16U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    const size_t previous_length = console_length;
+    power_board_scp_hub_restarted();
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    power_board_scp_hub_restarted();
+    message.body.power.active_alarms = 0U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 2U));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "alarm kapandi: AKU_DUSUK"));
+}
+
+void test_console_off_reconciles_with_last_printed_state_when_enabled(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.active_alarms = 16U;
+    console_level = LOG_LVL_OFF;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    TEST_ASSERT_EQUAL_STRING("", console_output);
+    TEST_ASSERT_EQUAL_UINT32(16U, read_snapshot(0U).active_alarms);
+    console_level = LOG_LVL_NORMAL;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "alarm basladi: AKU_DUSUK"));
+    const size_t previous_length = console_length;
+    console_level = LOG_LVL_OFF;
+    message.body.power.active_alarms = 0U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 2U));
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    console_level = LOG_LVL_NORMAL;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 3U));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "alarm kapandi: AKU_DUSUK"));
+}
+
+void test_console_invalid_or_duplicate_alarm_preserves_announced_state(void)
+{
+    rf_scp_message_t message = alarm(1U, 4U, 1U, 0U);
+    message.body.alarm.active = 16U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 0U));
+    const size_t previous_length = console_length;
+    message.body.alarm.active = 0U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 1U));
+    message.body.alarm.seq++;
+    message.body.alarm.state = 4U;
+    TEST_ASSERT_FALSE(power_board_handle_alarm(&message, 2U));
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    TEST_ASSERT_EQUAL_UINT32(16U, read_snapshot(2U).active_alarms);
 }
 
 /*** end of file ***/
