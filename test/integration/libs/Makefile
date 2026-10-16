@@ -9,6 +9,8 @@
 include ../../make/common.mk
 
 CC      := gcc
+PYTHON  ?= python
+ARM_CC  ?=
 CFLAGS  := -std=c11 -Wall -Wextra -Werror -Wshadow -O1 -g
 ASAN_CFLAGS := $(CFLAGS) -fsanitize=address -fno-omit-frame-pointer
 BUILD   := build
@@ -31,6 +33,7 @@ $(BUILD)/test_spi_flash_log: test_spi_flash_log.c $(LIB_DIR)/spi_flash_log.c | $
 
 run: all
 	$(BUILD)/test_spi_flash_log
+	$(PYTHON) run_ring_buffer_checks.py --cc "$(CC)" $(if $(ARM_CC),--arm-cc "$(ARM_CC)")
 
 $(ASAN_BUILD):
 	@$(MKDIR_P) $(ASAN_BUILD)
