@@ -796,13 +796,41 @@ async function checkPage(html, label) {
     assert.ok(!rfHtml.includes('rf-apply-group'));
     assert.ok(!rfHtml.includes('applyRfConfig()'));
     const progress = run("buildRfGroupStatus({State:'failed',BatchState:'stopped',Targets:7,Applied:1,BatchLine:2,GroupStarted:true})");
-    assert.ok(progress.includes('Uygulama durdu'));
+    assert.ok(progress.includes('Ayar gönderimi durdu'));
     assert.ok(progress.includes('Satır 1: Uygulandı'));
-    assert.ok(progress.includes('Satır 2: Uygulama başarısız'));
+    assert.ok(progress.includes('Satır 2: Ayarlar cihazlarda uygulanamadı'));
     assert.ok(progress.includes('Satır 3: Uygulanmadı'));
+    for (const language of ['tr', 'en']) {
+        run(`LNG='${language}'`);
+        const failedReport = {State:'failed',BatchState:'stopped',Targets:1,
+            BatchLine:1,Line:1,Feeder:3,GroupStarted:true,HasReport:true,
+            MHState:4,Reason:1,MemberBitmap:4,InventoryState:'ready'};
+        context.failedReport = failedReport;
+        const errorPanel = run('buildRfGroupStatus(failedReport)');
+        const mainResult = errorPanel.split('<details>')[0];
+        assert.ok(mainResult.includes(language==='tr'?'fider 3':'feeder 3'));
+        assert.ok(mainResult.includes(language==='tr'?'canlı veri':'live data'));
+        assert.ok(mainResult.includes(language==='tr'?'RF İzleme':'RF Monitoring'));
+        assert.ok(mainResult.includes(language==='tr'?'faz cihazını belirtmiyor':'does not identify'));
+        assert.ok(!mainResult.includes('L3'), 'bitmap must not invent a phase identity');
+        for (const reason of [2,3,4,5,6,7,8,9,10,99]) {
+            failedReport.Reason = reason;
+            const result = run('buildRfGroupStatus(failedReport)').split('<details>')[0];
+            assert.ok(result.includes(run("t('rfNextAction')")));
+            assert.ok(!/rfReason_|rfAction/.test(result));
+            if (reason===99) assert.ok(result.includes('99'));
+        }
+        failedReport.State='uncertain';
+        const uncertain = run('buildRfGroupStatus(failedReport)');
+        assert.ok(uncertain.includes(language==='tr'?'uygulanmış olabilir':'may have been applied'));
+        failedReport.GroupStarted=false;
+        assert.ok(!run('buildRfGroupStatus(failedReport)').includes('role="status"'),
+            'a stale group report must not explain a group that never started');
+    }
+    run("LNG='tr'");
     const stopped = run("buildRfGroupStatus({State:'idle',BatchState:'stopped',Targets:1,BatchLine:1,GroupStarted:false,StopReason:'start_rejected'})");
     assert.ok(stopped.includes('Faz cihazı atamalarını'));
-    const partial = run("buildRfGroupStatus({State:'failed',HasReport:true,Reason:6})");
+    const partial = run("buildRfGroupStatus({State:'failed',HasReport:true,MHState:4,Reason:6})");
     assert.ok(partial.includes('Kısmi uygulama'));
     assert.ok(partial.includes('otomatik tekrar yapılmaz'));
     assert.ok(run("renderBoard({BatteryCapacityUnknown:1})").includes('Akü kapasitesi bilinmiyor'));
