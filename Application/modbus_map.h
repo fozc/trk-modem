@@ -1,9 +1,11 @@
-/**
- * @file modbus_map.h
- * @brief Fixed Modbus RTU register map - single source of all block addresses
- * @author Fatih Ozcan
- *         fatihozcan@gmail.com
- * @date 2026-10-15
+/*
+ * modbus_map.h
+ *
+ *  Created on: Oct 15, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Fixed Modbus RTU register map - single source of all block addresses.
  *
  * The product register map is compile-time fixed. Every block base address,
  * block length and feeder field offset of the Modbus slave is defined here
@@ -26,6 +28,7 @@
  *   49400 .. 49408     GSM status (read-only)
  *   50000              battery-warning control register (read-only)
  *   50001              modem-reset command register (FC06, value 1)
+ *   50002 .. 50003     relay commanded states (FC03/FC06, values 0/1)
  *
  * See MODBUS_REGISTER_MAP.md for the customer-facing description.
  */
@@ -60,6 +63,8 @@
 
 #define MODBUS_MAP_CTRL_AKU_UYARISI     50000U
 #define MODBUS_MAP_CTRL_MODEM_RESET     50001U
+#define MODBUS_MAP_CTRL_RELAY1          50002U
+#define MODBUS_MAP_CTRL_RELAY2          50003U
 
 /* Logical Modbus address of a layout member. Constant expression, usable as
  * a switch case label; for an array member it yields the address of the
@@ -98,6 +103,10 @@ _Static_assert(MODBUS_MAP_GSM_ADDR_LAST < MODBUS_MAP_CTRL_AKU_UYARISI,
                "modbus map: GSM status overlaps control registers");
 _Static_assert(MODBUS_MAP_CTRL_MODEM_RESET > MODBUS_MAP_CTRL_AKU_UYARISI,
                "modbus map: control registers must stay ordered");
+_Static_assert(MODBUS_MAP_CTRL_RELAY1 > MODBUS_MAP_CTRL_MODEM_RESET,
+               "modbus map: relay 1 overlaps modem reset");
+_Static_assert(MODBUS_MAP_CTRL_RELAY2 > MODBUS_MAP_CTRL_RELAY1,
+               "modbus map: relay registers must stay ordered");
 
 /* ---- Feeder block quality bits ------------------------------------------ */
 

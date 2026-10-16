@@ -48,5 +48,9 @@ for group, base, count in [("Phase", 0, 24), ("Record", 0, 8),
         assert not occupied.intersection(registers), (group, name)
         occupied.update(registers)
     assert occupied == set(range(base, base + count)), group
+assert metadata["Control"][-2:] == [
+    ["relay1", 50002, 1, "UINT16", "0/1"],
+    ["relay2", 50003, 1, "UINT16", "0/1"],
+]
 (BUILD / "metadata.json").write_bytes(raw)
 print("PASS: device metadata JSON, all field spans, no overlap, %d bytes" % len(raw))
