@@ -7,6 +7,8 @@
 
 #include "html_resources.h"
 
+#define FW_UPDATE_HTML_DATA_SIZE 9116U
+
 /**
  * @brief Get fw update page HTML resource
  * @return Pointer to fw_update HTML resource structure

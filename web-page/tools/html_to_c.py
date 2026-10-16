@@ -166,6 +166,7 @@ def write_c_array(html_content, output_name, output_dir, source_html_file, compr
         f.write(f'#ifndef {guard_name}\n')
         f.write(f'#define {guard_name}\n\n')
         f.write('#include "html_resources.h"\n\n')
+        f.write(f'#define {array_name.upper()}_DATA_SIZE {data_length}U\n\n')
         
         f.write('/**\n')
         f.write(f' * @brief Get {output_name.replace("_", " ")} page HTML resource\n')

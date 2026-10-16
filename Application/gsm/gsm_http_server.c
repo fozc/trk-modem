@@ -12,25 +12,26 @@
 #include "web_server.h"
 #include "index_html.h"
 #include "fw_update_html.h"
-#include "ring_buff.h"
 #include "gsm_log.h"
+#include "ring_buff.h"
+#include <string.h>
  
 #define GSM_HTTP_SERVER_RX_BUFFER_SIZE 2048
-/* Tam yanit (HTTP basligi + govde) bu ring tampona sigmak zorunda:
- * http_send_data dongusu tampon dolunca kesilir, govde budanir ve
- * tarayici Content-Length kadar bayti bekleyip takilir. Index sayfasi
- * (gzip ~20.8 KB + ~160 B baslik = ~21 KB) 16 KB tasmisti.
- *
- * DIKKAT: rbuff_init yalniz IKTININ KUVVETI boyut kabul eder (sarmalama
- * maski head & (size-1)). 21 KB uzeri ilk gecerli boyut 32 KB'dir;
- * 20/24 KB gibi degerler rbuff_init'i dusurur (init failed logu).
- * Sayfa buyurse boot'taki bekci uyir. */
-#define GSM_HTTP_SERVER_TX_BUFFER_SIZE 1024*32
+/* HTTP writes and drains run in the cooperative GSM process. Reuse the
+ * common SPSC queue; no additional IRQ masking or atomic state is needed.
+ * One byte is reserved by the ring's empty/full representation. */
+#define GSM_HTTP_SERVER_TX_BUFFER_SIZE (48U * 1024U)
+#define GSM_HTTP_SERVER_HEADER_RESERVE 512U
 
+_Static_assert(INDEX_HTML_DATA_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
+               GSM_HTTP_SERVER_TX_BUFFER_SIZE - 1U,
+               "index.html exceeds the HTTP response queue");
+_Static_assert(FW_UPDATE_HTML_DATA_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
+               GSM_HTTP_SERVER_TX_BUFFER_SIZE - 1U,
+               "fw_update.html exceeds the HTTP response queue");
 
 static uint8_t http_tx_buff[GSM_HTTP_SERVER_TX_BUFFER_SIZE] = {0};
 static rbuff_t tx_rb_ctx = {0};
-
 
 /* RFWU wire magic: 0x52 0x46 0x57 0x55 ("RFWU" LE uint32 = 0x55574652) */
 #define GSM_HTTP_SERVER_RFWU_MAGIC_B0 0x52U
@@ -111,9 +112,8 @@ static int http_server_send(const void *data, uint32_t len)
 		return -1;
 	}
 
-	if(data && rbuff_available_for_write(&tx_rb_ctx) >= len)
+	if (0U == rbuff_write_buff(&tx_rb_ctx, data, len))
 	{
-		rbuff_write_buff(&tx_rb_ctx, (uint8_t *)data, len);
 		g_http_server.tx_data_ready = true;
 		return (int)len;
 	}
@@ -151,30 +151,16 @@ void gsm_http_server_init(void)
 	  wio.send = http_server_send; //(int (*)(const uint8_t*, int))http_server_send;
 	  web_server_init(&wio);
 
-	  /* Gomulu sayfalarin tam yaniti (govde + ~256 B HTTP basligi) TX ring
-	   * tamponuna sigmalidir; sigmazsa yanit budanir ve tarayici takilir.
-	   * Derleme sonrasi boyut denetimi - buyume buysa tamponu da buyut. */
-	  if ((get_index_html()->length + 256U) > GSM_HTTP_SERVER_TX_BUFFER_SIZE)
-	  {
-		  CSLOG_ERR("[GSM HTTP SERVER] index.html (%u B) TX tamponuna sigmiyor (%u B)!\r\n",
-		            (unsigned)get_index_html()->length,
-		            (unsigned)GSM_HTTP_SERVER_TX_BUFFER_SIZE);
-	  }
-	  if ((get_fw_update_html()->length + 256U) > GSM_HTTP_SERVER_TX_BUFFER_SIZE)
-	  {
-		  CSLOG_ERR("[GSM HTTP SERVER] fw_update.html (%u B) TX tamponuna sigmiyor (%u B)!\r\n",
-		            (unsigned)get_fw_update_html()->length,
-		            (unsigned)GSM_HTTP_SERVER_TX_BUFFER_SIZE);
-	  }
-
-	  if(!rbuff_init(&tx_rb_ctx, http_tx_buff, GSM_HTTP_SERVER_TX_BUFFER_SIZE)){
-		  CSLOG_ERR("[GSM HTTP SERVER] TX ring buffer init failed - HTTP sends will be rejected!\r\n");
-	  }
-	  else
-	  {
-		  CSLOG("[GSM HTTP SERVER] TX ring buffer ready: %d bytes\r\n",
-		        (int)GSM_HTTP_SERVER_TX_BUFFER_SIZE);
-	  }
+    if (!rbuff_init(&tx_rb_ctx, http_tx_buff,
+                    GSM_HTTP_SERVER_TX_BUFFER_SIZE))
+    {
+        CSLOG_ERR("[GSM HTTP SERVER] TX ring initialization failed\r\n");
+    }
+    else
+    {
+        CSLOG("[GSM HTTP SERVER] TX ring ready: %u usable bytes\r\n",
+              (unsigned int)(GSM_HTTP_SERVER_TX_BUFFER_SIZE - 1U));
+    }
 }
 
 
@@ -202,17 +188,18 @@ void gsm_http_server_send_response(void)
 		return;
 	}
 
-    if(rbuff_available(&tx_rb_ctx) > 0)
+    if(0U < rbuff_available(&tx_rb_ctx))
     {
 		static uint8_t temp_buffer[1500];
-        uint32_t bytes_to_send = rbuff_read_buff(&tx_rb_ctx, temp_buffer, sizeof(temp_buffer));
+        uint32_t bytes_to_send = rbuff_read_buff(&tx_rb_ctx, temp_buffer,
+                                  (uint32_t)sizeof(temp_buffer));
         
         if(bytes_to_send > 0) {
             gsm_send_to_socket(temp_buffer, (uint16_t)bytes_to_send, GSM_TX_DIR_LISTENER_SOCKET, false, false);
         }
     }
 
-    if(rbuff_available(&tx_rb_ctx) == 0)
+    if(0U == rbuff_available(&tx_rb_ctx))
     {
         if (g_http_server.close_after_response)
         {
@@ -300,3 +287,5 @@ void gsm_http_server_process(void)
 			break;
 	}
 }
+
+/*** end of file ***/

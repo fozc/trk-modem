@@ -1,7 +1,7 @@
 """Exercise complete production HTTP/transport modules with modem doubles.
 
 Only platform includes are replaced. Request parsing, routing, response
-formatting, the TX ring and HTTP transport state machine remain production code.
+formatting, the TX queue and HTTP transport state machine remain production code.
 No ports are opened; modem TX completion is explicitly controlled by the test.
 """
 
@@ -95,6 +95,18 @@ for name, parameters in re.findall(
     stubs.append(f"void {name}({parameters}) {{ {' '.join(ignored)} "
                  'http_send_json("{}", 2); }')
 
+resources = []
+for name in ["index", "fw_update"]:
+    embedded = (root / f"Application/web-server/{name}_html.c").read_text(encoding="utf-8")
+    payload = bytes(int(value, 16) for value in re.findall(
+        r"0x([0-9a-fA-F]{2})", embedded.split("};")[0]))
+    resources.append(f"static const uint8_t real_{name}_data[] = {{" +
+                     ",".join(str(value) for value in payload) + "};\n" +
+                     f"static const html_resource_t real_{name} = " +
+                     "{real_" + name + "_data, sizeof(real_" + name +
+                     "_data), HTML_COMPRESS_GZIP, \"text/html\"};\n")
+(output / "real_resources.h").write_text("".join(resources), encoding="ascii")
+
 test = r'''
 /*
  * HTTP transport regression harness.
@@ -107,14 +119,17 @@ static uint32_t tx_pending;
 static uint32_t close_count;
 static uint16_t pending_length;
 static uint8_t pending_data[1500];
-static char wire[8192];
+static char wire[65536];
 static size_t wire_length;
 static bool authenticated;
 static web_server_io_t transport;
 static char handler_buffer[4096];
+#include "real_resources.h"
 static const uint8_t page_data[] = {1U, 2U, 3U};
 static const html_resource_t page =
     {page_data, sizeof(page_data), HTML_COMPRESS_GZIP, "text/html"};
+
+static const html_resource_t *selected_page = &page;
 
 uint32_t gsm_tx_is_ready(void) { return tx_pending; }
 uint32_t gsm_get_listener_socket_state(void) { return socket_state; }
@@ -177,7 +192,7 @@ void handle_post_login(const char *body)
     (void)body;
     http_send_json("{}", 2);
 }
-void handle_get_index(void) { http_send_html_resource(&page); }
+void handle_get_index(void) { http_send_html_resource(selected_page); }
 void reboot_system_delayed(uint32_t delay) { (void)delay; }
 const html_resource_t *get_index_html(void) { return &page; }
 const html_resource_t *get_fw_update_html(void) { return &page; }
@@ -227,7 +242,7 @@ static void unauthorized_request(void)
 }
 static void finish_response(void)
 {
-    for (size_t step = 0U; 8U > step; step++)
+    for (size_t step = 0U; 128U > step; step++)
     {
         if (0U != tx_pending) complete_tx();
         gsm_http_server_process();
@@ -347,6 +362,78 @@ int main(void)
     assert(0 == memcmp(wire + wire_length - sizeof(page_data),
                        page_data, sizeof(page_data)));
     puts("PASS: real GET router/transport emits 304 without body and clears stale request context");
+
+    const html_resource_t *resources[] = {&real_index, &real_fw_update};
+    for (size_t index = 0U; 2U > index; index++)
+    {
+        reset_test();
+        selected_page = resources[index];
+        receive_request("GET / HTTP/1.1\r\n\r\n");
+        finish_response();
+        const char *body = strstr(wire, "\r\n\r\n");
+        assert(NULL != body);
+        body += 4;
+        const size_t received = wire_length - (size_t)(body - wire);
+        if (selected_page->length != received)
+        {
+            fprintf(stderr, "HTML truncated: expected %lu, received %lu\n",
+                    (unsigned long)selected_page->length,
+                    (unsigned long)received);
+        }
+        assert(selected_page->length == received);
+        assert(0 == memcmp(body, selected_page->data, received));
+        assert(0U == close_count);
+    }
+    puts("PASS: actual embedded index and firmware pages reach the modem byte-for-byte");
+    selected_page = &page;
+
+    reset_test();
+    static uint8_t full_queue[48U * 1024U - 1U];
+    memset(full_queue, 'q', sizeof(full_queue));
+    assert((int)sizeof(full_queue) ==
+           transport.send(full_queue, sizeof(full_queue)));
+    assert(-1 == transport.send("x", 1U));
+    assert(-1 == transport.send(NULL, 1U));
+    finish_response();
+    assert(sizeof(full_queue) == wire_length);
+    assert(0 == memcmp(wire, full_queue, sizeof(full_queue)));
+    puts("PASS: 48 KiB ring capacity (one reserved byte); rejected writes preserve queued data");
+
+    reset_test();
+    static uint8_t first_block[40000];
+    static uint8_t second_block[12000];
+    for (size_t index = 0U; sizeof(first_block) > index; index++)
+    {
+        first_block[index] = (uint8_t)(index % 251U);
+    }
+    for (size_t index = 0U; sizeof(second_block) > index; index++)
+    {
+        second_block[index] = (uint8_t)(index % 239U);
+    }
+    assert((int)sizeof(first_block) ==
+           transport.send(first_block, sizeof(first_block)));
+    while (20000U > wire_length)
+    {
+        gsm_http_server_process();
+        if (0U != tx_pending) complete_tx();
+    }
+    assert((int)sizeof(second_block) ==
+           transport.send(second_block, sizeof(second_block)));
+    finish_response();
+    assert(sizeof(first_block) + sizeof(second_block) == wire_length);
+    assert(0 == memcmp(wire, first_block, sizeof(first_block)));
+    assert(0 == memcmp(wire + sizeof(first_block), second_block,
+                       sizeof(second_block)));
+    puts("PASS: queue wraps across 48 KiB while earlier data is still pending");
+
+    reset_test();
+    assert((int)sizeof(first_block) ==
+           transport.send(first_block, sizeof(first_block)));
+    gsm_http_server_reset();
+    assert(3 == transport.send("new", 3U));
+    finish_response();
+    assert(3U == wire_length && 0 == memcmp(wire, "new", 3U));
+    puts("PASS: reset discards the old response before the next client");
 
     return 0;
 }
