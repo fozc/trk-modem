@@ -78,6 +78,9 @@ process.stdout.write(vm.runInNewContext(s+';JSON.stringify(result)'));
             data = bytes(int(x, 16) for x in re.findall(
                 rb"0x([0-9A-Fa-f]{2})", saved))
             self.assertIn(b"function hello", gzip.decompress(data))
+            header = (folder / "fixture_html.h").read_text(encoding="utf-8")
+            self.assertIn(
+                f"#define FIXTURE_HTML_DATA_SIZE {len(data)}U", header)
             source.write_text("<script>const = broken;</script>",
                               encoding="utf-8")
             failed = subprocess.run(command, capture_output=True, check=False)

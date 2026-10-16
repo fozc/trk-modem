@@ -1563,6 +1563,28 @@ kabulde başarı mesajı beklenir. Bu host kontrolleri cihazın fiziksel olarak
 yeniden başladığını kanıtlamaz. Web paketi, oturum/taşıma testleri ve son
 imzalı Release self-check geçti; cihaz yüklemesi yapılmadı.
 
+## Web ilk açılışında eksik HTML regresyonu — 16.10.2026
+
+**Amaç:** Gömülü HTML büyüdüğünde HTTP yanıtının kesilmesini önlemek.
+
+`make -C test/integration/web_auth run`, gerçek HTTP router, yanıt üreticisi
+ve GSM HTTP gönderim kodunu çalıştırır. Güncel gömülü index ve firmware
+sayfalarının modem sınırına kadar her baytı karşılaştırılır. Önceki 32 KiB
+tamponla index için beklenen 38.151 bayt yerine 31.744 bayt gözlenmiştir.
+
+Kullanıcı kararıyla HTTP kuyruğu ortak `ring_buff` ile 48 KiB yapılmıştır.
+Kullanılabilir kapasite, bir bayt rezerv nedeniyle 49.151 bayttır. Testler
+bu kullanılabilir kapasitenin tamamını,
+kapasite aşımında mevcut verinin korunmasını, sarma sırasında doğru sırayı
+ve bağlantı sıfırlamada eski yanıtın temizlenmesini kapsar. Gömülü sayfa
+boyutları üretim sırasında header dosyalarına yazılır; sayfa ve 512 bayt
+başlık payı kuyruğa sığmazsa `_Static_assert` derlemeyi durdurur.
+`web_navigation` converter testi üretilen boyut sabitini de doğrular.
+
+**Sonuç ve sınır:** İki web integration paketi ve imzalı ARM Release
+self-check geçmiştir. Host testi fiziksel GSM aktarımını kanıtlamaz;
+bu düzeltme cihaza henüz yüklenmemiştir.
+
 ## Ortak ring buffer ve atomik destek kontrolleri — 16.10.2026
 
 **Amaç:** Her pozitif tampon boyutunda SPSC davranışını ve desteklenmeyen
