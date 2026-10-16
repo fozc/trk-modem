@@ -104,6 +104,7 @@ static void set_drain_reason(const char *reason)
     {
         drain_reason = reason;
         reason_started_ms = HAL_GetTick();
+        CSLOG_WARN("[RF-INV] kayit bekleme nedeni: %s\r\n", reason);
     }
 }
 
@@ -262,7 +263,8 @@ static void on_end_done(scp_cmd_result_t result, const scp_packet_t *rsp)
         {
             inventory_status = RF_INVENTORY_READY;
         }
-        CSLOG("[RF-INV] envanter yuklendi: %u cihaz gonderildi, %u atlandi\r\n",
+        CSLOG_WARN("[RF-INV] envanter yuklendi: %u cihaz gonderildi, "
+                   "%u atlandi\r\n",
               (unsigned)sent_count, (unsigned)skipped_count);
     }
     else
@@ -408,7 +410,7 @@ static void send_next(void)
                                  TIMEOUT_MS, RETRIES,
                                  on_end_done))
             {
-                CSLOG("[RF-INV] %u cihaz tarandi, END gonderiliyor\r\n",
+                CSLOG_WARN("[RF-INV] %u cihaz tarandi, END gonderiliyor\r\n",
                       (unsigned)(sent_count + skipped_count));
             }
             else
@@ -444,7 +446,7 @@ static void send_next(void)
     {
         inventory_zone = body[0];
         inventory_zone_set = true;
-        CSLOG("[RF-INV] satir=%u fider=%u faz=%u "
+        CSLOG_WARN("[RF-INV] satir=%u fider=%u faz=%u "
               "gonderiliyor (EUI=%02X..%02X)\r\n",
               (unsigned)(feeder_index + 1U), (unsigned)body[1],
               (unsigned)(phase_index + 1U),
@@ -503,7 +505,7 @@ static void begin_upload(void)
     inventory_zone_set = false;
     upload_timer_started = false;
 
-    CSLOG("[RF-INV] envanter push basliyor\r\n");
+    CSLOG_WARN("[RF-INV] envanter push basliyor\r\n");
     rf_inventory_continue();
 }
 

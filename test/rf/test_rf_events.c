@@ -9,6 +9,8 @@
  */
 
 #include "unity.h"
+#include "console_log_enabled.h"
+#define CSLOG_MODULE LOG_MOD_RF
 #include "rf_events.h"
 #include "mock_rf_comm.h"
 #include "mock_rf_inventory.h"
@@ -36,6 +38,34 @@ TEST_SOURCE_FILE("rf_faults.c")
 TEST_SOURCE_FILE("rf_alarm.c")
 TEST_SOURCE_FILE("xprintf.c")
 TEST_SOURCE_FILE("cp56time2a.c")
+
+#include "rf_events.c"
+
+static log_lvl_t console_level;
+static char console_output[4096];
+static size_t console_length;
+
+static void capture_console(int character)
+{
+    if ((sizeof(console_output) - 1U) > console_length)
+    {
+        console_output[console_length] = (char)character;
+        console_length++;
+        console_output[console_length] = '\0';
+    }
+}
+
+bool console_logger_level_enabled(log_mod_t module, log_lvl_t min_level);
+bool console_logger_level_enabled(log_mod_t module, log_lvl_t min_level)
+{
+    TEST_ASSERT_EQUAL_INT(LOG_MOD_RF, module);
+    return console_level >= min_level;
+}
+
+void rtc_print_now(void);
+void rtc_print_now(void)
+{
+}
 
 static uint32_t tick;
 static scp_packet_t request;
@@ -181,7 +211,7 @@ static bool save_raw(const uint8_t *data, size_t length, int call_count)
     return raw_success;
 }
 
-static bool save_fault(const fault_log_t *record, int call_count)
+static bool capture_fault(const fault_log_t *record, int call_count)
 {
     (void)call_count;
     TEST_ASSERT_EQUAL_UINT8(written_raw[13],
@@ -372,6 +402,10 @@ static void verify_head_then_expect_consume(uint16_t batch_tail)
 
 void setUp(void)
 {
+    console_level = LOG_LVL_NORMAL;
+    console_length = 0U;
+    console_output[0] = '\0';
+    xdev_out(capture_console);
     rf_init();
     rf_faults_init();
     rf_alarm_init();
@@ -420,7 +454,7 @@ void setUp(void)
     scp_is_free_StubWithCallback(is_transport_free);
     scp_send_request_StubWithCallback(send_request);
     rf_event_log_append_StubWithCallback(save_raw);
-    fault_log_append_StubWithCallback(save_fault);
+    fault_log_append_StubWithCallback(capture_fault);
     fault_log_sync_StubWithCallback(sync_fault);
     iec104_event_log_add_StubWithCallback(save_replay);
     iec104_replay_send_record_StubWithCallback(send_replay);
@@ -431,6 +465,7 @@ void setUp(void)
 
 void tearDown(void)
 {
+    xdev_out(NULL);
 }
 
 void test_capture_is_saved_in_both_logs_before_consume(void)
@@ -467,6 +502,10 @@ void test_capture_is_saved_in_both_logs_before_consume(void)
     packet = capture(RF_SCP_CMD_LOG_CONSUME_IF, SCP_TYPE_ACK);
     respond(&packet);
     rf_events_process(tick);
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF-LOG] HEAD:"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF-LOG] READ: 1 kayit"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF-LOG] STORE: 1/1"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF-LOG] CONSUME ACK:"));
 }
 
 void test_temporary_and_rf_requested_opening_keep_full_32_bit_duration(void)
@@ -2917,6 +2956,37 @@ void test_inflight_head_from_before_pending_zero_cannot_finalize_count(void)
     respond(&empty);
     TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &count));
     TEST_ASSERT_TRUE(count.is_final);
+}
+
+void test_normal_store_failure_reports_wait_before_success(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    respond(&packet);
+    raw_success = false;
+    rf_events_process(tick);
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[RF-LOG] STORE bekliyor: ham kayit saklanamadi"));
+    TEST_ASSERT_NULL(strstr(console_output, "[RF-LOG] STORE: 1/1"));
+    const size_t previous_length = console_length;
+    rf_events_process(tick + 1U);
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    raw_success = true;
+    tick += 60000U;
+    rf_events_process(tick);
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF-LOG] STORE: 1/1"));
+}
+
+void test_off_suppresses_event_flow_logs_without_stopping_storage(void)
+{
+    console_level = LOG_LVL_OFF;
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
+    TEST_ASSERT_EQUAL_UINT32(1U, fault_writes);
+    TEST_ASSERT_EQUAL_STRING("", console_output);
 }
 
 /*** end of file ***/
