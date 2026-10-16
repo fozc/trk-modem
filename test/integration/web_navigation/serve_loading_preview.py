@@ -16,6 +16,8 @@ import time
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--port", type=int, default=8769)
 parser.add_argument("--chunk-delay", type=float, default=0.5)
+parser.add_argument("--rf-preview", action="store_true",
+                    help="Serve a synthetic NOT_LIVE RF result (no device access)")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[3]
 
@@ -59,6 +61,31 @@ class PreviewHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if args.rf_preview and path in ("/config/rf", "/status/rf-group"):
+            if parse_qs(urlsplit(self.path).query).get("t") != [
+                    "0123456789abcdef0123456789abcdef"]:
+                self.send_error(401)
+                return
+            data = {"inUse": [True, False, False, False], "HatID": [3,0,0,0],
+                    "R_DEVICEID": ["0011223344556601"],
+                    "S_DEVICEID": ["0011223344556602"],
+                    "T_DEVICEID": ["0011223344556603"]} if path == "/config/rf" else {
+                        "State":"failed", "BatchState":"stopped", "Line":1,
+                        "Feeder":3, "BatchLine":1, "GroupId":17,
+                        "Targets":1, "Applied":0, "Skipped":0,
+                        "GroupStarted":True, "StopReason":"group_error",
+                        "InventoryState":"ready", "InventoryPending":False,
+                        "HasReport":True, "MHState":4, "Reason":1,
+                        "MemberBitmap":4, "WritesAcked":3, "CanAbort":False,
+                        "SaveBlocked":False, "MatchesDesired":True}
+            body = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path not in ("/", "/index.html", "/loading.html", "/index.html.gz"):
             self.send_error(404)
             return

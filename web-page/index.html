@@ -26,6 +26,7 @@ html,body{height:100%;overflow:hidden}body{font-family:-apple-system,BlinkMacSys
 @media(max-width:850px){.sidebar{width:190px;flex-basis:190px}.header{padding:0 15px}.content{padding:14px}.g2,.g3{grid-template-columns:1fr}.header .hint{display:none}}
 @media(max-width:620px){.sidebar{width:58px;flex-basis:58px}.brand{font-size:0;text-align:center;padding:19px 5px}.brand:after{content:'⚡';font-size:18px}.mi{font-size:0;text-align:center;padding:12px 5px;border-left:0;border-bottom:2px solid transparent}.mi.a{border-bottom-color:#75b9e8}.logout .btn{font-size:0}.logout .btn:after{content:'↪';font-size:16px}.header h1{font-size:16px}}
 .register-scroll{margin-top:10px;overflow-x:auto;border:1px solid var(--line);border-radius:6px}.register-table{width:100%;border-collapse:collapse;font-size:12px;min-width:650px}.register-table th,.register-table td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left}.register-table thead th{background:#f3f6f9;color:var(--muted);font-size:11px;font-weight:600}.register-table tbody th{font-weight:500}.register-table td{font-variant-numeric:tabular-nums;white-space:nowrap}.register-table tbody tr:last-child>*{border-bottom:0}.register-access{color:var(--muted);font-size:11px}
+#rf-group-status>p{margin:5px 0}#rf-status-read{margin:8px 0;color:var(--muted)}.rf-result{margin:12px 0;padding:12px;border:1px solid #e5c88b;border-left:3px solid #bf8100;border-radius:5px;background:#fffaf0;font-size:13px;line-height:1.6}.rf-result p+p{margin-top:6px}
 </style>
 </head>
 <body>
@@ -494,8 +495,8 @@ const I18N={
     errRFQualityOverlap:"Address overlaps RF quality registers 49500–49520.",
     rfStoreLineTpl:"Row {n}",
     rfGroupMHApplied:"Applied report",
-    rfApplyTitle:"RF application progress",
-    rfApplyHint:"Save stores the configuration and updates device assignments. Settings are sent to feeders with all three phase devices assigned. Track verification below.",
+    rfApplyTitle:"RF settings transfer",
+    rfApplyHint:"Save stores settings on RTU, updates MH device assignments, then sends protection settings to feeders with all three phase devices assigned.",
     rfGroupId:"Fresh group ID",
     rfAbort:"Cancel application",
     rfGroupRequested:"Request started; refresh the status to follow the result.",
@@ -506,7 +507,7 @@ const I18N={
     rfGroupCommitting:"Starting application",
     rfGroupWaiting:"Waiting for result",
     rfGroupApplied:"Applied and CRC verified",
-    rfGroupFailed:"Application failed",
+    rfGroupFailed:"Settings could not be applied",
     rfGroupUncertain:"Outcome unknown",
     rfGroupIdUsed:"Group ID already in use",
     rfGroupMismatch:"Result does not match the request",
@@ -529,6 +530,30 @@ const I18N={
     rfInventoryNotStarted:"Inventory update not started",
     rfCounts:"Verified: {applied}/{total} · Missing members: {skipped} · Remaining: {pending}",
     rfDetails:"Technical details",
+    rfFailureWhere:"Affected settings: row {row}, feeder {feeder}",
+    rfNextAction:"Next step",
+    rfNoFailureReason:"MH did not provide a specific failure report. Refresh the status to obtain a confirmed result.",
+    rfReasonUnknown:"MH did not report a specific cause (code {code}).",
+    rfReason_1:"One or more group devices have no current live data.",
+    rfReason_2:"A target device is missing from the MH inventory.",
+    rfReason_3:"MH reported an out-of-range setting.",
+    rfReason_4:"MH reported an authentication error.",
+    rfReason_5:"The device operation timed out.",
+    rfReason_6:"Settings may have been applied to only some devices; full application is unconfirmed.",
+    rfReason_7:"The preparation period expired.",
+    rfReason_8:"MH restarted during the operation.",
+    rfReason_9:"Devices reported different configuration checksums (CRC).",
+    rfReason_10:"The operation was cancelled by RTU request.",
+    rfReasonUncertain:"RTU could not obtain a confirmed result from MH; settings may have been applied.",
+    rfReasonMismatch:"The result does not match the sent settings or does not confirm all three devices.",
+    rfNoPhaseDetail:"This report does not identify the affected phase device. Check all three phases of this feeder in RF Monitoring.",
+    rfActionLive:"Check device power and RF communication in RF Monitoring. After live data resumes, save the same settings again.",
+    rfActionInventory:"Check the three phase device assignments and the inventory result before saving again.",
+    rfActionSettings:"Check the settings and device compatibility before saving again.",
+    rfActionRefresh:"Refresh the status to obtain the final result. Do not assume the settings were applied.",
+    rfActionRestart:"Wait for MH communication to recover, refresh the status, then check the result before saving again.",
+    rfActionRetry:"Check the RF link and save the same settings again; verify all three devices afterward.",
+    rfActionCancelled:"Refresh the status and check device settings before starting another operation.",
     rfRecoveryPending:"Saved device assignment update is pending",
     rfRecoveryHint:"Resume the saved configuration before editing device assignments. Refresh to check completion.",
     rfStatusAfterSave:"Configuration saved. Device verification is pending; refresh application status.",
@@ -544,7 +569,7 @@ const I18N={
     rfSavedApplying:"Saved; RF application started.",
     rfBatchRunning:"Applying settings",
     rfBatchComplete:"Application complete",
-    rfBatchStopped:"Application stopped",
+    rfBatchStopped:"Settings transfer stopped",
     rfBatchPending:"Not applied",
     rfBatchNotStarted:"Application could not start",
     rfBatchActive:"In progress",
@@ -575,7 +600,7 @@ const I18N={
     msVolt:"voltages",msCur:"currents",msPow:"power",msSoc:"SOC",msSoh:"SOH",msTemp:"temperatures",msCharge:"charge phase",msCap:"capacity",msSrc:"source",
     msStaleTlm:"telemetry stale",
     rfStatusReading:"Reading RF application status...",
-    rfStatusUpdated:"RF status updated.",
+    rfStatusUpdated:"RF result read.",
     rfAbortNone:"No application can be cancelled in the current state.",
     rfStopStorage:"Saved to the primary copy; backup failed. RF application was not started. Save again to repair and apply.",
     rfStopInventory:"Inventory did not complete. Check the result before saving again.",
@@ -1012,10 +1037,10 @@ const I18N={
     errRFQualityOverlap:"Adres RF kalite alanıyla çakışıyor (49500–49520).",
     rfStoreLineTpl:"Satır {n}",
     rfGroupMHApplied:"Uygulandı bildirimi",
-    rfApplyTitle:"RF uygulama durumu",
-    rfApplyHint:"Kaydet, yapılandırmayı kaydeder ve cihaz eşlemelerini günceller. Ayarlar, üç faz cihazı da atanmış fiderlere gönderilir. Doğrulama sonucunu aşağıdan izleyin.",
+    rfApplyTitle:"RF ayar aktarımı",
+    rfApplyHint:"Kaydet, ayarları RTU üzerinde saklar ve MH cihaz eşlemelerini günceller. Ardından üç faz cihazı atanmış fiderlere koruma ayarlarını gönderir.",
     rfGroupId:"Yeni grup kimliği",
-    rfAbort:"Uygulamayı iptal et",
+    rfAbort:"Ayar gönderimini iptal et",
     rfGroupRequested:"İstek başlatıldı; sonucu izlemek için durumu yenileyin.",
     rfGroupChanged:"Önceki ayar uygulandı; istenen ayar değişti.",
     rfGroupIdle:"Uygulama başlatılmadı",
@@ -1024,7 +1049,7 @@ const I18N={
     rfGroupCommitting:"Uygulama başlatılıyor",
     rfGroupWaiting:"Sonuç bekleniyor",
     rfGroupApplied:"Uygulandı ve CRC doğrulandı",
-    rfGroupFailed:"Uygulama başarısız",
+    rfGroupFailed:"Ayarlar cihazlarda uygulanamadı",
     rfGroupUncertain:"Sonuç belirsiz",
     rfGroupIdUsed:"Grup kimliği kullanımda",
     rfGroupMismatch:"Sonuç gönderilen ayarla eşleşmiyor",
@@ -1045,8 +1070,32 @@ const I18N={
     rfInventoryEmpty:"Atanmış cihaz kalmadı",
     rfInventoryLoading:"Eski eşlemeler kaldırılıyor ve yeni envanter yükleniyor",
     rfInventoryNotStarted:"Envanter güncellemesi başlamadı",
-    rfCounts:"Doğrulanan: {applied}/{total} · Eksik üyeli: {skipped} · Kalan: {pending}",
+    rfCounts:"Doğrulanan fider: {applied}/{total} · Üç fazı atanmamış: {skipped} · Henüz doğrulanmayan: {pending}",
     rfDetails:"Teknik ayrıntılar",
+    rfFailureWhere:"Sorunlu ayarlar: satır {row}, fider {feeder}",
+    rfNextAction:"Yapılacak işlem",
+    rfNoFailureReason:"MH kesin hata raporu göndermedi. Kesin sonucu almak için durumu yenileyin.",
+    rfReasonUnknown:"MH kesin hata nedeni bildirmedi (kod {code}).",
+    rfReason_1:"Bir veya daha fazla grup cihazından güncel canlı veri alınamıyor.",
+    rfReason_2:"Hedef cihaz MH envanterinde bulunmuyor.",
+    rfReason_3:"MH, ayar değerinin izin verilen aralıkta olmadığını bildirdi.",
+    rfReason_4:"MH kimlik doğrulama hatası bildirdi.",
+    rfReason_5:"Cihaz işlemi zaman aşımına uğradı.",
+    rfReason_6:"Ayarlar bazı cihazlarda uygulanmış olabilir; tüm cihazlarda uygulandığı doğrulanmadı.",
+    rfReason_7:"Ayar hazırlık süresi doldu.",
+    rfReason_8:"İşlem sırasında MH yeniden başladı.",
+    rfReason_9:"Cihazların bildirdiği ayar doğrulama değerleri (CRC) eşleşmiyor.",
+    rfReason_10:"İşlem RTU isteğiyle iptal edildi.",
+    rfReasonUncertain:"RTU, MH üzerinden kesin sonuç alamadı; ayarlar cihazlarda uygulanmış olabilir.",
+    rfReasonMismatch:"Sonuç gönderilen ayarlarla eşleşmiyor veya üç cihazın tamamını doğrulamıyor.",
+    rfNoPhaseDetail:"Bu rapor sorunlu faz cihazını belirtmiyor. RF İzleme ekranında bu fiderin üç fazını kontrol edin.",
+    rfActionLive:"RF İzleme ekranında cihazların beslemesini ve RF iletişimini kontrol edin. Canlı veri geldikten sonra aynı ayarları yeniden kaydedin.",
+    rfActionInventory:"Üç faz cihazının atamalarını ve envanter sonucunu kontrol edip yeniden kaydedin.",
+    rfActionSettings:"Ayar değerlerini ve cihaz uyumluluğunu kontrol edip yeniden kaydedin.",
+    rfActionRefresh:"Kesin sonucu almak için durumu yenileyin. Ayarların uygulandığını varsaymayın.",
+    rfActionRestart:"MH iletişiminin gelmesini bekleyin ve durumu yenileyin. Sonucu kontrol ederek yeniden kaydedin.",
+    rfActionRetry:"RF iletişimini kontrol edip aynı ayarları yeniden kaydedin; ardından üç cihazın sonucunu doğrulayın.",
+    rfActionCancelled:"Yeni işlemden önce durumu yenileyip cihaz ayarlarını kontrol edin.",
     rfRecoveryPending:"Kaydedilmiş cihaz eşleme işlemi bekliyor",
     rfRecoveryHint:"Cihaz eşlemelerini değiştirmeden kayıtlı işlem tamamlanmalıdır. Durumu yenileyin; işlem hata ile durmuşsa aynı tanımla yeniden Kaydet seçin.",
     rfStatusAfterSave:"Yapılandırma kaydedildi. Cihaz doğrulaması bekleniyor; uygulama durumunu yenileyin.",
@@ -1062,14 +1111,14 @@ const I18N={
     rfSavedApplying:"Kaydedildi; RF uygulaması başlatıldı.",
     rfBatchRunning:"Ayarlar uygulanıyor",
     rfBatchComplete:"Uygulama tamamlandı",
-    rfBatchStopped:"Uygulama durdu",
+    rfBatchStopped:"Ayar gönderimi durdu",
     rfBatchPending:"Uygulanmadı",
     rfBatchNotStarted:"Uygulama başlatılamadı",
     rfBatchActive:"İşlem sürüyor",
     iecApplyHint:"Zamanlama ve bağlantı ayarları sonraki IEC104 bağlantısında uygulanır.",
     rfStopStart:"Uygulama başlatılamadı. Faz cihazı atamalarını ve ayarları kontrol edin; nedeni görmek için durumu yenileyin.",
     rfStopIds:"Uygun grup kimliği bulunamadı.",
-    rfStopGroup:"Grup işlemi hata veya belirsizlikle durdu. Yeni işlemden önce sonucu kontrol edin.",
+    rfStopGroup:"Koruma ayarlarının gönderimi tamamlanamadı. Fider ve neden bilgisi aşağıdadır.",
     rfStopPeer:"MH üzerinde başka işlem sürüyor; durumu yeniden sorgulanıyor.",
     rfStopRestart:"MH yeniden başladı; uygulama durdu.",
     rfStopCancelled:"Uygulama iptal edildi.",
@@ -1092,8 +1141,8 @@ const I18N={
     msInvalid:"Geçersiz",
     msVolt:"gerilimler",msCur:"akımlar",msPow:"güç",msSoc:"SOC",msSoh:"SOH",msTemp:"sıcaklıklar",msCharge:"şarj fazı",msCap:"kapasite",msSrc:"kaynak",
     msStaleTlm:"telemetri bayat",
-    rfStatusReading:"RF uygulama durumu okunuyor...",
-    rfStatusUpdated:"RF durumu güncellendi.",
+    rfStatusReading:"RF ayar aktarımı okunuyor...",
+    rfStatusUpdated:"RF işlem sonucu okundu.",
     rfAbortNone:"Bu durumda iptal edilebilecek bir uygulama yok.",
     rfStopStorage:"Ana kopyaya kaydedildi; yedek kayıt başarısız. RF uygulaması başlamadı. Onarmak ve uygulamak için yeniden Kaydet seçin.",
     rfStopInventory:"Envanter tamamlanamadı. Yeniden kaydetmeden önce sonucu kontrol edin.",
@@ -1311,6 +1360,24 @@ function renderModbus(d){
   s+='<div class="card">'+sectionHead(t('modMapT'),'modbus',t('modMapSub'))+'<div class="card-body">'+renderModbusMap(x.RegisterMap)+'</div></div>';
   return s;
 }
+function buildRfFailure(group){
+  if(!['failed','uncertain','mismatch','restarted','cancelled','id_in_use'].includes(group.State))return '';
+  const reason=group.HasReport&&Number(group.MHState)===4?Number(group.Reason):0;
+  let cause=group.HasReport&&Number(group.MHState)===4?(reason>=1&&reason<=10?t('rfReason_'+reason):tf('rfReasonUnknown',{code:reason})):t('rfNoFailureReason');
+  let action='rfActionRefresh';
+  if(group.State==='uncertain')cause=t('rfReasonUncertain');
+  else if(group.State==='mismatch')cause=t('rfReasonMismatch');
+  else if(group.State==='restarted')cause=t('rfReason_8');
+  else if(group.State==='cancelled')cause=t('rfReason_10');
+  else if(group.State==='id_in_use')cause=t('rfGroupIdUsed');
+  if(group.State==='restarted')action='rfActionRestart';
+  else if(group.State==='cancelled')action='rfActionCancelled';
+  else if(group.State==='failed')action=({1:'rfActionLive',2:'rfActionInventory',3:'rfActionSettings',4:'rfActionSettings',5:'rfActionRetry',6:'rfPartialRetry',7:'rfActionRetry',8:'rfActionRestart',9:'rfActionRetry',10:'rfActionCancelled'})[reason]||action;
+  let html='<div class="rf-result" role="status"><p><strong>'+esc(tf('rfFailureWhere',{row:group.Line||group.BatchLine||'?',feeder:group.Feeder||'?'}))+'</strong></p>';
+  html+='<p><strong>'+esc(t('rfGroupReason'))+':</strong> '+esc(cause)+'</p>';
+  if(group.State==='failed'&&group.HasReport&&Number(group.MHState)===4&&[1,2,5,6,9].includes(reason))html+='<p>'+esc(t('rfNoPhaseDetail'))+'</p>';
+  return html+'<p><strong>'+esc(t('rfNextAction'))+':</strong> '+esc(t(action))+'</p></div>';
+}
 function buildRfGroupStatus(group){
   if(!group)return '<div class="empty">'+esc(t(rfStatusMessage||'stNotRead'))+'</div>';
   if(group.BatchState==='idle'&&group.InventoryRecoveryPending)return '<p><strong>'+esc(t('rfRecoveryPending'))+'</strong></p><p>'+esc(group.InventoryState==='loading'?t('rfInventoryLoading'):group.InventoryState==='error'?t('rfStopInventory'):t('rfInventoryPending'))+'</p><p class="hint">'+esc(t('rfRecoveryHint'))+'</p>';
@@ -1335,7 +1402,7 @@ function buildRfGroupStatus(group){
     html+='<p><strong>'+esc(t('rfStageSettings'))+':</strong> '+esc(tf('rfCounts',{applied:count(group.Applied),total:count(group.Targets),skipped:count(group.Skipped),pending:count(group.Targets&~((group.Applied||0)|(group.Skipped||0)))}))+'</p>';
     html+='<p class="hint">'+esc(t('rfStatusSnapshot'))+'</p>';
 
-    if(group.BatchState==='stopped'&&group.StopReason&&group.StopReason!=='none'){
+    if(group.BatchState==='stopped'&&group.StopReason&&group.StopReason!=='none'&&(group.StopReason!=='group_error'||!group.GroupStarted)){
       const reasons={start_rejected:'rfStopStart',id_exhausted:'rfStopIds',group_error:'rfStopGroup',peer_active:'rfStopPeer',hub_restarted:'rfStopRestart',cancelled:'rfStopCancelled',state_changed:'rfStopChanged',storage:'rfStopStorage',inventory:'rfStopInventory'};
       html+='<p class="hint">'+esc(t(reasons[group.StopReason]||'rfGroupUnknown'))+'</p>';
     }
@@ -1346,12 +1413,12 @@ function buildRfGroupStatus(group){
     }
     if(!group.GroupStarted)return html;
   }
-  html+='<p><strong>'+esc(title)+'</strong></p>';
+  if(!group.BatchState||group.BatchState==='idle')html+='<p><strong>'+esc(title)+'</strong></p>';
+  html+=buildRfFailure(group);
   html+='<details><summary>'+esc(t('rfDetails'))+'</summary>';
   if(group.Line)html+='<p>'+esc(tf('rfStoreLineTpl',{n:group.Line}))+' · '+esc(t('rfGroupId'))+': '+esc(group.GroupId)+'</p>';
   if(group.HasReport){const mh=['rfGroupIdle','rfGroupPrepared','rfGroupDelivered','rfGroupMHApplied','rfGroupFailed'];html+='<p>'+esc(t('rfGroupMH'))+': '+esc(t(mh[group.MHState]||'rfGroupUnknown'))+' · '+esc(t('rfGroupMembers'))+': '+esc(group.MemberBitmap)+' · '+esc(t('rfGroupReason'))+': '+esc(group.Reason)+' · CRC: '+esc(group.ReportedCRC)+' / '+esc(group.ExpectedCRC)+'</p>'}
   html+='</details>';
-  if(group.State==='failed'&&group.HasReport&&Number(group.Reason)===6)html+='<p class="hint">'+esc(t('rfPartialRetry'))+'</p>';
   return html;
 }
 let rfStatusMessage='';
@@ -1362,7 +1429,7 @@ function rfCanAbort(group){return group?.CanAbort===true&&!group.InventoryPendin
 function updateRfSaveButton(){
   const save=$('save-rf'),abort=$('rf-abort'),refresh=$('rf-status-refresh');
   if(save)save.disabled=loading||!!pageCache.rfGroup?.SaveBlocked;
-  if(abort)abort.disabled=loading||rfStatusBusy||!rfCanAbort(pageCache.rfGroup);
+  if(abort){abort.hidden=!rfCanAbort(pageCache.rfGroup);abort.disabled=loading||rfStatusBusy||abort.hidden;}
   if(refresh)refresh.disabled=loading||rfStatusBusy;
 }
 async function readRfGroupStatus(manual=false){
@@ -1416,7 +1483,7 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
     s+='</div>';
   }
   s+='</div></div></div>';
-  s+='<div class="card"><div class="card-head"><h3>'+esc(t('rfApplyTitle'))+'</h3><button class="btn btn-read btn-small" id="rf-status-refresh" onclick="readRfGroupStatus(true)">'+esc(t('btnRefresh'))+'</button></div><div class="card-body"><p class="hint">'+esc(t('rfApplyHint'))+'</p><button id="rf-abort" class="btn" disabled onclick="abortRfConfig()">'+esc(t('rfAbort'))+'</button><p id="rf-status-read" class="hint" aria-live="polite"></p><div id="rf-group-status">'+buildRfGroupStatus(pageCache.rfGroup)+'</div></div></div>';
+  s+='<div class="card"><div class="card-head"><h3>'+esc(t('rfApplyTitle'))+'</h3><button class="btn btn-read btn-small" id="rf-status-refresh" onclick="readRfGroupStatus(true)">'+esc(t('btnRefresh'))+'</button></div><div class="card-body"><p class="hint">'+esc(t('rfApplyHint'))+'</p><button id="rf-abort" class="btn" hidden disabled onclick="abortRfConfig()">'+esc(t('rfAbort'))+'</button><p id="rf-status-read" class="hint" aria-live="polite"></p><div id="rf-group-status">'+buildRfGroupStatus(pageCache.rfGroup)+'</div></div></div>';
   s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('discTitle'))+'</h3><div class="sub">'+esc(t('discSub'))+'</div></div><div class="card-actions"><button class="btn btn-read btn-small" onclick="readRfDiscovery()">'+esc(t('btnRefresh'))+'</button></div></div><div class="card-body" id="rf-discovery-panel">';
   if(!un.length){s+='<div class="empty">'+esc(t('discNone'))+'</div>'}
   else{s+=buildDiscoveryTable(un)}
