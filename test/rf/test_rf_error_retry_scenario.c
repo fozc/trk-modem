@@ -8,6 +8,8 @@
  * Verify RF dispatch, bounded retries and startup/inventory flows.
  */
 #include "unity.h"
+#include "console_log_enabled.h"
+#define CSLOG_MODULE LOG_MOD_RF
 #include "mock_bsp.h"
 #include "mock_nvram.h"
 #include "scp.h"
@@ -42,7 +44,36 @@ static uint32_t fake_tick;
 static bool bridge_enabled;
 static bool rtc_valid;
 static bsp_rtc_t fake_rtc;
+static log_lvl_t console_level;
+static char console_output[2048];
+static size_t console_length;
+static scp_packet_t captured_notification(uint8_t cmd);
 static void load_one_phase(void);
+static void put_u32(uint8_t *bytes, uint32_t value);
+
+static void capture_console(int character)
+{
+    if ((sizeof(console_output) - 1U) > console_length)
+    {
+        console_output[console_length] = (char)character;
+        console_length++;
+        console_output[console_length] = '\0';
+    }
+}
+
+static bool console_level_enabled(log_mod_t module, log_lvl_t min_level,
+                                  int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_INT(LOG_MOD_RF, module);
+    return console_level >= min_level;
+}
+
+void rtc_print_now(void);
+void rtc_print_now(void)
+{
+}
+
 uint32_t HAL_GetTick(void);
 uint32_t HAL_GetTick(void)
 {
@@ -232,6 +263,11 @@ static bool protect_inventory(int call_count)
 
 void setUp(void)
 {
+    console_level = LOG_LVL_OFF;
+    console_length = 0U;
+    console_output[0] = '\0';
+    xdev_out(capture_console);
+    console_logger_level_enabled_StubWithCallback(console_level_enabled);
     journal = (rf_inventory_journal_t){0};
     staged_feeder = NULL;
     nvram_get_rf_inventory_journal_IgnoreAndReturn(&journal);
@@ -314,6 +350,7 @@ void setUp(void)
 
 void tearDown(void)
 {
+    xdev_out(NULL);
 }
 
 void test_not_available_waits_then_uses_new_seq_with_shared_budget(void)
@@ -651,6 +688,118 @@ void test_short_or_wrong_source_discovery_does_not_change_existing_list(void)
     TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
 }
 
+void test_normal_discovery_announces_new_identity_once_and_refreshes_rssi(void)
+{
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_DISCOVERY_REPORT);
+    console_level = LOG_LVL_NORMAL;
+    inject_packet(&packet);
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "kesif: yeni cihaz EUI="));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "RSSI="));
+    const size_t previous_length = console_length;
+    packet.data[8] = 0x80U;
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    rf_discovery_entry_t entry;
+    TEST_ASSERT_TRUE(rf_discovery_get(0U, &entry));
+    TEST_ASSERT_EQUAL_INT8(-128, entry.rssi);
+    packet.data_len = 8U;
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+}
+
+void test_full_discovery_queue_does_not_announce_rejected_identity(void)
+{
+    uint8_t eui64[8] = {0};
+    for (uint8_t index = 0U; index < RF_DISCOVERY_MAX; index++)
+    {
+        eui64[0] = index;
+        TEST_ASSERT_TRUE(rf_discovery_report(eui64, -75));
+    }
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_DISCOVERY_REPORT);
+    (void)memset(packet.data, 0xFF, 8U);
+    console_level = LOG_LVL_NORMAL;
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_STRING("", console_output);
+    TEST_ASSERT_EQUAL_UINT8(RF_DISCOVERY_MAX, rf_discovery_get_count());
+}
+
+void test_normal_trip_announces_only_accepted_binding(void)
+{
+    load_one_phase();
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_TRIP_NOTIFY);
+    packet.data[2] = 0U;
+    packet.data[3] = 5U;
+    put_u32(&packet.data[6], 0U);
+    console_level = LOG_LVL_NORMAL;
+    inject_packet(&packet);
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[RF] TRIP: zone=0 feeder=1 phase=1 fault_count="));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "current=0.000 A"));
+    const size_t previous_length = console_length;
+    packet.data[2] = 1U;
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    packet.data[2] = 0U;
+    packet.data_len = 11U;
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
+    TEST_ASSERT_EQUAL_UINT8(0U, data.trip.zone);
+}
+
+void test_normal_anomaly_announces_active_idle_and_global_reset(void)
+{
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_ANOMALY_REPORT);
+    packet.data[0] = 5U;
+    packet.data[1] = 1U;
+    packet.data[8] = 0U;
+    console_level = LOG_LVL_NORMAL;
+    inject_packet(&packet);
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[RF] ANOMALY ACTIVE: feeder=1 phase=1 path=0 window="));
+    packet.data[1] = 0U;
+    packet.data[8] = 1U;
+    inject_packet(&packet);
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[RF] ANOMALY IDLE: feeder=1 phase=1 path=1 window="));
+    packet.data[0] = 0xFFU;
+    packet.data[1] = 2U;
+    inject_packet(&packet);
+    TEST_ASSERT_NOT_NULL(strstr(console_output,
+        "[RF] ANOMALY RESET: global path=1 window="));
+    const size_t previous_length = console_length;
+    packet.data[1] = 3U;
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
+    rf_anomaly_data_t data;
+    TEST_ASSERT_TRUE(rf_get_anomaly(5U, 0U, &data));
+    TEST_ASSERT_FALSE(data.is_active);
+}
+
+void test_notification_logging_off_preserves_processing(void)
+{
+    load_one_phase();
+    scp_packet_t packet = captured_notification(RF_SCP_CMD_DISCOVERY_REPORT);
+    inject_packet(&packet);
+    TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
+    packet = captured_notification(RF_SCP_CMD_TRIP_NOTIFY);
+    packet.data[2] = 0U;
+    packet.data[3] = 5U;
+    inject_packet(&packet);
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
+    TEST_ASSERT_TRUE(data.has_trip);
+    packet = captured_notification(RF_SCP_CMD_ANOMALY_REPORT);
+    packet.data[0] = 5U;
+    packet.data[1] = 1U;
+    inject_packet(&packet);
+    rf_anomaly_data_t anomaly;
+    TEST_ASSERT_TRUE(rf_get_anomaly(5U, packet.data[8], &anomaly));
+    TEST_ASSERT_TRUE(anomaly.is_active);
+    TEST_ASSERT_EQUAL_STRING("", console_output);
+}
+
 void test_busy_retry_ignores_late_ack_until_new_sequence_is_sent(void)
 {
     start_status_command();
@@ -968,6 +1117,7 @@ static void complete_inventory(void)
 
 void test_boot_sends_valid_local_time_then_inventory_and_end(void)
 {
+    console_level = LOG_LVL_NORMAL;
     static const uint8_t expected_time[7] =
     {
         0xF3U, 0xE6U, 0x3BU, 0x17U, 0x25U, 0x0AU, 0x1AU
@@ -989,6 +1139,16 @@ void test_boot_sends_valid_local_time_then_inventory_and_end(void)
     TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_END, transmitted.cmd);
     TEST_ASSERT_EQUAL_INT(RF_INVENTORY_READY, rf_inventory_get_status());
     TEST_ASSERT_TRUE(rf_inventory_is_loaded());
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "BOOT_NOTIFY"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF TX] TIME_SYNC"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF ACK] TIME_SYNC"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "envanter push basliyor"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF TX] INVENTORY_SET"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF-INV] satir=1"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "[RF TX] INVENTORY_END"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "envanter yuklendi:"));
+    TEST_ASSERT_NULL(strstr(console_output, "RF TX["));
+    TEST_ASSERT_NULL(strstr(console_output, "RF RX["));
 }
 
 void test_invalid_rtc_loads_inventory_then_syncs_when_clock_becomes_valid(void)

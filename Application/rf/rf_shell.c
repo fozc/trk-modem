@@ -282,7 +282,7 @@ static int rf_shell_log(int argc, char **argv)
     if (0 == strcmp(argv[1], "on"))
     {
         rf_log_set_level(RF_LOG_NORMAL);
-        SHELL_LOG("RF log: NORMAL (hata/uyari)\r\n");
+        SHELL_LOG("RF log: NORMAL (akis/hata/uyari)\r\n");
         return 0;
     }
 

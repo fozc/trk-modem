@@ -101,6 +101,7 @@ typedef struct
  */
 static scp_cmd_ctx_t cmd_ctx = {0};
 static uint8_t       cmd_next_seq = 1;  /* 1'den baslar, 0xFF -> 0x00 sarar */
+static void announce_command(const char *step, const scp_packet_t *packet);
 
 /* BOOT_NOTIFY -> TIME_SYNC pending (komut mekanizmasi mesgulse bekler) */
 static bool          time_sync_pending = false;
@@ -339,6 +340,7 @@ bool scp_send_command(uint8_t type, uint8_t cmd,
     cmd_ctx.timeout_ms   = timeout_ms;
     cmd_ctx.done         = done;
     cmd_ctx.deadline_ms  = HAL_GetTick() + timeout_ms;
+    announce_command("TX", &cmd_ctx.last_req);
 
     CSLOG("[RF ST->RF] cmd=0x%02X seq=%u "
           "gonderildi (timeout=%ums, retries=%u)\r\n",
@@ -382,7 +384,7 @@ void scp_process(uint32_t now_ms)
         rf_inventory_request_sent(cmd_ctx.last_req.cmd);
         cmd_ctx.deadline_ms = now_ms + cmd_ctx.timeout_ms;
 
-        CSLOG("[RF] retry cmd=0x%02X seq=%u (kalan=%u)\r\n",
+        CSLOG_WARN("[RF] retry cmd=0x%02X seq=%u (kalan=%u)\r\n",
               cmd_ctx.last_req.cmd, cmd_ctx.last_req.seq,
               cmd_ctx.retries_left);
     }
@@ -457,6 +459,9 @@ void scp_on_response(const scp_packet_t *pkt)
     }
     else if (pkt->type == SCP_TYPE_ERROR)
     {
+        CSLOG_WARN("[RF] ERROR cmd=0x%02X seq=%u code=0x%02X\r\n",
+                   pkt->cmd, pkt->seq,
+                   (0U < pkt->data_len) ? pkt->data[0] : 0U);
         if (can_retry_error(pkt) &&
             (0U < cmd_ctx.retries_left))
         {
@@ -477,6 +482,7 @@ void scp_on_response(const scp_packet_t *pkt)
     /* Once serbest birak - callback icinde yeni komut baslatilabilir */
     if (SCP_CMD_OK == result)
     {
+        announce_command("ACK", pkt);
         rf_inventory_record_ack(&cmd_ctx.last_req);
     }
     finish_command(result, pkt);
@@ -535,6 +541,15 @@ static const char *scp_cmd_to_string(uint8_t cmd)
         case RF_SCP_CMD_PWR_RESULT:        return "PWR_RESULT";
         case RF_SCP_CMD_PWR_TELEMETRY:     return "PWR_TELEMETRY";
         default:                           return "UNKNOWN";
+    }
+}
+
+static void announce_command(const char *step, const scp_packet_t *packet)
+{
+    if (RF_SCP_CMD_GET_STATUS != packet->cmd)
+    {
+        CSLOG_WARN("[RF %s] %s seq=%u\r\n", step,
+                   scp_cmd_to_string(packet->cmd), (unsigned)packet->seq);
     }
 }
 
@@ -599,7 +614,7 @@ static void on_time_sync_done(scp_cmd_result_t result,
 
     if (SCP_CMD_OK == result)
     {
-        CSLOG("[RF] hub saati senkronize (TIME_SYNC ACK)\r\n");
+        CSLOG_WARN("[RF] hub saati senkronize (TIME_SYNC ACK)\r\n");
 
         /* Devreye alma zincirinin 3. adimi: saat tamam -> envanter oncesi
          * halka korunmasi (BOLATeX BQ-03) -> envanter push */
@@ -677,7 +692,7 @@ static void handle_boot_notify(const scp_packet_t *pkt)
         return;
     }
 
-    CSLOG("[RF] BOOT_NOTIFY (scp_major=%u) -> TIME_SYNC hazirlaniyor\r\n",
+    CSLOG_WARN("[RF] BOOT_NOTIFY (scp_major=%u) -> TIME_SYNC hazirlaniyor\r\n",
           (unsigned)major);
 }
 
@@ -698,6 +713,69 @@ static void handle_live_notification(const rf_scp_live_t *live)
     }
 }
 
+static void handle_discovery_notification(const rf_scp_message_t *message)
+{
+    const uint8_t previous_count = rf_discovery_get_count();
+    const uint8_t *eui64 = message->body.discovery.eui64;
+
+    if (rf_discovery_report(eui64, message->body.discovery.rssi) &&
+        (previous_count < rf_discovery_get_count()))
+    {
+        CSLOG_WARN("[RF] kesif: yeni cihaz "
+                   "EUI=%02X%02X%02X%02X%02X%02X%02X%02X RSSI=%d dBm\r\n",
+                   eui64[0], eui64[1], eui64[2], eui64[3],
+                   eui64[4], eui64[5], eui64[6], eui64[7],
+                   (int)message->body.discovery.rssi);
+    }
+}
+
+static void handle_trip_notification(const rf_scp_trip_t *trip)
+{
+    if (rf_handle_trip(trip, HAL_GetTick()))
+    {
+        CSLOG_WARN("[RF] TRIP: zone=%u feeder=%u phase=%u "
+                   "fault_count=%u current=%.3f A\r\n",
+                   (unsigned)trip->zone, (unsigned)(trip->source >> 2U),
+                   (unsigned)(trip->source & 3U),
+                   (unsigned)trip->fault_count, (double)trip->current_amps);
+    }
+}
+
+static void handle_anomaly_notification(const rf_scp_anomaly_t *report)
+{
+    if (!rf_handle_anomaly(report))
+    {
+        return;
+    }
+    const char *state = "RESET";
+    if (0U == report->state)
+    {
+        state = "IDLE";
+    }
+    else if (1U == report->state)
+    {
+        state = "ACTIVE";
+    }
+    else
+    {
+        /* State 2 is the reset notification. */
+    }
+    if (0xFFU == report->source)
+    {
+        CSLOG_WARN("[RF] ANOMALY %s: global path=%u "
+                   "window=%u total=%lu\r\n", state, (unsigned)report->path,
+                   (unsigned)report->window, (unsigned long)report->total);
+    }
+    else
+    {
+        CSLOG_WARN("[RF] ANOMALY %s: feeder=%u phase=%u path=%u "
+                   "window=%u total=%lu\r\n", state,
+                   (unsigned)(report->source >> 2U),
+                   (unsigned)(report->source & 3U), (unsigned)report->path,
+                   (unsigned)report->window, (unsigned long)report->total);
+    }
+}
+
 /** Proaktik SET'ler - komut mekanizmasindan bagimsiz, her zaman islenir */
 static void handle_proactive(const scp_packet_t *pkt)
 {
@@ -714,15 +792,7 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         case RF_SCP_CMD_DISCOVERY_REPORT:
-            if (rf_discovery_report(message.body.discovery.eui64,
-                                    message.body.discovery.rssi))
-            {
-                CSLOG("[RF] kesif: yeni cihaz "
-                      "EUI=%02X%02X%02X%02X%02X%02X%02X%02X\r\n",
-                      pkt->data[0], pkt->data[1], pkt->data[2],
-                      pkt->data[3], pkt->data[4], pkt->data[5],
-                      pkt->data[6], pkt->data[7]);
-            }
+            handle_discovery_notification(&message);
             break;
 
         case RF_SCP_CMD_LIVE_DATA:
@@ -730,11 +800,11 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         case RF_SCP_CMD_TRIP_NOTIFY:
-            (void)rf_handle_trip(&message.body.trip, HAL_GetTick());
+            handle_trip_notification(&message.body.trip);
             break;
 
         case RF_SCP_CMD_ANOMALY_REPORT:
-            (void)rf_handle_anomaly(&message.body.anomaly);
+            handle_anomaly_notification(&message.body.anomaly);
             break;
 
         case RF_SCP_CMD_LOG_AVAILABLE:

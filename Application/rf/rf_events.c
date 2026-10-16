@@ -208,6 +208,7 @@ bool rf_events_boot_protect(void)
     protect_mode = true;
     requested = true;
     state = EVENTS_HEAD;
+    CSLOG_WARN("[RF-LOG] BOOT kayit korumasi basliyor\r\n");
     return true;
 }
 
@@ -233,6 +234,9 @@ static void head_received(const rf_scp_message_t *message)
                                   MH_EVENT_SLOTS);
 
     (void)detect_store_reset(message, head);
+    CSLOG_WARN("[RF-LOG] HEAD: head=%u tail=%u pending=%u total=%lu\r\n",
+               (unsigned)head, (unsigned)tail, (unsigned)pending,
+               (unsigned long)message->body.log_head.total);
     if (protect_mode)
     {
         cursor = tail;
@@ -249,6 +253,7 @@ static void head_received(const rf_scp_message_t *message)
             drain_ready = true;
         }
         stop_cycle();
+        CSLOG_WARN("[RF-LOG] kayit cekimi tamamlandi; MH kuyrugu bos\r\n");
         return;
     }
     drain_ready = false;
@@ -269,6 +274,8 @@ static void range_received(const rf_scp_message_t *message)
         return;
     }
     batch_count = message->body.log_batch.count;
+    CSLOG_WARN("[RF-LOG] READ: %u kayit alindi, kalici saklama basliyor\r\n",
+               (unsigned)batch_count);
     (void)memcpy(batch, message->body.log_batch.records,
                  (size_t)batch_count * RF_SCP_EVENT_SIZE);
     saved_count = 0U;
@@ -306,6 +313,8 @@ static void verify_head(const rf_scp_message_t *message)
     if ((0U < distance) && (pending >= distance) &&
         (cursor == next_slot(tail, (uint16_t)distance)))
     {
+        CSLOG_WARN("[RF-LOG] VERIFY: %u kayit icin CONSUME hazir\r\n",
+                   (unsigned)saved_count);
         state = EVENTS_CONSUME;
     }
     else
@@ -326,6 +335,8 @@ static void command_done(scp_cmd_result_t result,
     if ((SCP_CMD_OK != result) || (NULL == packet) ||
         (RF_CMD_OK != rf_scp_decode_message(packet, &message)))
     {
+        CSLOG_WARN("[RF-LOG] komut tamamlanmadi: state=%u result=%u\r\n",
+                   (unsigned)state, (unsigned)result);
         if ((SCP_CMD_ERR == result) && (NULL != packet) &&
             (1U <= packet->data_len) &&
             (RF_SCP_ERR_BUSY == packet->data[0]) &&
@@ -377,6 +388,10 @@ static void command_done(scp_cmd_result_t result,
             verify_head(&message);
             break;
         case EVENTS_CONSUME:
+            CSLOG_WARN("[RF-LOG] CONSUME ACK: tail=%u left=%u seq=%lu\r\n",
+                       (unsigned)message.body.log_consume.tail,
+                       (unsigned)message.body.log_consume.left,
+                       (unsigned long)message.body.log_consume.tail_seq);
             if (consume_seq != message.body.log_consume.tail_seq)
             {
                 state = EVENTS_HEAD;
@@ -387,6 +402,7 @@ static void command_done(scp_cmd_result_t result,
             {
                 protect_mode = false;
                 boot_protected = true;
+                CSLOG_WARN("[RF-LOG] BOOT korumasi tamamlandi\r\n");
                 stop_cycle();
                 rf_inventory_start();
             }
@@ -532,6 +548,7 @@ static void store_record(uint32_t now_ms)
         raw_saved = rf_event_log_append(raw, RF_SCP_EVENT_SIZE);
         if (!raw_saved)
         {
+            CSLOG_WARN("[RF-LOG] STORE bekliyor: ham kayit saklanamadi\r\n");
             store_waiting = true;
             store_retry_ms = now_ms;
             return;
@@ -557,6 +574,7 @@ static void store_record(uint32_t now_ms)
     {
         if (!save_fault())
         {
+            CSLOG_WARN("[RF-LOG] STORE bekliyor: ariza/replay saklanamadi\r\n");
             store_waiting = true;
             store_retry_ms = now_ms;
             return;
@@ -565,11 +583,17 @@ static void store_record(uint32_t now_ms)
     }
     if (!rf_alarm_record(&event))
     {
+        CSLOG_WARN("[RF-LOG] STORE bekliyor: alarm saklanamadi\r\n");
         store_waiting = true;
         store_retry_ms = now_ms;
         return;
     }
     saved_count++;
+    CSLOG_WARN("[RF-LOG] STORE: %u/%u kayit saklandi "
+               "event=%u feeder=%u phase=%u\r\n",
+               (unsigned)saved_count, (unsigned)batch_count,
+               (unsigned)event.event, (unsigned)event.feeder,
+               (unsigned)event.phase);
     raw_saved = false;
     fault_added = false;
     replay_added = false;

@@ -2,10 +2,11 @@
  * rf_log.h
  *
  *  Created on: Sep 05, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * RF alt sisteminin seviyeli konsol log kontrolu - OFF / NORMAL
- * (yalniz hata+uyari) / VERBOSE (tam iz + ham paket dokumu). Seviye
+ * (akis+hata+uyari) / VERBOSE (tam iz + ham paket dokumu). Seviye
  * NVRAM'de kalici; "rf log" shell komutu ile degistirilir.
  *
  * Durum ve NVRAM eslemesi console_logger'in merkez tablosunda
@@ -27,7 +28,7 @@
 typedef enum
 {
     RF_LOG_OFF     = 0,   /**< RF konsol cikisi yok                  */
-    RF_LOG_NORMAL  = 1,   /**< Yalniz hata ve uyari                  */
+    RF_LOG_NORMAL  = 1,   /**< Akis, hata ve uyari                   */
     RF_LOG_VERBOSE = 2    /**< Tam iz + ham paket dokumu (hex)       */
 } rf_log_level_t;
 

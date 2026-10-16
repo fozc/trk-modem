@@ -84,6 +84,8 @@
       # compiles the real CSLOG macros in (console_log_enabled.h).
       test_rf_alarm_log:
         - -Wno-variadic-macros
+      test_rf_events:
+        - -Wno-variadic-macros
       test_power_board_scp:
         - -Wno-variadic-macros
       test_at_engine_scenario:
@@ -186,6 +188,7 @@
         - -flto
         - -O2
       test_rf_error_retry_scenario:
+        - -Wno-variadic-macros
         - -flto
         - -O2
       # Existing fault/NOR fixture retains its legacy integer contracts.
