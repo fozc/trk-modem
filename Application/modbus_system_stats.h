@@ -41,6 +41,25 @@ typedef struct {
 
 bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value);
 
+/**
+ * @brief Freeze time-sensitive sources for one FC03 response.
+ *
+ * UINT32 values (rtc_unix, uptime_raw) span two registers per value;
+ * reading each word from the live getter can tear the pair across a
+ * counter boundary. Call this once before reading any registers of a
+ * single FC03 response; the UINT32 getters then use the cached values.
+ * Cooperative-scheduler sources need no locking (MB-08).
+ */
+void modbus_system_stats_snapshot(void);
+
+/**
+ * @brief Mark the snapshot cache stale (call once per FC03 response).
+ *
+ * The next system-stats register read lazily takes a fresh snapshot.
+ * This keeps the poll wrapper free of getter dependencies.
+ */
+void modbus_system_stats_invalidate_snapshot(void);
+
 #endif /* MODBUS_SYSTEM_STATS_H_ */
 
 /*** end of file ***/
