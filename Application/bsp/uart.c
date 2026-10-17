@@ -191,6 +191,37 @@ bool uart_set_baudrate(uart_port_t port, uint32_t baudrate)
     return true;
 }
 
+bool uart_set_line_config(uart_port_t port, uint32_t baudrate,
+                          uint8_t stop_bits)
+{
+    USART_TypeDef *uart = get_uart_instance(port);
+    if ((uart == NULL) || (baudrate == 0U)) {
+        return false;
+    }
+    if ((1U != stop_bits) && (2U != stop_bits)) {
+        return false;
+    }
+
+    uint32_t kernel_clock = get_uart_kernel_clock(port);
+    if (kernel_clock == 0U) {
+        return false;
+    }
+
+    /* Tum parametreler dogrulandi; UART bir kez kapatilip iki ayar
+     * birlikte yazilir ve tekrar acilir (WP-J: tek apply noktasi,
+     * yarim uygulama riski yok). */
+    LL_USART_Disable(uart);
+    LL_USART_SetBaudRate(uart, kernel_clock, LL_USART_PRESCALER_DIV1,
+                         LL_USART_GetOverSampling(uart), baudrate);
+    if (2U == stop_bits) {
+        LL_USART_SetStopBitsLength(uart, LL_USART_STOPBITS_2);
+    } else {
+        LL_USART_SetStopBitsLength(uart, LL_USART_STOPBITS_1);
+    }
+    LL_USART_Enable(uart);
+    return true;
+}
+
 /* Donanıma Özel Fonksiyonlar */
 
 #ifdef USART1

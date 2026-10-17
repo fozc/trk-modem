@@ -80,3 +80,18 @@ void modbus_config_set_baud_rate(uint32_t baud)
 {
 	modbus_config->baud_rate = baud;
 }
+
+uint8_t modbus_config_get_stop_bits(void)
+{
+	return modbus_config->stop_bits;
+}
+
+bool modbus_config_set_stop_bits(uint8_t bits)
+{
+	if ((1U != bits) && (2U != bits))
+	{
+		return false;  /* only 8N1 and 8N2 are supported */
+	}
+	modbus_config->stop_bits = bits;
+	return true;
+}

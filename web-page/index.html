@@ -947,7 +947,7 @@ const I18N={
     mb_temp_count:"Geçici arıza kayıt sayısı",
     mb_perm_count:"Kalıcı arıza kayıt sayısı",
     fDevId:"Cihaz Adresi (ID)",
-    fBaud:"Baud Hızı",
+    fBaud:"Baud Hızı",fStopBits:"Dur Bit",
     fLastErr:"Son Modbus hata kodu",
     fLastErrT:"Son Modbus hata zamanı (UTC)",
     rfTitle:"RF Yapılandırması",
@@ -1398,7 +1398,7 @@ function updateModbusMap(){
 function modbusErrorText(code){const n=Number(code);return code==null?t('notAvailable'):n===0?t('modbusNoError'):n+' · '+t(({1:'exception1',2:'exception2',3:'exception3'})[n]||'tFailed')}
 function renderModbus(d){
   const x=d||{};let page=pageHead(t('modTitle'),'modbus',t('modSub'));let s=page+'<div class="card"><div class="card-head"><div><h3>'+esc(t('genSettings'))+'</h3><div class="sub">'+esc(t('modGenSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';
-  s+=numField('mod-CihazID',t('fDevId'),x.CihazID,1,247)+selectField('mod-BaudRate',t('fBaud'),x.BaudRate,[9600,19200,38400,57600,115200,230400])+textField('mod-SonHataKodu',t('fLastErr'),modbusErrorText(x.SonHataKodu),64,true)+textField('mod-SonHataZamani',t('fLastErrT'),fmtEpoch(x.SonHataZamani),64,true);s+='</div></div></div>';
+  s+=numField('mod-CihazID',t('fDevId'),x.CihazID,1,247)+selectField('mod-BaudRate',t('fBaud'),x.BaudRate,[9600,19200,38400,57600,115200,230400])+selectField('mod-StopBits',t('fStopBits'),x.StopBits||1,[1,2])+textField('mod-SonHataKodu',t('fLastErr'),modbusErrorText(x.SonHataKodu),64,true)+textField('mod-SonHataZamani',t('fLastErrT'),fmtEpoch(x.SonHataZamani),64,true);s+='</div></div></div>';
   s+='<div class="card">'+sectionHead(t('modMapT'),'modbus',t('modMapSub'))+'<div class="card-body">'+renderModbusMap(x.RegisterMap)+'</div></div>';
   return s;
 }
@@ -1739,7 +1739,7 @@ const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],
 const validationEl=(el,min,max)=>{el.classList.remove('invalid');const err=el.closest?.('.field')?.querySelector('.err');if(err)err.textContent='';const n=Number(el.value);if(el.value===''||!Number.isInteger(n)||n<min||n>max){addressError(el,t('range')+min+' .. '+max);return false}return true};
 
 function extractPage(page){if(page==='iec104'){const d={};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','TemporaryFaultBase','PermanentFaultBase','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_YukAkimiVarYok','IOA_S_YukAkimiVarYok','IOA_T_YukAkimiVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok','IOA_R_TripFailed','IOA_S_TripFailed','IOA_T_TripFailed'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
-  if(page==='modbus'){return {CihazID:getInt('mod-CihazID'),BaudRate:getInt('mod-BaudRate')}}
+  if(page==='modbus'){return {CihazID:getInt('mod-CihazID'),StopBits:getInt('mod-StopBits'),BaudRate:getInt('mod-BaudRate')}}
   if(page==='rf'){const d={};const iKeys=['HatID','ZoneID','SetEdilebilirAcmaArizaSayisi','OluHatAkimiDogrulamaSuresi','YenilenmeSifirlamaSuresi'];const fKeys=['SistemNominalAkimi','SetEdilebilirActirmaEsikAkimi','ArtimliAkimEsigi','HatKopukHatBosta'];const sKeys=['R_DEVICEID','S_DEVICEID','T_DEVICEID'];['inUse','CalismaModu','HatFrekansi',...iKeys,...fKeys,...sKeys].forEach(k=>d[k]=[]);
     for(let i=0;i<FEEDER_COUNT;i++){d.inUse[i]=getBool('rf-inUse-'+i);d.CalismaModu[i]=getInt('rf-CalismaModu-'+i);d.HatFrekansi[i]=getInt('rf-HatFrekansi-'+i);iKeys.forEach(k=>d[k][i]=getInt('rf-'+k+'-'+i));fKeys.forEach(k=>d[k][i]=getFloat('rf-'+k+'-'+i));sKeys.forEach(k=>d[k][i]=getText('rf-'+k+'-'+i).trim().toUpperCase())}return d}
   if(page==='device')return extractDevice();return {};

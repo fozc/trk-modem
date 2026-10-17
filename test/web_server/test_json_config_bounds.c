@@ -71,6 +71,7 @@ void tearDown(void)
 void test_modbus_device_id_rejects_zero_and_reserved_addresses(void)
 {
     jmodbus_configs_t config = {0};
+    config.stop_bits = 1U;
     config.baud_rate = 9600U;
     TEST_ASSERT_EQUAL_INT(0,
         parse_modbus_config("{\"CihazID\":0}", &config));
@@ -83,6 +84,7 @@ void test_modbus_device_id_rejects_zero_and_reserved_addresses(void)
 void test_modbus_device_id_accepts_both_unicast_boundaries(void)
 {
     jmodbus_configs_t config = {0};
+    config.stop_bits = 1U;
     config.baud_rate = 9600U;
     TEST_ASSERT_EQUAL_INT(1,
         parse_modbus_config("{\"CihazID\":1}", &config));
@@ -96,6 +98,7 @@ void test_modbus_setter_rejects_invalid_device_id_without_storage_calls(void)
 {
     const uint8_t addresses[] = {0U, 248U, 255U};
     jmodbus_configs_t config = {0};
+    config.stop_bits = 1U;
     config.baud_rate = 9600U;
     for (size_t index = 0U; index < sizeof(addresses); index++)
     {
@@ -109,10 +112,12 @@ void test_modbus_sync_failure_rolls_ram_back_and_skips_notify(void)
 {
     jmodbus_configs_t config = {0};
     config.device_addr = 7U;
+    config.stop_bits = 1U;
     config.baud_rate = 115200U;
 
     static modbus_configs_t running = {0};
     running.device_addr = 5U;
+    running.stop_bits = 1U;
     running.baud_rate = 9600U;
     modbus_config_get_IgnoreAndReturn(&running);
     modbus_config_set_Stub(capture_modbus);
@@ -127,10 +132,149 @@ void test_modbus_sync_failure_rolls_ram_back_and_skips_notify(void)
     TEST_ASSERT_EQUAL_UINT32(9600U, saved_modbus.baud_rate);
 }
 
+void test_modbus_stop_bits_valid_values_reach_storage(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 1U;
+    config.stop_bits = 1U;
+    config.baud_rate = 115200U;
+
+    modbus_config_get_IgnoreAndReturn(NULL);
+    modbus_config_set_Stub(capture_modbus);
+    for (uint8_t bits = 1U; 2U >= bits; bits++)
+    {
+        config.stop_bits = bits;
+        modbus_config_sync_ExpectAndReturn(0);
+        modbus_process_notify_config_changed_ExpectAndReturn(0);
+
+        TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
+        TEST_ASSERT_EQUAL_UINT8(bits, saved_modbus.stop_bits);
+    }
+}
+
+void test_modbus_stop_bits_invalid_rejected_without_storage(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 1U;
+    config.stop_bits = 1U;
+    config.baud_rate = 115200U;
+
+    const uint8_t invalid[] = {0U, 3U, 255U};
+    for (size_t i = 0U; sizeof(invalid) > i; i++)
+    {
+        config.stop_bits = invalid[i];
+        /* Storage and notify mocks must remain untouched. */
+        TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+    }
+}
+
+void test_modbus_stop_bits_missing_preserves_current_value(void)
+{
+    /* POST without StopBits: parser leaves the pre-filled current value;
+     * set_modbus_config writes it unchanged. */
+    jmodbus_configs_t config = {0};
+    config.device_addr = 7U;
+    config.stop_bits = 1U;
+    config.baud_rate = 9600U;
+    /* stop_bits not set (0 from memset) - but the HTTP handler
+     * pre-fills from NVRAM before parsing, so it's never truly 0. */
+    /* Here we simulate what the handler does: pre-fill then parse. */
+    static modbus_configs_t running = { .device_addr = 5U,
+                                         .stop_bits = 2U,
+                                         .baud_rate = 115200U };
+    modbus_config_get_IgnoreAndReturn(&running);
+    modbus_config_set_Stub(capture_modbus);
+    modbus_config_sync_ExpectAndReturn(0);
+    modbus_process_notify_config_changed_ExpectAndReturn(0);
+
+    /* Simulate partial POST: only CihazID and BaudRate in JSON. */
+    /* The parser fills config from JSON; missing fields keep the
+     * handler's pre-filled values. We verify set receives stop_bits=2. */
+    config.stop_bits = 2U;  /* what the handler would pre-fill */
+    TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
+    TEST_ASSERT_EQUAL_UINT8(2U, saved_modbus.stop_bits);
+}
+
+/* ---- Parser + setter chain tests (real JSON strings) ---- */
+
+void test_parser_stop_bits_1_and_2_accepted(void)
+{
+    jmodbus_configs_t parsed = {0};
+    parsed.stop_bits = 1U;  /* pre-fill (handler pattern) */
+
+    const char *json1 = "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":1}";
+    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config(json1, &parsed));
+    TEST_ASSERT_EQUAL_UINT8(1U, parsed.stop_bits);
+
+    const char *json2 = "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":2}";
+    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config(json2, &parsed));
+    TEST_ASSERT_EQUAL_UINT8(2U, parsed.stop_bits);
+}
+
+void test_parser_stop_bits_invalid_values_rejected(void)
+{
+    jmodbus_configs_t parsed = {0};
+
+    const char *json0 = "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":0}";
+    TEST_ASSERT_EQUAL_INT(0, parse_modbus_config(json0, &parsed));
+
+    const char *json3 = "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":3}";
+    TEST_ASSERT_EQUAL_INT(0, parse_modbus_config(json3, &parsed));
+
+    const char *json255 = "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":255}";
+    TEST_ASSERT_EQUAL_INT(0, parse_modbus_config(json255, &parsed));
+}
+
+void test_parser_stop_bits_wrong_type_rejected(void)
+{
+    jmodbus_configs_t parsed = {0};
+    /* String instead of number must be rejected by the JSON parser. */
+    const char *jsonstr =
+        "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":\"2\"}";
+    const int result = parse_modbus_config(jsonstr, &parsed);
+    /* parse_uint8 rejects non-numeric; -1 = parse failure. */
+    TEST_ASSERT_EQUAL_INT(0, result);
+}
+
+void test_parser_stop_bits_missing_preserves_current_value(void)
+{
+    /* THE key test: JSON WITHOUT StopBits must leave the pre-filled
+     * current value untouched. This simulates the HTTP handler chain:
+     * 1. Handler reads NVRAM -> config.stop_bits = 2 (current setting)
+     * 2. Handler calls parse_modbus_config -> StopBits NOT in JSON
+     * 3. set_modbus_config receives stop_bits=2 (unchanged) */
+    jmodbus_configs_t parsed = {0};
+    parsed.device_addr = 1U;
+    parsed.stop_bits = 2U;      /* current setting from NVRAM */
+    parsed.baud_rate = 115200U; /* pre-filled */
+
+    const char *json_no_stop =
+        "{\"CihazID\":7,\"BaudRate\":9600}";
+    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config(json_no_stop, &parsed));
+
+    /* CihazID and BaudRate updated; StopBits NOT in JSON = preserved. */
+    TEST_ASSERT_EQUAL_UINT8(7U, parsed.device_addr);
+    TEST_ASSERT_EQUAL_UINT32(9600U, parsed.baud_rate);
+    TEST_ASSERT_EQUAL_UINT8(2U, parsed.stop_bits);
+
+    /* Full chain: setter receives the parsed struct. */
+    static modbus_configs_t running = { .device_addr = 1U,
+                                         .stop_bits = 2U,
+                                         .baud_rate = 115200U };
+    modbus_config_get_IgnoreAndReturn(&running);
+    modbus_config_set_Stub(capture_modbus);
+    modbus_config_sync_ExpectAndReturn(0);
+    modbus_process_notify_config_changed_ExpectAndReturn(0);
+    TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&parsed));
+    TEST_ASSERT_EQUAL_UINT8(2U, saved_modbus.stop_bits);
+    TEST_ASSERT_EQUAL_UINT32(9600U, saved_modbus.baud_rate);
+}
+
 void test_modbus_device_id_247_reaches_storage_unchanged(void)
 {
     jmodbus_configs_t config = {0};
     config.device_addr = 247U;
+    config.stop_bits = 1U;
     config.baud_rate = 9600U;
     modbus_config_get_IgnoreAndReturn(NULL);
     modbus_config_set_Stub(capture_modbus);
@@ -178,6 +322,7 @@ void test_wellformed_unknown_key_is_skipped(void)
 {
     jmodbus_configs_t config = {0};
     config.device_addr = 1U;
+    config.stop_bits = 1U;
     config.baud_rate = 9600U;
 
     /* Unknown keys (e.g. a stray Hat block) are skipped when well-formed;
@@ -191,6 +336,7 @@ void test_modbus_setter_rejects_invalid_device_id_before_writing(void)
 {
     jmodbus_configs_t config = {0};
     config.device_addr = 0U;
+    config.stop_bits = 1U;
     config.baud_rate = 9600U;
 
     /* No mock write is expected on invalid input. */
@@ -239,6 +385,7 @@ void test_modbus_valid_boundary_values_reach_storage_unchanged(void)
 {
     jmodbus_configs_t config = {0};
     config.device_addr = 1U;
+    config.stop_bits = 1U;
     config.baud_rate = 9600U;
     modbus_config_get_IgnoreAndReturn(NULL);
     modbus_config_set_Stub(capture_modbus);

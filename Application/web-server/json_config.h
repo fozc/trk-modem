@@ -78,6 +78,7 @@ typedef struct
 typedef struct
 {
     uint8_t device_addr;                     // Modbus cihaz adresi 1-247
+    uint8_t stop_bits;                       // 1 (8N1) veya 2 (8N2); default 1
     uint8_t last_error_code;
     uint32_t baud_rate;
 } jmodbus_configs_t;
