@@ -71,6 +71,28 @@ static uint16_t sys_stats_low_word(uint32_t value)
 	return (uint16_t)(value & 0xFFFFU);
 }
 
+/* MB-08: per-response snapshot of time-sensitive UINT32 sources.
+ * Frozen lazily on the first system-stats register read of a response;
+ * invalidated by the poll wrapper so each FC03 response takes a fresh
+ * snapshot. High and low words of each 32-bit value can never tear. */
+static uint32_t epoch_snapshot;
+static uint32_t tick_snapshot;
+static rtc_t    calendar_snapshot;   /* one rtc_now() read, no tearing */
+static bool snapshot_valid = false;
+
+void modbus_system_stats_invalidate_snapshot(void)
+{
+	snapshot_valid = false;
+}
+
+void modbus_system_stats_snapshot(void)
+{
+	epoch_snapshot    = rtc_get_unix_epoch();
+	tick_snapshot     = bsp_get_tick();
+	calendar_snapshot = rtc_now();  /* atomic: all fields from one read */
+	snapshot_valid    = true;
+}
+
 bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value)
 {
 	/* Outside the block: not our register, let the caller try other handlers. */
@@ -78,36 +100,42 @@ bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value)
 		return false;
 	}
 
+	/* MB-08: freeze time-sensitive sources on the first register of this
+	 * block within a response. All subsequent UINT32 reads use the cache. */
+	if (!snapshot_valid) {
+		modbus_system_stats_snapshot();
+	}
+
 	switch (reg_addr)
 	{
 		case SYS_REG(rtc_sec):
-			*value = (uint16_t)(rtc_get_second() & 0xFFFFU);
+			*value = (uint16_t)calendar_snapshot.second;
 			return true;
 		case SYS_REG(rtc_min):
-			*value = (uint16_t)(rtc_get_minute() & 0xFFFFU);
+			*value = (uint16_t)calendar_snapshot.minute;
 			return true;
 		case SYS_REG(rtc_hour):
-			*value = (uint16_t)(rtc_get_hour() & 0xFFFFU);
+			*value = (uint16_t)calendar_snapshot.hour;
 			return true;
 		case SYS_REG(rtc_day):
-			*value = (uint16_t)(rtc_get_day() & 0xFFFFU);
+			*value = (uint16_t)calendar_snapshot.day;
 			return true;
 		case SYS_REG(rtc_month):
-			*value = (uint16_t)(rtc_get_month() & 0xFFFFU);
+			*value = (uint16_t)calendar_snapshot.month;
 			return true;
 		case SYS_REG(rtc_year):
-			*value = (uint16_t)((2000 + rtc_get_year()) & 0xFFFFU);
+			*value = (uint16_t)(2000U + calendar_snapshot.year);
 			return true;
 		case SYS_REG(uptime_sec):
-			*value = (uint16_t)(bsp_get_tick() / 60000 & 0xFFFFU); // dakika cinsinden
+			*value = (uint16_t)(tick_snapshot / 60000U);
 			return true;
 		case SYS_REG(rtc_unix):
-			/* UINT32 high word (ABCD). */
-			*value = sys_stats_high_word(rtc_get_unix_epoch());
+			/* UINT32 high word (ABCD). From the per-response snapshot. */
+			*value = sys_stats_high_word(epoch_snapshot);
 			return true;
 		case SYS_REG(rtc_unix) + 1U:
-			/* UINT32 low word. */
-			*value = sys_stats_low_word(rtc_get_unix_epoch());
+			/* UINT32 low word. Same snapshot as the high word. */
+			*value = sys_stats_low_word(epoch_snapshot);
 			return true;
 		case SYS_REG(reset_reason):
 			*value = (uint16_t)reset_source_get_flags();
@@ -125,12 +153,12 @@ bool modbus_system_stats_read(uint16_t reg_addr, uint16_t* value)
 			*value = adc_get_voltage_mv(ADC_CH_3V8);
 			return true;
 		case SYS_REG(uptime_raw):
-			/* UINT32 high word (ABCD). */
-			*value = sys_stats_high_word(bsp_get_tick());
+			/* UINT32 high word (ABCD). From the per-response snapshot. */
+			*value = sys_stats_high_word(tick_snapshot);
 			return true;
 		case SYS_REG(uptime_raw) + 1U:
-			/* UINT32 low word. */
-			*value = sys_stats_low_word(bsp_get_tick());
+			/* UINT32 low word. Same snapshot as the high word. */
+			*value = sys_stats_low_word(tick_snapshot);
 			return true;
 		case SYS_REG(dinput_states):
 				*value = digital_input_get_all() & 0x00FFU;
