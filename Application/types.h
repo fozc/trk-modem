@@ -96,6 +96,7 @@ typedef struct
 typedef struct
 {
     uint8_t device_addr;      // Modbus cihaz adresi 1-247
+    uint8_t stop_bits;        // 1 veya 2 (8N1 / 8N2); default 1
     uint8_t last_error_code;
     uint32_t baud_rate;
 }__attribute__((packed)) modbus_configs_t;
@@ -189,7 +190,7 @@ typedef struct
  *  zamani sabitti (modbus_map.h); modbus_line_config_t ve addr_aku/
  *  addr_modem_reset alanlari kaldirildi. Saha cihazi yok: eski goruntuler
  *  bilincli default-reset ile karsilanir. */
-#define NVRAM_SCHEMA_VERSION  5U
+#define NVRAM_SCHEMA_VERSION  1U
 #define RF_INVENTORY_JOURNAL_CAPACITY 12U
 
 typedef struct
@@ -269,8 +270,8 @@ _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
 _Static_assert(sizeof(rf_inventory_journal_t) == 148U,
                "RF inventory journal layout");
 _Static_assert(offsetof(nvram_t, rf_inventory_journal) == 1832U,
-               "Schema v5 journal offset (v4: 2472 - modbus adres alanlari cikti)");
-_Static_assert(sizeof(nvram_t) == 1984U, "nvram_t schema v5 layout");
+               "Schema v1 journal offset (stop_bits absorbed by _Alignas padding)");
+_Static_assert(sizeof(nvram_t) == 1984U, "nvram_t schema v1 layout");
 _Static_assert(offsetof(nvram_t, crc) == 1980U, "nvram_t: crc at tail");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 

@@ -657,6 +657,64 @@ static void test_modbus_config_primary_only_boot_selects_new(void)
           "Modbus cfg: reboot selects new device_addr from A");
 }
 
+static void test_schema_one_rejects_old_v5_image_and_loads_defaults(void)
+{
+    /* WP-J: BOTH slots carry a CRC-valid schema-5 image with non-default
+     * settings. After reboot the schema mismatch must reject them and
+     * load factory defaults (stop_bits=1, baud=115200, addr=23). */
+    boot_virgin();
+    for (uint32_t slot = 0U; 2U > slot; slot++)
+    {
+        nvram_t *image = img(slot);
+        image->schema_version = 5U;
+        image->modbus_config.stop_bits = 2U;
+        image->modbus_config.baud_rate = 9600U;
+        image->modbus_config.device_addr = 77U;
+        image->length = (uint32_t)sizeof(nvram_t);
+        image->crc = crc32_finalize(crc32_update(crc32_init(),
+            image, sizeof(nvram_t) - sizeof(image->crc)));
+    }
+
+    reboot();
+
+    /* Schema 5 != 1: factory defaults must be loaded, NOT the old
+     * 9600/8N2/77 values from the schema-5 images. */
+    const modbus_configs_t *cfg = nvram_get_modbus_config();
+    check(cfg->stop_bits == 1U,
+          "v5 image: stop_bits defaults to 1, not old 2");
+    check(cfg->baud_rate == 115200U,
+          "v5 image: baud defaults to 115200, not old 9600");
+    check(cfg->device_addr == 23U,
+          "v5 image: addr defaults to 23, not old 77");
+}
+
+static void test_stop_bits_persisted_and_restored_on_reboot(void)
+{
+    /* WP-J: save with stop_bits=2, reboot, verify it's restored. */
+    boot_virgin();
+    {
+        modbus_configs_t *cfg = (modbus_configs_t *)nvram_get_modbus_config();
+        cfg->stop_bits = 2U;
+        cfg->baud_rate = 9600U;
+    }
+    check(NVRAM_SAVE_COMPLETE == nvram_save(false),
+          "Save with stop_bits=2 and baud=9600");
+
+    reboot();
+    const modbus_configs_t *cfg = nvram_get_modbus_config();
+    check(cfg->stop_bits == 2U,
+          "stop_bits=2 survives reboot");
+    check(cfg->baud_rate == 9600U,
+          "baud=9600 survives reboot");
+
+    /* Change back to 1 and verify round trip. */
+    ((modbus_configs_t *)nvram_get_modbus_config())->stop_bits = 1U;
+    check(NVRAM_SAVE_COMPLETE == nvram_save(false), "Save with stop_bits=1");
+    reboot();
+    check(nvram_get_modbus_config()->stop_bits == 1U,
+          "stop_bits=1 survives reboot");
+}
+
 static void test_schema_three_uses_defaults_without_migration(void)
 {
     boot_virgin();
@@ -690,6 +748,8 @@ int main(void)
     test_rf_staged_save_with_real_flash_failures();
     test_detailed_save_distinguishes_failed_and_primary_only();
     test_modbus_config_primary_only_boot_selects_new();
+    test_schema_one_rejects_old_v5_image_and_loads_defaults();
+    test_stop_bits_persisted_and_restored_on_reboot();
     test_factory_iec_addresses_are_unchanged();
     test_iec_default_address_regions();
     test_lifetime_persistence_boundary();
