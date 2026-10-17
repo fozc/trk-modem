@@ -383,15 +383,30 @@ void test_overflowing_wire_address_is_rejected_before_register_callback(void)
     assert_next_valid_request_succeeds(MODBUS_FC_READ_HOLDING_REGISTERS);
 }
 
-void test_rx_overflow_recovers_on_next_valid_frame_without_memory_overrun(void)
+void test_rx_overflow_discards_stream_tail_and_resyncs_on_idle(void)
 {
-    for (size_t index = 0U; MODBUS_BUFFER_SIZE > index; index++)
+    for (size_t index = 0U; (MODBUS_BUFFER_SIZE + 1U) > index; index++)
     {
         libmodbusrtu_modbus_rx_byte(&guarded.context, 0xFFU);
     }
-    TEST_ASSERT_EQUAL_UINT16(MODBUS_BUFFER_SIZE, guarded.context.rx_count);
+    TEST_ASSERT_TRUE(guarded.context.discard);
+
+    /* A valid frame appended to the same burst must NOT be parsed: the
+     * receiver stays in discard until the line is idle for a verified
+     * inter-frame gap (tail-command closure). */
+    clear_observations();
+    receive_request(MODBUS_FC_WRITE_SINGLE_REGISTER, 1U, 8U, true);
+    fake_tick += MODBUS_TIMEOUT_MS + 1U;
+    TEST_ASSERT_EQUAL_INT(MODBUS_POLL_IDLE,
+        libmodbusrtu_modbus_process(&guarded.context));
+    TEST_ASSERT_EQUAL_UINT32(0U, write_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, response_count);
+
+    /* After the idle gap the next valid frame is accepted exactly once. */
+    fake_tick += MODBUS_TIMEOUT_MS + 1U;
     assert_next_valid_request_succeeds(MODBUS_FC_READ_HOLDING_REGISTERS);
     TEST_ASSERT_EQUAL_UINT16(0U, guarded.context.rx_count);
+    TEST_ASSERT_FALSE(guarded.context.discard);
     TEST_ASSERT_FALSE(guarded.context.busy);
 }
 
@@ -399,8 +414,12 @@ void test_receive_during_callback_does_not_modify_the_frame_being_parsed(void)
 {
     inject_receive = true;
     assert_next_valid_request_succeeds(MODBUS_FC_READ_HOLDING_REGISTERS);
+    /* The stray byte arrived while the poll owned the buffer: it was
+     * read-and-dropped and the discard state armed until the line is
+     * quiet, so it cannot become a command tail. */
     TEST_ASSERT_EQUAL_UINT16(0U, guarded.context.rx_count);
     TEST_ASSERT_FALSE(guarded.context.busy);
+    TEST_ASSERT_TRUE(guarded.context.discard);
 }
 
 void test_idle_gap_handles_tick_wrap_and_dispatches_exactly_once(void)
@@ -415,3 +434,46 @@ void test_idle_gap_handles_tick_wrap_and_dispatches_exactly_once(void)
 }
 
 /*** end of file ***/
+
+
+void test_short_frame_after_exception_does_not_relog_stale_error(void)
+{
+    /* MB-09: raise a real exception (bad length), then a short frame. */
+    clear_observations();
+    send_request(MODBUS_FC_READ_HOLDING_REGISTERS, 1U, 4U, true);
+    TEST_ASSERT_EQUAL_UINT8(MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE,
+        libmodbusrtu_modbus_get_last_exception(&guarded.context));
+
+    /* 2-byte fragment: silence completes it as a short frame. */
+    clear_observations();
+    libmodbusrtu_modbus_rx_byte(&guarded.context, 0x01U);
+    libmodbusrtu_modbus_rx_byte(&guarded.context, 0x03U);
+    fake_tick += MODBUS_TIMEOUT_MS + 1U;
+    TEST_ASSERT_EQUAL_INT(MODBUS_POLL_HANDLED,
+        libmodbusrtu_modbus_process(&guarded.context));
+
+    /* The short frame produced NO new exception; the stale 0x03 must
+     * NOT be re-reported. */
+    TEST_ASSERT_EQUAL_UINT8(0U,
+        libmodbusrtu_modbus_get_last_exception(&guarded.context));
+}
+
+void test_foreign_frame_after_exception_does_not_relog_stale_error(void)
+{
+    /* MB-09: raise a real exception, then a foreign-address frame. */
+    clear_observations();
+    send_request(MODBUS_FC_WRITE_SINGLE_REGISTER, 1U, 4U, true);
+    TEST_ASSERT_EQUAL_UINT8(MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE,
+        libmodbusrtu_modbus_get_last_exception(&guarded.context));
+
+    /* Valid-CRC frame for slave 5 (not ours). */
+    clear_observations();
+    receive_request(MODBUS_FC_READ_HOLDING_REGISTERS, 5U, 8U, true);
+    fake_tick += MODBUS_TIMEOUT_MS + 1U;
+    TEST_ASSERT_EQUAL_INT(MODBUS_POLL_HANDLED,
+        libmodbusrtu_modbus_process(&guarded.context));
+
+    /* Foreign frame produced NO new exception for us. */
+    TEST_ASSERT_EQUAL_UINT8(0U,
+        libmodbusrtu_modbus_get_last_exception(&guarded.context));
+}

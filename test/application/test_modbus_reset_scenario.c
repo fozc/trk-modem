@@ -138,6 +138,8 @@ static bool get_relay(relay_channel_t channel, int call_count)
 
 void setUp(void)
 {
+    modbus_system_stats_invalidate_snapshot_Ignore();
+    modbus_power_stats_invalidate_snapshot_Ignore();
     fake_tick = 0U;
     reset_requests = 0U;
     relay_writes = 0U;

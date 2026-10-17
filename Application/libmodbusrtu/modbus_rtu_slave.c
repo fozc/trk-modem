@@ -270,6 +270,12 @@ static void modbus_process_fc06(modbus_slave_t *p_ctx, const uint8_t *frame, uin
  */
 static void modbus_process_frame(modbus_slave_t *p_ctx, const uint8_t *frame, uint16_t len)
 {
+    /* MB-09: clear the per-frame exception record at the top so any
+     * non-zero value after this call means THIS frame raised it. Short
+     * frames and foreign-address frames return with code 0, preventing
+     * the previous frame's exception from being re-reported. */
+    p_ctx->last_exception_code = 0U;
+
     if (len < MODBUS_FRAME_MIN_LEN) {
         return;
     }
@@ -291,13 +297,6 @@ static void modbus_process_frame(modbus_slave_t *p_ctx, const uint8_t *frame, ui
     }
 
     uint8_t function_code = frame[MODBUS_OFFSET_FC];
-
-    /*
-     * Clear the per-frame exception record before dispatching. After this call
-     * a non-zero last_exception_code means this frame raised that exception,
-     * which lets the caller detect and log each occurrence.
-     */
-    p_ctx->last_exception_code = 0U;
 
     switch (function_code) {
         case MODBUS_FC_READ_HOLDING_REGISTERS:
@@ -335,6 +334,21 @@ void libmodbusrtu_slave_init(modbus_slave_t *p_ctx,
     p_ctx->slave_id    = slave_id;
     p_ctx->get_tick_ms = get_tick_ms_func;
     p_ctx->uart_write  = uart_write_func;
+
+    /* Software-completion default until the application derives the real
+     * threshold from the configured baud. Never leave this at zero: a zero
+     * threshold would turn every byte into an inter-frame boundary. */
+    p_ctx->frame_silence_ms = MODBUS_TIMEOUT_MS;
+}
+
+void libmodbusrtu_register_critical_section(modbus_slave_t *p_ctx,
+                                            modbus_critical_enter_t enter_fn,
+                                            modbus_critical_exit_t exit_fn)
+{
+    if (p_ctx != NULL) {
+        p_ctx->critical_enter = enter_fn;
+        p_ctx->critical_exit  = exit_fn;
+    }
 }
 
 void libmodbusrtu_register_read_callback(modbus_slave_t *p_ctx, modbus_read_reg_callback_t callback)
@@ -360,43 +374,124 @@ uint8_t libmodbusrtu_modbus_get_last_exception(const modbus_slave_t *p_ctx)
 }
 
 /**
- * @brief Clear the receive buffer and arm it for the next frame.
+ * @brief Clear the receive state and arm it for the next frame.
+ *
+ * Main-context callers must hold the registered RX critical-section guard
+ * (rx_count/busy/discard are otherwise receive-interrupt owned).
  */
 static void modbus_rx_reset(modbus_slave_t *p_ctx)
 {
     p_ctx->rx_count    = 0U;
     p_ctx->frame_ready = false;
     p_ctx->busy        = false;
+    p_ctx->discard     = false;
 }
 
 void libmodbusrtu_modbus_reset_rx(modbus_slave_t *p_ctx)
 {
     if (p_ctx != NULL) {
+        if (p_ctx->critical_enter != NULL) {
+            p_ctx->critical_enter();
+        }
         modbus_rx_reset(p_ctx);
+        if (p_ctx->critical_exit != NULL) {
+            p_ctx->critical_exit();
+        }
     }
+}
+
+void libmodbusrtu_modbus_rx_error(modbus_slave_t *p_ctx)
+{
+    if (p_ctx != NULL) {
+        /* Line error: the frame in flight is untrusted. Stamp the error
+         * instant as the last activity - the recovery silence starts here,
+         * not at the previous frame's last byte, so the byte of the same
+         * interrupt cannot exit discard immediately. A frame not yet taken
+         * by the poll is voided outright. */
+        p_ctx->discard = true;
+        if (p_ctx->get_tick_ms != NULL) {
+            p_ctx->last_rx_time = p_ctx->get_tick_ms();
+        }
+        if (!p_ctx->busy) {
+            p_ctx->rx_count = 0U;
+        }
+    }
+}
+
+void libmodbusrtu_modbus_set_frame_silence_from_baud(modbus_slave_t *p_ctx,
+                                                     uint32_t baud)
+{
+    uint32_t silence_ms;
+
+    if (p_ctx == NULL) {
+        return;
+    }
+    if (baud > 19200U) {
+        /* Serial-line guide fixes T3.5 = 1.75 ms above 19200 baud; 3 ms
+         * resolves it with a 1 ms tick. */
+        silence_ms = 3U;
+    } else {
+        /* T3.5 = 3.5 x 11-bit characters, rounded up, plus tick margin. */
+        silence_ms = ((((38500U + baud) - 1U) / baud)) + 2U;
+    }
+    p_ctx->frame_silence_ms = (uint16_t)silence_ms;
 }
 
 void libmodbusrtu_modbus_rx_byte(modbus_slave_t *p_ctx, uint8_t byte)
 {
-    /* The main loop owns the buffer while parsing - drop bytes until it is done. */
+    uint32_t now = 0U;
+
+    if (p_ctx->get_tick_ms != NULL) {
+        now = p_ctx->get_tick_ms();
+    }
+
     if (p_ctx->busy) {
+        /* The poll owns the buffer (parsing): read-and-drop this byte and
+         * require a verified idle gap after the hand-back before any byte
+         * is accepted again, so no tail of this burst becomes a command. */
+        p_ctx->discard      = true;
+        p_ctx->last_rx_time = now;
+        return;
+    }
+
+    if (p_ctx->discard) {
+        /* Resynchronising after overflow, an error or a dropped burst:
+         * stay silent until the line has been idle for one frame gap. A
+         * completed frame still waiting in the buffer is preserved: while
+         * it waits for the poll, new traffic keeps being dropped - the
+         * receiver resumes only after the poll has consumed it. */
+        if (((now - p_ctx->last_rx_time) < p_ctx->frame_silence_ms) ||
+            (p_ctx->rx_count > 0U)) {
+            p_ctx->last_rx_time = now;
+            return;
+        }
+        p_ctx->discard = false;
+        p_ctx->rx_count = 0U;
+    } else if ((p_ctx->rx_count > 0U) &&
+               ((now - p_ctx->last_rx_time) >= p_ctx->frame_silence_ms))
+    {
+        /* A new frame starts while the buffered one is already complete:
+         * the poll still owns the decision on those bytes. Do not merge -
+         * drop the new frame until the line is quiet (single-buffer
+         * trade-off, the master retry covers the loss). */
+        p_ctx->discard      = true;
+        p_ctx->last_rx_time = now;
         return;
     }
 
     if (p_ctx->rx_count >= MODBUS_BUFFER_SIZE) {
-        /* Overflow: no valid frame is this long - discard and resynchronise. */
-        p_ctx->rx_count = 0U;
+        /* Overflow: no valid frame is this long. Void the partial frame and
+         * enter the discard state instead of reusing the tail of the broken
+         * stream as a frame start. */
+        p_ctx->rx_count     = 0U;
+        p_ctx->discard      = true;
+        p_ctx->last_rx_time = now;
+        return;
     }
 
     p_ctx->rx_buffer[p_ctx->rx_count] = byte;
     p_ctx->rx_count++;
-
-#if (MODBUS_USE_HW_RTO == 0)
-    /* Timestamp the byte so the main loop can measure the inter-frame gap. */
-    if (p_ctx->get_tick_ms != NULL) {
-        p_ctx->last_rx_time = p_ctx->get_tick_ms();
-    }
-#endif
+    p_ctx->last_rx_time = now;
 }
 
 #if (MODBUS_USE_HW_RTO == 1)
@@ -411,35 +506,56 @@ void libmodbusrtu_modbus_rx_timeout(modbus_slave_t *p_ctx)
 
 modbus_poll_result_t libmodbusrtu_modbus_process(modbus_slave_t *p_ctx)
 {
-    uint16_t count = p_ctx->rx_count;
+    bool taken = false;
 
-    if (count == 0U) {
-        return MODBUS_POLL_IDLE;
+    /* Take ownership of the completed frame. The completion checks and the
+     * hand-off run inside the registered RX guard as one unit: a receive
+     * interrupt between an unguarded check and the take could extend or
+     * invalidate the frame. The section is short - checks and flag writes
+     * only. */
+    if (p_ctx->critical_enter != NULL) {
+        p_ctx->critical_enter();
     }
-
-    /*
-     * Frame delimiting is purely timeout based (PetitModbus style): once the
-     * receive line has been idle for >= T3.5 the buffered bytes form a frame.
-     * CRC validation (in modbus_process_frame) has the final say on validity.
-     */
 #if (MODBUS_USE_HW_RTO == 1)
-    /* Hardware mode: the RX-timeout ISR flags a finished frame. */
-    bool complete = p_ctx->frame_ready;
+    if (!p_ctx->busy && p_ctx->frame_ready) {
+        p_ctx->frame_ready = false;
+        p_ctx->busy        = true;
+        taken              = true;
+    }
 #else
-    /* Software mode: measure the inter-frame (T3.5) idle gap in the main loop. */
-    bool complete = ((p_ctx->get_tick_ms != NULL) &&
-                     ((p_ctx->get_tick_ms() - p_ctx->last_rx_time) >= MODBUS_TIMEOUT_MS));
+    if (!p_ctx->busy &&
+        (p_ctx->rx_count > 0U) &&
+        (p_ctx->get_tick_ms != NULL) &&
+        ((p_ctx->get_tick_ms() - p_ctx->last_rx_time) >=
+         p_ctx->frame_silence_ms))
+    {
+        p_ctx->busy = true;
+        taken       = true;
+    }
 #endif
-
-    if (!complete) {
-        return MODBUS_POLL_RECEIVING;
+    if (p_ctx->critical_exit != NULL) {
+        p_ctx->critical_exit();
     }
 
-    /* Take ownership of the buffer so the RX ISR stops writing to it. */
-    p_ctx->busy = true;
-    modbus_process_frame(p_ctx, p_ctx->rx_buffer, count);
-    modbus_rx_reset(p_ctx);
+    if (!taken) {
+        return (p_ctx->rx_count > 0U) ? MODBUS_POLL_RECEIVING
+                                      : MODBUS_POLL_IDLE;
+    }
+
+    /* Parse with interrupts open: bytes arriving now are read-and-dropped
+     * by the ISR and keep the discard state armed until the line is quiet. */
+    modbus_process_frame(p_ctx, p_ctx->rx_buffer, p_ctx->rx_count);
+
+    /* Hand the buffer back under the same short guard. The discard state
+     * is deliberately preserved. */
+    if (p_ctx->critical_enter != NULL) {
+        p_ctx->critical_enter();
+    }
+    p_ctx->busy     = false;
+    p_ctx->rx_count = 0U;
+    if (p_ctx->critical_exit != NULL) {
+        p_ctx->critical_exit();
+    }
 
     return MODBUS_POLL_HANDLED;
 }
-

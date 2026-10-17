@@ -38,6 +38,8 @@ TEST_SOURCE_FILE("power_board_scp.c")
 
 void setUp(void)
 {
+    modbus_system_stats_invalidate_snapshot_Ignore();
+    modbus_power_stats_invalidate_snapshot_Ignore();
     reset_fixture();
 }
 

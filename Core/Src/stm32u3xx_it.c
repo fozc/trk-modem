@@ -432,6 +432,16 @@ void UART4_IRQHandler(void)
 	if (LL_USART_IsActiveFlag_RTO(UART4)) { LL_USART_ClearFlag_RTO(UART4); }
 	if (LL_USART_IsActiveFlag_ORE(UART4)) { LL_USART_ClearFlag_ORE(UART4); }
 
+	/* Any receive line error (PE/FE/NE/ORE) invalidates the Modbus frame
+	 * in flight; the core resynchronises after a verified idle gap. The
+	 * pre-clear isrflags snapshot decides, RTO is a frame end, not an
+	 * error. */
+	if (isrflags & (USART_ISR_PE | USART_ISR_FE |
+	                USART_ISR_NE | USART_ISR_ORE))
+	{
+		modbus_process_isr_rx_error();
+	}
+
 	/* --- Modbus RTU RX --- */
 	if (LL_USART_IsActiveFlag_RXNE_RXFNE(UART4)
 		&& (cr1its & USART_CR1_RXNEIE_RXFNEIE))

@@ -1079,7 +1079,10 @@ void rf_comm_init(uint8_t device_address)
 #if RF_SCP_OVER_MODBUS_PORT
     /* UART4 comes up at the CubeMX Modbus default (115200); SCP line
      * rate is 230400. Reprogram while idle, before RX starts. */
-    uart_set_baudrate(RF_UART_PORT, RF_UART_BAUDRATE);
+    if (!uart_set_baudrate(RF_UART_PORT, RF_UART_BAUDRATE))
+    {
+        CSLOG_ERR("RF: UART baud ayarlanamadi\r\n");
+    }
 #endif
     uart_set_rx_interrupt(RF_UART_PORT, UART_RX_INT_ENABLE);
 

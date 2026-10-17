@@ -105,6 +105,19 @@ extern "C" {
 #define MODBUS_HOLDING_REG_BASE     40000U
 
 /**
+ * @brief Critical-section hooks for the RX ownership hand-off.
+ *
+ * libmodbusrtu_modbus_process() takes the completed frame (completion
+ * checks plus the busy hand-off) and hands the buffer back after parsing;
+ * both short windows must exclude the UART RX interrupt. Register a pair
+ * that masks only the RX interrupt source (preserving its prior enable
+ * state). Without the hooks (host tests) the caller guarantees
+ * single-threaded access.
+ */
+typedef void (*modbus_critical_enter_t)(void);
+typedef void (*modbus_critical_exit_t)(void);
+
+/**
  * @brief Result of a register access callback.
  */
 typedef enum
@@ -167,18 +180,35 @@ typedef struct
     uint8_t slave_id;                           /**< This slave's address.   */
 
     /*
-     * RX frame buffer shared between the UART RX interrupt (producer) and the
-     * main-loop poll (consumer). The hand-off is serialised by the volatile
-     * flags below: each side only touches the buffer while the other is idle.
+     * Single RX buffer with explicit ownership. The UART RX interrupt
+     * fills rx_buffer while the poll is idle; once the frame is complete
+     * the poll takes the buffer under the registered RX critical-section
+     * guard (short: checks plus hand-off only) and parses it with
+     * interrupts open. Bytes arriving while the poll owns the buffer are
+     * read and dropped by the ISR, and the receiver enters the discard
+     * state: after the hand-back no tail of that burst can be accepted as
+     * a command until the line has been idle for frame_silence_ms. A frame
+     * arriving before the poll takes a completed buffer is likewise
+     * dropped. Usage condition, not a guarantee: the master must be
+     * *configured* to retry within its response timeout for this loss to
+     * be covered (verified in G8 acceptance).
+     * Overflow and UART line errors void the partial frame and discard.
      */
     uint8_t           rx_buffer[MODBUS_BUFFER_SIZE];
     volatile uint16_t rx_count;                 /**< Bytes received so far.  */
-    volatile uint32_t last_rx_time;             /**< Tick of the last byte.  */
-    volatile bool     frame_ready;              /**< Set by the HW RTO ISR.  */
+    volatile uint32_t last_rx_time;             /**< Tick of the last activity
+                                                     (received or dropped).  */
     volatile bool     busy;                     /**< Poll owns the buffer.   */
+    volatile bool     discard;                  /**< Resync: drop until idle.*/
+    volatile bool     frame_ready;              /**< Set by the HW RTO ISR.  */
+
+    uint16_t          frame_silence_ms;         /**< T3.5-based completion and
+                                                     inter-frame boundary.   */
 
     modbus_get_tick_ms_t        get_tick_ms;    /**< Millisecond tick hook.  */
     modbus_uart_write_t         uart_write;     /**< UART transmit hook.     */
+    modbus_critical_enter_t     critical_enter; /**< Optional RX IRQ guard.  */
+    modbus_critical_exit_t      critical_exit;  /**< Optional RX IRQ guard.  */
     modbus_read_reg_callback_t  read_callback;  /**< FC03 read hook.         */
     modbus_write_reg_callback_t write_callback; /**< FC06 write hook.        */
 
@@ -230,6 +260,45 @@ void libmodbusrtu_modbus_set_slave_id(modbus_slave_t *p_ctx, uint8_t id);
  * registered callbacks.
  */
 void libmodbusrtu_modbus_reset_rx(modbus_slave_t *p_ctx);
+
+/**
+ * @brief Report a UART receive line error (PE/FE/NE/ORE).
+ * @param[in] p_ctx Slave instance.
+ *
+ * Marks the frame in flight as untrusted: bytes are dropped until the line
+ * has been idle for at least the configured frame silence, so the tail of a
+ * corrupted stream cannot be parsed as a command. Call from the UART error
+ * interrupt context.
+ */
+void libmodbusrtu_modbus_rx_error(modbus_slave_t *p_ctx);
+
+/**
+ * @brief Derive the frame silence threshold from the baud rate.
+ * @param[in] p_ctx  Slave instance.
+ * @param[in] baud   Current baud rate.
+ *
+ * Sets frame_silence_ms used for both frame completion and the inter-frame
+ * boundary: above 19200 baud the Modbus serial-line guide fixes T3.5 at
+ * 1.75 ms, which a 1 ms tick resolves with a 3 ms threshold; at and below
+ * 19200 baud T3.5 is 3.5 character times (11-bit characters) rounded up
+ * with tick-quantisation margin. Call after init and after every baud
+ * change; without it the MODBUS_TIMEOUT_MS default applies.
+ */
+void libmodbusrtu_modbus_set_frame_silence_from_baud(modbus_slave_t *p_ctx,
+                                                     uint32_t baud);
+
+/**
+ * @brief Register the RX critical-section guard for software completion.
+ * @param[in] p_ctx     Slave instance.
+ * @param[in] enter_fn  Masks the UART RX interrupt (preserves prior state).
+ * @param[in] exit_fn   Restores the interrupt state saved by enter_fn.
+ *
+ * Required in the deployed software-RTO build; host tests may omit it when
+ * rx bytes are fed from the same thread.
+ */
+void libmodbusrtu_register_critical_section(modbus_slave_t *p_ctx,
+                                            modbus_critical_enter_t enter_fn,
+                                            modbus_critical_exit_t exit_fn);
 
 /**
  * @brief Get the most recent Modbus exception code sent by this slave.
