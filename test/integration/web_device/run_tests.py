@@ -171,6 +171,74 @@ def request_once(method, path, extra_headers=""):
                        % (last, method, path))
 
 
+def test_modbus_stop_bits_cycle(http_req):
+    """WP-J: StopBits 1->2->1 with response body + missing-field preservation.
+
+    Receives the main session's http_req (single web client slot).
+    """
+    try:
+        # Reconnect if the main session dropped during earlier tests.
+        try:
+            sess2 = DeviceSession()
+            http_req2 = sess2.request
+        except RuntimeError:
+            sess2 = None
+            http_req2 = http_req
+        rq = http_req2
+        st, body = rq("POST", "/auth/login",
+                            '{"username":"admin","password":"admin60"}')
+        assert st == 200, body
+        t = "t=" + json.loads(body)["token"]
+
+        # 1) GET: StopBits present
+        st, body = rq("GET", "/config/modbus?" + t)
+        assert st == 200, body
+        data = json.loads(body)
+        assert "StopBits" in data, "StopBits missing from GET"
+        initial = data["StopBits"]
+
+        # 2) POST StopBits=2: verify success body
+        st, body = rq("POST", "/config/modbus?" + t,
+                            '{"CihazID":23,"BaudRate":115200,"StopBits":2}')
+        print("POST StopBits=2: %d %s" % (st, body[:60]))
+        assert st == 200 and json.loads(body).get("success") is True
+
+        # 3) GET: StopBits=2
+        st, body = rq("GET", "/config/modbus?" + t)
+        assert json.loads(body)["StopBits"] == 2
+
+        # 4) POST WITHOUT StopBits: pre-fill must preserve current value
+        st, body = rq("POST", "/config/modbus?" + t,
+                            '{"CihazID":23,"BaudRate":115200}')
+        print("POST no StopBits: %d %s" % (st, body[:60]))
+        assert st == 200 and json.loads(body).get("success") is True
+
+        st, body = rq("GET", "/config/modbus?" + t)
+        preserved = json.loads(body)["StopBits"]
+        print("preserved StopBits: %d (expected 2)" % preserved)
+        assert preserved == 2, "StopBits not preserved: %d" % preserved
+
+        # 5) POST invalid StopBits=3: HTTP 400
+        st, body = rq("POST", "/config/modbus?" + t,
+                            '{"CihazID":23,"BaudRate":115200,"StopBits":3}')
+        print("POST StopBits=3: %d (expected 400)" % st)
+        assert st == 400, "Expected 400, got %d" % st
+
+        # 6) Restore to initial value
+        restore = json.dumps({"CihazID": 23, "BaudRate": 115200,
+                              "StopBits": initial})
+        st, body = rq("POST", "/config/modbus?" + t, restore)
+        assert st == 200
+
+        if sess2:
+            sess2.close()
+        print("PASS: modbus_stop_bits_cycle")
+        return True
+    except AssertionError as e:
+        print("FAIL: modbus_stop_bits_cycle %s" % e)
+        return False
+
+
 def main():
     # Hold the single web client slot; retry while the server settles
     # after a reset so an external page cannot re-grab it first.
@@ -266,7 +334,8 @@ def main():
     modbus_after = json.loads(body) if st == 200 else {}
     check("modbus_config_shape_is_fixed",
           sorted(modbus_after.keys()) == ["BaudRate", "CihazID", "RegisterMap",
-                                          "SonHataKodu", "SonHataZamani"],
+                                          "SonHataKodu", "SonHataZamani",
+                                          "StopBits"],
           str(sorted(modbus_after.keys())))
     register_map = modbus_after.get("RegisterMap", {})
     check("modbus_register_map_from_device",
@@ -305,6 +374,10 @@ def main():
         check("etag_mismatch_returns_full_body",
               st == 200 and 1000 < len(body),
               "HTTP %d, %d B" % (st, len(body)))
+
+    # WP-J: StopBits cycle (1->2->missing->400->restore)
+    if not test_modbus_stop_bits_cycle(http_req):
+        FAILURES.append("modbus_stop_bits_cycle")
 
     return 1 if FAILURES else 0
 
