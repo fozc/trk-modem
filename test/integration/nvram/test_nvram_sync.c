@@ -632,6 +632,31 @@ static void test_rf_inventory_journal_survives_save_and_torn_clear(void)
           "RF journal: newest verified clear wins and repairs backup");
 }
 
+static void test_modbus_config_primary_only_boot_selects_new(void)
+{
+    /* MB-07: a save that writes A (new baud) but fails on B leaves the
+     * new image in A with a higher sequence. On reboot the A image wins
+     * and the NEW baud is active - a RAM-only rollback does not undo
+     * the Flash copy. */
+    boot_virgin();
+    {
+        modbus_configs_t *cfg =
+            (modbus_configs_t *)nvram_get_modbus_config();
+        cfg->baud_rate = 9600U;
+        cfg->device_addr = 17U;
+    }
+    mock_fail_write(MOCK_SLOT_B, MOCK_FAIL_AFTER_ERASE);
+    check(NVRAM_SAVE_PRIMARY_ONLY == nvram_save(false),
+          "Modbus cfg: A written, B failed -> PRIMARY_ONLY");
+
+    reboot();
+    const modbus_configs_t *active = nvram_get_modbus_config();
+    check(active->baud_rate == 9600U,
+          "Modbus cfg: reboot selects new baud from A");
+    check(active->device_addr == 17U,
+          "Modbus cfg: reboot selects new device_addr from A");
+}
+
 static void test_schema_three_uses_defaults_without_migration(void)
 {
     boot_virgin();
@@ -664,6 +689,7 @@ int main(void)
     test_two_invalid_images_provision_verified_defaults();
     test_rf_staged_save_with_real_flash_failures();
     test_detailed_save_distinguishes_failed_and_primary_only();
+    test_modbus_config_primary_only_boot_selects_new();
     test_factory_iec_addresses_are_unchanged();
     test_iec_default_address_regions();
     test_lifetime_persistence_boundary();
