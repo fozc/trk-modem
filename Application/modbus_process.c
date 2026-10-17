@@ -48,6 +48,9 @@ static uint32_t rf_sample_ms;
 static modbus_poll_result_t modbus_poll(modbus_slave_t *slave)
 {
     rf_sample_ms = HAL_GetTick();
+    /* MB-08: each FC03 response starts with fresh time/data snapshots. */
+    modbus_system_stats_invalidate_snapshot();
+    modbus_power_stats_invalidate_snapshot();
     return libmodbusrtu_modbus_process(slave);
 }
 
@@ -57,6 +60,49 @@ static modbus_poll_result_t modbus_poll(modbus_slave_t *slave)
 #if !RF_SCP_OVER_MODBUS_PORT
 static uint32_t active_baud = 115200U;
 #endif
+
+/*
+ * RX critical section for the ownership hand-off: mask the WHOLE UART4
+ * interrupt at the NVIC level (prior enable state preserved, cortex-
+ * m-atomic-isr instructions 2.1). The whole vector must be excluded, not
+ * just the RXNE source: the UART4 ISR also reports line errors
+ * unconditionally from any interrupt cause (e.g. a TX-complete IRQ with a
+ pending ORE), and that path writes the same discard/last_rx_time/
+ * rx_count state the section protects. The sections stay short (checks
+ * and flag writes only); parsing runs with interrupts open and bytes
+ * landing in the UART FIFO during a section are delivered afterwards.
+ */
+#if !RF_SCP_OVER_MODBUS_PORT
+static bool s_uart4_irq_was_enabled;
+
+static void modbus_rx_critical_enter(void)
+{
+    s_uart4_irq_was_enabled = (0U != NVIC_GetEnableIRQ(UART4_IRQn));
+    if (s_uart4_irq_was_enabled)
+    {
+        NVIC_DisableIRQ(UART4_IRQn);
+    }
+}
+
+static void modbus_rx_critical_exit(void)
+{
+    if (s_uart4_irq_was_enabled)
+    {
+        NVIC_EnableIRQ(UART4_IRQn);
+    }
+}
+#endif
+
+/* Keep the frame silence threshold in step with the active baud. */
+static void modbus_apply_frame_silence(void)
+{
+#if !RF_SCP_OVER_MODBUS_PORT
+    libmodbusrtu_modbus_set_frame_silence_from_baud(&s_modbus, active_baud);
+#else
+    /* HIL bench build: UART4 carries SCP at 230400 baud. */
+    libmodbusrtu_modbus_set_frame_silence_from_baud(&s_modbus, 230400U);
+#endif
+}
 
 /*
  * Modbus response transmit method (compile-time selectable):
@@ -152,6 +198,29 @@ void modbus_process_tx_complete_callback(void)
     s_modbus_tx_busy = false;
 #endif /* MODBUS_TX_USE_DMA */
 }
+
+#if (MODBUS_TX_USE_DMA != 0)
+/*
+ * DMA transfer error after a successful start (MB-05). HAL already stops
+ * the failed transfer and restores its own UART state (UART_DMAError ->
+ * UART_EndTxTransfer) and marks ErrorCode with HAL_UART_ERROR_DMA before
+ * calling here, so this side only releases the RS-485 bus and the response
+ * slot - no retry, no reset. The discrimination is HAL's ErrorCode plus the
+ * in-flight flag, not the UART identity alone: several receive-side error
+ * paths reach this callback WITHOUT the DMA bit and must not drop a valid
+ * transmission. Only UART4 is routed.
+ */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if ((huart == &huart4) && s_modbus_tx_busy &&
+        (0U != (huart->ErrorCode & HAL_UART_ERROR_DMA)))
+    {
+        CSLOG_ERR("MODBUS: TX DMA hatasi - OE ve busy serbest birakildi\r\n");
+        gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
+        s_modbus_tx_busy = false;
+    }
+}
+#endif /* MODBUS_TX_USE_DMA */
 
 
 /*
@@ -334,37 +403,62 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
  * is aborted, the RS-485 driver is released and the RX framing state is
  * reset before the peripheral is reprogrammed.
  */
-static void modbus_uart_apply_baudrate(void)
+/* validate -> apply -> persist zincirinin apply adimi (MB-07): her hata
+ * cikisinda UART ve active_baud eski degerinde kalir; RAM/Flash tutarliligi
+ * set_modbus_config'in rollback'unde saglanir. */
+static bool modbus_uart_apply_baudrate(void)
 {
 #if RF_SCP_OVER_MODBUS_PORT
     /* HIL bench build: UART4 belongs to the SCP transport at 230400;
      * a stale web save of the Modbus config must not reprogram it. */
-    return;
+    return true;
 #else
     const modbus_configs_t *cfg = nvram_get_modbus_config();
 
-    if ((cfg->baud_rate != 0U) && (cfg->baud_rate != active_baud))
+    if ((cfg->baud_rate == 0U) || (cfg->baud_rate == active_baud))
     {
+        return true;
+    }
+
 #if (MODBUS_TX_USE_DMA != 0)
-        /* Havadaki yanit DMA'sini temizce iptal et, OE'yu birak. Yarim
-         * kalan yanit gider; master timeout/retry yapar. Takili DMA +
-         * OE basili + tx_busy sonsuz senaryosu boyle kokten kalkar. */
-        if (s_modbus_tx_busy)
+    /* Havadaki yanit DMA'sini temizce iptal et, OE'yu birak.
+     *
+     * Abort timeout dondugunde yerel HAL (hal_dma.c:640-653) SUSPF
+     * beklerken kesilir: kanal reseti (CCR.RESET) ve bayrak temizligi
+     * YAPILMADAN cikilir; DMA handle HAL_DMA_STATE_ERROR'da, UART gState
+     * BUSY_TX'te kalir. Bu bir donanim-seviyesi takilmadir; yazilim
+     * state'lerini READY'ye zorlamak donanimi toparlamaz. Yapilabilecek
+     * tek sey: OE'yi birak (hat kilitlenmesin), uygulama busy'yi temizle
+     * (kendi defter tutusu) ve transport'u kullanilamaz birak. Sonraki
+     * HAL_UART_Transmit_DMA dogal olarak HAL_BUSY doner (iki handle da
+     * READY degil) ve mevcut baslangic-hatasi yolu yaniti dusurur.
+     * Gercek toparlanma sistem reseti ile gelir (periyodik modem reset
+     * zaten urunde var). */
+    if (s_modbus_tx_busy)
+    {
+        if (HAL_UART_AbortTransmit(&huart4) != HAL_OK)
         {
-            if (HAL_UART_AbortTransmit(&huart4) != HAL_OK)
-            {
-                CSLOG_ERR("MODBUS: TX abort basarisiz\r\n");
-            }
             gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
             s_modbus_tx_busy = false;
+            CSLOG_ERR("MODBUS: TX DMA abort timeout - transport "
+                      "kullanilamaz (sistem reset gerekir)\r\n");
+            return false;
         }
-#endif
-        libmodbusrtu_modbus_reset_rx(&s_modbus);
-
-        uart_set_baudrate(UART_4, cfg->baud_rate);
-        active_baud = cfg->baud_rate;
-        CSLOG_WARN("MODBUS: UART baudrate set to %u\r\n", active_baud);
+        gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
+        s_modbus_tx_busy = false;
     }
+#endif
+    libmodbusrtu_modbus_reset_rx(&s_modbus);
+
+    if (!uart_set_baudrate(UART_4, cfg->baud_rate))
+    {
+        CSLOG_ERR("MODBUS: baud uygulanamadi - UART eski hizinda\r\n");
+        return false;
+    }
+    active_baud = cfg->baud_rate;
+    modbus_apply_frame_silence();
+    CSLOG_WARN("MODBUS: UART baudrate set to %u\r\n", active_baud);
+    return true;
 #endif /* !RF_SCP_OVER_MODBUS_PORT */
 }
 
@@ -377,6 +471,12 @@ PROCESS_THREAD(modbus_process, ev, data)
 
 	uint8_t id = nvram_get_modbus_device_addr();
 	libmodbusrtu_slave_init(&s_modbus, id, millis, uart_write);
+#if !RF_SCP_OVER_MODBUS_PORT
+	libmodbusrtu_register_critical_section(&s_modbus,
+	                                       modbus_rx_critical_enter,
+	                                       modbus_rx_critical_exit);
+#endif
+	modbus_apply_frame_silence();
 
 	// Register per-register read/write callbacks
 	libmodbusrtu_register_read_callback(&s_modbus, fc03_read_callback);
@@ -427,6 +527,11 @@ PROCESS_THREAD(modbus_process, ev, data)
 						           "fonksiyon (exception 0x01)\n");
 					}
 				}
+
+				/* Single RX buffer: the frame was parsed inside this poll
+				 * and the hand-back reset the receiver, so no second frame can
+				 * be pending - late frames are dropped with a discard and
+				 * covered by the master retry (see modbus_rtu_slave.h). */
 			}
 			else if (result == MODBUS_POLL_RECEIVING)
 			{
@@ -447,7 +552,10 @@ PROCESS_THREAD(modbus_process, ev, data)
 
 void modbus_process_init(void)
 {
-	modbus_uart_apply_baudrate();
+	/* Basarisiz apply kendi icinde loglanir: UART acilis hizinda (115200)
+	 * kalir, RAM/Flash yeni degeri tasir; bir sonraki config degisiminde
+	 * veya yeniden acilista tekrar denenir. */
+	(void)modbus_uart_apply_baudrate();
 	process_start(&modbus_process, NULL);
 }
 
@@ -456,10 +564,17 @@ void modbus_process_poll(void)
 	process_poll(&modbus_process);
 }
 
-void modbus_process_notify_config_changed(void)
+int modbus_process_notify_config_changed(void)
 {
-	/* Aninda uygula: yeni hiz hemen devreye girer. */
-	modbus_uart_apply_baudrate();
+	/* Apply once, atomically: baud first; if it fails the slave ID is NOT
+	 * applied either (partial application would leave the UART half
+	 * reprogrammed). The caller (web) reports the failure; RAM/Flash hold
+	 * the new values and the apply is retried at boot or on the next
+	 * config change. */
+	if (!modbus_uart_apply_baudrate())
+	{
+		return -1;
+	}
 
 	/* CihazID acilista bir kez okunup uygulanir; web'den degistirilince
 	 * de aninda uygula (API 1..247 disini reddeder, web tarafi zaten
@@ -468,6 +583,7 @@ void modbus_process_notify_config_changed(void)
 	uint8_t id = nvram_get_modbus_device_addr();
 	libmodbusrtu_modbus_set_slave_id(&s_modbus, id);
 	CSLOG_WARN("MODBUS: cihaz adresi %u olarak uygulandi\r\n", (unsigned)id);
+	return 0;
 }
 
 void modbus_process_isr_rx_byte(uint8_t byte)
@@ -477,6 +593,12 @@ void modbus_process_isr_rx_byte(uint8_t byte)
 	/* Software mode: wake the loop so it can frame and parse the bytes. */
 	process_poll(&modbus_process);
 #endif
+}
+
+void modbus_process_isr_rx_error(void)
+{
+	/* UART4 line error (PE/FE/NE/ORE): invalidate the frame in flight. */
+	libmodbusrtu_modbus_rx_error(&s_modbus);
 }
 
 #if (MODBUS_USE_HW_RTO == 1)
