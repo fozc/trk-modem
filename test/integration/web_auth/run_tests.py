@@ -453,6 +453,8 @@ int main(void)
     handler_state.tx_buffer = canvas + 1;
     handler_state.tx_buffer_size = 4096;
     board.gsm_signal = 13;
+    board.dip_sw[0] = 1U;
+    board.dip_sw[1] = 0U;
     board.gsm_rat = 4;
     rxlev = 99; rscp = 255; rsrp = 41; rsrq = 20;
     creg = 0; cgreg = 0; cereg = 1;
@@ -615,6 +617,7 @@ for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','htt
                    GsmRsrq=255,GsmCREG=1,GsmCGREG=5,GsmCEREG=0)]
   for data, fields in zip(values, expected):
    assert data['GsmSig'] == 13
+   assert data['DIP'] == [1, 0]
    for key, value in fields.items(): assert data[key] == value, key
   run.stdout = 'PASS: actual board HTTP handler preserves separate GSM measurements and registration\n'
 

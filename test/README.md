@@ -1800,3 +1800,24 @@ neden ve yapılacak işlem, belirsiz sonuç ve eski grubun gizlenmesini
 Türkçe/İngilizce denetler. Yerel `serve_loading_preview.py --rf-preview`
 yalnız örnek NOT_LIVE sonucu sunar; gerçek cihaza ulaşmaz. Cihazdaki RF
 hatası giderildiği veya fiziksel neden bulunduğu iddia edilmez.
+
+
+## DIP anahtarlarının web durum yanıtı — 16.10.2026
+
+**Amaç:** SW1/SW2 konumlarını mevcut sistem durumundan web istemcisine
+aktarmak.
+
+**Veri yolu:** Mevcut `dip_switch_get()` debounce (kararlılık)
+sonucunu kullanır; aynı kaynak `[DIP] SW1/2 -> ON/OFF` logunu besler.
+`system_status_update()` zaten `dip_sw[2]` alanını doldurur.
+`system_status_json_build()` mevcut `/status/board` yanıtına yalnız
+`"DIP":[sw1,sw2]` dizisini ekler. ON=1, OFF=0 mantığı terslenmez.
+NVRAM, GPIO, debounce veya IRQ eşzamanlama davranışı değiştirilmemiştir.
+Eksik veya geçersiz web verisi OFF yerine bilinmiyor gösterilmelidir.
+DIN ve röle durumları korunur; bütün göstergeler salt okunurdur.
+
+**Doğrulama:** Merkezi `test_system_status` ve `test_http_` seçimi
+100/100 geçti. Dört DIP kombinasyonu gerçek sistem durumu ve JSON
+üretim yolundan geçirilir; DIN/RLY alanlarının korunması denetlenir.
+`web_auth`, gerçek board HTTP handler yanıtında DIP ve GSM alanlarını
+birlikte sınar. Fiziksel switch testi ve cihaz yüklemesi yapılmamıştır.
