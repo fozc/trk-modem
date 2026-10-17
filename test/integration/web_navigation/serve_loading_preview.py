@@ -18,6 +18,8 @@ parser.add_argument("--port", type=int, default=8769)
 parser.add_argument("--chunk-delay", type=float, default=0.5)
 parser.add_argument("--rf-preview", action="store_true",
                     help="Serve a synthetic NOT_LIVE RF result (no device access)")
+parser.add_argument("--board-preview", action="store_true",
+                    help="Serve synthetic board, network and DIP data")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[3]
 
@@ -61,6 +63,33 @@ class PreviewHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if args.board_preview and path == "/status/board":
+            if parse_qs(urlsplit(self.path).query).get("t") != [
+                    "0123456789abcdef0123456789abcdef"]:
+                self.send_error(401)
+                return
+            # Synthetic UI fixture; no GPIO, radio or power-board access.
+            data = {"GsmRAT":4,"GsmCEREG":1,"GsmCREG":0,"GsmCGREG":0,
+                    "GsmRsrp":51,"GsmRsrq":20,"GsmRscp":255,
+                    "GsmRxlev":99,"GsmSig":21,"PowerValidFields":32767,
+                    "KartDurum":131,"KartDurum2":5,"TelemetriYasi":3,
+                    "AlarmMaskesi":0,"DIN":[1,0,0,1],"RLY":[0,1],
+                    "DIP":[1,0],"PanelVoltaji":18600,"DcVoltaji":24000,
+                    "GirisAkimi":420,"GirisGucu":1008,"AkuGucu":52,
+                    "Kaynak":2,"BataryaVoltaji":13200,"BataryaAkimi":40,
+                    "BatteryTemp":235,"ChargePertance":825,"BatterySOC":825,
+                    "BatterySOH":970,"ChargeState":2,"Capacity":7,
+                    "BatteryCapacityUnknown":0,"3V3":3302,"3V8":3801,
+                    "5V":5005,"Temp":28,"TempMax":32,"TempMin":24,
+                    "TDIE":35,"TDIEMax":38,"TDIEMin":30}
+            body = json.dumps(data).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if args.rf_preview and path in ("/config/rf", "/status/rf-group"):
             if parse_qs(urlsplit(self.path).query).get("t") != [
                     "0123456789abcdef0123456789abcdef"]:
