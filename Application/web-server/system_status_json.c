@@ -115,9 +115,11 @@ bool system_status_json_build(const system_status_t *status, char *buffer,
     };
 
     (void)xsnprintf(text, sizeof(text),
-        "{\"DIN\":[%u,%u,%u,%u],\"RLY\":[%u,%u]",
+        "{\"DIN\":[%u,%u,%u,%u],\"RLY\":[%u,%u],\"DIP\":[%u,%u]",
         status->din[0], status->din[1], status->din[2], status->din[3],
-        status->rly[0], status->rly[1]);
+        status->rly[0], status->rly[1],
+        (unsigned int)status->dip_sw[0],
+        (unsigned int)status->dip_sw[1]);
     bool ok = append(buffer, capacity, length, text);
 
     if (ok)
