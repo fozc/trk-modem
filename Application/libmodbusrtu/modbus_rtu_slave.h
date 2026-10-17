@@ -303,12 +303,17 @@ void libmodbusrtu_register_critical_section(modbus_slave_t *p_ctx,
 /**
  * @brief Get the most recent Modbus exception code sent by this slave.
  *
- * Records the standard exception code (e.g. MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS)
- * of the last error response. It is never cleared automatically, so it reflects
- * the last error that occurred since start-up.
+ * Records the exception code of the LAST PROCESSED FRAME only
+ * (MB-09): the code is cleared at the start of every frame, so a
+ * non-zero value means this specific frame raised it. Short frames
+ * and foreign-address frames return 0. The application layer's
+ * persistent "last error" record (code + timestamp) is separate:
+ * it is updated only when a new exception event occurs, never
+ * re-timestamped by error-free frames.
  *
  * @param[in] p_ctx Slave instance.
- * @return The last exception code, or 0 if no exception has been raised.
+ * @return This frame's exception code, or 0 if the frame was valid
+ *         or was not addressed to this slave.
  */
 uint8_t libmodbusrtu_modbus_get_last_exception(const modbus_slave_t *p_ctx);
 
