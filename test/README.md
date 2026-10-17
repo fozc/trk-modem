@@ -257,6 +257,7 @@ Her integration paketi repo kökünden `make -C` ile tek başına çalışır:
 | `fault_log` | `make -C test/integration/fault_log run` | — |
 | `gsm` | `make -C test/integration/gsm run` | — |
 | `iec104_master` | `make -C test/integration/iec104_master run` | `IEC104_DEVICE_HOST=<ip>` verilmezse self-test + SKIP |
+| `modbus_device` | `make -C test/integration/modbus_device run` | `MODBUS_RTU_PORT` verilmezse SKIP |
 | `libs` | `make -C test/integration/libs run` | — |
 | `nvram` | `make -C test/integration/nvram run` | — |
 | `rf_hil` | `make -C test/integration/rf_hil run` | simülatör veya HIL imajı gerekebilir |
