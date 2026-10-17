@@ -168,16 +168,16 @@ static uint32_t get_uart_kernel_clock(uart_port_t port)
     }
 }
 
-void uart_set_baudrate(uart_port_t port, uint32_t baudrate)
+bool uart_set_baudrate(uart_port_t port, uint32_t baudrate)
 {
     USART_TypeDef *uart = get_uart_instance(port);
     if ((uart == NULL) || (baudrate == 0U)) {
-        return;
+        return false;
     }
 
     uint32_t kernel_clock = get_uart_kernel_clock(port);
     if (kernel_clock == 0U) {
-        return;
+        return false;
     }
 
     /* BRR, cevresel birim kapaliyken yeniden programlanir (RM sirasi),
@@ -188,6 +188,7 @@ void uart_set_baudrate(uart_port_t port, uint32_t baudrate)
     LL_USART_SetBaudRate(uart, kernel_clock, LL_USART_PRESCALER_DIV1,
                          LL_USART_GetOverSampling(uart), baudrate);
     LL_USART_Enable(uart);
+    return true;
 }
 
 /* Donanıma Özel Fonksiyonlar */

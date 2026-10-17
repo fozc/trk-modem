@@ -28,7 +28,7 @@ void modbus_process_poll(void);
  * effect right away, so an in-flight Modbus transaction continues at the
  * new rate. A redundant write (value equals the active rate) is skipped.
  */
-void modbus_process_notify_config_changed(void);
+int modbus_process_notify_config_changed(void);
 
 /**
  * @brief Feed one received byte to the Modbus slave - call from the UART RX ISR.
@@ -39,6 +39,12 @@ void modbus_process_notify_config_changed(void);
  * @note ISR-safe.
  */
 void modbus_process_isr_rx_byte(uint8_t byte);
+
+/**
+ * @brief Report a UART4 receive line error (PE/FE/NE/ORE).
+ * @note ISR-safe; invalidates the Modbus frame in flight.
+ */
+void modbus_process_isr_rx_error(void);
 
 /**
  * @brief Release the RS-485 bus after a DMA response has been transmitted.

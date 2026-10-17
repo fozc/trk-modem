@@ -105,6 +105,28 @@ void test_modbus_setter_rejects_invalid_device_id_without_storage_calls(void)
     }
 }
 
+void test_modbus_sync_failure_rolls_ram_back_and_skips_notify(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 7U;
+    config.baud_rate = 115200U;
+
+    static modbus_configs_t running = {0};
+    running.device_addr = 5U;
+    running.baud_rate = 9600U;
+    modbus_config_get_IgnoreAndReturn(&running);
+    modbus_config_set_Stub(capture_modbus);
+    modbus_config_sync_ExpectAndReturn(-1);
+
+    TEST_ASSERT_EQUAL_INT(-1, set_modbus_config(&config));
+
+    /* First write carries the new values; the failed Flash sync must be
+     * followed by a SECOND write restoring the previous running config,
+     * so RAM never stays ahead of Flash. No runtime notify may fire. */
+    TEST_ASSERT_EQUAL_UINT8(5U, saved_modbus.device_addr);
+    TEST_ASSERT_EQUAL_UINT32(9600U, saved_modbus.baud_rate);
+}
+
 void test_modbus_device_id_247_reaches_storage_unchanged(void)
 {
     jmodbus_configs_t config = {0};
@@ -113,7 +135,7 @@ void test_modbus_device_id_247_reaches_storage_unchanged(void)
     modbus_config_get_IgnoreAndReturn(NULL);
     modbus_config_set_Stub(capture_modbus);
     modbus_config_sync_ExpectAndReturn(0);
-    modbus_process_notify_config_changed_Expect();
+    modbus_process_notify_config_changed_ExpectAndReturn(0);
     TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
     TEST_ASSERT_EQUAL_UINT8(247U, saved_modbus.device_addr);
 }
@@ -221,7 +243,7 @@ void test_modbus_valid_boundary_values_reach_storage_unchanged(void)
     modbus_config_get_IgnoreAndReturn(NULL);
     modbus_config_set_Stub(capture_modbus);
     modbus_config_sync_ExpectAndReturn(0);
-    modbus_process_notify_config_changed_Expect();
+    modbus_process_notify_config_changed_ExpectAndReturn(0);
 
     TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
 }

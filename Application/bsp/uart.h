@@ -77,9 +77,11 @@ void uart_set_rx_timeout(uart_port_t port, uint32_t bit_times);
  * The kernel clock frequency is resolved from the RCC configuration.
  *
  * @param[in] port      UART port.
- * @param[in] baudrate  New baud rate in baud (e.g. 9600, 115200); zero is ignored.
+ * @param[in] baudrate  New baud rate in baud (e.g. 9600, 115200); zero or an unsolvable kernel clock returns false
+ * without touching the peripheral, so callers never record a
+ * baud the hardware is not actually running.
  */
-void uart_set_baudrate(uart_port_t port, uint32_t baudrate);
+bool uart_set_baudrate(uart_port_t port, uint32_t baudrate);
 
 
 typedef enum

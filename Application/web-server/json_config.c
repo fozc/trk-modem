@@ -2342,6 +2342,11 @@ int set_modbus_config(const jmodbus_configs_t *config)
         config_to_write = *current_config;  // Copy current config
     }
 
+    /* Eski calisma yapilandirmasini koru: Flash sync'i basarisiz olursa
+     * bu kopya RAM'e geri yazilir; rollback islem-ici kopya oldugu icin
+     * kendisi basarisiz olamaz (MB-07). */
+    modbus_configs_t previous_config = config_to_write;
+
     /* Update fields from JSON config (register addresses fixed) */
     config_to_write.device_addr = config->device_addr;
     config_to_write.last_error_code = config->last_error_code;
@@ -2355,10 +2360,21 @@ int set_modbus_config(const jmodbus_configs_t *config)
 					: "[MODBUS] ERROR: Modbus config synchronization failed\r\n");
 
 	if (res == 0) {
-		modbus_process_notify_config_changed();
+		/* Persist basarili: UART'a uygula. Apply basarisizsa web yine
+		 * basari GORMEMELI - donus -1'dir; RAM/Flash yeni degeri tasir,
+		 * UART eski ayarinda calisir ve apply boot'ta tekrar denenir. */
+		if (modbus_process_notify_config_changed() != 0) {
+			CCSLOG(XCOLOR_RED,
+					"[MODBUS] ERROR: config persisted but UART apply failed\r\n");
+			return -1;
+		}
 		return 0;
 	}
 
+	/* Sync basarisiz: RAM eski calisma degerlerine doner (RAM/Flash/UART
+	 * tutarli, hepsi eski degerde), runtime uygulamasi tetiklenmez ve
+	 * web'e basarisiz bildirilir. */
+	modbus_config_set(&previous_config);
 	return -1;
 }
 

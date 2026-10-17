@@ -159,6 +159,8 @@ bool rf_eui64_is_zero(const uint8_t eui[RF_EUI64_LEN])
 
 void setUp(void)
 {
+    modbus_power_stats_invalidate_snapshot();
+    modbus_system_stats_invalidate_snapshot_Ignore();
     fault_log_get_temp_count_IgnoreAndReturn(0U);
     fault_log_get_perm_count_IgnoreAndReturn(0U);
     fault_log_read_nth_IgnoreAndReturn(false);
@@ -199,6 +201,7 @@ void test_stale_power_block_retains_raw_values_but_clears_quality(void)
     TEST_ASSERT_EQUAL_UINT16(0U, response_register(1U));
     TEST_ASSERT_EQUAL_UINT16(24000U, response_register(13U));
     prepare_sample(8U, 28000U);
+    modbus_power_stats_invalidate_snapshot();
     send_read(MODBUS_PWR_STATS_REG_COUNT);
     TEST_ASSERT_EQUAL_UINT16(8U, response_register(2U));
     TEST_ASSERT_EQUAL_UINT16(28000U, response_register(13U));
@@ -269,6 +272,7 @@ void test_alarm_words_preserve_all_bits_in_fc03_response(void)
     };
 
     TEST_ASSERT_TRUE(power_board_handle_alarm(&message, fake_tick));
+    modbus_power_stats_invalidate_snapshot();
     send_read(MODBUS_PWR_STATS_REG_COUNT);
     TEST_ASSERT_EQUAL_HEX16(0xA123U, response_register(25U));
     TEST_ASSERT_EQUAL_HEX16(0x4567U, response_register(26U));
