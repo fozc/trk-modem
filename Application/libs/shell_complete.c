@@ -85,9 +85,10 @@ static void terminal_clear_chars(uint32_t char_count)
  */
 static void buffer_write_and_echo(const char *str, uint8_t *buffer, uint32_t *buffer_index, uint32_t buffer_max)
 {
-    while (*str && *buffer_index < buffer_max - 1) 
+    while (*str && *buffer_index < buffer_max - 1)
     {
-        buffer[*buffer_index] = *str;
+        /* Shell command names are ASCII-only: char -> byte is lossless. */
+        buffer[*buffer_index] = (uint8_t)(*str);
         output_char(*str++);
         (*buffer_index)++;
     }
@@ -156,7 +157,8 @@ void shell_tab_complete(uint8_t *input_buffer, uint32_t *input_length, uint32_t 
             shell_complete_reset(); 
             return; 
         }
-        current_prefix[current_prefix_length++] = input_buffer[i];
+        /* Console input is ASCII: byte -> char is lossless. */
+        current_prefix[current_prefix_length++] = (char)(input_buffer[i]);
     }
     current_prefix[current_prefix_length] = '\0';
 
