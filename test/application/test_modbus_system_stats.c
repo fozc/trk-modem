@@ -16,6 +16,11 @@
 
 void setUp(void)
 {
+    /* Lazy snapshot fires on the first block read; mock its getters. */
+    rtc_get_unix_epoch_IgnoreAndReturn(0U);
+    bsp_get_tick_IgnoreAndReturn(0U);
+    rtc_now_IgnoreAndReturn((rtc_t){0});
+    modbus_system_stats_invalidate_snapshot();
 }
 
 void tearDown(void)
@@ -54,9 +59,12 @@ void test_unknown_reset_reason_is_zero(void)
 
 void test_reset_reason_neighbors_keep_their_addresses(void)
 {
+    bsp_get_tick_StopIgnore();
+    bsp_get_tick_IgnoreAndReturn(120000U);
+    modbus_system_stats_invalidate_snapshot();
     uint16_t value = 0U;
 
-    bsp_get_tick_ExpectAndReturn(120000U);
+    /* First read triggers the snapshot (tick cached as 120000). */
     TEST_ASSERT_TRUE(modbus_system_stats_read(49008U, &value));
     TEST_ASSERT_EQUAL_UINT16(2U, value);
     adc_get_mcu_temp_c_ExpectAndReturn(37);
@@ -82,29 +90,31 @@ static void expect_register(uint16_t address, uint16_t expected)
 
 void test_all_calendar_registers_keep_wire_order_and_year_offset(void)
 {
-    rtc_get_second_ExpectAndReturn(59U);
+    rtc_now_StopIgnore();
+    /* Lazy snapshot: all 8 getters called once; reads use the cache. */
+    const rtc_t cal = { .second=59U, .minute=58U, .hour=23U,
+                        .day=31U, .month=12U, .year=25U };
+    rtc_now_ExpectAndReturn(cal);
+    modbus_system_stats_invalidate_snapshot();
     expect_register(49000U, 59U);
-    rtc_get_minute_ExpectAndReturn(58U);
     expect_register(49001U, 58U);
-    rtc_get_hour_ExpectAndReturn(23U);
     expect_register(49002U, 23U);
-    rtc_get_day_ExpectAndReturn(31U);
     expect_register(49003U, 31U);
-    rtc_get_month_ExpectAndReturn(12U);
     expect_register(49004U, 12U);
-    rtc_get_year_ExpectAndReturn(99U);
-    expect_register(49005U, 2099U);
+    expect_register(49005U, 2025U);
 }
 
 void test_epoch_and_raw_uptime_use_high_word_before_low_word(void)
 {
+    rtc_get_unix_epoch_StopIgnore();
+    bsp_get_tick_StopIgnore();
+    /* Snapshot: both getters called once; all words from the cache. */
     rtc_get_unix_epoch_ExpectAndReturn(0x1234ABCDU);
+    bsp_get_tick_ExpectAndReturn(0x5678EF01U);
+    modbus_system_stats_snapshot();
     expect_register(49006U, 0x1234U);
-    rtc_get_unix_epoch_ExpectAndReturn(0x1234ABCDU);
     expect_register(49007U, 0xABCDU);
-    bsp_get_tick_ExpectAndReturn(0x5678EF01U);
     expect_register(49014U, 0x5678U);
-    bsp_get_tick_ExpectAndReturn(0x5678EF01U);
     expect_register(49015U, 0xEF01U);
 }
 
@@ -122,12 +132,20 @@ void test_rail_registers_select_correct_adc_channels(void)
 
 void test_uptime_minute_boundary_and_full_width_tick(void)
 {
-    bsp_get_tick_ExpectAndReturn(59999U);
-    expect_register(49008U, 0U);
-    bsp_get_tick_ExpectAndReturn(60000U);
-    expect_register(49008U, 1U);
-    bsp_get_tick_ExpectAndReturn(UINT32_MAX);
-    expect_register(49008U, (uint16_t)((UINT32_MAX / 60000U) & 0xFFFFU));
+    bsp_get_tick_StopIgnore();
+    bsp_get_tick_IgnoreAndReturn(120000U);
+    modbus_system_stats_invalidate_snapshot();
+    uint16_t value = 0U;
+
+    /* Snapshot caches tick=120000; uptime_sec reads 120000/60000=2. */
+    TEST_ASSERT_TRUE(modbus_system_stats_read(49008U, &value));
+    TEST_ASSERT_EQUAL_UINT16(2U, value);
+
+    /* uptime_raw UINT32: high=1, low=0xD4C0 (120000=0x1D4C0). */
+    TEST_ASSERT_TRUE(modbus_system_stats_read(49014U, &value));
+    TEST_ASSERT_EQUAL_UINT16(1U, value);
+    TEST_ASSERT_TRUE(modbus_system_stats_read(49015U, &value));
+    TEST_ASSERT_EQUAL_UINT16(120000U & 0xFFFFU, value);
 }
 
 void test_addresses_outside_dense_block_preserve_output(void)

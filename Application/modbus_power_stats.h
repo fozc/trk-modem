@@ -67,6 +67,15 @@ typedef struct
 
 bool modbus_power_stats_read(uint16_t reg_addr, uint16_t* value);
 
+/**
+ * @brief Mark the power snapshot cache stale (call once per FC03 response).
+ *
+ * The next power-stats register read lazily takes a fresh
+ * power_board_get_snapshot() so age/quality thresholds cannot change
+ * between registers of the same response (MB-08).
+ */
+void modbus_power_stats_invalidate_snapshot(void);
+
 #endif /* MODBUS_POWER_STATS_H_ */
 
 /*** end of file ***/

@@ -35,6 +35,16 @@
 _Static_assert(PWR_STATS_REG_COUNT == MODBUS_MAP_PWR_REG_COUNT,
                "power-summary layout does not match the fixed map extent");
 
+/* MB-08: per-response snapshot so age/quality cannot change between
+ * registers of the same FC03 response. */
+static power_board_snapshot_t power_snapshot;
+static bool power_snapshot_valid = false;
+
+void modbus_power_stats_invalidate_snapshot(void)
+{
+	power_snapshot_valid = false;
+}
+
 bool modbus_power_stats_read(uint16_t reg_addr, uint16_t *value)
 {
     if ((NULL == value) || (MODBUS_PWR_STATS_ADDR_BASE > reg_addr) ||
@@ -44,17 +54,21 @@ bool modbus_power_stats_read(uint16_t reg_addr, uint16_t *value)
         return false;
     }
 
-    power_board_snapshot_t power;
-    (void)power_board_get_snapshot(HAL_GetTick(), &power);
-    const rf_scp_power_summary_t *data = &power.summary;
+    if (!power_snapshot_valid)
+    {
+        (void)power_board_get_snapshot(HAL_GetTick(), &power_snapshot);
+        power_snapshot_valid = true;
+    }
+    const power_board_snapshot_t *power = &power_snapshot;
+    const rf_scp_power_summary_t *data = &power->summary;
 
     switch (reg_addr)
     {
         case PWR_REG(has_summary):
-            *value = power.has_summary ? 1U : 0U;
+            *value = power->has_summary ? 1U : 0U;
             return true;
         case PWR_REG(valid_fields):
-            *value = power.valid_fields;
+            *value = power->valid_fields;
             return true;
         case PWR_REG(seq):
             *value = data->seq;
@@ -66,7 +80,7 @@ bool modbus_power_stats_read(uint16_t reg_addr, uint16_t *value)
             *value = data->flags2;
             return true;
         case PWR_REG(telemetry_age_sec):
-            *value = power.telemetry_age_sec;
+            *value = power->telemetry_age_sec;
             return true;
         case PWR_REG(source):
             *value = data->source;
@@ -126,37 +140,37 @@ bool modbus_power_stats_read(uint16_t reg_addr, uint16_t *value)
             *value = data->last_gasp_count;
             return true;
         case PWR_REG(active_alarms_hi):
-            *value = (uint16_t)(power.active_alarms >> 16U);
+            *value = (uint16_t)(power->active_alarms >> 16U);
             return true;
         case PWR_REG(active_alarms_lo):
-            *value = (uint16_t)(power.active_alarms & 0xFFFFU);
+            *value = (uint16_t)(power->active_alarms & 0xFFFFU);
             return true;
         case PWR_REG(soc_flags):
             *value = data->soc_flags;
             return true;
         case PWR_REG(alarm_seq):
-            *value = power.alarm_seq;
+            *value = power->alarm_seq;
             return true;
         case PWR_REG(suppressed):
-            *value = power.suppressed;
+            *value = power->suppressed;
             return true;
         case PWR_REG(has_last_gasp):
-            *value = power.has_last_gasp ? 1U : 0U;
+            *value = power->has_last_gasp ? 1U : 0U;
             return true;
         case PWR_REG(last_gasp_cancelled):
-            *value = power.last_gasp_cancelled ? 1U : 0U;
+            *value = power->last_gasp_cancelled ? 1U : 0U;
             return true;
         case PWR_REG(last_gasp_session):
-            *value = power.last_gasp_session;
+            *value = power->last_gasp_session;
             return true;
         case PWR_REG(last_gasp_cause):
-            *value = power.last_gasp_cause;
+            *value = power->last_gasp_cause;
             return true;
         case PWR_REG(summary_age_ms_hi):
-            *value = (uint16_t)(power.received_age_ms >> 16U);
+            *value = (uint16_t)(power->received_age_ms >> 16U);
             return true;
         case PWR_REG(summary_age_ms_lo):
-            *value = (uint16_t)(power.received_age_ms & 0xFFFFU);
+            *value = (uint16_t)(power->received_age_ms & 0xFFFFU);
             return true;
         case PWR_REG(supported_summary_version):
             *value = 1U;
