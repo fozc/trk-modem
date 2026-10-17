@@ -367,4 +367,28 @@ void test_valid_seven_ah_capacity_does_not_raise_the_maintenance_flag(void)
     TEST_ASSERT_FALSE(system_status_get()->battery_capacity_unknown);
 }
 
+void test_status_json_preserves_all_debounced_dip_positions(void)
+{
+    static const char *const expected[] =
+    {
+        "\"DIP\":[0,0]", "\"DIP\":[1,0]",
+        "\"DIP\":[0,1]", "\"DIP\":[1,1]"
+    };
+    char buffer[2048];
+    size_t length;
+
+    fake_din[0] = 1U;
+    fake_relay[1] = true;
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        fake_dip[0] = (uint8_t)(index & 1U);
+        fake_dip[1] = (uint8_t)((index >> 1U) & 1U);
+        TEST_ASSERT_TRUE(system_status_json_build(system_status_get(),
+                            buffer, sizeof(buffer), &length));
+        TEST_ASSERT_NOT_NULL(strstr(buffer, expected[index]));
+        TEST_ASSERT_NOT_NULL(strstr(buffer, "\"DIN\":[1,0,0,0]"));
+        TEST_ASSERT_NOT_NULL(strstr(buffer, "\"RLY\":[0,1]"));
+    }
+}
+
 /*** end of file ***/
