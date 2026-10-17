@@ -389,7 +389,7 @@ async function checkPage(html, label) {
                 const board = run(`renderBoard({GsmRAT:${rat},${key}:${reg},
                     GsmRxlev:51,GsmRsrp:41,GsmRsrq:20})`);
                 assert.ok(board.includes(`${rat}G /`));
-                assert.ok(board.includes(run("t('networkRegistered')")));
+                assert.ok(board.includes(run(reg===5?"t('networkRoaming')":"t('networkHome')")));
                 assert.ok(board.includes('2G RSSI'));
                 assert.ok(board.includes('4G RSRP'));
                 assert.ok(board.includes('4G RSRQ'));
@@ -410,6 +410,50 @@ async function checkPage(html, label) {
                      run("t('signalUnknown')"));
 
 
+        for(const [reg,label] of [[0,'networkNotRegistered'],[2,'networkSearch'],[3,'networkDenied'],[4,'signalUnknown']]){
+            const mobile=run(`renderMobileNetwork({GsmRAT:4,GsmCEREG:${reg},GsmRsrp:41,GsmRsrq:20})`);
+            assert.ok(mobile.includes(run(`t('${label}')`)));
+            const visible=mobile.split('<details')[0];
+            assert.ok(visible.includes('4G RSRP'));
+            assert.ok(visible.includes('4G RSRQ'));
+            assert.ok(!visible.includes('2G RSSI'));
+            assert.ok(!visible.includes('3G RSCP'));
+            assert.ok(!visible.includes('(CSQ)'));
+        }
+        for(const rat of [2,3,4]){
+            const mobile=run(`renderMobileNetwork({GsmRAT:${rat}})`);
+            const visible=mobile.split('<details')[0];
+            assert.ok(visible.includes(run("t('signalUnknown')")));
+            assert.ok(!visible.includes('good"'), 'signal alone never proves registration');
+        }
+        for(const age of [0,30,31,255,null]){
+            const board=run(`renderBoard({TelemetriYasi:${age},PowerValidFields:32767,KartDurum:3,AlarmMaskesi:0})`);
+            const panel=board.split('id="power-board"')[1];
+            const head=panel.split('</div>')[0];
+            const key=age===null||age===255?'powerUnavailable':age>30?'powerOld':'powerCurrent';
+            assert.ok(head.includes(run(`t('${key}')`)));
+        }
+        const invalidPower=run('renderBoard({TelemetriYasi:2,PowerValidFields:0,KartDurum:3,KartDurum2:0,AlarmMaskesi:0})');
+        const invalidPanel=invalidPower.split('id="power-board"')[1].split('<details')[0];
+        assert.ok(invalidPanel.includes(run("t('powerUnavailable')")));
+        assert.ok(invalidPanel.includes(run("t('powerAlarmUnknown')")));
+        assert.ok(!invalidPanel.includes(run("t('alarmNone')")));
+        assert.ok(!invalidPanel.includes('undefined'));
+        const reserved=run('renderBoard({KartDurum:48,KartDurum2:255})');
+        assert.ok(!reserved.includes('undefined'), 'reserved link mode must be unknown');
+        for(const dip of [[0,0],[1,0],[0,1],[1,1],[null,undefined],[2,99]]){
+            context.dip=dip;
+            const io=run('renderDigitalIO({DIN:[1,0,1,0],RLY:[0,1],DIP:dip})');
+            dip.forEach((value,index)=>{
+                assert.ok(io.includes('SW'+(index+1)+' · '+
+                    (value===1?'ON':value===0?'OFF':run("t('signalUnknown')"))));
+            });
+            assert.ok(io.includes('DIN1 · ON'));
+            assert.ok(io.includes('RLY1 · OFF'));
+        }
+        const untouched={TelemetriYasi:255,BatteryTemp:-1000,BatterySOH:2550};
+        context.untouched=untouched;run('renderBoard(untouched)');
+        assert.deepEqual(untouched,{TelemetriYasi:255,BatteryTemp:-1000,BatterySOH:2550});
         for (const page of ['iec104', 'modbus', 'rf', 'board', 'device']) {
             run(`pageCache['${page}'] = {}; switchPageNow('${page}');`);
             assert.ok(body().length > 0, page + ' should render loaded data');

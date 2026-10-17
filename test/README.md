@@ -1674,7 +1674,7 @@ kullanır. Başarısız girişte büyük sayfa istenmez; mevcut deneme sınırı
 korunur. Token ve rol doğrulandıktan sonra `/index.html.gz?t=...`
 istenir. Bu uç oturum gerektirir; normal HTML'den farklı olarak
 `Content-Encoding` olmadan `application/gzip` sunar. Uygulama gövdesi
-39.791 bayttır. İlerleme `Content-Length` üzerinden hesaplanmalıdır;
+41.518 bayttır. İlerleme `Content-Length` üzerinden hesaplanmalıdır;
 KB gösterimi 1.000 bayt tabanlıdır. HTTP/TCP başlıkları, giriş isteği
 ve küçük giriş ekranı bu göstergede sayılmaz.
 
@@ -1741,7 +1741,7 @@ Tarayıcıda yanlış giriş, ölçülen ilerleme ve ikinci kez giriş sormadan
 uygulamanın açılması ayrıca gözlenmiştir.
 
 **Sınır:** Büyük uygulama bu değişiklikte bölünmemiştir. İki HTML
-gövdesinin toplamı 42.453 bayttır; giriş ve paket için ek HTTP istekleri
+gövdesinin toplamı 44.180 bayttır; giriş ve paket için ek HTTP istekleri
 vardır. İlk ekran yaklaşık 2,7 KB'dır; büyük aktarım başarılı girişe
 ertelenir. Fiziksel GSM aktarımı ve cihaz kabulü henüz yapılmamıştır.
 Cihaza yükleme yapılmamıştır.
@@ -1821,3 +1821,40 @@ DIN ve röle durumları korunur; bütün göstergeler salt okunurdur.
 üretim yolundan geçirilir; DIN/RLY alanlarının korunması denetlenir.
 `web_auth`, gerçek board HTTP handler yanıtında DIP ve GSM alanlarını
 birlikte sınar. Fiziksel switch testi ve cihaz yüklemesi yapılmamıştır.
+
+
+## Cihaz durumu kartları — 16.10.2026
+
+**Amaç:** Mobil şebeke, güç kartı ve dijital durumların okunmasını
+kolaylaştırmak; SW1/SW2 konumlarını konsolla aynı kaynaktan göstermek.
+
+**Kullanım yeri:** Cihaz durumu → Cihazdan oku. Şebekede aktif teknoloji
+ve kayıt durumu öne çıkar. Ana şebeke, dolaşım, arama ve kayıt reddi
+ayrılır. Aktif teknolojinin sinyal ölçümleri ilk sıradadır; diğer
+teknolojiler ve CSQ açılır ayrıntılarda korunur. Açıklama, sinyal
+değerlerinin modemin son sorgusuna ait olduğunu belirtir. Mevcut sinyal
+dönüşüm aralıkları ve değerlendirme eşikleri değiştirilmemiştir.
+
+**Güç kartı:** Son okunan telemetri yaşı ve ölçüm geçerliliği ayrı
+alanlardır. Yaşı 30 saniyeyi aşan kayıt eski, 255 veya eksik/kalitesiz
+kayıt kullanılamaz gösterilir; bu eşik mevcut gösterim kuralıdır.
+Alarmlar ayrı kutudadır; geçersiz alarm alanı “Alarm yok” sayılmaz.
+İletişim/şarj ve ayar/güç ölçümü bitleri ayrı listelere açılır. Ham alan
+karşılıkları teknik ayrıntıda korunur. Rezerve MH bağlantı değeri 3,
+undefined yerine bilinmiyor gösterilir. Gösterim, cache nesnesinin ham
+sentinel değerlerini değiştirmemelidir.
+
+**DIP gösterimi:** Veri yolu yukarıdaki “DIP anahtarlarının web durum
+yanıtı” bölümündedir. SW1/SW2 salt okunur ON/OFF/bilinmiyor göstergeleridir.
+
+**Doğrulama:** Merkezi `test_system_status` ve `test_http_` seçimi
+100/100 geçti. Dört DIP kombinasyonu gerçek sistem durumu ve JSON
+üretim yolundan geçirilir; DIN/RLY alanlarının korunması denetlenir.
+`web_auth`, gerçek board handler yanıtında DIP ve GSM alanlarını sınar.
+`web_navigation`, kaynak/gömülü script'te Türkçe/İngilizce kayıt
+sonuçlarını, aktif/pasif teknoloji görünürlüğünü, 0/30/31/255 yaş
+sınırlarını, geçersiz güç verisini, rezerve durum bitini ve DIP
+ON/OFF/bilinmiyor durumlarını denetler. İki integration hedefi ve ARM
+Release imza self-check geçti. `serve_loading_preview.py --board-preview`
+yalnız örnek verilerle görsel kontrol sağlar. Cihaza yükleme ve fiziksel
+switch testi yapılmamıştır.
