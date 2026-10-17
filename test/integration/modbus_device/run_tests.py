@@ -19,6 +19,7 @@ import time
 
 PORT = os.environ.get("MODBUS_RTU_PORT")
 BAUD = int(os.environ.get("MODBUS_RTU_BAUD", "115200"))
+STOPBITS = int(os.environ.get("MODBUS_RTU_STOPBITS", "1"))
 SLAVE = int(os.environ.get("MODBUS_RTU_SLAVE", "23"))
 RELAY1 = 10002      # PDU (logical 50002)
 AKU = 10000         # PDU (logical 50000)
@@ -141,7 +142,7 @@ def main():
         return 0
 
     ser = serial.Serial(PORT, BAUD, bytesize=8, parity="N",
-                        stopbits=1, timeout=0.005)
+                        stopbits=STOPBITS, timeout=0.005)
 
     # ---- T1: map regression (strict FC03 validation) ---------------
     check("T1 fider1 kalite PDU0 = 0x0003",

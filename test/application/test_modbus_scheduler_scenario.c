@@ -54,6 +54,7 @@ static modbus_configs_t modbus_cfg =
 {
     .device_addr = 1U,
     .baud_rate = 115200U,
+    .stop_bits = 1U,
 };
 
 uint32_t HAL_GetTick(void)

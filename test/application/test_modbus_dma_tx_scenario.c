@@ -56,6 +56,7 @@ static modbus_configs_t modbus_cfg =
 {
     .device_addr = 1U,
     .baud_rate = 115200U,
+    .stop_bits = 1U,
 };
 
 /* DMA TX fakes */
@@ -305,7 +306,7 @@ void test_error_callback_for_other_uart_leaves_tx_alone(void)
 void test_abort_timeout_leaves_transport_unavailable_baud_unchanged(void)
 {
     static modbus_configs_t cfg_9600 = { .device_addr = 1U,
-                                         .baud_rate = 9600U };
+                                         .baud_rate = 9600U, .stop_bits = 1U };
     exchange();                       /* response DMA in flight */
     TEST_ASSERT_TRUE(s_modbus_tx_busy);
     TEST_ASSERT_EQUAL_UINT8(1U, oe_level);
@@ -313,7 +314,7 @@ void test_abort_timeout_leaves_transport_unavailable_baud_unchanged(void)
     nvram_get_modbus_config_StopIgnore();
     nvram_get_modbus_config_IgnoreAndReturn(&cfg_9600);
     abort_result = HAL_TIMEOUT;
-    modbus_uart_apply_baudrate();
+    modbus_uart_apply_config();
 
     /* OE released, app busy cleared, baud unchanged. NO state forcing:
      * both handles stay in their non-READY states (UART=BUSY_TX,
@@ -345,7 +346,7 @@ void test_notify_apply_timeout_transport_down_baud_old(void)
      * Abort timeout: HAL kanali resetlemeden cikar; transport
      * dogal olarak kullanilamaz hale gelir (state'ler READY degil). */
     static modbus_configs_t cfg_9600 = { .device_addr = 1U,
-                                         .baud_rate = 9600U };
+                                         .baud_rate = 9600U, .stop_bits = 1U };
     exchange();                       /* response DMA in flight */
     TEST_ASSERT_TRUE(s_modbus_tx_busy);
 

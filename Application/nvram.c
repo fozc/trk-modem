@@ -214,6 +214,7 @@ void nvram_set_defaults(void)
     }
 
     nvram.modbus_config.device_addr = 23;
+    nvram.modbus_config.stop_bits = 1;  /* 8N1 default */
     nvram.modbus_config.baud_rate = 115200;
     nvram.modbus_config.last_error_code = 0;
 

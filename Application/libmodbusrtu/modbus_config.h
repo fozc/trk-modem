@@ -41,4 +41,8 @@ void modbus_config_set_last_error_time(uint32_t unix_time);
 uint32_t modbus_config_get_baud_rate(void);
 void modbus_config_set_baud_rate(uint32_t baud);
 
+// stop_bits: 1 (8N1, default) or 2 (8N2); other values rejected
+uint8_t modbus_config_get_stop_bits(void);
+bool modbus_config_set_stop_bits(uint8_t bits);
+
 #endif /* LIBMODBUSRTU_MODBUS_CONFIG_H_ */

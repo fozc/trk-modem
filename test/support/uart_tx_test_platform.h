@@ -34,6 +34,10 @@ uint32_t LL_USART_GetOverSampling(const USART_TypeDef *uart);
 void LL_USART_SetBaudRate(USART_TypeDef *uart, uint32_t clock,
                           uint32_t prescaler, uint32_t sampling,
                           uint32_t baudrate);
+/* WP-J: stop-bits support in uart_set_line_config */
+#define LL_USART_STOPBITS_1 0x00000000U
+#define LL_USART_STOPBITS_2 0x00002000U
+void LL_USART_SetStopBitsLength(USART_TypeDef *uart, uint32_t bits);
 #define LL_USART_PRESCALER_DIV1 0U
 #define LL_RCC_USART1_CLKSOURCE 1U
 #define LL_RCC_USART2_CLKSOURCE 2U

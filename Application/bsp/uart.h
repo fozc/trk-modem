@@ -83,6 +83,22 @@ void uart_set_rx_timeout(uart_port_t port, uint32_t bit_times);
  */
 bool uart_set_baudrate(uart_port_t port, uint32_t baudrate);
 
+/**
+ * @brief Configure baud rate and stop bits in one atomic step.
+ *
+ * Validates all parameters first; then disables the UART, writes both
+ * BRR and CR2.STOP, and re-enables. Returns false without touching the
+ * peripheral if any parameter is invalid. Callers never record a
+ * partial configuration (WP-J: single apply point).
+ *
+ * @param[in] port      UART port.
+ * @param[in] baudrate  Baud rate (non-zero, kernel-clock solvable).
+ * @param[in] stop_bits 1 or 2; other values return false.
+ * @return true if both settings were applied.
+ */
+bool uart_set_line_config(uart_port_t port, uint32_t baudrate,
+                          uint8_t stop_bits);
+
 
 typedef enum
 {

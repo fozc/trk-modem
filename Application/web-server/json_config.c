@@ -1286,6 +1286,13 @@ static bool parse_modbus_config_internal(const char **str, jmodbus_configs_t *mo
     while (!is_object_end(str)) {
         if (match_key(str, "CihazID")) {
             if (!parse_uint8(str, &modbus->device_addr)) return false;
+        } else if (match_key(str, "StopBits")) {
+            if (!parse_uint8(str, &modbus->stop_bits)) return false;
+            if ((1U != modbus->stop_bits) && (2U != modbus->stop_bits)) {
+                CSLOG_ERR("[JSON] ERROR: StopBits must be 1 or 2, got %u\r\n",
+                          (unsigned)modbus->stop_bits);
+                return false;
+            }
         } else if (match_key(str, "SonHataKodu")) {
             if (!parse_uint8(str, &modbus->last_error_code)) return false;
         } else if (match_key(str, "BaudRate")) {
@@ -2334,6 +2341,16 @@ int set_modbus_config(const jmodbus_configs_t *config)
         return -1;
     }
 
+    /* Defense in depth: the parser validates, but the setter is the
+     * last gate before NVRAM. Invalid stop_bits leaves everything
+     * untouched (WP-J reviewer requirement). */
+    if ((1U != config->stop_bits) && (2U != config->stop_bits))
+    {
+        CCSLOG(XCOLOR_RED,
+               "[MODBUS] ERROR: Invalid stop_bits %u (must be 1 or 2)\\r\\n");
+        return -1;
+    }
+
     /* Create local config struct from current NVRAM state */
     modbus_configs_t config_to_write = {0};
 
@@ -2349,6 +2366,7 @@ int set_modbus_config(const jmodbus_configs_t *config)
 
     /* Update fields from JSON config (register addresses fixed) */
     config_to_write.device_addr = config->device_addr;
+    config_to_write.stop_bits = config->stop_bits;
     config_to_write.last_error_code = config->last_error_code;
     config_to_write.baud_rate = config->baud_rate;
 

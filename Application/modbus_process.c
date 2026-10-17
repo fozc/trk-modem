@@ -59,6 +59,7 @@ static modbus_poll_result_t modbus_poll(modbus_slave_t *slave)
  * HIL bench build: UART4 carries SCP, the Modbus baud state is unused. */
 #if !RF_SCP_OVER_MODBUS_PORT
 static uint32_t active_baud = 115200U;
+static uint8_t active_stop_bits = 1U;  /* 8N1 boot default */
 #endif
 
 /*
@@ -403,10 +404,12 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
  * is aborted, the RS-485 driver is released and the RX framing state is
  * reset before the peripheral is reprogrammed.
  */
-/* validate -> apply -> persist zincirinin apply adimi (MB-07): her hata
- * cikisinda UART ve active_baud eski degerinde kalir; RAM/Flash tutarliligi
- * set_modbus_config'in rollback'unde saglanir. */
-static bool modbus_uart_apply_baudrate(void)
+/* validate -> apply -> persist zincirinin apply adimi (MB-07 + WP-J):
+ * baud VE stop-bits birlikte uygulanir; her hata cikisinda UART ve
+ * aktif degerler eski konfigurasyonda kalir. Degisiklik kontrolu
+ * baud VEYA stop-bits degisince calisir (yalniz stop-bit degisikligi
+ * de donanima yazilir). */
+static bool modbus_uart_apply_config(void)
 {
 #if RF_SCP_OVER_MODBUS_PORT
     /* HIL bench build: UART4 belongs to the SCP transport at 230400;
@@ -415,9 +418,17 @@ static bool modbus_uart_apply_baudrate(void)
 #else
     const modbus_configs_t *cfg = nvram_get_modbus_config();
 
-    if ((cfg->baud_rate == 0U) || (cfg->baud_rate == active_baud))
+    /* Validate FIRST: invalid values leave UART/RAM/active untouched. */
+    if ((cfg->baud_rate == 0U) ||
+        ((1U != cfg->stop_bits) && (2U != cfg->stop_bits)))
     {
-        return true;
+        return false;
+    }
+
+    if ((cfg->baud_rate == active_baud) &&
+        (cfg->stop_bits == active_stop_bits))
+    {
+        return true;  /* nothing changed */
     }
 
 #if (MODBUS_TX_USE_DMA != 0)
@@ -450,14 +461,16 @@ static bool modbus_uart_apply_baudrate(void)
 #endif
     libmodbusrtu_modbus_reset_rx(&s_modbus);
 
-    if (!uart_set_baudrate(UART_4, cfg->baud_rate))
+    if (!uart_set_line_config(UART_4, cfg->baud_rate, cfg->stop_bits))
     {
-        CSLOG_ERR("MODBUS: baud uygulanamadi - UART eski hizinda\r\n");
+        CSLOG_ERR("MODBUS: hat config uygulanamadi - UART eski ayarda\r\n");
         return false;
     }
     active_baud = cfg->baud_rate;
+    active_stop_bits = cfg->stop_bits;
     modbus_apply_frame_silence();
-    CSLOG_WARN("MODBUS: UART baudrate set to %u\r\n", active_baud);
+    CSLOG_WARN("MODBUS: UART %u baud %u stop-bit\r\n",
+               active_baud, (unsigned)active_stop_bits);
     return true;
 #endif /* !RF_SCP_OVER_MODBUS_PORT */
 }
@@ -555,7 +568,7 @@ void modbus_process_init(void)
 	/* Basarisiz apply kendi icinde loglanir: UART acilis hizinda (115200)
 	 * kalir, RAM/Flash yeni degeri tasir; bir sonraki config degisiminde
 	 * veya yeniden acilista tekrar denenir. */
-	(void)modbus_uart_apply_baudrate();
+	(void)modbus_uart_apply_config();
 	process_start(&modbus_process, NULL);
 }
 
@@ -571,7 +584,7 @@ int modbus_process_notify_config_changed(void)
 	 * reprogrammed). The caller (web) reports the failure; RAM/Flash hold
 	 * the new values and the apply is retried at boot or on the next
 	 * config change. */
-	if (!modbus_uart_apply_baudrate())
+	if (!modbus_uart_apply_config())
 	{
 		return -1;
 	}

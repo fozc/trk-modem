@@ -46,7 +46,7 @@ uint32_t HAL_GetTick(void);
 static uint32_t fake_tick;
 static rtc_t current_calendar;
 static modbus_configs_t modbus_cfg = { .device_addr = 1U,
-                                        .baud_rate = 115200U };
+                                        .baud_rate = 115200U, .stop_bits = 1U };
 static uint8_t response[64];
 static uint16_t response_len;
 

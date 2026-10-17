@@ -1300,9 +1300,10 @@ void handle_get_modbus_config_json(void)
         return;
     }
     size_t pos = xsnprintf(buf, (unsigned int)capacity,
-        "{\"CihazID\":%u,\"SonHataKodu\":%u,"
+        "{\"CihazID\":%u,\"StopBits\":%u,\"SonHataKodu\":%u,"
         "\"SonHataZamani\":%lu,\"BaudRate\":%lu,\"RegisterMap\":",
         (unsigned int)config->device_addr,
+        (unsigned int)config->stop_bits,
         (unsigned int)config->last_error_code,
         (unsigned long)modbus_config_get_last_error_time(),
         (unsigned long)config->baud_rate);
@@ -1346,6 +1347,7 @@ void handle_post_modbus_config_json(const char *json_body)
     
     // Convert NVRAM config to JSON config format (for partial updates)
     config.device_addr = nvram_config->device_addr;
+    config.stop_bits = nvram_config->stop_bits;
     config.last_error_code = nvram_config->last_error_code;
     config.baud_rate = nvram_config->baud_rate;
     

@@ -214,3 +214,136 @@ void test_lpuart_generic_and_legacy_entries_wait_before_writing(void)
     TEST_ASSERT_EQUAL_UINT8(0x45U, sent[1]);
 }
 /*** end of file ***/
+
+/* ---- uart_set_line_config test infrastructure ---- */
+static uint32_t ll_call_order[8];
+static uint32_t ll_call_count;
+static uint32_t ll_written_baud;
+static uint32_t ll_written_stop;
+
+enum ll_step
+{
+    LL_NONE = 0,
+    LL_DISABLE,
+    LL_SET_BAUD,
+    LL_SET_STOP,
+    LL_ENABLE,
+};
+
+void LL_USART_Disable(USART_TypeDef *uart)
+{
+    (void)uart;
+    if (ll_call_count < 8U)
+    {
+        ll_call_order[ll_call_count++] = LL_DISABLE;
+    }
+}
+
+void LL_USART_Enable(USART_TypeDef *uart)
+{
+    (void)uart;
+    if (ll_call_count < 8U)
+    {
+        ll_call_order[ll_call_count++] = LL_ENABLE;
+    }
+}
+
+uint32_t LL_USART_GetOverSampling(const USART_TypeDef *uart)
+{
+    (void)uart;
+    return 16U;
+}
+
+void LL_USART_SetBaudRate(USART_TypeDef *uart, uint32_t clock,
+                          uint32_t prescaler, uint32_t sampling,
+                          uint32_t baudrate)
+{
+    (void)uart; (void)clock; (void)prescaler; (void)sampling;
+    ll_written_baud = baudrate;
+    if (ll_call_count < 8U)
+    {
+        ll_call_order[ll_call_count++] = LL_SET_BAUD;
+    }
+}
+
+void LL_USART_SetStopBitsLength(USART_TypeDef *uart, uint32_t bits)
+{
+    (void)uart;
+    ll_written_stop = bits;
+    if (ll_call_count < 8U)
+    {
+        ll_call_order[ll_call_count++] = LL_SET_STOP;
+    }
+}
+
+uint32_t LL_RCC_GetUSARTClockFreq(uint32_t source)
+{
+    (void)source;
+    return 64000000U;  /* valid kernel clock */
+}
+
+uint32_t LL_RCC_GetUARTClockFreq(uint32_t source)
+{
+    (void)source;
+    return 64000000U;
+}
+
+static void reset_ll_tracking(void)
+{
+    ll_call_count = 0U;
+    ll_written_baud = 0U;
+    ll_written_stop = 0U;
+    memset(ll_call_order, 0, sizeof(ll_call_order));
+}
+
+/* ---- uart_set_line_config tests (WP-J) ---- */
+
+void test_line_config_invalid_stop_bits_no_hardware_write(void)
+{
+    reset_ll_tracking();
+    TEST_ASSERT_FALSE(uart_set_line_config(UART_4, 115200U, 0U));
+    TEST_ASSERT_EQUAL_UINT32(0U, ll_call_count);
+    TEST_ASSERT_FALSE(uart_set_line_config(UART_4, 115200U, 3U));
+    TEST_ASSERT_EQUAL_UINT32(0U, ll_call_count);
+    TEST_ASSERT_FALSE(uart_set_line_config(UART_4, 115200U, 255U));
+    TEST_ASSERT_EQUAL_UINT32(0U, ll_call_count);
+}
+
+void test_line_config_zero_baud_no_hardware_write(void)
+{
+    reset_ll_tracking();
+    TEST_ASSERT_FALSE(uart_set_line_config(UART_4, 0U, 1U));
+    TEST_ASSERT_EQUAL_UINT32(0U, ll_call_count);
+}
+
+void test_line_config_invalid_port_no_hardware_write(void)
+{
+    reset_ll_tracking();
+    TEST_ASSERT_FALSE(uart_set_line_config(99U, 115200U, 1U));
+    TEST_ASSERT_EQUAL_UINT32(0U, ll_call_count);
+}
+
+void test_line_config_success_disable_baud_stop_enable_order(void)
+{
+    reset_ll_tracking();
+    TEST_ASSERT_TRUE(uart_set_line_config(UART_4, 9600U, 2U));
+
+    /* Sequence: disable, baud, stop, enable. */
+    TEST_ASSERT_EQUAL_UINT32(4U, ll_call_count);
+    TEST_ASSERT_EQUAL_UINT32(LL_DISABLE, ll_call_order[0]);
+    TEST_ASSERT_EQUAL_UINT32(LL_SET_BAUD, ll_call_order[1]);
+    TEST_ASSERT_EQUAL_UINT32(LL_SET_STOP, ll_call_order[2]);
+    TEST_ASSERT_EQUAL_UINT32(LL_ENABLE,  ll_call_order[3]);
+
+    /* Values written. */
+    TEST_ASSERT_EQUAL_UINT32(9600U, ll_written_baud);
+    TEST_ASSERT_EQUAL_UINT32(LL_USART_STOPBITS_2, ll_written_stop);
+}
+
+void test_line_config_stop_1_writes_stopbits_1(void)
+{
+    reset_ll_tracking();
+    TEST_ASSERT_TRUE(uart_set_line_config(UART_4, 115200U, 1U));
+    TEST_ASSERT_EQUAL_UINT32(LL_USART_STOPBITS_1, ll_written_stop);
+    TEST_ASSERT_EQUAL_UINT32(115200U, ll_written_baud);
+}

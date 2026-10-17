@@ -63,6 +63,15 @@ static inline void LL_USART_ClearFlag_TC(test_usart_t *usart)
     (void)usart;
 }
 
+/* Stop-bits model for the WP-J line-config path. */
+#define LL_USART_STOPBITS_1 0x00000000U
+#define LL_USART_STOPBITS_2 0x00002000U
+static inline void LL_USART_SetStopBitsLength(test_usart_t *usart,
+                                              uint32_t bits)
+{
+    (void)usart; (void)bits;
+}
+
 /* NVIC model for host scenarios that compile process code using the
  * UART4 ownership critical section. Host runs are single-threaded, so
  * the guards are no-ops; the whole-vector masking property is a target
