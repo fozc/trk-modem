@@ -171,24 +171,38 @@ def request_once(method, path, extra_headers=""):
                        % (last, method, path))
 
 
-def test_modbus_stop_bits_cycle(http_req):
+def test_modbus_stop_bits_cycle():
     """WP-J: StopBits 1->2->1 with response body + missing-field preservation.
 
-    Receives the main session's http_req (single web client slot).
+    Runs after main() closed the shared keep-alive session and the
+    one-shot ETag checks, so it opens its own session. A connection
+    opened immediately after the ETag one-shots is reset by the device
+    and can wedge the single web slot for minutes (observed on
+    2026-10-18, CI and bench): settle first and retry with a fresh
+    session on transport errors, the same discipline the http() and
+    request_once() helpers apply on this GSM link.
     """
-    try:
-        # Reconnect if the main session dropped during earlier tests.
+    rq = None
+    token = ""
+    sess = None
+    for attempt in range(4):
+        time.sleep(1.5 if 0 == attempt else 8.0)
         try:
-            sess2 = DeviceSession()
-            http_req2 = sess2.request
-        except RuntimeError:
-            sess2 = None
-            http_req2 = http_req
-        rq = http_req2
-        st, body = rq("POST", "/auth/login",
-                            '{"username":"admin","password":"admin60"}')
-        assert st == 200, body
-        t = "t=" + json.loads(body)["token"]
+            sess = DeviceSession()
+            st, body = sess.request("POST", "/auth/login",
+                                    '{"username":"admin","password":"admin60"}')
+            rq = sess.request
+            token = json.loads(body).get("token", "")
+            break
+        except (OSError, RuntimeError) as err:
+            print("stop-bits session attempt %d failed: %r"
+                  % (attempt + 1, err))
+            if sess:
+                sess.close()
+                sess = None
+    try:
+        assert rq is not None and token, "no working session/login"
+        t = "t=" + token
 
         # 1) GET: StopBits present
         st, body = rq("GET", "/config/modbus?" + t)
@@ -230,11 +244,13 @@ def test_modbus_stop_bits_cycle(http_req):
         st, body = rq("POST", "/config/modbus?" + t, restore)
         assert st == 200
 
-        if sess2:
-            sess2.close()
+        if sess:
+            sess.close()
         print("PASS: modbus_stop_bits_cycle")
         return True
     except AssertionError as e:
+        if sess:
+            sess.close()
         print("FAIL: modbus_stop_bits_cycle %s" % e)
         return False
 
@@ -376,7 +392,7 @@ def main():
               "HTTP %d, %d B" % (st, len(body)))
 
     # WP-J: StopBits cycle (1->2->missing->400->restore)
-    if not test_modbus_stop_bits_cycle(http_req):
+    if not test_modbus_stop_bits_cycle():
         FAILURES.append("modbus_stop_bits_cycle")
 
     return 1 if FAILURES else 0
