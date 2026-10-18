@@ -19,6 +19,7 @@ TEST_SOURCE_FILE("cp56time2a.c")
 
 static rf_scp_event_t event;
 static rf_feeder_t feeder_config;
+static uint32_t last_live_uptime[3];
 
 const rf_feeder_t *rf_store_get(feeder_id_t index);
 const rf_feeder_t *rf_store_get(feeder_id_t index)
@@ -48,6 +49,7 @@ static rf_fault_stats_t counts(uint8_t feeder)
 void setUp(void)
 {
     rf_faults_init();
+    (void)memset(last_live_uptime, 0, sizeof(last_live_uptime));
     event = (rf_scp_event_t){.zone = 1U, .feeder = 1U, .phase = 1U,
         .boot_counter = 1U, .clock_quality = 1U};
     rf_inventory_get_binding_IgnoreAndReturn(false);
@@ -351,12 +353,15 @@ static void observe_live(uint8_t phase, uint32_t uptime, uint32_t now_ms,
         .boot_counter = 1U, .uptime_sec = uptime, .seq = uptime,
         .state = 1U, .log_pending = pending};
     rf_faults_live(&live, now_ms);
+    last_live_uptime[phase - 1U] = uptime;
 }
 
 static void ready_phase(uint8_t phase, uint32_t now_ms)
 {
-    observe_live(phase, 1000U, now_ms, 0U);
-    observe_live(phase, 1001U, now_ms + 1U, 0U);
+    const uint32_t uptime = (1000U > last_live_uptime[phase - 1U]) ?
+                            1000U : last_live_uptime[phase - 1U] + 1U;
+    observe_live(phase, uptime, now_ms, 0U);
+    observe_live(phase, uptime + 1U, now_ms + 1U, 0U);
 }
 
 void test_142_overlapping_intervals_merge_despite_distant_end_times(void)
@@ -372,6 +377,7 @@ void test_142_overlapping_intervals_merge_despite_distant_end_times(void)
     ready_phase(1U, 10U);
     TEST_ASSERT_FALSE(rf_faults_needs_head(12U));
     ready_phase(2U, 20U);
+    ready_phase(3U, 20U);
     TEST_ASSERT_TRUE(rf_faults_needs_head(22U));
     rf_faults_ring_empty(rf_faults_head_started(), 22U);
     TEST_ASSERT_TRUE(counts(1U).is_final);
@@ -408,6 +414,8 @@ void test_single_participating_phase_does_not_wait_for_healthy_phase_142(void)
     (void)classify(4U, 1U, 10000U);
     (void)classify(142U, 1U, 30000U);
     ready_phase(1U, 10U);
+    ready_phase(2U, 10U);
+    ready_phase(3U, 10U);
     rf_faults_ring_empty(rf_faults_head_started(), 12U);
     TEST_ASSERT_TRUE(counts(1U).is_final);
 }
@@ -436,6 +444,8 @@ void test_first_idle_pending_zero_live_cannot_complete_both_barriers(void)
 {
     bind_phases();
     (void)classify(1U, 1U, 10000U);
+    ready_phase(2U, 1U);
+    ready_phase(3U, 3U);
     observe_live(1U, 1000U, 10U, 0U);
     rf_faults_ring_empty(rf_faults_head_started(), 11U);
     TEST_ASSERT_FALSE(counts(1U).is_final);
@@ -448,6 +458,8 @@ void test_head_started_before_latest_pending_zero_cannot_finalize(void)
 {
     bind_phases();
     (void)classify(1U, 1U, 10000U);
+    ready_phase(2U, 1U);
+    ready_phase(3U, 3U);
     observe_live(1U, 1000U, 10U, 1U);
     const uint64_t old_head = rf_faults_head_started();
     observe_live(1U, 1001U, 20U, 0U);
@@ -471,10 +483,12 @@ void test_t_mem_dead_wait_prevents_early_idle_closure(void)
     bind_phases();
     feeder_config.config.t_mem_dead_sec = 30U;
     (void)classify(1U, 1U, 10000U); /* uptime 1 */
+    ready_phase(2U, 1U);
+    ready_phase(3U, 3U);
     observe_live(1U, 600U, 10U, 0U);
-    observe_live(1U, 601U, 20U, 0U); /* First eligible idle sample. */
+    observe_live(1U, 603U, 20U, 0U); /* Opening 1 + 600 + 2. */
     TEST_ASSERT_FALSE(rf_faults_needs_head(21U));
-    observe_live(1U, 602U, 30U, 0U);
+    observe_live(1U, 604U, 30U, 0U);
     TEST_ASSERT_TRUE(rf_faults_needs_head(31U));
 }
 
@@ -483,6 +497,8 @@ void test_stale_live_and_tick_wrap_are_checked_at_empty_head(void)
     bind_phases();
     (void)classify(1U, 1U, 10000U);
     ready_phase(1U, UINT32_MAX - 10U);
+    ready_phase(2U, UINT32_MAX - 10U);
+    ready_phase(3U, UINT32_MAX - 10U);
     TEST_ASSERT_TRUE(rf_faults_needs_head(5U));
     rf_faults_ring_empty(rf_faults_head_started(), 30000U);
     TEST_ASSERT_FALSE(counts(1U).is_final);
@@ -544,11 +560,15 @@ void test_hub_restart_revokes_live_and_head_evidence_without_erasing_counts(void
     bind_phases();
     (void)classify(1U, 1U, 10000U);
     ready_phase(1U, 10U);
+    ready_phase(2U, 10U);
+    ready_phase(3U, 10U);
     const uint64_t old_head = rf_faults_head_started();
     rf_faults_hub_restarted();
     rf_faults_ring_empty(old_head, 12U);
     TEST_ASSERT_FALSE(counts(1U).is_final);
     TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).permanent);
+    ready_phase(2U, 20U);
+    ready_phase(3U, 20U);
     observe_live(1U, 1002U, 20U, 0U);
     observe_live(1U, 1003U, 21U, 0U);
     rf_faults_ring_empty(rf_faults_head_started(), 22U);
@@ -579,12 +599,13 @@ void test_live_detected_participant_with_missing_records_remains_uncertain(void)
     ready_phase(1U, 20U);
     TEST_ASSERT_FALSE(rf_faults_needs_head(22U));
     ready_phase(2U, 30U);
+    ready_phase(3U, 30U);
     rf_faults_ring_empty(rf_faults_head_started(), 32U);
     TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
     TEST_ASSERT_FALSE(counts(1U).is_final);
 }
 
-void test_unresolved_capacity_never_overwrites_existing_fault_evidence(void)
+void test_full_capacity_archives_oldest_with_known_class_and_uncertainty(void)
 {
     bind_phases();
     for (uint16_t index = 0U; 129U > index; index++)
@@ -598,7 +619,7 @@ void test_unresolved_capacity_never_overwrites_existing_fault_evidence(void)
         (void)memcpy(event.timestamp, &stamped, sizeof(stamped));
         TEST_ASSERT_EQUAL_INT(RF_FAULT_PERMANENT, rf_faults_classify(&event));
     }
-    TEST_ASSERT_EQUAL_UINT32(128U, counts(1U).permanent);
+    TEST_ASSERT_EQUAL_UINT32(129U, counts(1U).permanent);
     TEST_ASSERT_EQUAL_UINT32(128U, counts(1U).pending);
     TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
 }
@@ -623,10 +644,12 @@ void test_latest_1_or_7_is_the_t_mem_dead_origin_not_an_earlier_6(void)
     (void)classify(6U, 1U, 10000U); /* uptime 1 */
     event.uptime_sec = 10U;
     (void)classify(1U, 1U, 20000U); /* uptime 11 */
+    ready_phase(2U, 1U);
+    ready_phase(3U, 3U);
     observe_live(1U, 610U, 10U, 0U);
-    observe_live(1U, 611U, 20U, 0U);
+    observe_live(1U, 613U, 20U, 0U);
     TEST_ASSERT_FALSE(rf_faults_needs_head(21U));
-    observe_live(1U, 612U, 30U, 0U);
+    observe_live(1U, 614U, 30U, 0U);
     TEST_ASSERT_TRUE(rf_faults_needs_head(31U));
 }
 
@@ -641,6 +664,7 @@ void test_live_participant_is_resolved_when_its_delayed_records_arrive(void)
     (void)classify(142U, 2U, 40000U);
     ready_phase(1U, 20U);
     ready_phase(2U, 30U);
+    ready_phase(3U, 30U);
     rf_faults_ring_empty(rf_faults_head_started(), 32U);
     TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).permanent);
     TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).temporary);
@@ -662,6 +686,8 @@ void test_completed_capacity_is_reused_without_losing_confirmed_counts(void)
         (void)memcpy(event.timestamp, &stamped, sizeof(stamped));
         TEST_ASSERT_EQUAL_INT(RF_FAULT_PERMANENT, rf_faults_classify(&event));
         ready_phase(1U, 10U);
+        ready_phase(2U, 10U);
+        ready_phase(3U, 10U);
         rf_faults_ring_empty(rf_faults_head_started(), 12U);
     }
     TEST_ASSERT_EQUAL_UINT32(129U, counts(1U).permanent);
@@ -675,6 +701,7 @@ void test_idle_other_phase_with_delayed_records_blocks_early_finality(void)
     (void)classify(1U, 1U, 10000U);
     observe_live(2U, 100U, 10U, 1U);
     ready_phase(1U, 20U);
+    ready_phase(3U, 20U);
     TEST_ASSERT_FALSE(rf_faults_needs_head(22U));
     const uint64_t old_head = rf_faults_head_started();
     observe_live(2U, 101U, 30U, 0U);
@@ -746,15 +773,222 @@ void test_desired_setting_never_shortens_protocol_maximum_wait(void)
         event.uptime_sec = 0U;
         feeder_config.config.t_mem_dead_sec = desired[index];
         (void)classify(1U, 1U, 10000U);
+        ready_phase(2U, 1U);
+        ready_phase(3U, 3U);
         observe_live(1U, 181U, 10U, 0U);
         observe_live(1U, 600U, 20U, 0U);
         TEST_ASSERT_FALSE(rf_faults_needs_head(21U));
         observe_live(1U, 601U, 30U, 0U);
         TEST_ASSERT_FALSE(rf_faults_needs_head(31U));
-        observe_live(1U, 602U, 40U, 0U);
+        observe_live(1U, 603U, 40U, 0U);
+        TEST_ASSERT_FALSE(rf_faults_needs_head(40U));
+        observe_live(1U, 604U, 41U, 0U);
         rf_faults_ring_empty(rf_faults_head_started(), 41U);
         TEST_ASSERT_TRUE(counts(1U).is_final);
     }
+}
+
+void test_bolatex_closure_requires_idle_and_next_zero_on_all_three_phases(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U);
+    ready_phase(1U, 10U);
+    rf_faults_ring_empty(rf_faults_head_started(), 12U);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).pending);
+    ready_phase(2U, 20U);
+    observe_live(3U, 1000U, 30U, 0U);
+    rf_faults_ring_empty(rf_faults_head_started(), 31U);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).pending);
+    observe_live(3U, 1001U, 32U, 0U);
+    rf_faults_ring_empty(rf_faults_head_started(), 33U);
+    TEST_ASSERT_TRUE(counts(1U).is_final);
+}
+
+void test_bolatex_602_seconds_is_first_idle_not_600_or_601(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U); /* Opening uptime = 1. */
+    ready_phase(2U, 1U);
+    ready_phase(3U, 3U);
+    observe_live(1U, 601U, 10U, 0U);
+    observe_live(1U, 602U, 20U, 0U);
+    TEST_ASSERT_FALSE(rf_faults_needs_head(21U));
+    observe_live(1U, 603U, 30U, 0U);
+    TEST_ASSERT_FALSE(rf_faults_needs_head(31U));
+    observe_live(1U, 604U, 40U, 0U);
+    rf_faults_ring_empty(rf_faults_head_started(), 41U);
+    TEST_ASSERT_TRUE(counts(1U).is_final);
+}
+
+void test_bolatex_nonzero_3_preserves_sequence_interval_until_142(void)
+{
+    bind_phases();
+    (void)classify(4U, 1U, 10000U);
+    event.fault_count = 1U;
+    (void)classify(3U, 1U, 15000U);
+    (void)classify(142U, 1U, 30000U);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).temporary);
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).uncertain);
+}
+
+void test_bolatex_pending_99_closes_existing_group_as_uncertain(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U);
+    observe_live(2U, 1000U, 10U, 99U);
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).pending);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).permanent);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
+}
+
+void test_bolatex_late_105_does_not_change_finalized_feeder_totals(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U);
+    for (uint8_t phase = 1U; 3U >= phase; phase++)
+    {
+        ready_phase(phase, 10U);
+    }
+    rf_faults_ring_empty(rf_faults_head_started(), 12U);
+    const rf_fault_stats_t before = counts(1U);
+    TEST_ASSERT_TRUE(before.is_final);
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, classify(105U, 1U, 30000U));
+    const rf_fault_stats_t after = counts(1U);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &after, sizeof(after));
+}
+
+void test_bolatex_zero_3_closes_sequence_but_nonzero_3_does_not(void)
+{
+    bind_phases();
+    (void)classify(4U, 1U, 10000U);
+    event.fault_count = 1U;
+    (void)classify(3U, 1U, 15000U);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).pending);
+    event.fault_count = 0U;
+    (void)classify(3U, 1U, 20000U);
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).pending);
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).temporary);
+}
+
+void test_bolatex_104_waits_for_following_zero_record(void)
+{
+    bind_phases();
+    (void)classify(4U, 1U, 10000U);
+    (void)classify(104U, 1U, 15000U);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).pending);
+    (void)classify(0U, 1U, 20000U);
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).pending);
+}
+
+void test_bolatex_boot_change_closes_old_group_without_waiting_for_old_boot(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U);
+    const rf_scp_live_t live = {.source = 5U, .boot_counter = 2U,
+        .uptime_sec = 10U, .seq = 1U, .state = 1U};
+    rf_faults_live(&live, 10U);
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).pending);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).permanent);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
+}
+
+void test_bolatex_lost_history_marks_late_groups_until_three_phase_drain(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U);
+    observe_live(2U, 1000U, 10U, 99U);
+    (void)classify(7U, 2U, 10500U);
+    TEST_ASSERT_EQUAL_UINT32(2U, counts(1U).uncertain);
+    for (uint8_t phase = 1U; 3U >= phase; phase++)
+    {
+        ready_phase(phase, 20U);
+    }
+    rf_faults_ring_empty(rf_faults_head_started(), 22U);
+    (void)classify(1U, 1U, 30000U);
+    TEST_ASSERT_EQUAL_UINT32(2U, counts(1U).permanent);
+    TEST_ASSERT_EQUAL_UINT32(2U, counts(1U).uncertain);
+}
+
+void test_bolatex_one_phase_completion_can_close_multiple_older_groups(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U);
+    (void)classify(1U, 1U, 20000U);
+    (void)classify(1U, 1U, 30000U);
+    for (uint8_t phase = 1U; 3U >= phase; phase++)
+    {
+        ready_phase(phase, 10U);
+    }
+    rf_faults_ring_empty(rf_faults_head_started(), 12U);
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).pending);
+    TEST_ASSERT_EQUAL_UINT32(3U, counts(1U).permanent);
+}
+
+void test_old_boot_record_after_new_boot_live_is_closed_uncertain(void)
+{
+    bind_phases();
+    const rf_scp_live_t live = {.source = 5U, .boot_counter = 2U,
+        .uptime_sec = 10U, .seq = 1U, .state = 1U};
+    rf_faults_live(&live, 10U);
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_PERMANENT, classify(1U, 1U, 10000U));
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).pending);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
+}
+
+void test_new_sequence_record_revokes_all_three_existing_live_candidates(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U);
+    for (uint8_t phase = 1U; 3U >= phase; phase++)
+    {
+        ready_phase(phase, 10U);
+    }
+    const uint64_t old_head = rf_faults_head_started();
+    (void)classify(7U, 2U, 10500U);
+    rf_faults_ring_empty(old_head, 12U);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).pending);
+    ready_phase(2U, 20U);
+    TEST_ASSERT_FALSE(rf_faults_needs_head(22U));
+    ready_phase(1U, 30U);
+    ready_phase(3U, 30U);
+    rf_faults_ring_empty(rf_faults_head_started(), 32U);
+    TEST_ASSERT_TRUE(counts(1U).is_final);
+}
+
+void test_phase_last_stored_identity_survives_group_capacity_reuse(void)
+{
+    bind_phases();
+    (void)classify(1U, 1U, 10000U);
+    const rf_scp_event_t first = event;
+    rf_faults_record_stored(&first);
+    for (uint16_t index = 1U; 129U > index; index++)
+    {
+        event.phase = 2U;
+        event.event = 1U;
+        event.uptime_sec = index;
+        const cp56time2a_t time = cp56time2a_make(0U,
+            (uint8_t)(index % 60U), (uint8_t)(12U + (index / 60U)),
+            7U, 3U, 10U, 26U);
+        (void)memcpy(event.timestamp, &time, sizeof(time));
+        (void)rf_faults_classify(&event);
+        rf_faults_record_stored(&event);
+    }
+    const rf_fault_stats_t before = counts(1U);
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_NONE, rf_faults_classify(&first));
+    const rf_fault_stats_t after = counts(1U);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &after, sizeof(after));
+}
+
+void test_boot_change_during_detection_without_outcome_keeps_uncertainty(void)
+{
+    bind_phases();
+    (void)classify(4U, 1U, 10000U);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).pending);
+    const rf_scp_live_t live = {.source = 5U, .boot_counter = 2U,
+        .uptime_sec = 10U, .seq = 1U, .state = 1U};
+    rf_faults_live(&live, 10U);
+    TEST_ASSERT_EQUAL_UINT32(0U, counts(1U).pending);
+    TEST_ASSERT_EQUAL_UINT32(1U, counts(1U).uncertain);
 }
 
 /*** end of file ***/

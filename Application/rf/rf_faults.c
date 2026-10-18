@@ -21,6 +21,7 @@
 /* R2 section 4.9: every accepted T_Mem_Dead_Sec is at most 600 s.
  * Desired store values do not prove the setting used by a queued event. */
 #define RF_T_MEM_DEAD_MAX_SEC 600U
+#define RF_CLOSURE_MARGIN_SEC 2U
 #define NO_GROUP RF_GROUPS
 
 typedef enum
@@ -35,14 +36,9 @@ typedef struct
     uint8_t eui64[8];
     uint16_t boot;
     uint16_t crc;
+    uint16_t src_eui_hash;
     uint8_t event;
     uint32_t event_uptime;
-    uint32_t opening_uptime;
-    uint32_t live_uptime;
-    uint32_t live_seq;
-    uint32_t live_ms;
-    uint64_t ready_version;
-    closure_state_t closure;
     bool present;
     bool has_record;
     bool phase_saved;
@@ -55,6 +51,8 @@ typedef struct
     cp56time2a_t opening_time;
     cp56time2a_t opening_end;
     fault_participant_t phases[RF_PHASES];
+    uint64_t created_version;
+    uint64_t last_version;
     uint8_t zone;
     uint8_t feeder;
     uint8_t opening_count;
@@ -71,7 +69,6 @@ typedef struct
 {
     cp56time2a_t start;
     uint32_t uptime;
-    uint32_t opening_uptime;
     uint16_t boot;
     uint8_t zone;
     uint8_t quality;
@@ -79,8 +76,32 @@ typedef struct
     size_t group_index;
     bool has_event;
     bool active;
-    bool has_opening;
 } fault_sequence_t;
+
+typedef struct
+{
+    uint8_t eui64[8];
+    uint16_t boot;
+    uint32_t opening_uptime;
+    uint32_t live_uptime;
+    uint32_t live_seq;
+    uint32_t live_ms;
+    uint64_t idle_version;
+    uint64_t ready_version;
+    uint64_t completed_version;
+    closure_state_t closure;
+    bool has_live;
+    bool has_opening;
+} fault_phase_t;
+
+typedef struct
+{
+    cp56time2a_t start;
+    cp56time2a_t end;
+    uint64_t version;
+    bool active;
+    bool unknown_time;
+} fault_gap_t;
 
 /* All accesses belong to cooperative process/shell context, never an ISR. */
 static fault_sequence_t sequences[RF_FEEDERS][RF_PHASES];
@@ -88,8 +109,46 @@ static fault_group_t groups[RF_GROUPS];
 static rf_fault_stats_t archived[RF_ZONES][RF_FEEDERS + 1U];
 static uint64_t evidence_version;
 /* Even an idle phase may still be forwarding its delayed result records. */
-static bool phase_has_pending[RF_FEEDERS][RF_PHASES];
-static uint64_t phase_cleared_version[RF_FEEDERS][RF_PHASES];
+static fault_phase_t phases[RF_FEEDERS][RF_PHASES];
+static fault_participant_t last_records[RF_FEEDERS][RF_PHASES];
+static fault_gap_t gaps[RF_FEEDERS];
+
+static void archive_group(size_t index, bool uncertain);
+static void redirect_sequences(size_t from, size_t to);
+static void increment(uint32_t *value);
+
+static void revoke_closure(uint8_t feeder)
+{
+    for (size_t phase = 0U; RF_PHASES > phase; phase++)
+    {
+        phases[feeder - 1U][phase].closure = CLOSURE_IDLE;
+    }
+}
+
+static void close_uncertain(uint8_t feeder)
+{
+    for (size_t index = 0U; RF_GROUPS > index; index++)
+    {
+        if (groups[index].used && !groups[index].finalized &&
+            (feeder == groups[index].feeder))
+        {
+            archive_group(index, true);
+        }
+    }
+    for (size_t phase = 0U; RF_PHASES > phase; phase++)
+    {
+        fault_sequence_t *sequence = &sequences[feeder - 1U][phase];
+        if (sequence->active && (NO_GROUP == sequence->group_index))
+        {
+            increment(&archived[sequence->zone][feeder].uncertain);
+            sequence->active = false;
+        }
+    }
+    gaps[feeder - 1U].active = true;
+    gaps[feeder - 1U].unknown_time = true;
+    gaps[feeder - 1U].version = evidence_version;
+    revoke_closure(feeder);
+}
 
 static void increment(uint32_t *value)
 {
@@ -106,15 +165,9 @@ static void reset_sequence(fault_sequence_t *sequence)
 
 void rf_faults_reset_sequences(void)
 {
-    for (size_t index = 0U; RF_GROUPS > index; index++)
-    {
-        if (groups[index].used && !groups[index].finalized)
-        {
-            groups[index].uncertain = true;
-        }
-    }
     for (size_t feeder = 0U; RF_FEEDERS > feeder; feeder++)
     {
+        close_uncertain((uint8_t)(feeder + 1U));
         for (size_t phase = 0U; RF_PHASES > phase; phase++)
         {
             reset_sequence(&sequences[feeder][phase]);
@@ -127,10 +180,17 @@ void rf_faults_init(void)
 {
     (void)memset(groups, 0, sizeof(groups));
     (void)memset(archived, 0, sizeof(archived));
-    (void)memset(phase_has_pending, 0, sizeof(phase_has_pending));
-    (void)memset(phase_cleared_version, 0, sizeof(phase_cleared_version));
-    evidence_version = 0U;
-    rf_faults_reset_sequences();
+    (void)memset(phases, 0, sizeof(phases));
+    (void)memset(last_records, 0, sizeof(last_records));
+    (void)memset(gaps, 0, sizeof(gaps));
+    evidence_version = 1U;
+    for (size_t feeder = 0U; RF_FEEDERS > feeder; feeder++)
+    {
+        for (size_t phase = 0U; RF_PHASES > phase; phase++)
+        {
+            reset_sequence(&sequences[feeder][phase]);
+        }
+    }
 }
 
 void rf_faults_reset_phase(uint8_t feeder, uint8_t phase)
@@ -140,16 +200,25 @@ void rf_faults_reset_phase(uint8_t feeder, uint8_t phase)
     {
         return;
     }
+    bool has_pending = sequences[feeder - 1U][phase - 1U].active;
     for (size_t index = 0U; RF_GROUPS > index; index++)
     {
-        fault_group_t *group = &groups[index];
-        if (group->used && !group->finalized && (feeder == group->feeder) &&
-            group->phases[phase - 1U].present)
+        if (groups[index].used && !groups[index].finalized &&
+            (feeder == groups[index].feeder))
         {
-            group->uncertain = true;
-            group->phases[phase - 1U].closure = CLOSURE_IDLE;
+            has_pending = true;
+            break;
         }
     }
+    if (has_pending)
+    {
+        close_uncertain(feeder);
+    }
+    else
+    {
+        revoke_closure(feeder);
+    }
+    phases[feeder - 1U][phase - 1U] = (fault_phase_t){0};
     reset_sequence(&sequences[feeder - 1U][phase - 1U]);
     evidence_version++;
 }
@@ -187,6 +256,37 @@ static void add_group_count(const fault_group_t *group, rf_fault_stats_t *out)
     }
 }
 
+static void archive_group(size_t index, bool uncertain)
+{
+    fault_group_t *group = &groups[index];
+    group->finalized = true;
+    rf_fault_stats_t *total = &archived[group->zone][group->feeder];
+    add_group_count(group, total);
+    if (uncertain)
+    {
+        if (!group->uncertain && !group->opening_ambiguous)
+        {
+            increment(&total->uncertain);
+        }
+        fault_gap_t *gap = &gaps[group->feeder - 1U];
+        if (!gap->active ||
+            (0 > cp56time2a_diff_ms(&group->start, &gap->start)))
+        {
+            gap->start = group->start;
+        }
+        if (!gap->active ||
+            (0 < cp56time2a_diff_ms(&group->end, &gap->end)))
+        {
+            gap->end = group->end;
+        }
+        gap->active = true;
+        gap->unknown_time = gap->unknown_time || group->uncertain;
+        gap->version = evidence_version;
+    }
+    redirect_sequences(index, NO_GROUP);
+    group->used = false;
+}
+
 static size_t reserve_group(void)
 {
     for (size_t index = 0U; RF_GROUPS > index; index++)
@@ -200,13 +300,20 @@ static size_t reserve_group(void)
     {
         if (groups[index].finalized)
         {
-            fault_group_t *group = &groups[index];
-            add_group_count(group, &archived[group->zone][group->feeder]);
-            group->used = false;
+            archive_group(index, false);
             return index;
         }
     }
-    return NO_GROUP; /* Never overwrite an unresolved sequence. */
+    size_t oldest = 0U;
+    for (size_t index = 1U; RF_GROUPS > index; index++)
+    {
+        if (groups[index].created_version < groups[oldest].created_version)
+        {
+            oldest = index;
+        }
+    }
+    archive_group(oldest, true);
+    return oldest;
 }
 
 static bool overlaps(const fault_group_t *a, const fault_group_t *b)
@@ -291,12 +398,15 @@ static void merge_group(fault_group_t *target, const fault_group_t *other)
             }
         }
     }
-    /* A new record invalidates every previous closure barrier. */
-    target->finalized = false;
-    for (size_t phase = 0U; RF_PHASES > phase; phase++)
+    if (other->created_version < target->created_version)
     {
-        target->phases[phase].closure = CLOSURE_IDLE;
+        target->created_version = other->created_version;
     }
+    if (other->last_version > target->last_version)
+    {
+        target->last_version = other->last_version;
+    }
+    target->finalized = false;
 }
 
 static void redirect_sequences(size_t from, size_t to)
@@ -308,6 +418,10 @@ static void redirect_sequences(size_t from, size_t to)
             if (from == sequences[feeder][phase].group_index)
             {
                 sequences[feeder][phase].group_index = to;
+                if (NO_GROUP == to)
+                {
+                    sequences[feeder][phase].active = false;
+                }
             }
         }
     }
@@ -322,7 +436,8 @@ static size_t collect_group(fault_group_t *candidate, size_t own)
         merged = false;
         for (size_t index = 0U; RF_GROUPS > index; index++)
         {
-            if (groups[index].used && (index != own) &&
+            if (groups[index].used && !groups[index].finalized &&
+                (index != own) &&
                 groups_match(candidate, &groups[index]))
             {
                 if (NO_GROUP == target)
@@ -343,6 +458,13 @@ static size_t collect_group(fault_group_t *candidate, size_t own)
     }
     if (NO_GROUP != target)
     {
+        const fault_gap_t *gap = &gaps[candidate->feeder - 1U];
+        if (gap->active && (gap->unknown_time ||
+            ((0 <= cp56time2a_diff_ms(&candidate->end, &gap->start)) &&
+             (0 <= cp56time2a_diff_ms(&gap->end, &candidate->start)))))
+        {
+            candidate->uncertain = true;
+        }
         candidate->used = true;
         groups[target] = *candidate;
     }
@@ -438,11 +560,25 @@ static fault_participant_t *find_record(const rf_scp_event_t *event,
             (phase->boot == event->boot_counter) &&
             (phase->event_uptime == event->uptime_sec) &&
             (phase->crc == event->crc) &&
+            (phase->src_eui_hash == event->src_eui_hash) &&
             (0 == memcmp(phase->eui64, binding.eui64, 8U)))
         {
             *opened = group->opened;
             return phase;
         }
+    }
+    fault_participant_t *last =
+        &last_records[event->feeder - 1U][event->phase - 1U];
+    if (last->has_record && (0U != event->boot_counter) &&
+        (last->event == event->event) &&
+        (last->boot == event->boot_counter) &&
+        (last->event_uptime == event->uptime_sec) &&
+        (last->crc == event->crc) &&
+        (last->src_eui_hash == event->src_eui_hash) &&
+        (0 == memcmp(last->eui64, binding.eui64, 8U)))
+    {
+        *opened = false;
+        return last;
     }
     return NULL;
 }
@@ -460,6 +596,16 @@ void rf_faults_record_stored(const rf_scp_event_t *event)
     if (NULL != phase)
     {
         phase->phase_saved = true;
+        fault_participant_t *last =
+            &last_records[event->feeder - 1U][event->phase - 1U];
+        if ((last->event == event->event) &&
+            (last->boot == event->boot_counter) &&
+            (last->event_uptime == event->uptime_sec) &&
+            (last->crc == event->crc) &&
+            (last->src_eui_hash == event->src_eui_hash))
+        {
+            last->phase_saved = true;
+        }
     }
 }
 
@@ -487,6 +633,11 @@ static bool record_result(fault_sequence_t *sequence,
     }
     candidate.zone = event->zone;
     candidate.feeder = event->feeder;
+    if (NO_GROUP == own)
+    {
+        candidate.created_version = evidence_version;
+    }
+    candidate.last_version = evidence_version;
     candidate.failed = candidate.failed || (100U == event->event) ||
                        (101U == event->event);
     candidate.temporary = candidate.temporary || (142U == event->event);
@@ -528,12 +679,13 @@ static bool record_result(fault_sequence_t *sequence,
     *phase = (fault_participant_t){.present = true, .has_record = true,
         .boot = event->boot_counter, .crc = event->crc, .event = event->event,
         .event_uptime = event->uptime_sec,
-        .opening_uptime = opened ? event->uptime_sec :
-            (sequence->has_opening ? sequence->opening_uptime :
-                                     event->uptime_sec)};
+        .src_eui_hash = event->src_eui_hash};
     (void)memcpy(phase->eui64, sequence->eui64, 8U);
+    if (RF_FAULT_NONE != classify_event(event->event))
+    {
+        last_records[event->feeder - 1U][event->phase - 1U] = *phase;
+    }
     candidate.finalized = false;
-    phase->closure = CLOSURE_IDLE;
     const size_t index = collect_group(&candidate, own);
     sequence->group_index = index;
     return (RF_GROUPS > index) && groups[index].opened;
@@ -577,6 +729,17 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
     (void)memcpy(&time, event->timestamp, sizeof(time));
     rf_fault_class_t type = classify_event(event->event);
     evidence_version++;
+    revoke_closure(event->feeder);
+    if ((1U == event->event) || (7U == event->event))
+    {
+        fault_phase_t *phase = &phases[event->feeder - 1U][event->phase - 1U];
+        if (!phase->has_live || (phase->boot == event->boot_counter))
+        {
+            phase->boot = event->boot_counter;
+            phase->opening_uptime = event->uptime_sec;
+            phase->has_opening = true;
+        }
+    }
     if ((4U == event->event) || (5U == event->event) || (6U == event->event))
     {
         if (!sequence->active)
@@ -585,16 +748,10 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
             sequence->quality = event->clock_quality;
             sequence->active = true;
             sequence->group_index = NO_GROUP;
-            sequence->has_opening = false;
         }
         if (1U != event->clock_quality)
         {
             sequence->quality = event->clock_quality;
-        }
-        if (6U == event->event)
-        {
-            sequence->has_opening = true;
-            sequence->opening_uptime = event->uptime_sec;
         }
     }
     if ((RF_FAULT_NONE != type) ||
@@ -605,10 +762,16 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
         {
             type = RF_FAULT_NONE;
         }
+        const fault_phase_t *phase =
+            &phases[event->feeder - 1U][event->phase - 1U];
+        if (phase->has_live && (phase->boot != event->boot_counter))
+        {
+            close_uncertain(event->feeder);
+        }
     }
     if ((0U == event->event) || (1U == event->event) ||
-        (3U == event->event) || (7U == event->event) ||
-        (104U == event->event) || (142U == event->event))
+        ((3U == event->event) && (0U == event->fault_count)) ||
+        (7U == event->event) || (142U == event->event))
     {
         sequence->active = false;
         sequence->group_index = NO_GROUP;
@@ -616,51 +779,31 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
     return type;
 }
 
-static void observe_participant(fault_group_t *group, size_t index,
-                                 const rf_scp_live_t *live, uint32_t now_ms)
+static void observe_phase(fault_phase_t *phase,
+                          const rf_scp_live_t *live, uint32_t now_ms)
 {
-    fault_participant_t *phase = &group->phases[index];
-    rf_inventory_entry_t binding;
-    if (!rf_inventory_get_binding(live->source, &binding) ||
-        (binding.zone != group->zone) ||
-        (0 != memcmp(binding.eui64, phase->eui64, 8U)) ||
-        (live->boot_counter != phase->boot) || (0U == live->boot_counter))
+    if (phase->has_live && (live->seq == phase->live_seq))
     {
-        group->uncertain = true;
-        phase->closure = CLOSURE_IDLE;
         return;
     }
-    const rf_feeder_t *feeder = rf_store_get((feeder_id_t)binding.line_index);
-    if ((NULL == feeder) || !feeder->in_use ||
-        (live->uptime_sec <= phase->event_uptime) || live->fsm_error ||
-        (1U != live->state) || (0U != live->fault_count))
+    if (phase->has_live && (live->uptime_sec == phase->live_uptime))
     {
         phase->closure = CLOSURE_IDLE;
         return;
     }
-    if ((live->uptime_sec < phase->opening_uptime) ||
-        ((live->uptime_sec - phase->opening_uptime) <
-         RF_T_MEM_DEAD_MAX_SEC))
+    if ((0U == live->boot_counter) || live->fsm_error ||
+        (1U != live->state) || (0U != live->fault_count) ||
+        (phase->has_opening &&
+         ((live->uptime_sec < phase->opening_uptime) ||
+          ((live->uptime_sec - phase->opening_uptime) <
+           (RF_T_MEM_DEAD_MAX_SEC + RF_CLOSURE_MARGIN_SEC)))))
     {
         phase->closure = CLOSURE_IDLE;
-        return;
     }
-    if ((CLOSURE_IDLE != phase->closure) &&
-        (live->uptime_sec < phase->live_uptime))
-    {
-        group->uncertain = true;
-        phase->closure = CLOSURE_IDLE;
-        return;
-    }
-    if ((CLOSURE_IDLE != phase->closure) &&
-        ((live->uptime_sec == phase->live_uptime) ||
-         (live->seq == phase->live_seq)))
-    {
-        return; /* Replayed or non-advancing LIVE cannot advance the barrier. */
-    }
-    if (CLOSURE_IDLE == phase->closure)
+    else if (CLOSURE_IDLE == phase->closure)
     {
         phase->closure = CLOSURE_PENDING;
+        phase->idle_version = evidence_version;
     }
     else if (0U == live->log_pending)
     {
@@ -671,6 +814,7 @@ static void observe_participant(fault_group_t *group, size_t index,
     {
         phase->closure = CLOSURE_PENDING;
     }
+    phase->has_live = true;
     phase->live_uptime = live->uptime_sec;
     phase->live_seq = live->seq;
     phase->live_ms = now_ms;
@@ -684,53 +828,49 @@ void rf_faults_live(const rf_scp_live_t *live, uint32_t now_ms)
         return;
     }
     const uint8_t feeder = (uint8_t)((live->source >> 2U) & 7U);
-    if ((1U > feeder) || (RF_FEEDERS < feeder))
+    rf_inventory_entry_t binding;
+    if ((1U > feeder) || (RF_FEEDERS < feeder) ||
+        !rf_inventory_get_binding(live->source, &binding))
     {
         return;
     }
     evidence_version++;
-    const size_t source_phase = (size_t)(live->source & 3U) - 1U;
-    if (0U != live->log_pending)
+    const size_t index = (size_t)(live->source & 3U) - 1U;
+    fault_phase_t *phase = &phases[feeder - 1U][index];
+    const fault_sequence_t *sequence = &sequences[feeder - 1U][index];
+    if (((0U != phase->boot) && (phase->boot != live->boot_counter)) ||
+        (sequence->has_event && (sequence->boot != live->boot_counter)) ||
+        (phase->has_live &&
+         ((0 != memcmp(phase->eui64, binding.eui64, 8U)) ||
+          (live->uptime_sec < phase->live_uptime))))
     {
-        phase_has_pending[feeder - 1U][source_phase] = true;
+        rf_faults_reset_phase(feeder, (uint8_t)(index + 1U));
     }
-    else if (phase_has_pending[feeder - 1U][source_phase])
+    phase->boot = live->boot_counter;
+    (void)memcpy(phase->eui64, binding.eui64, 8U);
+    if (99U <= live->log_pending)
     {
-        phase_has_pending[feeder - 1U][source_phase] = false;
-        phase_cleared_version[feeder - 1U][source_phase] = evidence_version;
+        close_uncertain(feeder);
+        return;
     }
-    else
+    /* A LIVE-only fault may have records still queued at the AY. */
+    if ((1U != live->state) || (0U != live->fault_count))
     {
-        /* An unchanged zero does not create another drain barrier. */
-    }
-    for (size_t index = 0U; RF_GROUPS > index; index++)
-    {
-        fault_group_t *group = &groups[index];
-        const size_t phase = (size_t)(live->source & 3U) - 1U;
-        if (!group->used || group->finalized || (feeder != group->feeder))
+        for (size_t group_index = 0U; RF_GROUPS > group_index; group_index++)
         {
-            continue;
-        }
-        fault_participant_t *participant = &group->phases[phase];
-        if (!participant->present &&
-            ((1U != live->state) || (0U != live->fault_count)))
-        {
-            rf_inventory_entry_t binding;
-            if (rf_inventory_get_binding(live->source, &binding) &&
-                (binding.zone == group->zone))
+            fault_group_t *group = &groups[group_index];
+            if (group->used && !group->finalized &&
+                (group->feeder == feeder) && (group->zone == binding.zone) &&
+                !group->phases[index].present)
             {
-                *participant = (fault_participant_t){.present = true,
-                    .boot = live->boot_counter,
-                    .event_uptime = live->uptime_sec,
-                    .opening_uptime = live->uptime_sec};
-                (void)memcpy(participant->eui64, binding.eui64, 8U);
+                group->phases[index].present = true;
+                group->phases[index].boot = live->boot_counter;
+                (void)memcpy(group->phases[index].eui64,
+                             binding.eui64, 8U);
             }
         }
-        if (participant->present)
-        {
-            observe_participant(group, phase, live, now_ms);
-        }
     }
+    observe_phase(phase, live, now_ms);
 }
 
 uint64_t rf_faults_head_started(void)
@@ -738,28 +878,28 @@ uint64_t rf_faults_head_started(void)
     return evidence_version;
 }
 
+static bool phase_ready(const fault_phase_t *phase, uint64_t version,
+                        uint32_t now_ms)
+{
+    return (CLOSURE_READY == phase->closure) &&
+           (phase->ready_version <= version) &&
+           (RF_LIVE_FRESH_MS > (uint32_t)(now_ms - phase->live_ms));
+}
+
 static bool closure_ready(const fault_group_t *group, uint64_t version,
                            uint32_t now_ms)
 {
-    for (size_t phase = 0U; RF_PHASES > phase; phase++)
+    for (size_t index = 0U; RF_PHASES > index; index++)
     {
-        const fault_participant_t *participant = &group->phases[phase];
-        if (phase_has_pending[group->feeder - 1U][phase] ||
-            (phase_cleared_version[group->feeder - 1U][phase] > version))
-        {
-            return false;
-        }
-        const fault_sequence_t *sequence =
-            &sequences[group->feeder - 1U][phase];
-        if (sequence->active && (sequence->zone == group->zone) &&
-            (NO_GROUP == sequence->group_index))
-        {
-            return false;
-        }
-        if (participant->present &&
-            ((CLOSURE_READY != participant->closure) ||
-             (participant->ready_version > version) ||
-             (RF_LIVE_FRESH_MS <= (uint32_t)(now_ms - participant->live_ms))))
+        const fault_phase_t *phase = &phases[group->feeder - 1U][index];
+        rf_inventory_entry_t binding;
+        const uint8_t source =
+            (uint8_t)((group->feeder << 2U) | (uint8_t)(index + 1U));
+        if (!rf_inventory_get_binding(source, &binding) ||
+            (binding.zone != group->zone) ||
+            (0 != memcmp(binding.eui64, phase->eui64, 8U)) ||
+            !phase_ready(phase, version, now_ms) ||
+            (phase->idle_version <= group->last_version))
         {
             return false;
         }
@@ -784,30 +924,40 @@ void rf_faults_ring_empty(uint64_t head_version, uint32_t now_ms)
 {
     for (size_t index = 0U; RF_GROUPS > index; index++)
     {
-        if (groups[index].used && !groups[index].finalized &&
-            closure_ready(&groups[index], head_version, now_ms))
+        fault_group_t *group = &groups[index];
+        if (group->used && !group->finalized &&
+            closure_ready(group, head_version, now_ms))
         {
-            groups[index].finalized = true;
+            group->finalized = true;
             for (size_t phase = 0U; RF_PHASES > phase; phase++)
             {
-                if (groups[index].phases[phase].present &&
-                    !groups[index].phases[phase].has_record)
+                if (group->phases[phase].present &&
+                    !group->phases[phase].has_record)
                 {
-                    groups[index].uncertain = true;
+                    group->uncertain = true;
                 }
             }
-            for (size_t feeder = 0U; RF_FEEDERS > feeder; feeder++)
+            redirect_sequences(index, NO_GROUP);
+        }
+    }
+    for (size_t feeder = 0U; RF_FEEDERS > feeder; feeder++)
+    {
+        bool recovered = true;
+        for (size_t index = 0U; RF_PHASES > index; index++)
+        {
+            fault_phase_t *phase = &phases[feeder][index];
+            if (phase_ready(phase, head_version, now_ms))
             {
-                for (size_t phase = 0U; RF_PHASES > phase; phase++)
-                {
-                    fault_sequence_t *sequence = &sequences[feeder][phase];
-                    if (index == sequence->group_index)
-                    {
-                        sequence->active = false;
-                        sequence->group_index = NO_GROUP;
-                    }
-                }
+                phase->completed_version = phase->idle_version;
             }
+            if (phase->completed_version <= gaps[feeder].version)
+            {
+                recovered = false;
+            }
+        }
+        if (recovered)
+        {
+            gaps[feeder] = (fault_gap_t){0};
         }
     }
 }
@@ -815,15 +965,9 @@ void rf_faults_ring_empty(uint64_t head_version, uint32_t now_ms)
 void rf_faults_hub_restarted(void)
 {
     evidence_version++;
-    for (size_t index = 0U; RF_GROUPS > index; index++)
+    for (uint8_t feeder = 1U; RF_FEEDERS >= feeder; feeder++)
     {
-        if (groups[index].used && !groups[index].finalized)
-        {
-            for (size_t phase = 0U; RF_PHASES > phase; phase++)
-            {
-                groups[index].phases[phase].closure = CLOSURE_IDLE;
-            }
-        }
+        revoke_closure(feeder);
     }
 }
 

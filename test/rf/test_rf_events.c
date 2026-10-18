@@ -352,6 +352,7 @@ static void confirm_consumption(void)
 
 /* Keep ordinal and slot metadata consistent for the fresh HEAD check. */
 static bool second_binding_active;
+static bool all_phases_bound;
 static rf_inventory_entry_t second_binding_storage;
 
 static bool binding_entry(uint8_t source, rf_inventory_entry_t *entry,
@@ -372,6 +373,13 @@ static bool binding_entry(uint8_t source, rf_inventory_entry_t *entry,
     if (source != (uint8_t)((binding_entry_storage.feeder << 2U) |
                             binding_entry_storage.phase))
     {
+        if (all_phases_bound && ((6U == source) || (7U == source)))
+        {
+            *entry = binding_entry_storage;
+            entry->phase = (uint8_t)(source & 3U);
+            entry->eui64[7] = source;
+            return true;
+        }
         if (hash_collision && (6U == source))
         {
             *entry = binding_entry_storage;
@@ -440,6 +448,7 @@ void setUp(void)
     alarm_writes = 0U;
     alarm_emit_calls = 0U;
     second_binding_active = false;
+    all_phases_bound = false;
     (void)memset(&second_binding_storage, 0, sizeof(second_binding_storage));
     (void)memset(&written_fault, 0, sizeof(written_fault));
     (void)memset(&request, 0, sizeof(request));
@@ -2895,6 +2904,7 @@ void test_alarm_relatch_after_live_repeat_requeues_the_alarm(void)
 
 static void prepare_counted_opening(void)
 {
+    all_phases_bound = true;
     start_read(36U, 37U);
     scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
     packet.data[7] = 1U;
@@ -2909,11 +2919,17 @@ static void prepare_counted_opening(void)
 static void supply_closure_live(void)
 {
     rf_scp_live_t live = {.source = 5U, .state = 1U,
-        .boot_counter = 1U, .uptime_sec = 610U, .seq = 100U};
-    rf_faults_live(&live, tick);
-    live.uptime_sec++;
-    live.seq++;
-    rf_faults_live(&live, tick);
+        .boot_counter = 1U, .uptime_sec = 612U, .seq = 100U};
+    for (uint8_t source = 5U; 7U >= source; source++)
+    {
+        live.source = source;
+        live.uptime_sec = 612U;
+        live.seq = 100U;
+        rf_faults_live(&live, tick);
+        live.uptime_sec++;
+        live.seq++;
+        rf_faults_live(&live, tick);
+    }
 }
 
 void test_feeder_count_requires_new_empty_head_after_live_and_consumption(void)
@@ -2987,6 +3003,33 @@ void test_off_suppresses_event_flow_logs_without_stopping_storage(void)
     TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
     TEST_ASSERT_EQUAL_UINT32(1U, fault_writes);
     TEST_ASSERT_EQUAL_STRING("", console_output);
+}
+
+void test_mh_store_reset_record_closes_open_group_as_uncertain(void)
+{
+    all_phases_bound = true;
+    rf_scp_event_t opening = {.event = 1U, .zone = 1U, .feeder = 1U,
+        .phase = 1U, .boot_counter = 1U, .uptime_sec = 10U,
+        .clock_quality = 1U};
+    const cp56time2a_t time = cp56time2a_make(10000U, 0U, 12U,
+                                            7U, 3U, 10U, 26U);
+    (void)memcpy(opening.timestamp, &time, sizeof(time));
+    TEST_ASSERT_EQUAL_INT(RF_FAULT_PERMANENT, rf_faults_classify(&opening));
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 138U;
+    packet.data[10] = 0U;
+    packet.data[11] = 0U;
+    scp_pack_u16(&packet.data[56], 0U);
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    rf_fault_stats_t count;
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &count));
+    TEST_ASSERT_EQUAL_UINT32(0U, count.pending);
+    TEST_ASSERT_EQUAL_UINT32(1U, count.permanent);
+    TEST_ASSERT_EQUAL_UINT32(1U, count.uncertain);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
 }
 
 /*** end of file ***/
