@@ -232,7 +232,12 @@ async function checkPage(html, label) {
         const service=run(`buildRfMonitorTable({Phases:[],Maintenance:{
             SourceMismatches:2,StoreResetReason:3,CounterStatus:4,
             EpochFeeder:1,EpochPhases:7,EpochDurationMs:19600}})`);
-        assert.ok(!service.includes(language==='tr'?'servis silmesi':'service clear'));
+        assert.ok(service.includes(language==='tr'?'servis silmesi':'service clear'));
+        for(const [reason,tr,en] of [[1,'biçimlendirme','formatting'],[2,'durum kaybı','state loss']]){
+            const reset=run(`buildRfMonitorTable({Phases:[],Maintenance:{StoreResetReason:${reason}}})`);
+            assert.ok(reset.includes(language==='tr'?tr:en));
+        }
+        assert.ok(service.includes('Bolatex'));
         assert.ok(!service.includes('143/4'));
         assert.ok(!service.includes('19600 ms'));
         assert.ok(!service.includes(language==='tr'?'doğrulanamayan 2':'2 events'));

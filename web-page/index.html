@@ -1515,7 +1515,9 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
     s+='<div id="rf-prov-'+i+'" class="empty" style="display:none;padding:8px;margin-top:8px">'+esc(t('rfProv'))+'</div>';
     s+='<div class="grid g3 gt" style="margin-top:8px">';
     s+=numField('rf-HatID-'+i,t('fFeedId'),rows.HatID?.[i],0,4);
-    s+=numField('rf-ZoneID-'+i,t('fZoneId'),rows.ZoneID?.[i],0,7);
+    const zoneLocked=['R_DEVICEID','S_DEVICEID','T_DEVICEID'].some(k=>rows[k]?.[i]&& !/^0+$/.test(rows[k][i]));
+    s+=numField('rf-ZoneID-'+i,t('fZoneId'),rows.ZoneID?.[i],1,7,zoneLocked);
+    if(zoneLocked)s+='<p class="hint">'+esc(LNG==='tr'?'Bölge değişikliği için Bolatex ile devreye alma planlanmalıdır.':'Contact Bolatex to plan commissioning before changing the zone.')+'</p>';
     s+=selectFieldL('rf-CalismaModu-'+i,t('fWorkMode'),rows.CalismaModu?.[i],[[0,t('modeThreshold')],[1,'di/dt']]);
     floats.forEach(f=>s+=numField('rf-'+f[0]+'-'+i,t(f[1]),rows[f[0]]?.[i],f[2],f[3],false,'','any'));
     ints.forEach(f=>s+=numField('rf-'+f[0]+'-'+i,t(f[1]),rows[f[0]]?.[i],f[2],f[3]));
@@ -1721,12 +1723,13 @@ const markIecServerErrors=message=>{
   if(first){selectIecTab(Number(first.dataset.i));first.focus()}
   return true;
 };
-const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',1,255],['iec-T1',1,255],['iec-T2',1,255],['iec-T3',20,65525],['iec-K',1,255],['iec-W',1,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validationEl($(x[0]),x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(getInt('iec-T2')>=getInt('iec-T1')){addressError($('iec-T2'),t('errT2'));ok=false}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,4],['ZoneID',0,7],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',5,240],['ArtimliAkimEsigi',1,2200],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
+const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],['iec-PeriodicSend',0,86400],['iec-T0',1,255],['iec-T1',1,255],['iec-T2',1,255],['iec-T3',20,65525],['iec-K',1,255],['iec-W',1,255],['iec-OriginatorAddr',0,255],['iec-CommonAddr',1,65535],['iec-SBOTimeout',getBool('iec-SBO')?1:0,getBool('iec-SBO')?300:65535],['iec-AkuUyarisi',1,16777215],['iec-ModemReset',1,16777215]].forEach(x=>{if(!validationEl($(x[0]),x[1],x[2]))ok=false});for(let i=0;i<FEEDER_COUNT;i++){const cb=document.querySelector('[data-id="iec"][data-key="inUse"][data-i="'+i+'"]');if(cb&&cb.checked===false)continue;document.querySelectorAll('[data-id="iec"][data-i="'+i+'"]:not([data-key="inUse"])').forEach(e=>{if(!validationEl(e,1,16777215))ok=false})}if(getInt('iec-T2')>=getInt('iec-T1')){addressError($('iec-T2'),t('errT2'));ok=false}if(!validateAddresses(page))ok=false}else if(page==='modbus'){if(!validation('mod-CihazID',true,1,247))ok=false;if(!validation('mod-BaudRate',true,1200,921600))ok=false}else if(page==='rf'){const rfInt=[['HatID',0,4],['SetEdilebilirAcmaArizaSayisi',1,4],['OluHatAkimiDogrulamaSuresi',80,200],['YenilenmeSifirlamaSuresi',10,300]];const rfFloat=[['SistemNominalAkimi',2,200],['SetEdilebilirActirmaEsikAkimi',5,240],['ArtimliAkimEsigi',1,2200],['HatKopukHatBosta',0.3,5]];const euiRe=/^[0-9A-Fa-f]{16}$/;const usedFids=[];const euiSeen={};
   for(let i=0;i<FEEDER_COUNT;i++){const cb=$('rf-inUse-'+i);const inUse=!cb||cb.checked;
     ['R_DEVICEID','S_DEVICEID','T_DEVICEID'].forEach(k=>{const el=$('rf-'+k+'-'+i);if(!el)return;const v=(el.value||'').trim();const err=$('err-rf-'+k+'-'+i);el.classList.remove('invalid');if(err)err.textContent='';if(v==='')return;
       if(!euiRe.test(v)){el.classList.add('invalid');if(err)err.textContent=t('errHex');ok=false}
       else{const key=v.toUpperCase();if(euiSeen[key]!==undefined){el.classList.add('invalid');if(err)err.textContent=tf('errUsed',{n:euiSeen[key]});ok=false}else euiSeen[key]=i+1}});
     if(!inUse)continue;
+    const zone=$('rf-ZoneID-'+i);if(zone&&!zone.disabled&&!validation('rf-ZoneID-'+i,true,1,7))ok=false;
     rfInt.forEach(f=>{if(!validation('rf-'+f[0]+'-'+i,true,f[1],f[2]))ok=false});
     rfFloat.forEach(f=>{if(!validation('rf-'+f[0]+'-'+i,true,f[1],f[2]))ok=false});
     const fid=getInt('rf-HatID-'+i);
@@ -1781,6 +1784,17 @@ function buildRfMonitorTable(d){
   ];
   const maintenance=phases.some(p=>p?.UptimeStalled===true||p?.Live?.FsmError===true);
   let html=maintenance?'<p class="hint">'+esc(t('rfMaintenance'))+'</p>':'';
+  const service=d.Maintenance||{};
+  const resetLabels=LNG==='tr'?['','biçimlendirme','durum kaybı','servis silmesi']:['','formatting','state loss','service clear'];
+  if(Number.isInteger(service.StoreResetReason)&&service.StoreResetReason>0){
+    html+='<p class="hint">'+esc((LNG==='tr'?'Son MH olay deposu işlemi: ':'Last MH event store operation: ')+(resetLabels[service.StoreResetReason]||service.StoreResetReason))+'</p>';
+  }
+  if([4,5,6].includes(service.CounterStatus)){
+    html+='<p class="hint">'+esc(LNG==='tr'?'RF güvenliği kontrol edilmeli; Bolatex ile görüşün. Yeni kartta ağ anahtarı yükleme durumunu kontrol edin.':'Check RF security and contact Bolatex. For a new board, check network key provisioning.')+'</p>';
+  }
+  if(counts&&counts.Uncertain>0){
+    html+='<p class="hint">'+esc(LNG==='tr'?'Bakım uyarısı: fider sayımında belirsizlik var. Olay kayıtlarını ve haberleşmeyi kontrol edin.':'Maintenance warning: feeder counts are uncertain. Check event records and communication.')+'</p>';
+  }
   html+='<div class="table-wrap"><table class="phase-table"><thead><tr><th>'+esc(t('thParam'))+'</th><th>L1</th><th>L2</th><th>L3</th></tr></thead><tbody>';
   if(counts){
     const n=k=>Number.isInteger(counts[k])&&counts[k]>=0?counts[k]:'—';

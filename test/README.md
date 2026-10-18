@@ -1,13 +1,36 @@
 # Test Altyapısı
 
-**Sürüm:** 1.50
-**Tarih:** 2026-10-13
+**Sürüm:** 1.51
+**Tarih:** 2026-10-18
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
+
+## 18.10.2026 Bolatex R2 netleştirmeleri ve R2.3 RTU uyarlaması
+
+**Amaç:** Üreticinin yeni kapanış, kayıt kaybı, kapasite, bölge ve bakım
+kurallarını gerçek üretim girişlerinden doğrulamaktır.
+
+**Kullanım yeri:** `rf/`, `power_board/`, `web_server/test_rf_config_parse.c`
+ve mevcut `integration/web_navigation` paketi. Ayrıntılı kurallar,
+komutlar ve kanıt sınırları
+[uygulama/doğrulama kaydında](../doc/BOLATEX_UYGULAMA_DOGRULAMA_2026-10-18.md)
+tek yerde tutulur.
+
+Net 35 yeni C testi vardır. Eski kapanış fixture'ları üç AY ve 600+2 s
+koşulunu sağlıyor; kapasite testi yeni belirsiz kapanış politikasını
+doğruluyor. Testler yeni/legacy bölge 0 ayrımını, MH restart sonrasında
+bölgeyi korumayı, 144 kaynak doğrulamasını ve mevcut 0x2A/90 s yolunu
+kapsar. Gerçek SCP çözümlemesi ve store/HEAD/0x48 akışı kullanılır.
+
+Son merkezi koşu 1526/1526, failure/ignored=0. Web'in kaynak ve gömülü
+sayfa testleri ile altı ek host integration paketi geçti. Dört değişen
+modül Cortex-M33 strict/Werror derlemesini, Release de paket self-check'ini
+geçti. Cihaz portları açılmadı; R2.3 fiziksel kabulü ve gerçek arıza akımı
+bu sonuçlarla tamamlanmış sayılmaz.
 
 ## 16.10.2026 Modbus röle kontrolü ve durum okuma
 
