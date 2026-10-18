@@ -159,7 +159,8 @@ async function checkPage(html, label) {
         assert.ok(document.getElementById('mod-map-table').innerHTML.includes('43852–43853'));
         document.getElementById('mod-CihazID').value='37';
         document.getElementById('mod-BaudRate').value='19200';
-        assert.equal(JSON.stringify(run("extractPage('modbus')")),JSON.stringify({CihazID:37,BaudRate:19200}));
+        document.getElementById('mod-StopBits').value='2';
+        assert.equal(JSON.stringify(run("extractPage('modbus')")),JSON.stringify({CihazID:37,StopBits:2,BaudRate:19200}));
         const rfMonitor = run(`buildRfMonitorTable({Phases:[
             {HasData:true,Eui64:'00124B0038C9F1CB',Online:true,
              Live:{RSSI:-128,Temp:300,Irms:1.25,VTrip:32,VRec:13,Flags:2},
