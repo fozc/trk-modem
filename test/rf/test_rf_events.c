@@ -3005,6 +3005,33 @@ void test_off_suppresses_event_flow_logs_without_stopping_storage(void)
     TEST_ASSERT_EQUAL_STRING("", console_output);
 }
 
+void test_r23_verified_144_requests_existing_epoch_maintenance_without_fault(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 144U;
+    update_crc(&packet);
+    rf_inventory_note_auth_failure_Expect(1U);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, alarm_writes);
+}
+
+void test_r23_unverified_144_is_raw_only_without_epoch_request(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 144U;
+    scp_pack_u16(&packet.data[56], 0U);
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+}
+
 void test_mh_store_reset_record_closes_open_group_as_uncertain(void)
 {
     all_phases_bound = true;

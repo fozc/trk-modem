@@ -73,6 +73,7 @@ static rf_inventory_entry_t bindings[MAX_POWER_LINE_COUNT][3];
 static bool epoch_waiting[4];
 static bool epoch_first_config[4];
 static bool epoch_retry_pending[4];
+static bool epoch_auth_pending[4];
 static bool epoch_for_replacement;
 static uint32_t epoch_started_ms[4];
 static uint8_t epoch_feeder;
@@ -591,12 +592,65 @@ bool rf_inventory_matches_config(void)
     return !rf_inventory_has_pending() && matches_store(false);
 }
 
+static bool feeder_has_assignments(const rf_feeder_t *feeder)
+{
+    return !rf_eui64_is_zero(feeder->r_eui64) ||
+           !rf_eui64_is_zero(feeder->s_eui64) ||
+           !rf_eui64_is_zero(feeder->t_eui64);
+}
+
+static bool target_zone_matches(void)
+{
+    bool has_zone = inventory_zone_set;
+    uint8_t zone = inventory_zone;
+    /* Saved device assignments preserve the region even before MH upload. */
+    for (size_t line = 0U; MAX_POWER_LINE_COUNT > line; line++)
+    {
+        const rf_feeder_t *current = rf_store_get((feeder_id_t)line);
+        if (feeder_has_assignments(current))
+        {
+            if (has_zone && (zone != current->config.zone_id))
+            {
+                return false;
+            }
+            zone = current->config.zone_id;
+            has_zone = true;
+        }
+    }
+    for (size_t line = 0U; MAX_POWER_LINE_COUNT > line; line++)
+    {
+        const rf_feeder_t *next = rf_store_get_mutable((feeder_id_t)line);
+        if (next->in_use && feeder_has_assignments(next))
+        {
+            if (has_zone && (zone != next->config.zone_id))
+            {
+                return false;
+            }
+            zone = next->config.zone_id;
+            has_zone = true;
+        }
+    }
+    return true;
+}
+
 bool rf_inventory_prepare_save(void)
 {
     rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
-    if (nvram_is_busy())
+    if (nvram_is_busy() || !target_zone_matches())
     {
         return false;
+    }
+    for (size_t line = 0U; MAX_POWER_LINE_COUNT > line; line++)
+    {
+        const rf_feeder_t *current = rf_store_get((feeder_id_t)line);
+        const rf_feeder_t *next = rf_store_get_mutable((feeder_id_t)line);
+        const bool assigned = feeder_has_assignments(current);
+        if ((assigned && (current->config.zone_id != next->config.zone_id)) ||
+            (next->in_use && (0U == next->config.zone_id) &&
+             (!assigned || (0U != current->config.zone_id))))
+        {
+            return false;
+        }
     }
     if (journal->pending)
     {
@@ -743,6 +797,11 @@ static void continue_epoch_retry(void)
 {
     for (uint8_t feeder = 1U; 4U >= feeder; feeder++)
     {
+        if (epoch_auth_pending[feeder - 1U])
+        {
+            (void)rf_inventory_hub_replaced(feeder, NULL);
+            return;
+        }
         if (epoch_retry_pending[feeder - 1U])
         {
             if (rf_inventory_refresh_epoch(feeder, NULL))
@@ -798,6 +857,7 @@ void rf_inventory_reset(void)
     (void)memset(epoch_waiting, 0, sizeof(epoch_waiting));
     (void)memset(epoch_first_config, 0, sizeof(epoch_first_config));
     (void)memset(epoch_retry_pending, 0, sizeof(epoch_retry_pending));
+    (void)memset(epoch_auth_pending, 0, sizeof(epoch_auth_pending));
     epoch_for_replacement = false;
     (void)memset(bindings, 0, sizeof(bindings));
     inventory_status = RF_INVENTORY_IDLE;
@@ -980,6 +1040,10 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
     {
         return false;
     }
+    if ((0U != entry->feeder) && (0U == entry->zone))
+    {
+        return false; /* Region zero remains usable only for legacy deletion. */
+    }
     if (inventory_zone_set && (inventory_zone != entry->zone))
     {
         return false;
@@ -1028,7 +1092,7 @@ bool rf_inventory_epoch_ready(uint8_t feeder)
     {
         epoch_waiting[index] = false;
     }
-    return !epoch_waiting[index];
+    return !epoch_waiting[index] && !epoch_auth_pending[index];
 }
 
 static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *packet)
@@ -1043,6 +1107,14 @@ static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *p
         epoch_started_ms[index] = HAL_GetTick();
         epoch_waiting[index] = true;
         epoch_first_config[index] = epoch_for_replacement;
+        epoch_auth_pending[index] = false;
+    }
+    else if ((NULL == packet) || (SCP_CMD_ERR != result) ||
+             (0U == packet->data_len) ||
+             (RF_SCP_ERR_BUSY != packet->data[0]))
+    {
+        /* Only queue-busy has the documented repeat authorization. */
+        epoch_auth_pending[epoch_feeder - 1U] = false;
     }
     epoch_for_replacement = false;
     if (NULL != done)
@@ -1061,7 +1133,8 @@ bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done)
     /* BQ-07: the MH uses one RF network; pace different feeders too. */
     for (uint8_t current = 1U; 4U >= current; current++)
     {
-        if (!rf_inventory_epoch_ready(current))
+        (void)rf_inventory_epoch_ready(current);
+        if (epoch_waiting[current - 1U])
         {
             return false;
         }
@@ -1087,6 +1160,16 @@ bool rf_inventory_hub_replaced(uint8_t feeder, scp_cmd_done_fn_t done)
     epoch_retry_pending[feeder - 1U] = false;
     epoch_for_replacement = true;
     return true;
+}
+
+void rf_inventory_note_auth_failure(uint8_t feeder)
+{
+    if ((1U <= feeder) && (4U >= feeder) &&
+        !epoch_waiting[feeder - 1U] && !epoch_first_config[feeder - 1U] &&
+        !epoch_retry_pending[feeder - 1U])
+    {
+        epoch_auth_pending[feeder - 1U] = true;
+    }
 }
 
 void rf_inventory_config_finished(uint8_t feeder, uint8_t reason)
