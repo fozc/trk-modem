@@ -242,6 +242,52 @@ static void store_config(const rf_scp_message_t *message)
     status.last_rejected = message->body.power_config.rejected;
 }
 
+static bool handle_cancel_result(void)
+{
+    /* R2.3 cancellation does not roll back a command already applied. */
+    if ((0U != status.result_command) &&
+        (0U != (status.command_flags & 0x60U)))
+    {
+        cancel_verification_pending = false;
+        if (0U != (status.command_flags & 0x20U))
+        {
+            status.command_state = POWER_COMMAND_MONITORING;
+        }
+        else if ((0U == status.result) ||
+                 (0U != (status.command_flags & 8U)))
+        {
+            status.command_state = POWER_COMMAND_APPLIED;
+            awaiting_command = false;
+        }
+        else if (5U == status.result_command)
+        {
+            status.command_state = POWER_COMMAND_CANCELLED;
+            awaiting_command = false;
+        }
+        else if (255U != status.result)
+        {
+            status.command_state = POWER_COMMAND_REJECTED;
+            awaiting_command = false;
+        }
+        else
+        {
+            status.command_state = POWER_COMMAND_UNCERTAIN;
+            awaiting_command = false;
+        }
+        return true;
+    }
+    if ((0U != status.result_command) && (255U == status.result) &&
+        (0U == status.transmissions) &&
+        (0U == (status.command_flags & 0x1EU)))
+    {
+        cancel_verification_pending = false;
+        status.command_state = POWER_COMMAND_RESTARTED;
+        awaiting_command = false;
+        return true;
+    }
+    return false;
+}
+
 bool power_board_handle_command_result(const rf_scp_message_t *message)
 {
     if ((NULL == message) || (RF_SCP_CMD_PWR_RESULT != message->cmd) ||
@@ -249,12 +295,30 @@ bool power_board_handle_command_result(const rf_scp_message_t *message)
     {
         return false;
     }
+    const bool cancel_followup = status.has_result &&
+        (0U != (status.command_flags & 0x20U)) &&
+        (status.result_command == message->body.command_result.command) &&
+        (status.result_seq == message->body.command_result.seq);
+    if (status.has_result && (0U != (status.command_flags & 0x20U)) &&
+        !cancel_followup)
+    {
+        return true; /* An unrelated report cannot finish service tracking. */
+    }
     status.has_result = true;
     status.result_command = message->body.command_result.command;
     status.result_seq = message->body.command_result.seq;
     status.result = message->body.command_result.result;
     status.transmissions = message->body.command_result.transmissions;
     status.command_flags = message->body.command_result.flags;
+    if ((5U == status.result_command) && !status.has_command_ack &&
+        !cancel_verification_pending)
+    {
+        return true;
+    }
+    if (handle_cancel_result())
+    {
+        return true;
+    }
     if (cancel_verification_pending && (SCP_TYPE_ACK == message->type))
     {
         cancel_verification_pending = false;
