@@ -943,4 +943,62 @@ void test_read_timeout_preserves_cached_config_and_next_read_recovers(void)
     TEST_ASSERT_EQUAL_UINT8(8U, control_status().config[1]);
 }
 
+void test_r23_cancel_bit_distinguishes_05_cancellation_from_monitoring(void)
+{
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(5U, 2U);
+    const rf_scp_message_t cancelled = {.cmd = RF_SCP_CMD_PWR_RESULT,
+        .type = SCP_TYPE_SET, .body.command_result = {.command = 5U,
+            .seq = 2U, .result = 255U, .flags = 0x42U}};
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&cancelled));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_CANCELLED,
+                          control_status().command_state);
+    TEST_ASSERT_EQUAL_HEX8(0x42U, control_status().command_flags);
+}
+
+void test_r23_service_cancel_follows_same_command_and_sequence_to_result(void)
+{
+    rf_scp_message_t report = {.cmd = RF_SCP_CMD_PWR_RESULT,
+        .type = SCP_TYPE_SET, .body.command_result = {.command = 1U,
+            .seq = 2U, .result = 255U, .flags = 0x60U}};
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_MONITORING,
+                          control_status().command_state);
+    report.body.command_result.seq = 3U;
+    report.body.command_result.flags = 0U;
+    report.body.command_result.result = 0U;
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_MONITORING,
+                          control_status().command_state);
+    report.body.command_result.seq = 2U;
+    report.body.command_result.flags = 0x40U;
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED,
+                          control_status().command_state);
+}
+
+void test_r23_service_cancel_unknown_does_not_claim_command_was_not_applied(void)
+{
+    rf_scp_message_t report = {.cmd = RF_SCP_CMD_PWR_RESULT,
+        .type = SCP_TYPE_SET, .body.command_result = {.command = 4U,
+            .seq = 9U, .result = 255U, .flags = 0x60U}};
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    report.body.command_result.flags = 0x40U;
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_UNCERTAIN,
+                          control_status().command_state);
+}
+
+void test_r23_zero_transmissions_without_cancel_bit_reports_board_restart(void)
+{
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(5U, 2U);
+    const rf_scp_message_t report = {.cmd = RF_SCP_CMD_PWR_RESULT,
+        .type = SCP_TYPE_SET, .body.command_result = {.command = 5U,
+            .seq = 2U, .result = 255U}};
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_RESTARTED,
+                          control_status().command_state);
+}
+
 /*** end of file ***/

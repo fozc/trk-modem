@@ -27,6 +27,7 @@ TEST_SOURCE_FILE("xprintf.c")
 #include "power_board_scp.c"
 
 static size_t log_calls;
+static elog_level_t last_log_level;
 static uint8_t log_info[16];
 static log_lvl_t console_level;
 static char console_output[4096];
@@ -58,7 +59,7 @@ uint32_t HAL_GetTick(void)
 static void capture_log(elog_code_t code, elog_level_t level,
                          const void *data, size_t length, int call_count)
 {
-    (void)level;
+    last_log_level = level;
     (void)call_count;
     TEST_ASSERT_EQUAL_INT(ELOG_PWR_SCP_ALARM, code);
     TEST_ASSERT_EQUAL_UINT32(16U, length);
@@ -517,6 +518,34 @@ void test_console_invalid_or_duplicate_alarm_preserves_announced_state(void)
     TEST_ASSERT_FALSE(power_board_handle_alarm(&message, 2U));
     TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
     TEST_ASSERT_EQUAL_UINT32(16U, read_snapshot(2U).active_alarms);
+}
+
+void test_r23_battery_absent_code_20_is_a_level_alarm_not_last_gasp(void)
+{
+    rf_scp_message_t message = alarm(1U, 20U, 1U, 0U);
+    message.body.alarm.active = 1UL << 20U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 0U));
+    TEST_ASSERT_EQUAL_HEX32(1UL << 20U, read_snapshot(0U).active_alarms);
+    TEST_ASSERT_FALSE(read_snapshot(0U).has_last_gasp);
+    TEST_ASSERT_EQUAL_INT(ELOG_LEVEL_WARN, last_log_level);
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "AKU_YOK"));
+    message.body.alarm.seq++;
+    message.body.alarm.state = 0U;
+    message.body.alarm.active = 0U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 1U));
+    TEST_ASSERT_EQUAL_UINT32(0U, read_snapshot(1U).active_alarms);
+}
+
+void test_r23_soc_drop_and_code_18_are_preserved_without_smoothing(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.soc_tenths = 800;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    message.body.power.soc_tenths = 100;
+    message.body.power.active_alarms = 1UL << 18U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    TEST_ASSERT_EQUAL_INT16(100, read_snapshot(1U).summary.soc_tenths);
+    TEST_ASSERT_EQUAL_HEX32(1UL << 18U, read_snapshot(1U).active_alarms);
 }
 
 /*** end of file ***/
