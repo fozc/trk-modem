@@ -558,6 +558,14 @@ static void store_record(uint32_t now_ms)
     {
         const bool matches = rf_event_source_matches(&event);
         rf_record_service_event(&event, matches);
+        if ((138U == event.event) && (0U == event.src_eui_hash))
+        {
+            rf_faults_reset_sequences();
+        }
+        else
+        {
+            /* Other service records do not invalidate fault evidence. */
+        }
         const rf_fault_class_t type = matches ? rf_faults_classify(&event) :
                                                 RF_FAULT_NONE;
         has_fault_record = build_fault(&event, type, &fault_record);
