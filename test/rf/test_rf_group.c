@@ -1805,4 +1805,34 @@ void test_failed_target_save_restores_journal_and_never_starts_rf(void)
     TEST_ASSERT_EQUAL_MEMORY(&feeder, rf_store_get(2U), sizeof(feeder));
 }
 
+void test_r23_range_failure_reason_3_preserves_all_member_bitmap(void)
+{
+    write_three_and_commit();
+    ack();
+    rf_scp_message_t report = captured_report(1U);
+    report.body.config.state = 4U;
+    report.body.config.reason = 3U;
+    report.body.config.member_bitmap = 7U;
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_FAILED, status().state);
+    TEST_ASSERT_EQUAL_UINT8(3U, status().report.reason);
+    TEST_ASSERT_EQUAL_UINT8(7U, status().report.member_bitmap);
+}
+
+void test_r23_write_error_02_is_uncertain_without_applied_claim_or_blind_retry(void)
+{
+    TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
+    unused_group();
+    rf_group_process(tick);
+    const size_t before = request_count;
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB,
+        .dst = RF_SCP_ADDR_RTU, .cmd = RF_SCP_CMD_CFG_WRITE,
+        .type = SCP_TYPE_ERROR, .data_len = 1U,
+        .data = {RF_SCP_ERR_INVALID_PARAM}};
+    reply(SCP_CMD_ERR, &packet);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_UNCERTAIN, status().state);
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, request_count);
+}
+
 /*** end of file ***/

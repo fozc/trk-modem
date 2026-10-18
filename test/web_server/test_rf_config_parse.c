@@ -111,4 +111,36 @@ void test_web_rejects_invalid_retained_config_without_changing_store(void)
     TEST_ASSERT_EQUAL_MEMORY(&feeder, rf_store_get(0U), sizeof(feeder));
 }
 
+void test_new_rf_provisioning_rejects_zone_zero_and_preserves_store(void)
+{
+    const rf_feeder_t before = *rf_store_get(0U);
+    TEST_ASSERT_FALSE(parse_staged("{\"ZoneID\":[0]}"));
+    TEST_ASSERT_EQUAL_MEMORY(&before, rf_store_get(0U), sizeof(before));
+    TEST_ASSERT_TRUE(parse_staged("{\"ZoneID\":[7]}"));
+    TEST_ASSERT_EQUAL_UINT8(7U, rf_store_get(0U)->config.zone_id);
+}
+
+void test_assigned_rf_zone_cannot_be_changed_even_when_feeder_is_disabled(void)
+{
+    rf_feeder_t feeder = *rf_store_get(0U);
+    feeder.r_eui64[0] = 1U;
+    feeder.in_use = false;
+    TEST_ASSERT_TRUE(rf_store_set(0U, &feeder));
+    TEST_ASSERT_FALSE(parse_staged("{\"ZoneID\":[2]}"));
+    TEST_ASSERT_EQUAL_MEMORY(&feeder, rf_store_get(0U), sizeof(feeder));
+    TEST_ASSERT_TRUE(parse_staged("{\"ZoneID\":[1]}"));
+}
+
+void test_existing_zone_zero_is_retained_without_automatic_migration(void)
+{
+    rf_feeder_t feeder = *rf_store_get(0U);
+    feeder.r_eui64[0] = 1U;
+    feeder.config.zone_id = 0U;
+    TEST_ASSERT_TRUE(rf_store_set(0U, &feeder));
+    TEST_ASSERT_TRUE(parse_staged("{\"ZoneID\":[0]}"));
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_store_get(0U)->config.zone_id);
+    TEST_ASSERT_FALSE(parse_staged("{\"ZoneID\":[1]}"));
+    TEST_ASSERT_EQUAL_UINT8(0U, rf_store_get(0U)->config.zone_id);
+}
+
 /*** end of file ***/

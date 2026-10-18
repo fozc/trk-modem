@@ -89,9 +89,12 @@ bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done);
  * Arms one epoch retry only for the first following configuration's
  * TIMEOUT reason 5. It does not retry the configuration itself. */
 bool rf_inventory_hub_replaced(uint8_t feeder, scp_cmd_done_fn_t done);
+/* R2.3 event 144: coalesce a verified AY's rejection into maintenance. */
+void rf_inventory_note_auth_failure(uint8_t feeder);
 void rf_inventory_config_finished(uint8_t feeder, uint8_t reason);
 
-/* Minimum local wait after an acknowledged epoch refresh; not RF proof. */
+/* False while event-144 maintenance is queued or during the minimum local
+ * wait after its acknowledged epoch refresh; not RF proof. */
 bool rf_inventory_epoch_ready(uint8_t feeder);
 bool rf_inventory_get_boundary(uint32_t *total);
 
@@ -112,3 +115,5 @@ void rf_inventory_continue(void);
 #endif
 
 #endif /* RF_RF_INVENTORY_H_ */
+
+/*** end of file ***/

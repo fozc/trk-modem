@@ -562,6 +562,10 @@ static void store_record(uint32_t now_ms)
         {
             rf_faults_reset_sequences();
         }
+        else if (matches && (144U == event.event))
+        {
+            rf_inventory_note_auth_failure(event.feeder);
+        }
         else
         {
             /* Other service records do not invalidate fault evidence. */

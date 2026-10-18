@@ -1422,14 +1422,33 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
 
         } else if (match_key(str, "ZoneID")) {
             CSLOG("[JSON] Parsing ZoneID array...\r\n");
+            for (size_t index = 0U; MAX_ARRAYS > index; index++)
+            {
+                temp_uint[index] = (NULL != configs[index]) ?
+                    configs[index]->config.zone_id : 0U;
+            }
             if (!parse_uint32_array(str, temp_uint, MAX_ARRAYS)) {
                 CSLOG_ERR( "[JSON] ERROR: Failed to parse ZoneID array\r\n");
                 return false;
             }
-            /* Zone_ID 0-7 (spec R2 section 3.2). in_use farketmeksizin. */
+            /* R2.3: provision 1-7; retain existing zero without migration. */
             for (int i = 0; i < MAX_ARRAYS; i++) {
                 if (configs[i]) {
                     if (!validate_rf_uint(temp_uint[i], 0U, 7U, "ZoneID")) {
+                        return false;
+                    }
+                    const rf_feeder_t *current =
+                        rf_store_get((feeder_id_t)i);
+                    const bool assigned =
+                        !rf_eui64_is_zero(current->r_eui64) ||
+                        !rf_eui64_is_zero(current->s_eui64) ||
+                        !rf_eui64_is_zero(current->t_eui64);
+                    if ((assigned &&
+                         (current->config.zone_id != temp_uint[i])) ||
+                        ((0U == temp_uint[i]) && configs[i]->in_use &&
+                         (!assigned || (0U != current->config.zone_id))))
+                    {
+                        CSLOG_ERR("[JSON] RF zone requires commissioning\r\n");
                         return false;
                     }
                     configs[i]->config.zone_id = (uint8_t)temp_uint[i];
