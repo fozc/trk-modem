@@ -99,4 +99,34 @@ def p01_periodic(ctx):
             raise RuntimeError("Periodic configuration restoration failed")
 
 
-CASES = {"p01_periodic": (p01_periodic, "Time-tagged periodic cycles (--periodic-test)")}
+def p02_periodic_web_config(ctx):
+    if not getattr(ctx.args, "periodic_test", False):
+        return "SKIP", ["Requires --periodic-test"]
+    web = ctx.web
+    status, body = web.request("/config/iec104")
+    if status != 200:
+        raise RuntimeError("Periodic baseline config unavailable")
+    saved = json.loads(body)
+    try:
+        for update, interval in (({"PeriodicSend": 0}, 0),
+                                 ({"Port": saved["Port"]}, 0),
+                                 ({"PeriodicSend": 5}, 5)):
+            status, _ = web.request("/config/iec104", update)
+            if status != 200:
+                return "FAIL", ["Periodic update rejected"]
+            status, body = web.request("/config/iec104")
+            if status != 200 or json.loads(body) != dict(saved, PeriodicSend=interval):
+                return "FAIL", ["Periodic interval or unrelated configuration changed"]
+        return "PASS", ["Web disable=0, partial POST keeps 0, enable=5; GET exact match"]
+    finally:
+        status, _ = web.request("/config/iec104", saved)
+        read_status, body = web.request("/config/iec104")
+        if status != 200 or read_status != 200 or json.loads(body) != saved:
+            raise RuntimeError("Periodic configuration restoration failed")
+
+
+CASES = {
+    "p01_periodic": (p01_periodic, "Time-tagged periodic cycles (--periodic-test)"),
+    "p02_periodic_web_config": (p02_periodic_web_config,
+                              "Web disable/enable and partial POST (--periodic-test)"),
+}

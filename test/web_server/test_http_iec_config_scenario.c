@@ -94,6 +94,45 @@ void test_partial_post_preserves_t3_above_byte_range(void)
     }
 }
 
+void test_periodic_interval_accepts_disabled_and_enabled_boundaries(void)
+{
+    const char *requests[] = {"{\"PeriodicSend\":0}",
+        "{\"PeriodicSend\":1}", "{\"PeriodicSend\":86400}"};
+    const uint32_t expected[] = {0U, 1U, 86400U};
+    for (size_t index = 0U; sizeof(expected) / sizeof(expected[0]) > index;
+         index++)
+    {
+        expect_save();
+        handle_post_iec_config_json(requests[index]);
+        TEST_ASSERT_EQUAL_UINT32(expected[index],
+            saved_config.periodical_send_interval);
+        TEST_ASSERT_EQUAL_UINT16(300U, saved_config.t3_max);
+    }
+}
+
+void test_partial_post_preserves_disabled_periodic_interval(void)
+{
+    current_config.periodical_send_interval = 0U;
+    expect_save();
+    handle_post_iec_config_json("{\"Port\":2405}");
+    TEST_ASSERT_EQUAL_UINT32(0U, saved_config.periodical_send_interval);
+    TEST_ASSERT_EQUAL_UINT16(2405U, saved_config.scada_port);
+}
+
+void test_invalid_periodic_interval_rejects_without_saving(void)
+{
+    const char *requests[] = {"{\"PeriodicSend\":-1}",
+                              "{\"PeriodicSend\":86401}"};
+    for (size_t index = 0U; sizeof(requests) / sizeof(requests[0]) > index;
+         index++)
+    {
+        http_send_error_Expect(400, "Invalid IEC configuration");
+        handle_post_iec_config_json(requests[index]);
+        TEST_ASSERT_EQUAL_UINT32(60U, current_config.periodical_send_interval);
+        TEST_ASSERT_EQUAL_UINT32(0U, saved_config.periodical_send_interval);
+    }
+}
+
 void test_invalid_t3_post_rejects_update_without_saving(void)
 {
     http_send_error_Expect(400, "Invalid IEC configuration");
