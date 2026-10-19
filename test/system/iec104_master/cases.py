@@ -61,7 +61,7 @@ def _ic_confirm(frame, cot, qoi):
 def _collect_interrogation(master, t0, qoi, data_deadline_s=30.0):
     """Wait ACT_CON -> data* -> ACT_TERM for one interrogation.
 
-    Returns con/term frames, the GI data frames (type 30/36 with an
+    Returns con/term frames, the GI data frames (type 1/13/30/36 with an
     interrogated COT 20..24 between con and term) and any concurrent
     spontaneous frames (COT outside 20..24) in the window. Structural
     validation of CA/COT/type happens in _check_gi_frames.
@@ -75,7 +75,9 @@ def _collect_interrogation(master, t0, qoi, data_deadline_s=30.0):
         return False, {"stage": "ACT_TERM", "qoi": qoi}
     window = [f for f in _rx_frames(master, t0)
               if con[0] <= f[0] <= term[0]
-              and f[3]["asdu"]["type"] in (apdu.TYPE_M_ME_TF_1,
+              and f[3]["asdu"]["type"] in (apdu.TYPE_M_ME_NC_1,
+                                           apdu.TYPE_M_SP_NA_1,
+                                           apdu.TYPE_M_ME_TF_1,
                                            apdu.TYPE_M_SP_TB_1)]
     data = [f for f in window if 20 <= f[3]["asdu"]["cot"] <= 24]
     concurrent = [f for f in window if not 20 <= f[3]["asdu"]["cot"] <= 24]
@@ -93,6 +95,10 @@ def _check_gi_frames(detail, qoi, ca, currents, states):
     Returns None when valid, else a failure string.
     """
     expected_cot = 20 if qoi == 20 else qoi
+    measurement_type = (apdu.TYPE_M_ME_NC_1 if qoi == 20 else
+                        apdu.TYPE_M_ME_TF_1)
+    state_type = (apdu.TYPE_M_SP_NA_1 if qoi == 20 else
+                  apdu.TYPE_M_SP_TB_1)
     for frame in detail["data"]:
         asdu = frame[3]["asdu"]
         if asdu["ca"] != ca:
@@ -105,13 +111,13 @@ def _check_gi_frames(detail, qoi, ca, currents, states):
             for obj in asdu.get("objects", []):
                 ioa = obj["ioa"]
                 if ioa in currents and asdu["type"] != \
-                        apdu.TYPE_M_ME_TF_1:
-                    return "akim IOA %d tip %s (beklenen olcum 36)" % (
-                        ioa, asdu["type"])
+                        measurement_type:
+                    return "akim IOA %d tip %s (beklenen olcum %d)" % (
+                        ioa, asdu["type"], measurement_type)
                 if ioa in states and asdu["type"] != \
-                        apdu.TYPE_M_SP_TB_1:
-                    return "durum IOA %d tip %s (beklenen 30)" % (
-                        ioa, asdu["type"])
+                        state_type:
+                    return "durum IOA %d tip %s (beklenen %d)" % (
+                        ioa, asdu["type"], state_type)
     return None
 
 
@@ -124,10 +130,11 @@ def _ioas(frames):
 
 
 def _qualities(frames):
-    """{(ioa): quality-dict} for M_ME_TF_1 objects (measured values)."""
+    """{(ioa): quality-dict} for measured values, with or without time."""
     result = {}
     for frame in frames:
-        if frame[3]["asdu"]["type"] == apdu.TYPE_M_ME_TF_1:
+        if frame[3]["asdu"]["type"] in (apdu.TYPE_M_ME_NC_1,
+                                        apdu.TYPE_M_ME_TF_1):
             for obj in frame[3]["asdu"].get("objects", []):
                 result[obj["ioa"]] = {"qds": obj.get("qds"),
                                       "value": obj.get("value")}
@@ -210,7 +217,7 @@ def i02_gi_station(ctx):
     currents = ctx.expected["group1"]
     measured_currents = [ioa for ioa in quals if ioa in currents]
     if not measured_currents:
-        return "FAIL", ["akim noktalari olcum (M_ME_TF_1) olarak "
+        return "FAIL", ["akim noktalari olcum (M_ME_NC_1) olarak "
                         "gelmedi - kalite kontrolu bos gecemaz"]
     rf_online = ctx.console_state.get("rf_online")
     if rf_online is False:
@@ -552,7 +559,10 @@ def i06_replay_reconnect(ctx):
         return "FAIL", ["replay baslamadi (30 s, 15 s fallback timer "
                         "asildi olmali)"]
     # A delayed N(R) can legitimately pause the next replay record.
-    gap, collection_budget = _replay_timing(ctx.master, count)
+    # Closing snapshot follows the entire backlog, including older bench
+    # records. Budgeting only our injected records ends the check early.
+    gap, collection_budget = _replay_timing(
+        ctx.master, max(count, st1["unsent"] or 0))
     last = first[0]
     deadline = time.monotonic() + collection_budget
     while time.monotonic() < deadline:
@@ -771,7 +781,8 @@ def i07_replay_retention(ctx):
         lambda f: f[1] == "rx" and f[3] and f[3].get("kind") == "I"
         and (f[3].get("asdu") or {}).get("cot") == 3, 30.0, t0=t1)
     if ok2:
-        gap, collection_budget = _replay_timing(ctx.master, count)
+        gap, collection_budget = _replay_timing(
+            ctx.master, max(count, st1["unsent"] or 0))
         last = first2[0]
         deadline = time.monotonic() + collection_budget
         while time.monotonic() < deadline:

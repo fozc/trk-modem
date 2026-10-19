@@ -102,6 +102,32 @@ check("unknown_type_raw", unk["asdu"]["type"] == 42 and
       unk["asdu"]["objects"][0]["ioa"] == 1030 and
       unk["asdu"]["objects"][0]["raw_rest_hex"] == "aabb")
 
+# GI20 sends value/quality without a timestamp; adjacent objects must
+# retain their own IOA and quality bytes.
+untimed = apdu.parse_asdu(bytes.fromhex("0d 02 14 00 01 00") +
+    bytes.fromhex("06 04 00") + struct.pack("<f", 137.5) + b"\x80" +
+    bytes.fromhex("07 04 00") + struct.pack("<f", -2.5) + b"\x40")
+objects = untimed.get("objects", [])
+check("m_me_nc_multiple_objects", len(objects) == 2 and
+      objects[0].get("value") == 137.5 and
+      objects[1].get("ioa") == 1031 and
+      objects[1].get("value") == -2.5 and
+      objects[1].get("qds", {}).get("nt") == 1 and
+      all("time" not in obj for obj in objects))
+untimed = apdu.parse_asdu(bytes.fromhex(
+    "01 02 14 00 01 00 10 04 00 81 11 04 00 40"))
+objects = untimed.get("objects", [])
+check("m_sp_na_multiple_objects", len(objects) == 2 and
+      objects[0].get("siq", {}).get("iv") == 1 and
+      objects[1].get("ioa") == 1041 and
+      objects[1].get("siq", {}).get("nt") == 1 and
+      all("time" not in obj for obj in objects))
+for type_id, body in ((13, b"\x06\x04\x00\x00\x00\x00\x00"),
+                      (1, b"\x10\x04\x00")):
+    short = apdu.parse_asdu(bytes([type_id, 1, 20, 0, 1, 0]) + body)
+    check("untimed_truncated_%d" % type_id, "objects" not in short and
+          "body_hex" in short)
+
 print("\n%d/%d OK" % (
-    18 - len(FAILURES), 18))
+    22 - len(FAILURES), 22))
 raise SystemExit(1 if FAILURES else 0)

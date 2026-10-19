@@ -17,6 +17,8 @@ import struct
 # Constants (mirror Application/libiec104/iec104_data_types.h)
 # ---------------------------------------------------------------------------
 
+TYPE_M_SP_NA_1 = 1            # single point without timestamp
+TYPE_M_ME_NC_1 = 13           # short float without timestamp
 TYPE_M_SP_TB_1 = 30           # single point with CP56Time2a
 TYPE_M_ME_TF_1 = 36           # short float measured value with CP56Time2a
 TYPE_M_EI_NA_1 = 70           # end of initialisation
@@ -102,15 +104,18 @@ def _decode_objects(type_id, count, body, pos):
         if pos + 3 > len(body):
             return None
         ioa, pos = _read_ioa(body, pos)
-        if type_id == TYPE_M_SP_TB_1:
-            if pos + 8 > len(body):
+        if type_id in (TYPE_M_SP_NA_1, TYPE_M_SP_TB_1):
+            timed = type_id == TYPE_M_SP_TB_1
+            if pos + (8 if timed else 1) > len(body):
                 return None
             obj = {"ioa": ioa, "siq": siq_flags(body[pos])}
             pos += 1
-            obj["time"] = parse_cp56(body, pos)
-            pos += 7
-        elif type_id == TYPE_M_ME_TF_1:
-            if pos + 12 > len(body):
+            if timed:
+                obj["time"] = parse_cp56(body, pos)
+                pos += 7
+        elif type_id in (TYPE_M_ME_NC_1, TYPE_M_ME_TF_1):
+            timed = type_id == TYPE_M_ME_TF_1
+            if pos + (12 if timed else 5) > len(body):
                 return None
             value = int.from_bytes(body[pos:pos + 4], "little",
                                    signed=False)
@@ -120,8 +125,9 @@ def _decode_objects(type_id, count, body, pos):
             pos += 4
             obj["qds"] = qds_flags(body[pos])
             pos += 1
-            obj["time"] = parse_cp56(body, pos)
-            pos += 7
+            if timed:
+                obj["time"] = parse_cp56(body, pos)
+                pos += 7
         elif type_id == TYPE_M_EI_NA_1:
             # IOA + COI (cause of initialisation) byte
             if pos + 1 > len(body):
