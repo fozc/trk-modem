@@ -11,6 +11,8 @@
 #include "adc.h"
 #include "main.h"
 
+#include <stdatomic.h>
+
 /* ======================================================================
  *  Acquisition configuration
  * ====================================================================== */
@@ -46,12 +48,24 @@
  *  Module state
  * ====================================================================== */
 
-/** DMA target buffer — written continuously by the ADC in circular mode. */
+/** DMA target buffer, written continuously by the ADC in circular mode. */
 static volatile uint16_t __attribute__((aligned(32)))
     s_adc_buffer[ADC_CONV_COUNT] = {0};
 
 /* ADC handle owned by the CubeMX-generated code. */
 extern ADC_HandleTypeDef hadc1;
+
+/* DMA/ADC callbacks publish health; main only invalidates at init.
+ * There is no application-chosen stale timeout: age is reported directly.
+ */
+static _Atomic bool sample_valid;
+static _Atomic uint32_t sample_tick;
+__extension__
+_Static_assert(__atomic_always_lock_free(sizeof(sample_valid), 0),
+               "ADC validity must be lock-free");
+__extension__
+_Static_assert(__atomic_always_lock_free(sizeof(sample_tick), 0),
+               "ADC sample tick must be lock-free");
 
 /* ======================================================================
  *  Internal helpers
@@ -99,13 +113,53 @@ static uint8_t adc_channel_to_index(adc_channel_t channel)
  *  Public API
  * ====================================================================== */
 
-void adc_init(void)
+bool adc_init(void)
 {
+    atomic_store_explicit(&sample_valid, false, memory_order_release);
     /* HAL uses the pointer as a DMA destination address. CPU reads keep
      * the volatile qualifier; HAL's API requires an unqualified pointer. */
-    (void)HAL_ADC_Start_DMA(&hadc1,
-                            (uint32_t *)s_adc_buffer,
-                            ADC_CONV_COUNT);
+    if (HAL_OK != HAL_ADC_Start_DMA(&hadc1, (uint32_t *)s_adc_buffer,
+                                    ADC_CONV_COUNT))
+    {
+        atomic_store_explicit(&sample_valid, false, memory_order_release);
+        return false;
+    }
+    return true;
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *handle)
+{
+    if ((&hadc1 == handle) &&
+        (HAL_ADC_ERROR_NONE == HAL_ADC_GetError(handle)))
+    {
+        atomic_store_explicit(&sample_tick, HAL_GetTick(),
+                              memory_order_relaxed);
+        atomic_store_explicit(&sample_valid, true, memory_order_release);
+    }
+}
+
+void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *handle)
+{
+    if (&hadc1 == handle)
+    {
+        atomic_store_explicit(&sample_valid, false, memory_order_release);
+    }
+}
+
+bool adc_is_valid(void)
+{
+    return atomic_load_explicit(&sample_valid, memory_order_acquire);
+}
+
+uint32_t adc_get_sample_age_ms(void)
+{
+    if (!adc_is_valid())
+    {
+        return UINT32_MAX;
+    }
+    const uint32_t tick = atomic_load_explicit(&sample_tick,
+                                               memory_order_relaxed);
+    return HAL_GetTick() - tick;
 }
 
 uint16_t adc_get_raw(adc_channel_t channel)
@@ -117,7 +171,7 @@ uint16_t adc_get_raw(adc_channel_t channel)
         return 0U;
     }
 
-    return s_adc_buffer[index];
+    return adc_is_valid() ? s_adc_buffer[index] : ADC_INVALID_RAW;
 }
 
 uint16_t adc_get_voltage_mv(adc_channel_t channel)
@@ -129,11 +183,16 @@ uint16_t adc_get_voltage_mv(adc_channel_t channel)
         return 0U;
     }
 
-    return adc_raw_to_mv(s_adc_buffer[index]);
+    return adc_is_valid() ? adc_raw_to_mv(s_adc_buffer[index]) :
+                            ADC_INVALID_VOLTAGE_MV;
 }
 
 int16_t adc_get_mcu_temp_c(void)
 {
+    if (!adc_is_valid())
+    {
+        return ADC_INVALID_TEMPERATURE_C;
+    }
     const uint16_t raw = s_adc_buffer[ADC_IDX_TEMP];
     int32_t temp = __LL_ADC_CALC_TEMPERATURE(ADC_TEMP_VDDA_MV,
                                              raw,

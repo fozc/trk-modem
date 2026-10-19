@@ -127,6 +127,8 @@ void setUp(void)
     gsm_info_get_creg_IgnoreAndReturn(0U);
     gsm_info_get_cgreg_IgnoreAndReturn(0U);
     gsm_info_get_cereg_IgnoreAndReturn(0U);
+    adc_is_valid_IgnoreAndReturn(true);
+    adc_get_sample_age_ms_IgnoreAndReturn(0U);
     system_status_init();
 }
 
@@ -389,6 +391,30 @@ void test_status_json_preserves_all_debounced_dip_positions(void)
         TEST_ASSERT_NOT_NULL(strstr(buffer, "\"DIN\":[1,0,0,0]"));
         TEST_ASSERT_NOT_NULL(strstr(buffer, "\"RLY\":[0,1]"));
     }
+}
+
+
+
+void test_adc_error_is_reported_and_does_not_change_temperature_history(void)
+{
+    fake_mcu_temp = 37;
+    const system_status_t *status = system_status_get();
+    TEST_ASSERT_TRUE(status->adc_valid);
+    TEST_ASSERT_EQUAL_INT8(37, status->tdie_temp_min);
+    fake_mcu_temp = ADC_INVALID_TEMPERATURE_C;
+    fake_voltage[ADC_CH_3V3] = ADC_INVALID_VOLTAGE_MV;
+    adc_is_valid_IgnoreAndReturn(false);
+    adc_get_sample_age_ms_IgnoreAndReturn(UINT32_MAX);
+    status = system_status_get();
+    TEST_ASSERT_FALSE(status->adc_valid);
+    TEST_ASSERT_EQUAL_INT8(INT8_MIN, status->tdie_temp);
+    TEST_ASSERT_EQUAL_INT8(37, status->tdie_temp_min);
+    TEST_ASSERT_EQUAL_INT8(37, status->tdie_temp_max);
+    char json[4096];
+    size_t len = 0U;
+    TEST_ASSERT_TRUE(system_status_json_build(status, json, sizeof(json), &len));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"ADCValid\":0"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"ADCSampleAgeMs\":4294967295"));
 }
 
 /*** end of file ***/

@@ -2,6 +2,8 @@
  * adc.h
  *
  *  ADC acquisition and conversion module.
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  *  Wraps ADC1 + DMA acquisition of the board supply rails and the
  *  internal MCU temperature sensor, and exposes conversion helpers that
@@ -22,6 +24,11 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
+
+#define ADC_INVALID_RAW UINT16_MAX
+#define ADC_INVALID_VOLTAGE_MV UINT16_MAX
+#define ADC_INVALID_TEMPERATURE_C INT16_MIN
 
 /**
  * @brief Supply-voltage channels measured through the resistor divider.
@@ -41,14 +48,20 @@ typedef enum
  * The DMA runs in circular mode, so the sample buffer is refreshed
  * continuously without further calls.
  */
-void adc_init(void);
+bool adc_init(void);
+
+/** Valid only after a complete DMA block and until an ADC/DMA error. */
+bool adc_is_valid(void);
+
+/** Age of the last complete block; UINT32_MAX when invalid/unknown. */
+uint32_t adc_get_sample_age_ms(void);
 
 /**
  * @brief Get the latest raw ADC sample for a supply channel.
  *
  * @param[in] channel Supply-voltage channel.
  *
- * @return Raw 12-bit ADC code, or 0 if @p channel is out of range.
+ * @return Raw code; ADC_INVALID_RAW when unavailable; 0 for bad channels.
  */
 uint16_t adc_get_raw(adc_channel_t channel);
 
@@ -59,14 +72,14 @@ uint16_t adc_get_raw(adc_channel_t channel);
  *
  * @param[in] channel Supply-voltage channel.
  *
- * @return Channel voltage in millivolts, or 0 if @p channel is out of range.
+ * @return mV; ADC_INVALID_VOLTAGE_MV when unavailable; 0 for bad channels.
  */
 uint16_t adc_get_voltage_mv(adc_channel_t channel);
 
 /**
  * @brief Get the MCU internal die temperature in degrees Celsius.
  *
- * @return Die temperature in degrees Celsius.
+ * @return Degrees Celsius, or ADC_INVALID_TEMPERATURE_C when unavailable.
  */
 int16_t adc_get_mcu_temp_c(void);
 
@@ -75,3 +88,5 @@ int16_t adc_get_mcu_temp_c(void);
 #endif
 
 #endif /* BSP_ADC_H_ */
+
+/*** end of file ***/

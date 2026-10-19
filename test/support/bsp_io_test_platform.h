@@ -27,6 +27,8 @@ void LL_GPIO_SetOutputPin(void *port, uint32_t pin);
 void LL_GPIO_ResetOutputPin(void *port, uint32_t pin);
 HAL_StatusTypeDef HAL_ADC_Start_DMA(ADC_HandleTypeDef *handle,
     uint32_t *buffer, uint32_t count);
+#define HAL_ADC_ERROR_NONE 0U
+uint32_t HAL_ADC_GetError(const ADC_HandleTypeDef *handle);
 int32_t test_adc_temperature(uint32_t voltage, uint16_t sample,
     uint32_t resolution);
 #define LL_ADC_RESOLUTION_12B 12U

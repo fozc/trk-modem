@@ -287,3 +287,27 @@ void test_second_response_takes_fresh_calendar_snapshot(void)
     TEST_ASSERT_EQUAL_UINT16(11U, resp_reg(1)); /* fresh min   */
     TEST_ASSERT_EQUAL_UINT16(12U, resp_reg(2)); /* same hour   */
 }
+
+void test_adc_unavailable_sentinels_reach_actual_fc03_response(void)
+{
+    static const uint8_t request[] = {0x01U, 0x03U, 0x23U, 0x32U, 0x00U, 0x04U, 0xEEU, 0x42U};
+    adc_get_mcu_temp_c_ExpectAndReturn(ADC_INVALID_TEMPERATURE_C);
+    adc_get_voltage_mv_ExpectAndReturn(ADC_CH_5V, ADC_INVALID_VOLTAGE_MV);
+    adc_get_voltage_mv_ExpectAndReturn(ADC_CH_3V3, ADC_INVALID_VOLTAGE_MV);
+    adc_get_voltage_mv_ExpectAndReturn(ADC_CH_3V8, ADC_INVALID_VOLTAGE_MV);
+    for (size_t index = 0U; sizeof(request) > index; index++)
+    {
+        modbus_process_isr_rx_byte(request[index]);
+    }
+    fake_tick += 4U;
+    TEST_ASSERT_EQUAL(MODBUS_POLL_HANDLED, modbus_poll(&s_modbus));
+    TEST_ASSERT_EQUAL_UINT16(13U, response_len);
+    TEST_ASSERT_EQUAL_UINT8(3U, response[1]);
+    TEST_ASSERT_EQUAL_UINT16(0x8000U, resp_reg(0U));
+    for (size_t index = 1U; 4U > index; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT16(0xFFFFU, resp_reg(index));
+    }
+}
+
+/*** end of file ***/
