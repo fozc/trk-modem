@@ -325,7 +325,7 @@ void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config
     if(iec104_config == NULL){
     	CSLOG_WARN("Error: iec104_config is NULL, using default config\r\n");
         config = (iec104_config_t){
-            .periodical_send_interval = 60, // seconds
+            .periodical_send_interval = 0U, /* Disabled without configuration. */
             .t0_max = 30,  //  [1-255 sec, def:30s] Baglanti kurma zaman asimi, RTU'da onemsiz(?) [1-255 saniye]
             .t1_max = 45,  //  [1-255 sec, def:15s] Onay zaman asimi. RTU I-frame gonderdikten sonra baslar, sure sonuna kadar scada'dan onay gelmesi lazim, gelmezse paket kaybolmus denilir, tekrar gonderim yapilir. Belirli sayida tekrar gonderimden sonra  ack alamaz ise bagantiyi koparir
             .t2_max = 30,  //  [1-255 sec, def:10s] Bir istasyonun (RTU veya SCADA) aldigi I-frame paketlerine onay gondermek icin bekleyebilecegi maks sure

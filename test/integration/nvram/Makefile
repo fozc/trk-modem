@@ -7,7 +7,7 @@
 include ../../make/common.mk
 
 CC      := gcc
-CFLAGS  := -std=c11 -Wall -Wextra -Werror -Wshadow -O1 -g
+CFLAGS  := -std=c11 -Wall -Wextra -Werror -Wshadow -O1 -g -MMD -MP
 BUILD   := build
 
 APP_DIR := ../../../Application
@@ -72,6 +72,8 @@ $(TARGET): $(TEST_OBJS) $(LIB_OBJS)
 
 run: $(TARGET)
 	@./$(TARGET)
+
+-include $(TEST_OBJS:.o=.d) $(LIB_OBJS:.o=.d)
 
 clean:
 	@$(RM_RF) $(BUILD)

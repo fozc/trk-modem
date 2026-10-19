@@ -432,6 +432,21 @@ static void test_iec_default_address_regions(void)
     }
 }
 
+static void test_periodic_default_is_off_and_saved_interval_survives_reboot(void)
+{
+    boot_virgin();
+    check(0U == nvram_get_iec104_config()->periodical_send_interval,
+          "IEC periodic: factory default is disabled");
+    nvram_get_iec104_config_rw()->periodical_send_interval = 900U;
+    check(0 == nvram_sync(false), "IEC periodic: custom interval saved");
+    reboot();
+    check(900U == nvram_get_iec104_config()->periodical_send_interval,
+          "IEC periodic: reboot preserves the saved interval");
+    nvram_set_defaults();
+    check(0U == nvram_get_iec104_config()->periodical_send_interval,
+          "IEC periodic: factory reset disables publication");
+}
+
 static void test_factory_iec_addresses_are_unchanged(void)
 {
     boot_virgin();
@@ -752,6 +767,7 @@ int main(void)
     test_stop_bits_persisted_and_restored_on_reboot();
     test_factory_iec_addresses_are_unchanged();
     test_iec_default_address_regions();
+    test_periodic_default_is_off_and_saved_interval_survives_reboot();
     test_lifetime_persistence_boundary();
     test_normal_flow();
     test_recovery_only_a();
