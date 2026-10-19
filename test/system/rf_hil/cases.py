@@ -706,6 +706,7 @@ import cases_bq   # noqa: E402,F401  (BOLATeX R0 answer cases)
 import cases_recovery  # noqa: E402,F401 (recovery and quality cases)
 import cases_findings  # noqa: E402,F401 (2026-10-08 analysis findings)
 import cases_r2   # noqa: E402,F401 (SCP R2 022555bf teslim cases)
+import cases_iec104  # noqa: E402,F401 (RF producer through SCADA socket)
 
 PLANNED = {
     "d5_wrap_during_read": "okuma sirasinda halka sarmasi (soak)",
