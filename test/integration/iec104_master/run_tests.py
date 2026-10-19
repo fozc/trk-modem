@@ -37,7 +37,8 @@ def main():
     for selftest in (SELFTEST,
                      SYSTEM / "test_cases_selftest.py",
                      SYSTEM / "test_wire_master.py",
-                     SYSTEM / "test_wire_cases.py"):
+                     SYSTEM / "test_wire_cases.py",
+                     SYSTEM / "test_periodic_cases.py"):
         result = subprocess.call([sys.executable, str(selftest)])
         if result:
             return 1

@@ -91,6 +91,8 @@ def main():
     parser.add_argument("--mutate-eventlog", action="store_true",
                         help="i06 sentetik kayit enjeksiyonu (Flash/"
                              "NVRAM degisikligi)")
+    parser.add_argument("--periodic-test", action="store_true",
+                        help="p01: temporarily set PeriodicSend=5 and restore")
     parser.add_argument("--evtlog-count", type=int, default=5)
     parser.add_argument("--user", default="admin")
     parser.add_argument("--password", default=None,
@@ -202,6 +204,7 @@ def main():
         master.start()
         ctx = cases.Ctx(master, snap, console, console_state, args,
                         expected, outdir)
+        ctx.web = web
 
         selected = args.case or list(cases.CASES)
         for name in selected:

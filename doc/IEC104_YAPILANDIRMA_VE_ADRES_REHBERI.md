@@ -104,7 +104,8 @@ bu yayının tamamlandığı anlamına gelmez.
 
 `C_RP_NA_1` reset işleyicisi IOA=0 veya yapılandırılan ModemReset adresini
 kabul eder. QRP=1 için onay ve ardından gecikmeli reboot yapılır. QRP=2
-mevcut kodda onaylanır; bekleyen olayları temizleme işi TODO durumundadır.
+19.10.2026 kullanıcı kararıyla ACT_CON/PN=1 ile reddedilir; bekleyen
+bildirimler, arşiv ve cihazın çalışma durumu korunur.
 Diğer QRP değerleri olumsuz onay alır. Yapılandırmadaki sıfır IOA yasağı,
 protokol reset komutunun IOA=0 kullanımını değiştirmez.
 
@@ -220,9 +221,45 @@ olay gönderilebilir. Adres doğrulaması kapalı fiderin noktaları arasındaki
 adres planını değiştirmek ayrıca değerlendirilmelidir.
 
 `ArizaTuru` için gönderim fonksiyonu vardır ve spontane olayda kullanılır;
-mevcut GI 20/21/22 listesinde bu fonksiyon çağrılmaz. Periyodik timer'lar
-vardır, fakat mevcut periyodik gönderim fonksiyonları veri yayını açısından
-TODO durumundadır. Dummy veri üreticileri bu çalışmada korunmuştur.
+mevcut GI 20/21/22 listesinde bu fonksiyon çağrılmaz. 19.10.2026 kullanıcı
+kararıyla periyodik yayın aşağıdaki kapsamda uygulanmıştır. Zaman etiketli
+COT=1 denemesi c104 tarafından INVALID_COT ile reddedilmiştir. Kullanıcı
+son alınan örneğin zamanını taşıyan otomatik yenilemeyi seçmiştir;
+bu yenileme COT=3 ile yapılır. Dummy veri üreticileri korunmuştur.
+
+### Periyodik yayın
+
+Bu, uygulama zamanlayıcısının başlattığı zaman etiketli COT=3 yenilemedir;
+protokolde COT=1 cyclic yayın olarak adlandırılmamalıdır.
+
+`PeriodicSend` saniye cinsindendir; 0 yayını kapatır. STARTDT açıkken
+ayarlı aralık sonunda yalnız IEC104 için etkin fiderler gönderilir.
+
+| Veri | ASDU | Neden | Zaman/kalite |
+|---|---|---|---|
+| Üç faz anlık akım | M_ME_TF_1 (36) | COT=3 | Mevcut RF okuma yolunun CP56Time2a ve QDS alanları |
+| Üç faz enerji var/yok | M_SP_TB_1 (30) | COT=3 | Aynı örneğin CP56Time2a ve SIQ alanları |
+| Üç faz yük akımı var/yok | M_SP_TB_1 (30) | COT=3 | Aynı örneğin CP56Time2a ve SIQ alanları |
+| Üç faz RF haberleşme durumu | M_SP_TB_1 (30) | COT=3 | Mevcut RF durum okuma yolunun CP56Time2a ve SIQ alanları |
+
+IOA adresleri GI21/22 ile aynıdır. Eski veya eksik kaynak yeni bir
+ölçüm yapılmış gibi gösterilmemelidir; mevcut okuma yolu kalite ve zaman
+geçerliliğini belirler. Faz gerilimi için IEC104 okuma yolu bulunmadığından
+gerilim bu kapsamda yayımlanmaz. Akü gerilimi, faz gerilimi sayılmamalıdır.
+
+LIVE zaman etiketi, RTU'nun son LIVE paketini aldığı anda bir kez kaydedilen
+RTC zamanıdır. Gönderim veya okuma anıyla değiştirilmemelidir. Yeni örnek
+gelmeden yapılan tekrarlar aynı zamanı taşımalıdır. Kaynak saati bilinmiyorsa
+zamanın IV biti korunmalıdır; bayat ölçümün IV/NT kalitesi gizlenmemelidir.
+Bu etiket AY'deki ayrı bir ölçüm zamanı gibi sunulmamalıdır. Arıza kayıtları
+kendi olay zamanını taşımayı sürdürür.
+
+Pencere veya taşıma tamponu dolarsa tek ilerleme indeksi aynı fider/veri
+türünde bekler; kabul edilen paket tekrarlanmaz. Yeni bir çevrim önceki
+çevrim tamamlanınca ayarlı süreyi bekler. Bağlantı resetinde yarım çevrim
+ve geçen süre temizlenir. Bu anlık yayın arşive eklenmez; arıza/alarm
+olayları kendi kayıt zamanıyla mevcut COT=3 yolunda kalır. Gerçek SCADA
+ürünüyle zaman etiketli COT=3 yenilemenin kabulü ayrıca sınanmalıdır.
 
 ## Kayıt kuralları ve hatalar
 
@@ -326,3 +363,4 @@ Kaynak dosyalar: `Application/nvram.c`, `Application/nvram.h`,
 | 1.5 | 2026-10-10 | Kısmi HTTP POST T3 korunumu ve ilk GSM dinlemesinden önce dinamik SCFG; init/listener önbellek ayrımı |
 | 1.6 | 2026-10-10 | Sabit ayarlar init'te kalır; soket açılışları listener'a taşınır, dinamik IEC104 SCFG RAM önbelleği kullanır |
 | 1.7 | 2026-10-11 | Eski init fonksiyonları korunur; vektör adımları yorum satırıyla kapalı tutulur, yeniden etkinleştirme sınanır |
+| 1.8 | 2026-10-19 | QRP=2 olumsuz onay; son LIVE alım zamanını koruyan zamanlanmış COT=3 yenileme, dört veri ailesi ve kalite kuralları |
