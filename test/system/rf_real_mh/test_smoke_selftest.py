@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 import struct
 import re
+import time
 import xml.etree.ElementTree as ET
 
 import run_smoke
@@ -37,6 +38,71 @@ class FakeConsole:
 
 
 class SmokeTests(unittest.TestCase):
+    def quality(self, qds=0, timestamp=b"\x00\x00\x00\x00\x01\x01\x1a",
+                terminate=True, cot=21):
+        sys.path.insert(0, str(ROOT / "test/system/iec104_master"))
+        import apdu
+        queries = []
+
+        class Master:
+            def __init__(self, *args, **kwargs):
+                self.frames = []
+
+            def start(self):
+                pass
+
+            def connect(self, **kwargs):
+                return True
+
+            def interrogate(self, qoi):
+                queries.append(qoi)
+                bodies = [bytes.fromhex("64 01 07 00 01 00 00 00 00 15"),
+                          bytes((36, 1, cot, 0, 1, 0, 6, 4, 0)) +
+                          struct.pack("<f", 12.5) + bytes((qds,)) + timestamp]
+                if terminate:
+                    bodies.append(bytes.fromhex(
+                        "64 01 0a 00 01 00 00 00 00 15"))
+                start = time.monotonic()
+                for index, body in enumerate(bodies):
+                    raw = bytes((0x68, len(body) + 4, index * 2, 0, 0, 0)) + body
+                    self.frames.append((start + index * 0.01, "rx", raw,
+                                        apdu.parse_apdu(raw)))
+                return True
+
+            def wait(self, predicate, timeout_s, t0=None):
+                return next(((True, frame) for frame in self.frames
+                             if frame[0] >= t0 and predicate(frame)),
+                            (False, None))
+
+            def since(self, t0):
+                return [frame for frame in self.frames if frame[0] >= t0]
+
+            def disconnect(self):
+                pass
+
+            def stop(self):
+                pass
+
+        ctx = SimpleNamespace(args=SimpleNamespace(host_104="127.0.0.1",
+                              port_104=2404))
+        with patch.dict(sys.modules, {"master104": SimpleNamespace(Master104=Master)}):
+            with patch.object(run_smoke, "observe", return_value=["LIVE_DATA"]):
+                verdict = run_smoke.m7_asdu_quality(ctx)[0]
+        return verdict, queries
+
+    def test_quality_uses_timed_group_one(self):
+        self.assertEqual(("PASS", [21]), self.quality())
+
+    def test_quality_rejects_invalid_measurements_and_timestamps(self):
+        self.assertEqual("FAIL", self.quality(qds=0x80)[0])
+        self.assertEqual("FAIL", self.quality(
+            timestamp=b"\x00\x00\x80\x00\x01\x01\x1a")[0])
+        self.assertEqual("FAIL", self.quality(timestamp=b"")[0])
+
+    def test_quality_requires_termination_and_matching_cot(self):
+        self.assertEqual("FAIL", self.quality(terminate=False)[0])
+        self.assertEqual("FAIL", self.quality(cot=20)[0])
+
     def test_powerboard_scp_build_keeps_i2c_disabled_in_both_configurations(self):
         project = ET.parse(ROOT / ".cproject").getroot()
         found = set()
