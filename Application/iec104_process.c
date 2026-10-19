@@ -25,7 +25,6 @@
 static iec104_config_t iec104_config = {0};
 /* Owned by the cooperative main context; no ISR access. */
 static bool config_apply_pending = false;
-static struct timer periodic_send_timer;
 
 /* Slot-based TX buffer: each slot = one TCP segment */
 #define IEC104_TX_SLOT_SIZE    1024  /* MTU(1500) - IP/TCP headers(40) */
@@ -102,8 +101,6 @@ void iec104_process_apply_pending_config(void)
 {
     if (config_apply_pending && iec104_apply_config(&iec104_config))
     {
-        timer_set(&periodic_send_timer,
-            iec104_config.periodical_send_interval * 1000U);
         config_apply_pending = false;
     }
 }
@@ -251,20 +248,6 @@ void iec104_on_data(const uint8_t *data, uint16_t len, void *user)
 
     //printf("Data Received (%d byte): %.*s\n", len, len, data);
     iec104_data_received(data, len);
-}
-
-static bool iec104_periodic_send(void)
-{
-	if(gsm_get_tx_state() != GSM_TX_READY){
-		return false;
-	}
-// TODO: Implement periodic send functionality
-//	const char *test_msg = "This is a test message for IEC 104 periodic send.";
-//	const size_t test_msg_len = strlen(test_msg);
-//
-//	return gsm_send_to_socket(test_msg, test_msg_len, GSM_TX_DIR_DIALER_SOCKET, false, false) == 0;
-
-	return true;
 }
 
 
@@ -427,7 +410,6 @@ PROCESS_THREAD(iec104_process, ev, data)
 	  },
 	  &iec104_config);
 
-	timer_set(&periodic_send_timer, iec104_config.periodical_send_interval*1000);
 	etimer_set(&timer, 100);
 	timer_set(&iec104_tick_timer, 1000);
 	while (1)
@@ -442,12 +424,6 @@ PROCESS_THREAD(iec104_process, ev, data)
  		}
 
  		libiec104_poll();
- 		if(timer_expired(&periodic_send_timer))
- 		{
- 			if(iec104_periodic_send()){
-				timer_reset(&periodic_send_timer);
- 			}
- 		}
 
 
  		iec104_tx_process();

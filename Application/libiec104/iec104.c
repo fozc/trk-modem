@@ -69,6 +69,20 @@ static uint32_t testfr_timer = 0;
 
 static uint32_t periodical_send_interval = 0;
 
+typedef enum
+{
+    PERIODIC_CURRENT,
+    PERIODIC_ENERGY,
+    PERIODIC_LOAD,
+    PERIODIC_RF,
+    PERIODIC_KIND_COUNT
+} periodic_kind_t;
+
+#define PERIODIC_IDLE (MAX_POWER_LINE_COUNT * PERIODIC_KIND_COUNT)
+_Static_assert(UINT8_MAX >= PERIODIC_IDLE, "Periodic cursor must fit");
+/* Cooperative protocol context; no ISR accesses this cursor. */
+static uint8_t periodic_next = PERIODIC_IDLE;
+
 static bool wait_for_ack = false;
  
 static cp56time2a_t last_clock_sync_time = {0};
@@ -80,7 +94,7 @@ static bool link_active = false; /* SCADA ile STARTDT suresci tamamlandi mi? */
 /* Islenen son komutun OA'si; onaylar ve sorgulama cevaplari bununla doner. */
 static uint8_t response_originator_address = 0;
 
-void iec104_send_periodic_update(void);
+static void iec104_send_periodic_update(void);
 bool iec104_send_phase_currents(cause_of_transmission_t cause);
 bool iec104_send_energy_states(cause_of_transmission_t cause);
 bool iec104_send_load_current_states(cause_of_transmission_t cause);
@@ -110,7 +124,10 @@ void iec104_tick(void)
         t1_timer++;
     }
 
-    periodical_send_interval++;
+    if (periodical_send_interval < config.periodical_send_interval)
+    {
+        periodical_send_interval++;
+    }
 
 }
 
@@ -1279,6 +1296,9 @@ void iec104_reset(void)
     t2_timer = 0;
     t3_timer = 0;
 
+    periodical_send_interval = 0U;
+    periodic_next = PERIODIC_IDLE;
+
     package_ready = false;
     memset(&package, 0, sizeof(package));
 
@@ -1315,6 +1335,8 @@ bool iec104_apply_config(const iec104_config_t *new_config)
         return false;
     }
     config = *new_config;
+    periodical_send_interval = 0U;
+    periodic_next = PERIODIC_IDLE;
     return true;
 }
 
@@ -1556,10 +1578,11 @@ void libiec104_poll(void)
     }
 
 
-    if(periodical_send_interval >= config.periodical_send_interval)
+    if (link_active && (0U != config.periodical_send_interval) &&
+        ((PERIODIC_IDLE != periodic_next) ||
+         (periodical_send_interval >= config.periodical_send_interval)))
     {
         iec104_send_periodic_update();
-        periodical_send_interval = 0;
     }
 }
 
@@ -2793,11 +2816,105 @@ bool iec104_emit_feeder_permanent_faults(uint8_t feeder_id, phase_id_t phase,
 
 /* ========================================================= */
 
-void iec104_send_periodic_update(void)
+static bool send_periodic_line(uint32_t line_index, periodic_kind_t kind)
 {
-    CSLOG("Sending periodic update\r\n");
-    //iec104_send_all_phase_currents();
-    //iec104_send_all_breaker_states();
+    const power_line_t *line = breaker_get_power_line_by_idx(line_index);
+    if ((NULL == line) || !line->iec104.in_use)
+    {
+        return true;
+    }
+    if (k_counter >= config.k_max)
+    {
+        return false;
+    }
+
+    iec104_package_t packet = {0};
+    const bool measured = (PERIODIC_CURRENT == kind);
+    const size_t object_size = measured ? sizeof(m_me_tf_1_t) :
+                                         sizeof(m_sp_tb_1_t);
+    const size_t length = DATA_START_IDX + 3U * object_size;
+    packet.frame.apci.start_char = IEC104_START_BYTE;
+    packet.frame.apci.apdu_length = (uint8_t)(length - 2U);
+    packet.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+    packet.frame.asdu_header = make_asdu_header(
+        measured ? M_ME_TF_1 : M_SP_TB_1,
+        (cot_t){.cause = COT_SPONTANEOUS}, config.originator_address,
+        config.common_address, 3U, 0U);
+
+    for (uint8_t phase = 0U; 3U > phase; phase++)
+    {
+        if (measured)
+        {
+            float value = 0.0F;
+            m_me_tf_1_t object = {.ioa = line->iec104.anlik_akim[phase],
+                .quality = {.invalid = 1U}, .timestamp = {.iv_bit = 1U}};
+            if (NULL != iec_io.get_anlik_akim)
+            {
+                (void)iec_io.get_anlik_akim(line_index, phase, &value,
+                    &object.quality, &object.timestamp);
+            }
+            object.value = value;
+            (void)memcpy(&packet.data[DATA_START_IDX + phase * object_size],
+                         &object, sizeof(object));
+        }
+        else
+        {
+            m_sp_tb_1_t object = {.siq = {.invalid = 1U},
+                                  .timestamp = {.iv_bit = 1U}};
+            switch (kind)
+            {
+                case PERIODIC_ENERGY:
+                    object.ioa = line->iec104.enerji_varyok[phase];
+                    if (NULL != iec_io.get_enerji_varyok)
+                    {
+                        (void)iec_io.get_enerji_varyok(line_index, phase,
+                            &object.siq, &object.timestamp);
+                    }
+                    break;
+                case PERIODIC_LOAD:
+                    object.ioa = line->iec104.yuk_akimi_varyok[phase];
+                    if (NULL != iec_io.get_yuk_akimi_varyok)
+                    {
+                        (void)iec_io.get_yuk_akimi_varyok(line_index, phase,
+                            &object.siq, &object.timestamp);
+                    }
+                    break;
+                case PERIODIC_RF:
+                    object.ioa = line->iec104.rf_haberlesme_varyok[phase];
+                    if (NULL != iec_io.get_rf_haberlesme_varyok)
+                    {
+                        (void)iec_io.get_rf_haberlesme_varyok(line_index,
+                            phase, &object.siq, &object.timestamp);
+                    }
+                    break;
+                default:
+                    return false;
+            }
+            (void)memcpy(&packet.data[DATA_START_IDX + phase * object_size],
+                         &object, sizeof(object));
+        }
+    }
+    return send_live_snapshot(&packet, length);
+}
+
+static void iec104_send_periodic_update(void)
+{
+    if (PERIODIC_IDLE == periodic_next)
+    {
+        periodic_next = 0U;
+    }
+    while (PERIODIC_IDLE > periodic_next)
+    {
+        const uint32_t line_index = periodic_next % MAX_POWER_LINE_COUNT;
+        const periodic_kind_t kind =
+            (periodic_kind_t)(periodic_next / MAX_POWER_LINE_COUNT);
+        if (!send_periodic_line(line_index, kind))
+        {
+            return;
+        }
+        periodic_next++;
+    }
+    periodical_send_interval = 0U;
 }
 
 /*** end of file ***/

@@ -268,6 +268,7 @@ static void build_reset_process(uint8_t *frame, uint16_t send_seq, uint16_t rece
 /* The interrogation path reads live measurements through these; constant
  * answers keep the emitted objects deterministic. */
 static bool test_invalid_quality;
+static cp56time2a_t test_sample_time;
 
 static int fake_get_measured(uint32_t power_line_index, uint8_t phase, float *value,
                              qds_t *quality, cp56time2a_t *timestamp)
@@ -275,7 +276,7 @@ static int fake_get_measured(uint32_t power_line_index, uint8_t phase, float *va
     *value     = (float)((power_line_index * 10U) + phase);
     *quality   = (qds_t){0};
     quality->invalid = test_invalid_quality && (2U == phase);
-    *timestamp = (cp56time2a_t){0};
+    *timestamp = test_sample_time;
 
     return 0;
 }
@@ -286,7 +287,7 @@ static int fake_get_state(uint32_t power_line_index, uint8_t phase, siq_t *value
     *value     = (siq_t){0};
     value->spi = (uint8_t)((power_line_index + phase) & 0x01U);
     value->invalid = test_invalid_quality && (2U == phase);
-    *timestamp = (cp56time2a_t){0};
+    *timestamp = test_sample_time;
 
     return 0;
 }
@@ -308,6 +309,7 @@ static void setup_mode(uint8_t k_max, uint8_t w_max, bool alarms)
     mock_platform_reset();
     tx_clear();
     test_invalid_quality = false;
+    test_sample_time = (cp56time2a_t){0};
 
     transport_budget = -1;
     transport_reject_index = -1;
@@ -354,6 +356,153 @@ static void enable_all_lines(void)
 /* ---------------------------------------------------------------- */
 /* Tests                                                             */
 /* ---------------------------------------------------------------- */
+
+static void setup_periodic(uint8_t window, uint32_t interval)
+{
+    setup(window, 1U);
+    const iec104_config_t settings = {.common_address = TEST_COMMON_ADDRESS,
+        .originator_address = 7U, .k_max = window, .w_max = 1U,
+        .t1_max = 45U, .t2_max = 10U, .t3_max = 60U,
+        .periodical_send_interval = interval};
+    TEST_ASSERT_TRUE(iec104_apply_config(&settings));
+}
+
+static void configure_periodic_line(uint32_t index)
+{
+    iec104_line_config_t line = {.in_use = 1U};
+    for (uint8_t phase = 0U; 3U > phase; phase++)
+    {
+        const uint32_t offset = index * 10U + phase;
+        line.anlik_akim[phase] = iec104_make_ioa_3byte(1000U + offset);
+        line.enerji_varyok[phase] = iec104_make_ioa_3byte(2000U + offset);
+        line.yuk_akimi_varyok[phase] = iec104_make_ioa_3byte(3000U + offset);
+        line.rf_haberlesme_varyok[phase] = iec104_make_ioa_3byte(4000U + offset);
+    }
+    TEST_ASSERT_TRUE(iec104_set_line_config(index, &line));
+}
+
+void test_periodic_disabled_and_before_deadline_emit_nothing(void)
+{
+    setup_periodic(64U, 0U);
+    mock_breaker_set_line_in_use(0U, true);
+    start_link();
+    iec104_tick();
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    iec104_reset();
+    setup_periodic(64U, 2U);
+    mock_breaker_set_line_in_use(0U, true);
+    start_link();
+    iec104_tick();
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_periodic_publishes_only_active_lines_with_original_quality_time(void)
+{
+    setup_periodic(64U, 1U);
+    configure_periodic_line(2U);
+    test_invalid_quality = true;
+    test_sample_time = cp56time2a_make(12345U, 12U, 13U, 1U, 19U, 10U, 26U);
+    start_link();
+    iec104_tick();
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(4U, tx_count);
+    for (size_t index = 0U; tx_count > index; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT8(COT_SPONTANEOUS, frame_asdu_cot(tx_log[index]));
+        TEST_ASSERT_EQUAL_UINT8(7U, tx_log[index][9]);
+        TEST_ASSERT_EQUAL_UINT8(3U, tx_log[index][7] & 0x7FU);
+        if (0U == index)
+        {
+            TEST_ASSERT_EQUAL_UINT8(M_ME_TF_1, tx_log[index][6]);
+            const m_me_tf_1_t *objects =
+                (const m_me_tf_1_t *)&tx_log[index][DATA_START_IDX];
+            TEST_ASSERT_FLOAT_WITHIN(0.001F, 20.0F, objects[0].value);
+            TEST_ASSERT_EQUAL_UINT32(1020U,
+                iec104_ioa_3byte_to_uint32(objects[0].ioa));
+            TEST_ASSERT_TRUE(objects[2].quality.invalid);
+            TEST_ASSERT_EQUAL_MEMORY(&test_sample_time,
+                &objects[0].timestamp, sizeof(test_sample_time));
+        }
+        else
+        {
+            TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, tx_log[index][6]);
+            const m_sp_tb_1_t *objects =
+                (const m_sp_tb_1_t *)&tx_log[index][DATA_START_IDX];
+            TEST_ASSERT_TRUE(objects[2].siq.invalid);
+            TEST_ASSERT_EQUAL_UINT32((index + 1U) * 1000U + 20U,
+                iec104_ioa_3byte_to_uint32(objects[0].ioa));
+            TEST_ASSERT_EQUAL_MEMORY(&test_sample_time,
+                &objects[0].timestamp, sizeof(test_sample_time));
+        }
+    }
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(4U, tx_count);
+    feed_s_frame(iec104_get_send_sn());
+    tx_clear();
+    iec104_tick();
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(4U, tx_count);
+    const m_me_tf_1_t *repeated =
+        (const m_me_tf_1_t *)&tx_log[0][DATA_START_IDX];
+    TEST_ASSERT_EQUAL_MEMORY(&test_sample_time, &repeated[0].timestamp,
+                             sizeof(test_sample_time));
+}
+
+void test_periodic_window_one_resumes_every_line_and_family_without_duplicates(void)
+{
+    setup_periodic(1U, 1U);
+    for (uint32_t line = 0U; MAX_POWER_LINE_COUNT > line; line++)
+    {
+        configure_periodic_line(line);
+    }
+    start_link();
+    iec104_tick();
+    libiec104_poll();
+    for (uint16_t index = 1U; 4U * MAX_POWER_LINE_COUNT > index; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT16(index, tx_count);
+        feed_s_frame(iec104_get_send_sn());
+    }
+    TEST_ASSERT_EQUAL_UINT16(4U * MAX_POWER_LINE_COUNT, tx_count);
+    for (size_t index = 0U; tx_count > index; index++)
+    {
+        TEST_ASSERT_EQUAL_UINT8(COT_SPONTANEOUS, frame_asdu_cot(tx_log[index]));
+        TEST_ASSERT_EQUAL_UINT8((MAX_POWER_LINE_COUNT > index) ?
+            M_ME_TF_1 : M_SP_TB_1, tx_log[index][6]);
+        const uint32_t base = (uint32_t)(index / MAX_POWER_LINE_COUNT + 1U);
+        const uint32_t line = (uint32_t)(index % MAX_POWER_LINE_COUNT);
+        const uint32_t ioa = (uint32_t)tx_log[index][DATA_START_IDX] |
+            ((uint32_t)tx_log[index][DATA_START_IDX + 1U] << 8U) |
+            ((uint32_t)tx_log[index][DATA_START_IDX + 2U] << 16U);
+        TEST_ASSERT_EQUAL_UINT32(base * 1000U + line * 10U, ioa);
+    }
+}
+
+void test_periodic_transport_rejection_keeps_cursor_and_reset_cancels_cycle(void)
+{
+    setup_periodic(64U, 2U);
+    mock_breaker_set_line_in_use(0U, true);
+    start_link();
+    transport_budget = 0;
+    iec104_tick();
+    iec104_tick();
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    transport_budget = 1;
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(M_ME_TF_1, tx_log[0][6]);
+    transport_budget = -1;
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(4U, tx_count);
+    iec104_reset();
+    start_link();
+    iec104_tick();
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
 
 void test_startdt_brings_link_up(void)
 {
