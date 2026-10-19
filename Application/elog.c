@@ -496,6 +496,15 @@ const char *elog_info_to_text(const elog_entry_t *entry)
             xsnprintf(text, sizeof(text), "cold boot attempt %u", info[0]);
             break;
 
+        case ELOG_UART_TX_RECOVERY:
+            xsnprintf(text, sizeof(text),
+                      "UART%u %s uart=0x%08lX dma=0x%08lX",
+                      (unsigned)info[0],
+                      (0U != info[1]) ? "recovered" : "failed",
+                      (unsigned long)elog_rd_be32(&info[2]),
+                      (unsigned long)elog_rd_be32(&info[6]));
+            break;
+
         case ELOG_GSM_WTD_LIVENESS:
             xsnprintf(text, sizeof(text), "silent %us, recovery %u",
                       (unsigned)((info[0] << 8) | info[1]), info[2]);
@@ -1006,3 +1015,45 @@ void elog_log_web_login_fail(uint32_t client_ip)
         burst = 0U;
     }
 }
+
+void elog_log_uart_recovery(uint8_t port, bool recovered,
+                            uint32_t uart_error, uint32_t dma_error)
+{
+    static uint32_t last_tick[2];
+    static bool last_result[2];
+    static uint8_t logged_mask;
+    size_t index;
+    if (1U == port)
+    {
+        index = 0U;
+    }
+    else if (4U == port)
+    {
+        index = 1U;
+    }
+    else
+    {
+        return;
+    }
+    const uint8_t bit = (uint8_t)(1U << index);
+    const uint32_t now = bsp_get_tick();
+    if ((0U != (logged_mask & bit)) &&
+        (recovered == last_result[index]) &&
+        ((now - last_tick[index]) < 60000U))
+    {
+        return;
+    }
+    uint8_t info[16] = {0};
+    info[0] = port;
+    info[1] = recovered ? 1U : 0U;
+    elog_pack_u32_be(&info[2], uart_error);
+    elog_pack_u32_be(&info[6], dma_error);
+    elog_add(ELOG_UART_TX_RECOVERY,
+             recovered ? ELOG_LEVEL_WARN : ELOG_LEVEL_ERROR,
+             info, sizeof(info));
+    logged_mask |= bit;
+    last_tick[index] = now;
+    last_result[index] = recovered;
+}
+
+/*** end of file ***/

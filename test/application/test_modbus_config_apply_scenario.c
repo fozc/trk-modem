@@ -121,6 +121,8 @@ static void set_config(uint32_t baud, uint8_t stop)
 
 void setUp(void)
 {
+    elog_log_uart_recovery_Ignore();
+    uart_abort_tx_IgnoreAndReturn(true);
     fake_tick = 0U;
     response_len = 0U;
     memset(response, 0, sizeof(response));

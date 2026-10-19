@@ -149,6 +149,8 @@ static uint16_t resp_reg(size_t index)
 
 void setUp(void)
 {
+    elog_log_uart_recovery_Ignore();
+    uart_abort_tx_IgnoreAndReturn(true);
     fake_tick = 0U;
     dma_calls = 0U;
     response_len = 0U;

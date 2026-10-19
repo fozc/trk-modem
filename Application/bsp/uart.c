@@ -6,7 +6,9 @@
  *              fatihozcan@gmail.com
  */
 #include "uart.h"
+#include "elog.h"
 #include "main.h"
+#include "stm32u3xx_hal.h"
 #include "stm32u3xx_ll_usart.h"
 #include "stm32u3xx_ll_rcc.h"
 
@@ -43,6 +45,78 @@ static inline USART_TypeDef* get_uart_instance(uart_port_t port)
     if (port >= UART_PORT_MAX || uart_map[port].instance == NULL)
         return NULL;
     return uart_map[port].instance;
+}
+
+bool uart_abort_tx(uart_port_t port)
+{
+    extern UART_HandleTypeDef huart1;
+    extern UART_HandleTypeDef huart4;
+    UART_HandleTypeDef *handle;
+    IRQn_Type irq;
+
+    switch (port)
+    {
+        case UART_1:
+            handle = &huart1;
+            irq = GPDMA1_Channel1_IRQn;
+            break;
+        case UART_4:
+            handle = &huart4;
+            irq = GPDMA1_Channel2_IRQn;
+            break;
+        default:
+            return false;
+    }
+    DMA_HandleTypeDef *dma = handle->hdmatx;
+    if (NULL == dma)
+    {
+        elog_log_uart_recovery((uint8_t)((uint8_t)port + 1U), false,
+                                handle->ErrorCode, 0U);
+        return false;
+    }
+    if ((HAL_UART_STATE_READY == handle->gState) &&
+        (HAL_DMA_STATE_READY == dma->State))
+    {
+        return true;
+    }
+    if ((HAL_OK == HAL_UART_AbortTransmit(handle)) &&
+        (HAL_DMA_STATE_READY == dma->State))
+    {
+        return true;
+    }
+
+    /* Abort has disabled UART TX IRQs and DMAT. Only this channel's ISR
+     * still owns DMA state. SysTick and UART RX must remain enabled while
+     * HAL waits. DeInit resets the channel and clears flags/callbacks;
+     * it also unlinks Parent. Both MSP channels use normal/nonprivileged
+     * mode, so their saved Init settings can be reused unchanged.
+     */
+    const uint32_t uart_error = handle->ErrorCode;
+    const uint32_t dma_error = dma->ErrorCode;
+    const bool irq_was_enabled = (0U != NVIC_GetEnableIRQ(irq));
+    if (irq_was_enabled)
+    {
+        NVIC_DisableIRQ(irq);
+    }
+    bool recovered = false;
+    if (HAL_OK == HAL_DMA_DeInit(dma))
+    {
+        dma->Parent = handle;
+        if (HAL_OK == HAL_DMA_Init(dma))
+        {
+            /* DMAT is clear: only flush/finish UART TX abort now. */
+            recovered = (HAL_OK == HAL_UART_AbortTransmit(handle));
+        }
+    }
+    if (irq_was_enabled)
+    {
+        NVIC_EnableIRQ(irq);
+    }
+    elog_log_uart_recovery((uint8_t)((uint8_t)port + 1U), recovered,
+                            uart_error, dma_error);
+    /* TODO: Evaluate automatic system reset after failed local recovery.
+     * Current user decision is elog only; reset needs a new approval. */
+    return recovered;
 }
 
 void uart_send_byte(uart_port_t port, uint8_t data)
@@ -222,7 +296,7 @@ bool uart_set_line_config(uart_port_t port, uint32_t baudrate,
     return true;
 }
 
-/* Donanıma Özel Fonksiyonlar */
+/* Hardware-specific functions */
 
 #ifdef USART1
 void uart1_send(uint8_t data)

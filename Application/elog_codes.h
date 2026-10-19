@@ -55,6 +55,7 @@ typedef enum
     ELOG_PWR_SCP_ALARM         = 53,  /* SCP event + current/previous mask */
 
 	// Communication codes (60..69)
+    ELOG_UART_TX_RECOVERY      = 60,
 
 	// Audit codes (70..79)
 	ELOG_WEB_LOGIN_FAIL        = 70,  /* info: ip(4) burst_count(2) */
@@ -101,6 +102,7 @@ static inline const char* elog_code_to_string(elog_code_t code)
 		case ELOG_PWR_SCP_ALARM: return "PWR_SCP_ALARM";
 		case ELOG_PWR_PANIC:              return "PWR_PANIC";
 		case ELOG_WEB_LOGIN_FAIL:         return "WEB_LOGIN_FAIL";
+        case ELOG_UART_TX_RECOVERY: return "UART_TX_RECOVERY";
 
 		default: return "UNKNOWN_CODE";
 	}

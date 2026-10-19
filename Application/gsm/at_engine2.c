@@ -242,9 +242,14 @@ static void at_engine_send_process(void)
 		 * here because it is only set once a DMA TX has actually started. */
 		if((bsp_get_tick() - at_engine.send_time) >= AT_ENGINE_TX_TIMEOUT_MS)
 		{
-			extern UART_HandleTypeDef huart1;
-			(void)HAL_UART_AbortTransmit(&huart1);
-			s_tx_done_flag = 0U;
+            if (!uart_abort_tx(UART_1))
+            {
+                at_engine.state = AT_ENGINE_DONE;
+                at_engine.result = AT_ENGINE_RESULT_TIMEOUT;
+                log_response("TX ABORT FAILED");
+                return;
+            }
+            s_tx_done_flag = 0U;
 			CSLOG_ERR("AT [DMA TX TIMEOUT]\r\n");
 		}
 		else
@@ -864,13 +869,17 @@ at_engine_result_t at_engine_get_result(void)
 
 void at_engine_reset(void)
 {
-	/* Abort any in-flight DMA TX so HAL returns to READY state. */
-	if (s_tx_done_flag != 0U)
-	{
-		extern UART_HandleTypeDef huart1;
-		(void)HAL_UART_AbortTransmit(&huart1);
-		s_tx_done_flag = 0U;
-	}
+    /* Check the actual HAL channel even after a failed start cleared the
+     * application flag. A failed recovery must not report TX complete. */
+    if (uart_abort_tx(UART_1))
+    {
+        s_tx_done_flag = 0U;
+    }
+    else
+    {
+        s_tx_done_flag = 1U;
+        CSLOG_ERR("AT [TX RECOVERY FAILED]\r\n");
+    }
 
 	at_engine.state = AT_ENGINE_IDLE;
 	at_engine.result = AT_ENGINE_RESULT_NONE;
