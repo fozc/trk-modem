@@ -59,16 +59,11 @@ def parse_evtlog_status(text):
 
 
 def parse_rf_online(text):
-    """RF oturumunun canli olup olmadigi (bool veya None).
+    """Observed MH response, or unknown; not per-phase LIVE freshness.
 
-    'RF Link: BOSTA' -> False: hub'a periyodik GET_STATUS gidiyor OLABILIR
-    ama canli veri oturumu yok (hub up= satiri yine gorunur - canli
-    yakalamada birlikte goruldu). Oturum acik gorunuyorsa True, sinyal
-    yoksa None.
+    rf_shell prints BOSTA/MESGUL from scp_is_free(): command occupancy
+    does not prove that RF is offline. Missing hub output is unknown.
     """
-    link = re.search(r"RF Link\s*:\s*(\S+)", text)
-    if link and link.group(1).upper() in ("BOSTA", "BOS"):
-        return False
     if re.search(r"hub\s+up=\d+s", text, re.IGNORECASE):
         return True
     return None

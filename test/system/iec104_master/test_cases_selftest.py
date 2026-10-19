@@ -128,8 +128,8 @@ def make_ctx(scripted_frames):
     return ctx, currents, states
 
 
-def correct_station_script(ca, currents, states):
-    """ACT_CON -> currents (M_ME_TF_1) -> states (M_SP_TB_1) -> ACT_TERM.
+def correct_station_script(ca, currents, states, timed=False):
+    """ACT_CON -> untimed currents/states -> ACT_TERM (GI20).
 
     Objects are chunked 3-per-frame like the device does (APDU <= 253 B).
     """
@@ -147,9 +147,12 @@ def correct_station_script(ca, currents, states):
                                   b"".join(chunk)))
             vs += 1
 
-    add_frames(36, [me_tf(ioa, 0.0, 0x80)
-                    for ioa in sorted(currents)])
-    add_frames(30, [sp_tb(ioa, 0x80) for ioa in sorted(states)])
+    add_frames(36 if timed else 13,
+               [me_tf(ioa, 0.0, 0x80) if timed else
+                me_tf(ioa, 0.0, 0x80)[:-7] for ioa in sorted(currents)])
+    add_frames(30 if timed else 1,
+               [sp_tb(ioa, 0x80) if timed else sp_tb(ioa, 0x80)[:-7]
+                for ioa in sorted(states)])
     frames.append(i_frame(vs, 0, asdu_header(
         apdu.TYPE_C_IC_NA_1, 10, 0, ca, ic_body(20))))
     return frames
@@ -171,6 +174,13 @@ def main():
     check("i02_correct_script_passes", verdict == "PASS",
           "verdict=%s lines=%s" % (verdict, lines))
 
+    # GI20 must reject the old timestamped response, even with all IOAs.
+    load_script(ctx.master, correct_station_script(1, currents, states,
+                                                   timed=True))
+    verdict, lines = cases.i02_gi_station(ctx)
+    check("i02_timestamped_station_fails", verdict == "FAIL" and
+          "tip" in " | ".join(lines), str(lines))
+
     # --- review repro 1: wrong CA (99) --------------------------------
     ctx, _, _ = make_ctx([])
     load_script(ctx.master, correct_station_script(99, currents, states))
@@ -180,12 +190,28 @@ def main():
           verdict == "FAIL" and "CA=99" in joined,
           "verdict=%s lines=%s" % (verdict, lines))
 
+    # A separately proven offline state must still require invalid data.
+    frames = correct_station_script(1, currents, states)
+    patched = []
+    for frame in frames:
+        raw = bytearray(frame[2])
+        if raw[6] == apdu.TYPE_M_ME_NC_1:
+            for index in range(raw[7]):
+                raw[19 + index * 8] = 0
+        patched.append((frame[0], frame[1], bytes(raw),
+                        apdu.parse_apdu(bytes(raw))))
+    ctx, _, _ = make_ctx([])
+    load_script(ctx.master, patched)
+    verdict, lines = cases.i02_gi_station(ctx)
+    check("i02_proven_offline_requires_iv",
+          verdict == "FAIL" and "IV" in " | ".join(lines), str(lines))
+
     # --- review repro 2: per-query COT 24 in station reply ------------
     frames = correct_station_script(1, currents, states)
     patched = []
     for frame in frames:
         raw = bytearray(frame[2])
-        if raw[6] in (36, 30):
+        if raw[6] in (13, 1):
             raw[8] = 24
         patched.append((frame[0], frame[1], bytes(raw),
                         apdu.parse_apdu(bytes(raw))))
@@ -265,6 +291,14 @@ def main():
     # the cut drops the link, window2 must deliver the rest.
     import console_io
 
+    check("rf_idle_is_not_offline",
+          console_io.parse_rf_online("RF Link: BOSTA") is None)
+    check("rf_busy_is_not_online",
+          console_io.parse_rf_online("RF Link: MESGUL") is None)
+    check("rf_hub_reply_with_idle_is_observed",
+          console_io.parse_rf_online(
+              "RF Link: BOSTA\nhub up=123s fw=022555bf") is True)
+
     def replay_asdu(seq):
         current = 100.0 + (seq % 900) / 10.0
         duration = float(100 + (seq % 50) * 20)
@@ -272,7 +306,7 @@ def main():
                 me_tf(1030, current, 0x00) +
                 me_tf(1031, duration, 0x00))
 
-    def i07_ctx(window2_seqs):
+    def i07_ctx(window2_seqs, existing_pending=0):
         ctx, _, _ = make_ctx([])
         ctx.args.mutate_eventlog = True
         ctx.console = object()          # guard only; run_cmd is patched
@@ -287,9 +321,11 @@ def main():
                             frame[3]))
         ctx.master.frames = stamped
         statuses = [
-            "kayitli: 100, next_seq: 200, unsent : 0 [0..0]",
+            "kayitli: 100, next_seq: 200, unsent : %d [0..199]" %
+            existing_pending,
             "",
-            "kayitli: 105, next_seq: 205, unsent : 5 [200..204]",
+            "kayitli: 105, next_seq: 205, unsent : %d [0..204]" %
+            (existing_pending + 5),
             "kayitli: 105, next_seq: 205, unsent : 0 [0..0]",
         ]
         state = {"index": 0}
@@ -318,6 +354,23 @@ def main():
     check("replay_collection_budget_scales_with_ack_count",
           gap > ctx.master.confirm_interval_s and budget >= 20 * gap,
           "gap=%s collection=%s" % (gap, budget))
+
+    ctx, real_run_cmd = i07_ctx([202, 201, 200], existing_pending=14)
+    real_timing = cases._replay_timing
+    budget_counts = []
+
+    def capture_timing(master, count):
+        budget_counts.append(count)
+        return real_timing(master, count)
+
+    cases._replay_timing = capture_timing
+    try:
+        verdict, lines = cases.i07_replay_retention(ctx)
+    finally:
+        console_io.run_cmd = real_run_cmd
+        cases._replay_timing = real_timing
+    check("i07_budget_includes_existing_backlog",
+          verdict == "PASS" and budget_counts == [19], str(budget_counts))
 
     ctx, real_run_cmd = i07_ctx([202, 200])       # seq 201 lost forever
     verdict, lines = cases.i07_replay_retention(ctx)
@@ -362,7 +415,7 @@ def main():
           " | ".join(lines),
           "verdict=%s lines=%s" % (verdict, lines))
 
-    total = 13
+    total = 19
     print("\n%d/%d OK" % (total - len(FAILURES), total))
     return 1 if FAILURES else 0
 
