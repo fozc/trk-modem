@@ -599,6 +599,22 @@ static bool feeder_has_assignments(const rf_feeder_t *feeder)
            !rf_eui64_is_zero(feeder->t_eui64);
 }
 
+static bool is_known_legacy_device(const uint8_t eui64[8])
+{
+    for (size_t line = 0U; MAX_POWER_LINE_COUNT > line; line++)
+    {
+        const rf_feeder_t *current = rf_store_get((feeder_id_t)line);
+        if ((0U == current->config.zone_id) &&
+            ((0 == memcmp(current->r_eui64, eui64, 8U)) ||
+             (0 == memcmp(current->s_eui64, eui64, 8U)) ||
+             (0 == memcmp(current->t_eui64, eui64, 8U))))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool target_zone_matches(void)
 {
     bool has_zone = inventory_zone_set;
@@ -645,6 +661,19 @@ bool rf_inventory_prepare_save(void)
         const rf_feeder_t *current = rf_store_get((feeder_id_t)line);
         const rf_feeder_t *next = rf_store_get_mutable((feeder_id_t)line);
         const bool assigned = feeder_has_assignments(current);
+        if (0U == next->config.zone_id)
+        {
+            const uint8_t *members[3] =
+                {next->r_eui64, next->s_eui64, next->t_eui64};
+            for (size_t phase = 0U; 3U > phase; phase++)
+            {
+                if (!rf_eui64_is_zero(members[phase]) &&
+                    !is_known_legacy_device(members[phase]))
+                {
+                    return false;
+                }
+            }
+        }
         if ((assigned && (current->config.zone_id != next->config.zone_id)) ||
             (next->in_use && (0U == next->config.zone_id) &&
              (!assigned || (0U != current->config.zone_id))))
