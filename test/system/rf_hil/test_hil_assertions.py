@@ -31,7 +31,7 @@ class AlarmConsole:
         elif command.startswith("iec104evtlog dump"):
             text = "seq=21 alarm F1 Ph1 active=%d" % self.alarm
         else:
-            text = "RF VAR, has_live=1, trip_failed=0, latched=%d" % self.latched
+            text = "  Acma alarmi        : 0 (latched=%d)" % self.latched
         match = re.search(pattern, text)
         return (0, text, match) if match else None
 
