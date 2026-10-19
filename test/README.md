@@ -9,6 +9,25 @@ doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
 
+## 19.10.2026 Modbus TX DMA yerel toparlanması
+
+**Amaç:** Hat ayarı uygulanırken abort timeout sonrasında kanalın yerel
+toparlanmasını ve sonraki gerçek FC06 yanıtını doğrulamak.
+
+**Kullanım yeri:** `application/test_modbus_dma_tx_scenario.c` gerçek
+byte-input, üretim callback ve DMA write yolunu kullanır. Reset/Init hata
+sonuçları, eski ayara geri dönüş, slave-ID sırası, eksik DMA handle ve
+IRQ'nun önceki durumu sınanır. DMA dosyasında net 7 yeni regresyon vardır.
+HAL karşılıkları DMAT, ERROR/BUSY_TX ve Parent bağlantısının ilgili
+ön koşul/yan etkilerini korur; fiziksel DMA hatası üretilmez.
+
+Son merkezi `ruby -S ceedling test:all` koşusu **1547/1547**, 0 fail/ignore;
+`build/modbus-recovery-full-unit.log`. NVRAM integration 521 passed/0 failed.
+ARM Release, paket self-check ve değişen modülün strict C11/Werror derlemesi
+geçti. Üretim davranışı ve kalan T1.5/echo/fiziksel kabul sınırları
+[çözüm planı bölüm 6](../doc/MODBUS_CORE_COZUM_PLANI_2026-10-16.md#6-uart4-tx-dma-yerel-toparlanması--19102026)
+içindedir. Cihaza yükleme veya fiziksel ölçüm yapılmadı.
+
 ## 19.10.2026 bağımsız Bolatex doğrulaması
 
 Son merkezi Ceedling koşusu **1528/1528**, failure/ignored=0'dır.
