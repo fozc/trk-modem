@@ -173,6 +173,7 @@ def run_case(name, spec, args, outdir):
             # without it all CSLOG RF frame output is suppressed.
             session.send("cslog on")
             ctx = CaseContext(sim, session, case_dir, trace_path)
+            ctx.iec104_host = getattr(args, "iec104_host", None)
             try:
                 snapshots = {"start": _snapshot(sim)}
                 detail = spec["run"](ctx)
@@ -303,6 +304,8 @@ def main():
                              "(they are DEFERRED)")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--outdir", default=None)
+    parser.add_argument("--104-host", dest="iec104_host", default=None,
+                        help="Explicit IEC104 target for RF-to-SCADA cases")
     parser.add_argument("--firmware-image", help="Installed application EFW artifact")
     parser.add_argument("--transport-profile", type=int, choices=(0, 1),
                         help="Expected compiled DUT profile: 0 USART3, 1 RS485 bench")
