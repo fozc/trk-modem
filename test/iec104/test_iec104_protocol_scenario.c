@@ -398,6 +398,21 @@ void test_periodic_disabled_and_before_deadline_emit_nothing(void)
     TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
 }
 
+void test_missing_config_defaults_to_disabled_periodic_refresh(void)
+{
+    setup(64U, 32U);
+    iec104_init(&test_io, NULL);
+    configure_periodic_line(0U);
+    start_link();
+    for (uint8_t second = 0U; 61U > second; second++)
+    {
+        iec104_tick();
+    }
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
 void test_periodic_publishes_only_active_lines_with_original_quality_time(void)
 {
     setup_periodic(64U, 1U);

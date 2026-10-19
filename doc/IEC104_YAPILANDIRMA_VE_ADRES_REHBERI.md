@@ -41,7 +41,7 @@ işleri `iec104_process.c`/GSM; paketler `libiec104`; grup 3/4 süreçleri
 | Port | 2404 | IEC104 portu |
 | CommonAddr | 1 | Ortak adres |
 | OriginatorAddr | 1 | Gönderici adresi |
-| PeriodicSend | 900 | Saniye; gerçek periyodik veri üretimi aşağıda açıklanır |
+| PeriodicSend | 0 | Varsayılan kapalı; saniye cinsinden aralık aşağıda açıklanır |
 | T0 / T1 / T2 / T3 | 90 / 45 / 30 / 60 | Saniye |
 | K / W | 64 / 24 | Gönderim/onay pencereleri |
 | SBO | false | Select-before-operate etkinliği |
@@ -234,6 +234,12 @@ protokolde COT=1 cyclic yayın olarak adlandırılmamalıdır.
 
 `PeriodicSend` saniye cinsindendir; 0 yayını kapatır. STARTDT açıkken
 ayarlı aralık sonunda yalnız IEC104 için etkin fiderler gönderilir.
+Fabrika varsayılanı 0'dır. Geçerli bellekte daha önce kaydedilmiş bir
+aralık varsa firmware güncellemesi bu tercihi sıfırlamaz.
+Web'de IEC104 sayfasındaki "Periyodik gönderim aralığı (s; 0=kapalı)"
+alanından 0–86400 arası değer kaydedilir. Etkin SCADA oturumunda kaydedilen
+IEC104 ayarı mevcut bağlantı kapandıktan sonra uygulanır; kaydetme anında
+mevcut yayın kesildiği varsayılmamalıdır.
 
 | Veri | ASDU | Neden | Zaman/kalite |
 |---|---|---|---|
