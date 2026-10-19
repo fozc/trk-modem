@@ -2,7 +2,8 @@
  * uart.h
  *
  *  Created on: May 5, 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef BSP_UART_H_
@@ -32,6 +33,13 @@ void uart_send_byte(uart_port_t port, uint8_t data);
 void uart_send_buffer(uart_port_t port, const char *buffer, int len);
 int  uart_is_transmit_complete(uart_port_t port);
 void uart_set_rx_interrupt(uart_port_t port, uart_rx_interrupt_state_t state);
+
+/**
+ * @brief Stop TX on UART_1/UART_4, recovering its DMA channel if needed.
+ * Main context only. Preserves the channel IRQ enable state and RX setup.
+ * Returns false if the hardware could not be stopped/reinitialized.
+ */
+bool uart_abort_tx(uart_port_t port);
 
 /**
  * @brief Transmit a buffer over a half-duplex RS-485 link with direction control.
@@ -118,3 +126,5 @@ int  uart_lp_is_transmit_complete(uart_lp_port_t port);
 void uart_lp_set_rx_interrupt(uart_lp_port_t port, uart_lp_rx_interrupt_state_t state);
 
 #endif /* BSP_UART_H_ */
+
+/*** end of file ***/

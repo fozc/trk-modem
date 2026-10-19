@@ -19,6 +19,7 @@
 #include "rf_hil_transport.h"
 #include "bsp.h"
 #include "reboot.h"
+#include "elog.h"
 #include "relay.h"
 #include "rtc.h"
 #include "nvram.h"
@@ -29,6 +30,14 @@
 #include "main.h"
 #include "stm32u3xx_hal.h"
 #include <string.h>
+
+#ifndef MODBUS_TX_USE_DMA
+#define MODBUS_TX_USE_DMA 1
+#endif
+
+#if (MODBUS_TX_USE_DMA != 0) && !RF_SCP_OVER_MODBUS_PORT
+static void modbus_check_tx_timeout(void);
+#endif
 
 /*
  * Feeder block address space (fixed map, modbus_map.h). Every address inside
@@ -47,6 +56,9 @@ static uint32_t rf_sample_ms;
 
 static modbus_poll_result_t modbus_poll(modbus_slave_t *slave)
 {
+#if (MODBUS_TX_USE_DMA != 0) && !RF_SCP_OVER_MODBUS_PORT
+    modbus_check_tx_timeout();
+#endif
     rf_sample_ms = HAL_GetTick();
     /* MB-08: each FC03 response starts with fresh time/data snapshots. */
     modbus_system_stats_invalidate_snapshot();
@@ -133,6 +145,9 @@ static uint8_t s_modbus_tx_dma_buf[MODBUS_BUFFER_SIZE];
 /* Set while a DMA response is in flight on the RS-485 bus. Cleared from the
  * UART4 transmission-complete callback once the last byte has been shifted out. */
 static volatile bool s_modbus_tx_busy = false;
+/* Main-context TX deadline inputs; the ISR only releases busy. */
+static uint32_t tx_started_ms;
+static uint16_t tx_frame_len;
 #endif /* MODBUS_TX_USE_DMA */
 
 static void uart_write(const uint8_t *data, uint16_t len)
@@ -153,6 +168,8 @@ static void uart_write(const uint8_t *data, uint16_t len)
 
     (void)memcpy(s_modbus_tx_dma_buf, data, len);
     s_modbus_tx_busy = true;
+    tx_started_ms = HAL_GetTick();
+    tx_frame_len = len;
 
     /* Half-duplex RS-485: drive the bus via the MODBUS_OE pin (active high).
      * The frame is sent by DMA; the OE pin is released from
@@ -398,60 +415,39 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
 #if (MODBUS_TX_USE_DMA != 0) && !RF_SCP_OVER_MODBUS_PORT
 static bool modbus_abort_tx(void)
 {
-    DMA_HandleTypeDef *dma = huart4.hdmatx;
-
-    if (!s_modbus_tx_busy &&
-        (HAL_UART_STATE_READY == huart4.gState) &&
-        (NULL != dma) && (HAL_DMA_STATE_READY == dma->State))
-    {
-        return true;
-    }
-
-    HAL_StatusTypeDef result = HAL_UART_AbortTransmit(&huart4);
     gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
+    const bool stopped = uart_abort_tx(UART_4);
     s_modbus_tx_busy = false;
-    if ((HAL_OK == result) && (NULL != dma) &&
-        (HAL_DMA_STATE_READY == dma->State))
-    {
-        return true;
-    }
-    if (NULL == dma)
-    {
-        return false;
-    }
+    return stopped;
+}
 
-    /* AbortTransmit cleared DMAT and TX interrupts before its timeout.
-     * Only Channel2's ISR can still access this DMA handle. Keep SysTick
-     * and UART RX running while HAL waits for the channel to stop.
-     * DeInit uses SUSP|RESET and verifies EN=0, clears flags/callbacks
-     * and unlinks Parent. Init reuses CubeMX's normal-mode parameters;
-     * DeInit's nonprivileged attribute matches UART4's MSP configuration.
-     * No whole-controller reset or software READY forcing is needed.
-     */
-    const bool irq_was_enabled =
-        (0U != NVIC_GetEnableIRQ(GPDMA1_Channel2_IRQn));
-    if (irq_was_enabled)
+static void modbus_check_tx_timeout(void)
+{
+    if (s_modbus_tx_busy)
     {
-        NVIC_DisableIRQ(GPDMA1_Channel2_IRQn);
-    }
-
-    bool recovered = false;
-    if (HAL_OK == HAL_DMA_DeInit(dma))
-    {
-        dma->Parent = &huart4;
-        if (HAL_OK == HAL_DMA_Init(dma))
+        /* One start bit, eight data bits and the configured stop bits.
+         * Allow the core's conservative frame-silence interval after the
+         * nominal wire time. The existing process timer checks the bound;
+         * no retransmit is generated here (the master owns retries).
+         */
+        const uint32_t bit_ms = (uint32_t)tx_frame_len *
+                               (9U + (uint32_t)active_stop_bits) * 1000U;
+        uint32_t timeout_ms = bit_ms / active_baud;
+        if (0U != (bit_ms % active_baud))
         {
-            /* DMAT is already clear: finish UART TX abort/flush only,
-             * after the hardware channel has actually been reset. */
-            recovered = (HAL_OK == HAL_UART_AbortTransmit(&huart4));
+            timeout_ms++;
+        }
+        timeout_ms += s_modbus.frame_silence_ms;
+        if ((HAL_GetTick() - tx_started_ms) >= timeout_ms)
+        {
+            const bool stopped = modbus_abort_tx();
+            elog_log_uart_recovery(4U, stopped, 0U, 0U);
+            CSLOG_ERR("MODBUS: TX completion timeout, recovery=%u\r\n",
+                      (unsigned)stopped);
         }
     }
-    if (irq_was_enabled)
-    {
-        NVIC_EnableIRQ(GPDMA1_Channel2_IRQn);
-    }
-    return recovered;
 }
+
 #endif
 
 /**
@@ -587,12 +583,22 @@ PROCESS_THREAD(modbus_process, ev, data)
 			else if (result == MODBUS_POLL_RECEIVING)
 			{
 				// Frame still arriving: re-poll soon to detect its end.
-				etimer_set(&rx_timer, MODBUS_RX_GAP_TICKS);
 			}
 			else
 			{
 				// Bus idle: nothing to do.
 			}
+
+            /* Reuse the RX re-poll timer while a DMA reply is pending,
+             * including when the master sends no further requests. */
+            if ((MODBUS_POLL_RECEIVING == result)
+#if (MODBUS_TX_USE_DMA != 0)
+                || s_modbus_tx_busy
+#endif
+               )
+            {
+                etimer_set(&rx_timer, MODBUS_RX_GAP_TICKS);
+            }
 		}
 	}
 

@@ -22,6 +22,7 @@ typedef struct
 {
     volatile uint32_t State;   /* HAL_DMA_STATE_* (model for abort) */
     void *Parent;
+    volatile uint32_t ErrorCode;
 } DMA_HandleTypeDef;
 
 typedef struct
@@ -54,6 +55,7 @@ HAL_StatusTypeDef HAL_UART_AbortTransmit(UART_HandleTypeDef *huart);
 HAL_StatusTypeDef HAL_DMA_DeInit(DMA_HandleTypeDef *hdma);
 HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *hdma);
 
+#ifndef UART_TX_HOST_TEST
 /* USART peripheral stub for the TX-start flag clear on the host. */
 typedef struct
 {
@@ -75,6 +77,7 @@ static inline void LL_USART_SetStopBitsLength(test_usart_t *usart,
 {
     (void)usart; (void)bits;
 }
+#endif
 
 /* NVIC model for host scenarios that compile process code using the
  * UART4 ownership critical section. Host runs are single-threaded, so
@@ -83,10 +86,13 @@ static inline void LL_USART_SetStopBitsLength(test_usart_t *usart,
 typedef enum
 {
     UART4_IRQn = 64,
+    GPDMA1_Channel1_IRQn = 30,
     GPDMA1_Channel2_IRQn = 31
 } test_irqn_t;
+typedef test_irqn_t IRQn_Type;
 
-#ifdef MODBUS_DMA_RECOVERY_HOST_TEST
+#if defined(MODBUS_DMA_RECOVERY_HOST_TEST) || \
+    defined(UART_DMA_RECOVERY_HOST_TEST)
 uint32_t NVIC_GetEnableIRQ(test_irqn_t irq);
 void NVIC_DisableIRQ(test_irqn_t irq);
 void NVIC_EnableIRQ(test_irqn_t irq);

@@ -7,7 +7,6 @@
  * results, the TC completion chain, DMA-error release and the isolation of
  * the UART4 routing from other UARTs and from receive-side errors.
  */
-#define MODBUS_DMA_RECOVERY_HOST_TEST
 #undef NO_SHELL_LOG
 #include "unity.h"
 #include "mock_bsp.h"
@@ -65,15 +64,10 @@ static DMA_HandleTypeDef dma_tx_handle;
 UART_HandleTypeDef huart4;
 static UART_HandleTypeDef huart_other;
 static HAL_StatusTypeDef dma_start_result;
-static HAL_StatusTypeDef abort_result;
-static HAL_StatusTypeDef dma_deinit_result;
-static HAL_StatusTypeDef dma_init_result;
+static bool recovery_result;
 static uint32_t abort_calls;
-static uint32_t dma_deinit_calls;
-static uint32_t dma_init_calls;
 static bool dma_channel_enabled;
 static bool uart_dma_request_enabled;
-static bool dma_irq_enabled;
 static uint8_t dma_data[MODBUS_BUFFER_SIZE];
 static uint32_t dma_calls;
 static uint16_t dma_last_size;
@@ -118,74 +112,24 @@ HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *huart,
     return HAL_OK;
 }
 
-HAL_StatusTypeDef HAL_UART_AbortTransmit(UART_HandleTypeDef *huart)
+/* BSP boundary: success means hardware was stopped and both handles
+ * are reusable. The actual HAL recovery is tested in test_uart_tx_scenario. */
+static bool abort_tx(uart_port_t port, int call_count)
 {
-    TEST_ASSERT_EQUAL_PTR(&huart4, huart);
+    (void)call_count;
+    TEST_ASSERT_EQUAL(UART_4, port);
     abort_calls++;
-    /* Match local HAL: clear DMAT before attempting DMA abort. Later
-     * calls with DMAT=0 only flush UART TX and restore gState. */
-    if (uart_dma_request_enabled)
+    uart_dma_request_enabled = false;
+    if (!recovery_result)
     {
-        uart_dma_request_enabled = false;
-        if (NULL != huart->hdmatx)
-        {
-            if (HAL_OK != abort_result)
-            {
-                huart->hdmatx->State = HAL_DMA_STATE_ERROR;
-                huart->ErrorCode = HAL_UART_ERROR_DMA;
-                return abort_result;
-            }
-            dma_channel_enabled = false;
-            huart->hdmatx->State = HAL_DMA_STATE_READY;
-        }
+        dma_tx_handle.State = HAL_DMA_STATE_ERROR;
+        return false;
     }
-    huart->gState = HAL_UART_STATE_READY;
-    return HAL_OK;
-}
-
-HAL_StatusTypeDef HAL_DMA_DeInit(DMA_HandleTypeDef *hdma)
-{
-    TEST_ASSERT_EQUAL_PTR(&dma_tx_handle, hdma);
-    TEST_ASSERT_FALSE(dma_irq_enabled);
-    TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
-    dma_deinit_calls++;
-    if (HAL_OK == dma_deinit_result)
-    {
-        dma_channel_enabled = false;
-        hdma->State = HAL_DMA_STATE_RESET;
-        hdma->Parent = NULL;
-    }
-    return dma_deinit_result;
-}
-
-HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *hdma)
-{
-    TEST_ASSERT_EQUAL_PTR(&dma_tx_handle, hdma);
-    TEST_ASSERT_FALSE(dma_irq_enabled);
-    TEST_ASSERT_FALSE(dma_channel_enabled);
-    TEST_ASSERT_EQUAL_UINT32(HAL_DMA_STATE_RESET, hdma->State);
-    dma_init_calls++;
-    hdma->State = (HAL_OK == dma_init_result) ? HAL_DMA_STATE_READY :
-                                             HAL_DMA_STATE_ERROR;
-    return dma_init_result;
-}
-
-uint32_t NVIC_GetEnableIRQ(test_irqn_t irq)
-{
-    TEST_ASSERT_EQUAL_INT(GPDMA1_Channel2_IRQn, irq);
-    return dma_irq_enabled ? 1U : 0U;
-}
-
-void NVIC_DisableIRQ(test_irqn_t irq)
-{
-    TEST_ASSERT_EQUAL_INT(GPDMA1_Channel2_IRQn, irq);
-    dma_irq_enabled = false;
-}
-
-void NVIC_EnableIRQ(test_irqn_t irq)
-{
-    TEST_ASSERT_EQUAL_INT(GPDMA1_Channel2_IRQn, irq);
-    dma_irq_enabled = true;
+    dma_channel_enabled = false;
+    dma_tx_handle.State = HAL_DMA_STATE_READY;
+    dma_tx_handle.Parent = &huart4;
+    huart4.gState = HAL_UART_STATE_READY;
+    return true;
 }
 
 void gpio_set_pin(gpio_port_t port, gpio_pin_t pin, uint8_t val)
@@ -250,19 +194,16 @@ static void simulate_tx_complete(void)
 
 void setUp(void)
 {
+    elog_log_uart_recovery_Ignore();
     modbus_system_stats_invalidate_snapshot_Ignore();
     fake_tick = 0U;
     dma_start_result = HAL_OK;
-    abort_result = HAL_OK;
+    recovery_result = true;
     dma_calls = 0U;
-    dma_deinit_result = HAL_OK;
-    dma_init_result = HAL_OK;
     abort_calls = 0U;
-    dma_deinit_calls = 0U;
-    dma_init_calls = 0U;
+    uart_abort_tx_Stub(abort_tx);
     dma_channel_enabled = false;
     uart_dma_request_enabled = false;
-    dma_irq_enabled = true;
     active_baud = 115200U;
     active_stop_bits = 1U;
     s_modbus_tx_busy = false;
@@ -392,7 +333,7 @@ static void change_config_during_tx(void)
     TEST_ASSERT_TRUE(s_modbus_tx_busy);
     nvram_get_modbus_config_StopIgnore();
     nvram_get_modbus_config_IgnoreAndReturn(&changed_config);
-    abort_result = HAL_TIMEOUT;
+    recovery_result = true;
 }
 
 static void assert_next_response(void)
@@ -421,11 +362,8 @@ void test_abort_timeout_recovers_channel_and_next_request_is_answered(void)
     TEST_ASSERT_EQUAL_INT(0, modbus_process_notify_config_changed());
     TEST_ASSERT_EQUAL_UINT32(9600U, active_baud);
     TEST_ASSERT_EQUAL_UINT8(2U, active_stop_bits);
-    TEST_ASSERT_EQUAL_UINT32(1U, dma_deinit_calls);
-    TEST_ASSERT_EQUAL_UINT32(1U, dma_init_calls);
-    TEST_ASSERT_EQUAL_UINT32(2U, abort_calls);
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
     TEST_ASSERT_EQUAL_PTR(&huart4, dma_tx_handle.Parent);
-    TEST_ASSERT_TRUE(dma_irq_enabled);
     TEST_ASSERT_FALSE(s_modbus_tx_busy);
     TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
     assert_next_response();
@@ -442,76 +380,46 @@ void test_successful_recovery_applies_new_slave_id_after_line_config(void)
     TEST_ASSERT_EQUAL_UINT32(9600U, active_baud);
 }
 
-void test_abort_timeout_preserves_disabled_dma_irq(void)
-{
-    change_config_during_tx();
-    dma_irq_enabled = false;
-    uart_set_line_config_ExpectAndReturn(UART_4, 9600U, 2U, true);
-    TEST_ASSERT_EQUAL_INT(0, modbus_process_notify_config_changed());
-    TEST_ASSERT_FALSE(dma_irq_enabled);
-}
-
 void test_channel_reset_failure_reports_error_and_keeps_active_config(void)
 {
     change_config_during_tx();
     nvram_get_modbus_device_addr_StopIgnore();
     nvram_get_modbus_device_addr_IgnoreAndReturn(2U);
-    dma_deinit_result = HAL_ERROR;
+    recovery_result = false;
     TEST_ASSERT_EQUAL_INT(-1, modbus_process_notify_config_changed());
     TEST_ASSERT_EQUAL_UINT8(1U, s_modbus.slave_id);
     TEST_ASSERT_EQUAL_UINT32(115200U, active_baud);
     TEST_ASSERT_EQUAL_UINT8(1U, active_stop_bits);
-    TEST_ASSERT_EQUAL_UINT32(1U, dma_deinit_calls);
-    TEST_ASSERT_EQUAL_UINT32(0U, dma_init_calls);
     TEST_ASSERT_NOT_EQUAL(HAL_UART_STATE_READY, huart4.gState);
     TEST_ASSERT_NOT_EQUAL(HAL_DMA_STATE_READY, dma_tx_handle.State);
     TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
     TEST_ASSERT_FALSE(s_modbus_tx_busy);
-    TEST_ASSERT_TRUE(dma_irq_enabled);
     exchange();
     TEST_ASSERT_EQUAL_UINT32(1U, dma_calls);
     TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
 }
 
-void test_channel_init_failure_reports_error_without_ready_forcing(void)
-{
-    change_config_during_tx();
-    dma_init_result = HAL_ERROR;
-    TEST_ASSERT_EQUAL_INT(-1, modbus_process_notify_config_changed());
-    TEST_ASSERT_EQUAL_UINT32(115200U, active_baud);
-    TEST_ASSERT_EQUAL_UINT8(1U, active_stop_bits);
-    TEST_ASSERT_EQUAL_UINT32(1U, dma_init_calls);
-    TEST_ASSERT_NOT_EQUAL(HAL_UART_STATE_READY, huart4.gState);
-    TEST_ASSERT_NOT_EQUAL(HAL_DMA_STATE_READY, dma_tx_handle.State);
-    TEST_ASSERT_EQUAL_PTR(&huart4, dma_tx_handle.Parent);
-    TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
-    TEST_ASSERT_FALSE(s_modbus_tx_busy);
-    TEST_ASSERT_TRUE(dma_irq_enabled);
-}
-
 void test_normal_abort_does_not_reinitialize_dma(void)
 {
     change_config_during_tx();
-    abort_result = HAL_OK;
+    recovery_result = true;
     uart_set_line_config_ExpectAndReturn(UART_4, 9600U, 2U, true);
     TEST_ASSERT_EQUAL_INT(0, modbus_process_notify_config_changed());
-    TEST_ASSERT_EQUAL_UINT32(0U, dma_deinit_calls);
-    TEST_ASSERT_EQUAL_UINT32(0U, dma_init_calls);
     assert_next_response();
 }
 
 void test_explicit_apply_after_failed_recovery_can_restore_old_config(void)
 {
     change_config_during_tx();
-    dma_deinit_result = HAL_ERROR;
+    recovery_result = false;
     TEST_ASSERT_EQUAL_INT(-1, modbus_process_notify_config_changed());
     /* Returning to the old target must not report success with DMA stuck. */
     nvram_get_modbus_config_StopIgnore();
     nvram_get_modbus_config_IgnoreAndReturn(&modbus_cfg);
-    dma_deinit_result = HAL_OK;
+    recovery_result = true;
     uart_set_line_config_ExpectAndReturn(UART_4, 115200U, 1U, true);
     TEST_ASSERT_EQUAL_INT(0, modbus_process_notify_config_changed());
-    TEST_ASSERT_EQUAL_UINT32(2U, dma_deinit_calls);
+    TEST_ASSERT_EQUAL_UINT32(2U, abort_calls);
     TEST_ASSERT_EQUAL_UINT32(HAL_UART_STATE_READY, huart4.gState);
     TEST_ASSERT_EQUAL_UINT32(HAL_DMA_STATE_READY, dma_tx_handle.State);
     assert_next_response();
@@ -520,9 +428,9 @@ void test_explicit_apply_after_failed_recovery_can_restore_old_config(void)
 void test_missing_dma_handle_reports_error_without_applying_config(void)
 {
     change_config_during_tx();
+    recovery_result = false;
     huart4.hdmatx = NULL;
     TEST_ASSERT_EQUAL_INT(-1, modbus_process_notify_config_changed());
-    TEST_ASSERT_EQUAL_UINT32(0U, dma_deinit_calls);
     TEST_ASSERT_EQUAL_UINT32(115200U, active_baud);
     TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
     TEST_ASSERT_FALSE(s_modbus_tx_busy);
@@ -575,4 +483,84 @@ void test_rx_error_during_tx_does_not_touch_tx(void)
     TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
     TEST_ASSERT_FALSE(s_modbus_tx_busy);
 }
+
+
+void test_missing_tc_recovers_without_a_new_master_request(void)
+{
+    exchange();
+    dma_channel_enabled = false;
+    dma_tx_handle.State = HAL_DMA_STATE_READY;
+    fake_tick += 10U;
+    TEST_ASSERT_EQUAL(MODBUS_POLL_IDLE, modbus_poll(&s_modbus));
+    TEST_ASSERT_FALSE(s_modbus_tx_busy);
+    TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+    assert_next_response();
+}
+
+void test_tx_deadline_preserves_frame_until_wire_time_and_silence_elapse(void)
+{
+    active_baud = 9600U;
+    active_stop_bits = 2U;
+    modbus_apply_frame_silence();
+    exchange();
+    /* 8 * 11 bits / 9600 -> ceil 9.167 ms = 10 ms; core gap = 7 ms. */
+    fake_tick += 16U;
+    (void)modbus_poll(&s_modbus);
+    TEST_ASSERT_TRUE(s_modbus_tx_busy);
+    TEST_ASSERT_EQUAL_UINT32(0U, abort_calls);
+    fake_tick++;
+    (void)modbus_poll(&s_modbus);
+    TEST_ASSERT_FALSE(s_modbus_tx_busy);
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+}
+
+void test_tx_timeout_is_wrap_safe_and_failed_recovery_releases_bus(void)
+{
+    fake_tick = UINT32_MAX - 25U;
+    exchange();
+    recovery_result = false;
+    fake_tick += 10U;
+    (void)modbus_poll(&s_modbus);
+    TEST_ASSERT_FALSE(s_modbus_tx_busy);
+    TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+    (void)modbus_poll(&s_modbus);
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+}
+
+
+static void pump_scheduler(void)
+{
+    for (size_t step = 0U; 200U > step; step++)
+    {
+        if (0 == process_run())
+        {
+            return;
+        }
+    }
+    TEST_FAIL_MESSAGE("Modbus scheduler did not settle");
+}
+
+void test_process_timer_recovers_tx_without_further_rx_events(void)
+{
+    process_init();
+    process_start(&etimer_process, NULL);
+    modbus_process_init();
+    pump_scheduler();
+    feed_relay_command();
+    pump_scheduler();
+    fake_tick += 20U;
+    etimer_request_poll();
+    pump_scheduler();
+    TEST_ASSERT_TRUE(s_modbus_tx_busy);
+    TEST_ASSERT_EQUAL_UINT32(1U, dma_calls);
+    fake_tick += 10U;
+    etimer_request_poll();
+    pump_scheduler();
+    TEST_ASSERT_FALSE(s_modbus_tx_busy);
+    TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+}
+
 /*** end of file ***/

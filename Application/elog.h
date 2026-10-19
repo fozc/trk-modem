@@ -205,4 +205,13 @@ void elog_log_power_panic(void);
  * window carrying the number of failures in the burst. */
 void elog_log_web_login_fail(uint32_t client_ip);
 
+/* Main context only. Physical UART number (1/4), outcome, HAL errors.
+ * Identical outcomes per port are limited to one record per 60 s;
+ * an outcome change is recorded immediately. No reset is requested.
+ */
+void elog_log_uart_recovery(uint8_t port, bool recovered,
+                            uint32_t uart_error, uint32_t dma_error);
+
 #endif /* ELOG_H_ */
+
+/*** end of file ***/

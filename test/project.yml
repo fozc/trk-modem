@@ -88,6 +88,9 @@
         - -Wno-variadic-macros
       test_power_board_scp:
         - -Wno-variadic-macros
+      test_elog_uart_recovery:
+        - -flto
+        - -O2
       test_at_engine_scenario:
         - -DAT_ENGINE_LOG_HOST_TEST
         - -flto
@@ -102,6 +105,7 @@
         - -DBSP_IO_HOST_TEST
         - -O2
       test_uart_tx_scenario:
+        - -DUART_DMA_RECOVERY_HOST_TEST
         - -DUART_TX_HOST_TEST
         - -Isupport/uart_tx
         - -flto
@@ -216,6 +220,9 @@
         - -O2
 
     :link:
+      test_elog_uart_recovery:
+        - -flto
+        - -O2
       test_gsm_init_scenario:
         - -flto
         - -O2

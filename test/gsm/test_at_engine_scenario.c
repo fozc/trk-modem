@@ -6,6 +6,7 @@
 #include "unity.h"
 #include "mock_bsp.h"
 #include "mock_gsm_log.h"
+#include "mock_uart.h"
 #include "ring_buff.h"
 #include <string.h>
 
@@ -27,6 +28,7 @@ static uint32_t abort_calls;
 static uint32_t urc_calls;
 static uint32_t liveness_calls;
 static HAL_StatusTypeDef dma_result;
+static bool abort_result;
 static bool complete_during_start;
 static uint8_t transmitted[AT_ENGINE_RX_BUFFER_SIZE];
 static uint16_t transmitted_len;
@@ -51,11 +53,12 @@ HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *handle,
     }
     return dma_result;
 }
-HAL_StatusTypeDef HAL_UART_AbortTransmit(UART_HandleTypeDef *handle)
+static bool abort_tx(uart_port_t port, int call_count)
 {
-    TEST_ASSERT_EQUAL_PTR(&huart1, handle);
+    (void)call_count;
+    TEST_ASSERT_EQUAL(UART_1, port);
     abort_calls++;
-    return HAL_OK;
+    return abort_result;
 }
 void gsm_URC_callback(uint8_t *message, uint16_t length)
 {
@@ -78,6 +81,8 @@ void setUp(void)
     urc_calls = 0U;
     liveness_calls = 0U;
     dma_result = HAL_OK;
+    abort_result = true;
+    uart_abort_tx_Stub(abort_tx);
     complete_during_start = false;
     memset(last_urc, 0, sizeof(last_urc));
     bsp_get_tick_Stub(get_tick);
@@ -647,4 +652,42 @@ void test_at_srecv_overflow_mid_payload_degrades_to_timeout_and_recovers(void)
     TEST_ASSERT_EQUAL_UINT32(0U, urc_calls);
 }
 
+/*** end of file ***/
+
+void test_reset_checks_stuck_transport_even_after_failed_dma_start(void)
+{
+    dma_result = HAL_BUSY;
+    TEST_ASSERT_TRUE(at_engine_send_at_command("AT\r", 3U,
+        "OK\r\n", 4U, 1U, 1000U));
+    (void)at_engine_process();
+    TEST_ASSERT_TRUE(at_engine_is_tx_done());
+    abort_result = false;
+    at_engine_reset();
+    TEST_ASSERT_FALSE(at_engine_is_tx_done());
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+    abort_result = true;
+    at_engine_reset();
+    TEST_ASSERT_TRUE(at_engine_is_tx_done());
+    TEST_ASSERT_EQUAL_UINT32(2U, abort_calls);
+    dma_result = HAL_OK;
+    TEST_ASSERT_TRUE(at_engine_send_at_command("AT\r", 3U,
+        "OK\r\n", 4U, 1U, 1000U));
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL_UINT32(2U, dma_calls);
+}
+
+void test_failed_tx_recovery_finishes_command_without_resending(void)
+{
+    TEST_ASSERT_TRUE(at_engine_send_at_command("AT\r", 3U,
+        "OK\r\n", 4U, 2U, 1000U));
+    (void)at_engine_process();
+    now += 3000U;
+    (void)at_engine_process();
+    abort_result = false;
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_TIMEOUT, at_engine_get_result());
+    TEST_ASSERT_FALSE(at_engine_is_tx_done());
+    TEST_ASSERT_EQUAL_UINT32(1U, dma_calls);
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+}
 /*** end of file ***/
