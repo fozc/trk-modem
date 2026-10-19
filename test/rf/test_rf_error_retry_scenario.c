@@ -3564,4 +3564,26 @@ void test_initial_inventory_empty_slots_do_not_invalidate_new_fault_evidence(voi
     TEST_ASSERT_EQUAL_UINT32(1U, count.pending);
 }
 
+void test_new_device_in_legacy_zone_zero_is_rejected_but_deletion_is_allowed(void)
+{
+    feeder.config.zone_id = 0U;
+    load_one_phase();
+    rf_feeder_t candidate = feeder;
+    candidate.r_eui64[0] = 0x77U;
+    staged_feeder = &candidate;
+    const rf_inventory_journal_t before = journal;
+    TEST_ASSERT_FALSE(rf_inventory_prepare_save());
+    TEST_ASSERT_EQUAL_MEMORY(&before, &journal, sizeof(journal));
+    candidate.in_use = false;
+    TEST_ASSERT_FALSE(rf_inventory_prepare_save());
+    TEST_ASSERT_EQUAL_MEMORY(&before, &journal, sizeof(journal));
+    candidate = feeder;
+    TEST_ASSERT_TRUE(rf_inventory_prepare_save());
+    (void)memset(candidate.r_eui64, 0, 8U);
+    TEST_ASSERT_TRUE(rf_inventory_prepare_save());
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
+    TEST_ASSERT_EQUAL_UINT8(1U, journal.count);
+    TEST_ASSERT_EQUAL_UINT8(0U, journal.entries[0].zone);
+}
+
 /*** end of file ***/
