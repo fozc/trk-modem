@@ -395,20 +395,72 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
     return MODBUS_REG_OK;
 }
 
+#if (MODBUS_TX_USE_DMA != 0) && !RF_SCP_OVER_MODBUS_PORT
+static bool modbus_abort_tx(void)
+{
+    DMA_HandleTypeDef *dma = huart4.hdmatx;
+
+    if (!s_modbus_tx_busy &&
+        (HAL_UART_STATE_READY == huart4.gState) &&
+        (NULL != dma) && (HAL_DMA_STATE_READY == dma->State))
+    {
+        return true;
+    }
+
+    HAL_StatusTypeDef result = HAL_UART_AbortTransmit(&huart4);
+    gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
+    s_modbus_tx_busy = false;
+    if ((HAL_OK == result) && (NULL != dma) &&
+        (HAL_DMA_STATE_READY == dma->State))
+    {
+        return true;
+    }
+    if (NULL == dma)
+    {
+        return false;
+    }
+
+    /* AbortTransmit cleared DMAT and TX interrupts before its timeout.
+     * Only Channel2's ISR can still access this DMA handle. Keep SysTick
+     * and UART RX running while HAL waits for the channel to stop.
+     * DeInit uses SUSP|RESET and verifies EN=0, clears flags/callbacks
+     * and unlinks Parent. Init reuses CubeMX's normal-mode parameters;
+     * DeInit's nonprivileged attribute matches UART4's MSP configuration.
+     * No whole-controller reset or software READY forcing is needed.
+     */
+    const bool irq_was_enabled =
+        (0U != NVIC_GetEnableIRQ(GPDMA1_Channel2_IRQn));
+    if (irq_was_enabled)
+    {
+        NVIC_DisableIRQ(GPDMA1_Channel2_IRQn);
+    }
+
+    bool recovered = false;
+    if (HAL_OK == HAL_DMA_DeInit(dma))
+    {
+        dma->Parent = &huart4;
+        if (HAL_OK == HAL_DMA_Init(dma))
+        {
+            /* DMAT is already clear: finish UART TX abort/flush only,
+             * after the hardware channel has actually been reset. */
+            recovered = (HAL_OK == HAL_UART_AbortTransmit(&huart4));
+        }
+    }
+    if (irq_was_enabled)
+    {
+        NVIC_EnableIRQ(GPDMA1_Channel2_IRQn);
+    }
+    return recovered;
+}
+#endif
+
 /**
- * @brief Apply the NVRAM Modbus baud rate to UART4.
+ * @brief Apply stored baud/stop-bit settings after stopping UART4 TX.
  *
- * Skips the write when the stored value equals the active baud rate, so a
- * boot-time call with the factory default (115200) leaves BRR untouched.
- * Enforces the "UART idle" precondition itself: an in-flight response DMA
- * is aborted, the RS-485 driver is released and the RX framing state is
- * reset before the peripheral is reprogrammed.
+ * The web path persists before calling here. On failure the stored target
+ * remains available for a later explicit apply; active settings change
+ * only after both transport recovery and line configuration succeed.
  */
-/* validate -> apply -> persist zincirinin apply adimi (MB-07 + WP-J):
- * baud VE stop-bits birlikte uygulanir; her hata cikisinda UART ve
- * aktif degerler eski konfigurasyonda kalir. Degisiklik kontrolu
- * baud VEYA stop-bits degisince calisir (yalniz stop-bit degisikligi
- * de donanima yazilir). */
 static bool modbus_uart_apply_config(void)
 {
 #if RF_SCP_OVER_MODBUS_PORT
@@ -426,37 +478,23 @@ static bool modbus_uart_apply_config(void)
     }
 
     if ((cfg->baud_rate == active_baud) &&
-        (cfg->stop_bits == active_stop_bits))
+        (cfg->stop_bits == active_stop_bits)
+#if (MODBUS_TX_USE_DMA != 0)
+        && (s_modbus_tx_busy ||
+            ((HAL_UART_STATE_READY == huart4.gState) &&
+             (NULL != huart4.hdmatx) &&
+             (HAL_DMA_STATE_READY == huart4.hdmatx->State)))
+#endif
+       )
     {
         return true;  /* nothing changed */
     }
 
 #if (MODBUS_TX_USE_DMA != 0)
-    /* Havadaki yanit DMA'sini temizce iptal et, OE'yu birak.
-     *
-     * Abort timeout dondugunde yerel HAL (hal_dma.c:640-653) SUSPF
-     * beklerken kesilir: kanal reseti (CCR.RESET) ve bayrak temizligi
-     * YAPILMADAN cikilir; DMA handle HAL_DMA_STATE_ERROR'da, UART gState
-     * BUSY_TX'te kalir. Bu bir donanim-seviyesi takilmadir; yazilim
-     * state'lerini READY'ye zorlamak donanimi toparlamaz. Yapilabilecek
-     * tek sey: OE'yi birak (hat kilitlenmesin), uygulama busy'yi temizle
-     * (kendi defter tutusu) ve transport'u kullanilamaz birak. Sonraki
-     * HAL_UART_Transmit_DMA dogal olarak HAL_BUSY doner (iki handle da
-     * READY degil) ve mevcut baslangic-hatasi yolu yaniti dusurur.
-     * Gercek toparlanma sistem reseti ile gelir (periyodik modem reset
-     * zaten urunde var). */
-    if (s_modbus_tx_busy)
+    if (!modbus_abort_tx())
     {
-        if (HAL_UART_AbortTransmit(&huart4) != HAL_OK)
-        {
-            gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
-            s_modbus_tx_busy = false;
-            CSLOG_ERR("MODBUS: TX DMA abort timeout - transport "
-                      "kullanilamaz (sistem reset gerekir)\r\n");
-            return false;
-        }
-        gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
-        s_modbus_tx_busy = false;
+        CSLOG_ERR("MODBUS: TX channel recovery failed\r\n");
+        return false;
     }
 #endif
     libmodbusrtu_modbus_reset_rx(&s_modbus);

@@ -85,6 +85,22 @@ const rf_feeder_t *rf_store_get(feeder_id_t line_id)
     return NULL;
 }
 
+/* This fixture covers healthy config/data paths; recovery is exercised
+ * with hardware-state-aware fakes in test_modbus_dma_tx_scenario.c. */
+HAL_StatusTypeDef HAL_DMA_DeInit(DMA_HandleTypeDef *hdma)
+{
+    (void)hdma;
+    TEST_FAIL_MESSAGE("Unexpected DMA recovery in healthy-path fixture");
+    return HAL_ERROR;
+}
+
+HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *hdma)
+{
+    (void)hdma;
+    TEST_FAIL_MESSAGE("Unexpected DMA init in healthy-path fixture");
+    return HAL_ERROR;
+}
+
 HAL_StatusTypeDef HAL_UART_AbortTransmit(UART_HandleTypeDef *huart)
 {
     (void)huart;

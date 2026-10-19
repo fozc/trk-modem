@@ -21,6 +21,7 @@ uint32_t HAL_GetTick(void);
 typedef struct
 {
     volatile uint32_t State;   /* HAL_DMA_STATE_* (model for abort) */
+    void *Parent;
 } DMA_HandleTypeDef;
 
 typedef struct
@@ -41,6 +42,7 @@ typedef struct
 #define HAL_DMA_STATE_READY 0x01U
 #define HAL_DMA_STATE_BUSY 0x02U
 #define HAL_DMA_STATE_ERROR 0x03U
+#define HAL_DMA_STATE_RESET 0x00U
 
 extern UART_HandleTypeDef huart4;
 
@@ -49,6 +51,8 @@ HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *huart,
                                         uint16_t size);
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart);
 HAL_StatusTypeDef HAL_UART_AbortTransmit(UART_HandleTypeDef *huart);
+HAL_StatusTypeDef HAL_DMA_DeInit(DMA_HandleTypeDef *hdma);
+HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef *hdma);
 
 /* USART peripheral stub for the TX-start flag clear on the host. */
 typedef struct
@@ -78,9 +82,15 @@ static inline void LL_USART_SetStopBitsLength(test_usart_t *usart,
  * structural property (code review + disassembly), not host-testable. */
 typedef enum
 {
-    UART4_IRQn = 29
+    UART4_IRQn = 64,
+    GPDMA1_Channel2_IRQn = 31
 } test_irqn_t;
 
+#ifdef MODBUS_DMA_RECOVERY_HOST_TEST
+uint32_t NVIC_GetEnableIRQ(test_irqn_t irq);
+void NVIC_DisableIRQ(test_irqn_t irq);
+void NVIC_EnableIRQ(test_irqn_t irq);
+#else
 static inline uint32_t NVIC_GetEnableIRQ(test_irqn_t irq)
 {
     (void)irq;
@@ -94,6 +104,7 @@ static inline void NVIC_EnableIRQ(test_irqn_t irq)
 {
     (void)irq;
 }
+#endif
 
 #endif /* TEST_HAL_H */
 /*** end of file ***/
