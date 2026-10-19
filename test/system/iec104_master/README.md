@@ -29,9 +29,10 @@ test/system/iec104_master/.venv/Scripts/python.exe -m pip install \
   süit için gereksizdir (venv mutlak yol, `py -3.13` kayıt defteri
   etiketiyle çözülür) ve istenirse kullanıcı PATH'inden silinebilir:
   `...\Python313\Scripts\`, `...\Python313\`, `...\Python\Launcher\`.
-- Donanımsız doğrulama: `python test_apdu_selftest.py` (13 golden;
-  negatif onay P/N biti dahil) — integration sarmalayıcısı bunu her
-  koşuda önce çalıştırır.
+- Donanımsız doğrulama: `python test_apdu_selftest.py` (22 vektör;
+  GI20 zaman etiketsiz 13/1, çoklu/kesilmiş nesneler ve negatif onay
+  P/N biti dahil), `python test_cases_selftest.py` (19 vaka kontrolü).
+  Integration sarmalayıcısı bunları her koşuda önce çalıştırır.
 
 ## Kullanım
 
@@ -103,3 +104,73 @@ görüntüsü: port/CA/T0-T3/K/W/satır IOA haritası, vaka sonuçları),
   teşhisle başarısız kabul edilir (operatör filtresi raporlanır).
 - Oracle bir yazılım stack'idir (lib60870); gerçek SCADA donanımı ve
   standart uygunluk (conformance) testi kapsam dışıdır.
+
+## 19.10.2026 gerçek cihaz kabul kapsamı
+
+**Amaç:** Desteklenen işlev, host testi, simülatör ve gerçek donanım
+kanıtını ayırmak. Bu tablo tam üretim kabulü veya coverage yüzdesi değildir.
+
+**Kullanım yeri:** SCADA kabul planı ve test eksiği takibi.
+
+**Kaynak:** `Application/libiec104/iec104.c`, `iec104_process.c`,
+`iec104_replay.c`, `rf/rf_alarm.c`; mevcut Ceedling senaryoları ve
+`.temp_files/bolatex-20261019/` ham koşum kayıtları.
+
+| İşlev / senaryo | Bu turdaki gerçek cihaz kanıtı | Açık kapsam |
+|---|---|---|
+| STARTDT ve başlangıç bildirimi | i01 PASS | Gerçek saha SCADA ürünüyle uyumluluk ayrıca |
+| GI20, anlık akım/enerji/yük/RF/trip durumu | i02 PASS: iki etkin fiderde 30 IOA, type=13/1, CA/COT ve onay sırası | Her fiziksel fazın gerçek değeri, kalite değişimi ve bütün fider kapasiteleri ayrı doğrulanmalı |
+| GI21/22 grup sorguları | i03 PASS: adres kümeleri ve type=36/30 | Gerçek akım/enerji değişimiyle sayısal karşılaştırma yok |
+| GI23/24 arıza geçmişi | i03 PASS: onay/sonlandırma, veri tipi ve adres bölgesi | Beklenen her kaydın akım/süre/zaman/sınıfı ve 15+15 sınırı bağımsız veri kümesiyle birebir karşılaştırılmadı |
+| Bağlantı yokken kayıt, bağlanınca otomatik replay | i06 PASS: konsoldan beş sentetik Flash kaydı; yeni GI gönderilmeden fallback replay, içerik/sıra, unsent=0 ve kapanış snapshot | Gerçek AY arızasının bağlantı kapalıyken baştan sona bu yoldan geçmesi ayrı kabul |
+| Replay ortasında bağlantı kesilmesi | i07 PASS: ilk pencerede 1, ikinci pencerede 4 kayıt; 5/5, doğru sıra, unsent=0 | Seçici master ACK kaybı, gerçek güç kesintisi ve RTU restart fiziksel olarak aynı şey değildir |
+| Bağlı SCADA'ya yeni arıza/alarmın anlık spontane iletimi | Host ACK/durable replay ve RF/HIL alarm testleri mevcut | Bağlantı açıkken yeni olay üretip GI/reconnect olmadan COT=3, içerik ve ACK sonrası kalıcılığı birlikte doğrulayan cihaz koşusu yok |
+| Gerçek çoklu 101/105, ACTIVE→CLEARED ve üç faz | Simülatör ve host karşılıkları var | Gerçek akım düzeneği, doğru EUI eşlemeleri ve üçüncü AY gerekli; TEST137 gerçek alarm değildir |
+| Saat set etme: C_CS_NA_1 (103) | i04 var, bu tur koşulmadı; host geçerli/geçersiz saat ve RTC reddi testleri var | Ham gönderilen zaman → ACT_CON → RTC uygulaması; ret halinde saatin korunması cihazda doğrulanmalı |
+| t3 TESTFR ve cevapsız t1/t2 davranışı | i05 var, bu tur koşulmadı; host zamanlayıcı/pencere/ACK testleri var | Cihazda idle probe, cevapsız master ve toparlanma koşuları eksik |
+| Reset: C_RP_NA_1, QRP=1 | Üretim handler'ı ve host onay/ret testleri var | SCADA onayı hatta çıktıktan sonra gerçek reset ve pending kayıtların dönüşü bu turda doğrulanmadı |
+| Desteklenmeyen tip/CA/IOA/COT ve bozuk/parçalı APDU | Host protokol testleri var | Gerçek bağlantıda olumsuz yanıt ve durumun korunması için ayrı negatif paket gerekli |
+| Kuyruk/pencere doluluğu, ACK sınırı ve restart | Host ACK-delivery, durable replay ve protokol testleri var | Fiziksel K/W, yavaş master, uzun süre yük, ACK anında güç kesilmesi açık |
+
+### İşlev sınırları: test eklemek tek başına tamamlamaz
+
+- Single/double command 45/46 aktif destek listesinde değildir. SCADA
+  üzerinden kesici aç/kapa veya SBO çalışıyor kabul edilmemelidir.
+  Host testleri bu komutların olumsuz yanıtını doğrular.
+- Genel setpoint 48/49/50 için aktif handler bulunmaz. Web'de ayar
+  bulunması, aynı ayarın IEC104 üzerinden set edilebildiğini göstermez.
+- QRP=2 mevcut handler'da olumlu onay döndürür, bekleyen olayları
+  temizlemez; kodda TODO vardır. Kayıt silme davranışı ürün/protokol
+  kararıyla netleştirilmeden tamamlanmış işlev sayılmamalıdır.
+- `iec104_periodic_send()` veri göndermeyen TODO gövdesidir. Akım,
+  enerji ve yük durumunun her değişimde/periyotta kendiliğinden
+  yayımlanması, arıza/alarm için çalışan COT=3 yoluyla karıştırılmamalıdır.
+- Akü uyarısı IOA'sı yapılandırılır; aktif yayın çağrı yolu bulunmamıştır.
+- `rf_real_mh` m7 kalite testi bu turda koşulmadı. Mevcut hali GI20
+  isteyip zaman etiketli type=36 bekler; güncel GI20=13/1 sözleşmesiyle
+  uyumlu değildir. Zaman etiketi kabulü için GI21 yoluna uyarlanmalı ve
+  geçerli/geçersiz kalite ile eksik/IV zaman damgası regresyonları eklenmelidir.
+
+### Kanıt ve sonraki sıra
+
+İmaj: CRC `0xD86D1FED`, profile=0, 354788 B; üretim kaynak hash'leri
+paketle eşleşir. Kaynak ağacı o sırada kirli olduğundan yalnız Git
+kimliği imajın tam tarifi değildir.
+
+`iec104-repeat/manifest.json` i01/i03/i06/i07 PASS, eski console oracle
+nedeniyle i02 FAIL içerir. Etkilenen i02, okuyucu düzeltildikten sonra
+`iec104-gi-final/manifest.json` içinde PASS oldu. Beş vaka tek koşuda
+geçmiş gibi sunulmamalıdır. `iec104-acceptance-index.json` bu iki
+kanıtı birleştirir. Ayarlar `restore-verification.json` ile geri
+doğrulandı; test kayıtları silinmedi.
+
+Kapanış sırası:
+
+1. Gerçek cihaz test aracındaki m7 uyumsuzluğu giderilmeli; açık
+   bağlantıda yeni olay ve ACK kaybı senaryoları mevcut süite eklenmelidir.
+2. i04/i05 ve desteklenen reset/olumsuz komutlar cihazda doğrulanmalıdır.
+3. Bağlantı yokken gerçek AY olayı, çoklu alarm ve gerçek güç kesintisi
+   aynı son imajda doğrulanmalıdır.
+4. Genel setpoint/çıkış kontrolü, QRP=2, periyodik yayın ve akü uyarısının
+   ürün kapsamı netleştirilmelidir. Destek eklenecekse mevcut kapalı
+   alt sistem kararları korunarak ayrıca uygulanıp kabul edilmelidir.

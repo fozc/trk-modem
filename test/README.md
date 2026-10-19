@@ -1,13 +1,51 @@
 # Test Altyapısı
 
-**Sürüm:** 1.51
-**Tarih:** 2026-10-18
+**Sürüm:** 1.52
+**Tarih:** 2026-10-19
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
+
+## 19.10.2026 bağımsız Bolatex doğrulaması
+
+Son merkezi Ceedling koşusu **1528/1528**, failure/ignored=0'dır.
+18 Ekimdeki 35 yeni teste bu turda iki regresyon eklenmiştir:
+
+- `rf/test_rf_events.c`: 129 açık grup boyunca gerçek store/HEAD/0x48
+  yolunun ham, faz ve replay kayıtlarını saklayıp tüketmeye devam etmesi.
+- `rf/test_rf_error_retry_scenario.c`: mevcut legacy bölge 0 içinde yeni
+  EUI'nin aktif veya pasif satır üzerinden devreye alınmasının reddi;
+  mevcut EUI'yi koruma/silme ve ret halinde journal'ın korunması.
+
+HIL ortak `read_trip_state` okuyucusu güncel `rf live` shell çıktısına
+uyarlanmıştır; mevcut dokuz host oracle testi hatalı alarm ve eksik kalıcı
+kayıt beklentilerini koruyarak geçer. Simülatörün host testleri, fiziksel
+HIL vakaları ve gerçek MH/AY testleri ayrı sonuçlardır.
+
+IEC104 master decoder'ı GI20'nin zaman etiketsiz 13/1 tiplerini de
+çözer; GI21/22'nin zaman etiketli 36/30 sözleşmesi korunur. Parser
+22/22, vaka okuyucusu 19/19 host testiyle doğrulanmıştır. Replay süre
+hesabı, durumdaki bütün backlog'u kapsar; eski kayıtlar var diye test
+erken bitirilmez. Yanlış tip/CA/COT, eksik veri ve replay kaybı
+kontrolleri korunmuştur.
+
+`RF Link: BOSTA/MESGUL`, `scp_is_free()` komut meşguliyetidir; bağlantı
+veya faz tazeliği kanıtı değildir. IEC104 console oracle bu satırdan
+çevrimdışı sonucu çıkarmaz.
+
+Başarısız ilk koşular, son imaj/source SHA-256 manifestleri, komutlar,
+cihaz testlerinin PASS/SKIP/BLOCKED ayrımı ve kalan R2.3 teslim sınırları
+[doğrulama kaydı §8](../doc/BOLATEX_UYGULAMA_DOGRULAMA_2026-10-18.md#8-bağımsız-doğrulama--19102026)
+içindedir. Kapsama yüzdesi ölçülmemiştir. TEST 137 gerçek koruma olayı
+değildir; eski MH/AY veya simülatör sonucu R2.3 fiziksel kabulü sayılmaz.
+
+IEC104 için sorgu, replay, spontane olay, saat/reset/komut ve henüz
+uygulanmamış işlev ayrımı
+[gerçek cihaz kapsam tablosunda](system/iec104_master/README.md#19102026-gerçek-cihaz-kabul-kapsamı)
+tutulur. Beş cihaz vakasının geçmesi tam SCADA kabulü anlamına gelmez.
 
 ## 18.10.2026 Bolatex R2 netleştirmeleri ve R2.3 RTU uyarlaması
 
