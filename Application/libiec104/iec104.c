@@ -833,9 +833,9 @@ void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt)
 			break;
 
 		case IEC104_QRP_RESET_PENDING_EVENTS:
-			CSLOG("C_RP_NA_1: pending event reset - onay gonderiliyor\r\n");
-			/* TODO: Bekleyen olay tamponu temizligi RF olay yolu (TRIP_NOTIFY
-			 * vb.) baglaninca burada yapilacak; simdi yalniz onay. */
+			CSLOG_WARN("C_RP_NA_1: pending event reset not supported\r\n");
+            /* Preserve pending deliveries and the archive. */
+            act_con.frame.asdu_header.cot.pn_bit = 1U;
 			(void)iec104_send(act_con.data, frame_length);
 			break;
 
