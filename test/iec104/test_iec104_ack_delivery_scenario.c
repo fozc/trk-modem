@@ -233,6 +233,40 @@ void test_real_tx_queue_loss_keeps_records_durable_until_reconnected_ack(void)
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
 }
 
+void test_pending_reset_rejection_preserves_record_and_outstanding_ack(void)
+{
+    add_records(false);
+    iec104_tx_process();
+    const uint16_t record_end = iec104_get_send_sn();
+    const uint16_t ns = iec104_get_receive_sn();
+    const uint16_t nr = iec104_get_acksn();
+    const uint32_t writes_before = program_calls;
+    const uint32_t erases_before = erase_calls;
+    const uint32_t syncs_before = sync_calls;
+    const uint8_t request[] =
+    {
+        0x68U, 14U, (uint8_t)(ns << 1U), (uint8_t)(ns >> 7U),
+        (uint8_t)(nr << 1U), (uint8_t)(nr >> 7U),
+        105U, 1U, 6U, 0U, 1U, 0U, 0U, 0U, 0U, 2U
+    };
+    iec104_data_received(request, sizeof(request));
+    libiec104_poll();
+    iec104_tx_process();
+    TEST_ASSERT_EQUAL_UINT8(105U, gsm_payload[6]);
+    TEST_ASSERT_EQUAL_UINT8(0x47U, gsm_payload[8]);
+    TEST_ASSERT_EQUAL_UINT8(2U, gsm_payload[15]);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    TEST_ASSERT_TRUE(iec104_event_ack_pending());
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
+    TEST_ASSERT_EQUAL_UINT32(writes_before, program_calls);
+    TEST_ASSERT_EQUAL_UINT32(erases_before, erase_calls);
+    TEST_ASSERT_EQUAL_UINT32(syncs_before, sync_calls);
+    acknowledge(record_end);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+    reboot_fixture();
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+}
+
 void test_gsm_acceptance_without_master_ack_does_not_consume_record(void)
 {
     add_records(true);

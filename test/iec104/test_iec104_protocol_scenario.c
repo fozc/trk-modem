@@ -1003,6 +1003,24 @@ void test_reset_process_with_unknown_qrp_is_rejected(void)
                "an undefined reset qualifier triggers no reboot");
 }
 
+void test_reset_pending_events_is_rejected_without_reboot(void)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    const uint32_t events_before = event_count;
+    build_reset_process(frame, 0U, 1U, TEST_COMMON_ADDRESS, 0U, 2U);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(C_RP_NA_1, frame_asdu_type(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+    TEST_ASSERT_EQUAL_MEMORY(&frame[12], &tx_log[0][12], 4U);
+    TEST_ASSERT_EQUAL_UINT32(events_before, event_count);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
 void test_reset_process_with_foreign_ioa_is_rejected(void)
 {
     uint8_t  frame[16];
