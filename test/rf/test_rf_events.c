@@ -3059,4 +3059,56 @@ void test_mh_store_reset_record_closes_open_group_as_uncertain(void)
     TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
 }
 
+void test_group_capacity_never_blocks_durable_store_or_consume(void)
+{
+    for (uint16_t index = 0U; 129U > index; index++)
+    {
+        const uint16_t tail = (uint16_t)(index % 100U);
+        const uint16_t head = (uint16_t)((index + 1U) % 100U);
+        rf_events_request_drain();
+        rf_events_process(tick);
+        TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+        scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_HEAD,
+                                      SCP_TYPE_ACK);
+        scp_pack_u16(packet.data, head);
+        scp_pack_u16(&packet.data[2], (uint16_t)((index + 1U) / 100U));
+        put_u32(&packet.data[4], (uint32_t)index + 1U);
+        scp_pack_u16(&packet.data[8], tail);
+        read_head = packet;
+        respond(&packet);
+        rf_events_process(tick);
+        TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_RANGE, request.cmd);
+        TEST_ASSERT_EQUAL_UINT16(tail, scp_unpack_u16(request.data));
+        packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+        put_alarm_record(&packet, 0U, 1U, 1U,
+                          (uint32_t)index * 60U + 1U);
+        const cp56time2a_t time = cp56time2a_make(0U,
+            (uint8_t)(index % 60U), (uint8_t)(12U + index / 60U),
+            7U, 3U, 10U, 26U);
+        (void)memcpy(packet.data, &time, sizeof(time));
+        update_crc(&packet);
+        respond(&packet);
+        rf_events_process(tick);
+        TEST_ASSERT_EQUAL_size_t((size_t)index + 1U, raw_writes);
+        TEST_ASSERT_EQUAL_size_t(raw_writes, fault_writes);
+        TEST_ASSERT_EQUAL_size_t(raw_writes, replay_writes);
+        verify_head_then_expect_consume(tail);
+        TEST_ASSERT_EQUAL_UINT32((uint32_t)index + 1U,
+                                 read_u32(request.data));
+        packet = capture(RF_SCP_CMD_LOG_CONSUME_IF, SCP_TYPE_ACK);
+        scp_pack_u16(packet.data, head);
+        scp_pack_u16(&packet.data[2], 0U);
+        respond(&packet);
+        rf_events_finish_drain();
+        tick += 60000U;
+    }
+    rf_fault_stats_t stats;
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &stats));
+    TEST_ASSERT_EQUAL_UINT32(129U, stats.permanent);
+    TEST_ASSERT_EQUAL_UINT32(128U, stats.pending);
+    TEST_ASSERT_EQUAL_UINT32(1U, stats.uncertain);
+    TEST_ASSERT_FALSE(stats.is_final);
+    TEST_ASSERT_EQUAL_size_t(129U, consume_requests);
+}
+
 /*** end of file ***/
