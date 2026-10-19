@@ -325,7 +325,10 @@ __attribute__ ((noreturn)) void app_main(void)
 	fault_log_init();
 	web_shell_init(NULL);
 
-	adc_init();
+    if (!adc_init())
+    {
+        CSLOG_ERR("ADC DMA start failed\r\n");
+    }
     power_board_scp_init();
 
 	LL_LPUART_EnableIT_RXNE_RXFNE(LPUART1);  /* Console RX */

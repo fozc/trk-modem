@@ -32,9 +32,15 @@ void system_status_init(void)
 	system_status.temp_max = INT8_MIN;
 }
 
-void system_status_update_tdie()
+static void system_status_update_tdie(void)
 {
-	system_status.tdie_temp = (int8_t)adc_get_mcu_temp_c();
+    const int16_t temperature = adc_get_mcu_temp_c();
+    if (ADC_INVALID_TEMPERATURE_C == temperature)
+    {
+        system_status.tdie_temp = INT8_MIN;
+        return;
+    }
+    system_status.tdie_temp = (int8_t)temperature;
 
 	if (system_status.tdie_temp < system_status.tdie_temp_min)
 	{
@@ -45,6 +51,20 @@ void system_status_update_tdie()
 	{
 		system_status.tdie_temp_max = system_status.tdie_temp;
 	}
+}
+
+static void system_status_update_adc(void)
+{
+    system_status.v3v3 = adc_get_voltage_mv(ADC_CH_3V3);
+    system_status.v3v8 = adc_get_voltage_mv(ADC_CH_3V8);
+    system_status.v5v  = adc_get_voltage_mv(ADC_CH_5V);
+    system_status_update_tdie();
+    system_status.adc_valid = adc_is_valid() &&
+        (ADC_INVALID_VOLTAGE_MV != system_status.v3v3) &&
+        (ADC_INVALID_VOLTAGE_MV != system_status.v3v8) &&
+        (ADC_INVALID_VOLTAGE_MV != system_status.v5v) &&
+        (INT8_MIN != system_status.tdie_temp);
+    system_status.adc_sample_age_ms = adc_get_sample_age_ms();
 }
 
 void system_status_update(void)
@@ -76,9 +96,7 @@ void system_status_update(void)
     system_status.rly[1] = relay_is_on(RELAY_CH_2);
 
     /* Supply voltages (mV) from the ADC module (no V19 channel exists). */
-    system_status.v3v3 = adc_get_voltage_mv(ADC_CH_3V3);
-    system_status.v3v8 = adc_get_voltage_mv(ADC_CH_3V8);
-    system_status.v5v  = adc_get_voltage_mv(ADC_CH_5V);
+    system_status_update_adc();
 
     /* PB'de dogrudan PV akimi alani yok; panel akimi bilinmiyor (0). */
     system_status.panel_current = 0;
@@ -124,7 +142,6 @@ void system_status_update(void)
             system_status.temp_max = system_status.temp;
         }
     }
-    system_status_update_tdie();
 
     /* The SCP summary does not contain heater measurements. */
     system_status.heater_state = 0U;

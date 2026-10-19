@@ -343,7 +343,7 @@ ve dijital inputlar. 17 register (49000..49016).
 | 49007 | 9007 | rtc_unix | UINT32 (ABCD) | Unix epoch, low word |
 | 49008 | 9008 | uptime | UINT16 | Calisma suresi (dakika) |
 | 49009 | 9009 | reset_reason | UINT16 | Reset nedeni bitmask (reset_source_flag_t) |
-| 49010 | 9010 | mcu_temp | UINT16 | MCU die sicakligi (°C) |
+| 49010 | 9010 | mcu_temp | INT16 | MCU die sicakligi (°C); gecersiz: 0x8000 |
 | 49011 | 9011 | v5v | UINT16 | 5V ray (mV) |
 | 49012 | 9012 | v3v3 | UINT16 | 3V3 ray (mV) |
 | 49013 | 9013 | v3v8 | UINT16 | 3V8 ray (mV) |
@@ -352,6 +352,12 @@ ve dijital inputlar. 17 register (49000..49016).
 | 49016 | 9016 | dinput_states | UINT16 | Dijital input bitmask (bit 0..7) |
 
 - `rtc_unix` (49006-49007) standart Unix epoch'tur (bolum 4.2).
+- ADC başlatılamazsa, ilk DMA tamamlanması henüz gelmediyse veya ADC hata
+  bildirirse `mcu_temp` (49010) `0x8000`, gerilimler (49011-49013)
+  `0xFFFF` döndürmelidir. İstemci bu değerleri ölçüm olarak göstermemelidir.
+  Register adresleri ve genişlikleri değişmemiştir. Sabit bir örnek yaşı
+  eşiği uygulanmaz; web durumundaki `ADCSampleAgeMs`, son geçerli DMA
+  tamamlanma callback'inden geçen süreyi bildirir.
 - `uptime` (49008) **dakika** cinsindendir; tam deger icin `uptime_raw`
   (49014-49015, **ms**, UINT32 ABCD) kullanilir.
 - `reset_reason` (49009) mevcut `reset_source_flag_t` bitmask değerini

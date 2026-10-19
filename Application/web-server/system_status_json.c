@@ -124,6 +124,14 @@ bool system_status_json_build(const system_status_t *status, char *buffer,
 
     if (ok)
     {
+        (void)xsnprintf(text, sizeof(text),
+            ",\"ADCValid\":%u,\"ADCSampleAgeMs\":%lu",
+            (unsigned)status->adc_valid,
+            (unsigned long)status->adc_sample_age_ms);
+        ok = append(buffer, capacity, length, text);
+    }
+    if (ok)
+    {
         ok = emit_fields(fields, sizeof(fields) / sizeof(fields[0]),
                           buffer, capacity, length);
     }

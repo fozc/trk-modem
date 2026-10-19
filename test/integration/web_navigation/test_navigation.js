@@ -894,6 +894,13 @@ async function checkPage(html, label) {
     const partial = run("buildRfGroupStatus({State:'failed',HasReport:true,MHState:4,Reason:6})");
     assert.ok(partial.includes('Kısmi uygulama'));
     assert.ok(partial.includes('otomatik tekrar yapılmaz'));
+    const badAdc = run('renderBoard({ADCValid:0,ADCSampleAgeMs:4294967295,"3V3":65535,"3V8":65535,"5V":65535,TDIE:-128})');
+    assert.ok(!badAdc.includes('65535'), 'failed ADC rails must not appear as voltages');
+    assert.ok(!badAdc.includes('4294967295'), 'unknown ADC age must not appear as real age');
+    assert.ok(badAdc.includes('vinv'), 'ADC error must be visibly invalid');
+    const goodAdc = run('renderBoard({ADCValid:1,ADCSampleAgeMs:12,"3V3":3300})');
+    assert.ok(goodAdc.includes('3300') || goodAdc.includes('3.300') || goodAdc.includes('3,300'));
+    assert.ok(goodAdc.includes('ADC örnek yaşı'), 'sample age must be visible');
     assert.ok(run("renderBoard({BatteryCapacityUnknown:1})").includes('Akü kapasitesi bilinmiyor'));
     assert.ok(!run("renderBoard({BatteryCapacityUnknown:null})").includes('Akü kapasitesi bilinmiyor'));
     context.fetch = async () => ({ok:true,status:200,json:async()=>({SaveBlocked:true,BatchState:'running'})});

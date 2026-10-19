@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.52
+**Sürüm:** 1.53
 **Tarih:** 2026-10-19
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
@@ -9,7 +9,34 @@ doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
 
-## 19.10.2026 Modbus TX DMA yerel toparlanması
+## 19.10.2026 UART toparlanması ve ADC geçerliliği
+
+**Amaç:** GSM abort hatasını, Modbus TX tamamlanma timeout'unu ve ADC
+geçerlilik bilgisinin tüketicilere aktarılmasını doğrulamak.
+
+**Kullanım yeri:** Gerçek BSP UART toparlanması `bsp/test_uart_tx_scenario.c`
+ile; AT timeout/reset girişleri `gsm/test_at_engine_scenario.c` ile sınanır.
+Modbus senaryosu, yeni RX olmadan Contiki timer üzerinden TX timeout'unu,
+tick taşmasını ve başarısız toparlanmada OE'nin bırakılmasını kapsar.
+ADC testleri başlatma hatası, ilk örnek, hata callback'i ve temiz yeniden
+başlatmayı; system_status, JSON ve gerçek FC03 testleri geçersiz ölçümü kapsar.
+
+`application/test_elog_uart_recovery.c`, gerçek elog girişinde port, sonuç,
+UART/DMA hata kodları ve aynı sonuç için port başına 60 saniyelik kayıt
+sınırlamasını doğrular. Sonuç değişirse hemen kayıt alınmalıdır. Otomatik
+sistem reseti eklenmemiştir; BSP'de ileride değerlendirmek için TODO vardır.
+
+**Doğrulama:** Merkezi `ruby -S ceedling test:all` **1564/1564**, 0 fail/ignore
+geçti (`build/transport-fixes-full-unit.log`). Web navigation source/embedded
+testleri geçti (`build/transport-fixes-web.log`). GSM integration `make run_all`
+21 cold-boot ve 19 restart kontrolü ile beklenen hang timeout'unu geçti.
+Release ve paket self-check geçti (`build/transport-fixes-release.log`).
+Yedi değişen üretim modülü strict C11/Werror derlemesini geçti; ADC modülünün
+aynı kontrolü mevcut ST `stm32u3xx_ll_adc.h:2767` sign-conversion uyarısına
+takılır. Bu vendor uyarısı değiştirilmemiştir. Host testleri fiziksel
+DMA/IRQ zamanlamasını kanıtlamaz; cihaza yükleme yapılmamıştır.
+
+## 19.10.2026 Modbus TX DMA yerel toparlanması (önceki doğrulama)
 
 **Amaç:** Hat ayarı uygulanırken abort timeout sonrasında kanalın yerel
 toparlanmasını ve sonraki gerçek FC06 yanıtını doğrulamak.

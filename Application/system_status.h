@@ -34,7 +34,7 @@ typedef struct
     int16_t battery_soc_x10;    // Batarya SOC (x10 %, isaretli)
     uint16_t battery_soh_x10;   // Batarya SOH (x10 %)
     uint8_t charge_state; // Batarya Sarj Durumu
-    /* R1 5.2 ek alanlari: geccerlilik power_valid_fields ile tasınır. */
+    /* R1 5.2 ek alanlari: geccerlilik power_valid_fields ile tasinir. */
     uint16_t dc_voltage;        // DC giris gerilimi (mV)
     int16_t input_current;      // giris akimi (mA)
     int16_t input_power_10mw;   // giris gucu (10 mW birim)
@@ -59,6 +59,8 @@ typedef struct
     bool board_temp_history_valid;
     uint8_t charge_verdict;
     bool battery_capacity_unknown;
+    bool adc_valid;
+    uint32_t adc_sample_age_ms;
 } system_status_t;
 
 const system_status_t* system_status_get(void);
