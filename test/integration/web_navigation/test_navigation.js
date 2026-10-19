@@ -613,6 +613,13 @@ async function checkPage(html, label) {
         assert.equal(request.url, '/config/' + page);
         assert.deepEqual(JSON.parse(run(`JSON.stringify(pageCache['${page}'])`)), request.data);
     }
+    for (const interval of [0, 1, 86400]) {
+        document.getElementById('iec-PeriodicSend').value = String(interval);
+        await run("savePage('iec104')");
+        assert.equal(request.url, '/config/iec104');
+        assert.equal(request.data.PeriodicSend, interval);
+        assert.equal(run('pageCache.iec104.PeriodicSend'), interval);
+    }
     const ioaError = 'IOA overlap: Hatlar.IOA_R_AnlikAkim[1] (feeder 2) and Hatlar.TemporaryFaultBase[0] (feeder 1)';
     const iecCache = run('JSON.stringify(pageCache.iec104)');
     context.fetch = async () => ({ok: false, status: 400, text: async () => ioaError});

@@ -1272,7 +1272,7 @@ static bool parse_iec_config_internal(const char **str, jiec_config_t *iec)
             return false;
         }
     }
-    if (!validate_timeout(iec->periodical_send_interval, 1, 86400, "Periodical send")) {
+    if (!validate_timeout(iec->periodical_send_interval, 0, 86400, "Periodical send")) {
         CSLOG_ERR( "[JSON] ERROR: Periodical send interval validation failed\r\n");
         return false;
     }

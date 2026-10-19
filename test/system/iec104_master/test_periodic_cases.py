@@ -62,6 +62,33 @@ class PeriodicCases(unittest.TestCase):
         self.assertEqual(saved, web.request.call_args_list[-2].args[1])
         self.assertEqual(5, web.request.call_args_list[1].args[1]["PeriodicSend"])
 
+    def web_config(self, ignore_disable=False):
+        saved = {"PeriodicSend": 900, "Port": 2404, "CommonAddr": 1}
+        state = dict(saved)
+
+        def request(path, update=None):
+            self.assertEqual("/config/iec104", path)
+            if update is not None and not (ignore_disable and
+                                            update.get("PeriodicSend") == 0):
+                state.update(update)
+            return 200, json.dumps(state)
+
+        ctx = SimpleNamespace(args=SimpleNamespace(periodic_test=True),
+                              web=SimpleNamespace(request=request))
+        verdict = cases_periodic.p02_periodic_web_config(ctx)
+        self.assertEqual(saved, state)
+        return verdict
+
+    def test_web_configuration_disables_preserves_enables_and_restores(self):
+        self.assertEqual("PASS", self.web_config()[0])
+
+    def test_positive_post_without_saved_zero_cannot_pass(self):
+        self.assertEqual("FAIL", self.web_config(ignore_disable=True)[0])
+
+    def test_web_configuration_requires_mutation_opt_in(self):
+        ctx = SimpleNamespace(args=SimpleNamespace(periodic_test=False))
+        self.assertEqual("SKIP", cases_periodic.p02_periodic_web_config(ctx)[0])
+
 
 if __name__ == "__main__":
     unittest.main()
