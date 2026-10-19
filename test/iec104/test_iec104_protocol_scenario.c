@@ -566,6 +566,79 @@ void test_testfr_con_timeout_closes_the_link(void)
                "a missing TESTFR_CON closes the link even while data flows");
 }
 
+void test_full_temporary_and_permanent_history_preserves_every_field_on_wire(void)
+{
+    for (uint8_t kind = 0U; 2U > kind; kind++)
+    {
+        setup(64U, 32U);
+        iec104_line_config_t mapped = {.in_use = 1U};
+        mapped.temporary_fault = iec104_make_ioa_3byte(100000U);
+        mapped.permanent_fault = iec104_make_ioa_3byte(200000U);
+        TEST_ASSERT_TRUE(iec104_set_line_config(0U, &mapped));
+        const fault_log_type_t type = (0U == kind) ?
+            FAULT_LOG_TYPE_TEMPORARY : FAULT_LOG_TYPE_PERMANENT;
+        for (uint8_t phase = 0U; PHASE_MAX > phase; phase++)
+        {
+            mock_fault_log_fill(0U, phase, type, 15U);
+        }
+        start_link();
+        iec104_fault_emit_state_t state = {0};
+        if (0U == kind)
+        {
+            TEST_ASSERT_TRUE(iec104_emit_feeder_temporary_faults(0U,
+                PHASE_ALL, COT_INTERROGATED_GROUP3, &state));
+        }
+        else
+        {
+            TEST_ASSERT_TRUE(iec104_emit_feeder_permanent_faults(0U,
+                PHASE_ALL, COT_INTERROGATED_GROUP4, &state));
+        }
+        bool seen[180U] = {false};
+        const uint32_t base = (0U == kind) ? 100000U : 200000U;
+        for (size_t packet_index = 0U; tx_count > packet_index; packet_index++)
+        {
+            const uint8_t *packet_data = tx_log[packet_index];
+            TEST_ASSERT_EQUAL_UINT8((0U == kind) ? 23U : 24U,
+                frame_asdu_cot(packet_data));
+            const bool measured = (M_ME_TF_1 == packet_data[6]);
+            TEST_ASSERT_TRUE(measured || (M_SP_TB_1 == packet_data[6]));
+            const size_t object_size = measured ? sizeof(m_me_tf_1_t) :
+                                                 sizeof(m_sp_tb_1_t);
+            for (size_t index = 0U; (packet_data[7] & 0x7FU) > index; index++)
+            {
+                const uint8_t *data = &packet_data[DATA_START_IDX +
+                                                   index * object_size];
+                const uint32_t ioa = (uint32_t)data[0] |
+                    ((uint32_t)data[1] << 8U) | ((uint32_t)data[2] << 16U);
+                TEST_ASSERT_TRUE((base <= ioa) && (base + 180U > ioa));
+                const uint32_t offset = ioa - base;
+                TEST_ASSERT_FALSE(seen[offset]);
+                seen[offset] = true;
+                const uint32_t record = (offset % 60U) / 4U;
+                const uint32_t field = offset % 4U;
+                TEST_ASSERT_EQUAL_UINT8(2U > field, measured);
+                if (measured)
+                {
+                    m_me_tf_1_t object;
+                    (void)memcpy(&object, data, sizeof(object));
+                    const float expected = (0U == field) ?
+                        (float)record / 10.0F : (float)(record + 1U);
+                    TEST_ASSERT_FLOAT_WITHIN(0.001F, expected, object.value);
+                }
+                else
+                {
+                    TEST_ASSERT_EQUAL_UINT8((2U == field) ?
+                        (record + 1U) % 2U : record % 2U, data[3] & 1U);
+                }
+            }
+        }
+        for (size_t index = 0U; sizeof(seen) / sizeof(seen[0]) > index; index++)
+        {
+            TEST_ASSERT_TRUE(seen[index]);
+        }
+    }
+}
+
 void test_fault_emission_resumes_without_gap_or_repeat(void)
 {
     const uint8_t fault_count = 9U;
@@ -1414,6 +1487,30 @@ void test_single_command_returns_negative_unsupported_type_response(void)
 void test_double_command_returns_negative_unsupported_type_response(void)
 {
     assert_control_command_returns_unsupported_type(C_DC_NA_1);
+}
+
+void test_setpoints_are_rejected_without_reboot_or_state_change(void)
+{
+    static const uint8_t types[] = {C_SE_NA_1, C_SE_NB_1, C_SE_NC_1};
+    for (size_t index = 0U; sizeof(types) > index; index++)
+    {
+        uint8_t frame[20] = {0};
+        setup(64U, 32U);
+        start_link();
+        build_reset_process(frame, 0U, 1U, TEST_COMMON_ADDRESS, 0x1234U, 1U);
+        const uint16_t length = (C_SE_NC_1 == types[index]) ? 20U : 18U;
+        frame[1] = (uint8_t)(length - 2U);
+        frame[6] = types[index];
+        iec104_data_received(frame, length);
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT16(length, tx_log_len[0]);
+        TEST_ASSERT_EQUAL_UINT8(types[index], frame_asdu_type(tx_log[0]));
+        TEST_ASSERT_EQUAL_UINT8(UkTypeId, frame_asdu_cot(tx_log[0]));
+        TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+        TEST_ASSERT_NOT_EQUAL(IEC104_EVT_REBOOT_REQUESTED, last_event);
+        TEST_ASSERT_TRUE(iec104_is_link_active());
+    }
 }
 
 void test_truncated_reset_command_is_rejected_without_reboot(void)

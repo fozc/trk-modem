@@ -859,3 +859,7 @@ CASES = {
                              "replay ortasinda link kesintisi kayit "
                              "kaybetmez (--mutate-eventlog)"),
 }
+
+# Socket-level checks run after the c104 positive interoperability cases.
+from cases_wire import CASES as WIRE_CASES  # noqa: E402
+CASES.update(WIRE_CASES)
