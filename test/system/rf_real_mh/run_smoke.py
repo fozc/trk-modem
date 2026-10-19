@@ -394,7 +394,7 @@ def m6_bootless(ctx):
 @case("m7_asdu_quality",
       "(--104-host) canli fiderlerin ASDU kalite/timetag'i gecerli")
 def m7_asdu_quality(ctx):
-    """Live points must carry valid measurement quality AND timestamp.
+    """GI21 live points must carry valid quality AND a timestamp.
 
     Closes the 2026-10-10 review point: m3 (LIVE_DATA on the wire) alone
     does not prove the SCADA side sees valid data. With live traffic on
@@ -414,6 +414,7 @@ def m7_asdu_quality(ctx):
         sys.path.insert(0, str(suite_root))
         import master104  # noqa: E402
         import apdu  # noqa: E402
+        import cases as iec_cases  # noqa: E402
     except ImportError as error:
         return "SKIP", ["c104 yok (%r): test/system/iec104_master/.venv "
                         "kurulu olmali" % error]
@@ -428,32 +429,28 @@ def m7_asdu_quality(ctx):
     try:
         if not master.connect(timeout_s=45.0):
             return "FAIL", ["104 baglantisi kurulamadi (STARTDT_CON yok)"]
-        master.interrogate(20)
         t0 = time.monotonic()
-        ok, term = master.wait(
-            lambda f: f[1] == "rx" and f[3] and
-            (f[3].get("asdu") or {}).get("type") ==
-            apdu.TYPE_C_IC_NA_1 and
-            (f[3].get("asdu") or {}).get("cot") == 10, 30.0, t0=t0)
+        if not master.interrogate(21):
+            return "FAIL", ["GI21 gonderilemedi"]
+        ok, detail = iec_cases._collect_interrogation(master, t0, 21)
+        if not ok:
+            return "FAIL", ["GI21 %s gelmedi" % detail["stage"]]
         measurements = []
-        deadline = time.monotonic() + (term[0] - t0 if ok else 30.0) + 1.0
-        for frame in master.since(t0):
-            if deadline < frame[0]:
-                break
-            asdu = frame[3].get("asdu") or {}
-            if ("rx" == frame[1] and
-                    apdu.TYPE_M_ME_TF_1 == asdu.get("type")):
-                for obj in asdu.get("objects", []):
-                    measurements.append(obj)
+        for frame in detail["data"]:
+            asdu = frame[3]["asdu"]
+            if (asdu["ca"] != 1 or asdu["cot"] != 21 or
+                    asdu["type"] != apdu.TYPE_M_ME_TF_1):
+                return "FAIL", ["GI21 CA/COT/tip uyusmuyor"]
+            measurements.extend(asdu.get("objects", []))
         if not measurements:
             return "FAIL", ["GI yanitinda olcum (M_ME_TF_1) noktasi yok"]
         valid = [obj for obj in measurements
-                 if not (obj.get("qds") or {}).get("iv")]
+                 if "qds" in obj and not obj["qds"]["iv"]]
         if not valid:
             return "FAIL", ["canli akis var ama tum olcum noktalari IV "
                             "(VINCI timetag-IV belirtisi ayni)"]
         bad_stamp = [obj["ioa"] for obj in valid
-                     if (obj.get("time") or {}).get("iv")]
+                     if "time" not in obj or obj["time"].get("iv", 1)]
         if bad_stamp:
             return "FAIL", ["gecerli olcum + gecersiz zaman damgasi "
                             "iv=1: IOA=%s" % sorted(bad_stamp)[:8]]
