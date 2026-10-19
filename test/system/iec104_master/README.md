@@ -4,8 +4,9 @@ Cihazın IEC-104 dinleyicisini (GSM üzerinden, varsayılan port 2404)
 bağımsız bir master stack'i ile uçtan uca doğrular. Master tarafı
 [c104](https://pypi.org/project/c104/) 2.2.1 (lib60870-C v2 çekirdeği,
 GPLv3) — kütüphane **repoya girmez**, bench-lokal venv'e kurulur;
-kurulu değilse süit SKIP döner. Negatif/fault kapsaması bu süitte
-değil, Ceedling'dedir (`test/iec104/test_iec104_protocol_scenario.c`).
+kurulu değilse süit SKIP döner. Negatif komut/ACK vakaları için ek
+socket master kullanılır; bozuk APDU ve protokol sınırlarının ayrıntılı
+kapsaması Ceedling'dedir (`test/iec104/test_iec104_protocol_scenario.c`).
 
 ## Kurulum (bir kez)
 
@@ -139,17 +140,17 @@ kanıtını ayırmak. Bu tablo tam üretim kabulü veya coverage yüzdesi değil
   Host testleri bu komutların olumsuz yanıtını doğrular.
 - Genel setpoint 48/49/50 için aktif handler bulunmaz. Web'de ayar
   bulunması, aynı ayarın IEC104 üzerinden set edilebildiğini göstermez.
-- QRP=2 mevcut handler'da olumlu onay döndürür, bekleyen olayları
-  temizlemez; kodda TODO vardır. Kayıt silme davranışı ürün/protokol
-  kararıyla netleştirilmeden tamamlanmış işlev sayılmamalıdır.
-- `iec104_periodic_send()` veri göndermeyen TODO gövdesidir. Akım,
-  enerji ve yük durumunun her değişimde/periyotta kendiliğinden
-  yayımlanması, arıza/alarm için çalışan COT=3 yoluyla karıştırılmamalıdır.
+- QRP=2 kullanıcı kararıyla desteklenmez; ACT_CON, PN=1 ile
+  reddedilmelidir. Bekleyen bildirimler ve arşiv korunmalıdır; cihaz
+  yeniden başlamamalıdır. QRP=1 ayrı bir yeniden başlatma işlemidir.
+- Zamanlayıcıyla başlayan otomatik yenileme, kullanıcı tercihiyle son
+  LIVE alım zamanını koruyan type 36/30 + COT=3 kullanır. Eski COT=1
+  denemesi INVALID_COT ile reddedildi (`periodic-device/`); bu başarısız
+  kanıt korunur. Yenilemenin güncel kanıtı ayrı koşumla gösterilmelidir.
 - Akü uyarısı IOA'sı yapılandırılır; aktif yayın çağrı yolu bulunmamıştır.
-- `rf_real_mh` m7 kalite testi bu turda koşulmadı. Mevcut hali GI20
-  isteyip zaman etiketli type=36 bekler; güncel GI20=13/1 sözleşmesiyle
-  uyumlu değildir. Zaman etiketi kabulü için GI21 yoluna uyarlanmalı ve
-  geçerli/geçersiz kalite ile eksik/IV zaman damgası regresyonları eklenmelidir.
+- `rf_real_mh` m7 kalite testi GI21/type=36 sözleşmesine uyarlandı.
+  Eksik/IV zaman damgası başarı sayılamaz. Host regresyonları ve gerçek
+  MH ile cihaz koşusu geçti (`iec104-close-20261019/m7-device`).
 
 ### Kanıt ve sonraki sıra
 
@@ -166,11 +167,58 @@ doğrulandı; test kayıtları silinmedi.
 
 Kapanış sırası:
 
-1. Gerçek cihaz test aracındaki m7 uyumsuzluğu giderilmeli; açık
-   bağlantıda yeni olay ve ACK kaybı senaryoları mevcut süite eklenmelidir.
-2. i04/i05 ve desteklenen reset/olumsuz komutlar cihazda doğrulanmalıdır.
+Bu tablonun ilk koşumuna ek olarak aşağıdaki 19.10.2026 sonuçları
+alındı. Kanıt kökü `.temp_files/iec104-close-20261019/` dizinidir.
+Eski başarısız veya eksik koşumlar yeni sonuçların yerine gösterilmemelidir.
+
+| Ek doğrulama | Sonuç ve kanıt | Sınır |
+|---|---|---|
+| m7 GI21 kalite/zaman | PASS, `m7-device/` | Gerçek MH; gerçek test akımı uygulanmadı |
+| Geçerli saat ve idle TESTFR | i04/i05 PASS, `timers-device/` | Saat testinden sonra eski RTC ilerleyişi `clock-restore-recovery.log` ile geri kuruldu |
+| Geçersiz CP56 | j04 PASS, `clock-negative-ready/` | IV, saat 24, ay 0, 31 Şubat reddi ve RTC korunması |
+| Desteklenmeyen komutlar | j01 PASS, `wire-device/` | 45/46/48/49/50 ve geçersiz reset adres/neden/değeri; destek etkinleştirilmedi |
+| Master ACK verilmemesi | j02/j03 PASS, `wire-device/` | Kalıcı sentetik kayıt ACK gelene kadar tutuldu; reconnect sonrası replay edildi |
+| Bağlıyken yeni RF arızası | s1 PASS, `rf-scada-hil/` | Gerçek RTU/Flash/GSM/IEC104; MH/AY simülatör; 142, 1250 A/120 ms; GI/reconnect yok |
+| Alarm ACTIVE/CLEARED | s2 PASS, `rf-scada-hil/` | Aynı gerçek RTU yolu; simülatör 105 ve taze LIVE; gerçek koruma akımı değildir |
+| QRP=2 olumsuz onay ve pending korunması | j01/j02 PASS, `qrp2-device-verified/` | CRC CD341B44; komut N(R) alanı bekleyen kaydı örtük onaylamaz; sonraki gerçek ACK tüketir |
+| Periyodik type 36/30 + COT=1 denemesi | FAIL, `periodic-device/` | c104 INVALID_COT; taslak üretim kabulü değildir; oracle bu bağımsız retleri de FAIL sayar |
+| Son LIVE zamanıyla zamanlanmış COT=3 yenileme | p01 PASS, `refresh-cot3-device/` | İki çevrim, 24 IOA, GI yok, INVALID_COT yok; gerçek c104; saha SCADA ürünü ayrıca |
+
+HIL sonuçları profile=1, CRC `0xC6039FB7` imajında alındı. Diğer
+yukarıdaki cihaz sonuçları önceki normal imajda alındı. QRP=2
+düzeltmesi bu HIL koşumundan sonra eklendi; son normal imajın ayrı
+kanıtı `qrp2-device-final/` altında takip edilmelidir.
+
+Negatif/ACK testleri için `j01`–`j04` vakaları mevcut süite eklendi.
+Ham socket master yalnız c104'ün üretmediği komutlar ve ACK'in bilinçli
+verilmemesi için kullanılır. Pozitif uyumluluk testleri c104 ile sürer.
+`--mutate-eventlog` olmadan kayıt ekleyen vakalar SKIP dönmelidir.
+Raw master'a geçişte yerel TCP kapanışı yeterli sayılmamalı; konsolda
+uzak GSM listener'ın `LISTENING IDLE` durumu görülmelidir.
+
+Son normal imaj: CRC `F75B80F3`, profile=0, 355244 B. Bu imajda
+`refresh-cot3-device/manifest.json`: i01/p01/j01/j02/j03 **5/5 PASS**.
+`refresh-cot3-full-unit.log`: **1536/1536**, 0 fail/ignore. Kaynak ve
+artifact hash'leri `refresh-cot3-image/` altında tutulur. Bu kanıt, eski
+COT=1 denemesini başarılı yapmaz; yeni imajın ayrı doğrulamasıdır.
+
+`p01_periodic` için `--periodic-test --console COM18` gereklidir.
+Vaka etkin fiderleri mevcut ayardan okur, `PeriodicSend=5` ile iki tam
+COT=3 yenileme çevrimini bekler ve `finally` içinde bütün IEC104 ayarını
+eski haline getirip karşılaştırır. Arıza/alarm ve kapanış snapshot'ları
+aynı COT=3 kullandığından periyodik nokta kapsamıyla karıştırılmamalıdır.
+Son alınan LIVE'ın RTU alım zamanı kullanılır; paket yeniden gönderilirken
+güncel RTC ile değiştirilmez. Yeni örnek yokken aynı etiketin korunması ve
+bayat/saati bilinmeyen verinin kalitesi host testleriyle ayrıca sınanır.
+
+Kalan sıra:
+
+1. Zamanlanmış COT=3 yenilemenin gerçek saha SCADA ürünüyle kabulü
+   ayrıca tamamlanmalıdır. Bağımsız c104 master, SCADA ürününün yerine
+   tüm işletme davranışlarını kanıtlamaz.
+2. QRP=1 için gerçek reset ve pending korunması cihazda doğrulanmalıdır.
 3. Bağlantı yokken gerçek AY olayı, çoklu alarm ve gerçek güç kesintisi
    aynı son imajda doğrulanmalıdır.
-4. Genel setpoint/çıkış kontrolü, QRP=2, periyodik yayın ve akü uyarısının
+4. Genel setpoint/çıkış kontrolü ve akü uyarısının
    ürün kapsamı netleştirilmelidir. Destek eklenecekse mevcut kapalı
    alt sistem kararları korunarak ayrıca uygulanıp kabul edilmelidir.
