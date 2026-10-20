@@ -16,7 +16,8 @@ SELFTEST = TEST_ROOT / "system" / "rf_hil" / "test_sim_selftest.py"
 def main():
     tests = [SELFTEST, TEST_ROOT / "system/rf_hil/test_hil_identity.py",
              TEST_ROOT / "system/rf_hil/test_hil_assertions.py",
-             TEST_ROOT / "system/rf_hil/test_hil_iec104.py"]
+             TEST_ROOT / "system/rf_hil/test_hil_iec104.py",
+             TEST_ROOT / "system/rf_hil/test_hil_wrap.py"]
     for test in tests:
         result = subprocess.run([sys.executable, str(test)], timeout=300)
         if result.returncode:

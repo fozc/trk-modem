@@ -46,6 +46,18 @@ def case(name, desc, scenario=None):
     return register
 
 
+def read_live_state(ctx, line=1, phase=1):
+    """Read one complete fresh shell sample, excluding older console text."""
+    ctx.console.mark()
+    reply = ctx.console.send_and_wait(
+        "rf live %d %d" % (line, phase),
+        r"Log wrap low\s*:\s*\d+", timeout_s=10)
+    assert reply, "RF live sample payload missing"
+    output = ConsoleChecks(ctx.console.new_lines())
+    ctx.evidence += output.lines
+    return output
+
+
 def wait_upload_complete(ctx, timeout_s=40):
     """Wait until the DUT finished inventory upload (0x05 INVENTORY_END).
 
@@ -239,10 +251,8 @@ def c2(ctx):
     tc = refresh(ctx)
     after_stop = [r for r in tc.tx_frames(0x11) if r.get("kind") == "notify"]
     tc.expect(len(after_stop) > 0, "once canli veri akmaliydi")
-    offline = ctx.console.send_and_wait(
-        "rf live 1 1", r"RF YOK, has_live=1", timeout_s=10)
-    tc.expect(offline, "DUT did not report offline after LIVE timeout")
-    ctx.evidence.append(offline[1])
+    read_live_state(ctx).assert_contains(
+        r"RF baglantisi\s*:\s*OFFLINE / TAZE LIVE YOK")
     # after disable no more LIVE notifications
     ctx.sim.call(do="set_knob", name="live_enabled", value=True)
     return "live stopped after t=25; console tail captured"
@@ -662,10 +672,7 @@ def h6(ctx):
     tc = refresh(ctx)
     tc.expect(tc.tx_frames(0x60, kind="notify"), "Unknown SET not injected")
     tc.expect(not tc.rx_requests(0x60), "DUT replied to unknown notification")
-    online = ctx.console.send_and_wait(
-        "rf live 1 1", r"RF VAR, has_live=1", timeout_s=10)
-    tc.expect(online, "RF stopped after unknown notification")
-    ctx.evidence.append(online[1])
+    read_live_state(ctx).assert_contains(r"RF baglantisi\s*:\s*ONLINE")
     return "Unknown SET ignored without reply; LIVE remains online"
 
 
@@ -708,9 +715,9 @@ import cases_findings  # noqa: E402,F401 (2026-10-08 analysis findings)
 import cases_r2   # noqa: E402,F401 (SCP R2 022555bf teslim cases)
 import cases_iec104  # noqa: E402,F401 (RF producer through SCADA socket)
 
-PLANNED = {
-    "d5_wrap_during_read": "okuma sirasinda halka sarmasi (soak)",
-}
+import cases_wrap  # noqa: E402,F401 (in-flight overwrite)
+
+PLANNED = {}
 
 
 def register_planned():

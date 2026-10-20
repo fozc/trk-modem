@@ -359,12 +359,57 @@ def epoch_campaign_summary(records):
     return None
 
 
+def configuration_result(lines, group_id):
+    """Use a fresh complete group snapshot, never ACK/201 as success."""
+    text = "\n".join(lines)
+    pattern = (r"RTU group=%d feeder=1 state=(\w+) writes=(\d+) "
+               r"expected_crc=0x([0-9A-Fa-f]+)\n"
+               r"MH state=(\w+) bitmap=0x([0-9A-Fa-f]+) "
+               r"reason=(\d+) cfg_crc=0x([0-9A-Fa-f]+)" % group_id)
+    matches = list(re.finditer(pattern, text))
+    if not matches:
+        return None
+    match = matches[-1]
+    rtu, writes, expected, mh, bitmap, reason, reported = match.groups()
+    if rtu not in ("APPLIED", "FAILED", "MISMATCH", "UNCERTAIN",
+                   "RESTARTED", "ABORTED"):
+        return None
+    success = (rtu == "APPLIED" and mh == "APPLIED" and writes == "3"
+               and int(bitmap, 16) == 7 and int(reason) == 0
+               and int(expected, 16) == int(reported, 16))
+    return ("PASS" if success else "FAIL", [match.group(0).replace("\n", "; ")])
+
+
+@case("m8_configuration", "(--config-group) real MH APPLIED/bitmap/CRC")
+def m8_configuration(ctx):
+    group_id = ctx.args.config_group
+    if group_id is None:
+        return "SKIP", ["--config-group <fresh 1..255> changes MH configuration"]
+    ctx.console.send("su admin"); time.sleep(.4)
+    ctx.console.send(ctx.args.admin_pass); time.sleep(.4)
+    ctx.console.mark()
+    queued = ctx.console.send_and_wait("rf cfg-apply 1 %d" % group_id,
+                                       r"Config queued|Config not started", 10)
+    if not queued or "not started" in queued[1]:
+        return "FAIL", ["configuration was not queued"]
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        ctx.console.send("rf cfg-state")
+        time.sleep(2)
+        result = configuration_result([line for _,line in ctx.console.new_lines()],
+                                      group_id)
+        if result is not None:
+            return result
+    return "FAIL", ["no complete terminal configuration snapshot"]
+
+
 @case("m6_bootless", "(--reset-dut) DUT reset: BOOT'suz kurulum")
 def m6_bootless(ctx):
     if not ctx.args.reset_dut:
         return "SKIP", ["--reset-dut ile acilir (cihazi resetler)"]
+    ctx.console.mark()
     reset_res = subprocess.run(
-        [PROGRAMMER, "-c", "port=SWD", "mode=UnderReset", "reset=SWRST",
+        [PROGRAMMER, "-c", "port=SWD", "mode=UR", "reset=SWRST",
          "-rst"], capture_output=True, text=True, timeout=60)
     if reset_res.returncode != 0:
         return "ERROR", ["DUT reset basarisiz: %s" %
@@ -488,6 +533,8 @@ def main():
     parser.add_argument("--admin-pass", default="admin")
     parser.add_argument("--duration", type=int, default=60,
                         help="gozlem penceresi (s)")
+    parser.add_argument("--config-group", type=int, choices=range(1, 256),
+                        help="m8: fresh group ID; applies stored feeder 1")
     parser.add_argument("--epoch", action="store_true")
     parser.add_argument("--reset-dut", action="store_true")
     parser.add_argument("--104-host", dest="host_104", default=None,
@@ -535,18 +582,29 @@ def main():
         for name in selected:
             results[name] = (verdict, [detail])
     else:
-        console.send("cslog on")
-        console.send("rf log verbose")
-        ctx = Ctx(args, console, outdir)
-        for name in selected:
-            function, _ = CASES[name]
-            started = time.strftime("%H:%M:%S")
-            try:
-                verdict, detail = function(ctx)
-            except Exception as error:  # noqa: BLE001 - evidence over crash
-                verdict, detail = "ERROR", ["%r" % error]
-            results[name] = (verdict, detail)
-            lines_out.append("%s %s %s" % (started, name, verdict))
+        # The shell hands off one command at a time. Wait for each setup
+        # response before sending the next command or starting observation.
+        logging_ready = console.send_and_wait(
+            "cslog on", r"Console logger started!", timeout_s=10)
+        if logging_ready:
+            logging_ready = console.send_and_wait(
+                "rf log verbose", r"RF log: VERBOSE", timeout_s=10)
+        if not logging_ready:
+            for name in selected:
+                results[name] = ("BLOCKED", [
+                    "Console/RF logging setup was not acknowledged; "
+                    "no traffic verdict can be made"])
+        else:
+            ctx = Ctx(args, console, outdir)
+            for name in selected:
+                function, _ = CASES[name]
+                started = time.strftime("%H:%M:%S")
+                try:
+                    verdict, detail = function(ctx)
+                except Exception as error:  # noqa: BLE001 - evidence over crash
+                    verdict, detail = "ERROR", ["%r" % error]
+                results[name] = (verdict, detail)
+                lines_out.append("%s %s %s" % (started, name, verdict))
     console.close()
 
     counts = {}
