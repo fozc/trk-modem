@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-20",
+  "source_base": "9a9a1b52513267c29fd15b4abd198a8e50fed67a",
+  "working_tree_was_dirty": true,
+  "production": {
+    "crc": "9440E6B2",
+    "profile": 0,
+    "size": 356844,
+    "efw_sha256": "5186b9029de46f7cf957395de0478e00caad577dfa9a2de085304bfc20a7eeb6",
+    "approved": true,
+    "test_fixture_symbols_absent": true
+  },
+  "results": {
+    "unit": {
+      "passed": 1571,
+      "fail": 0,
+      "ignore": 0,
+      "files": 112
+    },
+    "coverage_tests": {
+      "passed": 1571,
+      "fail": 0,
+      "ignore": 0
+    },
+    "integration_entries_passed": 14,
+    "modbus_final_passed": 23,
+    "modbus_initial_passed": 22,
+    "modbus_initial_failed": 1,
+    "modbus_initial_failure": "host-paced T5; wire gap not measured; original failure retained",
+    "iec104_direct_clock": "PASS",
+    "ntp_utc_plus_offset": "PASS",
+    "hardware_faults": "PASS within documented injected-failure scope",
+    "hil_d5": {
+      "pass": true,
+      "cycles": 3,
+      "records_produced": 366,
+      "duration_s": 229.9
+    },
+    "real_mh_full_applied": "OPEN; NOT_LIVE with existing two observed sources"
+  },
+  "coverage": {
+    "production_files": 124,
+    "measured_files": 75,
+    "unmeasured_files": 49,
+    "measured_totals": {
+      "lines_hit": 10861,
+      "lines_total": 14158,
+      "branches_hit": 6678,
+      "branches_total": 10023
+    }
+  },
+  "restored": {
+    "rf": true,
+    "iec104": true,
+    "modbus": true,
+    "ay_phase": 1,
+    "relays": [
+      0,
+      0
+    ],
+    "adc_valid": 1,
+    "timezone": 3,
+    "loggers": {
+      "cslog": "ON",
+      "rf": "NORMAL",
+      "gsm": "VERBOSE",
+      "iec104": "NORMAL"
+    }
+  },
+  "commits_before_report": [
+    "a0fcc617810d85b9bf3e43fc3ffadb10e1e0b1ef test: kontrollÃ¼ cihaz fault kabul altyapÄ±sÄ±nÄ± ekle",
+    "15176316692aec1b45c95ec40a55322889a6660a test: RF kabulÃ¼nÃ¼ ve okuma sÄ±rasÄ±nda halka taÅŸmasÄ±nÄ± doÄŸrula",
+    "c90a834b14996d30f9d71e0feb012bc84112ed75 test: web ve Modbus cihaz kabulÃ¼nÃ¼ saÄŸlamlaÅŸtÄ±r",
+    "f58ad918b19edcd137700d1dad8be8d5bda1fe8d fix: NTP saat dÃ¶nÃ¼ÅŸÃ¼mÃ¼nden Ã¶nce takvimi doÄŸrula",
+    "b10311c0b4571cd5f21c75dffbc61479e542ea7c build: Debug derlemesini -Og ile Flash sÄ±nÄ±rÄ±na sÄ±ÄŸdÄ±r"
+  ],
+  "raw_evidence_root": ".temp_files/closure-20261020",
+  "raw_sha256": {
+    "production-final.efw": "5186b9029de46f7cf957395de0478e00caad577dfa9a2de085304bfc20a7eeb6",
+    "fault-fixture.efw": "2e5a90e2955662eec34365a4a283ca1664174a0088a3a85c277b4304eeaba8ed",
+    "source-manifest.json": "827e1e10438e39ecdb7d812b4af3f95ce477a234ea646bc055c8f2a1fd1710f7",
+    "host-unit-final.log": "5c97bdc77b6ae7b32441121aa36f70f2b8af3fdb350bd939b3dbdbc11f964c4b",
+    "host-integration-final.log": "24cd4fa50cebe9593e3079ca2d662ee59e031338b600ec0f277722e8e8958911",
+    "coverage-final.log": "e0aab8a5fe32663d034c65790675697890629831445c85d056fd15369396c916",
+    "unit-inventory-final.md": "f4771c0a6a74635dcec020b5dab6c0eb9b18635738b144b216fc459d4d9e6fb5",
+    "gcov-inventory.md": "f4771c0a6a74635dcec020b5dab6c0eb9b18635738b144b216fc459d4d9e6fb5",
+    "logic-coverage.json": "6550abbdaeea506d288be4074fc6c3405b12fa71510cf41df0df20484491feb3",
+    "iec104-host-final.log": "0b7e779eef1f7bc8298f73bdf6e9d6619d5336c8515780fdf7aaba9be27a3740",
+    "modbus-final.log": "dd987dbc2bbc3bd7b8ea3a75f0194602cdf21c45b123bec7a130bc8cc3f11bf3",
+    "modbus-final-paced.log": "9b45154c6c7c14a16527bf1980899c643ff7c96acae3f540c9b7f00c72f3c859",
+    "final-console.log": "42ab4d0ada1028a4b53a39545ace15ff582b152b5f98f2cb821a350608ab9f40",
+    "restore-verification.json": "2725f329c38d9500ff2d0e74c5428cfaf41180f89c1eb760843467152cabc484",
+    "device-final.json": "0a92a0a9435b17e00c3ff547d85dd3014470e159d2ca607f1162eeb038ea5d6d",
+    "real-mh-apply.log": "ce88615f64ec8284b33311e9bd35b24e62fdd434e287fae06bdde9d03b0c17e6",
+    "real-mh-verdict.json": "0759855e1b142a20c0b46c0f923ca237f8778c4209a90c7084ec2d0298941611",
+    "real-mh-three/results.json": "15870c8f7ee2342df35ea3a21ea6d77f5f9e5cb6daa3517e7245e2b1ca5faa92",
+    "real-mh-three/rtu-console.log": "499e0011b1496ba5fc6dfa9858e017a2425eca57be84473b53027d8e06f42707",
+    "real-mh-three/ay-console.log": "9e4ac67f4ac3092e019af0de95e58cced6ca3986d4a63c7338337c9347d5fd29",
+    "hil-wrap/manifest.json": "8892848f01569cd07cc36c0d09397706e31fc116493f277fcb4c739b4514faa6",
+    "device-fault/results-verified.json": "bc643d81102f6d3d237e3baba8efee930999542903ab9386aaa3dad8ef6c6a0a",
+    "device-fault/console.log": "a98dbe982c2af21373d51daefc30df402e6fb18ab7b22ca069f7c916a62b297d",
+    "clock-iec104/manifest.json": "2b5b2a660b7e3c6717ce437131f014fe683baafbd1eef3172b934f3d3feeae1b",
+    "clock-ntp-reset/result.json": "ae5a79e4c2bc47c4399f9683a6754fc35e46ed35be51b017428f4b7711feb9c4",
+    "fixture-repro/manifest.json": "0b064a88e00d7e0a205d55f545bdf00951a820dbd4490264be7bdd28222afa17"
+  },
+  "limits": [
+    "full real-MH APPLIED needs three distinct real AYs",
+    "original L1 configured EUI F11A differs from physical F1BE; original configuration restored",
+    "no physical power cut/current injection/DMA failure/T1.5 wire measurement",
+    "229.9 seconds is not a field-duration soak"
+  ]
+}
