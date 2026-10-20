@@ -5,8 +5,9 @@ Drives the real device HTTP server over the GSM link: session handling,
 board-status schema (including the 2026-10-08 power-board extras),
 RF config/group status endpoints, the removed apply route and the
 content-based ETag revalidation (If-None-Match -> 304).
-No store-writing request is sent: the only POST body is an intentional
-parse error, which must be rejected before any state changes.
+The StopBits cycle temporarily changes Modbus line settings and restores
+the original values, including on failure. Other configuration writes are
+intentional invalid requests that must be rejected without state changes.
 
 Usage: python run_tests.py [host]
 Host default: env WEB_DEVICE_HOST or 188.59.76.59.
@@ -200,6 +201,8 @@ def test_modbus_stop_bits_cycle():
             if sess:
                 sess.close()
                 sess = None
+    initial = None
+    passed = False
     try:
         assert rq is not None and token, "no working session/login"
         t = "t=" + token
@@ -209,11 +212,12 @@ def test_modbus_stop_bits_cycle():
         assert st == 200, body
         data = json.loads(body)
         assert "StopBits" in data, "StopBits missing from GET"
-        initial = data["StopBits"]
+        initial = {key: data[key]
+                   for key in ("CihazID", "BaudRate", "StopBits")}
 
         # 2) POST StopBits=2: verify success body
         st, body = rq("POST", "/config/modbus?" + t,
-                            '{"CihazID":23,"BaudRate":115200,"StopBits":2}')
+                      json.dumps(dict(initial, StopBits=2)))
         print("POST StopBits=2: %d %s" % (st, body[:60]))
         assert st == 200 and json.loads(body).get("success") is True
 
@@ -223,7 +227,8 @@ def test_modbus_stop_bits_cycle():
 
         # 4) POST WITHOUT StopBits: pre-fill must preserve current value
         st, body = rq("POST", "/config/modbus?" + t,
-                            '{"CihazID":23,"BaudRate":115200}')
+                      json.dumps({key: initial[key]
+                                  for key in ("CihazID", "BaudRate")}))
         print("POST no StopBits: %d %s" % (st, body[:60]))
         assert st == 200 and json.loads(body).get("success") is True
 
@@ -234,25 +239,35 @@ def test_modbus_stop_bits_cycle():
 
         # 5) POST invalid StopBits=3: HTTP 400
         st, body = rq("POST", "/config/modbus?" + t,
-                            '{"CihazID":23,"BaudRate":115200,"StopBits":3}')
+                      json.dumps(dict(initial, StopBits=3)))
         print("POST StopBits=3: %d (expected 400)" % st)
         assert st == 400, "Expected 400, got %d" % st
+        st, body = rq("GET", "/config/modbus?" + t)
+        assert st == 200 and json.loads(body)["StopBits"] == 2
 
-        # 6) Restore to initial value
-        restore = json.dumps({"CihazID": 23, "BaudRate": 115200,
-                              "StopBits": initial})
-        st, body = rq("POST", "/config/modbus?" + t, restore)
-        assert st == 200
-
+        passed = True
+    except (AssertionError, OSError, RuntimeError, ValueError, KeyError) as err:
+        print("FAIL: modbus_stop_bits_cycle %s" % err)
+    finally:
+        # A failed assertion can follow an applied write. Restore every
+        # original line setting on both success and failure paths.
+        if initial is not None:
+            try:
+                st, body = rq("POST", "/config/modbus?" + t,
+                              json.dumps(initial))
+                assert st == 200 and json.loads(body).get("success") is True
+                st, body = rq("GET", "/config/modbus?" + t)
+                restored = json.loads(body)
+                assert st == 200 and all(restored.get(key) == value
+                                         for key, value in initial.items())
+            except (AssertionError, OSError, RuntimeError, ValueError) as err:
+                print("FAIL: modbus settings restore %s" % err)
+                passed = False
         if sess:
             sess.close()
+    if passed:
         print("PASS: modbus_stop_bits_cycle")
-        return True
-    except AssertionError as e:
-        if sess:
-            sess.close()
-        print("FAIL: modbus_stop_bits_cycle %s" % e)
-        return False
+    return passed
 
 
 def main():
@@ -285,10 +300,17 @@ def main():
     required = ["PanelVoltaji", "DcVoltaji", "GirisAkimi", "GirisGucu",
                 "AkuGucu", "Kaynak", "TelemetriYasi", "AlarmMaskesi",
                 "KartDurum", "KartDurum2", "PowerValidFields",
-                "BatterySOC", "ChargeState", "3V3"]
+                "BatterySOC", "ChargeState", "3V3", "3V8", "5V",
+                "TDIE", "ADCValid", "ADCSampleAgeMs"]
     missing = [k for k in required if k not in board]
     check("board_schema_complete", st == 200 and not missing,
           "missing=%s" % missing)
+    check("board_adc_dma_has_valid_sample", board.get("ADCValid") == 1,
+          "ADCValid=%s" % board.get("ADCValid"))
+    age = board.get("ADCSampleAgeMs")
+    check("board_adc_sample_age_available",
+          isinstance(age, int) and 0 <= age < 0xFFFFFFFF,
+          "ADCSampleAgeMs=%s" % age)
     # Gecersiz alanlar artik degerini tasir; istemci PowerValidFields
     # ile isaretler (null davranisi 2026-10-11'de degisti).
     mask = board.get("PowerValidFields", 0)
