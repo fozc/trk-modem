@@ -41,6 +41,17 @@ def crc16(data):
     return crc
 
 
+def send_paced(ser, data, interval_s):
+    """Record host write-call gaps; these are not wire timestamps."""
+    starts = []
+    for value in data:
+        starts.append(time.perf_counter())
+        ser.write(bytes([value]))
+        time.sleep(interval_s)
+    gaps = [(later-earlier)*1000 for earlier,later in zip(starts,starts[1:])]
+    return gaps
+
+
 def check(name, cond, detail=""):
     global passed, failed
     if cond:
@@ -190,9 +201,9 @@ def main():
          "dogrulamasi analizor ile acik).")
     req = fc06(SLAVE, RELAY1, 1)
     ser.reset_input_buffer()
-    for b in req:
-        ser.write(bytes([b]))
-        time.sleep(0.0015)
+    gaps = send_paced(ser, req, 0.0015)
+    note("T5 host write-call gaps (1.5 ms target): min=%.3f max=%.3f ms"
+         % (min(gaps), max(gaps)))
     quiet, _ = expect_silence(ser, 0.15)
     vals = read_regs(ser, RELAY1, 1)
     check("T5 ~1,5 ms gonderim araligi: kabul", vals == [1])
@@ -200,9 +211,9 @@ def main():
 
     req = fc06(SLAVE, RELAY1, 1)
     ser.reset_input_buffer()
-    for b in req:
-        ser.write(bytes([b]))
-        time.sleep(0.005)
+    gaps = send_paced(ser, req, 0.005)
+    note("T5 host write-call gaps (5 ms target): min=%.3f max=%.3f ms"
+         % (min(gaps), max(gaps)))
     quiet, extra = expect_silence(ser, 0.15)
     check("T5 ~5 ms gonderim araligi: dusurulur (belgeli taviz)",
           quiet and read_regs(ser, RELAY1, 1) == [0],
@@ -244,6 +255,16 @@ def main():
          "(cevirici katkisi dahil; cihaz katkisi analizor ile ayrilir)"
          % (med_first, med_complete))
     # Olcum kaydi: urun gereksinimi kaynagi olmayan bir ust sinir konmaz.
+
+    # ---- T9: first clean ADC DMA sample reaches the real FC03 path ---
+    # No ADC fault is injected in this bench test. Invalid sentinel words
+    # must not be returned after normal device startup.
+    adc = read_regs(ser, 9010, 4)
+    check("T9 ADC sicaklik/gerilim blogu okunur", adc is not None)
+    check("T9 ADC DMA ornegi gecerli",
+          adc is not None and adc[0] != 0x8000
+          and all(value != 0xFFFF for value in adc[1:]),
+          "registers=%s" % adc)
 
     ser.close()
     print("SONUC: %d PASS / %d FAIL / %d NOT" % (passed, failed,
