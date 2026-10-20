@@ -222,3 +222,25 @@ Kalan sıra:
 4. Genel setpoint/çıkış kontrolü ve akü uyarısının
    ürün kapsamı netleştirilmelidir. Destek eklenecekse mevcut kapalı
    alt sistem kararları korunarak ayrıca uygulanıp kabul edilmelidir.
+
+
+## 20.10.2026 saat kaynağı sözleşmesi
+
+**Amaç:** NTP UTC sapması ile IEC104 saat komutunu ayrı doğrulamak.
+
+**Kullanım yeri:** `--clock-sync --case i04_clock_sync` üretim cihazında
+CP56Time2a içeriğinin doğrudan uygulandığını sınar. Kullanıcı kararına göre
+IEC104 saatine web TimeZone değeri eklenmemelidir. Master'ın gönderdiği
+saat esas alınmalıdır. c104 UTC gönderdiğinde cihaz o UTC değerini alır.
+
+NTP kaynağında ise modemden gelen UTC saate web'deki TimeZone sapması
+uygulanır. İki kaynak farklı takvim değerleri veriyorsa kaynak geçişinde
+aynı miktarda saat değişimi beklenir; IEC104 yoluna ikinci bir offset
+(göreli saat farkı) eklemek için gerekçe değildir. Bu sözleşme bütün
+kaynakların ortak UTC sakladığı anlamına gelmez. Test bitince NTP açılış
+senkronu ile bench'in normal saati geri kurulmalıdır.
+
+Geçersiz NTP takvimi offset hesabından önce doğrulanır. Yeni yedi NTP
+regresyonu `test/gsm/test_gsm_response_scenario.c` içindedir. Bunlar gerçek
+GSM callback girişini, RTC sınırında gözlenen takvimi ve geçersiz girişte
+RTC'ye yazılmamasını denetler.
