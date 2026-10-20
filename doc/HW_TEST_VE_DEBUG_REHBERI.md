@@ -1,8 +1,8 @@
 # Donanım Test ve Debug Rehberi (ST-Link + Seri Konsol)
 
-**Sürüm:** 1.1
+**Sürüm:** 1.3
 
-**Tarih:** 12.10.2026
+**Tarih:** 20.10.2026
 
 **Amaç:** Bu rehber, cihazın (troika-smart-breaker-modem) ST-Link ve seri
 konsol üzerinden nasıl derlenip yazılacağını, güncelleneceğini ve test
@@ -21,8 +21,8 @@ yapılacağı her durumda kullanılır.
 |---|---|
 | ARM toolchain | `C:\ST\STM32CubeIDE_2.1.1\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.14.3.rel1.win32_1.0.100.202602081740\tools\bin` |
 | STM32CubeProgrammer CLI | `C:\ST\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe` |
-| Seri konsol | **COM16** (USB Serial Port), **LPUART1 230400 8N1** (PC0/PC1) |
-| AY konsolları | **COM9 ve COM14, 230400 baud**; 12.10.2026 kullanıcı bilgisi, AY/EUI/faz eşleşmesi koşu başında doğrulanmalıdır |
+| Seri konsol | **COM18** (20.10.2026 doğrulandı), **LPUART1 230400 8N1** (PC0/PC1) |
+| AY konsolları | **COM15 ve COM16, 230400 baud**; 20.10.2026 doğrulandı, AY/EUI/faz eşleşmesi her koşuda doğrulanmalıdır |
 | ST-Link VCP | COM17 (konsol değildir; sadece tanıma) |
 | Python | pyserial kurulu olmalıdır (`pip install pyserial`) |
 | Yardımcı betikler | `tools/hwtest/serial_io.py`, `tools/hwtest/xmodem_send.py` |
@@ -34,6 +34,13 @@ export PATH="/c/ST/STM32CubeIDE_2.1.1/STM32CubeIDE/plugins/com.st.stm32cube.ide.
 ```
 
 ---
+
+
+**20.10.2026 port doğrulaması:** Güncel düzende RTU konsolu COM18, AY
+konsolları COM15 ve COM16, RS485 adaptörü COM10 olarak doğrulanmıştır.
+Çalıştırmadan önce hedef `help`/kimlik çıktısıyla doğrulanmalı ve güncel
+port kullanılmalıdır. Eski 12.10.2026 AY portları COM9/COM14 tarihsel
+kayıttır; güncel port ataması sayılmamalıdır.
 
 ## Adımlar
 
@@ -58,7 +65,7 @@ make -C Release -j8 all
 
 ```bash
 printf 'help\nbootlog dump\n' | python tools/hwtest/serial_io.py \
-    capture COM16 230400 15 /tmp/out.log
+    capture COM18 230400 15 /tmp/out.log
 ```
 
 - stdin'deki satırlar açılışta 0.4 sn arayla gönderilir; ardından verilen
@@ -125,10 +132,13 @@ bekleyen kayıt okunur ve tüketme ilerlemesi kanıtlanır. Bu sonuç gerçek
 
 ```bash
 /c/ST/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe \
-    -c port=SWD mode=UnderReset reset=SWRST -rst
+    -c port=SWD mode=UR reset=SWRST -rst
 ```
 
-**ÖNEMLİ:** Bağlantı modu daima `mode=UnderReset reset=SWRST` olmalıdır.
+**ÖNEMLİ:** Bağlantı modu daima `mode=UR reset=SWRST` olmalıdır.
+Kurulu STM32CubeProgrammer 2.23.0 için Under Reset seçeneğinin CLI değeri
+`UR` olarak verilmelidir. `UnderReset` yazımı bu sürümde uyarı vererek
+Normal moda düşer; 20.10.2026 cihaz koşusunda doğrulanmıştır.
 Nedeni: kartta harici watchdog (EWDT) vardır; çekirdek durdurulunca
 beslenmez ve hedefi resetleyip bağlantıyı keser. `mode=HotPlug` ile yazma
 "failed to erase memory" hatasıyla sonuçlanır.
@@ -137,7 +147,7 @@ beslenmez ve hedefi resetleyip bağlantıyı keser. `mode=HotPlug` ile yazma
 
 ```bash
 cd Release && /c/ST/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe \
-    -c port=SWD mode=UnderReset reset=SWRST -w troika-smart-breaker-modem.elf -v -rst
+    -c port=SWD mode=UR reset=SWRST -w troika-smart-breaker-modem.elf -v -rst
 ```
 
 **ÖNEMLİ — BSL geri alma davranışı:** BSL, her açılışta iç flash'taki
@@ -153,11 +163,11 @@ için kullanışlıdır.
 ```bash
 # 1) Alici moduna gec (konsol):
 printf 'su admin\nxmodem start\n' | python tools/hwtest/serial_io.py \
-    capture COM16 230400 6 /tmp/xm0.log
+    capture COM18 230400 6 /tmp/xm0.log
 # "XMODEM mode activated" + hedef bolum yazisini ve 'C' davetini dogrula.
 
 # 2) Imzali paketi gonder:
-python tools/hwtest/xmodem_send.py COM16 230400 \
+python tools/hwtest/xmodem_send.py COM18 230400 \
     Release/<paket>.efw /tmp/xm1.log
 ```
 
@@ -209,6 +219,20 @@ yok. C kodu içermemelidir (GCC naked fonksiyonlarda C desteklemez).
      dump'ıyla aynı).
 4. Kancayı kaldır, temiz imajı A.5 ile geri kur.
 
+### A.8.1 Tekrarlanabilir fault fixture
+
+20.10.2026 koşusundaki hazır test için
+[`test/system/device_fault/README.md`](../test/system/device_fault/README.md)
+kullanılmalıdır. Derleme yardımcısı kaynakları `finally` ile geri alır;
+üretim ELF'i ve cihaz komutları test sonunda ayrıca kontrol edilmelidir.
+Fixture, gerçek Modbus timeout ve gerçek HardFault üretir; HAL hata
+dönüşlerini yazılımla enjekte eder. Fiziksel DMA arızası ölçümü sayılmaz.
+
+Aynı gün HardFault dump'ı ile açılışta kalıcı elog'un PC/LR/CFSR/HFSR
+alanları eşleşmiştir. Fault dump'ından ilk açılış kaydına yaklaşık 846 ms
+ölçülmüştür; A.8'deki yaklaşık 1–2 s ifadesi donanım garantisi değildir.
+Üretim profili ve başlangıç ayarları test sonunda geri kurulmalıdır.
+
 ### A.9 Bootloader (BSL) boyut bütçesi
 
 ```bash
@@ -237,7 +261,7 @@ Bütçe 80 KB (81920 bayt, `text+data`). Ölçüm (2026-09-19): 53 996 bayt
 
 | Belirti | Neden | Çözüm |
 |---|---|---|
-| "failed to erase memory" (yazmada) | EWDT, durdurulan çekirdeği resetliyor | `mode=UnderReset reset=SWRST` kullan |
+| "failed to erase memory" (yazmada) | EWDT, durdurulan çekirdeği resetliyor | `mode=UR reset=SWRST` kullan |
 | Direkt yazılan imaj "yok oluyor" | BSL CRC uyuşmazlığında yedeği geri yüklüyor | Güncellemeyi A.5 (xmodem/web) ile yap |
 | `xmodem start` sonrası 'C' gelmiyor | 1 dk başlama timeout'u geçti | Komutu yeniden ver, hemen gönder |
 | Aktarım ortasında CAN | Paket CRC/format hatası ya da timeout | Betiği yeniden çalıştır; seyrekse kablo/hız kontrolü |
