@@ -1309,6 +1309,13 @@ int32_t gsm_ntp_cb(void)
 
 				if(res)
 				{
+					datetime_t parsed_time = {0};
+					if (0 != dt_init((uint16_t)(2000U + dt.year),
+					                  dt.month, dt.day, dt.hour, dt.minute,
+					                  dt.second, &parsed_time))
+					{
+						return GSM_ERROR;
+					}
 					static const uint8_t days_in_month[13] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 					int32_t tz       = modem_config_get_timezone();
 					int32_t hour_adj = (int32_t)dt.hour + tz;

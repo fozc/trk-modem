@@ -24,6 +24,7 @@
 #include "xprintf.h"
 #include "gsm_signal_led.h"
 TEST_SOURCE_FILE("gsm_signal_led.c")
+TEST_SOURCE_FILE("datetime.c")
 
 /* Keep the actual callbacks and IPv4 parser in this scenario. */
 #include "../../Application/gsm/gsm_engine.c"
@@ -582,6 +583,79 @@ void test_iec104_listener_uses_active_port_instead_of_pending_saved_port(void)
     at_engine_send_at_command_Stub(check_at_command);
     TEST_ASSERT_EQUAL_UINT32(1U,
         gsm_engine_send_query(ATQUERY_OPEN_IEC104_LISTENER_SOCKET));
+}
+
+static void expect_ntp_time(const char *text, int32_t timezone,
+                            const rtc_t *expected)
+{
+    response_text = text;
+    modem_config_get_timezone_ExpectAndReturn(timezone);
+    rtc_sync_ExpectAndReturn(expected, true);
+    TEST_ASSERT_EQUAL_INT32(GSM_RESPONSE_OK, gsm_ntp_cb());
+}
+
+void test_ntp_applies_configured_offset_to_utc(void)
+{
+    const rtc_t expected = {.year = 26U, .month = 10U, .day = 20U,
+                            .hour = 23U, .minute = 10U, .second = 11U};
+    expect_ntp_time("\r\n#NTP: 26/10/20,20:10:11-00\r\nOK\r\n", 3,
+                    &expected);
+}
+
+void test_ntp_zero_offset_preserves_received_calendar(void)
+{
+    const rtc_t expected = {.year = 26U, .month = 10U, .day = 20U,
+                            .hour = 20U, .minute = 10U, .second = 11U};
+    expect_ntp_time("\r\n#NTP: 26/10/20,20:10:11-00\r\nOK\r\n", 0,
+                    &expected);
+}
+
+void test_ntp_positive_offset_crosses_year_boundary(void)
+{
+    const rtc_t expected = {.year = 27U, .month = 1U, .day = 1U,
+                            .hour = 1U, .minute = 0U, .second = 0U};
+    expect_ntp_time("\r\n#NTP: 26/12/31,22:00:00-00\r\nOK\r\n", 3,
+                    &expected);
+}
+
+void test_ntp_negative_offset_crosses_year_boundary(void)
+{
+    const rtc_t expected = {.year = 26U, .month = 12U, .day = 31U,
+                            .hour = 23U, .minute = 0U, .second = 0U};
+    expect_ntp_time("\r\n#NTP: 27/01/01,02:00:00-00\r\nOK\r\n", -3,
+                    &expected);
+}
+
+void test_ntp_negative_offset_preserves_leap_day(void)
+{
+    const rtc_t expected = {.year = 28U, .month = 2U, .day = 29U,
+                            .hour = 23U, .minute = 0U, .second = 0U};
+    expect_ntp_time("\r\n#NTP: 28/03/01,02:00:00-00\r\nOK\r\n", -3,
+                    &expected);
+}
+
+void test_ntp_positive_offset_crosses_leap_day(void)
+{
+    const rtc_t expected = {.year = 28U, .month = 3U, .day = 1U,
+                            .hour = 1U, .minute = 0U, .second = 0U};
+    expect_ntp_time("\r\n#NTP: 28/02/29,22:00:00-00\r\nOK\r\n", 3,
+                    &expected);
+}
+
+void test_invalid_ntp_calendar_preserves_existing_clock(void)
+{
+    static const char *const invalid[] = {
+        "\r\n#NTP: 26/13/01,23:00:00-00\r\nOK\r\n",
+        "\r\n#NTP: 26/02/29,23:00:00-00\r\nOK\r\n",
+        "\r\n#NTP: 26/10/00,23:00:00-00\r\nOK\r\n",
+        "\r\n#NTP: 26/10/20,24:00:00-00\r\nOK\r\n"
+    };
+    for (size_t index = 0U; index < sizeof(invalid) / sizeof(invalid[0]);
+         index++)
+    {
+        response_text = invalid[index];
+        TEST_ASSERT_EQUAL_INT32(GSM_ERROR, gsm_ntp_cb());
+    }
 }
 
 /*** end of file ***/
