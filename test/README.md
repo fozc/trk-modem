@@ -1,13 +1,94 @@
 # Test Altyapısı
 
-**Sürüm:** 1.53
-**Tarih:** 2026-10-19
+**Sürüm:** 1.55
+**Tarih:** 2026-10-20
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
+
+## 20.10.2026 ek kabul ve kalan fiziksel sınırlar
+
+**Amaç:** İlk tam koşunun ardından kalan maddeleri mevcut RTU + MH/AY +
+RS485 düzeniyle sınamak. Ayrıntılar [kapanış kaydındadır](reports/2026-10-20-acceptance.md).
+
+**Kullanım yeri:** Yeni üretim paketinde NTP takvim doğrulaması, geçici
+fixture ile Modbus timeout/HardFault ve HIL okuma sırasında halka taşması.
+
+- Yeni yedi NTP C regresyonuyla tam Ceedling sonucu **1571/1571** oldu.
+  Geçersiz tarih offset hesabından önce mevcut `dt_init` ile reddedilir.
+  NTP, UTC + web TimeZone; IEC104, gelen CP56 değerini doğrudan kullanır.
+- Gerçek Modbus timeout ve enjekte HAL dönüş hatalarında başarılı
+  toparlanma/yeni okuma ile başarısız toparlanma/elog/yanıtsız okuma
+  ayrıldı. Otomatik reset yapılmadı. Gerçek HardFault, watchdog açılışı ve
+  kalıcı PC/LR/CFSR/HFSR eşleşmesi doğrulandı. Fixture üretime dahil değildir.
+- `d5_wrap_during_read` artık uygulanmıştır: aynı HIL imajında üç taşma,
+  366 üretilen kayıt ve 229,9 saniyelik koşu PASS. Önceki 47 vakaya bu vaka
+  eklenmiştir; bunlar tek bir yeni 48-vaka koşusu gibi sunulmamalıdır.
+- `m8_configuration` tam APPLIED/bitmap/CRC ölçütünü uygular. Gerçek MH
+  grup 250 sonucu **FAILED/bitmap 0x04/reason 1/CRC 0000**, beklenen D07F
+  oldu. Bu fiziksel kabul açık kaldı; ACK/201 ile kapatılmadı.
+- Yeni fiziksel kanıt kararları için fault 4, halka 3, MH 2 ve NTP reset 3
+  olmak üzere **12 yeni Python test yöntemi** eklendi ve merkezi girişlere
+  bağlandı. Önceki aşamadaki 18 Python regresyonundan ayrıdır.
+
+**Sınır:** Kullanıcı ilave ölçüm ekipmanı olmadığını belirtti. Güç kesintisi,
+fiziksel akım enjeksiyonu, fiziksel DMA arızası ve osiloskop gerektiren
+T1.5/echo ölçümleri açık kalmalıdır. 229,9 saniyelik taşma koşusu saha
+süresinde soak veya sayısız çevrim güvencesi sayılmamalıdır.
+
+## 20.10.2026 tam koşu ve kabul testi düzeltmeleri
+
+**Amaç:** Merkezi host testlerini, coverage (kod kapsamı) ölçümünü ve gerçek
+cihaz kanıtını ayrı kaydetmek.
+
+**Kullanım yeri:** `ruby test/run_all.rb all` ve `ceedling gcov:all`.
+Ceedling iki girişte de 112 C test dosyasında **1564/1564**, fail/ignore=0
+sonucunu verdi. Merkezi 14 integration girişinin cihaz hedefi verilmeyen
+alt koşuları SKIP olarak ayrılmalıdır; aşağıdaki fiziksel koşular ayrıca
+çalıştırılmıştır. Ham kayıtlar `.temp_files/full-test-20261020/` altındadır.
+
+| Cihaz koşusu | Sonuç | Kanıt |
+|---|---|---|
+| RF HIL, profil 1 | Uygulanan 47 vakanın tamamı PASS | İlk koşu 42 PASS/5 FAIL; test düzeltmelerinden sonra aynı imajda 5/5 tekrar PASS; `hil-final-matrix.json` |
+| IEC104, üretim profili | 13/13 PASS | `iec104-production-full.log`; RTC sync, olay yazma, ACK/replay ve periodic akış dahil |
+| Gerçek MH, üretim profili | Yedi vakanın tamamı farklı koşularda PASS | `real-mh-authorized`, `real-mh-event-quality`, `real-mh-bootless-fresh`; epoch ACK/201 sonucu kesin APPLIED kabulü değildir |
+| Modbus, COM10 | 23 PASS/0 FAIL | `modbus-production-settled.log`; gerçek FC03 ADC sıcaklık/gerilim bloğu dahil |
+| Web, üretim profili | PASS | `web-production-current.log`; ADCValid ve örnek yaşı dahil |
+
+Coverage envanterindeki 124 üretim C dosyasının 75'i ölçülmüştür:
+10856/14138 satır (%76,8) ve 6672/10015 dal (%66,6). Kalan 49 dosya
+ölçülmemiştir; bu, testlerinin bulunmadığı anlamına gelmez. Bu oranlar tüm
+firmware'e veya fiziksel zamanlama doğrulamasına genellenmemelidir.
+
+**Düzeltmeler:** Web StopBits testi başlangıç slave ID/baud değerlerini
+kullanmalı, başarısızlık dahil her çıkışta özgün ayarları geri yüklemeli ve
+GET ile doğrulamalıdır. MH runner log komutlarının onayını sırayla beklemeli;
+kurulum başarısızsa trafik vakalarını BLOCKED raporlamalıdır. Reset öncesi
+konsol işareti alınarak önceki epoch kayıtları dışlanmalıdır. Programmer
+2.23 için doğrulanan bağlantı seçeneği `mode=UR reset=SWRST` olmalıdır.
+
+HIL LIVE testleri tam ve yeni konsol örneğini, mevcut ONLINE/OFFLINE ve
+GECERSIZ alanlarını okumalıdır. IEC104 boşaltma bütçesi başlangıç kayıt
+sayısı ve master ACK aralığından bir kez hesaplanmalı; kuyruk takılırsa
+süre dolmalıdır. Eski sabit 90 saniye, 20 kayıt ve 10 saniyelik ACK aralığı
+olan bu koşuda yetersizdi. Toplam **18 yeni host test yöntemi** eklendi:
+web 5, MH 3, HIL assertions 7 ve HIL IEC104 3. İlgili selftest toplamları
+sırasıyla 5, 24, 16 ve 7'dir.
+
+**Derleme ve geri yükleme:** Debug `-O0` FLASH sınırını 49580 bayt aştı.
+Kullanıcının onayladığı `-Og` ile tam Debug derlemesi geçti; linker/bellek
+yerleşimi değişmedi. Release derlemesi ve imzalı EFW self-check geçti.
+Test edilen üretim paketi CRC `1AFCFA00`, profil 0, 356664 bayttır. HIL
+sonunda bu paket yeniden kuruldu; başlangıç RF/IEC104/Modbus ayarları GET
+ile karşılaştırıldı ve log seviyeleri geri yüklendi. Kayıtlar topluca
+silinmedi. Üretim C mantığı veya otomatik reset politikası değiştirilmedi.
+
+**Sınır:** `d5_wrap_during_read` mevcut ertelenmiş soak vakasıdır; 47
+uygulanan vakaya dahil değildir. Fiziksel güç kesintisi, gerçek arıza akımı,
+DMA hata enjeksiyonu ve uzun süreli soak bu koşuda doğrulanmamıştır.
 
 ## 19.10.2026 UART toparlanması ve ADC geçerliliği
 
