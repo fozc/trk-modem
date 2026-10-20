@@ -1,7 +1,7 @@
 # Gerçek MH Duman Süiti (`rf_real_mh`)
 
-**Sürüm:** 1.3
-**Tarih:** 2026-10-13
+**Sürüm:** 1.4
+**Tarih:** 2026-10-20
 
 HIL süiti (`test/system/rf_hil`) PC'deki simülatörün oynadığı MH'ye karşı
 koşar; bu süit gerçek MH ve ayırıcı kartlarla doğrulama yapar. Üretim
@@ -88,6 +88,7 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-20 | 1.4 | m8 gerçek APPLIED/bitmap/CRC kabulü; sıralı log kurulumu ve reset öncesi taze konsol sınırı |
 | 2026-10-13 | 1.3 | v0.15 BQ-23: 120 tanı niteliği, m5 gözlem kapsamı ve APPLIED kesin kabul sınırı |
 | 2026-10-12 | 1.2 | m4 için AY TEST kaydı rehberine atıf; güncel tüketme kanıtı |
 | 2026-10-10 | 1.1 | AY bağlantı önkoşulu, m2 salt gözlem kapsamı ve merkezi host selftest'leri |
@@ -96,3 +97,29 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
   gözlemlenir; kapsamlı sınama HIL süitindedir.
 - m5/m6 cihaz durumunu değiştirir (0x2A gönderir / cihazı resetler) —
   opt-in bayraklarla açılırlar.
+
+
+## 20.10.2026 kesin yapılandırma kabulü
+
+**Amaç:** ACK/201 gözlemini gerçek APPLIED kabulünden ayırmak.
+
+**Kullanım yeri:** `--case m8_configuration --config-group <yeni 1..255>`
+ile stored (saklanan) fider 1 ayarı gerçek MH'ye uygulanır. Bu seçenek
+fiziksel yapılandırmayı değiştirir; yetkili ve güvenli bench gerektirir.
+Başarı için RTU ve MH APPLIED, üç WRITE, bitmap 0x07, reason 0 ve beklenen
+CRC ile bildirilen CRC eşitliği birlikte zorunludur. ACK veya 201 tek
+başına başarı değildir. Eski/farklı grup snapshot'ı kabul edilmez.
+
+20.10 koşusunda grup 250 FAILED, bitmap 0x04, reason 1, CRC 0000;
+beklenen CRC D07F oldu. İki canlı kaynak ve üçüncü dummy üye bulunan
+düzende tam kabul açık kaldı. SCP R2 §4.9 reason 1 değerini NOT_LIVE olarak tanımlar. RTU kodu bu
+sonucu başarılıya çevirmek için değiştirilmedi. Kaynak: test kapanış
+raporu ve `.temp_files/closure-20261020/real-mh-apply.log`.
+
+
+Ek faz deneyi COM16 F1BE kartını faz3 yaptığında eski L1'in OFFLINE
+olduğunu gösterdi. Bu kart ayrı üçüncü kaynak değildir; özgün faz1 ve RTU
+eşlemesi geri alındı. Web Kaydet'in başlattığı otomatik batch (toplu iş)
+sürerken ayrıca m8 başlatılmamalıdır; önce grup terminal duruma gelmelidir.
+Tam kabul için üç ayrı canlı kart gerekir. L1'deki F11A/F1BE eşleme farkı
+kapanış raporunda korunmuştur.

@@ -52,8 +52,9 @@ def wait_inventory_loaded(ctx, timeout_s=45):
 
 
 def dut_reset():
-    subprocess.run([PROGRAMMER, "-c", "port=SWD mode=UnderReset reset=SWRST",
-                    "-rst"], capture_output=True, text=True, timeout=60)
+    subprocess.run([PROGRAMMER, "-c", "port=SWD", "mode=UR", "reset=SWRST",
+                    "-rst"], capture_output=True, text=True, timeout=60,
+                   check=True)
 
 
 @case("f02_lost_terminal_notify_recovered_by_poll",

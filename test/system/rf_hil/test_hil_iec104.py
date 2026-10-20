@@ -1,5 +1,6 @@
 """The RF-to-SCADA hardware verdict must reject missing/wrong wire data."""
 import struct
+import re
 import sys
 import time
 import unittest
@@ -31,6 +32,45 @@ class Master:
 
 
 class HILWireTests(unittest.TestCase):
+    def drain(self, pending, stuck=False, missing=False):
+        clock = SimpleNamespace(now=0.0)
+        console = Mock()
+
+        def status(command, pattern, timeout_s):
+            if missing:
+                return None
+            count = pending if stuck else max(0, pending - int(clock.now / 11))
+            text = "unsent : %d" % count
+            return clock.now, text, re.search(pattern, text)
+
+        console.send_and_wait.side_effect = status
+        ctx = SimpleNamespace(console=console, evidence=[],
+                              sim=SimpleNamespace(call=lambda **kwargs:
+                                                  {"state": {"ring": {"pending": 0}}}))
+        master = SimpleNamespace(confirm_interval_s=10)
+
+        def advance(seconds):
+            clock.now += seconds
+            self.assertLess(clock.now, 500, "unbounded backlog wait")
+
+        with patch.object(cases_iec104, "refresh"), \
+                patch.object(cases_iec104.time, "monotonic",
+                             side_effect=lambda: clock.now), \
+                patch.object(cases_iec104.time, "sleep", side_effect=advance):
+            cases_iec104._drained(ctx, master)
+        return clock.now
+
+    def test_backlog_larger_than_ninety_second_ack_window_can_drain(self):
+        self.assertGreaterEqual(self.drain(20), 220)
+
+    def test_stuck_backlog_has_a_fixed_finite_deadline(self):
+        with self.assertRaisesRegex(AssertionError, "backlog did not drain"):
+            self.drain(2, stuck=True)
+
+    def test_missing_status_cannot_be_assumed_empty(self):
+        with self.assertRaises(AssertionError):
+            self.drain(0, missing=True)
+
     def fault(self, current=1250, duration=120, invalid_time=False, cot=3):
         stamp = bytes((0, 0, 0x80 if invalid_time else 0, 12, 19, 10, 26))
         body = bytes((36, 2, cot, 0, 1, 0))

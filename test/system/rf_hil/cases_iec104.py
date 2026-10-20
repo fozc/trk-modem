@@ -36,8 +36,20 @@ def _connect(ctx):
     return master, recorder, snapshot
 
 
-def _drained(ctx, timeout=90):
-    deadline = time.monotonic() + timeout
+def _drained(ctx, master, timeout=90):
+    refresh(ctx)
+    reply = ctx.console.send_and_wait(
+        "iec104evtlog status", r"unsent\s*:\s*(\d+)", timeout_s=8)
+    assert reply, "IEC104 backlog status unavailable"
+    pending = int(reply[2].group(1))
+    # As in the IEC104 replay suite, allow the master's delayed ACK plus
+    # six seconds per retained record. Budget once from the initial count;
+    # a stuck queue must still time out rather than extend every poll.
+    gap = max(6.0, float(master.confirm_interval_s) + 6.0)
+    budget = max(float(timeout), pending * gap)
+    ctx.evidence.append("initial unsent=%d, drain budget=%.0f s" %
+                        (pending, budget))
+    deadline = time.monotonic() + budget
     while time.monotonic() < deadline:
         refresh(ctx)
         reply = ctx.console.send_and_wait(
@@ -66,7 +78,7 @@ def s1_fault(ctx):
     wait_upload_complete(ctx)
     master, recorder, snapshot = _connect(ctx)
     try:
-        _drained(ctx)
+        _drained(ctx, master)
         boot = _source_boot(ctx)
         started = time.monotonic()
         ctx.sim.call(do="add_events", count=1, code=142, line=1, phase=1,
@@ -83,7 +95,7 @@ def s1_fault(ctx):
         assert abs(objects[0]["value"] - 1250) < 0.051
         assert abs(objects[1]["value"] - 120) < 0.5
         assert all("time" in obj and obj["time"]["iv"] == 0 for obj in objects)
-        _drained(ctx)
+        _drained(ctx, master)
         assert not [f for f in master.since(started) if f[1] == "tx" and
                     (f[3].get("asdu") or {}).get("type") == 100]
         return "RF142 -> durable store -> COT3 1250 A/120 ms -> master ACK; both queues empty"
@@ -99,7 +111,7 @@ def s2_alarm(ctx):
     wait_upload_complete(ctx)
     master, recorder, snapshot = _connect(ctx)
     try:
-        _drained(ctx)
+        _drained(ctx, master)
         boot = _source_boot(ctx)
         ioa = snapshot["lines"][0]["ioa"]["trip"][0]
         started = time.monotonic()
@@ -119,7 +131,7 @@ def s2_alarm(ctx):
                      values={"trip_failed": 0, "uptime_s": 600})
         ok, _ = master.wait(lambda f: alarm(f, 0), 90, t0=active[0] + 0.001)
         assert ok, "CLEARED alarm not received after fresh LIVE"
-        _drained(ctx)
+        _drained(ctx, master)
         return "RF105 -> ACTIVE -> fresh LIVE -> CLEARED at IOA=%d; queues empty" % ioa
     finally:
         master.stop()

@@ -7,7 +7,8 @@ import importlib.util
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from tempfile import TemporaryDirectory
 import struct
 import re
 import time
@@ -38,6 +39,81 @@ class FakeConsole:
 
 
 class SmokeTests(unittest.TestCase):
+    def test_configuration_requires_applied_full_bitmap_and_matching_crc(self):
+        base = ["RTU group=250 feeder=1 state=APPLIED writes=3 expected_crc=0xD07F",
+                "MH state=APPLIED bitmap=0x07 reason=0 cfg_crc=0xD07F"]
+        self.assertEqual("PASS", run_smoke.configuration_result(base,250)[0])
+        for old,new in (("state=APPLIED","state=FAILED"), ("writes=3","writes=2"),
+                        ("bitmap=0x07","bitmap=0x04"), ("reason=0","reason=1"),
+                        ("cfg_crc=0xD07F","cfg_crc=0x0000")):
+            with self.subTest(old=old):
+                changed = [line.replace(old,new) for line in base]
+                self.assertNotEqual("PASS", run_smoke.configuration_result(changed,250)[0])
+
+    def test_wrong_group_or_ack_201_without_snapshot_cannot_pass(self):
+        lines = ["ACK CFG_COMMIT seq=10", "201 campaign complete"]
+        self.assertIsNone(run_smoke.configuration_result(lines,250))
+        lines = ["RTU group=249 feeder=1 state=APPLIED writes=3 expected_crc=0x1234",
+                 "MH state=APPLIED bitmap=0x07 reason=0 cfg_crc=0x1234"]
+        self.assertIsNone(run_smoke.configuration_result(lines,250))
+
+    def test_bootless_reset_uses_supported_under_reset_token_and_reports_failure(self):
+        console = Mock()
+        ctx = SimpleNamespace(args=SimpleNamespace(reset_dut=True),
+                              console=console)
+        def reset_failed(*args, **kwargs):
+            console.mark.assert_called_once()
+            return SimpleNamespace(returncode=1, stderr="reset failed")
+
+        with patch.object(run_smoke.subprocess, "run",
+                          side_effect=reset_failed) as reset:
+            verdict, _ = run_smoke.m6_bootless(ctx)
+        self.assertEqual("ERROR", verdict)
+        command = reset.call_args.args[0]
+        self.assertIn("mode=UR", command)
+        self.assertIn("reset=SWRST", command)
+        console.send.assert_not_called()
+
+    def run_main_logging(self, acknowledgements):
+        console = Mock()
+        console.send_and_wait.side_effect = acknowledgements
+        check = Mock(return_value=("PASS", ["observed"]))
+        temporary_root = ROOT / ".temp_files"
+        temporary_root.mkdir(exist_ok=True)
+        with TemporaryDirectory(dir=temporary_root) as directory:
+            argv = ["run_smoke.py", "--console", "TEST",
+                    "--case", "logging_check", "--outdir", directory,
+                    "--require-device"]
+            with patch.object(sys, "argv", argv), \
+                    patch.object(run_smoke, "ConsoleSession",
+                                 return_value=console), \
+                    patch.object(run_smoke, "dut_profile", return_value=0), \
+                    patch.dict(run_smoke.CASES,
+                               {"logging_check": (check, "test")}, clear=True), \
+                    redirect_stdout(StringIO()):
+                result = run_smoke.main()
+            report = (Path(directory) / "results.json").read_text()
+        return result, console, check, report
+
+    def test_runner_waits_for_logging_acknowledgements_before_cases(self):
+        result, console, check, _ = self.run_main_logging([True, True])
+        self.assertEqual(0, result)
+        self.assertEqual(["cslog on", "rf log verbose"],
+                         [call.args[0] for call in
+                          console.send_and_wait.call_args_list])
+        check.assert_called_once()
+        console.close.assert_called_once()
+
+    def test_logging_setup_failure_blocks_cases_instead_of_false_live_failure(self):
+        for acknowledgements in ([None], [True, None]):
+            with self.subTest(acknowledgements=acknowledgements):
+                result, console, check, report = self.run_main_logging(
+                    acknowledgements)
+                self.assertEqual(1, result)
+                check.assert_not_called()
+                self.assertIn('"BLOCKED"', report)
+                console.close.assert_called_once()
+
     def quality(self, qds=0, timestamp=b"\x00\x00\x00\x00\x01\x01\x1a",
                 terminate=True, cot=21):
         sys.path.insert(0, str(ROOT / "test/system/iec104_master"))

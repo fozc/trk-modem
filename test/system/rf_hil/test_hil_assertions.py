@@ -1,11 +1,110 @@
 """Host checks for the actual alarm HIL verdicts; no ports are opened."""
 import re
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 
 import cases_bq
 import cases
+import cases_findings
+import cases_recovery
 from checks import TraceChecks
+
+
+class ResetBoundaryTests(unittest.TestCase):
+    def test_reset_uses_under_reset_and_propagates_programmer_failure(self):
+        error = cases_findings.subprocess.CalledProcessError(1, "programmer")
+        with patch.object(cases_findings.subprocess, "run",
+                          side_effect=error) as reset:
+            with self.assertRaises(cases_findings.subprocess.CalledProcessError):
+                cases_findings.dut_reset()
+        command = reset.call_args.args[0]
+        self.assertIn("mode=UR", command)
+        self.assertIn("reset=SWRST", command)
+        self.assertTrue(reset.call_args.kwargs["check"])
+
+
+class LiveTimeoutVerdictTests(unittest.TestCase):
+    def check_timeout(self, response, stalled=False):
+        class Console:
+            def __init__(self):
+                self.fresh = []
+
+            def send(self, command):
+                pass
+
+            def mark(self):
+                self.fresh = []
+
+            def drain(self, seconds):
+                return []
+
+            def all_lines(self):
+                return [(0, "RF baglantisi : OFFLINE / TAZE LIVE YOK"),
+                        (0, "Log wrap low : 0")] + self.fresh
+
+            def new_lines(self):
+                return self.fresh
+
+            def send_and_wait(self, command, pattern, timeout_s):
+                self.fresh = [(1, line) for line in response]
+                for timestamp, line in self.fresh:
+                    match = re.search(pattern, line)
+                    if match:
+                        return timestamp, line, match
+                return None
+
+        console = Console()
+        ctx = SimpleNamespace(console=console, evidence=[],
+                              sim=SimpleNamespace(call=lambda **kwargs: None))
+        trace = TraceChecks([{"event": "tx", "cmd": 0x11,
+                              "kind": "notify", "data_hex":
+                              (bytes([5, 1, 0, 0, 0, 1]) + bytes(25) +
+                               bytes([7, 0])).hex()}])
+        with patch.object(cases, "wait_upload_complete"), \
+                patch.object(cases, "refresh", return_value=trace), \
+                patch.object(cases_recovery, "wait_upload_complete"), \
+                patch.object(cases_recovery, "refresh", return_value=trace), \
+                patch.object(cases.time, "sleep"):
+            return (cases_recovery.stalled_uptime(ctx) if stalled
+                    else cases.c2(ctx))
+
+    def test_actual_timeout_case_accepts_current_offline_sample_output(self):
+        result = self.check_timeout([
+            "RF baglantisi : OFFLINE / TAZE LIVE YOK",
+            "Son LIVE yasi : 36299 ms", "Log wrap low : 0"])
+        self.assertIn("live stopped", result)
+
+    def test_actual_timeout_case_rejects_online_even_with_a_sample(self):
+        with self.assertRaises((AssertionError, cases.CheckError)):
+            self.check_timeout(["RF baglantisi : ONLINE",
+                                "Son LIVE yasi : 10 ms", "Log wrap low : 0"])
+
+    def test_missing_sample_cannot_reuse_old_console_offline_lines(self):
+        with self.assertRaises((AssertionError, cases.CheckError)):
+            self.check_timeout(["RF baglantisi : OFFLINE / TAZE LIVE YOK",
+                                "LIVE_DATA : Henuz alinmadi"])
+
+    def test_actual_stalled_case_accepts_raw_or_nan_invalid_current(self):
+        for measurement in ("12.500 A [GECERSIZ]", "GECERSIZ (NaN/Inf)"):
+            with self.subTest(measurement=measurement):
+                self.assertEqual("Current invalid; RF online",
+                                 self.check_timeout([
+                                     "RF baglantisi : ONLINE",
+                                     "Irms : " + measurement,
+                                     "Log wrap low : 0"], stalled=True))
+
+    def test_actual_stalled_case_rejects_current_still_marked_valid(self):
+        with self.assertRaises(cases.CheckError):
+            self.check_timeout(["RF baglantisi : ONLINE",
+                                "Irms : 12.500 A [GECERLI]",
+                                "Log wrap low : 0"], stalled=True)
+
+    def test_actual_stalled_case_rejects_offline_invalid_measurement(self):
+        with self.assertRaises(cases.CheckError):
+            self.check_timeout(["RF baglantisi : OFFLINE / TAZE LIVE YOK",
+                                "Irms : 12.500 A [GECERSIZ]",
+                                "Log wrap low : 0"], stalled=True)
 
 
 class AlarmConsole:

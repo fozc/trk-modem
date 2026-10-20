@@ -1,7 +1,7 @@
 """Recovery HIL cases using existing DUT commands and simulator controls."""
 import time
 
-from cases import case, wait_upload_complete, refresh
+from cases import case, wait_upload_complete, refresh, read_live_state
 from cases_v12 import _wait_group_state
 
 
@@ -48,14 +48,9 @@ def stalled_uptime(ctx):
     data = lives[-1]["data_hex"]
     ctx.sim.call(do="raw_notify", cmd=0x11, data_hex=data)
     time.sleep(0.5)
-    reply = ctx.console.send_and_wait(
-        "rf live 1 1", r"Irms gecersiz", timeout_s=10)
-    tc.expect(reply, "Repeated uptime kept current valid")
-    ctx.evidence.append(reply[1])
-    online = ctx.console.send_and_wait(
-        "rf live 1 1", r"RF VAR, has_live=1", timeout_s=10)
-    tc.expect(online, "Invalid current incorrectly made RF offline")
-    ctx.evidence.append(online[1])
+    output = read_live_state(ctx)
+    output.assert_contains(r"Irms\s*:.*GECERSIZ")
+    output.assert_contains(r"RF baglantisi\s*:\s*ONLINE")
     return "Current invalid; RF online"
 
 
