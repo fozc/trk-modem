@@ -59,6 +59,23 @@ function fixture(html) {
 }
 
 const cases = [
+    ['output retention is editable, serialized and rendered in both languages', async f => {
+        const checkbox = f.document.getElementById('dev-PreserveOutputStates');
+        checkbox.type = 'checkbox';
+        for (const enabled of [false, true]) {
+            checkbox.checked = enabled;
+            assert.equal(f.run('extractDevice().PreserveOutputStates'), enabled);
+            for (const language of ['tr', 'en']) {
+                f.run(`LNG='${language}'`);
+                const html = f.run(`renderDevice({PreserveOutputStates:${enabled}})`);
+                assert.ok(html.includes(f.run("t('retainOutputs')")));
+                assert.ok(html.includes(f.run("t('retainOutputsHelp')")));
+                assert.match(html, enabled
+                    ? /id="dev-PreserveOutputStates"[^>]*checked/
+                    : /id="dev-PreserveOutputStates"[^>]*type="checkbox" >/);
+            }
+        }
+    }],
     ['IEC104 zero interval help matches disabled periodic sending', async f => {
         for (const [language, expected] of [
             ['en', '0 disables periodic sending'],

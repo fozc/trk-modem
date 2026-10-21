@@ -21,6 +21,7 @@
 #include "mock_http_response.h"
 #include "mock_elog.h"
 #include "mock_gsm_engine.h"
+#include "mock_nvram.h"
 #include <string.h>
 
 TEST_SOURCE_FILE("http_handlers.c")
@@ -241,6 +242,36 @@ void test_modbus_get_rejects_an_undersized_response_buffer(void)
     modbus_config_get_last_error_time_ExpectAndReturn(0U);
     http_send_error_Expect(500, "Modbus register map exceeds response buffer");
     handle_get_modbus_config_json();
+}
+
+void test_device_post_saves_output_retention_with_device_configuration(void)
+{
+    modem_config_t device = {0};
+    device.web_interface_port = 80U;
+    device.ntp_server_port = 123U;
+    modem_config_get_IgnoreAndReturn(&device);
+    nvram_retain_output_states_ExpectAndReturn(true);
+    nvram_set_output_retention_ExpectAndReturn(false, true);
+    modem_config_set_Expect(&device);
+    modem_config_sync_ExpectAndReturn(0);
+    gsm_get_web_client_ip_ExpectAndReturn(0U);
+    elog_log_config_change_Expect(ELOG_CONFIG_DEVICE_CHANGED,
+        ELOG_SOURCE_WEB, 0U, "device", true);
+    const char *response =
+        "{\"message\":\"Device configuration saved\",\"success\":true}";
+    http_send_json_Expect(response, (int)strlen(response));
+    handle_post_device_config_json("{\"PreserveOutputStates\":false}");
+}
+
+void test_invalid_output_retention_does_not_stage_or_save_any_configuration(void)
+{
+    modem_config_t device = {0};
+    device.web_interface_port = 80U;
+    device.ntp_server_port = 123U;
+    modem_config_get_IgnoreAndReturn(&device);
+    nvram_retain_output_states_ExpectAndReturn(true);
+    http_send_error_Expect(400, "JSON parse error");
+    handle_post_device_config_json("{\"PreserveOutputStates\":\"true\"}");
 }
 
 /*** end of file ***/

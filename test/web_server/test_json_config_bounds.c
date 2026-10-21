@@ -676,4 +676,22 @@ void test_modbus_web_offered_230400_is_rejected_by_current_serial_profile(void)
         parse_modbus_config("{\"BaudRate\":115200}", &config));
 }
 
+void test_output_retention_requires_boolean_and_preserves_partial_config(void)
+{
+    bool enabled = true;
+    TEST_ASSERT_TRUE(parse_output_retention("{\"TimeZone\":3}", &enabled));
+    TEST_ASSERT_TRUE(enabled);
+    TEST_ASSERT_TRUE(parse_output_retention(
+        "{\"PreserveOutputStates\":false}", &enabled));
+    TEST_ASSERT_FALSE(enabled);
+    TEST_ASSERT_FALSE(parse_output_retention(
+        "{\"PreserveOutputStates\":1}", &enabled));
+    TEST_ASSERT_FALSE(enabled);
+    TEST_ASSERT_FALSE(parse_output_retention(
+        "{\"PreserveOutputStates\":true}garbage", &enabled));
+    TEST_ASSERT_FALSE(enabled);
+    TEST_ASSERT_FALSE(parse_output_retention(NULL, &enabled));
+    TEST_ASSERT_FALSE(parse_output_retention("{}", NULL));
+}
+
 /*** end of file ***/
