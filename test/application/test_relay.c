@@ -19,6 +19,7 @@
 #include "mock_relay_pwm.h"
 #include "mock_shell.h"
 #include "mock_utils.h"
+#include "mock_nvram.h"
 #include "relay.h"
 
 #define TEST_PEAK_TICKS \
@@ -40,6 +41,32 @@ static clock_time_t timer_interval;
 static shell_cmd_t registered_command;
 static uint32_t shell_register_count;
 static int parsed_channel;
+static uint8_t saved_states;
+static bool retain_outputs;
+static bool reject_save;
+
+static uint8_t get_states_callback(int call_count)
+{
+    (void)call_count;
+    return saved_states;
+}
+
+static bool retention_callback(int call_count)
+{
+    (void)call_count;
+    return retain_outputs;
+}
+
+static bool save_states_callback(uint8_t states, int call_count)
+{
+    (void)call_count;
+    if (reject_save)
+    {
+        return false;
+    }
+    saved_states = states;
+    return true;
+}
 
 void relay_test_apply_commands(void);
 void relay_test_service_timer(void);
@@ -117,6 +144,12 @@ void setUp(void)
     timer_interval = 0U;
     shell_register_count = 0U;
     parsed_channel = 1;
+    saved_states = 0U;
+    retain_outputs = true;
+    reject_save = false;
+    nvram_get_relay_states_StubWithCallback(get_states_callback);
+    nvram_retain_output_states_StubWithCallback(retention_callback);
+    nvram_save_relay_states_StubWithCallback(save_states_callback);
     (void)memset(duty, 0, sizeof(duty));
     (void)memset(duty_set_count, 0, sizeof(duty_set_count));
     (void)memset(&registered_command, 0, sizeof(registered_command));
@@ -278,6 +311,44 @@ void test_relay_shell_validates_arguments_and_sets_selected_channel(void)
     TEST_ASSERT_TRUE(relay_is_on(RELAY_CH_2));
     TEST_ASSERT_EQUAL_INT(0, registered_command.func(3, off));
     TEST_ASSERT_FALSE(relay_is_on(RELAY_CH_2));
+}
+
+void test_relay_restores_both_channels_through_peak_and_hold(void)
+{
+    saved_states = 3U;
+    relay_init();
+    TEST_ASSERT_TRUE(relay_is_on(RELAY_CH_1));
+    TEST_ASSERT_TRUE(relay_is_on(RELAY_CH_2));
+    TEST_ASSERT_EQUAL_UINT16(0U, duty[RELAY_CH_1]);
+    relay_test_apply_commands();
+    TEST_ASSERT_EQUAL_UINT16(RELAY_PEAK_DUTY_PERMILLE, duty[RELAY_CH_1]);
+    TEST_ASSERT_EQUAL_UINT16(RELAY_PEAK_DUTY_PERMILLE, duty[RELAY_CH_2]);
+    fake_now = TEST_PEAK_TICKS;
+    relay_test_service_timer();
+    TEST_ASSERT_EQUAL_UINT16(RELAY_HOLD_DUTY_PERMILLE, duty[RELAY_CH_1]);
+    TEST_ASSERT_EQUAL_UINT16(RELAY_HOLD_DUTY_PERMILLE, duty[RELAY_CH_2]);
+}
+
+void test_disabled_retention_starts_off_and_discards_stale_saved_commands(void)
+{
+    saved_states = 3U;
+    retain_outputs = false;
+    relay_init();
+    TEST_ASSERT_FALSE(relay_is_on(RELAY_CH_1));
+    TEST_ASSERT_FALSE(relay_is_on(RELAY_CH_2));
+    TEST_ASSERT_EQUAL_UINT8(0U, saved_states);
+}
+
+void test_relay_save_failure_leaves_command_and_pwm_unchanged(void)
+{
+    TEST_ASSERT_TRUE(relay_set(RELAY_CH_1, true));
+    relay_test_apply_commands();
+    reject_save = true;
+    TEST_ASSERT_FALSE(relay_set(RELAY_CH_1, false));
+    TEST_ASSERT_TRUE(relay_is_on(RELAY_CH_1));
+    TEST_ASSERT_EQUAL_UINT8(1U, saved_states);
+    relay_test_apply_commands();
+    TEST_ASSERT_EQUAL_UINT16(RELAY_PEAK_DUTY_PERMILLE, duty[RELAY_CH_1]);
 }
 
 /*** end of file ***/

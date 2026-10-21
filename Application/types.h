@@ -245,6 +245,9 @@ typedef struct
 
     _Alignas(4) rf_inventory_journal_t rf_inventory_journal;
 
+    uint8_t relay_states;
+    uint8_t retain_output_states;
+
     uint32_t crc;
 }nvram_t;
 
@@ -262,7 +265,10 @@ typedef struct
  * pak'li/4B hizali, ARM ABI ile ayni - proje derlemesi teyit eder).
  * CRC goruntunun length-4 bayti uzerinde hesaplanir - layout kaysa
  * eski flash goruntuleri sessizce CRC'den dusup default-reset
- * olurdu; bu bekci kaymayi derleme zamaninda yakalar. */
+ * olurdu; bu bekci kaymayi derleme zamaninda yakalar.
+ * 2026-10-21 user decision: no field devices; schema stays 1. Relay
+ * command bits and output retention are appended at 1980/1981.
+ * Cortex-M33 GCC 14.3: size 1988, crc 1984. Old length uses defaults. */
 _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
@@ -271,8 +277,12 @@ _Static_assert(sizeof(rf_inventory_journal_t) == 148U,
                "RF inventory journal layout");
 _Static_assert(offsetof(nvram_t, rf_inventory_journal) == 1832U,
                "Schema v1 journal offset (stop_bits absorbed by _Alignas padding)");
-_Static_assert(sizeof(nvram_t) == 1984U, "nvram_t schema v1 layout");
-_Static_assert(offsetof(nvram_t, crc) == 1980U, "nvram_t: crc at tail");
+_Static_assert(offsetof(nvram_t, relay_states) == 1980U,
+               "nvram_t: relay states at tail");
+_Static_assert(offsetof(nvram_t, retain_output_states) == 1981U,
+               "nvram_t: output retention offset");
+_Static_assert(sizeof(nvram_t) == 1988U, "nvram_t schema v1 layout");
+_Static_assert(offsetof(nvram_t, crc) == 1984U, "nvram_t: crc at tail");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */

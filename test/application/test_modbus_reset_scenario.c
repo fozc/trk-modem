@@ -27,6 +27,7 @@
 static modbus_slave_t receiver;
 static uint32_t fake_tick;
 static uint32_t reset_requests;
+static bool relay_save_fails;
 static uint8_t response[16];
 static bool relay_states[RELAY_CH_COUNT];
 static uint32_t relay_writes;
@@ -108,7 +109,8 @@ static void send_request(uint8_t slave_id, uint8_t function,
         ((10001U == wire_address) && (1U == value)) ||
         (((10002U == wire_address) || (10003U == wire_address)) &&
          (1U >= value));
-    if ((1U == slave_id) && (6U == function) && valid_write)
+    if ((1U == slave_id) && (6U == function) && valid_write &&
+        !relay_save_fails)
     {
         TEST_ASSERT_EQUAL_UINT16(sizeof(frame), response_len);
         TEST_ASSERT_EQUAL_UINT8_ARRAY(frame, response, sizeof(frame));
@@ -121,12 +123,17 @@ static void send_write(uint8_t slave_id, uint16_t wire_address,
     send_request(slave_id, 6U, wire_address, value);
 }
 
-static void set_relay(relay_channel_t channel, bool on, int call_count)
+static bool set_relay(relay_channel_t channel, bool on, int call_count)
 {
     (void)call_count;
+    if (relay_save_fails)
+    {
+        return false;
+    }
     TEST_ASSERT_TRUE(RELAY_CH_COUNT > channel);
     relay_states[channel] = on;
     relay_writes++;
+    return true;
 }
 
 static bool get_relay(relay_channel_t channel, int call_count)
@@ -143,6 +150,7 @@ void setUp(void)
     fake_tick = 0U;
     reset_requests = 0U;
     relay_writes = 0U;
+    relay_save_fails = false;
     memset(relay_states, 0, sizeof(relay_states));
     relay_set_StubWithCallback(set_relay);
     relay_is_on_StubWithCallback(get_relay);
@@ -273,6 +281,16 @@ void test_unmapped_control_address_rejects_read_and_write(void)
     TEST_ASSERT_EQUAL_UINT16(5U, response_len);
     TEST_ASSERT_EQUAL_HEX8(0x83U, response[1]);
     TEST_ASSERT_EQUAL_UINT8(MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS, response[2]);
+    TEST_ASSERT_EQUAL_UINT32(0U, relay_writes);
+}
+
+void test_relay_save_failure_returns_device_exception(void)
+{
+    relay_save_fails = true;
+    send_write(1U, 10002U, 1U);
+    TEST_ASSERT_EQUAL_UINT16(5U, response_len);
+    TEST_ASSERT_EQUAL_UINT8(0x86U, response[1]);
+    TEST_ASSERT_EQUAL_UINT8(0x04U, response[2]);
     TEST_ASSERT_EQUAL_UINT32(0U, relay_writes);
 }
 

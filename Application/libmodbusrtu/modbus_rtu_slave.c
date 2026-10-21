@@ -255,6 +255,11 @@ static void modbus_process_fc06(modbus_slave_t *p_ctx, const uint8_t *frame, uin
             modbus_send_exception(p_ctx, MODBUS_FC_WRITE_SINGLE_REGISTER, MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS);
             break;
 
+        case MODBUS_REG_ERR_DEVICE:
+            modbus_send_exception(p_ctx, MODBUS_FC_WRITE_SINGLE_REGISTER,
+                                  MODBUS_EXCEPTION_SLAVE_DEVICE_FAILURE);
+            break;
+
         case MODBUS_REG_ERR_VALUE:
         default:
             modbus_send_exception(p_ctx, MODBUS_FC_WRITE_SINGLE_REGISTER, MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE);

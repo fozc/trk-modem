@@ -753,8 +753,68 @@ static void test_schema_three_uses_defaults_without_migration(void)
           "Schema 3: no invented pending device operation");
 }
 
+static void test_relay_states_and_retention(void)
+{
+    boot_virgin();
+    check(nvram_retain_output_states(), "relay: retention enabled by default");
+    check(0U == nvram_get_relay_states(), "relay: defaults OFF");
+    for (uint8_t states = 0U; 4U > states; states++)
+    {
+        check(nvram_save_relay_states(states), "relay: save all combinations");
+        reboot();
+        check(states == nvram_get_relay_states(), "relay: reboot retains bits");
+    }
+    const uint32_t writes = mock_write_buff_calls(MOCK_SLOT_A);
+    check(nvram_save_relay_states(3U), "relay: repeated command accepted");
+    check(writes == mock_write_buff_calls(MOCK_SLOT_A),
+          "relay: repeated command does not erase Flash");
+    check(!nvram_save_relay_states(4U), "relay: invalid bits rejected");
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_BEFORE_ERASE);
+    check(!nvram_save_relay_states(0U), "relay: failed A rejects command");
+    check(3U == nvram_get_relay_states(), "relay: failed save restores RAM");
+    reboot();
+    check(3U == nvram_get_relay_states(), "relay: failed save keeps old Flash");
+    mock_fail_write(MOCK_SLOT_B, MOCK_FAIL_AFTER_ERASE);
+    check(nvram_save_relay_states(1U), "relay: verified A accepts command");
+    reboot();
+    check(1U == nvram_get_relay_states(), "relay: verified A survives reboot");
+    check(nvram_set_output_retention(false), "relay: disable retention");
+    check(0 == nvram_sync(false), "relay: persist disabled preference");
+    const uint32_t disabled_writes = mock_write_buff_calls(MOCK_SLOT_A);
+    check(nvram_save_relay_states(2U), "relay: disabled tracks current RAM");
+    check(disabled_writes == mock_write_buff_calls(MOCK_SLOT_A),
+          "relay: disabled commands do not write Flash");
+    check(nvram_set_output_retention(true), "relay: reenable with current state");
+    check(0 == nvram_sync(false), "relay: save reenabled preference");
+    reboot();
+    check(nvram_retain_output_states() && (2U == nvram_get_relay_states()),
+          "relay: enabling saves current state, not stale state");
+}
+
+static void test_old_length_uses_defaults_without_schema_bump(void)
+{
+    boot_virgin();
+    uint8_t old_image[1984];
+    memcpy(old_image, mock_slot_image_rw(MOCK_SLOT_A), sizeof(old_image));
+    const uint32_t old_length = sizeof(old_image);
+    memcpy(&old_image[8], &old_length, sizeof(old_length));
+    const uint32_t crc = crc32_finalize(crc32_update(
+        crc32_init(), old_image, sizeof(old_image) - sizeof(uint32_t)));
+    memcpy(&old_image[1980], &crc, sizeof(crc));
+    memcpy(mock_slot_image_rw(MOCK_SLOT_A), old_image, sizeof(old_image));
+    memcpy(mock_slot_image_rw(MOCK_SLOT_B), old_image, sizeof(old_image));
+    reboot();
+    check(1U == NVRAM_SCHEMA_VERSION, "relay: schema unchanged by user decision");
+    check(sizeof(nvram_t) == img(MOCK_SLOT_A)->length,
+          "relay: old length reprovisions current layout");
+    check(nvram_retain_output_states() && (0U == nvram_get_relay_states()),
+          "relay: old CRC bytes cannot become output commands");
+}
+
 int main(void)
 {
+    test_relay_states_and_retention();
+    test_old_length_uses_defaults_without_schema_bump();
     test_rf_inventory_journal_survives_save_and_torn_clear();
     test_schema_three_uses_defaults_without_migration();
     test_invalid_header_or_crc_uses_valid_peer_without_data_loss();

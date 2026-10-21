@@ -217,7 +217,7 @@ void setUp(void)
     dma_last_size = 0U;
     oe_level = 0U;
     bsp_get_tick_StubWithCallback(bsp_tick_cb);
-    relay_set_Ignore();
+    relay_set_IgnoreAndReturn(true);
     nvram_get_modbus_device_addr_IgnoreAndReturn(1U);
     nvram_get_modbus_config_IgnoreAndReturn(&modbus_cfg);
     uart_send_buffer_rs485_Ignore();

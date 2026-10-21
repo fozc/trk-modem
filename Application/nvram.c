@@ -138,6 +138,7 @@ void nvram_set_defaults(void)
     nvram.magic = NVRAM_MAGIC;
     nvram.schema_version = NVRAM_SCHEMA_VERSION;
     nvram.length = (uint32_t)sizeof(nvram_t);
+    nvram.retain_output_states = 1U;
     nvram.sequence = keep_sequence;
 
     // Modem Config Defaults
@@ -620,6 +621,55 @@ int nvram_init(void)
 rf_inventory_journal_t *nvram_get_rf_inventory_journal(void)
 {
     return &nvram.rf_inventory_journal;
+}
+
+uint8_t nvram_get_relay_states(void)
+{
+    return (3U >= nvram.relay_states) ? nvram.relay_states : 0U;
+}
+
+bool nvram_retain_output_states(void)
+{
+    return (1U == nvram.retain_output_states);
+}
+
+bool nvram_set_output_retention(bool enabled)
+{
+    if (nvram_busy)
+    {
+        return false;
+    }
+    nvram.retain_output_states = enabled ? 1U : 0U;
+    return true;
+}
+
+bool nvram_save_relay_states(uint8_t states)
+{
+    if (nvram_busy || (3U < states))
+    {
+        return false;
+    }
+    if (nvram.relay_states == states)
+    {
+        return true;
+    }
+    const uint8_t previous = nvram.relay_states;
+    nvram.relay_states = states;
+    if (!nvram_retain_output_states())
+    {
+        return true;
+    }
+    const nvram_save_result_t result = nvram_save(false);
+    if (NVRAM_SAVE_FAILED == result)
+    {
+        nvram.relay_states = previous;
+        return false;
+    }
+    if (NVRAM_SAVE_PRIMARY_ONLY == result)
+    {
+        CSLOG_WARN("Relay state saved; NVRAM backup repair pending\r\n");
+    }
+    return true;
 }
 
 /* ---- Save ------------------------------------------------------------- */

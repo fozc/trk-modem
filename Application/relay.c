@@ -1,6 +1,8 @@
 /**
  * @file  relay.c
  * @brief Peak-and-hold relay driver - implementation.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  *
  * A single Contiki process owns the timing. Public setters latch a
  * per-channel command and poll the process; the process applies the PWM
@@ -10,13 +12,14 @@
  * owning process, hence the single timer lives here).
  */
 
-#include <string.h>
 #include "relay.h"
 #include "relay_pwm.h"
+#include "nvram.h"
 #include "contiki.h"
 #include "console_logger.h"
 #include "shell.h"
 #include "utils.h"
+#include <string.h>
 
 /* ======================================================================
  *  Derived constants
@@ -50,12 +53,11 @@ typedef enum
 /* ======================================================================
  *  Module state
  *
- *  Commands are written by relay_set() (any context) and consumed by the
- *  process. A single-word store is atomic on Cortex-M; the volatile
- *  qualifier prevents the compiler from caching the value.
+ *  Both production callers (shell and Modbus) and the relay process run
+ *  cooperatively. No ISR or DMA accesses this state.
  * ====================================================================== */
 
-static volatile relay_cmd_t s_cmd[RELAY_CH_COUNT];
+static relay_cmd_t          s_cmd[RELAY_CH_COUNT];
 static relay_state_t        s_state[RELAY_CH_COUNT];
 static clock_time_t         s_peak_deadline[RELAY_CH_COUNT];
 static struct etimer        s_timer;
@@ -226,8 +228,8 @@ static int relay_shell_handler(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        CSLOG("Usage: relay status\r\n");
-        CSLOG("       relay <1..%u> <on|off>\r\n",
+        SHELL_LOG("Usage: relay status\r\n");
+        SHELL_LOG("       relay <1..%u> <on|off>\r\n",
               (unsigned)RELAY_CH_COUNT);
         return -1;
     }
@@ -236,7 +238,7 @@ static int relay_shell_handler(int argc, char *argv[])
     {
         for (uint8_t ch = 0U; ch < (uint8_t)RELAY_CH_COUNT; ch++)
         {
-            CSLOG("[RELAY] CH%u: %s\r\n", (unsigned)(ch + 1U),
+            SHELL_LOG("[RELAY] CH%u: %s\r\n", (unsigned)(ch + 1U),
                   relay_is_on((relay_channel_t)ch) ? "ON" : "OFF");
         }
         return 0;
@@ -244,7 +246,7 @@ static int relay_shell_handler(int argc, char *argv[])
 
     if (argc < 3)
     {
-        CSLOG("Usage: relay <1..%u> <on|off>\r\n",
+        SHELL_LOG("Usage: relay <1..%u> <on|off>\r\n",
               (unsigned)RELAY_CH_COUNT);
         return -1;
     }
@@ -252,7 +254,7 @@ static int relay_shell_handler(int argc, char *argv[])
     int ch_no = xstrtoi(argv[1]);
     if ((ch_no < 1) || (ch_no > (int)RELAY_CH_COUNT))
     {
-        CSLOG("[RELAY] Invalid channel %d (valid: 1..%u)\r\n",
+        SHELL_LOG("[RELAY] Invalid channel %d (valid: 1..%u)\r\n",
               ch_no, (unsigned)RELAY_CH_COUNT);
         return -1;
     }
@@ -268,11 +270,15 @@ static int relay_shell_handler(int argc, char *argv[])
     }
     else
     {
-        CSLOG("[RELAY] Invalid action '%s' (valid: on|off)\r\n", argv[2]);
+        SHELL_LOG("[RELAY] Invalid action '%s' (valid: on|off)\r\n", argv[2]);
         return -1;
     }
 
-    relay_set((relay_channel_t)(ch_no - 1), on);
+    if (!relay_set((relay_channel_t)(ch_no - 1), on))
+    {
+        SHELL_LOG("Relay state could not be saved; command rejected\r\n");
+        return -1;
+    }
     return 0;
 }
 
@@ -301,17 +307,40 @@ void relay_init(void)
     });
 
     process_start(&relay_process, NULL);
+
+    const uint8_t states = nvram_retain_output_states()
+        ? nvram_get_relay_states() : 0U;
+    if (!nvram_retain_output_states())
+    {
+        (void)nvram_save_relay_states(0U);
+    }
+    for (uint8_t ch = 0U; ch < (uint8_t)RELAY_CH_COUNT; ch++)
+    {
+        if (0U != (states & (1U << ch)))
+        {
+            s_cmd[ch] = RELAY_CMD_ON;
+            process_poll(&relay_process);
+        }
+    }
 }
 
-void relay_set(relay_channel_t channel, bool on)
+bool relay_set(relay_channel_t channel, bool on)
 {
     if ((uint8_t)channel >= (uint8_t)RELAY_CH_COUNT)
     {
-        return;
+        return false;
     }
 
+    const uint8_t bit = (uint8_t)(1U << (uint8_t)channel);
+    uint8_t states = nvram_get_relay_states();
+    states = on ? (uint8_t)(states | bit) : (uint8_t)(states & ~bit);
+    if (!nvram_save_relay_states(states))
+    {
+        return false;
+    }
     s_cmd[channel] = on ? RELAY_CMD_ON : RELAY_CMD_OFF;
     process_poll(&relay_process);
+    return true;
 }
 
 bool relay_is_on(relay_channel_t channel)
@@ -335,3 +364,4 @@ bool relay_is_on(relay_channel_t channel)
     return (s_state[channel] != RELAY_STATE_OFF);
 }
 
+/*** end of file ***/
