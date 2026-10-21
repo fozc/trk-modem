@@ -21,6 +21,7 @@ PORT = os.environ.get("MODBUS_RTU_PORT")
 BAUD = int(os.environ.get("MODBUS_RTU_BAUD", "115200"))
 STOPBITS = int(os.environ.get("MODBUS_RTU_STOPBITS", "1"))
 SLAVE = int(os.environ.get("MODBUS_RTU_SLAVE", "23"))
+RESPONSE_TIMEOUT_S = float(os.environ.get("MODBUS_RTU_RESPONSE_TIMEOUT_S", "1"))
 RELAY1 = 10002      # PDU (logical 50002)
 RELAY2 = 10003      # PDU (logical 50003)
 AKU = 10000         # PDU (logical 50000)
@@ -112,9 +113,16 @@ def request(ser, req, resp_len, quiet_window_s=0.03):
     ser.reset_input_buffer()
     t0 = time.perf_counter()
     ser.write(req)
+    return receive_response(ser, resp_len, quiet_window_s, t0)
+
+
+def receive_response(ser, resp_len, quiet_window_s=0.03, started=None):
+    """Finish the outstanding transaction before sending another request."""
+    t0 = time.perf_counter() if started is None else started
     first_ms = None
     resp = b""
-    deadline = t0 + 0.2
+    # Persistent relay commands verify two Flash copies before responding.
+    deadline = t0 + RESPONSE_TIMEOUT_S
     while time.perf_counter() < deadline:
         if ser.in_waiting:
             if first_ms is None:
@@ -205,7 +213,8 @@ def main():
     gaps = send_paced(ser, req, 0.0015)
     note("T5 host write-call gaps (1.5 ms target): min=%.3f max=%.3f ms"
          % (min(gaps), max(gaps)))
-    quiet, _ = expect_silence(ser, 0.15)
+    response, _, _ = receive_response(ser, 8)
+    check("T5 paced request echo completes before next FC03", response == req)
     vals = read_regs(ser, RELAY1, 1)
     check("T5 ~1,5 ms gonderim araligi: kabul", vals == [1])
     request(ser, fc06(SLAVE, RELAY1, 0), 8)
