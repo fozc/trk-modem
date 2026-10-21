@@ -22,6 +22,7 @@ BAUD = int(os.environ.get("MODBUS_RTU_BAUD", "115200"))
 STOPBITS = int(os.environ.get("MODBUS_RTU_STOPBITS", "1"))
 SLAVE = int(os.environ.get("MODBUS_RTU_SLAVE", "23"))
 RELAY1 = 10002      # PDU (logical 50002)
+RELAY2 = 10003      # PDU (logical 50003)
 AKU = 10000         # PDU (logical 50000)
 
 passed = 0
@@ -265,6 +266,23 @@ def main():
           adc is not None and adc[0] != 0x8000
           and all(value != 0xFFFF for value in adc[1:]),
           "registers=%s" % adc)
+
+    # ---- T10: second relay and restoration of its original state ----
+    relay2_before = read_regs(ser, RELAY2, 1)
+    check("T10 R2 initial state available",
+          relay2_before in ([0], [1]))
+    if relay2_before in ([0], [1]):
+        try:
+            for value in (1, 0):
+                command = fc06(SLAVE, RELAY2, value)
+                response, _, _ = request(ser, command, 8)
+                check("T10 R2=%d echo" % value, response == command)
+                check("T10 R2=%d readback" % value,
+                      read_regs(ser, RELAY2, 1) == [value])
+        finally:
+            request(ser, fc06(SLAVE, RELAY2, relay2_before[0]), 8)
+            check("T10 R2 original state restored",
+                  read_regs(ser, RELAY2, 1) == relay2_before)
 
     ser.close()
     print("SONUC: %d PASS / %d FAIL / %d NOT" % (passed, failed,

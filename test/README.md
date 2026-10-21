@@ -1,13 +1,30 @@
 # Test Altyapısı
 
-**Sürüm:** 1.55
-**Tarih:** 2026-10-20
+**Sürüm:** 1.57
+**Tarih:** 2026-10-21
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
 
 **Kapsam:** Ceedling birim testleri, host integration testleri (birlikte çalışma
 testleri) ve yalnızca hedef cihazda çalışan testlerin dizin düzenini kapsar.
+
+## 21.10.2026 endüstriyel web regresyonları
+
+**Amaç:** Oturumlar arası veri ayrımı, sayısal ayar doğruluğu, body okuma
+timeout'u, grup üye tanısı ve Modbus seçeneklerini doğrulamak.
+
+**Kullanım yeri:** `make -C test/integration/web_navigation run` içindeki
+`test_industrial_audit.js`. Gerçek source ve embedded sayfa fonksiyonları
+çalışır; 15 kontrol iki sürümde **30/30 PASS** verir. Gecikmiş eski oturum
+body/401 yanıtları, logout'un anında temizliği, salt okunur kullanıcı,
+float alanlarının korunması ve dirty browser çıkışı da kapsanır.
+RF envanter/donanım sınırı mock'tur; gerçek AY silme kabulü değildir.
+
+Web navigation ve web_auth paketleri, ARM Release ve imzalı EFW
+self-check geçti. Ayrıntı ve önceki kırmızı kanıtlar
+[web inceleme raporundadır](reports/2026-10-21-web-industrial-audit.md#9-uygulama-ve-kapanış--21102026).
+Cihaza yükleme yapılmadı.
 
 ## 20.10.2026 ek kabul ve kalan fiziksel sınırlar
 
@@ -2047,3 +2064,23 @@ ON/OFF/bilinmiyor durumlarını denetler. İki integration hedefi ve ARM
 Release imza self-check geçti. `serve_loading_preview.py --board-preview`
 yalnız örnek verilerle görsel kontrol sağlar. Cihaza yükleme ve fiziksel
 switch testi yapılmamıştır.
+
+## 21.10.2026 gerçek web ve cihaz kabulü
+
+Web v1.4.13 içeren imzalı üretim imajı (CRC AE80B796) XMODEM ile kuruldu.
+Tam unit 1574/1574, diğer 13 entegrasyon paketi exit 0, gerçek IEC104
+13/13 ve gerçek RS485 Modbus 29/29 geçti. `modbus_device/run_tests.py`
+T10 artık ikinci rölenin ON/OFF echo/readback ve başlangıç durumuna
+dönüşünü de kontrol eder. Güvenli yük kullanıcı tarafından teyit edildi.
+Röle kontrolleri fiziksel kontak/gerilim ölçümü sayılmaz.
+
+`web_navigation/test_industrial_audit.js` kaynak ve embedded sayfada
+16 kontrol × 2 = 32 PASS verir. Ek kontrol, IEC104 0 periyodik gönderim
+yardım metninin gerçek kapatma davranışıyla uyumudur. Cihaz kodunun
+periyodik gönderim kararı değiştirilmedi.
+
+Gerçek tarayıcı matrisi 245 PASS, 0 FAIL, maskeleme nedeniyle iki
+sonuçlandırılamayan hassas alan kontrolüdür. AY EUI silme, reset
+kalıcılığı ve discovery düğmesinden geri atama da sınandı. Üç gerçek AY
+ile APPLIED kabulü açık kalır. Ayrıntılar ve kanıt sınırları
+[cihaz kabul raporunda](reports/2026-10-21-web-device-acceptance.md).
