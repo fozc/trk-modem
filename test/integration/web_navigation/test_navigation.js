@@ -46,7 +46,7 @@ async function checkPage(html, label) {
     };
     const scheduledTimers = [];
     const storage = new Map();
-    const window = {};
+    const window = {addEventListener() {}};
     const context = vm.createContext({
         window,
         document, console,
@@ -79,8 +79,12 @@ async function checkPage(html, label) {
     window.pageSession = {token: 'wrong', role: 'admin'};
     run('init()');
     assert.equal(document.getElementById('loginModal').style.display, 'flex');
+    storage.set('sessionRole', 'user');
+    window.pageSession = {token: freshToken, role: 'user'};
+    run('init()');
+    assert.equal(run('curId'), 'board', 'user starts on a readable status page');
     storage.clear();
-    run('s_sessionToken=null;s_role=null;');
+    run("s_sessionToken=null;s_role='admin';");
     console.log('PASS:', label,
         '- direct login, one-time loading page handoff, invalid handoff');
     for (const id of ['iec104', 'modbus', 'rf', 'rfmon', 'board',
@@ -872,7 +876,7 @@ async function checkPage(html, label) {
         assert.ok(mainResult.includes(language==='tr'?'fider 3':'feeder 3'));
         assert.ok(mainResult.includes(language==='tr'?'canlı veri':'live data'));
         assert.ok(mainResult.includes(language==='tr'?'RF İzleme':'RF Monitoring'));
-        assert.ok(mainResult.includes(language==='tr'?'faz cihazını belirtmiyor':'does not identify'));
+        assert.ok(mainResult.includes(run("tf('rfFailedMembers',{members:'3'})")));
         assert.ok(!mainResult.includes('L3'), 'bitmap must not invent a phase identity');
         for (const reason of [2,3,4,5,6,7,8,9,10,99]) {
             failedReport.Reason = reason;
@@ -1166,7 +1170,7 @@ async function checkFirmwareLogin(html, label) {
         createElement: () => ({}), documentElement: {}
     };
     const storage = new Map();
-    const window = {};
+    const window = {addEventListener() {}};
     const context = vm.createContext({
         window,document, console,
         localStorage: {getItem: () => 'tr', setItem() {}},
