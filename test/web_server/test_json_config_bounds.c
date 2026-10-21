@@ -664,4 +664,16 @@ void test_failed_save_does_not_apply_runtime_config(void)
     TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
 }
 
+void test_modbus_web_offered_230400_is_rejected_by_current_serial_profile(void)
+{
+    jmodbus_configs_t config = {0};
+    config.device_addr = 1U;
+    config.stop_bits = 1U;
+    config.baud_rate = 19200U;
+    TEST_ASSERT_EQUAL_INT(0,
+        parse_modbus_config("{\"BaudRate\":230400}", &config));
+    TEST_ASSERT_EQUAL_INT(1,
+        parse_modbus_config("{\"BaudRate\":115200}", &config));
+}
+
 /*** end of file ***/

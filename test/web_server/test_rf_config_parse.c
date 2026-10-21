@@ -143,4 +143,45 @@ void test_existing_zone_zero_is_retained_without_automatic_migration(void)
     TEST_ASSERT_EQUAL_UINT8(0U, rf_store_get(0U)->config.zone_id);
 }
 
+void test_web_empty_eui_removes_only_selected_phase_and_survives_reload(void)
+{
+    rf_feeder_t feeder = *rf_store_get(0U);
+    TEST_ASSERT_TRUE(rf_eui64_from_hex(feeder.r_eui64,
+                                     "00124B0038C9F101"));
+    TEST_ASSERT_TRUE(rf_eui64_from_hex(feeder.s_eui64,
+                                     "00124B0038C9F102"));
+    TEST_ASSERT_TRUE(rf_eui64_from_hex(feeder.t_eui64,
+                                     "00124B0038C9F103"));
+    TEST_ASSERT_TRUE(rf_store_set(0U, &feeder));
+
+    TEST_ASSERT_TRUE(parse_staged("{\"R_DEVICEID\":["
+        "\"\",\"\",\"\",\"\",\"\",\"\",\"\"]}"));
+    TEST_ASSERT_EQUAL_INT(0, rf_store_sync());
+    rf_store_init();
+
+    const rf_feeder_t *saved = rf_store_get(0U);
+    TEST_ASSERT_TRUE(saved->in_use);
+    TEST_ASSERT_TRUE(rf_eui64_is_zero(saved->r_eui64));
+    TEST_ASSERT_EQUAL_MEMORY(feeder.s_eui64, saved->s_eui64,
+                             RF_EUI64_LEN);
+    TEST_ASSERT_EQUAL_MEMORY(feeder.t_eui64, saved->t_eui64,
+                             RF_EUI64_LEN);
+}
+
+void test_web_invalid_eui_after_clear_preserves_all_existing_assignments(void)
+{
+    rf_feeder_t feeder = *rf_store_get(0U);
+    TEST_ASSERT_TRUE(rf_eui64_from_hex(feeder.r_eui64,
+                                     "00124B0038C9F101"));
+    TEST_ASSERT_TRUE(rf_eui64_from_hex(feeder.s_eui64,
+                                     "00124B0038C9F102"));
+    TEST_ASSERT_TRUE(rf_store_set(0U, &feeder));
+
+    TEST_ASSERT_FALSE(parse_staged("{\"R_DEVICEID\":["
+        "\"\",\"\",\"\",\"\",\"\",\"\",\"\"],\"S_DEVICEID\":["
+        "\"invalid\",\"\",\"\",\"\",\"\",\"\",\"\"]}"));
+    TEST_ASSERT_EQUAL_MEMORY(&feeder, rf_store_get(0U), sizeof(feeder));
+    TEST_ASSERT_EQUAL_INT(0, rf_nvram_fake_sync_count());
+}
+
 /*** end of file ***/
