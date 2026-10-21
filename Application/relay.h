@@ -1,6 +1,8 @@
 /**
  * @file  relay.h
  * @brief Peak-and-hold relay driver.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  *
  * Each relay is energised in two phases:
  *   1. PEAK - driven at 100 % duty for @ref RELAY_PEAK_TIME_MS to
@@ -9,8 +11,8 @@
  *      contacts closed at minimum coil power/heat.
  *
  * Timing is driven by a Contiki process (1 ms clock resolution). The
- * public setters only latch a command and wake the process, so they are
- * safe to call from any application context.
+ * public setter saves a command before waking the process. Call it only
+ * from cooperative application context, never from an ISR.
  *
  * @note The peak time and hold duty are provisional and must be
  *       confirmed during hardware testing.
@@ -52,7 +54,9 @@ typedef enum
 /**
  * @brief Initialise the relay driver and start its Contiki process.
  *
- * Starts PWM generation with both relays de-energised. Must be called
+ * Starts PWM OFF, then restores saved ON commands if retention is enabled.
+ * Restored channels follow the normal peak-and-hold sequence. Call only
+ * after NVRAM initialization and
  * after @c process_init() / @c autostart_start().
  */
 void relay_init(void);
@@ -60,23 +64,26 @@ void relay_init(void);
 /**
  * @brief Energise or de-energise a relay.
  *
- * When turning on, the peak-and-hold sequence is (re)started: the coil
+ * After accepting an ON command, the peak-and-hold sequence is restarted:
+ * the coil
  * is driven at 100 % duty and automatically reduced to the hold duty
- * after @ref RELAY_PEAK_TIME_MS. When turning off, the output is forced
- * to 0 % immediately.
+ * after @ref RELAY_PEAK_TIME_MS. An accepted OFF command forces 0 % when
+ * the process consumes it. Enabled persistence is verified first.
  *
  * @param[in] channel  Relay channel identifier.
  * @param[in] on       true to energise, false to release.
+ * @return true on acceptance; false preserves the previous command.
+ * Call only from cooperative context; never from an ISR.
  */
-void relay_set(relay_channel_t channel, bool on);
+bool relay_set(relay_channel_t channel, bool on);
 
 /**
  * @brief Query whether a relay is currently commanded on.
  *
  * @param[in] channel  Relay channel identifier.
  *
- * @return true if the relay is energised (peak or hold phase), false
- *         otherwise or if @p channel is out of range.
+ * @return true for pending ON, peak or hold; false for commanded OFF or
+ *         an invalid channel. This is not contact feedback.
  */
 bool relay_is_on(relay_channel_t channel);
 
@@ -85,3 +92,5 @@ bool relay_is_on(relay_channel_t channel);
 #endif
 
 #endif /* RELAY_H_ */
+
+/*** end of file ***/

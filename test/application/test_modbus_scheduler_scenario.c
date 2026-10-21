@@ -73,13 +73,14 @@ static uint32_t bsp_tick_cb(int call_count)
     return fake_tick;
 }
 
-static void relay_set_cb(relay_channel_t channel, bool on, int call_count)
+static bool relay_set_cb(relay_channel_t channel, bool on, int call_count)
 {
     (void)call_count;
     if ((RELAY_CH_1 == channel) && on)
     {
         relay_on_calls++;
     }
+    return true;
 }
 
 static void pump(void)

@@ -160,7 +160,7 @@ void setUp(void)
     current_calendar = (rtc_t){0};
     rtc_now_call_count = 0U;
     rtc_now_StubWithCallback(rtc_now_stub);
-    relay_set_Ignore();
+    relay_set_IgnoreAndReturn(true);
     nvram_get_modbus_device_addr_IgnoreAndReturn(1U);
     nvram_get_modbus_config_IgnoreAndReturn(&modbus_cfg);
     uart_send_buffer_rs485_Ignore();

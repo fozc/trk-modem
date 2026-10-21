@@ -132,7 +132,7 @@ void setUp(void)
     line_config_result = true;
 
     bsp_get_tick_StubWithCallback(bsp_tick_cb);
-    relay_set_Ignore();
+    relay_set_IgnoreAndReturn(true);
     nvram_get_modbus_device_addr_IgnoreAndReturn(1U);
     uart_send_buffer_rs485_Ignore();
     uart_set_rx_interrupt_Ignore();

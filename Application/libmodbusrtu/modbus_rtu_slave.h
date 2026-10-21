@@ -1,7 +1,7 @@
 /**
  * @file modbus_rtu_slave.h
  * @brief Modbus RTU Slave Implementation for Cortex-M
- * @author Fatih Ozcan
+ * Author: Fatih Ozcan
  *         fatihozcan@gmail.com
  * @date 2025-10-17
  *
@@ -124,7 +124,8 @@ typedef enum
 {
     MODBUS_REG_OK = 0,          /**< Access accepted.                            */
     MODBUS_REG_ERR_ADDRESS,     /**< Register address not mapped.                */
-    MODBUS_REG_ERR_VALUE        /**< Value out of range / register not writable. */
+    MODBUS_REG_ERR_VALUE,       /**< Value out of range / register not writable. */
+    MODBUS_REG_ERR_DEVICE       /**< Persistent command could not be saved. */
 } modbus_reg_status_t;
 
 /**

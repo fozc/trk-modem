@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 2.1 |
-| Tarih | 2026-10-16 |
+| Dokuman surumu | 2.2 |
+| Tarih | 2026-10-21 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -288,8 +288,16 @@ okumaktır. IEC104 kontrolü bu eklemenin kapsamı dışındadır.
 
 Örnek: Röle 1 için base-0 10002 adresine FC06 ile 1 yazılır; aynı adrese
 FC03 ile yapılan tek register sorgusu 1 döndürür. 0 yazılması OFF komutudur.
-Röle durumu için yeni bir kalıcılık mekanizması eklenmemiştir; mevcut
-sürücü açılışta iki kanalı OFF başlatır.
+Son komutların açılışta korunması web cihaz yönetimindeki
+`PreserveOutputStates` seçeneğine bağlıdır. Kalıcı kayıt açıkken doğrulanmış
+Flash kopyası oluşmadan FC06 başarı yanıtı verilmemelidir; kayıt reddi
+exception 0x04 üretmelidir. Aynı komut tekrarında Flash yazılmamalıdır.
+Master timeout'u kalıcı Flash yazma süresini karşılamalıdır. 21.10.2026
+kart testinde durum değiştiren yanıtlar yaklaşık 221–241 ms sürdü;
+eski 200 ms test penceresi yetersiz kaldı. Kabul aracı 1 s pencere kullanır;
+bu değer cihazın her koşul için ölçülmüş üst süre garantisi değildir.
+Açılış/kapalı seçenek/peak-hold kuralları
+[röle kalıcılığı rehberindedir](../../doc/ROLE_CIKIS_KALICILIGI.md).
 
 ### 6.2 Akü uyarısı
 
@@ -708,6 +716,7 @@ satiri almistir.
 
 | 2.0 | 2026-10-15 | Register haritasi tamamen sabitlesti (modbus_map.h): adresler NVRAM/web uzerinden degistirilemez. Fider bloklari yeniden tasarlandi: 4 fider x 1000 register (40000-43999); IEC104 bilgi aynasi (anlik akim, enerji/yuk/rf/trip_failed + alan bazli zaman damgalari), SCADA'ya yonelik RF canli olcumleri ve fider/faz kalite register'lari tek blokta. Gecici/kalici ariza kayit listeleri (faz basina 15 kayit) Modbus tarafina eklendi. 49500 RF kalite blogu kaldirildi (kalite fider bloklarina gomuldu). Aku uyarisi/modem reset adresleri sabitlendi (50000/50001). Yapilandirilabilir ayarlar CihazID + baud rate e indirildi. |
 | 2.1 | 2026-10-16 | Yerel röle 1/2 için 50002/50003 adresleri eklendi. Aynı adreslerde FC03 komut durumu okuma ve FC06 0/1 yazma desteklenir; ayrıntılar §6.1. |
+| 2.2 | 2026-10-21 | Web tercihiyle son komutların kalıcılığı, kayıt hatası 0x04 ve Flash kayıt süresinin master timeout'una etkisi; §6.1. |
 | 1.10 | 2026-10-06 | Anlık arıza alanları kaldırıldı; offset 0–5/12–17 ayrıldı. Durum polariteleri SCP ile eşitlendi. |
 
 ## Web arayüzünde register adresleri

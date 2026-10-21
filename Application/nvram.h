@@ -75,6 +75,13 @@ nvram_save_result_t nvram_save(bool crc_no_check);
  * sozlesmesini uygular. */
 bool nvram_is_busy(void);
 
+/* Cooperative context only. Bit 0/1 are the commanded relay states. */
+uint8_t nvram_get_relay_states(void);
+bool nvram_save_relay_states(uint8_t states);
+bool nvram_retain_output_states(void);
+/* Stages the preference; the device configuration save persists it. */
+bool nvram_set_output_retention(bool enabled);
+
 /* *_rw() erisimcileri ve nvram_get_breaker() DOGRUDAN degistirilebilir
  * adres donderir: cagiran, nvram_is_busy() == false iken degistirmeli ve
  * degisikligi nvram_sync() ile kalicilastirmalidir. */

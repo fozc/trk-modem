@@ -389,8 +389,8 @@ static modbus_reg_status_t fc06_write_callback(uint16_t reg_addr, uint16_t value
         }
         const relay_channel_t channel =
             (MODBUS_MAP_CTRL_RELAY1 == reg_addr) ? RELAY_CH_1 : RELAY_CH_2;
-        relay_set(channel, 1U == value);
-        return MODBUS_REG_OK;
+        return relay_set(channel, 1U == value)
+            ? MODBUS_REG_OK : MODBUS_REG_ERR_DEVICE;
     }
 
     /* All other writes must target the existing modem-reset command. */
