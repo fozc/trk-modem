@@ -1,7 +1,21 @@
 # Test Altyapısı
 
-**Sürüm:** 1.57
+**Sürüm:** 1.58
 **Tarih:** 2026-10-21
+
+## 21.10.2026 çıkış durumlarını koruma
+
+Röle son ON/OFF komutları ve web `PreserveOutputStates` tercihi merkezi
+relay, Modbus, HTTP/parser ve NVRAM testlerine eklenmiştir. Tam Ceedling
+1581/1581, NVRAM integration 559/559, web navigation ve web auth geçti.
+Kaynak/embedded web audit 34/34'tür. İmzalı web 1.4.14 imajıyla gerçek
+cihazda kalıcılık senaryosunun 25 kontrolü geçti.
+
+Durum değiştiren FC06 yaklaşık 221–241 ms sürdüğünden gerçek cihaz test
+alıcı penceresi 200 ms'den varsayılan 1 s'ye çıkarılmıştır; garanti edilen
+cihaz üst sınırı değildir. Tam Modbus koşusu **28 PASS / 2 FAIL / 4 NOT**
+vermiştir. T5 aralıklı gönderim echo/readback bulgusu açıktır.
+Ayrıntılar [kalıcılık raporunda](reports/2026-10-21-output-retention.md).
 
 **Amaç:** Firmware modüllerinin host üzerinde hızlı ve tekrarlanabilir biçimde
 doğrulanmasını sağlayan ortak test giriş noktasını açıklar.
