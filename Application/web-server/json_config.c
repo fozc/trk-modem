@@ -1917,6 +1917,45 @@ static bool parse_rf_config_internal(const char **str, rf_feeder_t *configs[MAX_
  * PUBLIC PARSER FUNCTIONS (Simplified Wrappers)
  * ============================================ */
 
+bool parse_output_retention(const char *json, bool *enabled)
+{
+    if ((NULL == json) || (NULL == enabled))
+    {
+        return false;
+    }
+    const char *cursor = skip_whitespace(json);
+    bool value = *enabled;
+    if (!expect_object_start(&cursor))
+    {
+        return false;
+    }
+    while (!is_object_end(&cursor))
+    {
+        if (match_key(&cursor, "PreserveOutputStates"))
+        {
+            if (!parse_bool(&cursor, &value))
+            {
+                return false;
+            }
+        }
+        else if (!skip_unknown_key_value(&cursor))
+        {
+            return false;
+        }
+        else
+        {
+            /* Other device fields are validated by the device parser. */
+        }
+        skip_comma(&cursor);
+    }
+    if ('\0' != *skip_whitespace(cursor))
+    {
+        return false;
+    }
+    *enabled = value;
+    return true;
+}
+
 int parse_device_config(const char *json_str, modem_config_t *config) {
     if (!json_str || !config) {
         CSLOG_ERR( "[JSON] ERROR: parse_device_config - null parameters\r\n");

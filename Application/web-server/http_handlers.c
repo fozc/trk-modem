@@ -19,6 +19,7 @@
 #include "loading_html.h"
 #include "web_shell.h"
 #include "json_config.h"
+#include "nvram.h"
 #include "xprintf.h"
 #include <stddef.h>
 #include <string.h>
@@ -721,6 +722,9 @@ void handle_get_device_config_json(void)
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"NtpServerPortu\":%u,", config->ntp_server_port);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"Time\":%lu,", rtc_get_epoch());
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"TimeZone\":%ld,", config->time_zone);
+    pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos),
+                     "\"PreserveOutputStates\":%s,",
+                     nvram_retain_output_states() ? "true" : "false");
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"PeriyodikModemResetPeriyodu\":%lu,", config->periodic_modem_reset_period);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"WebIlkVeriZamanAsimi\":%u,", config->web_first_data_timeout_sec);
     pos += xsnprintf(buf + pos, (unsigned int)(buf_size - pos), "\"WebBostaKalmaZamanAsimi\":%u,", config->web_idle_timeout_sec);
@@ -757,7 +761,9 @@ void handle_post_device_config_json(const char *json_body)
     /* Load current config as base - preserves RO fields and non-updated values */
     config = *get_device_config();
 
-    if (!parse_device_config(json_body, &config)) {
+    bool retain_outputs = nvram_retain_output_states();
+    if (!parse_device_config(json_body, &config) ||
+        !parse_output_retention(json_body, &retain_outputs)) {
     	CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");
         http_send_error(400, "JSON parse error");
         return;
@@ -767,6 +773,11 @@ void handle_post_device_config_json(const char *json_body)
     CSLOG("[HTTP] SimKartAPN: %s\r\n", config.apn.apn);
     
     /* Save config via data_model */
+    if (!nvram_set_output_retention(retain_outputs))
+    {
+        http_send_error(500, "Configuration is busy");
+        return;
+    }
     int res = set_device_config(&config);
 
     elog_log_config_change(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,

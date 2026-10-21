@@ -121,6 +121,7 @@ typedef struct
 
 /* Partial Parser Functions - Alt bolumleri parse et */
 int parse_device_config(const char *json_str, modem_config_t *config);
+bool parse_output_retention(const char *json, bool *enabled);
 
 /* Last synchronous IEC parse/set address error; empty on other errors. */
 const char *json_config_get_iec_address_error(void);
