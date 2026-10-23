@@ -63,10 +63,10 @@ void tearDown(void)
 
 void test_null_and_empty_documents_are_rejected_and_empty_object_is_valid(void)
 {
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config(NULL, &device));
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config("", &device));
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{}", NULL));
-    TEST_ASSERT_EQUAL_INT(1, parse_device_config("{}", &device));
+    TEST_ASSERT_EQUAL_INT(0, parse_device_config(NULL, &device, NULL));
+    TEST_ASSERT_EQUAL_INT(0, parse_device_config("", &device, NULL));
+    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{}", NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(1, parse_device_config("{}", &device, NULL));
 }
 
 void test_unknown_keys_with_every_json_value_type_are_skipped(void)
@@ -87,7 +87,7 @@ void test_unknown_keys_with_every_json_value_type_are_skipped(void)
         "\"WebArayuzuPortu\":8081"
         "}";
 
-    TEST_ASSERT_EQUAL_INT(1, parse_device_config(json, &device));
+    TEST_ASSERT_EQUAL_INT(1, parse_device_config(json, &device, NULL));
     TEST_ASSERT_EQUAL_INT32(3, device.time_zone);
     TEST_ASSERT_EQUAL_UINT16(8081U, device.web_interface_port);
 }
@@ -111,26 +111,29 @@ void test_surplus_array_elements_are_drained_and_next_key_still_parses(void)
 void test_uint32_time_field_accepts_maximum_and_rejects_overflow(void)
 {
     TEST_ASSERT_EQUAL_INT(
-        1, parse_device_config("{\"Time\":4294967295}", &device));
+        1, parse_device_config("{\"Time\":4294967295}", &device, NULL));
     TEST_ASSERT_EQUAL_UINT32(4294967295U, device.time);
     TEST_ASSERT_EQUAL_INT(
-        0, parse_device_config("{\"Time\":4294967296}", &device));
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{\"Time\":-1}", &device));
+        0, parse_device_config("{\"Time\":4294967296}", &device, NULL));
+    TEST_ASSERT_EQUAL_INT(0,
+                          parse_device_config("{\"Time\":-1}", &device, NULL));
 }
 
 void test_timezone_range_boundaries_are_enforced(void)
 {
-    TEST_ASSERT_EQUAL_INT(1,
-                          parse_device_config("{\"TimeZone\":-12}", &device));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_device_config("{\"TimeZone\":-12}", &device, NULL));
     TEST_ASSERT_EQUAL_INT32(-12, device.time_zone);
-    TEST_ASSERT_EQUAL_INT(1, parse_device_config("{\"TimeZone\":14}", &device));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_device_config("{\"TimeZone\":14}", &device, NULL));
     TEST_ASSERT_EQUAL_INT32(14, device.time_zone);
-    TEST_ASSERT_EQUAL_INT(0,
-                          parse_device_config("{\"TimeZone\":-13}", &device));
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{\"TimeZone\":15}", &device));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config("{\"TimeZone\":-13}", &device, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config("{\"TimeZone\":15}", &device, NULL));
     /* Positive INT32 overflow is caught by the signed parser itself. */
     TEST_ASSERT_EQUAL_INT(
-        0, parse_device_config("{\"TimeZone\":2147483648}", &device));
+        0, parse_device_config("{\"TimeZone\":2147483648}", &device, NULL));
 }
 
 void test_long_strings_are_rejected_without_silent_truncation(void)
@@ -141,11 +144,12 @@ void test_long_strings_are_rejected_without_silent_truncation(void)
 
     (void)snprintf(json, sizeof(json), "{\"SimKartAPN\":\"%s\",\"TimeZone\":7}",
                    apn41);
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config(json, &device));
+    TEST_ASSERT_EQUAL_INT(0, parse_device_config(json, &device, NULL));
     TEST_ASSERT_EQUAL_UINT(0U, strlen(device.apn.apn));
     /* A later string field still lands whole: NTP limit is wider. */
     TEST_ASSERT_EQUAL_INT(
-        1, parse_device_config("{\"NtpServer\":\"pool.ntp.org\"}", &device));
+        1,
+        parse_device_config("{\"NtpServer\":\"pool.ntp.org\"}", &device, NULL));
     TEST_ASSERT_EQUAL_STRING("pool.ntp.org", device.ntp_server);
 }
 
@@ -165,55 +169,62 @@ void test_readonly_keys_are_skipped_without_failing_the_parse(void)
                                "\"TimeZone\":5"
                                "}";
 
-    TEST_ASSERT_EQUAL_INT(1, parse_device_config(json, &device));
+    TEST_ASSERT_EQUAL_INT(1, parse_device_config(json, &device, NULL));
     TEST_ASSERT_EQUAL_INT32(5, device.time_zone);
 }
 
 void test_duplicate_key_last_write_wins(void)
 {
     TEST_ASSERT_EQUAL_INT(
-        1, parse_device_config("{\"TimeZone\":3,\"TimeZone\":5}", &device));
+        1,
+        parse_device_config("{\"TimeZone\":3,\"TimeZone\":5}", &device, NULL));
     TEST_ASSERT_EQUAL_INT32(5, device.time_zone);
 }
 
 void test_whitespace_is_tolerated_everywhere(void)
 {
     TEST_ASSERT_EQUAL_INT(
-        1, parse_device_config("  {  \"TimeZone\"  :  6  }  ", &device));
+        1, parse_device_config("  {  \"TimeZone\"  :  6  }  ", &device, NULL));
     TEST_ASSERT_EQUAL_INT32(6, device.time_zone);
 }
 
 void test_content_after_closing_brace_is_rejected(void)
 {
     /* The complete document must be consumed before applying settings. */
-    TEST_ASSERT_EQUAL_INT(0,
-                          parse_device_config("{\"TimeZone\":5}XYZ", &device));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config("{\"TimeZone\":5}XYZ", &device, NULL));
     TEST_ASSERT_EQUAL_INT32(5, device.time_zone);
 }
 
 void test_malformed_documents_are_rejected(void)
 {
     TEST_ASSERT_EQUAL_INT(
-        0, parse_device_config("{\"SimKartAPN\":\"unterminated", &device));
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{\"TimeZone\" 5}", &device));
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{\"TimeZone\":5", &device));
+        0,
+        parse_device_config("{\"SimKartAPN\":\"unterminated", &device, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config("{\"TimeZone\" 5}", &device, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config("{\"TimeZone\":5", &device, NULL));
     /* Known key with a value of the wrong type. */
-    TEST_ASSERT_EQUAL_INT(0,
-                          parse_device_config("{\"TimeZone\":\"5\"}", &device));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config("{\"TimeZone\":\"5\"}", &device, NULL));
     /* Unterminated array inside a known nested object. */
     TEST_ASSERT_EQUAL_INT(
         0, parse_modbus_config("{\"Hat\":{\"inUse\":[true}}", &modbus));
     /* Unterminated object as an unknown key's value. */
     TEST_ASSERT_EQUAL_INT(
-        0, parse_device_config("{\"New\":{\"a\":1,\"TimeZone\":5}", &device));
+        0, parse_device_config("{\"New\":{\"a\":1,\"TimeZone\":5}", &device,
+                               NULL));
 }
 
 void test_integer_fields_reject_fraction_and_exponent_notation(void)
 {
     /* The hand-rolled numeric parser accepts plain decimal digits only;
      * document that contract (web UI posts integers as plain digits). */
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{\"Time\":1e3}", &device));
-    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{\"Time\":1.5}", &device));
+    TEST_ASSERT_EQUAL_INT(0,
+                          parse_device_config("{\"Time\":1e3}", &device, NULL));
+    TEST_ASSERT_EQUAL_INT(0,
+                          parse_device_config("{\"Time\":1.5}", &device, NULL));
 }
 
 static const modem_config_t *seeded_base(int call_count)
@@ -230,7 +241,8 @@ void test_partial_update_starts_from_current_persistent_config(void)
     modem_config_get_StopIgnore();
     modem_config_get_Stub(seeded_base);
 
-    TEST_ASSERT_EQUAL_INT(1, parse_device_config("{\"TimeZone\":5}", &device));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_device_config("{\"TimeZone\":5}", &device, NULL));
     TEST_ASSERT_EQUAL_INT32(5, device.time_zone);
     TEST_ASSERT_EQUAL_UINT16(8080U, device.web_interface_port);
     TEST_ASSERT_EQUAL_STRING("base", device.apn.apn);
@@ -304,7 +316,7 @@ void test_device_json_decodes_escaped_keys_and_values(void)
     TEST_ASSERT_EQUAL_INT(
         1, parse_device_config("{\"SimKartA\\u0050N\":\"\\u0069nternet\","
                                "\"NtpServer\":\"a\\\\b\"}",
-                               &device));
+                               &device, NULL));
     TEST_ASSERT_EQUAL_STRING("internet", device.apn.apn);
     TEST_ASSERT_EQUAL_STRING("a\\b", device.ntp_server);
 }
@@ -322,7 +334,8 @@ void test_device_json_rejects_invalid_escapes_utf8_nul_and_missing_commas(void)
          ++index)
     {
         TEST_ASSERT_EQUAL_INT_MESSAGE(
-            0, parse_device_config(invalid[index], &device), invalid[index]);
+            0, parse_device_config(invalid[index], &device, NULL),
+            invalid[index]);
     }
 }
 

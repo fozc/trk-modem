@@ -43,8 +43,8 @@ def prepare_sources():
     config = config_path.read_text(encoding="utf-8-sig")
     status = status_path.read_text(encoding="utf-8-sig")
     names = ["config_reader_init", "config_reader_finish", "skip_value",
-             "match_key", "skip_unknown_key_value", "parse_string",
-             "parse_uint32", "parse_uint16", "parse_uint8", "parse_int32",
+             "match_key", "parse_string",
+             "parse_uint32", "parse_uint16", "parse_uint8", "parse_int32", "parse_bool",
              "validate_port", "validate_timeout", "validate_baud_rate",
              "validate_modbus_device_id", "validate_sim_pin", "validate_timezone",
              "expect_object_start", "is_object_end", "parse_device_config_internal",
@@ -70,7 +70,7 @@ def prepare_sources():
                ["has_fields", "system_status_json_build"]]
     (BUILD / "compare_legacy.inc").write_text("\n\n".join(legacy) + "\n",
                                               encoding="utf-8", newline="\n")
-    fields = re.search(r"const json_field_t fields\[\]\s*=\s*\{.*?^    \};",
+    fields = re.search(r"const json_field_t fields\[\]\s*=\s*\{.*?\};",
                        status, re.M | re.S)
     assert fields is not None
     modern = r'''
@@ -171,7 +171,7 @@ def fixtures():
               "SimKartAPN": "internet", "SimKartAPNSifresi": "secret",
               "SimKartAPNUsername": "user", "NtpServer": "pool.ntp.org",
               "NtpServerPortu": 123, "Time": 1792700000, "TimeZone": 3,
-              "PeriyodikModemResetPeriyodu": 86400, "DevreyeAlinmaZamani": 1700000000}
+              "PeriyodikModemResetPeriyodu": 86400, "DevreyeAlinmaZamani": 1700000000, "PreserveOutputStates": True}
     encode = lambda value: json.dumps(value, separators=(",", ":")).encode()
     nested = dict(modbus, Extra={"a": [True, None, {"ignored": list(range(16))}]})
     return [("uint32 read", 0, b"4294967295"),

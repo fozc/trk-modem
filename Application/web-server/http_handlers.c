@@ -812,10 +812,9 @@ void handle_post_device_config_json(const char *json_body)
      */
     config = *get_device_config();
 
-    bool retain_outputs = nvram_retain_output_states();
-    bool has_time = false;
-    if (!parse_device_config(json_body, &config) ||
-        !parse_device_options(json_body, &retain_outputs, &has_time))
+    device_config_options_t options = {.retain_outputs =
+                                           nvram_retain_output_states()};
+    if (!parse_device_config(json_body, &config, &options))
     {
         CSLOG_ERR("[HTTP] ERROR: JSON parse failed\r\n");
         http_send_error(400, "JSON parse error");
@@ -826,14 +825,14 @@ void handle_post_device_config_json(const char *json_body)
     CSLOG("[HTTP] SimKartAPN: %s\r\n", config.apn.apn);
 
     /* Save config via data_model */
-    if (!nvram_set_output_retention(retain_outputs))
+    if (!nvram_set_output_retention(options.retain_outputs))
     {
         http_send_error(500, "Configuration is busy");
         return;
     }
     int res = set_device_config(&config);
     const bool clock_failed =
-        res == 0 && has_time && !sync_device_time(config.time);
+        res == 0 && options.has_time && !sync_device_time(config.time);
 
     elog_log_config_change(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
                            gsm_get_web_client_ip(), "device",
@@ -1177,8 +1176,8 @@ void handle_post_iec_config_json(const char *json_body)
         return;
     }
 
-    size_t body_len = strlen(json_body);
-    CSLOG("[HTTP] JSON body length: %u bytes\r\n", (unsigned int)body_len);
+    CSLOG("[HTTP] JSON body length: %u bytes\r\n",
+          (unsigned int)strlen(json_body));
 
     // Create local config from current NVRAM state
     jiec_config_t config = {0};
@@ -1341,8 +1340,8 @@ void handle_post_modbus_config_json(const char *json_body)
         return;
     }
 
-    size_t body_len = strlen(json_body);
-    CSLOG("[HTTP] JSON body length: %u bytes\r\n", (unsigned int)body_len);
+    CSLOG("[HTTP] JSON body length: %u bytes\r\n",
+          (unsigned int)strlen(json_body));
 
     // Create local config from current NVRAM state
     jmodbus_configs_t config = {0};
@@ -1568,8 +1567,8 @@ void handle_post_rf_config_json(const char *json_body)
         return;
     }
 
-    size_t body_len = strlen(json_body);
-    CSLOG("[HTTP] JSON body length: %u bytes\r\n", (unsigned int)body_len);
+    CSLOG("[HTTP] JSON body length: %u bytes\r\n",
+          (unsigned int)strlen(json_body));
 
     /* Staging: parse yarida kalirsa yarim yazma kalici store'a gecmez. */
     if (!rf_store_stage_begin())

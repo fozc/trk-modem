@@ -319,4 +319,47 @@ void test_device_clock_failure_does_not_report_success(void)
     handle_post_device_config_json("{\"Time\":1767225600}");
 }
 
+void test_device_post_applies_options_and_fields_from_the_same_document(void)
+{
+    modem_config_t device = {0};
+    device.web_interface_port = 80U;
+    device.ntp_server_port = 123U;
+    modem_config_t expected = device;
+    expected.web_interface_port = 8081U;
+    expected.time = 1767225600U;
+    modem_config_get_IgnoreAndReturn(&device);
+    nvram_retain_output_states_ExpectAndReturn(true);
+    nvram_set_output_retention_ExpectAndReturn(false, true);
+    modem_config_set_Expect(&expected);
+    modem_config_sync_ExpectAndReturn(0);
+    static const rtc_t clock_time = {.day = 1U, .month = 1U, .year = 26U};
+    rtc_sync_ExpectAndReturn(&clock_time, true);
+    gsm_get_web_client_ip_ExpectAndReturn(0U);
+    elog_log_config_change_Expect(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
+                                  0U, "device", true);
+    const char *response =
+        "{\"message\":\"Device configuration saved\",\"success\":true}";
+    http_send_json_Expect(response, (int)strlen(response));
+    handle_post_device_config_json(
+        "{\"PreserveOutputStates\":false,\"WebArayuzuPortu\":8081,"
+        "\"Time\":1767225600}");
+}
+
+void test_device_post_rejects_late_errors_before_any_settings_are_applied(void)
+{
+    modem_config_t device = {0};
+    modem_config_get_IgnoreAndReturn(&device);
+    const char *requests[] = {
+        "{\"PreserveOutputStates\":false,\"Time\":1767225600,\"TimeZone\":99}",
+        "{\"PreserveOutputStates\":false,\"Time\":1767225600}garbage",
+        "{\"Time\":1767225600,\"PreserveOutputStates\":false,\"Bad\":[1,]}"};
+    for (size_t index = 0U; index < sizeof(requests) / sizeof(requests[0]);
+         ++index)
+    {
+        nvram_retain_output_states_ExpectAndReturn(true);
+        http_send_error_Expect(400, "JSON parse error");
+        handle_post_device_config_json(requests[index]);
+    }
+}
+
 /*** end of file ***/

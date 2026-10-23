@@ -658,38 +658,75 @@ void test_modbus_web_offered_230400_is_rejected_by_current_serial_profile(void)
 
 void test_output_retention_requires_boolean_and_preserves_partial_config(void)
 {
-    bool enabled = true;
-    TEST_ASSERT_TRUE(parse_device_options("{\"TimeZone\":3}", &enabled, NULL));
-    TEST_ASSERT_TRUE(enabled);
-    TEST_ASSERT_TRUE(parse_device_options("{\"PreserveOutputStates\":false}",
-                                          &enabled, NULL));
-    TEST_ASSERT_FALSE(enabled);
-    TEST_ASSERT_FALSE(
-        parse_device_options("{\"PreserveOutputStates\":1}", &enabled, NULL));
-    TEST_ASSERT_FALSE(enabled);
-    TEST_ASSERT_FALSE(parse_device_options(
-        "{\"PreserveOutputStates\":true}garbage", &enabled, NULL));
-    TEST_ASSERT_FALSE(enabled);
-    TEST_ASSERT_FALSE(parse_device_options(NULL, &enabled, NULL));
-    TEST_ASSERT_FALSE(parse_device_options("{}", NULL, NULL));
+    modem_config_t config = {0};
+    device_config_options_t options = {.retain_outputs = true};
+    modem_config_get_IgnoreAndReturn(NULL);
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_device_config("{\"TimeZone\":3}", &config, &options));
+    TEST_ASSERT_TRUE(options.retain_outputs);
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_device_config("{\"PreserveOutputStates\":false}", &config,
+                               &options));
+    TEST_ASSERT_FALSE(options.retain_outputs);
+    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{\"PreserveOutputStates\":1}",
+                                                 &config, &options));
+    TEST_ASSERT_FALSE(options.retain_outputs);
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config("{\"PreserveOutputStates\":true}garbage",
+                               &config, &options));
+    TEST_ASSERT_FALSE(options.retain_outputs);
+    TEST_ASSERT_EQUAL_INT(0, parse_device_config(NULL, &config, &options));
+    TEST_ASSERT_EQUAL_INT(0, parse_device_config("{}", NULL, &options));
 }
 
 void test_device_options_report_only_explicit_time_and_preserve_on_error(void)
 {
-    bool enabled = false;
-    bool has_time = true;
-    TEST_ASSERT_TRUE(parse_device_options("{}", &enabled, &has_time));
-    TEST_ASSERT_FALSE(has_time);
-    TEST_ASSERT_TRUE(
-        parse_device_options("{\"Time\":1767225600}", &enabled, &has_time));
-    TEST_ASSERT_TRUE(has_time);
-    TEST_ASSERT_FALSE(
-        parse_device_options("{\"Time\":false}", &enabled, &has_time));
-    TEST_ASSERT_TRUE(has_time);
-    TEST_ASSERT_FALSE(enabled);
-    TEST_ASSERT_TRUE(parse_device_options("{\"T\\u0069me\":1767225600}",
-                                          &enabled, &has_time));
-    TEST_ASSERT_TRUE(has_time);
+    modem_config_t config = {0};
+    device_config_options_t options = {.has_time = true};
+    modem_config_get_IgnoreAndReturn(NULL);
+    TEST_ASSERT_EQUAL_INT(1, parse_device_config("{}", &config, &options));
+    TEST_ASSERT_FALSE(options.has_time);
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_device_config("{\"Time\":1767225600}", &config, &options));
+    TEST_ASSERT_TRUE(options.has_time);
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config("{\"Time\":false}", &config, &options));
+    TEST_ASSERT_TRUE(options.has_time);
+    TEST_ASSERT_FALSE(options.retain_outputs);
+    TEST_ASSERT_EQUAL_INT(1, parse_device_config("{\"T\\u0069me\":1767225600}",
+                                                 &config, &options));
+    TEST_ASSERT_TRUE(options.has_time);
+}
+
+void test_device_options_share_validation_and_duplicate_key_semantics(void)
+{
+    modem_config_t config = {0};
+    device_config_options_t options = {.retain_outputs = true};
+    modem_config_get_IgnoreAndReturn(NULL);
+    const char *valid =
+        "{\"PreserveOutputStates\":false,\"Time\":1,\"Time\":2,"
+        "\"PreserveOutputStates\":true,\"Prese\\u0072veOutputStates\":false}";
+    TEST_ASSERT_EQUAL_INT(1, parse_device_config(valid, &config, &options));
+    TEST_ASSERT_FALSE(options.retain_outputs);
+    TEST_ASSERT_TRUE(options.has_time);
+    TEST_ASSERT_EQUAL_UINT32(2U, config.time);
+    TEST_ASSERT_EQUAL_INT(
+        0,
+        parse_device_config("{\"PreserveOutputStates\":true,\"TimeZone\":99}",
+                            &config, &options));
+    TEST_ASSERT_FALSE(options.retain_outputs);
+    TEST_ASSERT_TRUE(options.has_time);
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_device_config(
+               "{\"PreserveOutputStates\":false,\"PreserveOutputStates\":1}",
+               &config, NULL));
+    config.time_zone = 0;
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_device_config(
+               "{\"Unknown\":{\"Time\":123,\"PreserveOutputStates\":true}}",
+               &config, &options));
+    TEST_ASSERT_FALSE(options.has_time);
+    TEST_ASSERT_FALSE(options.retain_outputs);
 }
 
 /*** end of file ***/
