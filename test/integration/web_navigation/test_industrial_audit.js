@@ -59,6 +59,72 @@ function fixture(html) {
 }
 
 const cases = [
+    ['system logs count, explicit range and actual short pages', async f => {
+        const lines=Array.from({length:237},(_,i)=>'#'+(i+1)+' event');
+        const calls=[];
+        f.context.fetch=async url=>{
+            const query=new URL(url,'http://fixture').searchParams;
+            const offset=Number(query.get('offset')),limit=Number(query.get('limit'));
+            calls.push({offset,limit});
+            return {ok:true,status:200,json:async()=>({t:lines.length,recs:lines.slice(offset,offset+Math.min(limit,17)).join('\n')})};
+        };
+        await f.run("loadSysLogs('count')");
+        assert.equal(f.run('sysLogTotal'),237);assert.equal(f.run('sysLogLines.length'),0);
+        assert.deepEqual(calls,[{offset:0,limit:0}]);
+        assert.equal(f.document.getElementById('sysLogContent').innerHTML,f.run("esc(t('logsPress'))"));
+        assert.ok(!f.run('renderLogs()').includes('data-dirty'), 'log filters are not configuration drafts');
+        f.document.getElementById('sysLogFirst').value='11';
+        f.document.getElementById('sysLogLast').value='45';
+        await f.run("loadSysLogs('range')");
+        assert.deepEqual(JSON.parse(f.run('JSON.stringify(sysLogLines)')),lines.slice(10,45));
+        assert.match(f.run('sysLogSummary()'),/35 \/ 35/);
+        await f.run("loadSysLogs('all')");
+        assert.deepEqual(JSON.parse(f.run('JSON.stringify(sysLogLines)')),lines);
+        assert.ok(calls.some(call=>call.offset===17));assert.ok(calls.some(call=>call.offset===34));
+        assert.equal(f.run('loading'),false);
+        for(const language of ['tr','en']){
+            f.run(`LNG='${language}'`);
+            const html=f.run('renderLogs()');
+            assert.ok(html.includes(f.run("t('logsAll')")));assert.ok(html.includes(f.run("t('logsCount')")));
+            assert.ok(!html.includes("t('btnNext')"));
+        }
+    }],
+    ['system logs empty page stops and preserves partial progress', async f => {
+        let calls=0;
+        f.context.fetch=async()=>({ok:true,status:200,json:async()=>{
+            calls++;return {t:10,recs:calls===1?'':calls===2?'#1\n#2':''};
+        }});
+        await f.run("loadSysLogs('all')");
+        assert.equal(calls,3);assert.equal(f.run('sysLogLines.length'),2);
+        assert.equal(f.run('sysLogOffset'),2);assert.equal(f.run('loading'),false);
+        f.document.getElementById('sysLogFirst').value='10';f.document.getElementById('sysLogLast').value='2';
+        await f.run("loadSysLogs('range')");assert.equal(calls,3,'invalid range must not send');
+    }],
+    ['system logs changing totals do not mix windows and zero total completes', async f => {
+        let calls=0;
+        f.context.fetch=async()=>({ok:true,status:200,json:async()=>({t:++calls===1?10:11,recs:'#1'})});
+        await f.run("loadSysLogs('all')");assert.equal(calls,2);assert.equal(f.run('sysLogLines.length'),0);
+        calls=0;f.context.fetch=async()=>({ok:true,status:200,json:async()=>{calls++;return {t:0,recs:''}}});
+        await f.run("loadSysLogs('all')");assert.equal(calls,1);assert.equal(f.run('loading'),false);
+    }],
+
+    ['device profile fields have unique IDs and preserve commissioning epoch', async f => {
+        const html=f.run('renderDevice({DevreyeAlinmaZamani:1767225600})');
+        const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]);
+        assert.equal(new Set(ids).size,ids.length);
+        assert.match(html,/id="dev-DevreyeAlinmaZamani-display"/);
+        assert.match(html,/id="dev-DevreyeAlinmaZamani"[^>]*value="1767225600"/);
+        const input=f.document.getElementById('dev-DevreyeAlinmaZamani');
+        input.value='1767225600';input.type='number';
+        assert.equal(f.run('extractDevice().DevreyeAlinmaZamani'),1767225600);
+        const period=f.document.getElementById('dev-PeriyodikModemResetPeriyodu');
+        period.type='number';period.value=String(3700/3600);
+        assert.equal(f.run('extractDevice().PeriyodikModemResetPeriyodu'),3700,
+            'portable profiles must not truncate non-whole-hour seconds');
+        assert.equal(f.run("validation('dev-PeriyodikModemResetPeriyodu',true,0,720,false)"),true);
+        const wide=f.run('renderDevice({WebIlkVeriZamanAsimi:65535})');
+        assert.match(wide,/id="dev-WebIlkVeriZamanAsimi"[^>]*max="65535"/);
+    }],
     ['output retention is editable, serialized and rendered in both languages', async f => {
         const checkbox = f.document.getElementById('dev-PreserveOutputStates');
         checkbox.type = 'checkbox';

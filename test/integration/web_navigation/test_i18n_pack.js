@@ -6,6 +6,7 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const {parse} = require('../../../web-page/tools/node_modules/acorn');
 const {minifyJavascript} = require('../../../web-page/tools/minify_js.cjs');
+const {packI18n} = require('../../../web-page/tools/pack_i18n.cjs');
 
 async function compare(source, expression) {
     const output = await minifyJavascript(source);
@@ -55,6 +56,14 @@ function tf(k,n){return t(k).replace('{n}',n)}
     for (const page of ['index', 'fw_update']) {
         const source = fs.readFileSync(path.join(root,
             'web-page/' + page + '.html'), 'utf8');
+        if (page === 'index') {
+            const texts = JSON.parse(dictionary(source));
+            assert.deepEqual(Object.keys(texts.en), Object.keys(texts.tr),
+                'index translations must have matching keys/order for packing');
+            const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)[1];
+            assert.notEqual(packI18n(script), script,
+                'production dictionary packing must actually run');
+        }
         const array = fs.readFileSync(path.join(root,
             'Application/web-server/' + page + '_html.c'), 'utf8');
         const bytes = Buffer.from([...array.split('};')[0].matchAll(

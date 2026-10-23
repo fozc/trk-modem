@@ -1,0 +1,491 @@
+[
+  {
+    "domain": "device",
+    "profile": {
+      "format": "troika-config",
+      "version": 1,
+      "domain": "device",
+      "config": {
+        "WebArayuzuPortu": 80,
+        "SimKartPin": 1234,
+        "SimKartAPN": "mgbs",
+        "SimKartAPNUsername": "",
+        "SimKartAPNSifresi": "password",
+        "NtpServer": "pool.ntp.org",
+        "NtpServerPortu": 123,
+        "TimeZone": 3,
+        "PeriyodikModemResetPeriyodu": 86400,
+        "WebIlkVeriZamanAsimi": 60,
+        "WebBostaKalmaZamanAsimi": 300,
+        "IEC104IlkVeriZamanAsimi": 60,
+        "IEC104BostaKalmaZamanAsimi": 300,
+        "DevreyeAlinmaZamani": 0,
+        "PreserveOutputStates": true
+      }
+    }
+  },
+  {
+    "domain": "iec104",
+    "profile": {
+      "format": "troika-config",
+      "version": 1,
+      "domain": "iec104",
+      "config": {
+        "ScadaIPAdresi": "188.59.76.59",
+        "PeriodicSend": 3600,
+        "Port": 2404,
+        "T0": 90,
+        "T1": 45,
+        "T2": 30,
+        "T3": 60,
+        "K": 64,
+        "W": 24,
+        "OriginatorAddr": 0,
+        "CommonAddr": 1,
+        "SBO": false,
+        "SBOTimeout": 60,
+        "AkuUyarisi": 1000,
+        "ModemReset": 1001,
+        "Hatlar": {
+          "inUse": [
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "TemporaryFaultBase": [
+            100000,
+            101000,
+            102000,
+            103000,
+            104000,
+            105000,
+            106000
+          ],
+          "PermanentFaultBase": [
+            200000,
+            201000,
+            202000,
+            203000,
+            204000,
+            205000,
+            206000
+          ],
+          "IOA_R_AnlikAkim": [
+            10010,
+            10110,
+            10210,
+            10310,
+            10410,
+            10510,
+            10610
+          ],
+          "IOA_S_AnlikAkim": [
+            10011,
+            10111,
+            10211,
+            10311,
+            10411,
+            10511,
+            10611
+          ],
+          "IOA_T_AnlikAkim": [
+            10012,
+            10112,
+            10212,
+            10312,
+            10412,
+            10512,
+            10612
+          ],
+          "IOA_R_EnerjiVarYok": [
+            10020,
+            10120,
+            10220,
+            10320,
+            10420,
+            10520,
+            10620
+          ],
+          "IOA_S_EnerjiVarYok": [
+            10021,
+            10121,
+            10221,
+            10321,
+            10421,
+            10521,
+            10621
+          ],
+          "IOA_T_EnerjiVarYok": [
+            10022,
+            10122,
+            10222,
+            10322,
+            10422,
+            10522,
+            10622
+          ],
+          "IOA_R_YukAkimiVarYok": [
+            10030,
+            10130,
+            10230,
+            10330,
+            10430,
+            10530,
+            10630
+          ],
+          "IOA_S_YukAkimiVarYok": [
+            10031,
+            10131,
+            10231,
+            10331,
+            10431,
+            10531,
+            10631
+          ],
+          "IOA_T_YukAkimiVarYok": [
+            10032,
+            10132,
+            10232,
+            10332,
+            10432,
+            10532,
+            10632
+          ],
+          "IOA_R_RfhabVarYok": [
+            10040,
+            10140,
+            10240,
+            10340,
+            10440,
+            10540,
+            10640
+          ],
+          "IOA_S_RfhabVarYok": [
+            10041,
+            10141,
+            10241,
+            10341,
+            10441,
+            10541,
+            10641
+          ],
+          "IOA_T_RfhabVarYok": [
+            10042,
+            10142,
+            10242,
+            10342,
+            10442,
+            10542,
+            10642
+          ],
+          "IOA_R_TripFailed": [
+            10050,
+            10150,
+            10250,
+            10350,
+            10450,
+            10550,
+            10650
+          ],
+          "IOA_S_TripFailed": [
+            10051,
+            10151,
+            10251,
+            10351,
+            10451,
+            10551,
+            10651
+          ],
+          "IOA_T_TripFailed": [
+            10052,
+            10152,
+            10252,
+            10352,
+            10452,
+            10552,
+            10652
+          ]
+        }
+      }
+    }
+  },
+  {
+    "domain": "modbus",
+    "profile": {
+      "format": "troika-config",
+      "version": 1,
+      "domain": "modbus",
+      "config": {
+        "CihazID": 23,
+        "BaudRate": 115200,
+        "StopBits": 1
+      }
+    }
+  },
+  {
+    "domain": "rf",
+    "profile": {
+      "format": "troika-config",
+      "version": 1,
+      "domain": "rf",
+      "config": {
+        "inUse": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "HatID": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ZoneID": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "R_DEVICEID": [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "S_DEVICEID": [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "T_DEVICEID": [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "CalismaModu": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "HatFrekansi": [
+          50,
+          50,
+          50,
+          50,
+          50,
+          50,
+          50
+        ],
+        "SistemNominalAkimi": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "SetEdilebilirActirmaEsikAkimi": [
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "ArtimliAkimEsigi": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "HatKopukHatBosta": [
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3,
+          0.3
+        ],
+        "SetEdilebilirAcmaArizaSayisi": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "OluHatAkimiDogrulamaSuresi": [
+          80,
+          80,
+          80,
+          80,
+          80,
+          80,
+          80
+        ],
+        "YenilenmeSifirlamaSuresi": [
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "IsSafety": [
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "ThresholdMs": [
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "TMemDeadSec": [
+          30,
+          30,
+          30,
+          30,
+          30,
+          30,
+          30
+        ],
+        "InrushTimerMs": [
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "InrushMultiplier": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "SyncTripDelayMs": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "TripPulseDurationMs": [
+          20,
+          20,
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "TripMode": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "Inrush100HzRatio": [
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "ClpEnabled": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ClpMultiplier": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "ClpDurationMs": [
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100
+        ],
+        "VtripTarget": [
+          24,
+          24,
+          24,
+          24,
+          24,
+          24,
+          24
+        ]
+      }
+    }
+  }
+]
