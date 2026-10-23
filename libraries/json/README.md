@@ -208,7 +208,6 @@ koşulları sağlanırsa C11 Clinger hızlı yolu kullanılır. `fegetround` yal
 modu okur; diğer modlarda mevcut kesin yola dönülür. Sonucun yuvarlaması
 moddan bağımsızdır; FPU exception flag'lerini koruma garantisi yoktur.
 Libc `strtof`, formatter, locale, `errno` veya heap kullanılmaz.
-Güncel host önce/sonra sonucu [Clinger raporundadır](../../test/reports/2026-10-23-json-clinger-host.md).
 
 `json_write_float_fixed(writer, value, decimals)` tam olarak 0–9 ondalık
 basamak üretir; sıfır basamakta nokta yoktur. Sondaki sıfırlar ve negatif
@@ -276,15 +275,9 @@ sayı metinlerini de bağımsız grammar ile sınar; hata hedefi değiştirmemel
 adaptörlerini aynı girdilerde ölçer. Host süreleri C batch (toplu çağrı)
 içinde alınır. `ARM_CC` verilirse aynı hedef derleyici ve linker GC ile
 boyut profilleri de çıkarılır. Bu hedef `json:check` içine dahildir.
-Sonuçlar [karşılaştırma raporunda](../../test/reports/2026-10-23-json-comparison.md)
-tutulmalıdır; host hız sonucu hedef cihaz hızı sayılmamalıdır.
-
-Güncel kanıt ve kabul sınırları
-[test raporunda](../../test/reports/2026-10-23-json-core.md) tutulmalıdır.
-Gerçek MCU'da 84 Unity testi, DWT süreleri ve stack high-water sonucu
-[cihaz raporundadır](../../test/reports/2026-10-23-json-device.md).
-Bu eski fiziksel sonuçlar v0.2'ye aittir. Güncel modem entegrasyonu ve
-doğrulama sınırları [geçiş raporundadır](../../test/reports/2026-10-23-json-modem-integration.md).
+Üretilen sonuçlar yerel build dizininde kalır; host hız sonucu hedef
+cihaz hızı sayılmamalıdır. Fiziksel doğrulama için
+[test adımları](../../test/integration/json/DEVICE_TEST.md) izlenmelidir.
 
 Writer, escape gerektirmeyen string bölümlerini ve raw sayı/literal
 metinlerini mevcut çıkış kapasitesi kadar toplu kopyalar. Geçerli integer
@@ -297,9 +290,6 @@ kopyalar. Writer ASCII için hızlı doğrulama yolu kullanır; UTF-8,
 Unicode escape ve hatalı çok baytlı karakter denetimleri korunur.
 Varsayılan ARM bağlamı reader için 104 B, writer için 156 B'dir.
 Float kapalı writer 120 B'dir. Çekirdeğin global data/BSS alanı yoktur.
-Önceki özellik kabulü [v0.2 raporundadır](../../test/reports/2026-10-23-json-stream-fixed.md).
 Aynı süreçte önce/sonra ölçmek için
 `JSON_BASELINE_SOURCE`, aynı public API'ye sahip önceki `json.c` dosyasının
-tam yolu olarak verilmelidir. Güncel hız/kod boyutu karşılığı
-[tekrar ölçüm raporunda](../../test/reports/2026-10-23-json-simplification.md)
-açıklanmıştır.
+tam yolu olarak verilmelidir.

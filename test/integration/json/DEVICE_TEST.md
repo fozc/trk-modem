@@ -60,5 +60,6 @@ Mevcut logging başlığındaki GNU variadic macro için yalnız harness build'i
 
 ## Sonuç kaydı
 
-Güncel kanıt [cihaz raporunda](../../reports/2026-10-23-json-device.md)
-tutulmalıdır. Host referans sayıları cihazda çalışmış gibi sunulmamalıdır.
+Test sonuçları görüşmede paylaşılmalıdır; ham test çıktıları yerel build
+dizininde kalmalıdır. Host referans sayıları cihazda çalışmış gibi
+sunulmamalıdır.
