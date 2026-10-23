@@ -277,4 +277,91 @@ void test_undefined_fider_fault_region_reads_zero_without_log_access(void)
     TEST_ASSERT_EQUAL_UINT16(0U, value);
 }
 
+void test_every_phase_timestamp_preserves_calendar_boundaries(void)
+{
+    static const struct
+    {
+        uint8_t year;
+        uint8_t month;
+        uint8_t day;
+        uint32_t unix_seconds;
+    } dates[] = {
+        {0U, 1U, 1U, 946771199U},
+        {28U, 2U, 29U, 1835481599U},
+        {99U, 12U, 31U, 4102444799U}
+    };
+    static const uint16_t time_offsets[] = {
+        MODBUS_MAP_PHASE_OFF(anlik_zaman),
+        MODBUS_MAP_PHASE_OFF(enerji_zaman),
+        MODBUS_MAP_PHASE_OFF(yuk_zaman),
+        MODBUS_MAP_PHASE_OFF(rf_zaman),
+        MODBUS_MAP_PHASE_OFF(trip_zaman)
+    };
+    feeder_slots[0].in_use = true;
+    feeder_slots[0].config.fider_id = 1U;
+    feeder_slots[0].r_eui64[0] = 0x11U;
+    rf_inventory_get_binding_StubWithCallback(binding);
+
+    for (size_t index = 0U; index < (sizeof(dates) / sizeof(dates[0])); index++)
+    {
+        const cp56time2a_t timestamp = cp56time2a_make(59999U, 59U, 23U,
+            dates[index].day, 0U, dates[index].month, dates[index].year);
+        const rf_scp_live_t sample = {
+            .source = 5U, .seq = 1U, .uptime_sec = 10U,
+            .current_amps = 1.25F
+        };
+        rf_init();
+        TEST_ASSERT_TRUE(rf_handle_live(&sample, 1000U, &timestamp));
+        const uint16_t phase_base = MODBUS_MAP_LINE_BASE +
+                                    MODBUS_MAP_FEEDER_OFF(faz);
+        TEST_ASSERT_TRUE(read_reg(phase_base));
+        TEST_ASSERT_EQUAL_UINT16(0x7FU, value);
+        for (size_t field = 0U; field < (sizeof(time_offsets) /
+                                        sizeof(time_offsets[0])); field++)
+        {
+            const uint16_t address = phase_base + time_offsets[field];
+            TEST_ASSERT_TRUE(read_reg(address));
+            TEST_ASSERT_EQUAL_UINT16(dates[index].unix_seconds >> 16U, value);
+            TEST_ASSERT_TRUE(read_reg(address + 1U));
+            TEST_ASSERT_EQUAL_UINT16(dates[index].unix_seconds & 0xFFFFU, value);
+        }
+    }
+}
+
+void test_invalid_live_timestamp_keeps_current_and_clears_all_time_words(void)
+{
+    static const cp56time2a_t invalid[] = {
+        {.iv_bit = 1U, .day = 1U, .month = 1U, .year = 26U},
+        {.day = 30U, .month = 2U, .year = 28U},
+        {.day = 1U, .month = 1U, .year = 100U}
+    };
+    static const uint16_t time_offsets[] = {3U, 6U, 9U, 12U, 15U};
+    feeder_slots[0].in_use = true;
+    feeder_slots[0].config.fider_id = 1U;
+    feeder_slots[0].r_eui64[0] = 0x11U;
+    rf_inventory_get_binding_StubWithCallback(binding);
+    for (size_t index = 0U; index < (sizeof(invalid) / sizeof(invalid[0]));
+         index++)
+    {
+        const rf_scp_live_t sample = {
+            .source = 5U, .seq = 1U, .uptime_sec = 10U,
+            .current_amps = 1.25F
+        };
+        rf_init();
+        TEST_ASSERT_TRUE(rf_handle_live(&sample, 1000U, &invalid[index]));
+        TEST_ASSERT_TRUE(read_reg(40004U));
+        TEST_ASSERT_EQUAL_UINT16(0x3FU, value);
+        TEST_ASSERT_TRUE(read_reg(40005U));
+        TEST_ASSERT_EQUAL_UINT16(0x3FA0U, value);
+        for (size_t field = 0U; field < (sizeof(time_offsets) /
+                                        sizeof(time_offsets[0])); field++)
+        {
+            TEST_ASSERT_TRUE(read_reg(40004U + time_offsets[field]));
+            TEST_ASSERT_EQUAL_UINT16(0U, value);
+            TEST_ASSERT_TRUE(read_reg(40005U + time_offsets[field]));
+            TEST_ASSERT_EQUAL_UINT16(0U, value);
+        }
+    }
+}
+
 /*** end of file ***/
