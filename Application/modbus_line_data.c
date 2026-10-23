@@ -131,7 +131,7 @@ static uint16_t phase_quality(bool defined, const rf_phase_data_t *data)
         {
             quality |= MODBUS_MAP_PH_Q_HARVEST_V_VALID;
         }
-        if (0U != cp56_to_unix(&data->received_time))
+        if (cp56time2a_is_valid(&data->received_time))
         {
             quality |= MODBUS_MAP_PH_Q_TIME_VALID;
         }
@@ -151,8 +151,6 @@ static void resolve_phase_field(bool defined, const rf_phase_data_t *data,
                                 uint16_t rel, uint16_t *value)
 {
     const bool has_live = (data != NULL) && data->has_live;
-    const uint32_t sample_unix =
-        has_live ? cp56_to_unix(&data->received_time) : 0U;
 
     switch (rel)
     {
@@ -172,37 +170,29 @@ static void resolve_phase_field(bool defined, const rf_phase_data_t *data,
                            : float_word(data->live.current_amps, false));
             break;
         case MODBUS_MAP_PHASE_OFF(anlik_zaman):
-            *value = high_word(sample_unix);
+        case MODBUS_MAP_PHASE_OFF(enerji_zaman):
+        case MODBUS_MAP_PHASE_OFF(yuk_zaman):
+        case MODBUS_MAP_PHASE_OFF(rf_zaman):
+        case MODBUS_MAP_PHASE_OFF(trip_zaman):
+            *value = high_word(has_live
+                         ? cp56_to_unix(&data->received_time) : 0U);
             break;
         case MODBUS_MAP_PHASE_OFF(anlik_zaman) + 1U:
-            *value = low_word(sample_unix);
+        case MODBUS_MAP_PHASE_OFF(enerji_zaman) + 1U:
+        case MODBUS_MAP_PHASE_OFF(yuk_zaman) + 1U:
+        case MODBUS_MAP_PHASE_OFF(rf_zaman) + 1U:
+        case MODBUS_MAP_PHASE_OFF(trip_zaman) + 1U:
+            *value = low_word(has_live
+                         ? cp56_to_unix(&data->received_time) : 0U);
             break;
         case MODBUS_MAP_PHASE_OFF(enerji_varyok):
             *value = (has_live && (0U != (data->live.flags & 1U))) ? 1U : 0U;
             break;
-        case MODBUS_MAP_PHASE_OFF(enerji_zaman):
-            *value = high_word(sample_unix);
-            break;
-        case MODBUS_MAP_PHASE_OFF(enerji_zaman) + 1U:
-            *value = low_word(sample_unix);
-            break;
         case MODBUS_MAP_PHASE_OFF(yuk_akimi_varyok):
             *value = (has_live && (0U != (data->live.flags & 2U))) ? 1U : 0U;
             break;
-        case MODBUS_MAP_PHASE_OFF(yuk_zaman):
-            *value = high_word(sample_unix);
-            break;
-        case MODBUS_MAP_PHASE_OFF(yuk_zaman) + 1U:
-            *value = low_word(sample_unix);
-            break;
         case MODBUS_MAP_PHASE_OFF(rf_haberlesme_varyok):
             *value = ((data != NULL) && data->is_online) ? 1U : 0U;
-            break;
-        case MODBUS_MAP_PHASE_OFF(rf_zaman):
-            *value = high_word(sample_unix);
-            break;
-        case MODBUS_MAP_PHASE_OFF(rf_zaman) + 1U:
-            *value = low_word(sample_unix);
             break;
     /*
      * BQ-01/BQ-16: the trip-failure alarm opens from an event without
@@ -212,12 +202,6 @@ static void resolve_phase_field(bool defined, const rf_phase_data_t *data,
     case MODBUS_MAP_PHASE_OFF(trip_failed):
         *value = ((data != NULL) && data->trip_failed) ? 1U : 0U;
         break;
-        case MODBUS_MAP_PHASE_OFF(trip_zaman):
-            *value = high_word(sample_unix);
-            break;
-        case MODBUS_MAP_PHASE_OFF(trip_zaman) + 1U:
-            *value = low_word(sample_unix);
-            break;
         case MODBUS_MAP_PHASE_OFF(trip_gerilimi):
             *value = has_live ? float_word(data->live.trip_voltage, true) : 0U;
             break;
