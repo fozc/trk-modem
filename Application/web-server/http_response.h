@@ -54,6 +54,13 @@ extern "C" {
  */
 void http_response_init(int (*send_callback)(const void *data, int length));
 
+/** Register a deferred sender for immutable program-lifetime resources.
+ * Returns the accepted length, or <= 0 on failure. NULL keeps copy sending.
+ * Reset by http_response_init(); never pass stack or mutable JSON data.
+ */
+void http_response_set_static_sender(
+    int (*send_static)(const void *data, uint32_t length));
+
 
 /* ============================================================================
  * LOW-LEVEL SEND FUNCTIONS

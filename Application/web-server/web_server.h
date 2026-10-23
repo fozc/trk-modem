@@ -2,7 +2,8 @@
  * web_server.h
  *
  *  Created on: 12 Eki 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef WEB_SERVER_H_
@@ -14,6 +15,8 @@
 typedef struct
 {
     int (*send)(const void *data, uint32_t length);
+    /* Accept immutable program-lifetime data for deferred transmission. */
+    int (*send_static)(const void *data, uint32_t length);
 
 }web_server_io_t;
 

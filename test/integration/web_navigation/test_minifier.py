@@ -18,6 +18,28 @@ spec.loader.exec_module(module)
 
 
 class EmbeddedWebMinifierTest(unittest.TestCase):
+    def test_dynamic_responses_fit_queue_and_static_sizes_match(self):
+        server = (ROOT / "Application/gsm/gsm_http_server.c").read_text()
+        queue_kib = int(re.search(
+            r"#define GSM_HTTP_SERVER_TX_BUFFER_SIZE \((\d+)U \* 1024U\)",
+            server)[1])
+        reserve = int(re.search(
+            r"#define GSM_HTTP_SERVER_HEADER_RESERVE (\d+)U", server)[1])
+        capacity = queue_kib * 1024 - 1 - reserve
+        http_header = (ROOT / "Application/web-server/http_server.h").read_text()
+        dynamic_size = int(re.search(
+            r"#define HTTP_TX_BUFFER_SIZE (\d+)", http_header)[1])
+        self.assertLessEqual(dynamic_size, capacity)
+        for name in ("index", "fw_update", "loading"):
+            folder = ROOT / "Application/web-server"
+            array = (folder / (name + "_html.c")).read_text().split("};")[0]
+            payload = bytes(int(value, 16) for value in re.findall(
+                r"0x([0-9A-Fa-f]{2})", array))
+            header = (folder / (name + "_html.h")).read_text()
+            size = int(re.search(r"_HTML_DATA_SIZE (\d+)U", header)[1])
+            self.assertEqual(size, len(payload))
+            self.assertTrue(gzip.decompress(payload))
+
     def test_literals_and_public_handlers_keep_their_behavior(self):
         html = """<!-- outside --><pre>keep  spaces\n next</pre>
 <style>.item:before {content: "two  spaces";}</style>
