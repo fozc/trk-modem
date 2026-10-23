@@ -121,13 +121,13 @@ void setUp(void)
     adc_get_mcu_temp_c_StubWithCallback(get_mcu_temp_callback);
     gsm_info_get_signal_quality_StubWithCallback(get_signal_callback);
     get_network_generation_StubWithCallback(get_generation_callback);
-    gsm_info_get_signal_quality_2G_IgnoreAndReturn(0U);
-    gsm_info_get_signal_quality_3G_IgnoreAndReturn(0U);
-    gsm_info_get_signal_quality_4G_IgnoreAndReturn(0U);
-    gsm_info_get_4G_rsrq_IgnoreAndReturn(0U);
-    gsm_info_get_creg_IgnoreAndReturn(0U);
-    gsm_info_get_cgreg_IgnoreAndReturn(0U);
-    gsm_info_get_cereg_IgnoreAndReturn(0U);
+    gsm_info_get_signal_quality_2G_IgnoreAndReturn(12U);
+    gsm_info_get_signal_quality_3G_IgnoreAndReturn(18U);
+    gsm_info_get_signal_quality_4G_IgnoreAndReturn(42U);
+    gsm_info_get_4G_rsrq_IgnoreAndReturn(25U);
+    gsm_info_get_creg_IgnoreAndReturn(GSM_NET_REG_REGISTERED);
+    gsm_info_get_cgreg_IgnoreAndReturn(GSM_NET_REG_SEARCHING);
+    gsm_info_get_cereg_IgnoreAndReturn(GSM_NET_REG_DENIED);
     adc_is_valid_IgnoreAndReturn(true);
     adc_get_sample_age_ms_IgnoreAndReturn(0U);
     system_status_init();
@@ -416,6 +416,85 @@ void test_adc_error_is_reported_and_does_not_change_temperature_history(void)
     TEST_ASSERT_TRUE(system_status_json_build(status, json, sizeof(json), &len));
     TEST_ASSERT_NOT_NULL(strstr(json, "\"ADCValid\":0"));
     TEST_ASSERT_NOT_NULL(strstr(json, "\"ADCSampleAgeMs\":4294967295"));
+}
+
+void test_status_json_preserves_all_fields_order_and_exact_fit(void)
+{
+    const system_status_t status = {
+        .din = {1U, 0U, 1U, 0U}, .rly = {0U, 1U}, .dip_sw = {1U, 1U},
+        .v3v3 = 3301U, .v3v8 = 3802U, .v5v = 5003U,
+        .charge_state = 1U, .charge_verdict = 2U,
+        .temp = -12, .temp_max = 42, .temp_min = -30,
+        .panel_current = 1234, .panel_voltage = 18000U, .dc_voltage = 24001U,
+        .input_current = INT16_MIN, .input_power_10mw = INT16_MAX,
+        .battery_power_10mw = -1200, .power_source = 2U, .telemetry_age = 7U,
+        .board_flags = 39U, .board_flags2 = 216U, .alarm_mask = UINT32_MAX,
+        .battery_voltage = 12600U, .tdie_temp = 35, .tdie_temp_max = 40,
+        .tdie_temp_min = 20, .battery_charge_x10 = 875,
+        .battery_capacity = 12U, .battery_capacity_unknown = true,
+        .gsm_signal = -85, .gsm_rat = 4U, .battery_current = -321,
+        .battery_temp_x10 = 245, .battery_soc_x10 = -125,
+        .battery_soh_x10 = 960U, .ambient_temp = 77,
+        .heater_state = 1U, .heater_power = 13U,
+        .power_valid_fields = UINT16_MAX, .adc_valid = true,
+        .adc_sample_age_ms = UINT32_MAX
+    };
+    static const char expected[] =
+        "{\"DIN\":[1,0,1,0],\"RLY\":[0,1],\"DIP\":[1,1],"
+        "\"ADCValid\":1,\"ADCSampleAgeMs\":4294967295,"
+        "\"3V3\":3301,\"3V8\":3802,\"5V\":5003,"
+        "\"ChargeState\":1,\"ChargeVerdict\":2,"
+        "\"Temp\":-12,\"TempMax\":42,\"TempMin\":-30,"
+        "\"PanelAkimi\":0,\"PanelVoltaji\":18000,\"DcVoltaji\":24001,"
+        "\"GirisAkimi\":-32768,\"GirisGucu\":32767,\"AkuGucu\":-1200,"
+        "\"Kaynak\":2,\"TelemetriYasi\":7,\"KartDurum\":39,\"KartDurum2\":216,"
+        "\"AlarmMaskesi\":-1,\"BataryaVoltaji\":12600,"
+        "\"TDIE\":35,\"TDIEMax\":40,\"TDIEMin\":20,"
+        "\"ChargePertance\":875,\"Capacity\":12,\"BatteryCapacityUnknown\":1,"
+        "\"GsmSig\":-85,\"GsmRAT\":4,\"GsmRxlev\":12,\"GsmRscp\":18,"
+        "\"GsmRsrp\":42,\"GsmRsrq\":25,\"GsmCREG\":1,\"GsmCGREG\":2,"
+        "\"GsmCEREG\":3,\"BataryaAkimi\":-321,\"BatteryTemp\":245,"
+        "\"BatterySOC\":-125,\"BatterySOH\":960,\"OrtamSicakligi\":0,"
+        "\"HeaterState\":0,\"HeaterPower\":0,\"PowerValidFields\":65535,"
+        "\"BatterySOCAbsolute\":1}";
+    struct
+    {
+        char before;
+        char buffer[sizeof(expected)];
+        char after;
+    } guarded;
+    (void)memset(&guarded, 0x55, sizeof(guarded));
+    size_t length = 0U;
+
+    TEST_ASSERT_TRUE(system_status_json_build(&status, guarded.buffer,
+                                               sizeof(guarded.buffer), &length));
+    TEST_ASSERT_EQUAL_STRING(expected, guarded.buffer);
+    TEST_ASSERT_EQUAL_UINT32(sizeof(expected) - 1U, length);
+    TEST_ASSERT_EQUAL_CHAR(0x55, guarded.before);
+    TEST_ASSERT_EQUAL_CHAR(0x55, guarded.after);
+
+    TEST_ASSERT_FALSE(system_status_json_build(&status, guarded.buffer,
+                            sizeof(guarded.buffer) - 1U, &length));
+    TEST_ASSERT_EQUAL_STRING("", guarded.buffer);
+    TEST_ASSERT_EQUAL_UINT32(0U, length);
+    TEST_ASSERT_EQUAL_CHAR(0x55, guarded.before);
+    TEST_ASSERT_EQUAL_CHAR(0x55, guarded.after);
+}
+
+void test_status_json_rejects_invalid_arguments_without_writes(void)
+{
+    const system_status_t status = {0};
+    char buffer[8] = "keep";
+    size_t length = 17U;
+    TEST_ASSERT_FALSE(system_status_json_build(NULL, buffer,
+                                               sizeof(buffer), &length));
+    TEST_ASSERT_FALSE(system_status_json_build(&status, NULL,
+                                               sizeof(buffer), &length));
+    TEST_ASSERT_FALSE(system_status_json_build(&status, buffer,
+                                               sizeof(buffer), NULL));
+    TEST_ASSERT_FALSE(system_status_json_build(&status, buffer, 0U, &length));
+    TEST_ASSERT_EQUAL_STRING("keep", buffer);
+    TEST_ASSERT_EQUAL_UINT32(17U, length);
 }
 
 /*** end of file ***/

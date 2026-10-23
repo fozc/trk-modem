@@ -484,6 +484,12 @@ static bool write_status_arrays(json_writer_t *writer,
     return true;
 }
 
+typedef struct
+{
+    const char *name;
+    int32_t value;
+} json_field_t;
+
 static bool write_signed_fields(json_writer_t *writer,
                                  const json_field_t *fields, size_t count)
 {
