@@ -53,8 +53,6 @@ def prepare_sources():
     reader_type = re.search(r"typedef struct\s*\{[^}]*\}\s*config_reader_t;",
                             config, re.S)
     assert reader_type is not None
-    field_type = re.search(r"typedef struct\s*\{[^}]*\}\s*json_field_t;", status, re.S)
-    assert field_type is not None
     power_header = (ROOT / "Application/power_board/power_board_scp.h").read_text()
     power_mask = re.search(r"^#define POWER_SOC_ABSOLUTE\s+[^\n]+", power_header, re.M)
     assert power_mask is not None
@@ -65,14 +63,17 @@ def prepare_sources():
                            for name, value in getters.items())
     legacy = ["/* Generated from current production source; do not edit. */",
               reader_type.group(0), power_mask.group(0), constants,
-              *(definition for _, definition in definitions), field_type.group(0)]
+              *(definition for _, definition in definitions)]
     legacy += [function(status, name)[1] for name in
                ["has_fields", "system_status_json_build"]]
     (BUILD / "compare_legacy.inc").write_text("\n\n".join(legacy) + "\n",
                                               encoding="utf-8", newline="\n")
-    fields = re.search(r"const json_field_t fields\[\]\s*=\s*\{.*?\};",
-                       status, re.M | re.S)
-    assert fields is not None
+    fields = re.findall(r'web_json_int32\(&writer,\s*"([^"]+)",\s*(.*?)\);',
+                        function(status, "system_status_json_build")[1], re.S)
+    assert fields and len({name for name, _ in fields}) == len(fields)
+    field_table = "const json_field_t fields[] = {\n" + ",\n".join(
+        f'        {{"{name}", {expression.strip()}}}'
+        for name, expression in fields) + "};"
     modern = r'''
 uint32_t compare_new_status(const char *input, size_t length,
                              char *output, size_t capacity)
@@ -112,7 +113,7 @@ uint32_t compare_new_status(const char *input, size_t length,
     output[writer.used] = '\0';
     return (uint32_t)writer.used;
 }
-'''.replace("FIELDS", fields.group(0))
+'''.replace("FIELDS", field_table)
     (BUILD / "compare_status.inc").write_text(modern, newline="\n")
     return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in [config_path, status_path, ROOT / "Application/libs/xprintf.c",
