@@ -64,9 +64,11 @@ static bsp_rtc_t rtc = {0, 0, 0, 0, 1, 1, 26};
 
 void bsp_rtc_process(void)
 {
-	const int days_lookup[2][13] ={
-			{ 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 },
-			{ 0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+	static const uint8_t days_lookup[2][13] ={
+			{ 0U, 31U, 28U, 31U, 30U, 31U, 30U,
+			  31U, 31U, 30U, 31U, 30U, 31U },
+			{ 0U, 31U, 29U, 31U, 30U, 31U, 30U,
+			  31U, 31U, 30U, 31U, 30U, 31U }
 	};
 
 	if (++rtc.millisec >= 1000)
