@@ -16,7 +16,7 @@ extern "C" {
 #define XF_USE_OUTPUT	1	/* 1: Enable output functions */
 #define	XF_CRLF			0	/* 1: Convert \n ==> \r\n in the output char */
 #define	XF_USE_DUMP		0	/* 1: Enable put_dump function */
-#define	XF_USE_LLI		1	/* 1: Enable long long integer in size prefix ll */
+#define	XF_USE_LLI		0	/* Application integer formats use int/long. */
 #define	XF_USE_FP		1	/* 1: Enable support for floating point in type e and f */
 #define XF_DPC			'.'	/* Decimal separator for floating point */
 #define XF_USE_INPUT	0	/* 1: Enable input functions */
