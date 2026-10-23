@@ -22,6 +22,17 @@ static char output[4096];
 static size_t output_len;
 static int send_calls;
 static int fail_on_call;   /* 0 = never; otherwise 1-based call index */
+static uint32_t static_calls;
+static const void *static_data;
+static uint32_t static_length;
+
+static int defer_static(const void *data, uint32_t length)
+{
+    static_calls++;
+    static_data = data;
+    static_length = length;
+    return (int)length;
+}
 
 static int capture(const void *data, int length)
 {
@@ -44,12 +55,49 @@ void setUp(void)
     output[0] = '\0';
     send_calls = 0;
     fail_on_call = 0;
+    static_calls = 0U;
+    static_data = NULL;
+    static_length = 0U;
     http_response_note_request_headers(NULL, 0);
     http_response_init(capture);
 }
 
 void tearDown(void)
 {
+}
+
+void test_static_html_defers_only_the_body_after_accepting_header(void)
+{
+    static const uint8_t body[] = {0U, 1U, 2U};
+    const html_resource_t resource =
+        {body, sizeof(body), HTML_COMPRESS_NONE, "text/html"};
+    http_response_set_static_sender(defer_static);
+    http_send_html_resource(&resource);
+    TEST_ASSERT_EQUAL_UINT32(1U, static_calls);
+    TEST_ASSERT_EQUAL_PTR(body, static_data);
+    TEST_ASSERT_EQUAL_UINT32(sizeof(body), static_length);
+    TEST_ASSERT_NOT_NULL(strstr(output, "Content-Length: 3\r\n"));
+    TEST_ASSERT_EQUAL_STRING("\r\n\r\n", output + output_len - 4U);
+}
+
+void test_failed_header_does_not_accept_a_static_body(void)
+{
+    static const uint8_t body[] = {1U};
+    const html_resource_t resource =
+        {body, sizeof(body), HTML_COMPRESS_GZIP, "text/html"};
+    fail_on_call = 1;
+    http_response_set_static_sender(defer_static);
+    http_send_html_resource(&resource);
+    TEST_ASSERT_EQUAL_UINT32(0U, static_calls);
+    TEST_ASSERT_EQUAL_UINT(0U, output_len);
+}
+
+void test_json_keeps_copy_sending_with_static_sender_registered(void)
+{
+    http_response_set_static_sender(defer_static);
+    http_send_json("{\"ok\":true}", 11);
+    TEST_ASSERT_EQUAL_UINT32(0U, static_calls);
+    TEST_ASSERT_NOT_NULL(strstr(output, "\r\n\r\n{\"ok\":true}"));
 }
 
 void test_send_data_splits_large_payload_into_chunk_calls(void)

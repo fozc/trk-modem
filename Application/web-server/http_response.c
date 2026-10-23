@@ -20,6 +20,7 @@
 
 static struct {
     int (*send_callback)(const void *data, int length);
+    int (*send_static)(const void *data, uint32_t length);
 } response_state;
 
 
@@ -52,7 +53,28 @@ static const status_code_entry_t STATUS_CODES[] = {
 void http_response_init(int (*send_callback)(const void *data, int length))
 {
     response_state.send_callback = send_callback;
+    response_state.send_static = NULL;
     http_response_note_request_headers(NULL, 0);
+}
+
+void http_response_set_static_sender(
+    int (*send_static)(const void *data, uint32_t length))
+{
+    response_state.send_static = send_static;
+}
+
+static void send_static_body(const html_resource_t *resource)
+{
+    if (NULL != response_state.send_static)
+    {
+        (void)response_state.send_static(resource->data, resource->length);
+    }
+    else
+    {
+        /* Preserve the copy-only contract for transports without streaming. */
+        (void)http_send_data((const char *)resource->data,
+                            (int)resource->length);
+    }
 }
 
 
@@ -104,19 +126,16 @@ static bool send_header(const char *header, unsigned int length)
         (void)http_send_data(error, (int)(sizeof(error) - 1U));
         return false;
     }
-    (void)http_send_data(header, (int)length);
-    return true;
+    return (int)length == http_send_data(header, (int)length);
 }
 
 /* ============================================================================
  * HTTP RESPONSE BUILDER
  * ============================================================================ */
-//TODO: Burasi gsm module uzerinden gonderilecek. Dogrudan oranıın buffer'ina yazim yapilabilir.
-void http_send_response(int status_code,
-                        const char *reason_phrase,
-                        const char *content_type,
-                        const char *body,
-                        int body_length)
+static bool send_response_header(int status_code,
+                                 const char *reason_phrase,
+                                 const char *content_type,
+                                 int body_length)
 {
     /* Validate inputs */
     if (!reason_phrase) {
@@ -124,10 +143,6 @@ void http_send_response(int status_code,
     }
     if (!content_type) {
         content_type = "text/plain";
-    }
-    if (!body) {
-        body = "";
-        body_length = 0;
     }
 
     /* Build HTTP headers in stack buffer */
@@ -149,10 +164,24 @@ void http_send_response(int status_code,
     CSLOG("[HTTP] Response status=%d bytes=%d\r\n",
           status_code, body_length);
     /* Send headers */
-    if (!send_header(header_buffer, header_length)) {
+    return send_header(header_buffer, header_length);
+}
+
+void http_send_response(int status_code,
+                        const char *reason_phrase,
+                        const char *content_type,
+                        const char *body,
+                        int body_length)
+{
+    if (NULL == body)
+    {
+        body_length = 0;
+    }
+    if (!send_response_header(status_code, reason_phrase, content_type,
+                              body_length))
+    {
         return;
     }
-
     /* Send body if present */
     if (body_length > 0) {
         http_send_data(body, body_length);
@@ -386,8 +415,7 @@ void http_send_gzip_package(const html_resource_t *resource)
         "Server: EmbeddedHTTP/1.0\r\n\r\n", resource->length, etag);
     if (send_header(header, length))
     {
-        (void)http_send_data((const char *)resource->data,
-                             (int)resource->length);
+        send_static_body(resource);
     }
 }
 
@@ -439,10 +467,14 @@ void http_send_html_resource(const html_resource_t *resource)
         if (!send_header(header_buffer, header_length)) {
             return;
         }
-        http_send_data((const char *)resource->data, (int)resource->length);
+        send_static_body(resource);
     } else {
         /* Send as regular HTML */
-        http_send_response(200, "OK", "text/html", (const char *)resource->data, (int)resource->length);
+        if (send_response_header(200, "OK", "text/html",
+                                 (int)resource->length))
+        {
+            send_static_body(resource);
+        }
     }
 }
 

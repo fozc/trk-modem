@@ -33,6 +33,7 @@ header = r'''
 #include "http_response.h"
 #include "sha256.h"
 #include "web_server.h"
+#include "raw_tcp_fw_update.h"
 #include "index_html.h"
 #include "fw_update_html.h"
 #include "loading_html.h"
@@ -70,6 +71,7 @@ void gsm_http_server_client_data_received(const uint8_t *data,
 sources = []
 for relative in ["Application/web-server/http_server.c",
                  "Application/web-server/http_response.c",
+                 "Application/web-server/web_server.c",
                  "Application/gsm/gsm_http_server.c"]:
     source = (root / relative).read_text(encoding="utf-8")
     source = re.sub(r'^#include[^\n]*\n', '', source, flags=re.M)
@@ -130,10 +132,13 @@ static uint32_t tx_pending;
 static uint32_t close_count;
 static uint16_t pending_length;
 static uint8_t pending_data[1500];
-static char wire[65536];
+static char wire[131072];
 static size_t wire_length;
 static bool authenticated;
-static web_server_io_t transport;
+extern web_server_io_t io;
+#define transport io
+static bool reject_tx;
+static uint32_t rfwu_received;
 static char handler_buffer[4096];
 #include "real_resources.h"
 static const uint8_t page_data[] = {1U, 2U, 3U};
@@ -147,6 +152,7 @@ uint32_t gsm_get_listener_socket_state(void) { return socket_state; }
 uint32_t gsm_send_to_socket(const void *data, uint16_t length,
     uint32_t direction, bool close_after_tx, bool crypto)
 {
+    if (reject_tx) return 1U;
     assert(0U == tx_pending && sizeof(pending_data) >= length);
     assert(GSM_TX_DIR_LISTENER_SOCKET == direction);
     assert(!close_after_tx && !crypto);
@@ -163,22 +169,18 @@ void gsm_listener_socket_event_handler(gsm_listener_id_t id,
     close_count++;
     socket_state = SOCKET_CLOSED;
     gsm_http_server_reset();
-    http_server_reset();
+    webserver_on_connection_closed();
 }
-static int send_http(const void *data, int length)
+void rfwu_init(int (*send_callback)(const void *, int))
 {
-    assert(0 < length);
-    return transport.send(data, (uint32_t)length);
+    (void)send_callback;
 }
-void web_server_init(web_server_io_t *io)
+void rfwu_on_receive(const uint8_t *data, int length)
 {
-    transport = *io;
-    http_server_init(send_http);
+    (void)data;
+    rfwu_received += (uint32_t)length;
 }
-void webserver_on_received(const uint8_t *data, int length)
-{
-    http_server_on_receive(data, length);
-}
+void rfwu_on_disconnect(void) { }
 void http_handlers_init(char *buffer, int length)
 {
     (void)buffer;
@@ -221,6 +223,8 @@ static void complete_tx(void)
 }
 static void reset_test(void)
 {
+    webserver_on_connection_closed();
+    reject_tx = false;
     tx_pending = 0U;
     close_count = 0U;
     socket_state = SOCKET_CONNECTED;
@@ -261,6 +265,144 @@ static void finish_response(void)
     }
     assert(0U == tx_pending);
 }
+
+static const uint8_t large_static_body[100U * 1024U + 1U] =
+    {0x83U, [100U * 1024U] = 0x7dU};
+
+static void check_static_stream(void)
+{
+    const uint32_t lengths[] = {1U, 1499U, 1500U, 1501U, 3000U,
+                               sizeof(large_static_body)};
+    for (size_t index = 0U; sizeof(lengths) / sizeof(lengths[0]) > index; index++)
+    {
+        reset_test();
+        const html_resource_t resource = {large_static_body, lengths[index],
+                                         HTML_COMPRESS_GZIP, "text/html"};
+        selected_page = &resource;
+        receive_request("GET /index.html HTTP/1.1\r\n\r\n");
+        assert(-1 == transport.send_static("replace", 7U));
+        assert(-1 == transport.send("interleave", 10U));
+        gsm_http_server_close_after_response();
+        gsm_http_server_process();
+        assert(0U == close_count); /* Header still in flight. */
+        complete_tx();
+        reject_tx = true;
+        gsm_http_server_process(); /* Rejected body must not advance. */
+        assert(0U == tx_pending && 0U == close_count);
+        reject_tx = false;
+        finish_response();
+        const char *body = strstr(wire, "\r\n\r\n");
+        assert(NULL != body);
+        const size_t header_length = (size_t)(body + 4 - wire);
+        assert(wire_length == header_length + lengths[index]);
+        assert(0 == memcmp(body + 4, large_static_body, lengths[index]));
+        assert(1U == close_count);
+    }
+    selected_page = &page;
+    puts("PASS: 100 KiB static stream, chunk boundaries, busy/rejected TX and final completion");
+}
+
+static void check_json_copy_and_rejected_queue_send(void)
+{
+    reset_test();
+    static char json[HTTP_TX_BUFFER_SIZE];
+    memset(json, ' ', sizeof(json));
+    json[0] = '[';
+    json[sizeof(json) - 1U] = ']';
+    http_send_json(json, (int)sizeof(json));
+    memset(json, 'x', sizeof(json)); /* Caller may reuse its mutable buffer. */
+    gsm_http_server_process();
+    reject_tx = true;
+    gsm_http_server_process();
+    assert(0U == tx_pending);
+    reject_tx = false;
+    finish_response();
+    const char *body = strstr(wire, "\r\n\r\n");
+    assert(NULL != body);
+    assert(wire_length == (size_t)(body + 4 - wire) + sizeof(json));
+    assert('[' == body[4] && ']' == wire[wire_length - 1U]);
+    for (size_t index = 5U; sizeof(json) + 3U > index; index++)
+    {
+        assert(' ' == body[index]);
+    }
+    puts("PASS: full 8 KiB JSON is copied; modem rejection preserves the ring");
+}
+
+static void check_stream_disconnect_and_pipelining(void)
+{
+    const html_resource_t resource = {large_static_body,
+        sizeof(large_static_body), HTML_COMPRESS_GZIP, "text/html"};
+    const char request[] = "GET /status/board?t=valid HTTP/1.1\r\n\r\n";
+    for (uint32_t chunks = 0U; 3U > chunks; chunks++)
+    {
+        reset_test();
+        selected_page = &resource;
+        receive_request("GET /index.html HTTP/1.1\r\n\r\n");
+        for (uint32_t index = 0U; chunks > index; index++)
+        {
+            complete_tx();
+            gsm_http_server_process();
+        }
+        socket_state = SOCKET_CLOSED;
+        gsm_http_server_process();
+        tx_pending = 0U;
+        reset_test();
+        selected_page = &page;
+        receive_request(request);
+        finish_response();
+        assert(NULL != strstr(wire, "\r\n\r\n{}"));
+        assert(1024U > wire_length);
+    }
+    reset_test();
+    selected_page = &resource;
+    receive_request("GET /index.html HTTP/1.1\r\n\r\n");
+    gsm_http_server_client_data_received((const uint8_t *)request,
+                                         (uint16_t)(sizeof(request) - 1U));
+    finish_response();
+    const char *body = strstr(wire, "\r\n\r\n");
+    assert(NULL != body);
+    assert(0 == memcmp(body + 4, large_static_body, sizeof(large_static_body)));
+    const char *second = body + 4 + sizeof(large_static_body);
+    assert(0 == strncmp(second, "HTTP/1.1 200", 12U));
+    reset_test();
+    selected_page = &resource;
+    receive_request("GET /index.html HTTP/1.1\r\n\r\n");
+    for (uint32_t index = 0U; 2U > index; index++)
+    {
+        gsm_http_server_client_data_received((const uint8_t *)request,
+                                             (uint16_t)(sizeof(request) - 1U));
+    }
+    finish_response();
+    assert(1U == close_count);
+    body = strstr(wire, "\r\n\r\n");
+    assert(wire_length == (size_t)(body + 4 - wire) + sizeof(large_static_body));
+    selected_page = &page;
+    puts("PASS: disconnect/reset discards static cursor; pipelined responses never interleave");
+}
+
+
+static void check_rfwu_copy_transport(void)
+{
+    reset_test();
+    rfwu_received = 0U;
+    const uint8_t request[] = {0x52U, 0x46U, 0x57U, 0x55U, 4U, 0U, 0U, 0U};
+    gsm_http_server_client_data_received(request, sizeof(request));
+    gsm_http_server_process();
+    gsm_http_server_process();
+    assert(sizeof(request) == rfwu_received);
+    uint8_t reply[33]; /* Largest current STATUS response: 12 + 17 + 4. */
+    memset(reply, 0x5a, sizeof(reply));
+    assert((int)sizeof(reply) == transport.send(reply, sizeof(reply)));
+    memset(reply, 0, sizeof(reply));
+    finish_response();
+    assert(sizeof(reply) == wire_length);
+    for (size_t index = 0U; wire_length > index; index++)
+    {
+        assert(0x5a == (uint8_t)wire[index]);
+    }
+    puts("PASS: production RFWU demultiplexer retains copied response transport");
+}
+
 int main(void)
 {
     reset_test();
@@ -286,7 +428,7 @@ int main(void)
     reset_test();
     unauthorized_request();
     unauthorized_request();
-    http_server_init(send_http);
+    web_server_init(&transport);
     unauthorized_request();
     assert(0U == close_count);
     puts("PASS: server initialization resets the unauthorized streak");
@@ -480,7 +622,7 @@ int main(void)
     puts("PASS: unavailable/non-gzip application package fails explicitly");
 
     reset_test();
-    static uint8_t full_queue[48U * 1024U - 1U];
+    static uint8_t full_queue[10U * 1024U - 1U];
     memset(full_queue, 'q', sizeof(full_queue));
     assert((int)sizeof(full_queue) ==
            transport.send(full_queue, sizeof(full_queue)));
@@ -489,11 +631,11 @@ int main(void)
     finish_response();
     assert(sizeof(full_queue) == wire_length);
     assert(0 == memcmp(wire, full_queue, sizeof(full_queue)));
-    puts("PASS: 48 KiB ring capacity (one reserved byte); rejected writes preserve queued data");
+    puts("PASS: 10 KiB ring capacity (one reserved byte); rejected writes preserve queued data");
 
     reset_test();
-    static uint8_t first_block[40000];
-    static uint8_t second_block[12000];
+    static uint8_t first_block[9000];
+    static uint8_t second_block[4000];
     for (size_t index = 0U; sizeof(first_block) > index; index++)
     {
         first_block[index] = (uint8_t)(index % 251U);
@@ -504,7 +646,7 @@ int main(void)
     }
     assert((int)sizeof(first_block) ==
            transport.send(first_block, sizeof(first_block)));
-    while (20000U > wire_length)
+    while (4000U > wire_length)
     {
         gsm_http_server_process();
         if (0U != tx_pending) complete_tx();
@@ -516,7 +658,7 @@ int main(void)
     assert(0 == memcmp(wire, first_block, sizeof(first_block)));
     assert(0 == memcmp(wire + sizeof(first_block), second_block,
                        sizeof(second_block)));
-    puts("PASS: queue wraps across 48 KiB while earlier data is still pending");
+    puts("PASS: queue wraps across 10 KiB while earlier data is still pending");
 
     reset_test();
     assert((int)sizeof(first_block) ==
@@ -527,6 +669,10 @@ int main(void)
     assert(3U == wire_length && 0 == memcmp(wire, "new", 3U));
     puts("PASS: reset discards the old response before the next client");
 
+    check_rfwu_copy_transport();
+    check_static_stream();
+    check_json_copy_and_rejected_queue_send();
+    check_stream_disconnect_and_pipelining();
     return 0;
 }
 /*** end of file ***/

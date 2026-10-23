@@ -10,29 +10,22 @@
 #include "gsm_engine.h"
 #include "gsm_listener_process.h"
 #include "web_server.h"
-#include "index_html.h"
-#include "fw_update_html.h"
-#include "loading_html.h"
+#include "http_server.h"
 #include "gsm_log.h"
 #include "ring_buff.h"
 #include <string.h>
+#include <limits.h>
  
 #define GSM_HTTP_SERVER_RX_BUFFER_SIZE 2048
 /* HTTP writes and drains run in the cooperative GSM process. Reuse the
  * common SPSC queue; no additional IRQ masking or atomic state is needed.
  * One byte is reserved by the ring's empty/full representation. */
-#define GSM_HTTP_SERVER_TX_BUFFER_SIZE (48U * 1024U)
+#define GSM_HTTP_SERVER_TX_BUFFER_SIZE (10U * 1024U)
 #define GSM_HTTP_SERVER_HEADER_RESERVE 512U
 
-_Static_assert(INDEX_HTML_DATA_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
+_Static_assert(HTTP_TX_BUFFER_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
                GSM_HTTP_SERVER_TX_BUFFER_SIZE - 1U,
-               "index.html exceeds the HTTP response queue");
-_Static_assert(FW_UPDATE_HTML_DATA_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
-               GSM_HTTP_SERVER_TX_BUFFER_SIZE - 1U,
-               "fw_update.html exceeds the HTTP response queue");
-_Static_assert(LOADING_HTML_DATA_SIZE + GSM_HTTP_SERVER_HEADER_RESERVE <=
-               GSM_HTTP_SERVER_TX_BUFFER_SIZE - 1U,
-               "loading.html exceeds the HTTP response queue");
+               "dynamic HTTP response exceeds the TX queue");
 
 static uint8_t http_tx_buff[GSM_HTTP_SERVER_TX_BUFFER_SIZE] = {0};
 static rbuff_t tx_rb_ctx = {0};
@@ -49,6 +42,8 @@ typedef struct
 	uint16_t rx_length;
 	bool     rx_data_received;
 
+    const uint8_t *static_data;
+    uint32_t static_remaining;
 	bool     tx_data_ready;
 	bool     close_after_response;
 	bool     is_rfwu;  /**< True when the connection carries RFWU firmware-update traffic */
@@ -70,6 +65,15 @@ enum
 
 void gsm_http_server_client_data_received(const uint8_t* data, uint16_t length)
 {
+    /* A pending response owns the transport. One RX fragment can wait;
+     * further pipelined input must not overwrite it or mix responses. */
+    if (!g_http_server.is_rfwu && g_http_server.tx_data_ready &&
+        g_http_server.rx_data_received)
+    {
+        g_http_server.close_after_response = true;
+        return;
+    }
+
 	/* Detect RFWU connection early by checking the 4-byte wire magic.
 	 * Once set, is_rfwu suppresses HTTP-layer log output for this session. */
 	if ((length >= 4U) &&
@@ -109,7 +113,12 @@ void gsm_http_server_client_data_received(const uint8_t* data, uint16_t length)
 
 static int http_server_send(const void *data, uint32_t len)
 {
-	if(gsm_get_listener_socket_state() == SOCKET_CLOSED){
+    if (0U < g_http_server.static_remaining)
+    {
+        return -1;
+    }
+    if (SOCKET_CLOSED == gsm_get_listener_socket_state())
+    {
 		if (!g_http_server.is_rfwu) {
 			CSLOG_ERR("[GSM HTTP SERVER] Listener socket not open, cannot send data!\r\n");
 		}
@@ -133,11 +142,28 @@ static int http_server_send(const void *data, uint32_t len)
 	}
 }
 
+/* The caller guarantees immutable program-lifetime storage. */
+static int http_server_send_static(const void *data, uint32_t length)
+{
+    if ((NULL == data) || (0U == length) || ((uint32_t)INT_MAX < length) ||
+        (SOCKET_CLOSED == gsm_get_listener_socket_state()) ||
+        (0U < g_http_server.static_remaining))
+    {
+        return -1;
+    }
+    g_http_server.static_data = data;
+    g_http_server.static_remaining = length;
+    g_http_server.tx_data_ready = true;
+    return (int)length;
+}
+
 void gsm_http_server_reset(void)
 {
 	if (!g_http_server.is_rfwu) {
 		CSLOG_WARN("[GSM HTTP SERVER] Reset  gsm_server\r\n");
 	}
+    g_http_server.static_data = NULL;
+    g_http_server.static_remaining = 0U;
 	g_http_server.rx_length = 0;
 	g_http_server.rx_data_received = false;
 	g_http_server.tx_data_ready = false;
@@ -150,10 +176,11 @@ void gsm_http_server_reset(void)
 
 void gsm_http_server_init(void)
 {
-	  g_http_server.close_after_response = false;
-	  web_server_io_t wio = {0};
-	  wio.send = http_server_send; //(int (*)(const uint8_t*, int))http_server_send;
-	  web_server_init(&wio);
+    g_http_server.close_after_response = false;
+    web_server_io_t wio = {0};
+    wio.send = http_server_send;
+    wio.send_static = http_server_send_static;
+    web_server_init(&wio);
 
     if (!rbuff_init(&tx_rb_ctx, http_tx_buff,
                     GSM_HTTP_SERVER_TX_BUFFER_SIZE))
@@ -176,53 +203,63 @@ void gsm_http_server_close_after_response(void)
 
 void gsm_http_server_send_response(void)
 {
-	if(gsm_tx_is_ready() != 0){
-		return;
-	}
-
-	if(gsm_get_listener_socket_state() == SOCKET_CLOSED)
-	{
-		if (!g_http_server.is_rfwu) {
-			CSLOG_ERR("[GSM HTTP SERVER] Listener socket not open, cannot send response!\r\n");
-		}
-		g_http_server.tx_data_ready = false;
-		g_http_server.close_after_response = false;
-		rbuff_clear(&tx_rb_ctx);
-		g_http_server.state = GSM_HTTP_SERVER_STATE_IDLE;
-		return;
-	}
-
-    if(0U < rbuff_available(&tx_rb_ctx))
+    if (SOCKET_CLOSED == gsm_get_listener_socket_state())
     {
-		static uint8_t temp_buffer[1500];
-        uint32_t bytes_to_send = rbuff_read_buff(&tx_rb_ctx, temp_buffer,
-                                  (uint32_t)sizeof(temp_buffer));
-        
-        if(bytes_to_send > 0) {
-            gsm_send_to_socket(temp_buffer, (uint16_t)bytes_to_send, GSM_TX_DIR_LISTENER_SOCKET, false, false);
-        }
+        gsm_http_server_reset();
+        return;
+    }
+    if (0U != gsm_tx_is_ready())
+    {
+        return;
     }
 
-    if(0U == rbuff_available(&tx_rb_ctx))
+    uint8_t *queued_data = NULL;
+    uint32_t length = 0U;
+    if (rbuff_get_read_block(&tx_rb_ctx, &queued_data, &length))
     {
-        if (g_http_server.close_after_response)
+        if (1500U < length)
         {
-            /* Empty ring only means the last chunk reached gsm.tx_buff.
-             * Wait for the listener's AT result before requesting close. */
-            if (0U != gsm_tx_is_ready())
-            {
-                return;
-            }
-            g_http_server.close_after_response = false;
-            gsm_listener_socket_event_handler(GSM_LISTENER_WEB,
-                                              GSM_USER_EVENT_CLOSE_SOCKET);
+            length = 1500U;
         }
-		if (!g_http_server.is_rfwu) {
-			CCSLOG(XCOLOR_GREEN, "[GSM HTTP SERVER] Response sent completely\r\n");
-		}
-        g_http_server.tx_data_ready = false;
-        g_http_server.state = GSM_HTTP_SERVER_STATE_IDLE;
+        if (0U == gsm_send_to_socket(queued_data, (uint16_t)length,
+                                     GSM_TX_DIR_LISTENER_SOCKET,
+                                     false, false))
+        {
+            (void)rbuff_skip(&tx_rb_ctx, length);
+        }
+        return;
     }
+    if (0U < g_http_server.static_remaining)
+    {
+        length = g_http_server.static_remaining;
+        if (1500U < length)
+        {
+            length = 1500U;
+        }
+        if (0U == gsm_send_to_socket(g_http_server.static_data,
+                                     (uint16_t)length,
+                                     GSM_TX_DIR_LISTENER_SOCKET,
+                                     false, false))
+        {
+            g_http_server.static_data += length;
+            g_http_server.static_remaining -= length;
+            if (0U == g_http_server.static_remaining)
+            {
+                g_http_server.static_data = NULL;
+            }
+        }
+        return;
+    }
+
+    /* Both sources are empty and the last modem TX has completed. */
+    if (g_http_server.close_after_response)
+    {
+        g_http_server.close_after_response = false;
+        gsm_listener_socket_event_handler(GSM_LISTENER_WEB,
+                                          GSM_USER_EVENT_CLOSE_SOCKET);
+    }
+    g_http_server.tx_data_ready = false;
+    g_http_server.state = GSM_HTTP_SERVER_STATE_IDLE;
 }
 
 void gsm_http_server_process_rx_data(void)
@@ -260,14 +297,18 @@ void gsm_http_server_process_rx_data(void)
 
 void gsm_http_server_idle(void)
 {
-	if(g_http_server.rx_data_received)
-	{
-		g_http_server.state = GSM_HTTP_SERVER_STATE_PROCESS_RX_DATA;
-	}
-	else if(g_http_server.tx_data_ready)
-	{
-		g_http_server.state = GSM_HTTP_SERVER_SEND_RESPONSE;
-	}
+    if (g_http_server.tx_data_ready)
+    {
+        g_http_server.state = GSM_HTTP_SERVER_SEND_RESPONSE;
+    }
+    else if (g_http_server.rx_data_received)
+    {
+        g_http_server.state = GSM_HTTP_SERVER_STATE_PROCESS_RX_DATA;
+    }
+    else
+    {
+        /* No work pending. */
+    }
 }
 
 void gsm_http_server_process(void)

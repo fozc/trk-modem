@@ -7,6 +7,7 @@
  */
 #include "web_server.h"
 #include "http_server.h"
+#include "http_response.h"
 #include "raw_tcp_fw_update.h"
 #include <stdio.h>
 #include "gsm_http_server.h"
@@ -122,5 +123,6 @@ void web_server_init(web_server_io_t *io_)
 	}
 
     http_server_init(web_server_send);
+    http_response_set_static_sender(io.send_static);
     rfwu_init(web_server_send);
 }

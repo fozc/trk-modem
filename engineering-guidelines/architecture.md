@@ -153,6 +153,7 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 
 | Karar | Kapsam ve kaynak |
 |---|---|
+| HTTP sabit kaynakları küçük kuyrukla gönderilir | 23.10.2026 kullanıcı onayı: GSM TX ring 10 KiB; JSON/RFWU kopyalama yolunda kalır. HTML/gzip gövdeleri program ömürlü kaynak işaretçisi ve kalan uzunlukla, mevcut GSM hazır/gönderim sürecinden ilerler. Yeni flag/kuyruk/heap yoktur. Ayrıntılar [tasarım](../doc/HTTP_KUCUK_TAMPON_TASARIMI.md) ve [uygulama kanıtı](../test/reports/2026-10-23-http-static-stream.md). |
 | Dummy üreticiler korunur | Gerçek veri/altyapı henüz yoktur. Dummy kaldırılmaz; veri kaynağı bulgusu tamamlandı sayılmaz. Üretim raporu §9.3/§9.29. |
 | #if 0 blokları korunur | Kullanıcı açıkça kaldırılmasını istemedikçe kod temizliği kapsamında silinmez. Kök AGENTS.md. |
 | Contiki ve ST/CubeMX uyarı düzeltmeleri kapsam dışıdır | 8 Contiki, 5 ST driver, 1 Core tanısı kullanıcı kararıyla bırakılmıştır. Uyarı susturma veya vendor yamasıyla gizlenmez. [güncel warning kararı §10.3](../URETIM_HAZIRLIK_RAPORU_2026-10.md#103-korunan-kararlar-ve-taşınan-kanıt-özeti), kapsam dışındaki 14 uyarı. |
