@@ -77,6 +77,18 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 /* ---------------- I18N ---------------- */
 const I18N={
   en:{
+    logsFirst:"First record",
+    logsLast:"Last record",
+    logsCount:"Read total",
+    logsRange:"Read range",
+    logsAll:"Read all",
+    logsProgress:"Total: {total} | Read: {read} / {target} | Range: {range}",
+    logsOrder:"1 is the newest record. New events may change the list while reading.",
+    logsInvalidRange:"Enter a valid first/last record range.",
+    logsChanged:"Log count changed. Restart the read.",
+    logsEmptyPage:"Read incomplete: device returned an empty page.",
+    logsInvalidPage:"Invalid log response.",
+
     errPin:"Enter 0 or a four-digit numeric PIN (1000–9999).",
     timeUnavailable:"Time unavailable",
     dataUnavailable:"Data unavailable",
@@ -388,7 +400,7 @@ const I18N={
     mb_temp_count:"Temporary fault record count",
     mb_perm_count:"Permanent fault record count",
     fDevId:"Device ID",
-    fBaud:"Baud Rate",
+    fBaud:"Baud Rate",fStopBits:"Stop bits",
     fLastErr:"Last Modbus exception",
     fLastErrT:"Last Modbus error time (UTC)",
     rfTitle:"RF Configuration",
@@ -483,7 +495,7 @@ const I18N={
     permTpl:"Permanent ({n})",
     noRecords:"No records",
     logsSub:"Records are read in pages to limit GSM traffic.",
-    logsPress:"Select Read records to load the first page.",
+    logsPress:"Read the total, a selected range, or all records.",
     devTitle:"Device Management",
     devSub:"Device information and configuration",
     devInfo:"Device Information",
@@ -645,6 +657,18 @@ const I18N={
     rfWait_hub_ready:"Waiting for MH readiness"
   },
   tr:{
+    logsFirst:"Başlangıç kaydı",
+    logsLast:"Bitiş kaydı",
+    logsCount:"Toplamı oku",
+    logsRange:"Aralığı oku",
+    logsAll:"Tümünü oku",
+    logsProgress:"Toplam: {total} | Okunan: {read} / {target} | Aralık: {range}",
+    logsOrder:"1 en yeni kayıttır. Okuma sırasında yeni kayıtlar gelirse liste değişebilir.",
+    logsInvalidRange:"Geçerli bir başlangıç/bitiş aralığı girin.",
+    logsChanged:"Kayıt toplamı değişti. Okumayı yeniden başlatın.",
+    logsEmptyPage:"Okuma tamamlanamadı: cihaz boş sayfa döndürdü.",
+    logsInvalidPage:"Geçersiz günlük yanıtı.",
+
     errPin:"0 veya dört basamaklı sayısal PIN girin (1000–9999).",
     timeUnavailable:"Zaman bilgisi yok",
     dataUnavailable:"Veri yok",
@@ -1051,7 +1075,7 @@ const I18N={
     permTpl:"Kalıcı ({n})",
     noRecords:"Kayıt yok",
     logsSub:"GSM trafiğini sınırlamak için kayıtlar sayfa sayfa okunur.",
-    logsPress:"İlk sayfayı yüklemek için Kayıtları oku’yu seçin.",
+    logsPress:"Toplamı, seçilen aralığı veya tüm kayıtları okuyabilirsiniz.",
     devTitle:"Cihaz Yönetimi",
     devSub:"Cihaz bilgileri ve yapılandırması",
     devInfo:"Cihaz Bilgisi",
@@ -1290,7 +1314,7 @@ function clearSession(){
   sessionStorage.removeItem('sessionToken');sessionStorage.removeItem('sessionRole');
   if(sessionTimeout)clearTimeout(sessionTimeout);sessionTimeout=null;
   [pageCache,pageReadAt,pageSaved,dirtyPages,rfFaultCache].forEach(cache=>Object.keys(cache).forEach(key=>delete cache[key]));
-  sysLogLines=[];sysLogOffset=0;sysLogTotal=0;faultFeeder=0;
+  sysLogLines=[];sysLogOffset=0;sysLogTotal=0;sysLogKnown=false;sysLogStart=0;sysLogEnd=0;faultFeeder=0;
   rfStatusRequest++;rfStatusBusy=false;rfStatusMessage='';
   document.querySelectorAll('.modal:not(#loginModal),.toast').forEach(el=>el.remove());
   $('body').innerHTML='';curId=null;buildMenu();switchPageNow('board');
@@ -1329,7 +1353,7 @@ const feederTabs=(sel,act=0)=>'<div class="tabbar">'+Array.from({length:FEEDER_T
 const paneOpen=(pfx,i)=>'<div id="'+pfx+'-pane-'+i+'" class="pane '+(i===0?'active':'')+'"'+(i>=FEEDER_TABS?' style="display:none"':'')+'>';
 const sectionHead=(title,page,desc='')=>`<div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div></div>`;
 const readStamp=page=>'<p class="hint">'+esc(pageReadAt[page]?t('lastRead')+': '+fmtEpoch(pageReadAt[page]/1000):t('notRead'))+'</p>'+(pageReadAt[page]?'<p class="hint">'+esc(t('snapshotNote'))+'</p>':'');
-const pageHead=(title,page,desc='',rw=true)=>`<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}${readStamp(page)}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button>${rw&&s_role==='admin'?`<button class="btn btn-save btn-small" id="save-${page}" onclick="savePage('${page}')">${esc(t('btnSave'))}</button>`:''}</div></div></div>`;
+const pageHead=(title,page,desc='',rw=true)=>`<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}${readStamp(page)}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button>${profileActions(page)}${rw&&s_role==='admin'?`<button class="btn btn-save btn-small" id="save-${page}" onclick="savePage('${page}')">${esc(t('btnSave'))}</button>`:''}</div></div></div>`;
 const emptyCard=(title,page,desc='')=>`<div class="card"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}${readStamp(page)}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button></div></div><div class="card-body"><div class="empty">${t('pressRead')}</div></div></div>`;
 const getInt=id=>{const v=$(id)?.value;return v===''?0:Number(v)||0};
 const getFloat=id=>{const v=$(id)?.value;return v===''?0:parseFloat(v)||0};
@@ -1364,6 +1388,7 @@ function updateSboRange(){
 function renderIec104(d){
   const x=d||{};let page=pageHead(t('iecTitle'),'iec104',t('iecSub'));const h=x.Hatlar||{};
   let s=page+'<div class="card"><div class="card-head"><div><h3>'+esc(t('genSettings'))+'</h3><div class="sub">'+esc(t('iecGenSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';
+  s+=textField('iec-ScadaIPAdresi','SCADA IP',x.ScadaIPAdresi,15);
   s+=numField('iec-Port',t('fPort'),x.Port,1,65535)+numField('iec-PeriodicSend',t('fPeriodic'),x.PeriodicSend,0,86400)+numField('iec-T0','T0',x.T0,1,255,false,'s')+numField('iec-T1','T1',x.T1,1,255,false,'s')+numField('iec-T2','T2',x.T2,1,255,false,'s')+numField('iec-T3','T3',x.T3,20,65525,false,'s')+numField('iec-K','K',x.K,1,255)+numField('iec-W','W',x.W,1,255)+numField('iec-OriginatorAddr',t('fOrigAddr'),x.OriginatorAddr,0,255)+numField('iec-CommonAddr',t('fCommonAddr'),x.CommonAddr,1,65535)+numField('iec-SBOTimeout',t('fSboTo'),x.SBOTimeout,x.SBO?1:0,x.SBO?300:65535,false,'s')+checkField('iec-SBO',t('fSboEn'),x.SBO)+numField('iec-AkuUyarisi',t('fAkuIOA'),x.AkuUyarisi,1,16777215)+numField('iec-ModemReset',t('fResetIOA'),x.ModemReset,1,16777215);
   s+='</div><div class="sub">'+esc(t('iecApplyHint'))+'</div><p class="hint">'+esc(t('iecTimingHelp'))+'</p><p class="hint">'+esc(t('iecSboHelp'))+'</p></div></div>';
   s+='<div class="card">'+sectionHead(t('feeders'),'iec104',t('iecFeedSub'))+'<div class="card-body">';
@@ -1558,6 +1583,10 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
     ints.forEach(f=>s+=numField('rf-'+f[0]+'-'+i,t(f[1]),rows[f[0]]?.[i],f[2],f[3]));
     s+=selectFieldL('rf-HatFrekansi-'+i,t('fLineFreq'),rows.HatFrekansi?.[i],[[50,'50'],[60,'60']]);
     s+='</div>';
+    const advanced=Object.entries(CONFIG_PROFILE_SCHEMA.rf).filter(([key])=>!['inUse','HatID','ZoneID','R_DEVICEID','S_DEVICEID','T_DEVICEID','CalismaModu','HatFrekansi',...ints.map(f=>f[0]),...floats.map(f=>f[0])].includes(key));
+    s+='<details style="margin-top:12px"><summary>'+esc(LNG==='tr'?'Gelişmiş koruma ayarları':'Advanced protection settings')+'</summary><div class="grid g3 gt">';
+    for(const [key,rule] of advanced){s+=rule.kind==='combo'?selectField('rf-'+key+'-'+i,rule.label,rows[key]?.[i],rule.options):numField('rf-'+key+'-'+i,rule.label,rows[key]?.[i],rule.lo,rule.hi,false,'',rule.kind==='float'?'any':'1')}
+    s+='</div></details>';
     s+='<div class="phase-head" style="margin:12px 0 8px">'+esc(t('phaseDevIds'))+'</div><div class="grid g3 gt">'+dev.map(f=>'<div>'+textField('rf-'+f[0]+'-'+i,tf('devIdTpl',{ph:f[1]}),normalRfEui(rows[f[0]]?.[i]),'16')+'<button type="button" data-admin="1" class="btn btn-small" onclick="clearRfEui('+i+',\''+f[0]+'\')">'+esc(t('rfClearEui'))+'</button></div>').join('')+'</div>';
     s+='</div>';
   }
@@ -1630,14 +1659,176 @@ function renderDigitalIO(x){
 }
 function renderBoard(d){const x={...d};if(x.ADCValid===0){['3V3','3V8','5V','TDIE','TDIEMax','TDIEMin','ADCSampleAgeMs'].forEach(k=>{x[k]=null})}if(typeof x.BatteryTemp==='number'&&x.BatteryTemp<=-990)x.BatteryTemp=null;if(x.BatterySOH===2550)x.BatterySOH=null;if(x.TelemetriYasi===255){x.TelemetriYasi=null;x.tlmNone=1}const ms=measState(x);let s=pageHead(t('mBoard'),'board',t('boardSub'),false);if(!d)return s+'<div class="card"><div class="card-body"><div class="empty">'+t('boardPress')+'</div></div></div>';const groups=[[t('gSolar'),[['PanelAkimi',t('fCur'),'mA'],['PanelVoltaji',t('fVolt'),'mV'],['DcVoltaji',t('fDcIn'),'mV'],['GirisAkimi',t('fInCur'),'mA'],['GirisGucu',t('fInPw'),'mW',10,1],['Kaynak',t('fSrc'),'']]],[t('gBattery'),[['BataryaVoltaji',t('fVolt'),'mV'],['BataryaAkimi',t('fCur'),'mA'],['BatteryTemp',t('fTemp'),'°C',10,1],['ChargePertance',t('fCharge'),'%',10,1],['ChargeState',t('fChargeSt'),''],['BatterySOC','SOC','%',10,1],['BatterySOH','SOH','%',10,1],['Capacity',t('fCap'),'Ah'],['AkuGucu',t('fBatPw'),'mW',10,1]]],[t('gRails'),[['3V3','3.3V','mV'],['3V8','3.8V','mV'],['5V','5V','mV'],['ADCSampleAgeMs',t('fAdcAge'),'ms']]],[t('gSystem'),[['OrtamSicakligi',t('fAmb'),'°C'],['HeaterState',t('fHeatSt'),''],['HeaterPower',t('fHeatPw'),'']]],[t('gTemp'),[['Temp',t('fTemp'),'°C'],['TempMax',t('fTmax'),'°C'],['TempMin',t('fTmin'),'°C'],['TDIE',t('fDie'),'°C'],['TDIEMax',t('fDieMax'),'°C'],['TDIEMin',t('fDieMin'),'°C']]]];s+='<div class="grid g2" style="align-items:start"><div>'+renderMobileNetwork(x)+renderDigitalIO(x)+'</div>'+renderPowerBoard(x,ms);groups.forEach(g=>{s+='<div class="card"><div class="card-head"><h3>'+esc(g[0])+'</h3></div><div class="kv-list">';g[1].forEach(f=>{s+=renderBoardRow(x,f,ms)});s+='</div>'+(g[0]===t('gBattery')&&Number(x.BatteryCapacityUnknown)===1?'<p class="hint">'+esc(t('rfCapacityUnknown'))+'</p>':'')+'</div>'});s+='</div>';return s}
 
-function renderDevice(d){const x=d||{};let s=pageHead(t('devTitle'),'device',t('devSub'));s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devInfo'))+'</h3><div class="sub">'+esc(t('devInfoSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=textField('dev-SeriNumarasi',t('fSerial'),x.SeriNumarasi,'64',true)+textField('dev-UretimTarihi',t('fMfg'),fmtEpoch(x.UretimTarihi),'64',true)+textField('dev-LifeTime',t('fLife'),fmtLifetime(x.LifeTime),'64',true)+textField('dev-RunTime',t('fRun'),fmtLifetime(x.RunTime),'64',true)+textField('dev-ModemYazilimVeriyonu',t('fMfw'),x.ModemYazilimVeriyonu,'64',true)+textField('dev-RFYazilimVeriyonu',t('fRfw'),x.RFYazilimVeriyonu,'64',true)+textField('dev-KurulumTarihi',t('fFwDate'),fmtEpoch(x.KurulumTarihi),'64',true)+textField('dev-CihazKoordinati',t('fCell'),x.CihazKoordinati&&typeof x.CihazKoordinati==='object'?`MCC:${x.CihazKoordinati.MCC} MNC:${x.CihazKoordinati.MNC} LAC:${x.CihazKoordinati.LAC} CI:${x.CihazKoordinati.CI}`:x.CihazKoordinati||'-','128',true)+textField('dev-DevreyeAlinmaZamani',t('fComm'),fmtEpoch(x.DevreyeAlinmaZamani),'64',true)+textField('dev-Time',t('fRtc'),fmtEpoch(x.Time),'64',true);s+='</div></div></div>';
-  s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devCfg'))+'</h3><div class="sub">'+esc(t('devCfgSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=numField('dev-WebArayuzuPortu',t('fWebPort'),x.WebArayuzuPortu,1,65535)+numField('dev-SimKartPin',t('fPin'),x.SimKartPin,0,9999)+textField('dev-SimKartAPN',t('fApn'),x.SimKartAPN,16)+textField('dev-SimKartAPNUsername',t('fApnUser'),x.SimKartAPNUsername,16)+textField('dev-SimKartAPNSifresi',t('fApnPass'),x.SimKartAPNSifresi,16,false,true)+textField('dev-NtpServer',t('fNtp'),x.NtpServer,64)+numField('dev-NtpServerPortu',t('fNtpPort'),x.NtpServerPortu,1,65535)+numField('dev-TimeZone',t('fTz'),x.TimeZone,-12,14)+numField('dev-PeriyodikModemResetPeriyodu',t('fModemRst'),Math.floor(x.PeriyodikModemResetPeriyodu/3600),0,720)+numField('dev-WebIlkVeriZamanAsimi',t('fWebFd'),x.WebIlkVeriZamanAsimi,0,3600)+numField('dev-WebBostaKalmaZamanAsimi',t('fWebIdle'),x.WebBostaKalmaZamanAsimi,0,3600)+numField('dev-IEC104IlkVeriZamanAsimi',t('fIecFd'),x.IEC104IlkVeriZamanAsimi,0,3600)+numField('dev-IEC104BostaKalmaZamanAsimi',t('fIecIdle'),x.IEC104BostaKalmaZamanAsimi,0,3600)+checkField('dev-PreserveOutputStates',t('retainOutputs'),x.PreserveOutputStates);s+='<p class="hint">'+esc(t('retainOutputsHelp'))+'</p>';s+='</div><p class="hint">'+esc(t('networkHelp'))+'</p><p class="hint">'+esc(t('zoneHelp'))+'</p><p class="hint">'+esc(t('zeroOff'))+'</p><p class="hint">'+esc(t('resetHelp'))+'</p><p class="hint">'+esc(t('pinHelp'))+'</p></div></div>';
+function renderDevice(d){const x=d||{};let s=pageHead(t('devTitle'),'device',t('devSub'));s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devInfo'))+'</h3><div class="sub">'+esc(t('devInfoSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=textField('dev-SeriNumarasi',t('fSerial'),x.SeriNumarasi,'64',true)+textField('dev-UretimTarihi',t('fMfg'),fmtEpoch(x.UretimTarihi),'64',true)+textField('dev-LifeTime',t('fLife'),fmtLifetime(x.LifeTime),'64',true)+textField('dev-RunTime',t('fRun'),fmtLifetime(x.RunTime),'64',true)+textField('dev-ModemYazilimVeriyonu',t('fMfw'),x.ModemYazilimVeriyonu,'64',true)+textField('dev-RFYazilimVeriyonu',t('fRfw'),x.RFYazilimVeriyonu,'64',true)+textField('dev-KurulumTarihi',t('fFwDate'),fmtEpoch(x.KurulumTarihi),'64',true)+textField('dev-CihazKoordinati',t('fCell'),x.CihazKoordinati&&typeof x.CihazKoordinati==='object'?`MCC:${x.CihazKoordinati.MCC} MNC:${x.CihazKoordinati.MNC} LAC:${x.CihazKoordinati.LAC} CI:${x.CihazKoordinati.CI}`:x.CihazKoordinati||'-','128',true)+textField('dev-DevreyeAlinmaZamani-display',t('fComm'),fmtEpoch(x.DevreyeAlinmaZamani),'64',true)+textField('dev-Time',t('fRtc'),fmtEpoch(x.Time),'64',true);s+='</div></div></div>';
+  s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devCfg'))+'</h3><div class="sub">'+esc(t('devCfgSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=numField('dev-DevreyeAlinmaZamani',LNG==='tr'?'Devreye alınma zamanı (UTC epoch)':'Commissioning time (UTC epoch)',x.DevreyeAlinmaZamani,0,4294967295);
+  s+=numField('dev-WebArayuzuPortu',t('fWebPort'),x.WebArayuzuPortu,1,65535)+numField('dev-SimKartPin',t('fPin'),x.SimKartPin,0,9999)+textField('dev-SimKartAPN',t('fApn'),x.SimKartAPN,15)+textField('dev-SimKartAPNUsername',t('fApnUser'),x.SimKartAPNUsername,15)+textField('dev-SimKartAPNSifresi',t('fApnPass'),x.SimKartAPNSifresi,15,false,true)+textField('dev-NtpServer',t('fNtp'),x.NtpServer,63)+numField('dev-NtpServerPortu',t('fNtpPort'),x.NtpServerPortu,1,65535)+numField('dev-TimeZone',t('fTz'),x.TimeZone,-12,14)+numField('dev-PeriyodikModemResetPeriyodu',t('fModemRst'),x.PeriyodikModemResetPeriyodu/3600,0,720,false,'','any')+numField('dev-WebIlkVeriZamanAsimi',t('fWebFd'),x.WebIlkVeriZamanAsimi,0,65535)+numField('dev-WebBostaKalmaZamanAsimi',t('fWebIdle'),x.WebBostaKalmaZamanAsimi,0,65535)+numField('dev-IEC104IlkVeriZamanAsimi',t('fIecFd'),x.IEC104IlkVeriZamanAsimi,0,65535)+numField('dev-IEC104BostaKalmaZamanAsimi',t('fIecIdle'),x.IEC104BostaKalmaZamanAsimi,0,65535)+checkField('dev-PreserveOutputStates',t('retainOutputs'),x.PreserveOutputStates);s+='<p class="hint">'+esc(t('retainOutputsHelp'))+'</p>';s+='</div><p class="hint">'+esc(t('networkHelp'))+'</p><p class="hint">'+esc(t('zoneHelp'))+'</p><p class="hint">'+esc(t('zeroOff'))+'</p><p class="hint">'+esc(t('resetHelp'))+'</p><p class="hint">'+esc(t('pinHelp'))+'</p></div></div>';
   s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devActions'))+'</h3><div class="sub">'+esc(t('devActionsSub'))+'</div></div></div><div class="card-body"><button class="btn btn-danger" onclick="rebootDevice()">'+esc(t('btnReboot'))+'</button></div></div>';return s}
 
 function renderFaults(){let s='<div class="card"><div class="card-head"><div><h3>'+esc(t('mFaults'))+'</h3><div class="sub">'+esc(t('faultsSub'))+'</div>'+readStamp('faults:'+faultFeeder)+'</div><div class="card-actions"><button class="btn btn-read btn-small" onclick="loadFaults()">'+esc(t('btnRead'))+'</button></div></div><div class="card-body">'+feederTabs('selectFaultFeeder',faultFeeder)+'<div id="faultContent">'+(rfFaultCache[faultFeeder]?buildFaults(rfFaultCache[faultFeeder]):'<div class="empty">'+esc(t('faultsPress'))+'</div>')+'</div></div></div>';return s}
 function buildFaults(r){const phases=[['L1T','L1P','L1'],['L2T','L2P','L2'],['L3T','L3P','L3']];let h='<p class="hint">'+esc(t('faultHelp'))+'</p><div class="grid g3">';const tc=r.tc||[0,0,0],pc=r.pc||[0,0,0];phases.forEach((p,i)=>{h+='<div class="card" style="box-shadow:none;border:1px solid var(--line)"><div class="card-body"><h3 style="font-size:13px;margin-bottom:8px">'+p[2]+'</h3><div class="sub" style="font-weight:700;color:#a86e00;margin-bottom:4px">'+esc(tf('tempTpl',{n:tc[i]}))+'</div>';const tempRecords=r[p[0]]?r[p[0]].split('\n').filter(x=>x.trim()):[];h+=tempRecords.length?tempRecords.map(x=>'<div class="log" style="border-left-color:#d98c00">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='<div class="sub" style="font-weight:700;color:#a33;margin:10px 0 4px">'+esc(tf('permTpl',{n:pc[i]}))+'</div>';const pRec=r[p[1]]?r[p[1]].split('\n').filter(x=>x.trim()):[];h+=pRec.length?pRec.map(x=>'<div class="log" style="border-left-color:#b33">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='</div></div>'});return h+'</div>'}
-function renderLogs(){const done=sysLogLines.length>0&&sysLogOffset>=sysLogTotal;const inner=sysLogLines.length?sysLogLines.map(x=>'<div class="log">'+esc(x)+'</div>').join(''):esc(t('logsPress'));return '<div class="card"><div class="card-head"><div><h3>'+esc(t('mLogs'))+'</h3><div class="sub">'+esc(t('logsSub'))+'</div></div><div class="card-actions"><button id="sysLogBtn" class="btn btn-read btn-small" onclick="loadSysLogs()">'+esc(done?t('btnLogRestart'):sysLogLines.length?t('btnNext'):t('btnReadRecords'))+'</button></div></div><div class="card-body"><div id="sysLogContent"'+(sysLogLines.length?'':' class="empty"')+'>'+inner+'</div></div></div>'}
+// SYSLOG VIEW BEGIN
+// Log windows use the existing offset/limit API; index 1 is newest.
+let sysLogKnown=false,sysLogStart=0,sysLogEnd=0;
+function sysLogSummary(){
+  return tf('logsProgress',{total:sysLogKnown?sysLogTotal:'—',read:sysLogLines.length,target:Math.max(0,sysLogEnd-sysLogStart),range:sysLogLines.length?(sysLogStart+1)+'–'+sysLogOffset:'—'});
+}
+function sysLogEmptyText(){return t(sysLogEnd>0||(sysLogKnown&&sysLogTotal===0)?'noRecords':'logsPress')}
+function renderLogs(){
+  const field=(id,key,value)=>'<div class="field"><label for="'+id+'">'+esc(t(key))+'</label><input id="'+id+'" type="number" min="1" max="1000000" value="'+value+'"></div>';
+  const action=(mode,key)=>'<button class="btn btn-read btn-small" onclick="loadSysLogs(\''+mode+'\')">'+esc(t(key))+'</button>';
+  return '<div class="card"><div class="card-head"><div><h3>'+esc(t('mLogs'))+'</h3><div class="sub">'+esc(t('logsSub'))+'</div></div></div><div class="card-body"><p id="sysLogSummary" role="status" aria-live="polite">'+esc(sysLogSummary())+'</p><div class="grid g2">'+field('sysLogFirst','logsFirst',sysLogStart+1)+field('sysLogLast','logsLast',(sysLogEnd>0?sysLogEnd:sysLogStart+30))+'</div><div class="card-actions" style="margin:12px 0">'+action('count','logsCount')+action('range','logsRange')+action('all','logsAll')+'</div><p class="hint">'+esc(t('logsOrder'))+'</p><div id="sysLogContent">'+(sysLogLines.length?sysLogLines.map(line=>'<div class="log">'+esc(line)+'</div>').join(''):esc(sysLogEmptyText()))+'</div></div></div>';
+}
+function updateSysLogView(){
+  const summary=sysLogSummary();
+  if($('sysLogSummary'))$('sysLogSummary').textContent=summary;
+  if($('sysLogWait'))$('sysLogWait').textContent=summary;
+  if($('sysLogContent'))$('sysLogContent').innerHTML=sysLogLines.map(line=>'<div class="log">'+esc(line)+'</div>').join('')||esc(sysLogEmptyText());
+}
+async function loadSysLogs(mode='range'){
+  if(loading)return;
+  const token=s_sessionToken;
+  let first=Number($('sysLogFirst')?.value||1),last=Number($('sysLogLast')?.value||30);
+  if(mode==='range'&&(!Number.isInteger(first)||!Number.isInteger(last)||first<1||last<first||last>1000000)){
+    toast(t('logsInvalidRange'),'err');return;
+  }
+  try{
+    showLoad();
+    const progress=document.createElement('p');progress.id='sysLogWait';progress.style.color='white';
+    const overlay=$('requestLoading');if(overlay){overlay.style.flexDirection='column';overlay.appendChild(progress)}
+    const count=await api('/syslogs?offset=0&limit=0');
+    if(count.success===false)throw new Error(count.error||t('tFailed'));
+    if(!Number.isInteger(count.t)||count.t<0)throw new Error(t('logsInvalidPage'));
+    sysLogTotal=count.t;sysLogKnown=true;
+    if(mode==='count'){updateSysLogView();return}
+    if(mode==='all'){first=1;last=count.t}
+    sysLogStart=first-1;sysLogEnd=Math.min(last,count.t);sysLogOffset=sysLogStart;sysLogLines=[];
+    if($('sysLogFirst'))$('sysLogFirst').value=String(first);
+    if($('sysLogLast'))$('sysLogLast').value=String(Math.max(1,sysLogEnd));
+    updateSysLogView();
+    while(sysLogOffset<sysLogEnd){
+      const result=await api('/syslogs?offset='+sysLogOffset+'&limit='+Math.min(100,sysLogEnd-sysLogOffset));
+      if(result.success===false)throw new Error(result.error||t('tFailed'));
+      if(result.t!==sysLogTotal)throw new Error(t('logsChanged'));
+      if(typeof result.recs!=='string')throw new Error(t('logsInvalidPage'));
+      const lines=result.recs.split('\n').filter(line=>line.trim()).slice(0,sysLogEnd-sysLogOffset);
+      if(!lines.length)throw new Error(t('logsEmptyPage'));
+      sysLogLines.push(...lines);sysLogOffset+=lines.length;updateSysLogView();
+    }
+    toast(tf('tLogsLoaded',{n:sysLogLines.length}),'ok');
+  }catch(error){if(token===s_sessionToken)toast(t('tReadErr')+userError(error),'err')}
+  finally{if(token===s_sessionToken)hideLoad()}
+}
+
+// SYSLOG VIEW END
 function renderTerminal(){return '<p class="hint">'+esc(t('consoleHelp'))+'</p><div class="terminal"><div class="terminal-out" id="trmOut"></div><div class="terminal-in"><input id="trmCmd" maxlength="64" autocomplete="off" placeholder="'+esc(t('termPh'))+'"><button class="btn btn-read" onclick="trmSend()">'+esc(t('btnSend'))+'</button><button class="btn btn-muted" onclick="trmClr()">'+esc(t('btnClear'))+'</button></div></div>'}
+
+// CONFIG PROFILE BEGIN
+const CONFIG_PROFILE_SCHEMA={"device":{"WebArayuzuPortu":{"kind":"int","lo":1,"hi":65535,"options":[]},"SimKartPin":{"kind":"int","lo":0,"hi":9999,"options":[]},"SimKartAPN":{"kind":"str","lo":0,"hi":15,"options":[]},"SimKartAPNUsername":{"kind":"str","lo":0,"hi":15,"options":[]},"SimKartAPNSifresi":{"kind":"str","lo":0,"hi":15,"options":[]},"NtpServer":{"kind":"str","lo":0,"hi":63,"options":[]},"NtpServerPortu":{"kind":"int","lo":1,"hi":65535,"options":[]},"PreserveOutputStates":{"kind":"bool","lo":null,"hi":null,"options":[]},"TimeZone":{"kind":"int","lo":-12,"hi":14,"options":[]},"PeriyodikModemResetPeriyodu":{"kind":"int","lo":0,"hi":2592000,"options":[]},"WebIlkVeriZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"WebBostaKalmaZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"IEC104IlkVeriZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"IEC104BostaKalmaZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"DevreyeAlinmaZamani":{"kind":"int","lo":0,"hi":4294967295,"options":[]}},"iec104":{"ScadaIPAdresi":{"kind":"ip","lo":null,"hi":null,"options":[]},"Port":{"kind":"int","lo":1,"hi":65535,"options":[]},"PeriodicSend":{"kind":"int","lo":0,"hi":86400,"options":[]},"T0":{"kind":"int","lo":1,"hi":255,"options":[]},"T1":{"kind":"int","lo":1,"hi":255,"options":[]},"T2":{"kind":"int","lo":1,"hi":255,"options":[]},"T3":{"kind":"int","lo":20,"hi":65525,"options":[]},"K":{"kind":"int","lo":1,"hi":255,"options":[]},"W":{"kind":"int","lo":1,"hi":255,"options":[]},"OriginatorAddr":{"kind":"int","lo":0,"hi":255,"options":[]},"CommonAddr":{"kind":"int","lo":1,"hi":65535,"options":[]},"SBO":{"kind":"bool","lo":null,"hi":null,"options":[]},"SBOTimeout":{"kind":"int","lo":0,"hi":65535,"options":[]},"AkuUyarisi":{"kind":"int","lo":1,"hi":16777215,"options":[]},"ModemReset":{"kind":"int","lo":1,"hi":16777215,"options":[]},"Hatlar":{"kind":"lines","keys":["inUse","TemporaryFaultBase","PermanentFaultBase","IOA_R_AnlikAkim","IOA_S_AnlikAkim","IOA_T_AnlikAkim","IOA_R_EnerjiVarYok","IOA_S_EnerjiVarYok","IOA_T_EnerjiVarYok","IOA_R_YukAkimiVarYok","IOA_S_YukAkimiVarYok","IOA_T_YukAkimiVarYok","IOA_R_RfhabVarYok","IOA_S_RfhabVarYok","IOA_T_RfhabVarYok","IOA_R_TripFailed","IOA_S_TripFailed","IOA_T_TripFailed"]}},"modbus":{"CihazID":{"kind":"int","lo":1,"hi":247,"options":[]},"BaudRate":{"kind":"combo","lo":null,"hi":null,"options":[4800,9600,14400,19200,28800,38400,57600,115200]},"StopBits":{"kind":"combo","lo":null,"hi":null,"options":[1,2]}},"rf":{"inUse":{"kind":"bool","lo":null,"hi":null,"array":true,"options":[]},"HatID":{"kind":"int","lo":0,"hi":4,"array":true,"options":[]},"ZoneID":{"kind":"int","lo":1,"hi":7,"array":true,"options":[]},"R_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"S_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"T_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"CalismaModu":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"HatFrekansi":{"kind":"combo","lo":50,"hi":60,"array":true,"options":[50,60]},"SistemNominalAkimi":{"kind":"float","lo":2,"hi":200,"array":true,"options":[]},"SetEdilebilirActirmaEsikAkimi":{"kind":"float","lo":5,"hi":240,"array":true,"options":[]},"ArtimliAkimEsigi":{"kind":"float","lo":1,"hi":2200,"array":true,"options":[]},"HatKopukHatBosta":{"kind":"float","lo":0.3,"hi":5,"array":true,"options":[]},"SetEdilebilirAcmaArizaSayisi":{"kind":"int","lo":1,"hi":4,"array":true,"options":[]},"OluHatAkimiDogrulamaSuresi":{"kind":"int","lo":80,"hi":200,"array":true,"options":[]},"YenilenmeSifirlamaSuresi":{"kind":"int","lo":10,"hi":300,"array":true,"options":[]},"IsSafety":{"kind":"float","lo":0.1,"hi":0.3,"array":true,"options":[]},"ThresholdMs":{"kind":"int","lo":20,"hi":140,"array":true,"options":[]},"TMemDeadSec":{"kind":"int","lo":30,"hi":600,"array":true,"options":[]},"InrushTimerMs":{"kind":"int","lo":20,"hi":80,"array":true,"options":[]},"InrushMultiplier":{"kind":"float","lo":1,"hi":15,"array":true,"options":[]},"SyncTripDelayMs":{"kind":"int","lo":0,"hi":100,"array":true,"options":[]},"TripPulseDurationMs":{"kind":"int","lo":20,"hi":120,"array":true,"options":[]},"TripMode":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"Inrush100HzRatio":{"kind":"int","lo":10,"hi":40,"array":true,"options":[]},"ClpEnabled":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"ClpMultiplier":{"kind":"float","lo":1,"hi":3,"array":true,"options":[]},"ClpDurationMs":{"kind":"int","lo":100,"hi":12000,"array":true,"options":[]},"VtripTarget":{"kind":"float","lo":24,"hi":45,"array":true,"options":[]}}};
+/* Portable configuration file validation. Synced into the embedded page. */
+function validateProfileConfig(domain,data){
+  const schema=CONFIG_PROFILE_SCHEMA[domain];
+  const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+  if(!schema||!object(data)||!Object.keys(data).length)throw Error('Invalid configuration');
+  const scalar=(rule,value,active=true)=>{
+    const kind=rule.kind;
+    if(kind==='bool')return typeof value==='boolean';
+    if(kind==='eui')return typeof value==='string'&&(value===''||/^[0-9a-fA-F]{16}$/.test(value));
+    if(kind==='str'||kind==='ip'){
+      if(typeof value!=='string')return false;
+      if(kind==='ip')return /^[0-9]+(?:\.[0-9]+){3}$/.test(value)&&value.split('.').every(n=>Number(n)<=255);
+      return rule.hi===null||new TextEncoder().encode(value).length<=rule.hi;
+    }
+    if(typeof value!=='number'||!Number.isFinite(value))return false;
+    if((kind==='int'||kind==='combo')&&!Number.isInteger(value))return false;
+    if(kind==='combo')return !active||rule.options.includes(value);
+    return active?value>=rule.lo&&value<=rule.hi:value>=0&&value<=4294967295;
+  };
+  for(const [key,value] of Object.entries(data)){
+    if(!Object.prototype.hasOwnProperty.call(schema,key))throw Error('Unknown field: '+key);
+    const rule=schema[key];
+    if(rule.kind==='lines'){
+      if(!object(value))throw Error('Invalid line settings');
+      for(const [name,values] of Object.entries(value)){
+        if(!rule.keys.includes(name)||!Array.isArray(values)||values.length!==7||values.some(v=>name==='inUse'?typeof v!=='boolean':!Number.isInteger(v)||v<1||v>16777215))throw Error('Invalid line field: '+name);
+      }
+    }else if(rule.array){
+      const active=data.inUse||Array(7).fill(true);
+      if(!Array.isArray(active)||active.length!==7||!Array.isArray(value)||value.length!==7||value.some((v,i)=>!scalar(rule,v,active[i])))throw Error('Invalid RF field: '+key);
+    }else if(!scalar(rule,value))throw Error('Invalid field: '+key);
+  }
+  if(domain==='device'&&((data.SimKartPin>0&&data.SimKartPin<1000)||(data.PeriyodikModemResetPeriyodu>0&&data.PeriyodikModemResetPeriyodu<3600)))throw Error('Invalid PIN or reset period');
+  if(domain==='iec104'&&((data.T1!==undefined&&data.T2!==undefined&&data.T2>=data.T1)||(data.SBO&&!(data.SBOTimeout>=1&&data.SBOTimeout<=300))))throw Error('Invalid IEC104 timer');
+  if(domain==='rf'){
+    const ids=new Set(),euis=new Set();
+    for(let i=0;i<7;i++){
+      if(data.inUse?.[i]){
+        const id=data.HatID?.[i];
+        if(!(id>=1&&id<=4)||ids.has(id))throw Error('Invalid or repeated feeder ID');
+        ids.add(id);
+      }
+      for(const phase of ['R','S','T']){
+        const eui=(data[phase+'_DEVICEID']?.[i]||'').toUpperCase();
+        if(eui&&!/^0{16}$/.test(eui)){
+          if(euis.has(eui))throw Error('Repeated EUI');
+          euis.add(eui);
+        }
+      }
+    }
+  }
+  return data;
+}
+function makeConfigProfile(domain,data){
+  const schema=CONFIG_PROFILE_SCHEMA[domain];
+  if(!schema)throw Error('Invalid domain');
+  const config=Object.fromEntries(Object.entries(data).filter(([key])=>Object.prototype.hasOwnProperty.call(schema,key)));
+  validateProfileConfig(domain,config);
+  return {format:'troika-config',version:1,domain,config};
+}
+function parseConfigProfile(text,domain){
+  if(new TextEncoder().encode(text).length>65536)throw Error('File too large');
+  const obj=JSON.parse(text);
+  if(!obj||Array.isArray(obj)||Object.keys(obj).sort().join(',')!=='config,domain,format,version'||obj.format!=='troika-config'||obj.version!==1||obj.domain!==domain)throw Error('File version or domain mismatch');
+  return validateProfileConfig(domain,obj.config);
+}
+
+function profileActions(page){
+  if(!CONFIG_PROFILE_SCHEMA[page]||!pageCache[page])return '';
+  return `<button class="btn btn-muted btn-small" onclick="exportConfigFile('${page}')">${LNG==='tr'?'Dışa aktar':'Export'}</button>`+(s_role==='admin'?`<button class="btn btn-muted btn-small" data-admin="1" onclick="document.getElementById('profile-${page}').click()">${LNG==='tr'?'İçe aktar':'Import'}</button><input type="file" accept=".json,application/json" id="profile-${page}" hidden onchange="importConfigFile('${page}',this)">`:'');
+}
+function exportConfigFile(page){
+  if(loading||!pageCache[page])return;
+  try{
+    const profile=makeConfigProfile(page,extractPage(page));
+    const url=URL.createObjectURL(new Blob([JSON.stringify(profile,null,2)],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;link.download='troika-'+page+'.json';
+    document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+    toast(LNG==='tr'?'Ayarlar dışa aktarıldı. Dosya parolaları da içerir.':'Settings exported. The file includes passwords.','ok');
+  }catch(error){toast(userError(error),'err')}
+}
+function stageConfigProfile(page,text){
+  if(s_role!=='admin'||!pageCache[page]||curId!==page)throw Error('Read configuration first');
+  const imported=parseConfigProfile(text,page),current=extractPage(page);
+  const candidate={...current,...imported};
+  if(page==='iec104')candidate.Hatlar={...current.Hatlar,...imported.Hatlar};
+  validateProfileConfig(page,candidate);
+  // Only after complete validation: retain the original device snapshot for
+  // RF removal/move confirmation and normal dirty/read-discard behavior.
+  const snapshot=pageCache[page];
+  pageCache[page]={...snapshot,...candidate};renderPage(page);pageCache[page]=snapshot;
+  document.querySelectorAll('#body input:not([type="file"]),#body select').forEach(el=>setDirty(page,el,true));
+  return candidate;
+}
+async function importConfigFile(page,input){
+  if(loading)return;
+  const file=input.files?.[0];input.value='';if(!file)return;
+  try{
+    if(file.size>65536)throw Error('File too large');
+    const text=await file.text();stageConfigProfile(page,text);
+    toast(LNG==='tr'?'Dosya forma alındı. Cihaza uygulamak için Kaydet kullanın.':'Imported into the form. Use Save to apply to the device.','info');
+  }catch(error){toast(userError(error),'err')}
+}
+
+// CONFIG PROFILE END
 
 // ---------------- PAGE LOAD / SAVE ----------------
 const readPage=async(page,confirmed=false)=>{if(loading)return;if(hasDirty(page)&&!confirmed){confirmAction(t('readDiscard'),()=>readPage(page,true),'discardRead');return;}try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;if(page==='rf')invalidateRfGroupStatus();pageCache[page]=d;pageReadAt[page]=Date.now();delete pageSaved[page];renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+userError(e),'err')}};
@@ -1775,17 +1966,17 @@ const validatePage=page=>{let ok=true;if(page==='iec104'){[['iec-Port',1,65535],
     else usedFids.push(fid);
     const nom=parseFloat($('rf-SistemNominalAkimi-'+i)?.value),ia=parseFloat($('rf-SetEdilebilirActirmaEsikAkimi-'+i)?.value);
     if(Number.isFinite(nom)&&Number.isFinite(ia)&&ia*5<nom*6){const el=$('rf-SetEdilebilirActirmaEsikAkimi-'+i),err=$('err-rf-SetEdilebilirActirmaEsikAkimi-'+i);el.classList.add('invalid');if(err)err.textContent=tf('errIaMin',{v:(nom*1.2).toFixed(1)});ok=false}
-  }}else if(page==='device'){[['dev-WebArayuzuPortu',1,65535],['dev-SimKartPin',0,9999],['dev-NtpServerPortu',1,65535],['dev-TimeZone',-12,14],['dev-PeriyodikModemResetPeriyodu',0,720],['dev-WebIlkVeriZamanAsimi',0,3600],['dev-WebBostaKalmaZamanAsimi',0,3600],['dev-IEC104IlkVeriZamanAsimi',0,3600],['dev-IEC104BostaKalmaZamanAsimi',0,3600]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false});const pin=getInt('dev-SimKartPin');if(pin!==0&&pin<1000){addressError($('dev-SimKartPin'),t('errPin'));ok=false}}if(!ok)toast(t('tFixVal'),'err');return ok};
+  }}else if(page==='device'){[['dev-WebArayuzuPortu',1,65535],['dev-SimKartPin',0,9999],['dev-NtpServerPortu',1,65535],['dev-TimeZone',-12,14],['dev-WebIlkVeriZamanAsimi',0,65535],['dev-WebBostaKalmaZamanAsimi',0,65535],['dev-IEC104IlkVeriZamanAsimi',0,65535],['dev-IEC104BostaKalmaZamanAsimi',0,65535]].forEach(x=>{if(!validation(x[0],true,x[1],x[2]))ok=false});if(!validation('dev-PeriyodikModemResetPeriyodu',true,0,720,false))ok=false;const hours=getFloat('dev-PeriyodikModemResetPeriyodu');if(hours>0&&hours<1){addressError($('dev-PeriyodikModemResetPeriyodu'),t('range')+'0 / 1..720');ok=false}const pin=getInt('dev-SimKartPin');if(pin!==0&&pin<1000){addressError($('dev-SimKartPin'),t('errPin'));ok=false}}if(!ok)toast(t('tFixVal'),'err');return ok};
 const validationEl=(el,min,max)=>{el.classList.remove('invalid');const err=el.closest?.('.field')?.querySelector('.err');if(err)err.textContent='';const n=Number(el.value);if(el.value===''||!Number.isInteger(n)||n<min||n>max){addressError(el,t('range')+min+' .. '+max);return false}return true};
 
-function extractPage(page){if(page==='iec104'){const d={};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','TemporaryFaultBase','PermanentFaultBase','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_YukAkimiVarYok','IOA_S_YukAkimiVarYok','IOA_T_YukAkimiVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok','IOA_R_TripFailed','IOA_S_TripFailed','IOA_T_TripFailed'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
+function extractPage(page){if(page==='iec104'){const d={ScadaIPAdresi:getText('iec-ScadaIPAdresi')};[['Port','iec-Port'],['PeriodicSend','iec-PeriodicSend'],['T0','iec-T0'],['T1','iec-T1'],['T2','iec-T2'],['T3','iec-T3'],['K','iec-K'],['W','iec-W'],['OriginatorAddr','iec-OriginatorAddr'],['CommonAddr','iec-CommonAddr'],['SBOTimeout','iec-SBOTimeout'],['AkuUyarisi','iec-AkuUyarisi'],['ModemReset','iec-ModemReset']].forEach(x=>d[x[0]]=getInt(x[1]));d.SBO=getBool('iec-SBO');const h={};const keys=['inUse','TemporaryFaultBase','PermanentFaultBase','IOA_R_AnlikAkim','IOA_S_AnlikAkim','IOA_T_AnlikAkim','IOA_R_EnerjiVarYok','IOA_S_EnerjiVarYok','IOA_T_EnerjiVarYok','IOA_R_YukAkimiVarYok','IOA_S_YukAkimiVarYok','IOA_T_YukAkimiVarYok','IOA_R_RfhabVarYok','IOA_S_RfhabVarYok','IOA_T_RfhabVarYok','IOA_R_TripFailed','IOA_S_TripFailed','IOA_T_TripFailed'];keys.forEach(k=>h[k]=[]);document.querySelectorAll('[data-id="iec"]').forEach(e=>h[e.dataset.key].push(e.type==='checkbox'?e.checked:getIntEl(e)));d.Hatlar=h;return d}
   if(page==='modbus'){return {CihazID:getInt('mod-CihazID'),StopBits:getInt('mod-StopBits'),BaudRate:getInt('mod-BaudRate')}}
   if(page==='rf'){const d={};const iKeys=['HatID','ZoneID','SetEdilebilirAcmaArizaSayisi','OluHatAkimiDogrulamaSuresi','YenilenmeSifirlamaSuresi'];const fKeys=['SistemNominalAkimi','SetEdilebilirActirmaEsikAkimi','ArtimliAkimEsigi','HatKopukHatBosta'];const sKeys=['R_DEVICEID','S_DEVICEID','T_DEVICEID'];['inUse','CalismaModu','HatFrekansi',...iKeys,...fKeys,...sKeys].forEach(k=>d[k]=[]);
-    for(let i=0;i<FEEDER_COUNT;i++){d.inUse[i]=getBool('rf-inUse-'+i);d.CalismaModu[i]=getInt('rf-CalismaModu-'+i);d.HatFrekansi[i]=getInt('rf-HatFrekansi-'+i);iKeys.forEach(k=>d[k][i]=getInt('rf-'+k+'-'+i));fKeys.forEach(k=>d[k][i]=getFloat('rf-'+k+'-'+i));sKeys.forEach(k=>d[k][i]=getText('rf-'+k+'-'+i).trim().toUpperCase())}return d}
+    for(let i=0;i<FEEDER_COUNT;i++){d.inUse[i]=getBool('rf-inUse-'+i);d.CalismaModu[i]=getInt('rf-CalismaModu-'+i);d.HatFrekansi[i]=getInt('rf-HatFrekansi-'+i);iKeys.forEach(k=>d[k][i]=getInt('rf-'+k+'-'+i));fKeys.forEach(k=>d[k][i]=getFloat('rf-'+k+'-'+i));sKeys.forEach(k=>d[k][i]=getText('rf-'+k+'-'+i).trim().toUpperCase())}for(const [key,rule] of Object.entries(CONFIG_PROFILE_SCHEMA.rf)){if(key in d)continue;d[key]=Array.from({length:FEEDER_COUNT},(_,i)=>rule.kind==='float'?getFloat('rf-'+key+'-'+i):getInt('rf-'+key+'-'+i))}return d}
   if(page==='device')return extractDevice();return {};
 }
 const getIntEl=e=>e.value===''?0:Number(e.value)||0;
-function extractDevice(){return {PreserveOutputStates:$('dev-PreserveOutputStates').checked,WebArayuzuPortu:getInt('dev-WebArayuzuPortu'),SimKartPin:getInt('dev-SimKartPin'),SimKartAPN:getText('dev-SimKartAPN'),SimKartAPNUsername:getText('dev-SimKartAPNUsername'),SimKartAPNSifresi:getText('dev-SimKartAPNSifresi'),NtpServer:getText('dev-NtpServer'),NtpServerPortu:getInt('dev-NtpServerPortu'),TimeZone:getInt('dev-TimeZone'),PeriyodikModemResetPeriyodu:getInt('dev-PeriyodikModemResetPeriyodu')*3600,WebIlkVeriZamanAsimi:getInt('dev-WebIlkVeriZamanAsimi'),WebBostaKalmaZamanAsimi:getInt('dev-WebBostaKalmaZamanAsimi'),IEC104IlkVeriZamanAsimi:getInt('dev-IEC104IlkVeriZamanAsimi'),IEC104BostaKalmaZamanAsimi:getInt('dev-IEC104BostaKalmaZamanAsimi')}}
+function extractDevice(){return {DevreyeAlinmaZamani:getInt('dev-DevreyeAlinmaZamani'),PreserveOutputStates:$('dev-PreserveOutputStates').checked,WebArayuzuPortu:getInt('dev-WebArayuzuPortu'),SimKartPin:getInt('dev-SimKartPin'),SimKartAPN:getText('dev-SimKartAPN'),SimKartAPNUsername:getText('dev-SimKartAPNUsername'),SimKartAPNSifresi:getText('dev-SimKartAPNSifresi'),NtpServer:getText('dev-NtpServer'),NtpServerPortu:getInt('dev-NtpServerPortu'),TimeZone:getInt('dev-TimeZone'),PeriyodikModemResetPeriyodu:Math.round(getFloat('dev-PeriyodikModemResetPeriyodu')*3600),WebIlkVeriZamanAsimi:getInt('dev-WebIlkVeriZamanAsimi'),WebBostaKalmaZamanAsimi:getInt('dev-WebBostaKalmaZamanAsimi'),IEC104IlkVeriZamanAsimi:getInt('dev-IEC104IlkVeriZamanAsimi'),IEC104BostaKalmaZamanAsimi:getInt('dev-IEC104BostaKalmaZamanAsimi')}}
 
 // ---------------- NAVIGATION / RENDER ----------------
 function renderPage(id,d){let html='';if(id==='iec104')html=pageCache.iec104?renderIec104(pageCache.iec104):emptyCard(t('iecTitle'),'iec104',t('iecSub'));else if(id==='modbus')html=pageCache.modbus?renderModbus(pageCache.modbus):emptyCard(t('modTitle'),'modbus',t('modSub'));else if(id==='rf')html=pageCache.rf?renderRf(pageCache.rf):emptyCard(t('rfTitle'),'rf',t('rfSub'));else if(id==='rfmon')html=renderRfMon(pageCache.rfmon);else if(id==='board')html=pageCache.board?renderBoard(pageCache.board):renderBoard(null);else if(id==='iec-faults')html=renderFaults();else if(id==='syslogs')html=renderLogs();else if(id==='device')html=pageCache.device?renderDevice(pageCache.device):emptyCard(t('devTitle'),'device',t('devSub'));else if(id==='terminal')html=renderTerminal();$('body').innerHTML=html;curId=id;$('title').textContent=t(menuPages.find(p=>p[0]===id)?.[1]||id);document.querySelectorAll('.mi').forEach(e=>e.classList.toggle('a',e.dataset.id===id));dirtyPages[id]=new Set();if(id==='terminal'){$('trmCmd')?.addEventListener('keydown',e=>{if(e.key==='Enter')trmSend()});$('trmCmd')?.focus()}if(id==='rf'&&pageCache.rf){selectRfTab(0);rfBindLive();updateRfSaveButton()}markOriginals($('body'));bindDirty(id,$('body'));applyRoleAccess();if(id==='iec104')$('iec-SBO')?.addEventListener('change',updateSboRange);if(id==='iec104')$('body').querySelectorAll('[data-key="TemporaryFaultBase"],[data-key="PermanentFaultBase"]').forEach(el=>el.addEventListener('input',updateIecRanges));updatePageState(id)}
@@ -1858,7 +2049,7 @@ async function readBoard(){await readPage('board')}
 
 // ---------------- FAULTS / LOGS ----------------
 async function loadFaults(){if(loading)return;try{showLoad();const r=await api('/faults?feeder='+faultFeeder);hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));rfFaultCache[faultFeeder]=r;pageReadAt['faults:'+faultFeeder]=Date.now();renderPage('iec-faults');const total=(r.tc||[0,0,0]).reduce((a,b)=>a+b,0)+(r.pc||[0,0,0]).reduce((a,b)=>a+b,0);toast(tf('tFaultsLoaded',{n:faultFeeder+1,m:total}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+userError(e),'err')}}
-async function loadSysLogs(){if(loading)return;const restart=sysLogLines.length>0&&sysLogOffset>=sysLogTotal;if(restart){sysLogLines=[];sysLogOffset=0;const c0=$('sysLogContent');if(c0){c0.classList.add('empty');c0.innerHTML=esc(t('logsPress'))}}try{showLoad();const r=await api('/syslogs?offset='+sysLogOffset+'&limit=30');hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));const logs=r.recs?r.recs.split('\n').filter(x=>x.trim()):[];sysLogTotal=Number(r.t)||0;sysLogLines=sysLogLines.concat(logs);sysLogOffset+=logs.length;const c=$('sysLogContent');if(c){c.classList.remove('empty');c.innerHTML=sysLogLines.map(x=>'<div class="log">'+esc(x)+'</div>').join('')}const b=$('sysLogBtn');if(b)b.textContent=(sysLogLines.length>0&&sysLogOffset>=sysLogTotal)?t('btnLogRestart'):t('btnNext');toast(tf('tLogsLoaded',{n:logs.length}),'ok')}catch(e){hideLoad();toast(t('tReadErr')+userError(e),'err')}}
+
 
 // ---------------- ACTIONS / TERMINAL ----------------
 function rebootDevice(){confirmAction(t('tRebootAsk'),async()=>{try{showLoad();const r=await api('/device/reboot',{method:'POST'});hideLoad();if(r.success===false)throw new Error(r.error||t('tFailed'));toast(t('tRebootOk'),'ok')}catch(e){hideLoad();toast(t('tErr')+userError(e),'err')}},'btnReboot')}

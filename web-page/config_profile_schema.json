@@ -1,0 +1,512 @@
+{
+  "device": {
+    "WebArayuzuPortu": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 65535,
+      "options": [],
+      "label": "Web Arayuzu Portu"
+    },
+    "SimKartPin": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 9999,
+      "options": [],
+      "label": "SIM Pin (0: kapali; 1000..9999)"
+    },
+    "SimKartAPN": {
+      "kind": "str",
+      "lo": 0,
+      "hi": 15,
+      "options": [],
+      "label": "APN"
+    },
+    "SimKartAPNUsername": {
+      "kind": "str",
+      "lo": 0,
+      "hi": 15,
+      "options": [],
+      "label": "APN Kullanici Adi"
+    },
+    "SimKartAPNSifresi": {
+      "kind": "str",
+      "lo": 0,
+      "hi": 15,
+      "options": [],
+      "label": "APN Sifresi"
+    },
+    "NtpServer": {
+      "kind": "str",
+      "lo": 0,
+      "hi": 63,
+      "options": [],
+      "label": "NTP Sunucu"
+    },
+    "NtpServerPortu": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 65535,
+      "options": [],
+      "label": "NTP Portu"
+    },
+    "PreserveOutputStates": {
+      "kind": "bool",
+      "lo": null,
+      "hi": null,
+      "options": [],
+      "label": "Yeniden baslatmada son role durumlarini koru"
+    },
+    "TimeZone": {
+      "kind": "int",
+      "lo": -12,
+      "hi": 14,
+      "options": [],
+      "label": "Saat Dilimi (UTC ofset)"
+    },
+    "PeriyodikModemResetPeriyodu": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 2592000,
+      "options": [],
+      "label": "Periyodik Modem Reset (sn; 0 veya 3600..2592000)"
+    },
+    "WebIlkVeriZamanAsimi": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 65535,
+      "options": [],
+      "label": "Web Ilk Veri Zaman Asimi (sn)"
+    },
+    "WebBostaKalmaZamanAsimi": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 65535,
+      "options": [],
+      "label": "Web Bosta Kalma Zaman Asimi (sn)"
+    },
+    "IEC104IlkVeriZamanAsimi": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 65535,
+      "options": [],
+      "label": "IEC104 Ilk Veri Zaman Asimi (sn)"
+    },
+    "IEC104BostaKalmaZamanAsimi": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 65535,
+      "options": [],
+      "label": "IEC104 Bosta Kalma Zaman Asimi (sn)"
+    },
+    "DevreyeAlinmaZamani": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 4294967295,
+      "options": [],
+      "label": "Devreye Alinma Zamani (UTC epoch)"
+    }
+  },
+  "iec104": {
+    "ScadaIPAdresi": {
+      "kind": "ip",
+      "lo": null,
+      "hi": null,
+      "options": [],
+      "label": "SCADA IP Adresi"
+    },
+    "Port": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 65535,
+      "options": [],
+      "label": "Port"
+    },
+    "PeriodicSend": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 86400,
+      "options": [],
+      "label": "Periyodik Gonderim (sn; 0: kapali)"
+    },
+    "T0": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 255,
+      "options": [],
+      "label": "T0 (sn)"
+    },
+    "T1": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 255,
+      "options": [],
+      "label": "T1 (sn)"
+    },
+    "T2": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 255,
+      "options": [],
+      "label": "T2 (sn)"
+    },
+    "T3": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 65525,
+      "options": [],
+      "label": "T3 (sn)"
+    },
+    "K": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 255,
+      "options": [],
+      "label": "K (1-255)"
+    },
+    "W": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 255,
+      "options": [],
+      "label": "W (1-255)"
+    },
+    "OriginatorAddr": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 255,
+      "options": [],
+      "label": "Originator Adres"
+    },
+    "CommonAddr": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 65535,
+      "options": [],
+      "label": "Common Adres"
+    },
+    "SBO": {
+      "kind": "bool",
+      "lo": null,
+      "hi": null,
+      "options": [],
+      "label": "SBO Aktif"
+    },
+    "SBOTimeout": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 65535,
+      "options": [],
+      "label": "SBO Timeout (sn; aktifken 1..300)"
+    },
+    "AkuUyarisi": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 16777215,
+      "options": [],
+      "label": "IOA Aku Uyarisi"
+    },
+    "ModemReset": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 16777215,
+      "options": [],
+      "label": "IOA Modem Reset"
+    },
+    "Hatlar": {
+      "kind": "lines",
+      "keys": [
+        "inUse",
+        "TemporaryFaultBase",
+        "PermanentFaultBase",
+        "IOA_R_AnlikAkim",
+        "IOA_S_AnlikAkim",
+        "IOA_T_AnlikAkim",
+        "IOA_R_EnerjiVarYok",
+        "IOA_S_EnerjiVarYok",
+        "IOA_T_EnerjiVarYok",
+        "IOA_R_YukAkimiVarYok",
+        "IOA_S_YukAkimiVarYok",
+        "IOA_T_YukAkimiVarYok",
+        "IOA_R_RfhabVarYok",
+        "IOA_S_RfhabVarYok",
+        "IOA_T_RfhabVarYok",
+        "IOA_R_TripFailed",
+        "IOA_S_TripFailed",
+        "IOA_T_TripFailed"
+      ]
+    }
+  },
+  "modbus": {
+    "CihazID": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 247,
+      "options": [],
+      "label": "Modbus Cihaz ID"
+    },
+    "BaudRate": {
+      "kind": "combo",
+      "lo": null,
+      "hi": null,
+      "options": [
+        4800,
+        9600,
+        14400,
+        19200,
+        28800,
+        38400,
+        57600,
+        115200
+      ],
+      "label": "Baud Rate"
+    },
+    "StopBits": {
+      "kind": "combo",
+      "lo": null,
+      "hi": null,
+      "options": [
+        1,
+        2
+      ],
+      "label": "Dur Bit"
+    }
+  },
+  "rf": {
+    "inUse": {
+      "kind": "bool",
+      "lo": null,
+      "hi": null,
+      "label": "Fider etkin",
+      "array": true,
+      "options": []
+    },
+    "HatID": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 4,
+      "label": "Fider ID",
+      "array": true,
+      "options": []
+    },
+    "ZoneID": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 7,
+      "label": "Bolge ID",
+      "array": true,
+      "options": []
+    },
+    "R_DEVICEID": {
+      "kind": "eui",
+      "lo": 0,
+      "hi": 16,
+      "label": "L1 EUI-64",
+      "array": true,
+      "options": []
+    },
+    "S_DEVICEID": {
+      "kind": "eui",
+      "lo": 0,
+      "hi": 16,
+      "label": "L2 EUI-64",
+      "array": true,
+      "options": []
+    },
+    "T_DEVICEID": {
+      "kind": "eui",
+      "lo": 0,
+      "hi": 16,
+      "label": "L3 EUI-64",
+      "array": true,
+      "options": []
+    },
+    "CalismaModu": {
+      "kind": "combo",
+      "lo": 0,
+      "hi": 1,
+      "label": "Calisma modu",
+      "array": true,
+      "options": [
+        0,
+        1
+      ]
+    },
+    "HatFrekansi": {
+      "kind": "combo",
+      "lo": 50,
+      "hi": 60,
+      "label": "Hat frekansi (Hz)",
+      "array": true,
+      "options": [
+        50,
+        60
+      ]
+    },
+    "SistemNominalAkimi": {
+      "kind": "float",
+      "lo": 2,
+      "hi": 200,
+      "label": "Nominal akim (A)",
+      "array": true,
+      "options": []
+    },
+    "SetEdilebilirActirmaEsikAkimi": {
+      "kind": "float",
+      "lo": 5,
+      "hi": 240,
+      "label": "Acma esik akimi (A)",
+      "array": true,
+      "options": []
+    },
+    "ArtimliAkimEsigi": {
+      "kind": "float",
+      "lo": 1,
+      "hi": 2200,
+      "label": "Artimli akim esigi (A)",
+      "array": true,
+      "options": []
+    },
+    "HatKopukHatBosta": {
+      "kind": "float",
+      "lo": 0.3,
+      "hi": 5,
+      "label": "Hat bosta katsayisi",
+      "array": true,
+      "options": []
+    },
+    "SetEdilebilirAcmaArizaSayisi": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 4,
+      "label": "Acma ariza sayisi",
+      "array": true,
+      "options": []
+    },
+    "OluHatAkimiDogrulamaSuresi": {
+      "kind": "int",
+      "lo": 80,
+      "hi": 200,
+      "label": "Olu hat dogrulama (ms)",
+      "array": true,
+      "options": []
+    },
+    "YenilenmeSifirlamaSuresi": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 300,
+      "label": "Yenilenme (sn)",
+      "array": true,
+      "options": []
+    },
+    "IsSafety": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.3,
+      "label": "Guvenlik akimi (A)",
+      "array": true,
+      "options": []
+    },
+    "ThresholdMs": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 140,
+      "label": "Esik suresi (ms)",
+      "array": true,
+      "options": []
+    },
+    "TMemDeadSec": {
+      "kind": "int",
+      "lo": 30,
+      "hi": 600,
+      "label": "Olu hat bellek suresi (sn)",
+      "array": true,
+      "options": []
+    },
+    "InrushTimerMs": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 80,
+      "label": "Inrush suresi (ms)",
+      "array": true,
+      "options": []
+    },
+    "InrushMultiplier": {
+      "kind": "float",
+      "lo": 1,
+      "hi": 15,
+      "label": "Inrush katsayisi",
+      "array": true,
+      "options": []
+    },
+    "SyncTripDelayMs": {
+      "kind": "int",
+      "lo": 0,
+      "hi": 100,
+      "label": "Eszamanli acma gecikmesi (ms)",
+      "array": true,
+      "options": []
+    },
+    "TripPulseDurationMs": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 120,
+      "label": "Acma darbesi (ms)",
+      "array": true,
+      "options": []
+    },
+    "TripMode": {
+      "kind": "combo",
+      "lo": 0,
+      "hi": 1,
+      "label": "Acma modu",
+      "array": true,
+      "options": [
+        0,
+        1
+      ]
+    },
+    "Inrush100HzRatio": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 40,
+      "label": "Inrush 100 Hz orani (%)",
+      "array": true,
+      "options": []
+    },
+    "ClpEnabled": {
+      "kind": "combo",
+      "lo": 0,
+      "hi": 1,
+      "label": "CLP etkin",
+      "array": true,
+      "options": [
+        0,
+        1
+      ]
+    },
+    "ClpMultiplier": {
+      "kind": "float",
+      "lo": 1,
+      "hi": 3,
+      "label": "CLP katsayisi",
+      "array": true,
+      "options": []
+    },
+    "ClpDurationMs": {
+      "kind": "int",
+      "lo": 100,
+      "hi": 12000,
+      "label": "CLP suresi (ms)",
+      "array": true,
+      "options": []
+    },
+    "VtripTarget": {
+      "kind": "float",
+      "lo": 24,
+      "hi": 45,
+      "label": "Acma hedef gerilimi (V)",
+      "array": true,
+      "options": []
+    }
+  }
+}

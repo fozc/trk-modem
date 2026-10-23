@@ -20,6 +20,8 @@ parser.add_argument("--rf-preview", action="store_true",
                     help="Serve a synthetic NOT_LIVE RF result (no device access)")
 parser.add_argument("--board-preview", action="store_true",
                     help="Serve synthetic board, network and DIP data")
+parser.add_argument("--config-preview", action="store_true",
+                    help="Serve portable synthetic configuration fixtures")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[3]
 
@@ -41,7 +43,7 @@ class PreviewHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         # Local test fixture only; never use device credentials here.
-        if self.path != "/auth/login":
+        if urlsplit(self.path).path != "/auth/login":
             self.send_error(404)
             return
         try:
@@ -63,6 +65,45 @@ class PreviewHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if args.config_preview and path == "/syslogs":
+            query = parse_qs(urlsplit(self.path).query)
+            if query.get("t") != ["0123456789abcdef0123456789abcdef"]:
+                self.send_error(401)
+                return
+            offset = max(0, int(query.get("offset", [0])[0]))
+            limit = max(0, min(17, int(query.get("limit", [30])[0])))
+            logs = [f"#{index} TS:2026-10-22 10:00:00 LVL:1 CODE:TEST INFO:preview event"
+                    for index in range(1, 238)]
+            payload = json.dumps({"t": len(logs), "recs": "\n".join(
+                logs[offset:offset + limit])}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if args.config_preview and path.startswith("/config/"):
+            if parse_qs(urlsplit(self.path).query).get("t") != [
+                    "0123456789abcdef0123456789abcdef"]:
+                self.send_error(401)
+                return
+            fixtures = json.loads((Path(__file__).with_name(
+                "profile_fixtures.json")).read_text(encoding="utf-8"))
+            config = next((item["profile"]["config"] for item in fixtures
+                           if item["domain"] == path.removeprefix("/config/")),
+                          None)
+            if config is None:
+                self.send_error(404)
+                return
+            if path == "/config/rf":
+                config = {"success": True, "data": config}
+            payload = json.dumps(config).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         if args.board_preview and path == "/status/board":
             if parse_qs(urlsplit(self.path).query).get("t") != [
                     "0123456789abcdef0123456789abcdef"]:
