@@ -2,7 +2,7 @@
 """Selected-field JSON round-trip verification on the live device (bench only).
 
 Complements run_tests.py after the web endpoints moved to the common JSON
-core (libraries/json). Everything runs through the real HTTP server over
+core (Application/json). Everything runs through the real HTTP server over
 the GSM link; no console access is needed:
 
 - GET schema checks for status/config/monitor/discovery responses.

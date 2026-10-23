@@ -10,7 +10,7 @@
 #ifndef MODBUS_MAP_JSON_H
 #define MODBUS_MAP_JSON_H
 
-#include "../../libraries/json/json.h"
+#include "../json/json.h"
 
 #include <stdbool.h>
 #include <stddef.h>

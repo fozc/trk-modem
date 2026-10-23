@@ -14,7 +14,7 @@
 #ifndef WEB_SHELL_H_
 #define WEB_SHELL_H_
 
-#include "../../libraries/json/json.h"
+#include "../json/json.h"
 
 #include <stdint.h>
 #include <stdbool.h>

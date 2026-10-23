@@ -59,7 +59,7 @@ namespace :json do
     end
     artifacts = File.join(GCOV_ARTIFACTS_PATH)
     command = [ENV.fetch("PYTHON", "python"), "-m", "gcovr", "--root", "..",
-               "--filter", '.*libraries/json/json\.c$', "--print-summary",
+               "--filter", '.*Application/json/json\.c$', "--print-summary",
                "--fail-under-line", "95", "--fail-under-branch", "90",
                "--fail-under-function", "100",
                "--json-summary", File.join(artifacts, "json-summary.json"),

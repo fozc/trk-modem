@@ -103,7 +103,7 @@ def main():
     runner_path.write_text("\n".join(runner) + "\n")
     compile_file(runner_path, "runner")
     compile_file(unity / "unity.c", "unity", strict=False)
-    compile_file(ROOT / "libraries/json/json.c", "json")
+    compile_file(ROOT / "Application/json/json.c", "json")
     compile_file(HERE / "target/device_tests.c", "device_tests")
     compile_file(HERE / "compare.c", "compare",
                  ["-DUNIT_TEST", "-DNO_CONSOLE_LOG", "-DNO_SHELL_LOG",

@@ -591,7 +591,7 @@ outputs=[]
 for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro','board_signal_repro','rf_group_handlers_repro']:
  extra=[str(root/'Application/libs/xprintf.c'),'-I'+str(root/'Application/libs'),'-lm'] if name in ['http_lengths_repro', 'board_signal_repro'] else []
  if name in ['web_auth_changed_repro','http_lengths_repro','board_signal_repro','rf_group_handlers_repro']:
-  extra += [str(root/'libraries/json/json.c'), '-I'+str(root/'Application/libs')]
+  extra += [str(root/'Application/json/json.c'), '-I'+str(root/'Application/libs')]
 
  if name == 'rf_group_handlers_repro':
   extra += ['-I'+str(root/'Application/libiec104'),

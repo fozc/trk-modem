@@ -47,11 +47,9 @@
     - +:scp/**
     - +:web_server/**
   :source:
-    - ../libraries/json/**
     - ../Application/**
     - support_sources/**
   :include:
-    - ../libraries/json/**
     - ../Application/**
     - ../contiki-kernel/**
   :support:

@@ -116,7 +116,7 @@ uint32_t compare_new_status(const char *input, size_t length,
     (BUILD / "compare_status.inc").write_text(modern, newline="\n")
     return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in [config_path, status_path, ROOT / "Application/libs/xprintf.c",
-                         ROOT / "libraries/json/json.c", ROOT / "libraries/json/json.h",
+                         ROOT / "Application/json/json.c", ROOT / "Application/json/json.h",
                          ROOT / "Application/web-server/json_config.h",
                          ROOT / "Application/system_status.h",
                          ROOT / "Application/modem_types.h", HERE / "compare.c",
@@ -124,7 +124,7 @@ uint32_t compare_new_status(const char *input, size_t length,
 
 
 def includes():
-    directories = {ROOT / "Application", ROOT / "libraries/json", BUILD}
+    directories = {ROOT / "Application", ROOT / "Application/json", BUILD}
     # Real project model headers, rather than host replacements of structures.
     directories.update(path.parent for path in (ROOT / "Application").rglob("*.h"))
     return [flag for path in sorted(directories) for flag in ["-I", str(path)]]
@@ -138,7 +138,7 @@ class Request(ct.Structure):
 def build_host(cc, source=None, label=""):
     extension = ".dll" if sys.platform == "win32" else ".so"
     output = BUILD / ("json_compare" + label + extension)
-    sources = [HERE / "compare.c", source or ROOT / "libraries/json/json.c",
+    sources = [HERE / "compare.c", source or ROOT / "Application/json/json.c",
                ROOT / "Application/libs/xprintf.c"]
     command = [cc, *FLAGS, "-Wno-array-parameter", "-DUNIT_TEST",
                "-DNO_CONSOLE_LOG", "-DNO_SHELL_LOG", "-O2", "-shared", *includes(),
@@ -305,7 +305,7 @@ def arm_sizes(compiler, source=None, label="current"):
               "-ffunction-sections", "-fdata-sections", "-fstack-usage",
               "--specs=nano.specs", *includes()]
     objects = []
-    for unit in [HERE / "compare.c", source or ROOT / "libraries/json/json.c",
+    for unit in [HERE / "compare.c", source or ROOT / "Application/json/json.c",
                  ROOT / "Application/libs/xprintf.c"]:
         target = BUILD / ("compare_arm_" + label + "_" + unit.stem + ".o")
         subprocess.run([*common, "-c", str(unit), "-o", str(target)], check=True)
