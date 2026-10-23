@@ -637,7 +637,7 @@ char   y;
 - Every `if` statement with an `else if` shall end with an `else` clause (MISRA 15.7).
 
 ```c
-if (NULL == p_object)
+if (p_object == NULL)
 {
     result = ERR_NULL_PTR;
 }
@@ -703,21 +703,23 @@ for (int32_t row = 0; row < NUM_ROWS; row++)
 - C Standard Library functions `abort()`, `exit()`, `setjmp()`, and `longjmp()` are
   **forbidden**.
 
-### 8.6  Equivalence Tests (Yoda Conditions)
+### 8.6  Equivalence Tests (Repository Override)
 
-- When comparing a variable against a constant, place the **constant on the left**
-  side of `==`.
-- This catches accidental assignment (`=` instead of `==`) at compile time.
+- User decision, 2026-10-23: use conventional comparisons. Place the
+  variable or function call on the left and the constant on the right.
+- Do not use Yoda conditions. This overrides the original BARR-C rule.
+- Keep `-Wparentheses`/`-Werror` checks; assignments in conditions remain
+  forbidden.
 
 ```c
-if (NULL == p_object)
+if (object == NULL)
 {
     return ERR_NULL_PTR;
 }
 
-if (STATE_IDLE == current_state)
+if (strcmp(key, "APN") == 0)
 {
-    /* ... */
+    /* Process the APN field. */
 }
 ```
 
@@ -1000,6 +1002,6 @@ The following abbreviations may be used **without** local explanation:
 | Nesting depth (8.2) | Static analysis | Code review |
 | Switch/default (8.3) | Static analysis / compiler | Code review |
 | Magic numbers (8.4) | Code review | Static analysis |
-| Yoda conditions (8.6) | Compiler warning (`-Wparentheses`) | Code review |
+| Conventional comparisons (8.6, repo override) | Compiler warning (`-Wparentheses`) | Code review |
 
 /*** end of file ***/

@@ -68,14 +68,16 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   typedefs (`atomic_uint8_t` etc.) are C11-optional — use `_Atomic T`
   or the mandatory `atomic_uint_leastN_t`/`_fastN_t` family.
 - **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns, LF line
-  endings, no tabs, Yoda conditions
-  (`NULL == obj`), `for (;;)` for infinite loops, signed/unsigned never
-  mixed, unsigned constants suffixed (`6U`), `/*** end of file ***/`
+  endings, no tabs, conventional comparisons
+  (`obj == NULL`, `strcmp(key, "APN") == 0`), `for (;;)` for infinite
+  loops, signed/unsigned never mixed, unsigned constants suffixed (`6U`),
+  `/*** end of file ***/`
   trailer, new files use the §9.15 header template.
 - **Repo deviation (decided 2026-08-20):** do NOT use the `g_` / `s_`
   variable prefixes or the `p_` pointer prefix — use plain descriptive
   snake_case names for globals, statics, pointers, and parameters.
-  (Yoda conditions still apply.)
+  Keep variables/function calls on the left of comparisons; do not use
+  Yoda conditions. This user decision supersedes BARR-C section 8.6.
 - **Naming discipline:** before introducing a function or variable,
   THINK FIRST and pick the widely accepted, conventional name from
   general programming practice that reads naturally in context

@@ -58,7 +58,8 @@ The most load-bearing rules, restated so they are never missed:
   next to the definition.
 - **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns,
   descriptive snake_case without `g_/s_/p_` prefixes (repo deviation),
-  Yoda conditions, `for (;;)` for infinite loops,
+  conventional comparisons (`obj == NULL`, `strcmp(key, "APN") == 0`),
+  `for (;;)` for infinite loops,
   `/*** end of file ***/` trailer.
 - **ASCII only** in code and comments — no Turkish characters
   (per copilot-instructions §Language & Locale).
