@@ -325,5 +325,7 @@
   :flag: "-l${1}"
   :path_flag: "-L ${1}"
   :system: []
-  :test: []
+  # Linux keeps the fenv functions used by JSON in libm.
+  :test:
+    - m
   :release: []
