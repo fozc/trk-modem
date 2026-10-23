@@ -24,6 +24,9 @@ ROOT = HERE.parents[2]
 BUILD = HERE / "build"
 FLAGS = ["-std=c11", "-pedantic", "-Wall", "-Wextra", "-Werror",
          "-Wshadow", "-Wconversion", "-Wdouble-promotion", "-Wformat=2"]
+# The ctypes library and C/C++ clients must match this Python ABI.
+# Override architecture defaults injected by CI compiler wrappers.
+HOST_FLAGS = [*FLAGS, "-m32" if ct.sizeof(ct.c_void_p) == 4 else "-m64"]
 
 
 def configuration_checks(cc: str):
@@ -37,11 +40,12 @@ def configuration_checks(cc: str):
     for enabled in [0, 1]:
         options = [f"-DJSON_ENABLE_FLOAT={enabled}", *include]
         target = BUILD / f"configuration_{enabled}.o"
-        subprocess.run([cc, *FLAGS, "-O2", *options, "-c", str(source),
+        subprocess.run([cc, *HOST_FLAGS, "-O2", *options, "-c", str(source),
                         "-o", str(target)], check=True)
         for language in ["c", "c++"]:
             executable = BUILD / f"configuration_{enabled}_{language.replace('+', 'p')}.exe"
-            flags = FLAGS if language == "c" else ["-std=c++20", *FLAGS[1:]]
+            flags = (HOST_FLAGS if language == "c" else
+                     ["-std=c++20", *HOST_FLAGS[1:]])
             command = [cc if language == "c" else cxx, *flags, *options,
                        "-x", language, str(client), "-x", "none", str(target),
                        "-o", str(executable)]
@@ -68,7 +72,7 @@ def configuration_checks(cc: str):
     ]
     for index, (body, defines) in enumerate(probes):
         result = subprocess.run(
-            [cc, *FLAGS, *include, *defines, "-x", "c", "-c", "-",
+            [cc, *HOST_FLAGS, *include, *defines, "-x", "c", "-c", "-",
              "-o", str(BUILD / f"invalid_configuration_{index}.o")],
             input='#include "json.h"\n' + body + "\n", text=True,
             capture_output=True)
@@ -84,7 +88,7 @@ def build(cc: str, sanitize: bool) -> ct.CDLL:
     BUILD.mkdir(parents=True, exist_ok=True)
     library = BUILD / ("json_checks.dll" if sys.platform == "win32" else
                        "json_checks.so")
-    command = [cc, *FLAGS, "-O2", "-g", "-shared", "-I", str(ROOT / "Application/json"),
+    command = [cc, *HOST_FLAGS, "-O2", "-g", "-shared", "-I", str(ROOT / "Application/json"),
                str(ROOT / "Application/json/json.c"), str(HERE / "json_bridge.c"),
                "-o", str(library)]
     if sys.platform != "win32":

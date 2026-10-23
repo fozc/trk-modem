@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 
-from run_checks import BUILD, FLAGS, HERE, ROOT
+from run_checks import BUILD, FLAGS, HOST_FLAGS, HERE, ROOT
 
 
 def function(source, name):
@@ -141,7 +141,7 @@ def build_host(cc, source=None, label=""):
     output = BUILD / ("json_compare" + label + extension)
     sources = [HERE / "compare.c", source or ROOT / "Application/json/json.c",
                ROOT / "Application/libs/xprintf.c"]
-    command = [cc, *FLAGS, "-Wno-array-parameter", "-DUNIT_TEST",
+    command = [cc, *HOST_FLAGS, "-Wno-array-parameter", "-DUNIT_TEST",
                "-DNO_CONSOLE_LOG", "-DNO_SHELL_LOG", "-O2", "-shared", *includes(),
                *map(str, sources), "-o", str(output)]
     if sys.platform != "win32":

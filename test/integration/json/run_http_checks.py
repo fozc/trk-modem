@@ -8,7 +8,7 @@ import json
 import subprocess
 
 from run_comparison import function, includes
-from run_checks import BUILD, FLAGS, HERE, ROOT
+from run_checks import BUILD, HOST_FLAGS, HERE, ROOT
 
 
 def main():
@@ -35,7 +35,7 @@ def main():
         fragments = re.findall(r'"(?:\\.|[^"\\])*"', literal)
         json.loads("".join(ast.literal_eval(part) for part in fragments))
     executable = BUILD / "http_json_checks.exe"
-    command = [args.cc, *FLAGS, "-Wno-array-parameter", "-Wno-sign-conversion",
+    command = [args.cc, *HOST_FLAGS, "-Wno-array-parameter", "-Wno-sign-conversion",
                "-Wno-conversion", "-DUNIT_TEST", "-DNO_CONSOLE_LOG", "-O2",
                *includes(), "-I", str(ROOT / "test/support"),
                str(HERE / "http_fixture.c"), str(ROOT / "Application/json/json.c"),
