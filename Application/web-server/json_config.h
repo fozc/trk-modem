@@ -119,8 +119,15 @@ typedef struct
 } jayirici_rf_config_t;
 
 /* Partial Parser Functions - Alt bolumleri parse et */
-int parse_device_config(const char *json_str, modem_config_t *config);
-bool parse_device_options(const char *json, bool *enabled, bool *has_time);
+typedef struct
+{
+    bool retain_outputs;
+    bool has_time;
+} device_config_options_t;
+
+/* Optional options are published only after the complete document is valid. */
+int parse_device_config(const char *json_str, modem_config_t *config,
+                        device_config_options_t *options);
 
 /* Last synchronous IEC parse/set address error; empty on other errors. */
 const char *json_config_get_iec_address_error(void);

@@ -126,7 +126,7 @@ enum
     DEVICE_IEC_FIRST_TIMEOUT, DEVICE_IEC_IDLE_TIMEOUT, DEVICE_PIN,
     DEVICE_APN, DEVICE_APN_PASSWORD, DEVICE_APN_USERNAME, DEVICE_NTP_SERVER,
     DEVICE_NTP_PORT, DEVICE_TIME, DEVICE_TIMEZONE, DEVICE_RESET_PERIOD,
-    DEVICE_COMMISSIONING_TIME, DEVICE_FIELD_COUNT
+    DEVICE_COMMISSIONING_TIME, DEVICE_RETAIN_OUTPUTS, DEVICE_FIELD_COUNT
 };
 
 static const char *const modbus_keys[] =
@@ -140,7 +140,7 @@ static const char *const device_keys[] =
     "IEC104IlkVeriZamanAsimi", "IEC104BostaKalmaZamanAsimi", "SimKartPin",
     "SimKartAPN", "SimKartAPNSifresi", "SimKartAPNUsername", "NtpServer",
     "NtpServerPortu", "Time", "TimeZone", "PeriyodikModemResetPeriyodu",
-    "DevreyeAlinmaZamani"
+    "DevreyeAlinmaZamani", "PreserveOutputStates"
 };
 
 _Static_assert(sizeof(modbus_keys) / sizeof(modbus_keys[0]) ==
@@ -320,7 +320,8 @@ static bool set_device_u32(modem_config_t *config, size_t field,
 }
 
 static bool set_device_field(modem_config_t *config, size_t field,
-                              const json_token_t *token)
+                              const json_token_t *token,
+                              device_config_options_t *options)
 {
     if (field <= DEVICE_PIN || field == DEVICE_NTP_PORT)
     {
@@ -329,7 +330,20 @@ static bool set_device_field(modem_config_t *config, size_t field,
     if (field == DEVICE_TIME || field == DEVICE_RESET_PERIOD ||
         field == DEVICE_COMMISSIONING_TIME)
     {
-        return set_device_u32(config, field, token);
+        if (!set_device_u32(config, field, token))
+        {
+            return false;
+        }
+        if (field == DEVICE_TIME)
+        {
+            options->has_time = true;
+        }
+        return true;
+    }
+    if (field == DEVICE_RETAIN_OUTPUTS)
+    {
+        return json_token_bool(token, &options->retain_outputs) ==
+               JSON_ERROR_NONE;
     }
     int32_t value;
     switch (field)
@@ -362,24 +376,29 @@ uint32_t compare_old_device(const char *input, size_t length,
                              char *output, size_t capacity)
 {
     modem_config_t config = {0};
+    device_config_options_t options = {.retain_outputs = true};
     (void)length;
-    if (capacity < sizeof(config) || parse_device_config(input, &config) == 0)
+    if (capacity < sizeof(config) + 2U ||
+        parse_device_config(input, &config, &options) == 0)
     {
         return 0U;
     }
     memcpy(output, &config, sizeof(config));
-    return (uint32_t)sizeof(config);
+    output[sizeof(config)] = options.retain_outputs ? 1 : 0;
+    output[sizeof(config) + 1U] = options.has_time ? 1 : 0;
+    return (uint32_t)sizeof(config) + 2U;
 }
 
 uint32_t compare_new_device(const char *input, size_t length,
                              char *output, size_t capacity)
 {
     modem_config_t config = *modem_config_get();
+    device_config_options_t options = {.retain_outputs = true};
     json_reader_t reader;
     json_token_t token;
     char scratch[256];
     json_span_t text = {input, length};
-    if (capacity < sizeof(config) || !open_reader(&reader, scratch, text))
+    if (capacity < sizeof(config) + 2U || !open_reader(&reader, scratch, text))
     {
         return 0U;
     }
@@ -389,7 +408,7 @@ uint32_t compare_new_device(const char *input, size_t length,
                                               &token, &field);
     while (status == JSON_OK)
     {
-        if (!set_device_field(&config, field, &token))
+        if (!set_device_field(&config, field, &token, &options))
         {
             return 0U;
         }
@@ -405,7 +424,9 @@ uint32_t compare_new_device(const char *input, size_t length,
         return 0U;
     }
     memcpy(output, &config, sizeof(config));
-    return (uint32_t)sizeof(config);
+    output[sizeof(config)] = options.retain_outputs ? 1 : 0;
+    output[sizeof(config) + 1U] = options.has_time ? 1 : 0;
+    return (uint32_t)sizeof(config) + 2U;
 }
 
 static system_status_t status_fixture =

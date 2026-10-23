@@ -61,11 +61,6 @@ static bool match_key(config_reader_t *context, json_span_t key)
     return json_token_equals_span(&context->token, key);
 }
 
-static bool skip_unknown_key_value(config_reader_t *context)
-{
-    return skip_value(context);
-}
-
 static bool parse_string(config_reader_t *context, char *text, size_t capacity)
 {
     return json_read(&context->reader, &context->token) == JSON_OK &&
@@ -606,7 +601,8 @@ static bool parse_str_array(config_reader_t *context,
  * ============================================ */
 
 static bool parse_device_config_internal(config_reader_t *str,
-                                         modem_config_t *dev)
+                                         modem_config_t *dev,
+                                         device_config_options_t *options)
 {
     if (!expect_object_start(str))
     {
@@ -724,6 +720,7 @@ static bool parse_device_config_internal(config_reader_t *str,
                 return false;
             }
             dev->time = v32;
+            options->has_time = true;
         }
         else if (match_key(str, JSON_SPAN_LITERAL("TimeZone")))
         {
@@ -750,20 +747,9 @@ static bool parse_device_config_internal(config_reader_t *str,
             }
             dev->commissioning_time = v32;
         }
-        /* RO Fields - Skip these (serial_number, production_date, lifetime,
-         * run_time, modem_firmware_version, rf_firmware_version,
-         * installation_date, coordinates) */
-        else if (match_key(str, JSON_SPAN_LITERAL("SeriNumarasi")) ||
-                 match_key(str, JSON_SPAN_LITERAL("UretimTarihi")) ||
-                 match_key(str, JSON_SPAN_LITERAL("LifeTime")) ||
-                 match_key(str, JSON_SPAN_LITERAL("RunTime")) ||
-                 match_key(str, JSON_SPAN_LITERAL("ModemYazilimVeriyonu")) ||
-                 match_key(str, JSON_SPAN_LITERAL("RFYazilimVeriyonu")) ||
-                 match_key(str, JSON_SPAN_LITERAL("KurulumTarihi")) ||
-                 match_key(str, JSON_SPAN_LITERAL("CihazKoordinati")))
+        else if (match_key(str, JSON_SPAN_LITERAL("PreserveOutputStates")))
         {
-            /* Skip RO field value - these are not written from JSON */
-            if (!skip_value(str))
+            if (!parse_bool(str, &options->retain_outputs))
             {
                 return false;
             }
@@ -771,7 +757,7 @@ static bool parse_device_config_internal(config_reader_t *str,
         /* Unknown fields */
         else
         {
-            if (!skip_unknown_key_value(str))
+            if (!skip_value(str))
             {
                 return false;
             }
@@ -949,7 +935,7 @@ static bool parse_iec_line_config(config_reader_t *str, jiec_line_config_t *hat)
         {
             CSLOG_WARN("[JSON]   WARNING: Unknown key in Hatlar object, "
                        "skipping...\r\n");
-            if (!skip_unknown_key_value(str))
+            if (!skip_value(str))
             {
                 return false;
             }
@@ -1261,7 +1247,7 @@ static bool parse_iec_config_internal(config_reader_t *str, jiec_config_t *iec)
         }
         else
         {
-            if (!skip_unknown_key_value(str))
+            if (!skip_value(str))
             {
                 return false;
             }
@@ -1359,7 +1345,7 @@ static bool parse_modbus_config_internal(config_reader_t *str,
         {
             /* Bilinmeyen anahtarlar (Hat/ADDR_* gibi eski alanlar dahil)
              * yalnizca iyi bicimli iseler atlanir; bozuk icerik reddedilir. */
-            if (!skip_unknown_key_value(str))
+            if (!skip_value(str))
             {
                 return false;
             }
@@ -2156,7 +2142,7 @@ static bool parse_rf_config_internal(config_reader_t *str,
         {
             CSLOG_WARN(
                 "[JSON] WARNING: Unknown key in RF config, skipping...\r\n");
-            if (!skip_unknown_key_value(str))
+            if (!skip_value(str))
             {
                 return false;
             }
@@ -2229,63 +2215,8 @@ static bool parse_rf_config_internal(config_reader_t *str,
  * PUBLIC PARSER FUNCTIONS (Simplified Wrappers)
  * ============================================ */
 
-bool parse_device_options(const char *json, bool *enabled, bool *has_time)
-{
-    if ((NULL == json) || (NULL == enabled))
-    {
-        return false;
-    }
-    config_reader_t cursor;
-    if (!config_reader_init(&cursor, json))
-    {
-        return false;
-    }
-    bool value = *enabled;
-    bool time_present = false;
-    if (!expect_object_start(&cursor))
-    {
-        return false;
-    }
-    while (!is_object_end(&cursor))
-    {
-        if (match_key(&cursor, JSON_SPAN_LITERAL("PreserveOutputStates")))
-        {
-            if (!parse_bool(&cursor, &value))
-            {
-                return false;
-            }
-        }
-        else if (match_key(&cursor, JSON_SPAN_LITERAL("Time")))
-        {
-            uint32_t epoch;
-            if (!parse_uint32(&cursor, &epoch))
-            {
-                return false;
-            }
-            time_present = true;
-        }
-        else if (!skip_unknown_key_value(&cursor))
-        {
-            return false;
-        }
-        else
-        {
-            /* Other device fields are validated by the device parser. */
-        }
-    }
-    if (!config_reader_finish(&cursor))
-    {
-        return false;
-    }
-    *enabled = value;
-    if (has_time != NULL)
-    {
-        *has_time = time_present;
-    }
-    return true;
-}
-
-int parse_device_config(const char *json_str, modem_config_t *config)
+int parse_device_config(const char *json_str, modem_config_t *config,
+                        device_config_options_t *options)
 {
     if (!json_str || !config)
     {
@@ -2307,11 +2238,21 @@ int parse_device_config(const char *json_str, modem_config_t *config)
         memcpy(config, current, sizeof(modem_config_t));
     }
 
-    bool result = parse_device_config_internal(&str, config);
+    device_config_options_t parsed_options = {0};
+    if (options != NULL)
+    {
+        parsed_options.retain_outputs = options->retain_outputs;
+    }
+    bool result = parse_device_config_internal(&str, config, &parsed_options);
     if (!result || !config_reader_finish(&str))
     {
         CSLOG_ERR("[JSON] ERROR: Device config parse failed\r\n");
         return 0;
+    }
+
+    if (options != NULL)
+    {
+        *options = parsed_options;
     }
 
     CSLOG("[JSON] Device config parsed successfully\r\n");
