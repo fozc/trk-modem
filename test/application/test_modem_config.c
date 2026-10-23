@@ -80,22 +80,18 @@ void test_modem_config_scalar_accessors_round_trip(void)
     modem_config_set_web_session_counter(10U);
     modem_config_set_iec_session_counter(20U);
 
-    TEST_ASSERT_EQUAL_UINT32(12345678UL,
-                             modem_config_get_serial_number());
+    TEST_ASSERT_EQUAL_UINT32(12345678UL, modem_config_get_serial_number());
     TEST_ASSERT_EQUAL_UINT16(8080U, modem_config_get_web_port());
     TEST_ASSERT_EQUAL_UINT16(4321U, modem_config_get_sim_pin());
     TEST_ASSERT_EQUAL_UINT16(123U, modem_config_get_ntp_port());
     TEST_ASSERT_EQUAL_UINT32(2000000000UL, modem_config_get_time());
     TEST_ASSERT_EQUAL_INT32(-3, modem_config_get_timezone());
-    TEST_ASSERT_EQUAL_UINT32(1700000000UL,
-                             modem_config_get_production_date());
+    TEST_ASSERT_EQUAL_UINT32(1700000000UL, modem_config_get_production_date());
     TEST_ASSERT_EQUAL_UINT32(987654UL, modem_config_get_lifetime());
     TEST_ASSERT_EQUAL_UINT32(1800000000UL,
                              modem_config_get_commissioning_time());
-    TEST_ASSERT_EQUAL_UINT32(10U,
-                             modem_config_get_web_session_counter());
-    TEST_ASSERT_EQUAL_UINT32(20U,
-                             modem_config_get_iec_session_counter());
+    TEST_ASSERT_EQUAL_UINT32(10U, modem_config_get_web_session_counter());
+    TEST_ASSERT_EQUAL_UINT32(20U, modem_config_get_iec_session_counter());
 }
 
 void test_modem_config_timeout_getters_return_stored_values(void)
@@ -106,13 +102,11 @@ void test_modem_config_timeout_getters_return_stored_values(void)
     stored_config.iec104_idle_timeout_sec = 44U;
 
     TEST_ASSERT_EQUAL_UINT16(11U,
-        modem_config_get_web_first_data_timeout_sec());
-    TEST_ASSERT_EQUAL_UINT16(22U,
-        modem_config_get_web_idle_timeout_sec());
+                             modem_config_get_web_first_data_timeout_sec());
+    TEST_ASSERT_EQUAL_UINT16(22U, modem_config_get_web_idle_timeout_sec());
     TEST_ASSERT_EQUAL_UINT16(33U,
-        modem_config_get_iec104_first_data_timeout_sec());
-    TEST_ASSERT_EQUAL_UINT16(44U,
-        modem_config_get_iec104_idle_timeout_sec());
+                             modem_config_get_iec104_first_data_timeout_sec());
+    TEST_ASSERT_EQUAL_UINT16(44U, modem_config_get_iec104_idle_timeout_sec());
 }
 
 void test_modem_config_strings_are_truncated_and_null_terminated(void)
@@ -155,10 +149,8 @@ void test_modem_config_null_string_inputs_preserve_values(void)
     modem_config_set_imei(NULL);
 
     TEST_ASSERT_EQUAL_STRING("apn", modem_config_get_sim_apn());
-    TEST_ASSERT_EQUAL_STRING("user",
-                             modem_config_get_sim_apn_username());
-    TEST_ASSERT_EQUAL_STRING("pass",
-                             modem_config_get_sim_apn_password());
+    TEST_ASSERT_EQUAL_STRING("user", modem_config_get_sim_apn_username());
+    TEST_ASSERT_EQUAL_STRING("pass", modem_config_get_sim_apn_password());
     TEST_ASSERT_EQUAL_STRING("ntp", modem_config_get_ntp_server());
     TEST_ASSERT_EQUAL_STRING("123456789012345", modem_config_get_imei());
 }
@@ -187,32 +179,28 @@ void test_modem_config_reset_period_is_clamped(void)
 void test_modem_config_coordinates_and_rf_version_are_null_safe(void)
 {
     coordinates_t coordinates = {
-        .mcc = "1234",
-        .mnc = "5678",
-        .lac = "9ABC",
-        .ci = "DEF0"
-    };
+        .mcc = "1234", .mnc = "5678", .lac = "9ABC", .ci = "DEF0"};
     const uint8_t version[4] = {1U, 2U, 3U, 4U};
 
     modem_config_set_coordinates(&coordinates);
     modem_config_set_rf_firmware_version(version);
     TEST_ASSERT_EQUAL_MEMORY(&coordinates, modem_config_get_coordinates(),
                              sizeof(coordinates));
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(version,
-        modem_config_get_rf_firmware_version(), sizeof(version));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(
+        version, modem_config_get_rf_firmware_version(), sizeof(version));
 
     modem_config_set_coordinates(NULL);
     modem_config_set_rf_firmware_version(NULL);
     TEST_ASSERT_EQUAL_MEMORY(&coordinates, modem_config_get_coordinates(),
                              sizeof(coordinates));
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(version,
-        modem_config_get_rf_firmware_version(), sizeof(version));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(
+        version, modem_config_get_rf_firmware_version(), sizeof(version));
 }
 
 void test_modem_config_phone_number_is_bounded_and_terminated(void)
 {
-    phone_number_t input = {{'1', '2', '3', '4', '5', '6', '7', '8',
-                             '9', '0', '\0'}};
+    phone_number_t input = {
+        {'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '\0'}};
     phone_number_t output;
 
     memset(stored_config.phone_num, 'x', sizeof(stored_config.phone_num));
@@ -234,6 +222,11 @@ void test_modem_config_set_copies_writable_fields_and_clamps_period(void)
 
     input.serial_number = 999U;
     input.web_interface_port = 8088U;
+    input.web_first_data_timeout_sec = 50U;
+    input.web_idle_timeout_sec = 5U;
+    input.iec104_first_data_timeout_sec = 55U;
+    input.iec104_idle_timeout_sec = 10U;
+    input.commissioning_time = 1800000000U;
     input.sim_card_pin = 9876U;
     strcpy(input.apn.apn, "internet");
     strcpy(input.apn.user_name, "alice");
@@ -241,13 +234,17 @@ void test_modem_config_set_copies_writable_fields_and_clamps_period(void)
     strcpy(input.ntp_server, "pool.ntp.org");
     input.ntp_server_port = 123U;
     input.time_zone = 3;
-    input.periodic_modem_reset_period =
-        PERIODIC_RESET_PERIOD_MAX_S + 1U;
+    input.periodic_modem_reset_period = PERIODIC_RESET_PERIOD_MAX_S + 1U;
 
     modem_config_set(&input);
 
     TEST_ASSERT_EQUAL_UINT32(0U, stored_config.serial_number);
     TEST_ASSERT_EQUAL_UINT16(8088U, stored_config.web_interface_port);
+    TEST_ASSERT_EQUAL_UINT16(50U, stored_config.web_first_data_timeout_sec);
+    TEST_ASSERT_EQUAL_UINT16(5U, stored_config.web_idle_timeout_sec);
+    TEST_ASSERT_EQUAL_UINT16(55U, stored_config.iec104_first_data_timeout_sec);
+    TEST_ASSERT_EQUAL_UINT16(10U, stored_config.iec104_idle_timeout_sec);
+    TEST_ASSERT_EQUAL_UINT32(1800000000U, stored_config.commissioning_time);
     TEST_ASSERT_EQUAL_UINT16(9876U, stored_config.sim_card_pin);
     TEST_ASSERT_EQUAL_STRING("internet", stored_config.apn.apn);
     TEST_ASSERT_EQUAL_STRING("alice", stored_config.apn.user_name);
@@ -285,12 +282,10 @@ void test_modem_config_imei_accepts_bounded_unterminated_input(void)
     modem_config_set_imei(input);
 
     TEST_ASSERT_EQUAL_MEMORY(input, stored_config.imei, sizeof(input));
-    TEST_ASSERT_EQUAL_UINT8(0U,
-        stored_config.imei[sizeof(stored_config.imei) - 1U]);
-    TEST_ASSERT_EQUAL_UINT32(123U,
-                             modem_config_get_web_session_counter());
-    TEST_ASSERT_EQUAL_UINT32(456U,
-                             modem_config_get_iec_session_counter());
+    TEST_ASSERT_EQUAL_UINT8(
+        0U, stored_config.imei[sizeof(stored_config.imei) - 1U]);
+    TEST_ASSERT_EQUAL_UINT32(123U, modem_config_get_web_session_counter());
+    TEST_ASSERT_EQUAL_UINT32(456U, modem_config_get_iec_session_counter());
 }
 
 void test_modem_config_imei_shorter_and_empty_inputs_replace_old_value(void)

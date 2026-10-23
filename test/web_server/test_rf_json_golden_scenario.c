@@ -16,6 +16,7 @@
  */
 
 #include "unity.h"
+TEST_SOURCE_FILE("json.c")
 
 #include <stdio.h>
 #include <string.h>

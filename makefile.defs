@@ -1,0 +1,16 @@
+# CubeIDE discovers libraries/json through .cproject on regeneration.
+# Keep existing generated Debug/Release makefiles usable until that happens.
+ifeq ($(filter ./libraries/json/json.o,$(OBJS)),)
+USER_OBJS += ./libraries/json/json.o
+JSON_OPT_FLAGS := -Os
+ifeq ($(notdir $(CURDIR)),Debug)
+JSON_OPT_FLAGS := -Og -g3
+endif
+
+./libraries/json/json.o: ../libraries/json/json.c ../libraries/json/json.h
+	python -c "from pathlib import Path; Path('libraries/json').mkdir(parents=True, exist_ok=True)"
+	arm-none-eabi-gcc -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -std=c11 $(JSON_OPT_FLAGS) -ffunction-sections -fdata-sections -Wall -Wextra -Werror -Wshadow -Wconversion -Wdouble-promotion -Wformat=2 -fstack-usage -MMD -MP -c $< -o $@
+
+-include libraries/json/json.d
+.DEFAULT_GOAL := all
+endif

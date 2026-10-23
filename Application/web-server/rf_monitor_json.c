@@ -12,91 +12,54 @@
 #include "rf.h"
 #include "rf_config.h"
 #include "rf_faults.h"
-#include "xprintf.h"
+#include "web_json.h"
 #include <math.h>
 #include <string.h>
 
-typedef struct
-{
-    char *buffer;
-    size_t capacity;
-    size_t length;
-    bool failed;
-} json_writer_t;
-
-static void append(json_writer_t *writer, const char *text)
-{
-    size_t length = strlen(text);
-
-    if (writer->failed)
-    {
-        return;
-    }
-    if (length >= writer->capacity - writer->length)
-    {
-        writer->failed = true;
-        return;
-    }
-    (void)memcpy(&writer->buffer[writer->length], text, length);
-    writer->length += length;
-    writer->buffer[writer->length] = '\0';
-}
-
 static void emit_u32(json_writer_t *writer, const char *name, uint32_t value)
 {
-    char text[96];
 
-    (void)xsnprintf(text, sizeof(text), ",\"%s\":%lu", name,
-                    (unsigned long)value);
-    append(writer, text);
+    web_json_uint32(writer, name, (uint32_t)((unsigned long)value));
 }
 
 static void emit_i32(json_writer_t *writer, const char *name, int32_t value)
 {
-    char text[96];
 
-    (void)xsnprintf(text, sizeof(text), ",\"%s\":%ld", name, (long)value);
-    append(writer, text);
+    web_json_int32(writer, name, (int32_t)((long)value));
 }
 
 static void emit_bool(json_writer_t *writer, const char *name, bool value)
 {
-    char text[96];
 
-    (void)xsnprintf(text, sizeof(text), ",\"%s\":%s", name,
-                    value ? "true" : "false");
-    append(writer, text);
+    web_json_bool(writer, name, value);
 }
 
 static void emit_float(json_writer_t *writer, const char *name, float value,
-                        bool valid)
+                       bool valid)
 {
-    char text[96];
-
+    web_json_key(writer, name);
     if (valid && isfinite(value))
     {
-        (void)xsnprintf(text, sizeof(text), ",\"%s\":%.8e", name,
-                        (double)value);
+        web_json_float(writer, value, 8U);
     }
     else
     {
-        (void)xsnprintf(text, sizeof(text), ",\"%s\":null", name);
+        (void)json_write_null(writer);
     }
-    append(writer, text);
 }
 
 static void emit_live(json_writer_t *writer, const rf_phase_data_t *data,
-                       bool detailed)
+                      bool detailed)
 {
     if (!data->has_live)
     {
-        append(writer, ",\"Live\":null");
+        (void)json_write_key(writer, web_json_span("Live"));
+        (void)json_write_null(writer);
         return;
     }
-    append(writer, ",\"Live\":{\"Source\":");
-    char text[16];
-    (void)xsnprintf(text, sizeof(text), "%u", (unsigned)data->live.source);
-    append(writer, text);
+    (void)json_write_key(writer, web_json_span("Live"));
+    (void)json_write_object_begin(writer);
+    web_json_uint32(writer, "Source", (uint32_t)((unsigned)data->live.source));
     emit_u32(writer, "Seq", data->live.seq);
     emit_u32(writer, "Uptime", data->live.uptime_sec);
     if (detailed)
@@ -105,12 +68,11 @@ static void emit_live(json_writer_t *writer, const rf_phase_data_t *data,
     }
     emit_u32(writer, "State", data->live.state);
     emit_u32(writer, "FaultCount", data->live.fault_count);
-    emit_float(writer, "Irms", data->live.current_amps,
-                data->current_valid);
+    emit_float(writer, "Irms", data->live.current_amps, data->current_valid);
     emit_float(writer, "VTrip", data->live.trip_voltage,
-                data->trip_voltage_valid);
+               data->trip_voltage_valid);
     emit_float(writer, "VRec", data->live.harvest_voltage,
-                data->harvest_voltage_valid);
+               data->harvest_voltage_valid);
     emit_i32(writer, "Temp", data->live.temperature);
     emit_i32(writer, "RSSI", data->live.rssi);
     emit_u32(writer, "Flags", data->live.flags);
@@ -118,21 +80,24 @@ static void emit_live(json_writer_t *writer, const rf_phase_data_t *data,
     emit_bool(writer, "TripFailed", data->live.trip_failed);
     emit_u32(writer, "LogPending", data->live.log_pending);
     emit_u32(writer, "LogWrapLow", data->live.log_wrap_low);
-    append(writer, "}");
+    (void)json_write_object_end(writer);
 }
 
 static void emit_trip(json_writer_t *writer, const rf_phase_data_t *data)
 {
     if (!data->has_trip)
     {
-        append(writer, ",\"Trip\":null");
+        (void)json_write_key(writer, web_json_span("Trip"));
+        (void)json_write_null(writer);
         return;
     }
-    append(writer, ",\"Trip\":{\"Event\":1");
+    (void)json_write_key(writer, web_json_span("Trip"));
+    (void)json_write_object_begin(writer);
+    web_json_int32(writer, "Event", 1);
     emit_u32(writer, "FaultCount", data->trip.fault_count);
     emit_float(writer, "InstantAmps", data->trip.current_amps, true);
     emit_u32(writer, "RxMs", data->last_trip_ms);
-    append(writer, "}");
+    (void)json_write_object_end(writer);
 }
 
 static void emit_anomaly(json_writer_t *writer, uint8_t source, uint8_t path)
@@ -140,34 +105,36 @@ static void emit_anomaly(json_writer_t *writer, uint8_t source, uint8_t path)
     rf_anomaly_data_t data = {0};
 
     (void)rf_get_anomaly(source, path, &data);
-    append(writer, (0U == path) ? ",\"AnomalyLive\":{\"Active\":"
-                                : ",\"AnomalyTrip\":{\"Active\":");
-    append(writer, data.is_active ? "true" : "false");
+    web_json_object(writer, path == 0U ? "AnomalyLive" : "AnomalyTrip");
+    web_json_key(writer, "Active");
+    (void)json_write_bool(writer, data.is_active);
     emit_u32(writer, "Window", data.window);
     emit_u32(writer, "Total", data.total);
-    append(writer, "}");
+    (void)json_write_object_end(writer);
 }
 
 static void emit_phase(json_writer_t *writer, size_t line, size_t phase,
-                        uint32_t now_ms, bool detailed)
+                       uint32_t now_ms, bool detailed)
 {
-    char text[64];
+
     rf_phase_data_t data;
 
-    (void)xsnprintf(text, sizeof(text), "{\"Phase\":%u,\"HasData\":",
-                    (unsigned)(phase + 1U));
-    append(writer, text);
+    (void)json_write_object_begin(writer);
+    web_json_uint32(writer, "Phase", (uint32_t)((unsigned)(phase + 1U)));
+    (void)json_write_key(writer, web_json_span("HasData"));
     if (!rf_get_phase_data(line, (phase_id_t)phase, now_ms, &data))
     {
-        append(writer, "false}");
+        (void)json_write_bool(writer, false);
+        (void)json_write_object_end(writer);
         return;
     }
-    append(writer, "true");
-    (void)xsnprintf(text, sizeof(text),
-                    ",\"Eui64\":\"%02X%02X%02X%02X%02X%02X%02X%02X\"",
-                    data.eui64[0], data.eui64[1], data.eui64[2], data.eui64[3],
-                    data.eui64[4], data.eui64[5], data.eui64[6], data.eui64[7]);
-    append(writer, text);
+    (void)json_write_bool(writer, true);
+    (void)json_write_key(writer, web_json_span("Eui64"));
+    {
+        char hex[RF_EUI64_HEX_LEN];
+        rf_eui64_to_hex(data.eui64, hex);
+        (void)json_write_string(writer, web_json_span(hex));
+    }
     emit_bool(writer, "Online", data.is_online);
     emit_bool(writer, "TripFailedAlarm", data.trip_failed);
     emit_bool(writer, "TripFailureLatched", data.trip_failure_latched);
@@ -178,14 +145,15 @@ static void emit_phase(json_writer_t *writer, size_t line, size_t phase,
     }
     else
     {
-        append(writer, ",\"LiveAgeMs\":null");
+        (void)json_write_key(writer, web_json_span("LiveAgeMs"));
+        (void)json_write_null(writer);
     }
     emit_live(writer, &data, detailed);
     emit_trip(writer, &data);
     uint8_t source = data.source;
     emit_anomaly(writer, source, 0U);
     emit_anomaly(writer, source, 1U);
-    append(writer, "}");
+    (void)json_write_object_end(writer);
 }
 
 static void emit_fault_counts(json_writer_t *writer, size_t line)
@@ -194,76 +162,71 @@ static void emit_fault_counts(json_writer_t *writer, size_t line)
     rf_fault_stats_t count;
     if ((NULL == feeder) || !feeder->in_use ||
         (0U == feeder->config.fider_id) ||
-        !rf_faults_get_stats(feeder->config.zone_id,
-                             feeder->config.fider_id, &count))
+        !rf_faults_get_stats(feeder->config.zone_id, feeder->config.fider_id,
+                             &count))
     {
-        append(writer, ",\"FaultCountsSinceStartup\":null");
+        (void)json_write_key(writer, web_json_span("FaultCountsSinceStartup"));
+        (void)json_write_null(writer);
         return;
     }
-    append(writer, ",\"FaultCountsSinceStartup\":{\"Permanent\":");
-    char text[16];
-    (void)xsnprintf(text, sizeof(text), "%u", (unsigned)count.permanent);
-    append(writer, text);
+    (void)json_write_key(writer, web_json_span("FaultCountsSinceStartup"));
+    (void)json_write_object_begin(writer);
+    web_json_uint32(writer, "Permanent", (uint32_t)((unsigned)count.permanent));
     emit_u32(writer, "Temporary", count.temporary);
     emit_u32(writer, "Uncertain", count.uncertain);
     emit_u32(writer, "Pending", count.pending);
-    append(writer, count.is_final ? ",\"IsFinal\":true" :
-                                    ",\"IsFinal\":false");
-    append(writer, "}");
+    web_json_bool(writer, "IsFinal", count.is_final);
+    (void)json_write_object_end(writer);
 }
 
 static void emit_service_status(json_writer_t *writer)
 {
     rf_service_status_t status;
     rf_get_service_status(&status);
-    append(writer, ",\"Maintenance\":{\"SourceMismatches\":");
-    char text[16];
-    (void)xsnprintf(text, sizeof(text), "%u",
-                    (unsigned)status.source_mismatches);
-    append(writer, text);
+    (void)json_write_key(writer, web_json_span("Maintenance"));
+    (void)json_write_object_begin(writer);
+    web_json_uint32(writer, "SourceMismatches",
+                    (uint32_t)((unsigned)status.source_mismatches));
     emit_u32(writer, "StoreResetReason", status.store_reset_reason);
     emit_u32(writer, "CounterStatus", status.counter_status);
     emit_u32(writer, "EpochFeeder", status.epoch_feeder);
     emit_u32(writer, "EpochPhases", status.epoch_phases);
     emit_u32(writer, "EpochDurationMs", status.epoch_duration_ms);
-    append(writer, "}");
+    (void)json_write_object_end(writer);
 }
 
 bool rf_json_monitor_build(char *buffer, size_t capacity, int32_t line_filter,
-                            uint32_t now_ms, size_t *length)
+                           uint32_t now_ms, size_t *length)
 {
     if ((NULL == buffer) || (NULL == length) || (0U == capacity) ||
         (-1 > line_filter) || (MAX_POWER_LINE_COUNT <= line_filter))
     {
         return false;
     }
-    json_writer_t writer = {buffer, capacity, 0U, false};
+    json_writer_t writer;
+    if (!web_json_init(&writer, buffer, capacity))
+    {
+        return false;
+    }
     size_t start = (0 > line_filter) ? 0U : (size_t)line_filter;
     size_t end = (0 > line_filter) ? (size_t)MAX_POWER_LINE_COUNT : start + 1U;
 
     buffer[0] = '\0';
     *length = 0U;
-    append(&writer, "{\"lines\":[");
+    (void)json_write_object_begin(&writer);
+    (void)json_write_key(&writer, web_json_span("lines"));
+    (void)json_write_array_begin(&writer);
     for (size_t line = start; line < end; line++)
     {
-        char text[48];
-
-        if (start < line)
-        {
-            append(&writer, ",");
-        }
-        (void)xsnprintf(text, sizeof(text), "{\"LineId\":%u,\"Phases\":[",
-                        (unsigned)(line + 1U));
-        append(&writer, text);
+        (void)json_write_object_begin(&writer);
+        web_json_uint32(&writer, "LineId", (uint32_t)((unsigned)(line + 1U)));
+        (void)json_write_key(&writer, web_json_span("Phases"));
+        (void)json_write_array_begin(&writer);
         for (size_t phase = 0U; phase < 3U; phase++)
         {
-            if (0U < phase)
-            {
-                append(&writer, ",");
-            }
             emit_phase(&writer, line, phase, now_ms, (0 <= line_filter));
         }
-        append(&writer, "]");
+        (void)json_write_array_end(&writer);
         /* Per-feeder reads carry counters. Keep the bulk 21-phase
          * response within the existing HTTP buffer. */
         if (0 <= line_filter)
@@ -271,16 +234,11 @@ bool rf_json_monitor_build(char *buffer, size_t capacity, int32_t line_filter,
             emit_fault_counts(&writer, line);
             emit_service_status(&writer);
         }
-        append(&writer, "}");
+        (void)json_write_object_end(&writer);
     }
-    append(&writer, "]}");
-    if (writer.failed)
-    {
-        buffer[0] = '\0';
-        return false;
-    }
-    *length = writer.length;
-    return true;
+    (void)json_write_array_end(&writer);
+    (void)json_write_object_end(&writer);
+    return web_json_finish(&writer, buffer, length);
 }
 
 /*** end of file ***/

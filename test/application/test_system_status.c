@@ -9,6 +9,7 @@
  */
 
 #include "unity.h"
+TEST_SOURCE_FILE("json.c")
 
 #include <stdbool.h>
 #include <stdint.h>

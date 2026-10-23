@@ -27,7 +27,8 @@ for folder in sorted({path.parent for path in (ROOT / "Application").rglob("*.h"
     command += ["-I", str(folder)]
 executable = BUILD / "emit.exe"
 command += [str(source), str(ROOT / "Application/web-server/modbus_map_json.c"),
-            str(ROOT / "Application/libs/xprintf.c"), "-o", str(executable)]
+            str(ROOT / "Application/libs/xprintf.c"),
+            str(ROOT / "libraries/json/json.c"), "-lm", "-o", str(executable)]
 subprocess.run(command, check=True)
 raw = subprocess.check_output([str(executable)])
 metadata = json.loads(raw)

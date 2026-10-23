@@ -11,6 +11,7 @@
 #include "http_handlers.h"
 #include "http_request_parser.h"
 #include "json_config.h"
+TEST_SOURCE_FILE("json.c")
 #include "iec104_util.h"
 #include "mock_iec104_config.h"
 #include "mock_iec104_process.h"
@@ -22,8 +23,10 @@
 #include "mock_elog.h"
 #include "mock_gsm_engine.h"
 #include "mock_nvram.h"
+#include "mock_rtc.h"
 #include <string.h>
 
+TEST_SOURCE_FILE("datetime.c")
 TEST_SOURCE_FILE("http_handlers.c")
 TEST_SOURCE_FILE("modbus_map_json.c")
 TEST_SOURCE_FILE("http_request_parser.c")
@@ -73,8 +76,8 @@ static void expect_save(void)
     iec104_config_sync_ExpectAndReturn(0);
     iec104_process_config_changed_Expect();
     gsm_get_web_client_ip_ExpectAndReturn(0U);
-    elog_log_config_change_Expect(ELOG_CONFIG_IEC104_CHANGED,
-        ELOG_SOURCE_WEB, 0U, "iec104", true);
+    elog_log_config_change_Expect(ELOG_CONFIG_IEC104_CHANGED, ELOG_SOURCE_WEB,
+                                  0U, "iec104", true);
     const char *response =
         "{\"message\":\"IEC104 configuration saved\",\"success\":true}";
     http_send_json_Expect(response, (int)strlen(response));
@@ -83,8 +86,7 @@ static void expect_save(void)
 void test_partial_post_preserves_t3_above_byte_range(void)
 {
     const uint16_t values[] = {300U, 256U, 65525U};
-    for (size_t index = 0U; index < sizeof(values) / sizeof(values[0]);
-         index++)
+    for (size_t index = 0U; index < sizeof(values) / sizeof(values[0]); index++)
     {
         current_config.t3_max = values[index];
         expect_save();
@@ -97,8 +99,8 @@ void test_partial_post_preserves_t3_above_byte_range(void)
 
 void test_periodic_interval_accepts_disabled_and_enabled_boundaries(void)
 {
-    const char *requests[] = {"{\"PeriodicSend\":0}",
-        "{\"PeriodicSend\":1}", "{\"PeriodicSend\":86400}"};
+    const char *requests[] = {"{\"PeriodicSend\":0}", "{\"PeriodicSend\":1}",
+                              "{\"PeriodicSend\":86400}"};
     const uint32_t expected[] = {0U, 1U, 86400U};
     for (size_t index = 0U; sizeof(expected) / sizeof(expected[0]) > index;
          index++)
@@ -106,7 +108,7 @@ void test_periodic_interval_accepts_disabled_and_enabled_boundaries(void)
         expect_save();
         handle_post_iec_config_json(requests[index]);
         TEST_ASSERT_EQUAL_UINT32(expected[index],
-            saved_config.periodical_send_interval);
+                                 saved_config.periodical_send_interval);
         TEST_ASSERT_EQUAL_UINT16(300U, saved_config.t3_max);
     }
 }
@@ -185,8 +187,9 @@ void test_bodyless_firmware_start_rejects_without_changing_progress(void)
     firmware_init_calls = 0U;
     http_send_json_Expect("{\"status\":\"ok\",\"cs\":4096,\"received\":0}", 38);
     handle_fw_start("{\"s\":128,\"h\":1}");
-    TEST_ASSERT_EQUAL_INT(0, http_parse_request(request_text,
-        (int)strlen(request_text), &request));
+    TEST_ASSERT_EQUAL_INT(
+        0,
+        http_parse_request(request_text, (int)strlen(request_text), &request));
     TEST_ASSERT_NULL(request.body);
     http_send_bad_request_Expect();
     handle_fw_start(request.body);
@@ -202,7 +205,9 @@ void test_empty_firmware_start_rejects_without_initializing_flash(void)
     const fw_update_callbacks_t callbacks = {.fw_init = init_firmware};
     fw_update_register_callbacks(&callbacks);
     firmware_init_calls = 0U;
-    http_send_json_Expect("{\"status\":\"error\",\"error\":\"invalid size\"}", 40);
+    /* Bos govde gecerli JSON degildir; ortak cekirdek parser reddeder
+     * ve handler 400 Bad Request gonderir (NULL govde yoluyla ayni). */
+    http_send_bad_request_Expect();
     handle_fw_start("");
     TEST_ASSERT_EQUAL_UINT32(0U, firmware_init_calls);
 }
@@ -216,16 +221,17 @@ static void check_modbus_response(const char *json, int length, int call_count)
     TEST_ASSERT_EQUAL_UINT32(strlen(json), (size_t)length);
     TEST_ASSERT_NOT_NULL(strstr(json, "\"CihazID\":37"));
     TEST_ASSERT_NOT_NULL(strstr(json, "\"BaudRate\":19200"));
-    TEST_ASSERT_NOT_NULL(strstr(json, "\"RegisterMap\":{\"AddressBase\":40000"));
-    TEST_ASSERT_NOT_NULL(strstr(json,
-        "[\"anlik_akim\",1,2,\"FLOAT32\",\"A\"]"));
+    TEST_ASSERT_NOT_NULL(
+        strstr(json, "\"RegisterMap\":{\"AddressBase\":40000"));
+    TEST_ASSERT_NOT_NULL(
+        strstr(json, "[\"anlik_akim\",1,2,\"FLOAT32\",\"A\"]"));
     TEST_ASSERT_EQUAL_CHAR('}', json[(size_t)length - 1U]);
 }
 
 void test_modbus_get_returns_settings_and_read_only_register_metadata(void)
 {
-    modbus_settings = (modbus_configs_t){.device_addr = 37U,
-                                          .baud_rate = 19200U};
+    modbus_settings =
+        (modbus_configs_t){.device_addr = 37U, .baud_rate = 19200U};
     http_handlers_init(modbus_response, sizeof(modbus_response));
     modbus_config_get_ExpectAndReturn(&modbus_settings);
     modbus_config_get_last_error_time_ExpectAndReturn(123U);
@@ -240,7 +246,9 @@ void test_modbus_get_rejects_an_undersized_response_buffer(void)
     http_handlers_init(modbus_response, 256);
     modbus_config_get_ExpectAndReturn(&modbus_settings);
     modbus_config_get_last_error_time_ExpectAndReturn(0U);
-    http_send_error_Expect(500, "Modbus register map exceeds response buffer");
+    /* Yazma akisi ortak http_json_send uzerinden biter; tasan tampon icin
+     * butun endpoint'ler ayni genel 500 mesajini gonderir. */
+    http_send_error_Expect(500, "JSON response exceeds buffer or invalid data");
     handle_get_modbus_config_json();
 }
 
@@ -255,15 +263,16 @@ void test_device_post_saves_output_retention_with_device_configuration(void)
     modem_config_set_Expect(&device);
     modem_config_sync_ExpectAndReturn(0);
     gsm_get_web_client_ip_ExpectAndReturn(0U);
-    elog_log_config_change_Expect(ELOG_CONFIG_DEVICE_CHANGED,
-        ELOG_SOURCE_WEB, 0U, "device", true);
+    elog_log_config_change_Expect(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
+                                  0U, "device", true);
     const char *response =
         "{\"message\":\"Device configuration saved\",\"success\":true}";
     http_send_json_Expect(response, (int)strlen(response));
     handle_post_device_config_json("{\"PreserveOutputStates\":false}");
 }
 
-void test_invalid_output_retention_does_not_stage_or_save_any_configuration(void)
+void test_invalid_output_retention_does_not_stage_or_save_any_configuration(
+    void)
 {
     modem_config_t device = {0};
     device.web_interface_port = 80U;
@@ -272,6 +281,42 @@ void test_invalid_output_retention_does_not_stage_or_save_any_configuration(void
     nvram_retain_output_states_ExpectAndReturn(true);
     http_send_error_Expect(400, "JSON parse error");
     handle_post_device_config_json("{\"PreserveOutputStates\":\"true\"}");
+}
+
+static void expect_device_clock_save(modem_config_t *device, bool clock_ok)
+{
+    modem_config_get_IgnoreAndReturn(device);
+    nvram_retain_output_states_ExpectAndReturn(true);
+    nvram_set_output_retention_ExpectAndReturn(true, true);
+    modem_config_set_Ignore();
+    modem_config_sync_ExpectAndReturn(0);
+    static const rtc_t expected = {.day = 1U, .month = 1U, .year = 26U};
+    rtc_sync_ExpectAndReturn(&expected, clock_ok);
+    gsm_get_web_client_ip_ExpectAndReturn(0U);
+    elog_log_config_change_Expect(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
+                                  0U, "device", clock_ok);
+}
+
+void test_device_time_updates_the_real_clock_service(void)
+{
+    modem_config_t device = {0};
+    device.web_interface_port = 80U;
+    device.ntp_server_port = 123U;
+    expect_device_clock_save(&device, true);
+    const char *response =
+        "{\"message\":\"Device configuration saved\",\"success\":true}";
+    http_send_json_Expect(response, (int)strlen(response));
+    handle_post_device_config_json("{\"Time\":1767225600}");
+}
+
+void test_device_clock_failure_does_not_report_success(void)
+{
+    modem_config_t device = {0};
+    device.web_interface_port = 80U;
+    device.ntp_server_port = 123U;
+    expect_device_clock_save(&device, false);
+    http_send_error_Expect(500, "Configuration saved but clock update failed");
+    handle_post_device_config_json("{\"Time\":1767225600}");
 }
 
 /*** end of file ***/

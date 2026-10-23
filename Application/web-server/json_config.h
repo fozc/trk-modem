@@ -9,41 +9,42 @@
 #ifndef JSON_CONFIG_H_
 #define JSON_CONFIG_H_
 
+#include "../../libraries/json/json.h"
+
 #include <stdint.h>
 #include <stdbool.h>
-#include "types.h"  /* for modem_config_t */
+#include "types.h" /* for modem_config_t */
 
 #define MAX_STRING_LEN 64
 #define MAX_ARRAYS MAX_POWER_LINE_COUNT
 
 /* Ic ice bilinmeyen JSON degerlerinin kabul edilen maksimum derinligi
  * (parser sozlesmesi; testler de bu sabiti kullanir). */
-#define JSON_SKIP_MAX_DEPTH  32U
-
+#define JSON_SKIP_MAX_DEPTH (JSON_MAX_DEPTH - 1U)
 
 #define MAX_LINE_COUNT MAX_POWER_LINE_COUNT
 
 /* Board Status Structure */
- 
+
 /* IEC Config Structure */
 typedef struct
- {
-    bool in_use[MAX_LINE_COUNT];                // Hat kullaniliyor mu
+{
+    bool in_use[MAX_LINE_COUNT]; // Hat kullaniliyor mu
     uint32_t temporary_fault_base[MAX_LINE_COUNT];
     uint32_t permanent_fault_base[MAX_LINE_COUNT];
 
-    uint32_t ioa_r_anlik_akim[MAX_LINE_COUNT];    
-    uint32_t ioa_s_anlik_akim[MAX_LINE_COUNT];    
-    uint32_t ioa_t_anlik_akim[MAX_LINE_COUNT];    
-    uint32_t ioa_r_enerji_varyok[MAX_LINE_COUNT]; 
-    uint32_t ioa_s_enerji_varyok[MAX_LINE_COUNT]; 
-    uint32_t ioa_t_enerji_varyok[MAX_LINE_COUNT]; 
+    uint32_t ioa_r_anlik_akim[MAX_LINE_COUNT];
+    uint32_t ioa_s_anlik_akim[MAX_LINE_COUNT];
+    uint32_t ioa_t_anlik_akim[MAX_LINE_COUNT];
+    uint32_t ioa_r_enerji_varyok[MAX_LINE_COUNT];
+    uint32_t ioa_s_enerji_varyok[MAX_LINE_COUNT];
+    uint32_t ioa_t_enerji_varyok[MAX_LINE_COUNT];
     uint32_t ioa_r_yuk_akimi_varyok[MAX_LINE_COUNT];
     uint32_t ioa_s_yuk_akimi_varyok[MAX_LINE_COUNT];
     uint32_t ioa_t_yuk_akimi_varyok[MAX_LINE_COUNT];
-    uint32_t ioa_r_rfhab_varyok[MAX_LINE_COUNT];    
-    uint32_t ioa_s_rfhab_varyok[MAX_LINE_COUNT];    
-    uint32_t ioa_t_rfhab_varyok[MAX_LINE_COUNT];    
+    uint32_t ioa_r_rfhab_varyok[MAX_LINE_COUNT];
+    uint32_t ioa_s_rfhab_varyok[MAX_LINE_COUNT];
+    uint32_t ioa_t_rfhab_varyok[MAX_LINE_COUNT];
 
     uint32_t ioa_r_trip_failed[MAX_LINE_COUNT];
     uint32_t ioa_s_trip_failed[MAX_LINE_COUNT];
@@ -52,7 +53,7 @@ typedef struct
 } jiec_line_config_t;
 
 // Ana IEC Config yapisi
-typedef struct 
+typedef struct
 {
     uint32_t periodical_send_interval;
     char scada_ip_address[MAX_STRING_LEN];
@@ -77,8 +78,8 @@ typedef struct
  * (modbus_map.h); only the serial-line settings travel over the web. */
 typedef struct
 {
-    uint8_t device_addr;                     // Modbus cihaz adresi 1-247
-    uint8_t stop_bits;                       // 1 (8N1) veya 2 (8N2); default 1
+    uint8_t device_addr; // Modbus cihaz adresi 1-247
+    uint8_t stop_bits;   // 1 (8N1) veya 2 (8N2); default 1
     uint8_t last_error_code;
     uint32_t baud_rate;
 } jmodbus_configs_t;
@@ -89,7 +90,7 @@ typedef struct
     bool in_use[MAX_LINE_COUNT];
     uint8_t hat_id[MAX_LINE_COUNT];
     uint8_t zone_id[MAX_LINE_COUNT];
-    char r_eui64[MAX_LINE_COUNT][RF_EUI64_HEX_LEN];   /* 16-hex, "" = atanmamis */
+    char r_eui64[MAX_LINE_COUNT][RF_EUI64_HEX_LEN]; /* 16-hex, "" = atanmamis */
     char s_eui64[MAX_LINE_COUNT][RF_EUI64_HEX_LEN];
     char t_eui64[MAX_LINE_COUNT][RF_EUI64_HEX_LEN];
     uint8_t mode[MAX_LINE_COUNT];
@@ -117,11 +118,9 @@ typedef struct
     float vtrip_target[MAX_LINE_COUNT];
 } jayirici_rf_config_t;
 
-
-
 /* Partial Parser Functions - Alt bolumleri parse et */
 int parse_device_config(const char *json_str, modem_config_t *config);
-bool parse_output_retention(const char *json, bool *enabled);
+bool parse_device_options(const char *json, bool *enabled, bool *has_time);
 
 /* Last synchronous IEC parse/set address error; empty on other errors. */
 const char *json_config_get_iec_address_error(void);
@@ -130,14 +129,15 @@ int parse_modbus_config(const char *json_str, jmodbus_configs_t *modbus);
 int parse_rf_config(const char *json_str, jayirici_rf_config_t *rf);
 
 /* Global Config Access Functions */
-const modem_config_t* get_device_config(void);
+const modem_config_t *get_device_config(void);
 
 /* Setters return 0 when the change was persisted to flash, -1 when the
  * NVRAM sync failed (the change stays in RAM and is retried on the next
  * save attempt). */
 int set_device_config(const modem_config_t *config);
 
-/* IEC104 and Modbus config setters - No getters needed, use config managers directly */
+/* IEC104 and Modbus config setters - No getters needed, use config managers
+ * directly */
 int set_iec_config(const jiec_config_t *config);
 int set_modbus_config(const jmodbus_configs_t *config);
 
