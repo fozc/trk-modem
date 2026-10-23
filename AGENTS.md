@@ -120,10 +120,12 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   observable behavior; mock hardware/transport boundaries, not the algorithm
   being verified. Include invalid-input behavior and preservation of existing
   valid state where relevant. Host tests do not prove physical timing.
-- Keep the production audit report current when handling its findings:
-  record evidence, changes, test scope and remaining limits. An explicit
-  deferral is not a fix. Recheck current sources before reopening an old
-  finding; do not treat historical line numbers or test counts as current.
+- Do not create standalone evidence or acceptance report documents unless
+  explicitly requested. Report changes, test results and remaining limits
+  in the conversation; keep repeatable tests and usage documentation.
+  An explicit deferral is not a fix. Recheck current sources before
+  reopening an old finding; historical line numbers or counts are not
+  current evidence.
 
 ## Repo-specific constraints
 

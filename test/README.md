@@ -1,109 +1,33 @@
 # Test Altyapısı
 
-**Sürüm:** 1.74
+**Sürüm:** 1.75
 **Tarih:** 2026-10-23
 
-## 23.10.2026 cihaz ayar yazımı ve test runner düzeltmeleri
+## JSON testleri
 
-Dört modem timeout ve commissioning alanının mevcut NVRAM'a aktarımı
-onarıldı. Açık `Time` isteği ortak RTC servisinden geçirilir; kısmi POST
-saat ayarlamaz ve RTC hatası başarı olarak bildirilmez. Cihaz runner'ında
-IEC adres geri yüklemesi hata yolunu da kapsar, SBOTimeout tam eşitlikle
-kontrol edilir; RF POST varsayılan kapalıdır. Eski snapshot'taki Time
-tekrar gönderilmez. Cihazsız 10 regresyon testi
+JSON çekirdeği ve modem HTTP yolları merkezi Ceedling altyapısında sınanır.
+`test/` dizininden aşağıdaki komutlar çalıştırılmalıdır:
+
+```text
+ceedling json:check
+ceedling json:coverage
+ceedling json:arm
+```
+
+`json:check`, Unity testlerini, bağımsız JSON/Unicode/float referanslarını,
+üretim parser/writer karşılaştırmasını ve gerçek HTTP handler testini içerir.
+`json:coverage` en az %95 satır, %90 dal ve %100 fonksiyon kapsamı ister.
+`json:arm` için `ARM_CC` ortam değişkeni hedef derleyiciyi göstermelidir.
+`JSON_BASELINE_SOURCE` verilirse aynı API'ye sahip eski çekirdekle aynı
+süreçte karşılaştırma yapılır. Host süreleri fiziksel cihaz süresi değildir.
+
+Cihazsız runner regresyonları
 `python test/integration/web_device/test_roundtrip_helpers.py` ile çalışır.
-[Kanıt ve sınırlar](reports/2026-10-23-json-device-fixes.md).
-
-## 23.10.2026 JSON çekirdeğinin modem entegrasyonu
-
-Kullanıcı onayıyla dinamik HTTP JSON okuma/yazma yolları ortak çekirdeğe
-alındı. Tam Ceedling 1.682/1.682, bağımsız referanslar, gerçek HTTP
-handler, web auth/transport/navigation ve ARM Release kontrolleri geçti.
-92 ayrı JSON testi; coverage %97,4 satır / %94,1 dal / %100 fonksiyondur.
-Flash farkı +2.176 B, data/BSS farkı sıfırdır. Cihaza yüklenmedi.
-[Kapsam, ölçüm ve sınırlar](reports/2026-10-23-json-modem-integration.md).
-Yeni gerçek handler testi `ceedling json:http` ile çalıştırılır.
-
-## 23.10.2026 JSON span yardımcıları ve isteğe bağlı float
-
-Bağımsız JSON v0.4 için 89 ayrı Unity testi, C11/C++20 istemcileriyle
-float açık/kapalı matris ve tam bağımsız referans paketi geçti. Coverage
-%97,3 satır / %94,3 branch / %100 fonksiyondur. ARM reader 104 B,
-writer float açık 156 B, kapalı 116 B'dir. Yeni makrolar ve bounded
-karşılaştırma kalıcı testlerle doğrulanmıştır; cihaz testi yapılmamıştır.
-Kullanım, kaynak maliyeti ve sınırlar
-[rapordadır](reports/2026-10-23-json-helpers.md).
-
-## 23.10.2026 C11 Clinger host kabulü
-
-86 ayrı JSON Unity testi, dört FPU yuvarlama modu ve yeni 100.000 kısa sayı
-referansı geçti. `-123.125` ve `0.016` için önceki çekirdeğe göre host
-hızlanması 12,85/13,72 kattır; zor mantissa örneği yaklaşık %4 daha yavaştır.
-Coverage %97,3 satır / %93,9 branch / %100 fonksiyondur. ARM statik kaynak
-kapıları geçti; bu sürüm cihazda çalıştırılmadı ve önceki DWT tablosunun
-yerine kullanılamaz. [Rapor](reports/2026-10-23-json-clinger-host.md).
-
-## 23.10.2026 JSON gerçek cihaz kabulü
-
-STM32U375/96 MHz üzerinde aynı 84 Unity testi 0 hata ile geçti. DWT
-kıyasına göre yeni durum writer'ı 1,15 kat, float writer 2,06 kat hızlı;
-float reader örneği yaklaşık 162 kat daha uzun sürdü. Süit stack tepesi
-2.912/4.096 B'dir; shell/test ve kesme yükünü içerir. İmzalı geçici imaj
-sonrasında temiz imaj geri kuruldu; test komutu kaldırıldı ve onaylandı.
-Kalıcı hazırlama aracı `integration/json/build_device.py`'dir.
-[Sonuçlar ve kanıt sınırları](reports/2026-10-23-json-device.md),
-[tekrar çalıştırma](integration/json/DEVICE_TEST.md).
-
-## 23.10.2026 JSON kopyasız skip ve fixed float
-
-`json_skip_value` artık token tamponuna yazmadan tüm sözdizimi/UTF-8/depth
-kontrollerini yapar. `json_write_float_fixed` 0–9 ondalık basamak üretir.
-84 ayrı Unity testi, 996.370 bağımsız fixed format karşılaştırması,
-100.000 mutation × üç parçalanmada sıfır tamponlu skip/normal reader
-eşitliği ve önceki tam referans paketi geçti. Coverage %97,2 satır,
-%93,9 branch, %100 fonksiyondur. Writer ARM bağlamı 164 B olmuştur.
-Kalıcı testler ve ölçüm [özellik raporundadır](reports/2026-10-23-json-stream-fixed.md).
-
-## 23.10.2026 mevcut/yeni JSON karşılaştırması
-
-Writer toplu kopyalama, integer tek tarama ve UTF-8 korunarak ASCII
-hızlandırması, integer cutoff ve float tek tarama sonrasında eklenen
-kopyasız skip/fixed float ile 84 ayrı Unity testi,
-bağımsız karşılaştırmalar, coverage ve ARM kaynak kapıları geçti.
-`JSON_BASELINE_SOURCE`, aynı API'ye sahip önceki `json.c` tam yolu olarak
-verilirse önce/sonra sürümleri aynı süreçte ölçülür; ARM link profilleri de
-iki sürüm için üretilir. Ayrıntılar ve hız/kod boyutu karşılığı
-[sadeleştirme raporundadır](reports/2026-10-23-json-simplification.md).
-
-`ceedling json:compare`, mevcut kaynaklardan üretim fonksiyonlarını çıkarıp
-eşdeğer test adaptörleriyle host sürelerini ölçer. `ARM_CC` verilirse
-Cortex-M33 link boyutları da ölçülür; loglarda kalacak `xprintf` maliyeti
-ayrıca gösterilir. Tam/kısmi/ters sıralı ayarlar, aralık hataları ve 1.002
-durum görüntüsünde aynı sonuç doğrulanır. Karşılaştırma `json:check` ve
-merkezi JSON integration paketine dahildir. Ana uygulamaya geçiş yapılmamıştır.
-Ayrıntılar [karşılaştırma raporundadır](reports/2026-10-23-json-comparison.md).
-
-## 23.10.2026 bağımsız JSON çekirdeği
-
-`libraries/json/json.c/.h` ana uygulamaya bağlanmadan sınanır. `test/`
-dizininde `ceedling json:check`, 84 Unity testi ile bağımsız Python JSON/CRT
-karşılaştırmalarını tek komutta çalıştırır. 2.005 belge, 100.000 bozuk giriş
-× üç parçalanma, 100.000 rastgele float deseni, 7.650 tam yuvarlama eşiği ve
-bütün 1.112.064 Unicode scalar değeri kalıcı test paketindedir.
-Doğrudan float typed helper ayrıca 100.000 sayı metni mutation ile
-bağımsız regex grammar'a karşı sınanır. Sabit seed'de 58.248 bozuk metin
-reddedilir; syntax hata önceliği ve hata halinde hedefin korunması doğrulanır.
-
-`ceedling json:coverage` en az %95 satır, %90 branch ve %100 fonksiyon
-kapsamını şart koşar. `ceedling json:arm`, `ARM_CC` ortam değişkenindeki
-Cortex-M33 derleyicisiyle boyut/stack/bağımlılık sınırlarını kontrol eder.
-`test:all` yerel Unity testlerini; merkezi `integration` ve `critical`
-koşuları karşılaştırmalı JSON paketini de içerir. Test seed'i sabittir;
-üretilen derleme/kapsam dosyaları Git dışında kalır.
-
-API sözleşmesi [kütüphane rehberinde](../libraries/json/README.md), test
-kanıtları ve sınırlar [kabul raporunda](reports/2026-10-23-json-core.md)
-tutulmalıdır. HTTP entegrasyonu ve cihazda süre ölçümü bu aşamaya dahil değildir.
+Canlı cihaz betiğinde RF POST yalnız `--allow-rf-apply` ile açılır; aynı
+ayarların yeniden yazılması bile gerçek RF uygulaması başlatabilir.
+Kullanım sözleşmesi [kütüphane rehberinde](../libraries/json/README.md),
+cihaz test adımları [cihaz test rehberindedir](integration/json/DEVICE_TEST.md).
+Üretilen test ve ölçüm çıktıları yerel build dizininde, Git dışında kalır.
 
 ## 23.10.2026 küçük HTTP kuyruğu ve statik gövde akışı
 
