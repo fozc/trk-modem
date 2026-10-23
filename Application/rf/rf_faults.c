@@ -50,9 +50,6 @@ typedef struct
     cp56time2a_t end;
     cp56time2a_t opening_time;
     cp56time2a_t opening_end;
-    fault_participant_t phases[RF_PHASES];
-    uint64_t created_version;
-    uint64_t last_version;
     uint8_t zone;
     uint8_t feeder;
     uint8_t opening_count;
@@ -63,6 +60,9 @@ typedef struct
     bool failed;
     bool temporary;
     bool opening_ambiguous;
+    fault_participant_t phases[RF_PHASES];
+    uint64_t created_version;
+    uint64_t last_version;
 } fault_group_t;
 
 typedef struct
@@ -81,26 +81,26 @@ typedef struct
 typedef struct
 {
     uint8_t eui64[8];
-    uint16_t boot;
     uint32_t opening_uptime;
     uint32_t live_uptime;
     uint32_t live_seq;
     uint32_t live_ms;
+    closure_state_t closure;
+    uint16_t boot;
+    bool has_live;
+    bool has_opening;
     uint64_t idle_version;
     uint64_t ready_version;
     uint64_t completed_version;
-    closure_state_t closure;
-    bool has_live;
-    bool has_opening;
 } fault_phase_t;
 
 typedef struct
 {
     cp56time2a_t start;
     cp56time2a_t end;
-    uint64_t version;
     bool active;
     bool unknown_time;
+    uint64_t version;
 } fault_gap_t;
 
 /* All accesses belong to cooperative process/shell context, never an ISR. */
