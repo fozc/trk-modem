@@ -155,4 +155,36 @@ void test_pending_tick_at_year_boundary_runs_after_complete_load(void)
     TEST_ASSERT_EQUAL_UINT8(27U, result.year);
 }
 
+void test_calendar_tick_preserves_month_and_leap_day_rollovers(void)
+{
+    static const bsp_rtc_t before[] = {
+        {.millisec = 999U, .second = 59U, .minute = 59U,
+         .hour = 23U, .day = 31U, .month = 1U, .year = 26U},
+        {.millisec = 999U, .second = 59U, .minute = 59U,
+         .hour = 23U, .day = 30U, .month = 4U, .year = 26U},
+        {.millisec = 999U, .second = 59U, .minute = 59U,
+         .hour = 23U, .day = 28U, .month = 2U, .year = 26U},
+        {.millisec = 999U, .second = 59U, .minute = 59U,
+         .hour = 23U, .day = 28U, .month = 2U, .year = 28U},
+        {.millisec = 999U, .second = 59U, .minute = 59U,
+         .hour = 23U, .day = 29U, .month = 2U, .year = 28U}
+    };
+    static const bsp_rtc_t expected[] = {
+        {.day = 1U, .month = 2U, .year = 26U},
+        {.day = 1U, .month = 5U, .year = 26U},
+        {.day = 1U, .month = 3U, .year = 26U},
+        {.day = 29U, .month = 2U, .year = 28U},
+        {.day = 1U, .month = 3U, .year = 28U}
+    };
+
+    for (size_t index = 0U; index < (sizeof(before) / sizeof(before[0]));
+         index++)
+    {
+        bsp_set_datetime(&before[index]);
+        bsp_rtc_process();
+        const bsp_rtc_t actual = bsp_get_datetime();
+        TEST_ASSERT_EQUAL_MEMORY(&expected[index], &actual, sizeof(actual));
+    }
+}
+
 /*** end of file ***/
