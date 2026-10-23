@@ -1,0 +1,123 @@
+=== test_console.log ===
+26/10/23 14:17:17:951 Firmware approved successfully!
+26/10/23 14:17:25:460 [BOOT] Firmware approved: YES
+json-on-device:1:test_json_reader_all_types_and_decoded_key:PASS
+json-on-device:1:test_json_reader_valid_root_values:PASS
+json-on-device:1:test_json_reader_rejects_invalid_grammar:PASS
+json-on-device:1:test_json_reader_every_chunk_size_preserves_events_and_offsets:PASS
+json-on-device:1:test_json_reader_every_two_chunk_split_handles_empty_chunks:PASS
+json-on-device:1:test_json_reader_every_truncation_is_incomplete:PASS
+json-on-device:1:test_json_reader_unicode_boundaries_and_embedded_zero:PASS
+json-on-device:1:test_json_reader_rejects_bad_escapes_and_surrogates:PASS
+json-on-device:1:test_json_reader_all_raw_control_characters_are_rejected:PASS
+json-on-device:1:test_json_reader_depth_exact_limit_and_one_over:PASS
+json-on-device:1:test_json_reader_token_capacity_and_canaries:PASS
+json-on-device:1:test_json_reader_unicode_and_numbers_obey_buffer_limit:PASS
+json-on-device:1:test_json_reader_zero_scratch_accepts_empty_string_and_structure:PASS
+json-on-device:1:test_json_reader_errors_are_sticky_and_do_not_change_output_token:PASS
+json-on-device:1:test_json_reader_rejects_replacing_unconsumed_or_final_input:PASS
+json-on-device:1:test_json_reader_duplicate_keys_are_visible_in_order:PASS
+json-on-device:1:test_json_reader_skips_nested_unknown_value_and_reads_next_field:PASS
+json-on-device:1:test_json_reader_skip_resumes_across_every_byte:PASS
+json-on-device:1:test_json_reader_skip_validates_invalid_unknown_content:PASS
+json-on-device:1:test_json_reader_string_copy_exact_capacity_and_preserves_on_failure:PASS
+json-on-device:1:test_json_reader_argument_validation:PASS
+json-on-device:1:test_json_reader_unconsumed_nonfinal_input_cannot_be_replaced:PASS
+json-on-device:1:test_json_reader_nonfinal_complete_root_needs_final_confirmation:PASS
+json-on-device:1:test_json_reader_skip_handles_all_scalar_and_empty_container_values:PASS
+json-on-device:1:test_json_reader_cannot_switch_to_read_during_pending_skip:PASS
+json-on-device:1:test_json_reader_independent_contexts_can_be_interleaved:PASS
+json-on-device:1:test_json_reader_raw_nul_is_not_end_of_input:PASS
+json-on-device:1:test_json_reader_ascii_runs_keep_unicode_and_escapes_at_every_chunk:PASS
+json-on-device:1:test_json_reader_ascii_run_preserves_error_offset_and_buffer_guards:PASS
+json-on-device:1:test_json_reader_ascii_after_utf8_lead_is_not_a_continuation:PASS
+json-on-device:1:test_json_reader_skip_large_value_needs_no_token_buffer:PASS
+json-on-device:1:test_json_reader_skip_does_not_modify_token_storage:PASS
+json-on-device:1:test_json_reader_zero_buffer_skip_still_validates_content:PASS
+json-on-device:1:test_json_reader_zero_buffer_skip_obeys_depth_limit:PASS
+json-on-device:1:test_json_writer_all_types_expected_json_and_exact_count:PASS
+json-on-device:1:test_json_writer_every_output_segment_size_matches_full_output:PASS
+json-on-device:1:test_json_writer_zero_output_can_pause_without_losing_the_operation:PASS
+json-on-device:1:test_json_writer_all_control_bytes_and_zero_are_escaped:PASS
+json-on-device:1:test_json_writer_empty_key_and_string:PASS
+json-on-device:1:test_json_writer_does_not_overrun_exact_output_capacity:PASS
+json-on-device:1:test_json_writer_values_require_object_key:PASS
+json-on-device:1:test_json_writer_key_requires_object_and_previous_value:PASS
+json-on-device:1:test_json_writer_cannot_close_object_with_missing_value:PASS
+json-on-device:1:test_json_writer_rejects_mismatched_end_and_extra_root:PASS
+json-on-device:1:test_json_writer_finish_checks_empty_and_unclosed_document:PASS
+json-on-device:1:test_json_writer_depth_exact_limit_and_one_over:PASS
+json-on-device:1:test_json_writer_pending_call_rejects_new_operation:PASS
+json-on-device:1:test_json_writer_rejects_nonfinite_float_without_emitting_value:PASS
+json-on-device:1:test_json_writer_rejects_invalid_utf8_before_any_string_bytes:PASS
+json-on-device:1:test_json_writer_raw_number_requires_exact_json_number:PASS
+json-on-device:1:test_json_writer_can_reset_after_error_and_resume_when_idle:PASS
+json-on-device:1:test_json_writer_size_counter_overflow_is_explicit:PASS
+json-on-device:1:test_json_writer_argument_validation:PASS
+json-on-device:1:test_json_writer_independent_pending_contexts_do_not_share_storage:PASS
+json-on-device:1:test_json_writer_integer_output_reference_values:PASS
+json-on-device:1:test_json_writer_bulk_raw_copy_stops_at_size_counter_limit:PASS
+json-on-device:1:test_json_writer_exact_size_counter_limit_is_not_overflow:PASS
+json-on-device:1:test_json_writer_block_wait_then_overflow_keeps_output_guards:PASS
+json-on-device:1:test_json_writer_large_plain_string_and_escapes_match_every_segment:PASS
+json-on-device:1:test_json_writer_ascii_prefix_does_not_hide_invalid_utf8:PASS
+json-on-device:1:test_json_writer_fixed_float_rounding_and_decimal_places:PASS
+json-on-device:1:test_json_writer_fixed_float_resumes_at_every_output_size:PASS
+json-on-device:1:test_json_writer_fixed_float_rejects_invalid_arguments_without_output:PASS
+json-on-device:1:test_json_writer_fixed_float_keeps_its_number_while_pending:PASS
+json-on-device:1:test_json_writer_fixed_float_extremes_preserve_exact_digits:PASS
+json-on-device:1:test_json_numbers_uint32_boundaries_and_unchanged_on_error:PASS
+json-on-device:1:test_json_numbers_int32_boundaries_and_unchanged_on_error:PASS
+json-on-device:1:test_json_numbers_small_unsigned_boundaries:PASS
+json-on-device:1:test_json_numbers_small_signed_boundaries:PASS
+json-on-device:1:test_json_numbers_integer_api_rejects_fraction_and_exponent:PASS
+json-on-device:1:test_json_numbers_converters_validate_fabricated_token_syntax:PASS
+json-on-device:1:test_json_numbers_float_reference_vectors_and_negative_zero:PASS
+json-on-device:1:test_json_numbers_float_range_errors_preserve_destination:PASS
+json-on-device:1:test_json_numbers_float_zero_and_max_rounding_thresholds:PASS
+json-on-device:1:test_json_numbers_float_bounded_significand_and_huge_zero_exponent:PASS
+json-on-device:1:test_json_numbers_float_all_exponents_and_mantissa_edges_round_trip:PASS
+json-on-device:1:test_json_numbers_float_deterministic_random_round_trip:PASS
+json-on-device:1:test_json_numbers_float_common_output_spellings:PASS
+json-on-device:1:test_json_numbers_bool_is_typed_and_preserved_on_error:PASS
+json-on-device:1:test_json_numbers_null_arguments_and_type_mismatch:PASS
+json-on-device:1:test_json_numbers_single_scan_keeps_syntax_error_priority:PASS
+json-on-device:1:test_json_numbers_combined_float_scan_rejects_invalid_tokens:PASS
+json-on-device:1:test_json_numbers_long_float_keeps_syntax_priority_over_digit_limit:PASS
+json-on-device:1:test_json_numbers_cutoff_accepts_last_digit_at_each_integer_limit:PASS
+84 Tests 0 Failures 0 Ignored 
+JSONHW unit failed=0 stack=2912 total=4096
+JSONHW hz=96000000 irq=enabled iterations=128 rounds=9
+JSONHW case=0 new=0 cycles=391 min=385 max=391 stack=944 checksum=298368
+JSONHW case=0 new=1 cycles=310 min=310 max=316 stack=960 checksum=298368
+JSONHW case=1 new=0 cycles=254 min=254 max=260 stack=920 checksum=4608
+JSONHW case=1 new=1 cycles=41102 min=41095 max=41104 stack=1448 checksum=4608
+JSONHW case=2 new=0 cycles=2737 min=2730 max=2737 stack=968 checksum=17280
+JSONHW case=2 new=1 cycles=7323 min=7316 max=7325 stack=1424 checksum=17280
+JSONHW case=3 new=0 cycles=6343 min=6336 max=6345 stack=1016 checksum=17280
+JSONHW case=3 new=1 cycles=16921 min=16915 max=16922 stack=1456 checksum=17280
+JSONHW case=4 new=0 cycles=33617 min=33610 max=33618 stack=1216 checksum=323712
+JSONHW case=4 new=1 cycles=48507 min=48498 max=48567 stack=1656 checksum=323712
+JSONHW case=5 new=0 cycles=66412 min=66405 max=66519 stack=1792 checksum=1025280
+JSONHW case=5 new=1 cycles=57975 min=57974 max=57982 stack=1576 checksum=1025280
+JSONHW case=6 new=0 cycles=13390 min=13384 max=13392 stack=1136 checksum=61056
+JSONHW case=6 new=1 cycles=6492 min=6485 max=6493 stack=1504 checksum=61056
+JSONHW bench PASS
+  1048   26/10/23 14:17:11  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1047   26/10/23 08:59:28  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1045   26/10/21 17:38:04  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1043   26/10/21 13:49:33  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1042   26/10/21 13:34:26  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+=== clean_console.log ===
+26/10/23 14:19:11:416 [BOOT] Firmware approved: YES
+  1049   26/10/23 14:18:50  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1048   26/10/23 14:17:11  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1047   26/10/23 08:59:28  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1045   26/10/21 17:38:04  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1043   26/10/21 13:49:33  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1042   26/10/21 13:34:26  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1040   26/10/20 21:07:00  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+  1039   26/10/20 20:58:53  FW_INSTALL_OK         firmware kurulumu tamamlandi (CRC+imza dogrulandi)
+[RELAY] CH1: OFF
+[RELAY] CH2: OFF
+Command not found

@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-23",
+  "unit_tests": {
+    "tested": 1685,
+    "passed": 1685,
+    "failed": 0,
+    "ignored": 0
+  },
+  "runner_offline_tests": 10,
+  "acceptance_helper_tests": 5,
+  "http_fixture": "PASS",
+  "web_auth_host": "PASS",
+  "release_self_check": "PASS",
+  "before": {
+    "text": 362560,
+    "data": 516,
+    "bss": 126096,
+    "binary": 363080
+  },
+  "after": {
+    "text": 362864,
+    "data": 516,
+    "bss": 126096,
+    "binary": 363384
+  },
+  "flash_delta_bytes": 304,
+  "raw_crc32": "D9E098EA",
+  "hardware_flashed": false,
+  "sources": {
+    "Application/modem_config.c": {
+      "bytes": 9627,
+      "sha256": "05f6c7d803372fb23a63388e59f4a76fd30cc74b8cccdfcffa48ceb0084e9692"
+    },
+    "Application/web-server/http_handlers.c": {
+      "bytes": 82914,
+      "sha256": "544a0c491cbc58c1aac3bd5a735adff1ac28a05d49307f668aa10c2e4d8dc811"
+    },
+    "Application/web-server/json_config.c": {
+      "bytes": 94808,
+      "sha256": "eef70910fe007893bbd18f76c7b1c72bc835f24fe50b2e84f054a77dd39343b6"
+    },
+    "Application/web-server/json_config.h": {
+      "bytes": 4971,
+      "sha256": "29b4be533162172e92da375aee85c58af35168468662abf9f8633b361aeb59d0"
+    },
+    "test/application/test_modem_config.c": {
+      "bytes": 12513,
+      "sha256": "4e17ef59ce535a6e5b7de2ea74cb10e39d0ae07aac3fd3d31c7d843603f41e5e"
+    },
+    "test/web_server/test_http_iec_config_scenario.c": {
+      "bytes": 11605,
+      "sha256": "1ca7060a0159429ce49c421acc5c58832d797114ff9e80a9dd08161cb905cf5f"
+    },
+    "test/web_server/test_json_config_bounds.c": {
+      "bytes": 26190,
+      "sha256": "ac9784c0cf6c3679dbd568bbd14d118fb1c54a8628e0a45673c65eefaead1dbc"
+    },
+    "test/integration/web_device/run_roundtrip.py": {
+      "bytes": 34291,
+      "sha256": "c25b728af7689836fac83853a344c9d91e24f5208ac1257ccda98631dc818bc4"
+    },
+    "test/integration/web_device/test_roundtrip_helpers.py": {
+      "bytes": 7207,
+      "sha256": "c681726b32a2bdd6e804fb26f13ad74814a22cf14770263beeb50cf345cd1667"
+    }
+  },
+  "artifacts": {
+    "Release/troika-smart-breaker-modem_v1.0.1_20261023_192746_ff219be7.efw": {
+      "bytes": 219344,
+      "sha256": "5cb35ab6e7cefc90d5f5be21e425ac6100a4d100f7f74c18a07332506f87826c"
+    },
+    "Release/troika-smart-breaker-modem.bin": {
+      "bytes": 363384,
+      "sha256": "50d9e768b2d88a5c91bd1232e06ee1ba841c1b2d0300b20c9a2d2530c02cfc5b"
+    },
+    "Release/troika-smart-breaker-modem.elf": {
+      "bytes": 509860,
+      "sha256": "8128bd58d647cc457f5d60f3a4dc701732a3468fc899d27b4b04bc4f572d55b9"
+    }
+  }
+}

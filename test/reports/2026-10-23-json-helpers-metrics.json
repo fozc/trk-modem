@@ -1,0 +1,95 @@
+{
+  "Os": {
+    "object_text_rodata_bytes": 7008,
+    "data_bytes": 0,
+    "bss_bytes": 0,
+    "largest_frame_bytes": 480,
+    "frames_over_128": {
+      "float_digits": 352,
+      "parse_float_exact": 480
+    },
+    "undefined_symbols": [
+      "fegetround",
+      "memchr",
+      "memcmp",
+      "memcpy",
+      "memmove",
+      "memset",
+      "strlen"
+    ]
+  },
+  "O2": {
+    "object_text_rodata_bytes": 11229,
+    "data_bytes": 0,
+    "bss_bytes": 0,
+    "largest_frame_bytes": 512,
+    "frames_over_128": {
+      "float_digits": 368,
+      "parse_float_exact": 512
+    },
+    "undefined_symbols": [
+      "fegetround",
+      "memchr",
+      "memcmp",
+      "memcpy",
+      "memmove",
+      "memset",
+      "strlen"
+    ]
+  },
+  "reader_size_bytes": 104,
+  "writer_size_bytes": 156,
+  "float_disabled": {
+    "Os": {
+      "object_text_rodata_bytes": 4678,
+      "largest_frame_bytes": 40,
+      "undefined_symbols": [
+        "memchr",
+        "memcmp",
+        "memcpy",
+        "memmove",
+        "memset",
+        "strlen"
+      ]
+    },
+    "O2": {
+      "object_text_rodata_bytes": 6397,
+      "largest_frame_bytes": 40,
+      "undefined_symbols": [
+        "memchr",
+        "memcmp",
+        "memcpy",
+        "memmove",
+        "memset",
+        "strlen"
+      ]
+    },
+    "reader_size_bytes": 104,
+    "writer_size_bytes": 116
+  },
+  "source_sha256": {
+    "libraries/json/json.h": "a64c26ba7ed6bd68be474ab521a44df9430a11508090ccd0e0b96e7f19fbbec5",
+    "libraries/json/json.c": "7daea30ceb82e2b928d235b8ca7dd8ee6df395009862a2a210d5b3dbafca1b2d",
+    "libraries/json/README.md": "41f1f7b48064b26c5f0e7a19ca89f2d9c6845f2efd8f8163880fc1a569ce2b39",
+    "test/libs/test_json_reader.c": "a73c47e71fff88e5f58b384912abe86923aa80a54d743465797536030be9e9d5",
+    "test/integration/json/configuration.c": "a319ba43a6f80cb925da9dbad5cd9f35d3c4b94b54006b9847cd7a5bfed96314",
+    "test/integration/json/run_checks.py": "6ad994e9c83ad189cb289c41518cd48f6c87a84b561f0f47f563cf6b3bc44500",
+    "test/integration/json/run_target_checks.py": "d2887f667c5f8477a933f3a5afc3add8ee9015fff6dba6b801729acd2f43f53e"
+  },
+  "compiler": "GNU Tools for STM32 14.3.rel1.20251027-0700 / GCC 14.3.1",
+  "unique_unity_tests": 89,
+  "coverage": {
+    "lines": [
+      1055,
+      1084
+    ],
+    "branches": [
+      910,
+      965
+    ],
+    "functions": [
+      86,
+      86
+    ]
+  }
+}

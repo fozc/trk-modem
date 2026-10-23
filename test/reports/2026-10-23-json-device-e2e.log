@@ -1,0 +1,85 @@
+PASS: login_ok 
+PASS: schema_board_all_fields HTTP 200 missing=[]
+PASS: schema_board_numeric_types not numeric=[]
+PASS: schema_device_all_fields HTTP 200 missing=[]
+PASS: schema_iec104_all_fields HTTP 200 missing=[]
+PASS: schema_iec104_array_lengths mismatched=[]
+PASS: schema_modbus_all_fields HTTP 200 keys=['BaudRate', 'CihazID', 'RegisterMap', 'SonHataKodu', 'SonHataZamani', 'StopBits']
+PASS: schema_rf_all_fields HTTP 200 missing=[]
+PASS: schema_rf_array_lengths lines=7 mismatched=[]
+PASS: schema_rf_group_all_fields HTTP 200 missing=[]
+PASS: schema_monitor_rf_fields HTTP 200 lines=1 phases=3
+PASS: schema_faults_valid_json HTTP 200
+PASS: schema_syslogs_valid_json HTTP 200
+PASS: schema_fw_status_fields HTTP 200
+PASS: roundtrip_device_get HTTP 200
+PASS: roundtrip_device_post_verbatim verbatim body rejected (chunks=1)
+PASS: roundtrip_device_stable 
+PASS: roundtrip_iec104_get HTTP 200
+PASS: roundtrip_iec104_post_verbatim verbatim body rejected (chunks=1)
+PASS: roundtrip_iec104_stable 
+PASS: roundtrip_modbus_get HTTP 200
+PASS: roundtrip_modbus_post_verbatim verbatim body rejected (chunks=1)
+PASS: roundtrip_modbus_stable 
+PASS: roundtrip_rf_get HTTP 200
+PASS: roundtrip_rf_post_verbatim verbatim body rejected (chunks=1)
+PASS: roundtrip_rf_stable 
+FAIL: field_device_WebIlkVeriZamanAsimi_transfer ok=True bad=['WebIlkVeriZamanAsimi=45!=50']
+FAIL: field_device_WebBostaKalmaZamanAsimi_transfer ok=True bad=['WebBostaKalmaZamanAsimi=0!=5']
+FAIL: field_device_IEC104IlkVeriZamanAsimi_transfer ok=True bad=['IEC104IlkVeriZamanAsimi=45!=50']
+FAIL: field_device_IEC104BostaKalmaZamanAsimi_transfer ok=True bad=['IEC104BostaKalmaZamanAsimi=0!=5']
+PASS: field_device_NtpServerPortu_transfer ok=True bad=[]
+PASS: field_device_TimeZone_transfer ok=True bad=[]
+FAIL: field_device_DevreyeAlinmaZamani_transfer ok=True bad=['DevreyeAlinmaZamani=0!=1']
+PASS: field_device_PreserveOutputStates_transfer ok=True bad=[]
+PASS: field_device_PeriyodikModemResetPeriyodu_transfer ok=True bad=[]
+PASS: field_device_WebArayuzuPortu_invalid_rejected HTTP 400 
+PASS: field_device_NtpServerPortu_invalid_rejected HTTP 400 
+PASS: field_device_SimKartPin_invalid_rejected HTTP 400 
+PASS: field_device_TimeZone_invalid_rejected HTTP 400 
+PASS: field_device_reset_period_bounds_invalid_rejected HTTP 400 
+PASS: field_device_SimKartAPN_escaped_roundtrip HTTP 200 value='mgbs'
+PASS: field_device_SimKartAPNSifresi_escaped_roundtrip HTTP 200 value='password'
+PASS: field_device_SimKartAPNUsername_escaped_roundtrip HTTP 200 value=''
+PASS: field_device_NtpServer_escaped_roundtrip HTTP 200 value='pool.ntp.org'
+PASS: field_iec104_PeriodicSend_transfer ok=True 840
+PASS: field_iec104_T0_transfer ok=True 91
+PASS: field_iec104_T1_transfer ok=True 46
+PASS: field_iec104_T3_transfer ok=True 61
+PASS: field_iec104_K_transfer ok=True 65
+PASS: field_iec104_W_transfer ok=True 25
+PASS: field_iec104_OriginatorAddr_transfer ok=True 2
+PASS: field_iec104_CommonAddr_transfer ok=True 2
+PASS: field_iec104_SBO_transfer ok=True True
+PASS: field_iec104_SBOTimeout_transfer ok=True 30
+PASS: field_iec104_T2_transfer ok=True 31
+PASS: field_iec104_AkuUyarisi_transfer ok=True bad=[]
+PASS: field_iec104_ModemReset_transfer ok=True bad=[]
+PASS: field_iec104_Hatlar_ioa_transfer HTTP 200 
+PASS: field_iec104_Hatlar_ioa_restored restore=200 unrestored=[] inUse=[False, False, False, False, False, False, False]
+PASS: field_iec104_Port_invalid_rejected HTTP 400 
+PASS: field_iec104_ScadaIPAdresi_invalid_rejected HTTP 400 
+PASS: field_iec104_PeriodicSend_bounds_invalid_rejected HTTP 400 
+PASS: field_iec104_T1_min_invalid_rejected HTTP 400 
+PASS: field_iec104_T3_bounds_invalid_rejected HTTP 400 
+PASS: field_iec104_CommonAddr_invalid_rejected HTTP 400 
+PASS: field_iec104_ScadaIPAdresi_escaped_roundtrip HTTP 200 value='188.59.76.59'
+PASS: field_modbus_CihazID_transfer ok=True 40
+PASS: field_modbus_BaudRate_transfer ok=True 38400
+PASS: field_modbus_StopBits_transfer ok=True 2
+PASS: field_modbus_CihazID_zero_invalid_rejected HTTP 400 
+PASS: field_modbus_CihazID_range_invalid_rejected HTTP 400 
+PASS: field_modbus_BaudRate_invalid_invalid_rejected HTTP 400 
+PASS: field_modbus_RegisterMap_nested_skip HTTP 200
+PASS: field_rf_verbatim_all_keys ok=True 
+PASS: field_rf_ArtimliAkimEsigi_range_rejected HTTP 400
+PASS: field_rf_HatFrekansi_set_rejected HTTP 400
+PASS: structural_device_malformed_400 HTTP 400
+PASS: structural_iec104_malformed_400 HTTP 400
+PASS: structural_modbus_malformed_400 HTTP 400
+PASS: structural_rf_malformed_400 HTTP 400
+PASS: final_device_restored 
+PASS: final_iec104_restored 
+PASS: final_modbus_restored 
+PASS: final_rf_restored 
+RESULT: 5 failure(s)

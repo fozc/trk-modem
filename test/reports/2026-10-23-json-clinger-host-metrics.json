@@ -1,0 +1,313 @@
+{
+  "source_sha256": {
+    "Application\\web-server\\json_config.c": "d1cc3f919d677492540e08b2668235cb1ee39210a12cdd8d13fe48e20c8d966a",
+    "Application\\web-server\\system_status_json.c": "e37f30ebe31a4397c7b1cae5465b6458cae0220331ef2110324ccb467f6d150b",
+    "Application\\libs\\xprintf.c": "eb19af3788c6d8bea90f326a28cd91401f3b41a4a69de0086524ee15dabdbb9b",
+    "libraries\\json\\json.c": "dba40c073e8e14e029250d6b9a60fe84c9b3f76e1a7c60e896c60f3a67b010d3",
+    "libraries\\json\\json.h": "708c282b483c84891128ea95f0869918afac99883904a0f567de8507858c3c34",
+    "Application\\web-server\\json_config.h": "331d8a4e5881ccd6cc0403d003186863c28cf54b6941d082f21a6fb896e7e515",
+    "Application\\system_status.h": "22e2f114cee2150a99b5ac174f74bc306e68603ae52af27565cfbffd1cd2dd46",
+    "Application\\modem_types.h": "600584906b156a5e0a95bb718da78272943edece4cf547d46b3557c75f7943ec",
+    "test\\integration\\json\\compare.c": "aeb2a3fda8458d06fb62b39303e770bc8087d6f53631abced20299a966156ff4",
+    "test\\integration\\json\\run_comparison.py": "53885a3ffc74a0895d8573b1221767fa1ab2aac38d3214ddbcdf0d6b5f700846"
+  },
+  "environment": {
+    "machine": "AMD64",
+    "python": "3.14.6",
+    "clock": "QueryPerformanceCounter()",
+    "host_compiler": "gcc (x86_64-posix-seh-rev3, Built by MinGW-W64 project) 11.2.0"
+  },
+  "host": [
+    {
+      "case": "uint32 read",
+      "input_bytes": 10,
+      "old_us": 0.0123,
+      "new_us": 0.0125,
+      "new_over_old": 1.011,
+      "old_range_us": [
+        0.0122,
+        0.0154
+      ],
+      "new_range_us": [
+        0.0118,
+        0.0231
+      ],
+      "iterations_per_round": 100000,
+      "rounds": 9,
+      "before_us": 0.0122,
+      "before_range_us": [
+        0.0112,
+        0.016
+      ],
+      "speedup_over_before": 0.979
+    },
+    {
+      "case": "float read exact",
+      "input_bytes": 8,
+      "old_us": 0.0086,
+      "new_us": 0.0284,
+      "new_over_old": 3.303,
+      "old_range_us": [
+        0.0084,
+        0.0149
+      ],
+      "new_range_us": [
+        0.0273,
+        0.0392
+      ],
+      "iterations_per_round": 100000,
+      "rounds": 9,
+      "before_us": 0.3643,
+      "before_range_us": [
+        0.3479,
+        0.3995
+      ],
+      "speedup_over_before": 12.849
+    },
+    {
+      "case": "Modbus POST",
+      "input_bytes": 60,
+      "old_us": 0.1875,
+      "new_us": 0.4194,
+      "new_over_old": 2.237,
+      "old_range_us": [
+        0.1611,
+        0.2962
+      ],
+      "new_range_us": [
+        0.3067,
+        0.5022
+      ],
+      "iterations_per_round": 100000,
+      "rounds": 9,
+      "before_us": 0.3961,
+      "before_range_us": [
+        0.2977,
+        0.5158
+      ],
+      "speedup_over_before": 0.944
+    },
+    {
+      "case": "Modbus POST + unknown",
+      "input_bytes": 138,
+      "old_us": 0.6379,
+      "new_us": 1.2307,
+      "new_over_old": 1.929,
+      "old_range_us": [
+        0.3975,
+        0.7373
+      ],
+      "new_range_us": [
+        0.7937,
+        1.3111
+      ],
+      "iterations_per_round": 100000,
+      "rounds": 9,
+      "before_us": 1.0852,
+      "before_range_us": [
+        0.773,
+        1.3327
+      ],
+      "speedup_over_before": 0.882
+    },
+    {
+      "case": "device POST",
+      "input_bytes": 390,
+      "old_us": 2.2412,
+      "new_us": 2.7447,
+      "new_over_old": 1.225,
+      "old_range_us": [
+        1.6472,
+        2.8596
+      ],
+      "new_range_us": [
+        1.8508,
+        3.0995
+      ],
+      "iterations_per_round": 20000,
+      "rounds": 9,
+      "before_us": 2.8899,
+      "before_range_us": [
+        1.9114,
+        3.1338
+      ],
+      "speedup_over_before": 1.053
+    },
+    {
+      "case": "status GET",
+      "input_bytes": 0,
+      "old_us": 3.2735,
+      "new_us": 3.8101,
+      "new_over_old": 1.164,
+      "old_range_us": [
+        2.0758,
+        3.8481
+      ],
+      "new_range_us": [
+        2.301,
+        4.2067
+      ],
+      "iterations_per_round": 20000,
+      "rounds": 9,
+      "before_us": 3.9191,
+      "before_range_us": [
+        2.7151,
+        4.5214
+      ],
+      "speedup_over_before": 1.029
+    },
+    {
+      "case": "float write exact",
+      "input_bytes": 4,
+      "old_us": 0.0887,
+      "new_us": 0.1932,
+      "new_over_old": 2.179,
+      "old_range_us": [
+        0.0719,
+        0.0971
+      ],
+      "new_range_us": [
+        0.1124,
+        0.2069
+      ],
+      "iterations_per_round": 100000,
+      "rounds": 9,
+      "before_us": 0.1865,
+      "before_range_us": [
+        0.1184,
+        0.2058
+      ],
+      "speedup_over_before": 0.966
+    },
+    {
+      "case": "float short fraction",
+      "input_bytes": 5,
+      "old_us": 0.0075,
+      "new_us": 0.0253,
+      "new_over_old": 3.367,
+      "old_range_us": [
+        0.0075,
+        0.0137
+      ],
+      "new_range_us": [
+        0.022,
+        0.0308
+      ],
+      "iterations_per_round": 100000,
+      "rounds": 9,
+      "before_us": 0.3477,
+      "before_range_us": [
+        0.3349,
+        0.3823
+      ],
+      "speedup_over_before": 13.72
+    },
+    {
+      "case": "float fallback mantissa",
+      "input_bytes": 13,
+      "old_us": 0.0129,
+      "new_us": 0.3959,
+      "new_over_old": 30.719,
+      "old_range_us": [
+        0.0128,
+        0.021
+      ],
+      "new_range_us": [
+        0.384,
+        0.4073
+      ],
+      "iterations_per_round": 100000,
+      "rounds": 9,
+      "before_us": 0.3791,
+      "before_range_us": [
+        0.3707,
+        0.3959
+      ],
+      "speedup_over_before": 0.958
+    }
+  ],
+  "behavior": [
+    {
+      "case": "trailing JSON",
+      "old_ok": true,
+      "new_ok": false,
+      "identical": false,
+      "old_value": null,
+      "new_value": null
+    },
+    {
+      "case": "leading zero",
+      "old_ok": true,
+      "new_ok": false,
+      "identical": false,
+      "old_value": null,
+      "new_value": null
+    },
+    {
+      "case": "trailing comma",
+      "old_ok": true,
+      "new_ok": false,
+      "identical": false,
+      "old_value": null,
+      "new_value": null
+    },
+    {
+      "case": "Unicode APN escape",
+      "old_ok": true,
+      "new_ok": true,
+      "identical": false,
+      "old_value": "u0069nternet",
+      "new_value": "internet"
+    },
+    {
+      "case": "overlong APN",
+      "old_ok": true,
+      "new_ok": false,
+      "identical": false,
+      "old_value": "123456789012345",
+      "new_value": null
+    },
+    {
+      "case": "unknown 300-byte string",
+      "old_ok": true,
+      "new_ok": true,
+      "identical": true,
+      "old_value": null,
+      "new_value": null
+    },
+    {
+      "case": "float exponent",
+      "old_ok": false,
+      "new_ok": true,
+      "identical": false,
+      "old_value": null,
+      "new_value": {
+        "value": 100.0,
+        "bits_le": "0000c842"
+      }
+    },
+    {
+      "case": "float rounding 0.016",
+      "old_ok": true,
+      "new_ok": true,
+      "identical": false,
+      "old_value": {
+        "value": 0.01599999889731407,
+        "bits_le": "6e12833c"
+      },
+      "new_value": {
+        "value": 0.01600000075995922,
+        "bits_le": "6f12833c"
+      }
+    },
+    {
+      "case": "float fixed precision",
+      "old_ok": true,
+      "new_ok": true,
+      "identical": false,
+      "old_value": "0.123",
+      "new_value": "0.123456791"
+    }
+  ],
+  "baseline_source_sha256": "ba20c37fd5847e2b8a2c5ed011f92d8334a3512600426d8fbc47146dd5e3cd50"
+}
