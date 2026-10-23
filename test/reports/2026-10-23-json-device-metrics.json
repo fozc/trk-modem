@@ -1,0 +1,176 @@
+{
+  "clock_hz": 96000000,
+  "unit_tests": 84,
+  "unit_failures": 0,
+  "unit_stack_bytes": 2912,
+  "stack_total_bytes": 4096,
+  "interrupts": "enabled",
+  "iterations": 128,
+  "rounds": 9,
+  "measurements": [
+    {
+      "case": 0,
+      "name": "uint32 read",
+      "modern": false,
+      "cycles": 391,
+      "min": 385,
+      "max": 391,
+      "stack_bytes": 944,
+      "checksum": 298368,
+      "microseconds": 4.073
+    },
+    {
+      "case": 0,
+      "name": "uint32 read",
+      "modern": true,
+      "cycles": 310,
+      "min": 310,
+      "max": 316,
+      "stack_bytes": 960,
+      "checksum": 298368,
+      "microseconds": 3.229
+    },
+    {
+      "case": 1,
+      "name": "float read exact",
+      "modern": false,
+      "cycles": 254,
+      "min": 254,
+      "max": 260,
+      "stack_bytes": 920,
+      "checksum": 4608,
+      "microseconds": 2.646
+    },
+    {
+      "case": 1,
+      "name": "float read exact",
+      "modern": true,
+      "cycles": 41102,
+      "min": 41095,
+      "max": 41104,
+      "stack_bytes": 1448,
+      "checksum": 4608,
+      "microseconds": 428.146
+    },
+    {
+      "case": 2,
+      "name": "Modbus POST",
+      "modern": false,
+      "cycles": 2737,
+      "min": 2730,
+      "max": 2737,
+      "stack_bytes": 968,
+      "checksum": 17280,
+      "microseconds": 28.51
+    },
+    {
+      "case": 2,
+      "name": "Modbus POST",
+      "modern": true,
+      "cycles": 7323,
+      "min": 7316,
+      "max": 7325,
+      "stack_bytes": 1424,
+      "checksum": 17280,
+      "microseconds": 76.281
+    },
+    {
+      "case": 3,
+      "name": "Modbus POST + unknown",
+      "modern": false,
+      "cycles": 6343,
+      "min": 6336,
+      "max": 6345,
+      "stack_bytes": 1016,
+      "checksum": 17280,
+      "microseconds": 66.073
+    },
+    {
+      "case": 3,
+      "name": "Modbus POST + unknown",
+      "modern": true,
+      "cycles": 16921,
+      "min": 16915,
+      "max": 16922,
+      "stack_bytes": 1456,
+      "checksum": 17280,
+      "microseconds": 176.26
+    },
+    {
+      "case": 4,
+      "name": "device POST",
+      "modern": false,
+      "cycles": 33617,
+      "min": 33610,
+      "max": 33618,
+      "stack_bytes": 1216,
+      "checksum": 323712,
+      "microseconds": 350.177
+    },
+    {
+      "case": 4,
+      "name": "device POST",
+      "modern": true,
+      "cycles": 48507,
+      "min": 48498,
+      "max": 48567,
+      "stack_bytes": 1656,
+      "checksum": 323712,
+      "microseconds": 505.281
+    },
+    {
+      "case": 5,
+      "name": "status GET",
+      "modern": false,
+      "cycles": 66412,
+      "min": 66405,
+      "max": 66519,
+      "stack_bytes": 1792,
+      "checksum": 1025280,
+      "microseconds": 691.792
+    },
+    {
+      "case": 5,
+      "name": "status GET",
+      "modern": true,
+      "cycles": 57975,
+      "min": 57974,
+      "max": 57982,
+      "stack_bytes": 1576,
+      "checksum": 1025280,
+      "microseconds": 603.906
+    },
+    {
+      "case": 6,
+      "name": "float write exact",
+      "modern": false,
+      "cycles": 13390,
+      "min": 13384,
+      "max": 13392,
+      "stack_bytes": 1136,
+      "checksum": 61056,
+      "microseconds": 139.479
+    },
+    {
+      "case": 6,
+      "name": "float write exact",
+      "modern": true,
+      "cycles": 6492,
+      "min": 6485,
+      "max": 6493,
+      "stack_bytes": 1504,
+      "checksum": 61056,
+      "microseconds": 67.625
+    }
+  ],
+  "sha256": {
+    "libraries\\json\\json.c": "ba20c37fd5847e2b8a2c5ed011f92d8334a3512600426d8fbc47146dd5e3cd50",
+    "libraries\\json\\json.h": "708c282b483c84891128ea95f0869918afac99883904a0f567de8507858c3c34",
+    "test\\integration\\json\\build\\hardware\\test.elf": "0ddf3e0d718fb1b2e2d561aac4dbadd05f4efaab3cb9b6d5c085aa00ce68801d",
+    "test\\integration\\json\\build\\hardware\\test.efw": "b82424435492843a5619b279b5c6eed09f662220c2bceef755577d6c0f67b1dc",
+    "test\\integration\\json\\build\\hardware\\clean\\firmware.efw": "cc082a7be99d8d72f47cd1ed06b2557ba88773a3ace8d9a96232a3abfc5f08ee"
+  },
+  "clean_restored": true,
+  "clean_firmware_approved": true,
+  "test_command_removed": true
+}

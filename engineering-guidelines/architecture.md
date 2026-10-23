@@ -153,6 +153,7 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 
 | Karar | Kapsam ve kaynak |
 |---|---|
+| JSON çekirdeği doğrulamadan sonra modeme alınır | 23.10.2026 kullanıcı kararı: bağımsız `libraries/json/json.c/.h` kabulünden sonra tüm HTTP JSON yollarının geçişi onaylandı. Caller tamponları, parçalı okuma/yazma ve float desteği korunur; double/64 bit dönüşüm yoktur. Alan adları, mevcut sayısal gösterimler ve NVRAM düzeni korunur. Hatalı JSON, sessiz string kırpma ve yanlış sabit cevap uzunlukları düzeltilir. HTTP/GSM taşıması aynı kalır. [API](../libraries/json/README.md), [geçiş kanıtı](../test/reports/2026-10-23-json-modem-integration.md). |
 | HTTP sabit kaynakları küçük kuyrukla gönderilir | 23.10.2026 kullanıcı onayı: GSM TX ring 10 KiB; JSON/RFWU kopyalama yolunda kalır. HTML/gzip gövdeleri program ömürlü kaynak işaretçisi ve kalan uzunlukla, mevcut GSM hazır/gönderim sürecinden ilerler. Yeni flag/kuyruk/heap yoktur. Ayrıntılar [tasarım](../doc/HTTP_KUCUK_TAMPON_TASARIMI.md) ve [uygulama kanıtı](../test/reports/2026-10-23-http-static-stream.md). |
 | Dummy üreticiler korunur | Gerçek veri/altyapı henüz yoktur. Dummy kaldırılmaz; veri kaynağı bulgusu tamamlandı sayılmaz. Üretim raporu §9.3/§9.29. |
 | #if 0 blokları korunur | Kullanıcı açıkça kaldırılmasını istemedikçe kod temizliği kapsamında silinmez. Kök AGENTS.md. |
@@ -191,7 +192,7 @@ yeniden açılmış sayılmamalıdır.
 
 Mevcut depo tercihi: C11 / Embedded C++20; varsayılan C.
 Yeni kod: Allman braces, 4 boşluk, 80 sütun, LF, tab yok;
-sabit karşılaştırmada Yoda; unsigned sabitlerde U;
+karşılaştırmada değişken/fonksiyon solda, sabit sağda; unsigned sabitlerde U;
 sonsuz döngüde for (;;). g_/s_/p_ kullanılmaz.
 Yeni C++ üye adlarında da açıklayıcı snake_case tercih edilir;
 harici API ve mevcut sınıfların isimleri topluca değiştirilmez.
@@ -266,3 +267,4 @@ Bu paketin oluşturulması bu kararların kabulü sayılmaz.
 | 2026-10-08 | 1.2.0 | A09.1: RF web Kaydet onayı ve tüm etkin fiderlerin sıralı uygulaması |
 | 2026-10-10 | 1.3.0 | A09.1: GSM sabit ayarları genel init'te, soket açılışları listener'da ve dinamik SCFG RAM önbelleği |
 | 2026-10-11 | 1.4.0 | A09.1: Eski GSM init fonksiyonları ve dispatcher korunur; yalnız vektör adımları kapatılır |
+| 2026-10-23 | 1.5.0 | A09.1: Bağımsız JSON kabul aşaması; A10: kullanıcı kararıyla klasik karşılaştırmalar |

@@ -1,0 +1,150 @@
+{
+  "date": "2026-10-23",
+  "toolchain": "ARM GCC 14.3.rel1",
+  "baseline_method": "Existing local Release ELF before first integration rebuild; not clean commit comparison",
+  "before": {
+    "text": 360384,
+    "data": 516,
+    "bss": 126096,
+    "binary": 360904
+  },
+  "after": {
+    "text": 362560,
+    "data": 516,
+    "bss": 126096,
+    "binary": 363080
+  },
+  "flash_delta_bytes": 2176,
+  "unit_tests": {
+    "passed": 1682,
+    "failed": 0,
+    "ignored": 0,
+    "scope_note": "Full suite before final static reply length correction; HTTP and auth rechecked after it"
+  },
+  "json_unique_tests": 92,
+  "coverage": {
+    "lines": [
+      1090,
+      1119
+    ],
+    "branches": [
+      931,
+      989
+    ],
+    "functions": [
+      89,
+      89
+    ]
+  },
+  "core_arm": {
+    "os_text_rodata": 7280,
+    "o2_text_rodata": 11403,
+    "float_off_os": 4950,
+    "float_off_o2": 6595,
+    "data": 0,
+    "bss": 0,
+    "reader_bytes": 104,
+    "writer_bytes": 156,
+    "writer_float_off_bytes": 120,
+    "max_single_frame_os": 480,
+    "max_single_frame_o2": 512
+  },
+  "production_single_frames_bytes": {
+    "syslogs": 920,
+    "rf_settings": 800,
+    "terminal": 664,
+    "fault_records": 496,
+    "device_get": 368,
+    "iec_get": 296
+  },
+  "hardware_flashed": false,
+  "physical_timing_measured": false,
+  "sources": {
+    "libraries/json/json.c": {
+      "bytes": 56986,
+      "sha256": "bb9d8c0bcbbe490bec47044e1453e9b2ccde558382fa83c252c68076bb24514d"
+    },
+    "libraries/json/json.h": {
+      "bytes": 8379,
+      "sha256": "7e4b19325a9762c0b826ce049f069358b559d70fdeb3618a0ea9e67811efd16c"
+    },
+    "Application/web-server/web_json.h": {
+      "bytes": 3783,
+      "sha256": "a0eed9105374a8fb93dce192b9efa9b0a4b413ff99840dadfcb6a7effdc21151"
+    },
+    "Application/web-server/json_config.c": {
+      "bytes": 94440,
+      "sha256": "07edc124a957cafa64749cfd5876e31117a7d3b74e4438a963c818ed6c173d9b"
+    },
+    "Application/web-server/json_config.h": {
+      "bytes": 5045,
+      "sha256": "42adb779529b5a3be4c544e8babc261ea0aeb86be6ac49e525624283de57344b"
+    },
+    "Application/web-server/http_handlers.c": {
+      "bytes": 81911,
+      "sha256": "d4a3af83618873c96edac45ecb16159c2d60edefac660ffe961234495aa7d9e4"
+    },
+    "Application/web-server/modbus_map_json.c": {
+      "bytes": 18950,
+      "sha256": "fa539ae9a2390b99360103a383abbd1b13e0f8ce55cfc887c51d78ca51d5254c"
+    },
+    "Application/web-server/modbus_map_json.h": {
+      "bytes": 584,
+      "sha256": "aa10af4c96141799dbb4a4391ed86a72a99b961d5a78d0da6b154a215bcf2439"
+    },
+    "Application/web-server/rf_group_web.c": {
+      "bytes": 5989,
+      "sha256": "a5fb077ed8b09ac8937113ef0fa4a829f1410c44e152afad342b1c58ead9092d"
+    },
+    "Application/web-server/rf_json.c": {
+      "bytes": 8447,
+      "sha256": "b962336f766e3aac2a641a722bc4d6a7cb48e807b9f2f35cbb188c212259284d"
+    },
+    "Application/web-server/rf_monitor_json.c": {
+      "bytes": 8432,
+      "sha256": "53c26206c4911a37f592fd45fe7d7b5a7fd374183c75a19046083ebf4ff5a543"
+    },
+    "Application/web-server/system_status_json.c": {
+      "bytes": 4138,
+      "sha256": "adb111acc77db29c78c856889792972acec4d4863cce51de1ef07ca87f3d6889"
+    },
+    "Application/web-server/web_shell.c": {
+      "bytes": 4616,
+      "sha256": "3e7f33f66013865eaeacf85c711b964e702b1569513fef14208ab90ab3c7e8c5"
+    },
+    "Application/web-server/web_shell.h": {
+      "bytes": 2342,
+      "sha256": "3927d4491bd6cf5909810a50d4d5187c0918395c04114093d4e6bc13951a0957"
+    },
+    "test/integration/json/http_fixture.c": {
+      "bytes": 6923,
+      "sha256": "7b18ff0a3129210e73126f974afa4436fa2ca03030227a799a6f101968d25343"
+    },
+    "test/integration/json/run_http_checks.py": {
+      "bytes": 3662,
+      "sha256": "88a34e2ad1b8ce7299330acb34bb59416cab4ed6d40b525a47e749206fe31e41"
+    },
+    ".cproject": {
+      "bytes": 35937,
+      "sha256": "a2a342f2f9422b5f31e688c53c5695177136373a4311b028b13a0da6956a8a70"
+    },
+    "makefile.defs": {
+      "bytes": 804,
+      "sha256": "787e82215838b2e4c9be272d42a0d178de3725e8784c782e3dba278039b73c41"
+    }
+  },
+  "artifacts": {
+    "Release/troika-smart-breaker-modem.elf": {
+      "bytes": 509796,
+      "sha256": "6a4e415ee9cb41821d66d2794b177a7f566332c05d1495f61088656746376ea1"
+    },
+    "Release/troika-smart-breaker-modem.bin": {
+      "bytes": 363080,
+      "sha256": "6709c4c197888514a638b4541c1549127085e8295b31b638956a1896e416c216"
+    },
+    "Release/troika-smart-breaker-modem_v1.0.1_20261023_185719_ff219be7.efw": {
+      "bytes": 219192,
+      "sha256": "038191d8f26e7e4c8dcba75908adbb2f61ebc45a1f4ec7ff449fc64caab3494e"
+    }
+  }
+}
