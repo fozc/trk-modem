@@ -1,7 +1,40 @@
 # Test Altyapısı
 
-**Sürüm:** 1.58
-**Tarih:** 2026-10-21
+**Sürüm:** 1.62
+**Tarih:** 2026-10-23
+
+## 23.10.2026 küçük HTTP kuyruğu ve statik gövde akışı
+
+GSM ring 10 KiB oldu; HTML/gzip gövdeleri Flash'tan gönderilir. İlgili
+Ceedling 54/54, web auth/transport, web navigation, RFWU 33/33 ve ARM
+Release/EFW doğrulaması geçti. Net RAM kazancı map'te 40.392 bayttır.
+100 KiB statik kaynak, 8 KiB JSON kopyası ve hata/sıralama yolları üretim
+transport kodunda sınandı. Cihaz testi yapılmadı; [uygulama raporuna](reports/2026-10-23-http-static-stream.md) bakılmalıdır.
+
+## 23.10.2026 web kuyruk boyut regresyonu
+
+Minifier testi dinamik yanıtın gerçek GSM kuyruğuna sığmasını ve üç
+gömülü HTML kaynağının byte uzunluklarını denetler. Dil testi üretim sözlük sıkıştırmasının devreye
+girmesini de şart koşar. Tam web navigation, ARM Release ve imzalı paket
+self-check geçti. Index gzip 49.062 → 47.057 bayt oldu; RAM kuyruğu
+değişmedi. Ayrıntılar [boyut raporundadır](reports/2026-10-23-web-size.md).
+
+## 22.10.2026 Configurator kullanım ve günlük akışı
+
+Tam Configurator pytest 46 geçti; GUI smoke geçti. Web günlüklerinin
+toplam/aralık/tümünü okuma akışı kaynak ve gömülü kodda sınandı; tam web
+navigation geçti, audit 42 kontrol ve profile 40 kontrol verdi. Gerçek
+yerel tarayıcıda 237 sentetik kayıtla sayaçlar doğrulandı. Cihaza yazma
+ve yükleme yapılmadı. Ayrıntılar [kullanım raporundadır](reports/2026-10-22-configurator-usability.md).
+
+## 21.10.2026 Configurator ve ortak ayar dosyaları
+
+Yeni masaüstü düzeni 34 pytest ve GUI smoke ile doğrulandı. Program/web
+ortak ayar dosyaları kaynak ve gömülü JavaScript üzerinde 40 kontrolden
+geçti. Tam web navigation ve 36 endüstriyel audit kontrolü geçti.
+Web 1.4.15 ARM Release ve imza self-check geçti; cihaza yüklenmedi.
+Yeni arayüzle gerçek cihazda altı yalnız okuma kontrolü geçti.
+Ayrıntılar [tasarım ve dosya raporundadır](reports/2026-10-21-configurator-ui-profiles.md).
 
 ## 21.10.2026 çıkış durumlarını koruma
 
