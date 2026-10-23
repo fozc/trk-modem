@@ -25,7 +25,7 @@ Cihazsız runner regresyonları
 `python test/integration/web_device/test_roundtrip_helpers.py` ile çalışır.
 Canlı cihaz betiğinde RF POST yalnız `--allow-rf-apply` ile açılır; aynı
 ayarların yeniden yazılması bile gerçek RF uygulaması başlatabilir.
-Kullanım sözleşmesi [kütüphane rehberinde](../libraries/json/README.md),
+Kullanım sözleşmesi [kütüphane rehberinde](../Application/json/README.md),
 cihaz test adımları [cihaz test rehberindedir](integration/json/DEVICE_TEST.md).
 Üretilen test ve ölçüm çıktıları yerel build dizininde, Git dışında kalır.
 
@@ -451,9 +451,8 @@ Xscanf edge paketi INT32_MIN, komşu değerler ve underflow'u içerir.
 
 Merkezi komut `ruby test/run_all.rb unit` olmalıdır. Bu eklemede 20 yeni
 Unity testi vardır; son koşu 1374/1374 PASS'tir. Host IRQ modeli fiziksel
-zamanlama kabulü değildir. Düzeltme ve kanıt sınırları
-[tarama raporu §13](../SKILL_TUM_REPO_TARAMA_RAPORU_2026-10-14.md#13-değerlendirme-ve-düzeltme--14102026)
-ve üretim raporunda tutulur.
+zamanlama kabulü değildir. Test sonuçları ve doğrulama sınırları
+görüşmede paylaşılır.
 
 Sonraki RF alarm log incelemesinde, `test_rf_alarm_log.c` içindeki CMock
 `ExpectAndReturn`/`IgnoreAndReturn` dizisinin `true` döndürürken `out`

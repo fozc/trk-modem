@@ -67,6 +67,7 @@
 									<listOptionValue builtIn="false" value="../Application/libiec104"/>
 									<listOptionValue builtIn="false" value="../Application/bsp"/>
 									<listOptionValue builtIn="false" value="../Application/libs"/>
+									<listOptionValue builtIn="false" value="../Application/json"/>
 									<listOptionValue builtIn="false" value="../Application/libmodbusrtu"/>
 									<listOptionValue builtIn="false" value="../Application/gsm"/>
 									<listOptionValue builtIn="false" value="../Application/web-server"/>
@@ -103,7 +104,6 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="libraries/json"/>
 						<entry excluding="rf/test|web-server/test|libiec104/test|gsm/test|power_board/test|power_board/i2c_slave.c|libs/test|nvram/test|fault_log/test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="Application"/>
 						<entry excluding="arch/cpu/x86|test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="contiki-kernel"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
@@ -175,6 +175,7 @@
 									<listOptionValue builtIn="false" value="../Application/libiec104"/>
 									<listOptionValue builtIn="false" value="../Application/bsp"/>
 									<listOptionValue builtIn="false" value="../Application/libs"/>
+									<listOptionValue builtIn="false" value="../Application/json"/>
 									<listOptionValue builtIn="false" value="../Application/libmodbusrtu"/>
 									<listOptionValue builtIn="false" value="../Application/gsm"/>
 									<listOptionValue builtIn="false" value="../Application/web-server"/>
@@ -218,7 +219,6 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="libraries/json"/>
 						<entry excluding="rf/test|web-server/test|libiec104/test|gsm/test|power_board/test|power_board/i2c_slave.c|libs/test|nvram/test|fault_log/test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="Application"/>
 						<entry excluding="arch/cpu/x86|test" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="contiki-kernel"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>

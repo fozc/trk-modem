@@ -8,7 +8,7 @@
 
 #define CSLOG_MODULE LOG_MOD_HTTP
 #include "json_config.h"
-#include "../../libraries/json/json.h"
+#include "../json/json.h"
 #include "bsp.h"
 #include <string.h>
 #include <ctype.h>

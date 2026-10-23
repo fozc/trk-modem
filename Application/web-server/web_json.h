@@ -10,7 +10,7 @@
 #ifndef WEB_JSON_H
 #define WEB_JSON_H
 
-#include "../../libraries/json/json.h"
+#include "../json/json.h"
 #include "xprintf.h"
 
 #include <string.h>

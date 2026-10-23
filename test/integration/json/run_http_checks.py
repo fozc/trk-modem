@@ -38,7 +38,7 @@ def main():
     command = [args.cc, *FLAGS, "-Wno-array-parameter", "-Wno-sign-conversion",
                "-Wno-conversion", "-DUNIT_TEST", "-DNO_CONSOLE_LOG", "-O2",
                *includes(), "-I", str(ROOT / "test/support"),
-               str(HERE / "http_fixture.c"), str(ROOT / "libraries/json/json.c"),
+               str(HERE / "http_fixture.c"), str(ROOT / "Application/json/json.c"),
                str(ROOT / "Application/libs/xprintf.c"),
                str(ROOT / "Application/libiec104/iec104_util.c"),
                str(ROOT / "Application/libiec104/cp56time2a.c"),

@@ -30,7 +30,7 @@ def main():
     for optimization in ["Os", "O2"]:
         target = BUILD / ("json_arm_" + optimization + ".o")
         subprocess.run([*common, "-" + optimization, "-c",
-                        str(ROOT / "libraries/json/json.c"), "-o", str(target)],
+                        str(ROOT / "Application/json/json.c"), "-o", str(target)],
                        check=True)
         fields = command([size, target]).splitlines()[1].split()
         text_bytes, data_bytes, bss_bytes = map(int, fields[:3])
@@ -62,7 +62,7 @@ def main():
                      'const char reader_size[sizeof(json_reader_t)] = {0};\n'
                      'const char writer_size[sizeof(json_writer_t)] = {0};\n')
     target = BUILD / "json_sizes.o"
-    subprocess.run([*common, "-I", str(ROOT / "libraries/json"), "-c",
+    subprocess.run([*common, "-I", str(ROOT / "Application/json"), "-c",
                     str(probe), "-o", str(target)], check=True)
     for line in command([nm, "-S", target]).splitlines():
         fields = line.split()
@@ -74,7 +74,7 @@ def main():
     for optimization in ["Os", "O2"]:
         target = BUILD / ("json_no_float_" + optimization + ".o")
         subprocess.run([*common, "-DJSON_ENABLE_FLOAT=0", "-" + optimization,
-                        "-c", str(ROOT / "libraries/json/json.c"),
+                        "-c", str(ROOT / "Application/json/json.c"),
                         "-o", str(target)], check=True)
         fields = command([size, target]).splitlines()[1].split()
         text_bytes, data_bytes, bss_bytes = map(int, fields[:3])
@@ -97,7 +97,7 @@ def main():
         }
     target = BUILD / "json_sizes_no_float.o"
     subprocess.run([*common, "-DJSON_ENABLE_FLOAT=0", "-I",
-                    str(ROOT / "libraries/json"), "-c", str(probe),
+                    str(ROOT / "Application/json"), "-c", str(probe),
                     "-o", str(target)], check=True)
     for line in command([nm, "-S", target]).splitlines():
         fields = line.split()

@@ -31,8 +31,8 @@ def configuration_checks(cc: str):
     BUILD.mkdir(parents=True, exist_ok=True)
     compiler = Path(cc)
     cxx = str(compiler.with_name(compiler.name.replace("gcc", "g++")))
-    include = ["-I", str(ROOT / "libraries/json")]
-    source = ROOT / "libraries/json/json.c"
+    include = ["-I", str(ROOT / "Application/json")]
+    source = ROOT / "Application/json/json.c"
     client = HERE / "configuration.c"
     for enabled in [0, 1]:
         options = [f"-DJSON_ENABLE_FLOAT={enabled}", *include]
@@ -84,8 +84,8 @@ def build(cc: str, sanitize: bool) -> ct.CDLL:
     BUILD.mkdir(parents=True, exist_ok=True)
     library = BUILD / ("json_checks.dll" if sys.platform == "win32" else
                        "json_checks.so")
-    command = [cc, *FLAGS, "-O2", "-g", "-shared", "-I", str(ROOT / "libraries/json"),
-               str(ROOT / "libraries/json/json.c"), str(HERE / "json_bridge.c"),
+    command = [cc, *FLAGS, "-O2", "-g", "-shared", "-I", str(ROOT / "Application/json"),
+               str(ROOT / "Application/json/json.c"), str(HERE / "json_bridge.c"),
                "-o", str(library)]
     if sys.platform != "win32":
         command += ["-fPIC", "-lm"]

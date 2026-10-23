@@ -9,7 +9,7 @@
 #ifndef JSON_CONFIG_H_
 #define JSON_CONFIG_H_
 
-#include "../../libraries/json/json.h"
+#include "../json/json.h"
 
 #include <stdint.h>
 #include <stdbool.h>
