@@ -358,15 +358,37 @@ void tearDown(void)
 {
 }
 
-/*** end of file ***/
-
 void test_minimum_signed_values_do_not_overflow_negation(void)
 {
     char buffer[64];
     (void)xsnprintf(buffer, sizeof(buffer), "%d", INT32_MIN);
     TEST_ASSERT_EQUAL_STRING("-2147483648", buffer);
+#if XF_USE_LLI
     (void)xsnprintf(buffer, sizeof(buffer), "%lld", (long long)INT64_MIN);
     TEST_ASSERT_EQUAL_STRING("-9223372036854775808", buffer);
+#endif
+}
+
+void test_integer_limits_preserve_following_arguments(void)
+{
+    char buffer[128];
+
+    (void)xsnprintf(buffer, sizeof(buffer), "%d|%u|%ld|%lu|%u",
+                   -2147483647 - 1, 4294967295U,
+                   -2147483647L - 1L, 4294967295UL, 17U);
+    TEST_ASSERT_EQUAL_STRING(
+        "-2147483648|4294967295|-2147483648|4294967295|17", buffer);
+}
+
+void test_unsigned_limits_preserve_hex_octal_and_binary_output(void)
+{
+    char buffer[96];
+
+    (void)xsnprintf(buffer, sizeof(buffer), "%X|%lx|%o|%b",
+                   4294967295U, 4294967295UL, 4294967295U, 4294967295U);
+    TEST_ASSERT_EQUAL_STRING(
+        "FFFFFFFF|ffffffff|37777777777|11111111111111111111111111111111",
+        buffer);
 }
 
 void test_negative_dynamic_width_retains_left_padding_contract(void)
@@ -440,3 +462,5 @@ void test_null_string_output_is_noop_and_valid_output_still_works(void)
     TEST_ASSERT_EQUAL_INT('A', last_output_char);
     xfunc_output = saved_output;
 }
+
+/*** end of file ***/

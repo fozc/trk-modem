@@ -405,19 +405,30 @@ unsigned int xvfprintf (
 				v = (c == 'd') ? (long long)va_arg(arp, int) : (long long)va_arg(arp, unsigned int);
 			}
 		}
-#else
-		if (f & 4) {	/* long argument? */
-			v = (long)va_arg(arp, long);
-		} else {		/* int/short/char argument */
-			v = (c == 'd') ? (long)va_arg(arp, int) : (long)va_arg(arp, unsigned int);
-		}
-#endif
 		if (c == 'd' && v < 0) {	/* Negative value? */
 			uv = 0ULL - (unsigned long long)v; f |= 1;
 		}
 		else {
 			uv = (unsigned long long)v;
 		}
+#else
+        if (c == 'd')
+        {
+            v = (f & 4U) ? va_arg(arp, long) : (long)va_arg(arp, int);
+            /* Unsigned conversion and subtraction also handle LONG_MIN. */
+            uv = (unsigned long)v;
+            if (v < 0)
+            {
+                uv = 0UL - uv;
+                f |= 1U;
+            }
+        }
+        else
+        {
+            uv = (f & 4U) ? va_arg(arp, unsigned long)
+                          : (unsigned long)va_arg(arp, unsigned int);
+        }
+#endif
 		i = 0;
 		do {	/* Make an integer number string */
 			d = (char)(uv % r); uv /= r;
@@ -790,3 +801,5 @@ int xatof (			/* 0:Failed, 1:Successful */
 #endif /* XF_USE_FP */
 
 #endif /* XF_USE_INPUT */
+
+/*** end of file ***/
