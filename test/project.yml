@@ -19,8 +19,10 @@
   :use_assembly: FALSE
 
 :plugins:
-  :load_paths: []
+  :load_paths:
+    - plugins
   :enabled:
+    - json_checks
     - report_tests_pretty_stdout
     - report_tests_log_factory
     - gcov
@@ -45,9 +47,11 @@
     - +:scp/**
     - +:web_server/**
   :source:
+    - ../libraries/json/**
     - ../Application/**
     - support_sources/**
   :include:
+    - ../libraries/json/**
     - ../Application/**
     - ../contiki-kernel/**
   :support:

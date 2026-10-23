@@ -9,6 +9,7 @@
  */
 
 #include "unity.h"
+TEST_SOURCE_FILE("json.c")
 #include "rf_group.h"
 #include "rf_apply.h"
 #include "rf_config.h"

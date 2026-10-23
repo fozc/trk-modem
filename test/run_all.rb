@@ -15,6 +15,7 @@ INTEGRATION_SUITES = [
   ["fault_log", "fault_log", [[MAKE, "run"]]],
   ["gsm", "gsm", [[MAKE, "run_all"]]],
   ["libs", "libs", [[MAKE, "run"]]],
+  ["json", "json", [[MAKE, "run"]]],
   ["nvram", "nvram", [[MAKE, "run"]]],
   ["rfwu_auth", "rfwu_auth", [[MAKE, "run"]]],
   ["rf_hub_sim", "rf_hub_sim", [[MAKE, "run"]]],
@@ -88,7 +89,7 @@ when "logs"
   results << run_integration(%w[fault_log libs])
 when "critical"
   results << run_unit("test:all")
-  results << run_integration(%w[fault_log libs gsm nvram rfwu_auth
+  results << run_integration(%w[fault_log libs json gsm nvram rfwu_auth
                                 iec104_master web_auth web_navigation])
 when "coverage"
   results << run_unit("clobber")

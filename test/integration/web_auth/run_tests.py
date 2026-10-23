@@ -36,6 +36,7 @@ preamble=r'''
 #include <string.h>
 #include <assert.h>
 #include "http_session_token.h"
+#include "web_json.h"
 #include "bsp_random.h"
 #define USER_ROLE_ADMIN "admin"
 #define USER_ROLE_USER "user"
@@ -61,6 +62,7 @@ static struct {
  char *tx_buffer;
  int tx_buffer_size;
 } handler_state;
+static void http_send_error(int code,const char *text) { (void)text;response_status=code; }
 static uint32_t bsp_get_tick(void) { return test_tick; }
 static bool read_hardware_word(uint32_t *value) {
  if (!entropy_ok) return false;
@@ -82,7 +84,7 @@ static void http_send_response(int status,const char *reason,
  (void)reason;(void)type;(void)body;(void)len;response_status=status;
 }
 '''
-names=['skip_login_whitespace','read_login_ascii_escape','read_login_string','parse_login_credentials','login_lock_is_active','login_lock_register_failure','login_lock_reset','create_login_session','http_handlers_set_auth_from_token','http_handlers_is_admin','handle_post_login','handle_post_logout']
+names=['http_json_init','http_json_send','parse_login_credentials','login_lock_is_active','login_lock_register_failure','login_lock_reset','create_login_session','http_handlers_set_auth_from_token','http_handlers_is_admin','handle_post_login','handle_post_logout']
 code=preamble+extract('Application/bsp/bsp_random.c','bsp_random_fallback_seed')+extract('Application/bsp/bsp_random.c','generate_fallback_word')+extract('Application/bsp/bsp_random.c','bsp_random_word')+'\n\n'.join(extract('Application/web-server/http_handlers.c',n) for n in names)
 code+=r'''
 int main(void) {
@@ -325,6 +327,7 @@ length_preamble = r"""
 #include <string.h>
 #include <stdio.h>
 #include "xprintf.h"
+#include "web_json.h"
 #define CSLOG(...) ((void)0)
 static const char *fw_version=NULL, *fw_build_date="2026-10-03";
 static const char *fw_hardware="TROIKA-SCB-v1";
@@ -333,11 +336,12 @@ static struct {
  bool in_progress;
  uint32_t received_bytes, total_size, file_hash;
 } fw_state;
-static int response_length;
+static int response_length, response_status;
+static void http_send_error(int status,const char *text) { (void)text; response_status=status;response_length=0; }
 static void http_send_json(const char *body,int length) {
  assert(length >= 0 && length < handler_state.tx_buffer_size);
  assert((size_t)length == strlen(body));
- response_length=length;
+ response_length=length; response_status=200;
 }
 """
 handler_source=(root/'Application/web-server/http_handlers.c').read_text(encoding='utf8')
@@ -351,6 +355,8 @@ setter=re.search(r'^void fw_update_set_version_info\([^;]*?\)\s*\{.*?\n\}',
                  handler_source,re.M|re.S)
 if not setter: raise RuntimeError('fw_update_set_version_info')
 length_code+=setter.group(0)+'\n'
+length_code+=extract('Application/web-server/http_handlers.c','http_json_init')+'\n'
+length_code+=extract('Application/web-server/http_handlers.c','http_json_send')+'\n'
 for function in ['handle_get_fw_version', 'handle_get_fw_status']:
  match=re.search(r'^void '+function+r'\(void\)\s*\{.*?\n\}',handler_source,re.M|re.S)
  if not match: raise RuntimeError(function)
@@ -366,10 +372,14 @@ static void check_response(void (*handler)(void), const char *expected) {
   handler_state.tx_buffer=canvas+1;handler_state.tx_buffer_size=capacity;
   handler();
   size_t length=strlen(expected);
-  if(length>(size_t)(capacity-1))length=(size_t)(capacity-1);
-  assert(response_length==(int)length);
-  assert(memcmp(canvas+1,expected,length)==0);
-  assert(canvas[length+1]=='\0');
+  if(length>(size_t)(capacity-1)) {
+   assert(response_status==500 && response_length==0);
+   assert(canvas[1]=='\0');
+  } else {
+   assert(response_status==200 && response_length==(int)length);
+   assert(memcmp(canvas+1,expected,length)==0);
+   assert(canvas[length+1]=='\0');
+  }
   assert(canvas[0]=='*' && canvas[capacity+1]=='*');
  }
 }
@@ -529,7 +539,7 @@ static void http_send_json(const char *data, int length)
 static void http_send_error(int status, const char *text)
 { (void)text; response_status = status; }
 '''
-for name in ['parse_rf_settings','handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort','handle_post_rf_config_json']:
+for name in ['http_json_reply','parse_rf_settings','handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort','handle_post_rf_config_json']:
  group_code += extract('Application/web-server/http_handlers.c',name) + '\n'
 group_code += r'''
 int main(void)
@@ -580,6 +590,9 @@ int main(void)
 outputs=[]
 for name in ['web_auth_changed_repro','at_socket_log_repro','bsp_rng_repro','http_lengths_repro','board_signal_repro','rf_group_handlers_repro']:
  extra=[str(root/'Application/libs/xprintf.c'),'-I'+str(root/'Application/libs'),'-lm'] if name in ['http_lengths_repro', 'board_signal_repro'] else []
+ if name in ['web_auth_changed_repro','http_lengths_repro','board_signal_repro','rf_group_handlers_repro']:
+  extra += [str(root/'libraries/json/json.c'), '-I'+str(root/'Application/libs')]
+
  if name == 'rf_group_handlers_repro':
   extra += ['-I'+str(root/'Application/libiec104'),
             '-I'+str(root/'Application/libmodbusrtu'),

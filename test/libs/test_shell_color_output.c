@@ -8,6 +8,7 @@
 #undef DISABLE_SHELL_LOG
 #include "mock_shell.h"
 #include "web_shell.h"
+TEST_SOURCE_FILE("json.c")
 #include "xprintf.h"
 #include <string.h>
 
@@ -49,30 +50,44 @@ void test_web_shell_filters_color_sequences_and_preserves_text(void)
 {
     char buffer[128];
     sink = web_shell_putchar;
-    web_shell_capture_begin(buffer, (int)sizeof(buffer));
+    json_writer_t writer;
+    TEST_ASSERT_EQUAL(JSON_OK,
+                      json_writer_init(&writer, buffer, sizeof(buffer) - 1U));
+    web_shell_capture_begin(&writer);
     SHELL_CLOG(XCOLOR_RED, "bad %c\"\\\n", 'A');
-    TEST_ASSERT_EQUAL_INT(11, web_shell_capture_end());
-    TEST_ASSERT_EQUAL_STRING("bad A" "\\\"" "\\\\" "\\n", buffer);
+    TEST_ASSERT_EQUAL_INT(15, web_shell_capture_end());
+    buffer[writer.used] = '\0';
+    TEST_ASSERT_EQUAL_STRING("\"bad A\\\"\\\\\\u000a\"", buffer);
 }
 void test_web_shell_escape_state_is_reset_for_each_capture(void)
 {
     char buffer[128];
+    json_writer_t writer;
     sink = web_shell_putchar;
-    web_shell_capture_begin(buffer, (int)sizeof(buffer));
+    TEST_ASSERT_EQUAL(JSON_OK,
+                      json_writer_init(&writer, buffer, sizeof(buffer) - 1U));
+    web_shell_capture_begin(&writer);
     web_shell_putchar(0x1B);
     TEST_ASSERT_EQUAL_INT(0, web_shell_capture_end());
-    web_shell_capture_begin(buffer, (int)sizeof(buffer));
+    TEST_ASSERT_EQUAL(JSON_OK,
+                      json_writer_init(&writer, buffer, sizeof(buffer) - 1U));
+    web_shell_capture_begin(&writer);
     SHELL_LOG("[%c]", 'B');
     TEST_ASSERT_EQUAL_INT(3, web_shell_capture_end());
-    TEST_ASSERT_EQUAL_STRING("[B]", buffer);
+    buffer[writer.used] = '\0';
+    TEST_ASSERT_EQUAL_STRING("\"[B]\"", buffer);
 }
 void test_web_shell_color_does_not_consume_text_capacity(void)
 {
-    char buffer[25];
+    char buffer[64];
+    json_writer_t writer;
     sink = web_shell_putchar;
-    web_shell_capture_begin(buffer, (int)sizeof(buffer));
+    TEST_ASSERT_EQUAL(JSON_OK,
+                      json_writer_init(&writer, buffer, sizeof(buffer) - 1U));
+    web_shell_capture_begin(&writer);
     SHELL_CLOG(XCOLOR_CYAN, "hello");
     TEST_ASSERT_EQUAL_INT(5, web_shell_capture_end());
-    TEST_ASSERT_EQUAL_STRING("hello", buffer);
+    buffer[writer.used] = '\0';
+    TEST_ASSERT_EQUAL_STRING("\"hello\"", buffer);
 }
 /*** end of file ***/

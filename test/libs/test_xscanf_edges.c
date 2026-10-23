@@ -152,4 +152,33 @@ void test_extended_result_reports_null_pointer(void)
     TEST_ASSERT_EQUAL_INT(XSCANF_ERR_NULL_PTR, result.error);
 }
 
+void test_scanner_numeric_prefix_is_not_json_number_validation(void)
+{
+    const char *input[] = {"01", "1e2", "42949672950"};
+    const size_t consumed[] = {2U, 1U, 10U};
+    const uint32_t expected[] = {1U, 1U, UINT32_MAX};
+    for (size_t index = 0U; index < sizeof(input) / sizeof(input[0]); ++index)
+    {
+        xscanf_result_t result;
+        uint32_t value = 73U;
+        TEST_ASSERT_EQUAL_INT(1, xscanf_ex(&result, input[index],
+            strlen(input[index]), "%u32", &value));
+        TEST_ASSERT_EQUAL_INT(XSCANF_OK, result.error);
+        TEST_ASSERT_EQUAL(consumed[index], result.input_pos);
+        TEST_ASSERT_EQUAL_UINT32(expected[index], value);
+    }
+}
+
+void test_scanner_float_format_is_explicitly_unsupported(void)
+{
+    xscanf_result_t result;
+    float value = 73.0F;
+    TEST_ASSERT_EQUAL_INT(0,
+        xscanf_ex(&result, "1.25", 4U, "%f", &value));
+    TEST_ASSERT_EQUAL_INT(XSCANF_ERR_INVALID_FORMAT, result.error);
+    TEST_ASSERT_EQUAL(0U, result.input_pos);
+    const float expected = 73.0F;
+    TEST_ASSERT_EQUAL_MEMORY(&expected, &value, sizeof(value));
+}
+
 /*** end of file ***/

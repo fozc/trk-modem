@@ -34,6 +34,13 @@ void modem_config_set(const modem_config_t* config)
 		return;
 	}
 
+    modem_config->web_first_data_timeout_sec =
+        config->web_first_data_timeout_sec;
+    modem_config->web_idle_timeout_sec = config->web_idle_timeout_sec;
+    modem_config->iec104_first_data_timeout_sec =
+        config->iec104_first_data_timeout_sec;
+    modem_config->iec104_idle_timeout_sec = config->iec104_idle_timeout_sec;
+    modem_config_set_commissioning_time(config->commissioning_time);
 	modem_config_set_web_port(config->web_interface_port);
 	modem_config_set_sim_pin(config->sim_card_pin);
 	modem_config_set_sim_apn(config->apn.apn);
@@ -267,7 +274,7 @@ uint32_t modem_config_get_reset_period(void)
 
 void modem_config_set_reset_period(uint32_t period)
 {
-	/* Y3.13: ust kiskaç — period * CLOCK_SECOND carpimini sarmaya
+    /* Y3.13: upper limit prevents period * CLOCK_SECOND overflow.
 	 * karsi korur (butun yazma yollari bu setter'tan gecer). */
 	if (period > PERIODIC_RESET_PERIOD_MAX_S)
 	{

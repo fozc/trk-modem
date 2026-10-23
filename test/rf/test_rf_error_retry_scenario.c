@@ -8,6 +8,7 @@
  * Verify RF dispatch, bounded retries and startup/inventory flows.
  */
 #include "unity.h"
+TEST_SOURCE_FILE("json.c")
 #include "console_log_enabled.h"
 #include "shell_log_enabled.h"
 #define CSLOG_MODULE LOG_MOD_RF

@@ -8,6 +8,7 @@
  */
 #include "unity.h"
 #include "json_config.h"
+TEST_SOURCE_FILE("json.c")
 #include "iec104_util.h"
 #include "mock_iec104_config.h"
 #include "mock_iec104_process.h"
@@ -73,12 +74,9 @@ void test_modbus_device_id_rejects_zero_and_reserved_addresses(void)
     jmodbus_configs_t config = {0};
     config.stop_bits = 1U;
     config.baud_rate = 9600U;
-    TEST_ASSERT_EQUAL_INT(0,
-        parse_modbus_config("{\"CihazID\":0}", &config));
-    TEST_ASSERT_EQUAL_INT(0,
-        parse_modbus_config("{\"CihazID\":248}", &config));
-    TEST_ASSERT_EQUAL_INT(0,
-        parse_modbus_config("{\"CihazID\":255}", &config));
+    TEST_ASSERT_EQUAL_INT(0, parse_modbus_config("{\"CihazID\":0}", &config));
+    TEST_ASSERT_EQUAL_INT(0, parse_modbus_config("{\"CihazID\":248}", &config));
+    TEST_ASSERT_EQUAL_INT(0, parse_modbus_config("{\"CihazID\":255}", &config));
 }
 
 void test_modbus_device_id_accepts_both_unicast_boundaries(void)
@@ -86,11 +84,9 @@ void test_modbus_device_id_accepts_both_unicast_boundaries(void)
     jmodbus_configs_t config = {0};
     config.stop_bits = 1U;
     config.baud_rate = 9600U;
-    TEST_ASSERT_EQUAL_INT(1,
-        parse_modbus_config("{\"CihazID\":1}", &config));
+    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config("{\"CihazID\":1}", &config));
     TEST_ASSERT_EQUAL_UINT8(1U, config.device_addr);
-    TEST_ASSERT_EQUAL_INT(1,
-        parse_modbus_config("{\"CihazID\":247}", &config));
+    TEST_ASSERT_EQUAL_INT(1, parse_modbus_config("{\"CihazID\":247}", &config));
     TEST_ASSERT_EQUAL_UINT8(247U, config.device_addr);
 }
 
@@ -179,9 +175,8 @@ void test_modbus_stop_bits_missing_preserves_current_value(void)
     /* stop_bits not set (0 from memset) - but the HTTP handler
      * pre-fills from NVRAM before parsing, so it's never truly 0. */
     /* Here we simulate what the handler does: pre-fill then parse. */
-    static modbus_configs_t running = { .device_addr = 5U,
-                                         .stop_bits = 2U,
-                                         .baud_rate = 115200U };
+    static modbus_configs_t running = {
+        .device_addr = 5U, .stop_bits = 2U, .baud_rate = 115200U};
     modbus_config_get_IgnoreAndReturn(&running);
     modbus_config_set_Stub(capture_modbus);
     modbus_config_sync_ExpectAndReturn(0);
@@ -190,7 +185,7 @@ void test_modbus_stop_bits_missing_preserves_current_value(void)
     /* Simulate partial POST: only CihazID and BaudRate in JSON. */
     /* The parser fills config from JSON; missing fields keep the
      * handler's pre-filled values. We verify set receives stop_bits=2. */
-    config.stop_bits = 2U;  /* what the handler would pre-fill */
+    config.stop_bits = 2U; /* what the handler would pre-fill */
     TEST_ASSERT_EQUAL_INT(0, set_modbus_config(&config));
     TEST_ASSERT_EQUAL_UINT8(2U, saved_modbus.stop_bits);
 }
@@ -200,7 +195,7 @@ void test_modbus_stop_bits_missing_preserves_current_value(void)
 void test_parser_stop_bits_1_and_2_accepted(void)
 {
     jmodbus_configs_t parsed = {0};
-    parsed.stop_bits = 1U;  /* pre-fill (handler pattern) */
+    parsed.stop_bits = 1U; /* pre-fill (handler pattern) */
 
     const char *json1 = "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":1}";
     TEST_ASSERT_EQUAL_INT(1, parse_modbus_config(json1, &parsed));
@@ -221,7 +216,8 @@ void test_parser_stop_bits_invalid_values_rejected(void)
     const char *json3 = "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":3}";
     TEST_ASSERT_EQUAL_INT(0, parse_modbus_config(json3, &parsed));
 
-    const char *json255 = "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":255}";
+    const char *json255 =
+        "{\"CihazID\":1,\"BaudRate\":115200,\"StopBits\":255}";
     TEST_ASSERT_EQUAL_INT(0, parse_modbus_config(json255, &parsed));
 }
 
@@ -248,8 +244,7 @@ void test_parser_stop_bits_missing_preserves_current_value(void)
     parsed.stop_bits = 2U;      /* current setting from NVRAM */
     parsed.baud_rate = 115200U; /* pre-filled */
 
-    const char *json_no_stop =
-        "{\"CihazID\":7,\"BaudRate\":9600}";
+    const char *json_no_stop = "{\"CihazID\":7,\"BaudRate\":9600}";
     TEST_ASSERT_EQUAL_INT(1, parse_modbus_config(json_no_stop, &parsed));
 
     /* CihazID and BaudRate updated; StopBits NOT in JSON = preserved. */
@@ -258,9 +253,8 @@ void test_parser_stop_bits_missing_preserves_current_value(void)
     TEST_ASSERT_EQUAL_UINT8(2U, parsed.stop_bits);
 
     /* Full chain: setter receives the parsed struct. */
-    static modbus_configs_t running = { .device_addr = 1U,
-                                         .stop_bits = 2U,
-                                         .baud_rate = 115200U };
+    static modbus_configs_t running = {
+        .device_addr = 1U, .stop_bits = 2U, .baud_rate = 115200U};
     modbus_config_get_IgnoreAndReturn(&running);
     modbus_config_set_Stub(capture_modbus);
     modbus_config_sync_ExpectAndReturn(0);
@@ -298,8 +292,7 @@ void test_iec_common_address_supports_existing_16_bit_range(void)
 {
     TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{\"CommonAddr\":300}", &iec));
     TEST_ASSERT_EQUAL_UINT16(300U, iec.common_address);
-    TEST_ASSERT_EQUAL_INT(1,
-                          parse_iec_config("{\"CommonAddr\":65535}", &iec));
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{\"CommonAddr\":65535}", &iec));
     TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, iec.common_address);
 }
 
@@ -314,8 +307,8 @@ void test_iec_originator_rejects_8_bit_overflow(void)
 
 void test_inactive_sbo_rejects_storage_overflow(void)
 {
-    TEST_ASSERT_EQUAL_INT(0,
-        parse_iec_config("{\"SBO\":false,\"SBOTimeout\":65536}", &iec));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_iec_config("{\"SBO\":false,\"SBOTimeout\":65536}", &iec));
 }
 
 void test_wellformed_unknown_key_is_skipped(void)
@@ -327,9 +320,9 @@ void test_wellformed_unknown_key_is_skipped(void)
 
     /* Unknown keys (e.g. a stray Hat block) are skipped when well-formed;
      * only malformed structure is rejected (see the malformed test). */
-    TEST_ASSERT_EQUAL_INT(1,
-        parse_modbus_config(
-            "{\"Hat\":{\"ADDR_R_AnlikAkim\":[65536]}}", &config));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_modbus_config("{\"Hat\":{\"ADDR_R_AnlikAkim\":[65536]}}",
+                               &config));
 }
 
 void test_modbus_setter_rejects_invalid_device_id_before_writing(void)
@@ -361,8 +354,7 @@ void test_partial_iec_update_preserves_wide_address_in_storage(void)
 void test_common_address_rejects_zero_and_16_bit_overflow(void)
 {
     TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{\"CommonAddr\":0}", &iec));
-    TEST_ASSERT_EQUAL_INT(0,
-                          parse_iec_config("{\"CommonAddr\":65536}", &iec));
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{\"CommonAddr\":65536}", &iec));
 }
 
 void test_sbo_setter_rejects_overflow_before_writing(void)
@@ -373,12 +365,12 @@ void test_sbo_setter_rejects_overflow_before_writing(void)
 
 void test_sbo_keeps_existing_active_timeout_limits(void)
 {
-    TEST_ASSERT_EQUAL_INT(1,
-        parse_iec_config("{\"SBO\":false,\"SBOTimeout\":65535}", &iec));
-    TEST_ASSERT_EQUAL_INT(1,
-        parse_iec_config("{\"SBO\":true,\"SBOTimeout\":300}", &iec));
-    TEST_ASSERT_EQUAL_INT(0,
-        parse_iec_config("{\"SBO\":true,\"SBOTimeout\":301}", &iec));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_iec_config("{\"SBO\":false,\"SBOTimeout\":65535}", &iec));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_iec_config("{\"SBO\":true,\"SBOTimeout\":300}", &iec));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_iec_config("{\"SBO\":true,\"SBOTimeout\":301}", &iec));
 }
 
 void test_modbus_valid_boundary_values_reach_storage_unchanged(void)
@@ -414,24 +406,15 @@ static bool capture_line(uint32_t index, const iec104_line_config_t *line,
 
 static void enable_valid_lines(void)
 {
-    uint32_t *points[] =
-    {
-        iec.line.ioa_r_anlik_akim,
-        iec.line.ioa_s_anlik_akim,
-        iec.line.ioa_t_anlik_akim,
-        iec.line.ioa_r_enerji_varyok,
-        iec.line.ioa_s_enerji_varyok,
-        iec.line.ioa_t_enerji_varyok,
-        iec.line.ioa_r_yuk_akimi_varyok,
-        iec.line.ioa_s_yuk_akimi_varyok,
-        iec.line.ioa_t_yuk_akimi_varyok,
-        iec.line.ioa_r_rfhab_varyok,
-        iec.line.ioa_s_rfhab_varyok,
-        iec.line.ioa_t_rfhab_varyok,
-        iec.line.ioa_r_trip_failed,
-        iec.line.ioa_s_trip_failed,
-        iec.line.ioa_t_trip_failed
-    };
+    uint32_t *points[] = {
+        iec.line.ioa_r_anlik_akim,       iec.line.ioa_s_anlik_akim,
+        iec.line.ioa_t_anlik_akim,       iec.line.ioa_r_enerji_varyok,
+        iec.line.ioa_s_enerji_varyok,    iec.line.ioa_t_enerji_varyok,
+        iec.line.ioa_r_yuk_akimi_varyok, iec.line.ioa_s_yuk_akimi_varyok,
+        iec.line.ioa_t_yuk_akimi_varyok, iec.line.ioa_r_rfhab_varyok,
+        iec.line.ioa_s_rfhab_varyok,     iec.line.ioa_t_rfhab_varyok,
+        iec.line.ioa_r_trip_failed,      iec.line.ioa_s_trip_failed,
+        iec.line.ioa_t_trip_failed};
     for (size_t i = 0U; i < MAX_ARRAYS; i++)
     {
         iec.line.in_use[i] = true;
@@ -455,10 +438,10 @@ void test_iec_rejects_duplicate_global_and_point_addresses(void)
     iec.ioa_modem_reset = iec.ioa_aku_uyarisi;
     TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{}", &iec));
     TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
-    TEST_ASSERT_NOT_NULL(strstr(json_config_get_iec_address_error(),
-                                "AkuUyarisi"));
-    TEST_ASSERT_NOT_NULL(strstr(json_config_get_iec_address_error(),
-                                "ModemReset"));
+    TEST_ASSERT_NOT_NULL(
+        strstr(json_config_get_iec_address_error(), "AkuUyarisi"));
+    TEST_ASSERT_NOT_NULL(
+        strstr(json_config_get_iec_address_error(), "ModemReset"));
     iec.ioa_modem_reset = 10001U;
     enable_valid_lines();
     iec.line.ioa_r_anlik_akim[0] = iec.ioa_aku_uyarisi;
@@ -508,21 +491,13 @@ void test_iec_rejects_zero_and_ioa_overflow_before_writing(void)
 void test_iec_all_point_fields_check_range_and_uniqueness(void)
 {
     enable_valid_lines();
-    uint32_t *points[] =
-    {
-        iec.line.ioa_r_anlik_akim,
-        iec.line.ioa_s_anlik_akim,
-        iec.line.ioa_t_anlik_akim,
-        iec.line.ioa_r_enerji_varyok,
-        iec.line.ioa_s_enerji_varyok,
-        iec.line.ioa_t_enerji_varyok,
-        iec.line.ioa_r_yuk_akimi_varyok,
-        iec.line.ioa_s_yuk_akimi_varyok,
-        iec.line.ioa_t_yuk_akimi_varyok,
-        iec.line.ioa_r_rfhab_varyok,
-        iec.line.ioa_s_rfhab_varyok,
-        iec.line.ioa_t_rfhab_varyok
-    };
+    uint32_t *points[] = {
+        iec.line.ioa_r_anlik_akim,       iec.line.ioa_s_anlik_akim,
+        iec.line.ioa_t_anlik_akim,       iec.line.ioa_r_enerji_varyok,
+        iec.line.ioa_s_enerji_varyok,    iec.line.ioa_t_enerji_varyok,
+        iec.line.ioa_r_yuk_akimi_varyok, iec.line.ioa_s_yuk_akimi_varyok,
+        iec.line.ioa_t_yuk_akimi_varyok, iec.line.ioa_r_rfhab_varyok,
+        iec.line.ioa_s_rfhab_varyok,     iec.line.ioa_t_rfhab_varyok};
     for (size_t j = 0U; j < (sizeof(points) / sizeof(points[0])); j++)
     {
         uint32_t original = points[j][6];
@@ -549,19 +524,19 @@ void test_iec_partial_save_preserves_fault_bases_and_inactive_settings(void)
     TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
     TEST_ASSERT_FALSE(saved_line.in_use);
     TEST_ASSERT_EQUAL_MEMORY(&current_lines[0].temporary_fault,
-                            &saved_line.temporary_fault, sizeof(ioa_3byte_t));
+                             &saved_line.temporary_fault, sizeof(ioa_3byte_t));
     TEST_ASSERT_EQUAL_MEMORY(&current_lines[0].permanent_fault,
-                            &saved_line.permanent_fault, sizeof(ioa_3byte_t));
+                             &saved_line.permanent_fault, sizeof(ioa_3byte_t));
     TEST_ASSERT_EQUAL_MEMORY(&current_lines[0].anlik_akim[0],
-                            &saved_line.anlik_akim[0], sizeof(ioa_3byte_t));
+                             &saved_line.anlik_akim[0], sizeof(ioa_3byte_t));
     iec.line.in_use[0] = true;
     iec104_config_sync_ExpectAndReturn(0);
     TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
     TEST_ASSERT_TRUE(saved_line.in_use);
     TEST_ASSERT_EQUAL_MEMORY(&current_lines[0].temporary_fault,
-                            &saved_line.temporary_fault, sizeof(ioa_3byte_t));
-    TEST_ASSERT_EQUAL_UINT32(1000U,
-        iec104_ioa_3byte_to_uint32(saved_line.anlik_akim[0]));
+                             &saved_line.temporary_fault, sizeof(ioa_3byte_t));
+    TEST_ASSERT_EQUAL_UINT32(
+        1000U, iec104_ioa_3byte_to_uint32(saved_line.anlik_akim[0]));
 }
 
 void test_iec_fault_bases_can_be_repaired_without_factory_reset(void)
@@ -569,16 +544,17 @@ void test_iec_fault_bases_can_be_repaired_without_factory_reset(void)
     enable_valid_lines();
     iec.line.temporary_fault_base[0] = 1100U;
     TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{}", &iec));
-    TEST_ASSERT_EQUAL_INT(1, parse_iec_config(
-        "{\"Hatlar\":{\"TemporaryFaultBase\":[100000],"
-        "\"PermanentFaultBase\":[200000]}}", &iec));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_iec_config("{\"Hatlar\":{\"TemporaryFaultBase\":[100000],"
+                            "\"PermanentFaultBase\":[200000]}}",
+                            &iec));
     iec104_config_get_IgnoreAndReturn(NULL);
     iec104_config_set_Stub(capture_iec);
     iec104_set_line_config_Stub(capture_line);
     iec104_config_sync_ExpectAndReturn(0);
     TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
-    TEST_ASSERT_EQUAL_UINT32(100000U,
-        iec104_ioa_3byte_to_uint32(saved_line.temporary_fault));
+    TEST_ASSERT_EQUAL_UINT32(
+        100000U, iec104_ioa_3byte_to_uint32(saved_line.temporary_fault));
     TEST_ASSERT_EQUAL_STRING("", json_config_get_iec_address_error());
     iec.line.in_use[0] = false;
     iec.line.temporary_fault_base[0] = 0x1000000U;
@@ -593,26 +569,30 @@ void test_trip_failure_ioas_parse_validate_and_reach_the_saved_line(void)
     iec104_config_set_StubWithCallback(capture_iec);
     iec104_config_get_IgnoreAndReturn(NULL);
     iec104_config_sync_ExpectAndReturn(0);
-    TEST_ASSERT_EQUAL_INT(1, parse_iec_config(
-        "{\"Hatlar\":{\"IOA_R_TripFailed\":[500000],"
-        "\"IOA_S_TripFailed\":[500001],\"IOA_T_TripFailed\":[500002]}}", &iec));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_iec_config(
+               "{\"Hatlar\":{\"IOA_R_TripFailed\":[500000],"
+               "\"IOA_S_TripFailed\":[500001],\"IOA_T_TripFailed\":[500002]}}",
+               &iec));
     TEST_ASSERT_EQUAL_INT(0, set_iec_config(&iec));
-    TEST_ASSERT_EQUAL_UINT32(500000U,
-        iec104_ioa_3byte_to_uint32(saved_line.trip_failed[PHASE_L1]));
-    TEST_ASSERT_EQUAL_UINT32(500002U,
-        iec104_ioa_3byte_to_uint32(saved_line.trip_failed[PHASE_L3]));
+    TEST_ASSERT_EQUAL_UINT32(
+        500000U, iec104_ioa_3byte_to_uint32(saved_line.trip_failed[PHASE_L1]));
+    TEST_ASSERT_EQUAL_UINT32(
+        500002U, iec104_ioa_3byte_to_uint32(saved_line.trip_failed[PHASE_L3]));
     const iec104_line_config_t before = saved_line;
-    TEST_ASSERT_EQUAL_INT(0, parse_iec_config(
-        "{\"Hatlar\":{\"IOA_R_TripFailed\":[1000]}}", &iec));
+    TEST_ASSERT_EQUAL_INT(
+        0,
+        parse_iec_config("{\"Hatlar\":{\"IOA_R_TripFailed\":[1000]}}", &iec));
     TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
     TEST_ASSERT_EQUAL_MEMORY(&before, &saved_line, sizeof(saved_line));
-    TEST_ASSERT_EQUAL_INT(0, parse_iec_config(
-        "{\"Hatlar\":{\"IOA_R_TripFailed\":[16777216]}}", &iec));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_iec_config("{\"Hatlar\":{\"IOA_R_TripFailed\":[16777216]}}",
+                            &iec));
     TEST_ASSERT_EQUAL_MEMORY(&before, &saved_line, sizeof(saved_line));
 }
 
-
-void test_t3_json_accepts_full_supported_range_and_persists_without_truncation(void)
+void test_t3_json_accepts_full_supported_range_and_persists_without_truncation(
+    void)
 {
     const uint16_t values[] = {20U, 60U, 255U, 256U, 65525U};
     iec104_config_get_IgnoreAndReturn(NULL);
@@ -624,7 +604,7 @@ void test_t3_json_accepts_full_supported_range_and_persists_without_truncation(v
     {
         char json[32];
         (void)snprintf(json, sizeof(json), "{\"T3\":%u}",
-            (unsigned int)values[index]);
+                       (unsigned int)values[index]);
         TEST_ASSERT_EQUAL_INT(1, parse_iec_config(json, &iec));
         TEST_ASSERT_EQUAL_UINT16(values[index], iec.t3_timeout);
         iec104_process_config_changed_Expect();
@@ -640,7 +620,7 @@ void test_invalid_t3_and_timeout_order_never_write_storage(void)
     {
         char json[32];
         (void)snprintf(json, sizeof(json), "{\"T3\":%u}",
-            (unsigned int)values[index]);
+                       (unsigned int)values[index]);
         TEST_ASSERT_EQUAL_INT(0, parse_iec_config(json, &iec));
         iec.t3_timeout = values[index];
         TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
@@ -670,28 +650,46 @@ void test_modbus_web_offered_230400_is_rejected_by_current_serial_profile(void)
     config.device_addr = 1U;
     config.stop_bits = 1U;
     config.baud_rate = 19200U;
-    TEST_ASSERT_EQUAL_INT(0,
-        parse_modbus_config("{\"BaudRate\":230400}", &config));
-    TEST_ASSERT_EQUAL_INT(1,
-        parse_modbus_config("{\"BaudRate\":115200}", &config));
+    TEST_ASSERT_EQUAL_INT(
+        0, parse_modbus_config("{\"BaudRate\":230400}", &config));
+    TEST_ASSERT_EQUAL_INT(
+        1, parse_modbus_config("{\"BaudRate\":115200}", &config));
 }
 
 void test_output_retention_requires_boolean_and_preserves_partial_config(void)
 {
     bool enabled = true;
-    TEST_ASSERT_TRUE(parse_output_retention("{\"TimeZone\":3}", &enabled));
+    TEST_ASSERT_TRUE(parse_device_options("{\"TimeZone\":3}", &enabled, NULL));
     TEST_ASSERT_TRUE(enabled);
-    TEST_ASSERT_TRUE(parse_output_retention(
-        "{\"PreserveOutputStates\":false}", &enabled));
+    TEST_ASSERT_TRUE(parse_device_options("{\"PreserveOutputStates\":false}",
+                                          &enabled, NULL));
     TEST_ASSERT_FALSE(enabled);
-    TEST_ASSERT_FALSE(parse_output_retention(
-        "{\"PreserveOutputStates\":1}", &enabled));
+    TEST_ASSERT_FALSE(
+        parse_device_options("{\"PreserveOutputStates\":1}", &enabled, NULL));
     TEST_ASSERT_FALSE(enabled);
-    TEST_ASSERT_FALSE(parse_output_retention(
-        "{\"PreserveOutputStates\":true}garbage", &enabled));
+    TEST_ASSERT_FALSE(parse_device_options(
+        "{\"PreserveOutputStates\":true}garbage", &enabled, NULL));
     TEST_ASSERT_FALSE(enabled);
-    TEST_ASSERT_FALSE(parse_output_retention(NULL, &enabled));
-    TEST_ASSERT_FALSE(parse_output_retention("{}", NULL));
+    TEST_ASSERT_FALSE(parse_device_options(NULL, &enabled, NULL));
+    TEST_ASSERT_FALSE(parse_device_options("{}", NULL, NULL));
+}
+
+void test_device_options_report_only_explicit_time_and_preserve_on_error(void)
+{
+    bool enabled = false;
+    bool has_time = true;
+    TEST_ASSERT_TRUE(parse_device_options("{}", &enabled, &has_time));
+    TEST_ASSERT_FALSE(has_time);
+    TEST_ASSERT_TRUE(
+        parse_device_options("{\"Time\":1767225600}", &enabled, &has_time));
+    TEST_ASSERT_TRUE(has_time);
+    TEST_ASSERT_FALSE(
+        parse_device_options("{\"Time\":false}", &enabled, &has_time));
+    TEST_ASSERT_TRUE(has_time);
+    TEST_ASSERT_FALSE(enabled);
+    TEST_ASSERT_TRUE(parse_device_options("{\"T\\u0069me\":1767225600}",
+                                          &enabled, &has_time));
+    TEST_ASSERT_TRUE(has_time);
 }
 
 /*** end of file ***/
