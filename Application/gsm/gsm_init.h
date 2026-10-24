@@ -2,6 +2,8 @@
  * gsm_init.h
  *
  * GSM modem initialization state machine.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  */
 
 #ifndef GSM_INIT_H
@@ -13,6 +15,11 @@ extern "C" {
 
 #include <stdint.h>
 #include "gsm_process.h"
+
+/* TODO: Enable automatic SIM PIN entry for production after acceptance. */
+#ifndef GSM_AUTO_PIN_ENABLED
+#define GSM_AUTO_PIN_ENABLED 0U
+#endif
 
 /* Init state / vector management */
 void             gsm_load_common_init_vector(void);

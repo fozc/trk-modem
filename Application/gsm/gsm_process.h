@@ -259,6 +259,7 @@ typedef enum
 	GSM_GET_RES_WAITFOR_INTERNET_CONNECTION,
 
 
+	GSM_ENABLE_SIM_STATUS_URC,
 	GSM_NO_SUB_JOB
 }gsm_init_state_t;
 

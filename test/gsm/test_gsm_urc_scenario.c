@@ -8,6 +8,10 @@
  */
 #include "unity.h"
 #include "mock_gsm_engine.h"
+#include "mock_gsm_info.h"
+#include "mock_gsm_socket.h"
+#include "mock_web_server.h"
+#include "mock_iec104_process.h"
 #include "gsm_types.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -149,6 +153,60 @@ void test_bare_no_carrier_logs_without_assigning_socket(void)
     TEST_ASSERT_NOT_NULL(strstr(log_output,
         "socket=unavailable cause=unavailable"));
     TEST_ASSERT_EQUAL_UINT8(0U, gsm.dialer_socket_no_carrier);
+}
+
+void test_qss_removal_enters_service_restart_only_in_normal_mode(void)
+{
+    uint8_t message[] = "#QSS: 0";
+    gsm_info_set_sim_state_Expect(GSM_SIM_STATE_NOT_INSERTED);
+    gsm_get_main_state_ExpectAndReturn(GSM_NORMAL_MODE);
+    gsm_set_main_state_Expect(GSM_SIM_ERROR_MODE);
+    gsm_URC_callback(message, sizeof(message) - 1U);
+
+    gsm_info_set_sim_state_Expect(GSM_SIM_STATE_NOT_INSERTED);
+    gsm_get_main_state_ExpectAndReturn(GSM_MODULE_INIT_MODE);
+    gsm_URC_callback(message, sizeof(message) - 1U);
+}
+
+void test_qss_maps_inserted_unlocked_and_ready_states(void)
+{
+    uint8_t message[] = "#QSS: 1";
+    gsm_info_set_sim_state_Expect(GSM_SIM_STATE_UNKNOWN);
+    gsm_URC_callback(message, sizeof(message) - 1U);
+    message[6] = '2';
+    gsm_info_set_sim_state_Expect(GSM_SIM_STATE_READY);
+    gsm_URC_callback(message, sizeof(message) - 1U);
+    message[6] = '3';
+    gsm_info_set_sim_state_Expect(GSM_SIM_STATE_READY);
+    gsm_URC_callback(message, sizeof(message) - 1U);
+}
+
+void test_qss_rejects_unknown_or_incomplete_status(void)
+{
+    uint8_t invalid[] = "#QSS: 4";
+    gsm_URC_callback(invalid, sizeof(invalid) - 1U);
+    invalid[6] = '\0';
+    gsm_URC_callback(invalid, 6U);
+}
+
+void test_sim_error_closes_services_and_requests_existing_module_restart(void)
+{
+    gsm_clear_module_restart();
+    for (uint8_t socket = 0U; socket < (uint8_t)GSM_SOCKET_COUNT; socket++)
+    {
+        gsm_socket_set_state_Expect(socket, '0');
+    }
+    gsm_reset_web_session_info_Expect();
+    gsm_set_gprs_state_Expect(0U);
+    gsm_set_socket_state_Expect(IEC104_LISTENER_SOCKET, SOCKET_CLOSED);
+    gsm_set_socket_state_Expect(LISTENER_SOCKET, SOCKET_CLOSED);
+    gsm_set_socket_state_Expect(DIALER_SOCKET, SOCKET_CLOSED);
+    webserver_on_connection_closed_Expect();
+    iec104_process_socket_closed_cb_Expect();
+    gsm_reset_iec104_session_info_Expect();
+    gsm_sim_error_mode();
+    TEST_ASSERT_TRUE(gsm_module_restart_requested());
+    gsm_clear_module_restart();
 }
 
 /*** end of file ***/

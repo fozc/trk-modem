@@ -46,6 +46,8 @@ extern gsm_t gsm;
 static uint32_t s_connection_time = 0;
 static uint8_t  s_pin_reset_state = 0;
 static uint8_t  cold_boot_count   = 0;
+/* Preserve a submitted PIN across modem retries until READY or removal. */
+static bool pin_attempted = false;
 
 /* -----------------------------------------------------------------------
  *  Init vectors
@@ -63,6 +65,7 @@ static const uint8_t gsm_common_init_vector[] =
 	GSM_ENABLE_ERROR_CODES,
 	GSM_GET_MODULE_NAME,
 	GSM_GET_MODULE_FW_VER,
+	GSM_ENABLE_SIM_STATUS_URC,
 	GSM_INIT_DONE
 };
 
@@ -322,6 +325,8 @@ static void gsm_init_step_reset_module(void)
 	else
 	{
 		gsm_set_init_state(GSM_REBOOT);
+		/* Allow pending modem NVM writes to finish before ENHRST. */
+		gsm_set_delay(5000U);
 	}
 	gsm.prev_creg = 0;
 }
@@ -405,6 +410,7 @@ static void gsm_init_step_check_simcard(void)
 	uint32_t res = gsm_engine_get_query_res();
 	switch (res) {
 		case GSM_CPIN_READY:
+			pin_attempted = false;
 			led_driver_set_modem_mode(LED_MODEM_SEARCHING);
 			gsm_set_delay(50);
 			s_connection_time = gsm_get_tick();
@@ -421,6 +427,7 @@ static void gsm_init_step_check_simcard(void)
 			gsm_set_init_state(GSM_RESET_MODULE);
 			break;
 		case GSM_CPIN_NO_SIM:
+			pin_attempted = false;
 			led_driver_set_modem_mode(LED_MODEM_NO_SIM);
 			if (!gsm.no_sim)
 			{
@@ -432,8 +439,16 @@ static void gsm_init_step_check_simcard(void)
 			gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
 			break;
 		case GSM_CPIN_SIMPIN:
-			gsm_set_delay(50);
-			gsm_set_init_state(GSM_SET_PIN_NO);
+			if ((GSM_AUTO_PIN_ENABLED != 0U) && !pin_attempted)
+			{
+				gsm_set_delay(50);
+				gsm_set_init_state(GSM_SET_PIN_NO);
+			}
+			else
+			{
+				gsm_set_delay(3000);
+				gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
+			}
 			break;
 		case GSM_CPIN_SIMPUK:
 			led_driver_set_modem_mode(LED_MODEM_NO_SIM);
@@ -469,7 +484,11 @@ static void gsm_init_step_set_pin_no(void)
 {
 	if (gsm.init_phase == GSM_INIT_PHASE_SEND)
 	{
-		gsm_init_send(ATQUERY_SET_PIN_NO);
+		if (gsm_engine_send_query(ATQUERY_SET_PIN_NO))
+		{
+			pin_attempted = true;
+			gsm.init_phase = GSM_INIT_PHASE_WAIT_RESPONSE;
+		}
 		return;
 	}
 	uint32_t res = gsm_engine_get_query_res();
@@ -478,18 +497,17 @@ static void gsm_init_step_set_pin_no(void)
 		switch (res)
 		{
 		case GSM_RESPONSE_OK:
-			gsm_init_next_step();
+			gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
+			gsm_set_delay(300);
 			break;
 		case GSM_CPIN_PINNO_ERROR:
 			LOG(WARNING, "SIM PIN Hatali !");
 			/* fallthrough */
 		case GSM_CPIN_SIM_FAILUER:
 		case GSM_ERROR:
-			gsm_set_main_state(GSM_SIM_ERROR_MODE);
-			break;
 		case GSM_TIMEOUT:
-			gsm_set_init_state(GSM_RESET_MODULE);
-			gsm_set_delay(50);
+			gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
+			gsm_set_delay(3000);
 			break;
 		default:
 			break;
@@ -663,6 +681,9 @@ static void gsm_init_step_check_gprs_network(void)
 				gsm_set_init_state(GSM_GET_CEER);
 			}
 			break;
+		case GSM_ERROR:
+            gsm_set_init_state(GSM_GET_CEER);
+            break;
 		case GSM_TIMEOUT:
 			gsm_set_init_state(GSM_RESET_MODULE);
 			break;
@@ -713,6 +734,9 @@ static void gsm_init_step_check_lte_network(void)
 				gsm_set_init_state(GSM_GET_CEER);
 			}
 			break;
+		case GSM_ERROR:
+            gsm_set_init_state(GSM_GET_CEER);
+            break;
 		case GSM_TIMEOUT:
 			if (!gsm.init_cgreg_state) {
 				gsm_set_init_state(GSM_RESET_MODULE);
@@ -896,14 +920,14 @@ static void gsm_init_step_reboot(void)
 		if (res == GSM_RESPONSE_OK)
 		{
 			gsm.reboot_counter = 0;
-			gsm_set_delay(15000);
+			gsm_set_delay(20000);
 			gsm_set_init_vector(gsm_common_init_vector, sizeof(gsm_common_init_vector));
 			gsm_set_main_state(GSM_COMMON_INIT_MODE);
 			gsm_set_init_state(GSM_SOFT_INIT);
 		}
 		else
 		{
-			gsm_set_delay(50);
+			gsm_set_delay((res == GSM_TIMEOUT) ? 20000U : 50U);
 			gsm_set_init_state(GSM_RESET_MODULE);
 		}
 		gsm_set_free();
@@ -1107,6 +1131,7 @@ void gsm_init_old(void)
 		case GSM_CONFIG_SIMIN_PIN:                gsm_init_simple_step(ATQUERY_SET_SIMDETECT_PIN_CFG,    false, 50);   break;
 		case GSM_CONFIG_SIM_DETECTION_MODE:       gsm_init_simple_step(ATQUERY_SET_SIMDETECT_MODE,       false, 50);   break;
 		case GSM_ENABLE_STAT_LED:                 gsm_init_simple_step(ATQUERY_SET_STATUS_LED,           false, 50);   break;
+		case GSM_ENABLE_SIM_STATUS_URC:           gsm_init_simple_step(ATQUERY_ENABLE_SIM_STATUS_URC,    false, 50);   break;
 		case GSM_GET_MODULE_FW_VER:               gsm_init_simple_step(ATQUERY_GET_MODULE_FW_VERSION,    false, 50);   break;
 		case GSM_GET_IMEI:                        gsm_init_simple_step(ATQUERY_CGSN,                     false, 50);   break;
 		case GSM_SET_GPRS_CLASS:                  gsm_init_simple_step(ATQUERY_SET_GPRS_CLASS,           false, 50);   break;
