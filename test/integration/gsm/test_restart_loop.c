@@ -2,7 +2,8 @@
  * test_restart_loop.c
  *
  *  Created on: Sep 6, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  *
  * GSM surec yeniden baslatma mekanizmasinin (gsm_process_contiki.c)
  * host testleri - GERCEK Contiki cekirdegi uzerinde, sanal saatle.
@@ -199,11 +200,11 @@ static void scenario_boot_happy_path(void)
                "boot: RX re-disable at loop head (idempotent, harmless)");
 
     const unsigned before = gsm_process_old_calls;
-    run_for(200U);      /* 4 x 50 ms poll */
+    run_for(200U);      /* 8 x 25 ms poll */
     TEST_CHECK(gsm_process_old_calls > before,
                "boot: poll loop running");
-    TEST_CHECK(gsm_process_old_calls - before >= 3U,
-               "boot: ~50 ms poll cadence");
+    TEST_CHECK(gsm_process_old_calls - before >= 7U,
+               "boot: ~25 ms poll cadence");
 }
 
 static void scenario_restart_with_sw_rdy(void)

@@ -2,7 +2,8 @@
  * gsm_process.c
  *
  *  Created on: Dec 25, 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 #include "gsm_process_contiki.h"
 #include "at_engine2.h"
@@ -142,7 +143,7 @@ PROCESS_THREAD(gsm_process_contiki, ev, data)
 
 		uart_set_rx_interrupt(UART_1, UART_RX_INT_ENABLE);
 
-		etimer_set(&timer, 50);
+		etimer_set(&timer, 25);
 		while (!gsm_module_restart_requested())
 		{
 			PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
