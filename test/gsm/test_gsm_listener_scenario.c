@@ -345,4 +345,28 @@ void test_new_connection_after_carrier_loss_keeps_pending_accept(void)
     TEST_ASSERT_EQUAL(GSM_INIT_PHASE_WAIT_RESPONSE, ctx->phase);
 }
 
+void test_sh_error_after_carrier_loss_waits_for_confirmed_close_before_reopen(void)
+{
+    gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_WEB];
+    ctx->state = GSM_LS_CLOSE_SOCKET;
+    ctx->phase = GSM_INIT_PHASE_WAIT_RESPONSE;
+    carrier_lost = 1U;
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_ERROR);
+    gsm_set_delay_StopIgnore();
+    gsm_set_delay_Expect(500U);
+    gsm_listener_web_process();
+    TEST_ASSERT_EQUAL(GSM_LS_CHECK_SOCKET, ctx->state);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_LISTENER_SOCKET_STATUS, 1U);
+    gsm_listener_web_process();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_RESPONSE_OK);
+    gsm_get_raw_socket_state_IgnoreAndReturn('0');
+    gsm_set_socket_state_Expect(LISTENER_SOCKET, SOCKET_CLOSED);
+    expect_web_close();
+    gsm_listener_get_new_conn_req_ExpectAndReturn(GSM_LISTENER_WEB, 0U);
+    gsm_listener_get_rx_available_ExpectAndReturn(GSM_LISTENER_WEB, 0U);
+    gsm_set_delay_Expect(50U);
+    gsm_listener_web_process();
+    TEST_ASSERT_EQUAL(GSM_LS_CHECK_NET, ctx->state);
+}
+
 /*** end of file ***/

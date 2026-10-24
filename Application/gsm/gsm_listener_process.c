@@ -653,13 +653,22 @@ static void handle_close_socket(const gsm_listener_cfg_t *p_cfg,
 
 	switch (res)
 	{
-		case GSM_RESPONSE_OK:
-		case GSM_ERROR:
+        case GSM_ERROR:
+            if (gsm_listener_get_no_carrier(p_cfg->id))
+            {
+                /* SH can fail while SS still reports the old connection.
+                 * Keep the closure pending until SS confirms its state. */
+                ls_set_state(ctx, GSM_LS_CHECK_SOCKET);
+                gsm_set_delay(500U);
+                break;
+            }
+            /* fallthrough */
+        case GSM_RESPONSE_OK:
             finish_listener_close(p_cfg);
-			ctx->temp_counter = 0;
-			ls_set_state(ctx, GSM_LS_CHECK_NET);
-			gsm_set_delay(50);
-			break;
+            ctx->temp_counter = 0U;
+            ls_set_state(ctx, GSM_LS_CHECK_NET);
+            gsm_set_delay(50U);
+            break;
 
 		case GSM_TIMEOUT:
 			if (ctx->temp_counter++ < 2U)
