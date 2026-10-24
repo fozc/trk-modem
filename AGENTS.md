@@ -218,3 +218,16 @@ before changing the affected behavior. In particular:
 - The goal is **semantic fidelity**: never let word choice obscure or
   change the technical meaning. If a Turkish rendering could be
   misinterpreted, state the English term alongside it.
+
+
+## Bolatex correspondence
+
+- Keep Bolatex questions, brief supplier-answer/status notes, important
+  protocol notes, and dated changes in `doc/BOLATEXE_SORULACAKLAR.md`.
+- Read its status table before adding questions. Reuse stable BQ IDs and
+  update the change history; do not create a separate question list.
+- Keep email drafts and our answers to supplier questions out of this
+  document. Those are separate correspondence, as requested by the user.
+- Our D/T answers are in `doc/BOLATEX_CEVAP_TASLAGI_2026-10-18.md`.
+  Email drafts belong in the conversation unless the user asks for a file.
+- Preserve original supplier documents and raw replies as linked evidence.
