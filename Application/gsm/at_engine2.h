@@ -2,7 +2,8 @@
  * at_engine2.h
  *
  *  Created on: Apr 11, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef GSM_AT_ENGINE2_H_
@@ -53,6 +54,14 @@ int32_t at_engine_process(void);
  * @return Pointer to the internal response buffer (null-terminated).
  */
 const uint8_t *at_engine_get_response(uint16_t *p_length);
+
+/**
+ * @brief Borrow the complete #SRECV payload from the response buffer.
+ * @param[out] length Payload byte count, or zero when unavailable; may be NULL.
+ * @return Payload pointer, or NULL for a missing/incomplete payload.
+ * @note Valid until response clear, reset, cancel or the next command.
+ */
+const uint8_t *at_engine_get_payload(uint16_t *length);
 
 /* ---------- Buffer Management ---------- */
 
