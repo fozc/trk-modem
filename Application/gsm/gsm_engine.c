@@ -96,18 +96,25 @@ static int32_t gsm_at_response_ready(void)
 	rx.buff = at_engine_get_response(&len);
 	rx.len  = len;
 
-	at_engine_result_t r = at_engine_get_result();
+	uint16_t payload_len = 0U;
+    const uint8_t *payload = at_engine_get_payload(&payload_len);
+    const char *response_text = (const char *)rx.buff;
+    if (payload != NULL)
+    {
+        response_text = (const char *)(payload + payload_len);
+    }
+    at_engine_result_t r = at_engine_get_result();
 	switch(r)
 	{
 		case AT_ENGINE_RESULT_OK:
-			if(str_index_of((const char *)rx.buff, "NO CARRIER") >= 0)
+			if(str_index_of(response_text, "NO CARRIER") >= 0)
 			{
 				return (int32_t)GSM_NO_CARRIER;
 			}
 			return (int32_t)GSM_RESPONSE_OK;
 
 		case AT_ENGINE_RESULT_ERROR:
-			if(str_index_of((const char *)rx.buff, "NO CARRIER") >= 0)
+			if(str_index_of(response_text, "NO CARRIER") >= 0)
 			{
 				return (int32_t)GSM_NO_CARRIER;
 			}
@@ -626,52 +633,26 @@ int32_t gsm_send_data_to_dialer_cb(void)
 
 int32_t gsm_srcev_dialer_cb(void)
 {
-	int32_t at_res = gsm_at_response_ready();
-	switch (at_res) {
-		case GSM_RESPONSE_OK:
-		{
-			if(strstr((char *)rx.buff, "NO CARRIER") != NULL) /* Soketten data gelmis fakat su an soket kapali durumda. */
-			{
-				at_res = GSM_SOCKET_NO_CARRIER;
-				break;
-			}
-			const char *hash_ptr = strstr((char *)rx.buff, "\r\n#");
-			if(hash_ptr == NULL){
-				return GSM_ERROR;
-			}
-			hash_ptr = strstr((hash_ptr + 3), "\r\n#");          //#SRECV 'i atla
-			const char *ok_ptr = strstr((char *)rx.buff, "\r\nOK");
- 
-			if(hash_ptr != NULL && ok_ptr != NULL)
-			{
-				ptrdiff_t raw_len = (ok_ptr - 2) - (hash_ptr + 2);
-				if(raw_len <= 0) { break; }
-				uint16_t length = (uint16_t)raw_len;
-				uint16_t index  = (uint16_t)(hash_ptr - (char *)rx.buff + 2);
-
-				iec104_on_data(&rx.buff[index], length, NULL);
-
-
-				//hes_receive_new_dialer_package(&rx.buff[index], length);
-				//flash_add_gsm_rx_counter(length);
-				gsm_info.rx_counter += length;
-				gsm_info_add_rx_bytes(length);
-				gsm_socket_touch_activity(DIALER_SOCKET);
-			}
-			else
-			{
-				//hes_receive_new_dialer_package((uint8_t *)"ERR", 5);
-			}
-		}
-			break;
-
-		case GSM_ERROR:
-		case GSM_TIMEOUT:
-			break;
-		default:
-			break;
-	}
-	return at_res;
+    const int32_t result = gsm_at_response_ready();
+    if (result != GSM_RESPONSE_OK)
+    {
+        return result;
+    }
+    uint16_t length = 0U;
+    const uint8_t *payload = at_engine_get_payload(&length);
+    if (payload == NULL)
+    {
+        return GSM_ERROR;
+    }
+    if (length == 0U)
+    {
+        return GSM_RESPONSE_OK;
+    }
+    iec104_on_data(payload, length, NULL);
+    gsm_info.rx_counter += length;
+    gsm_info_add_rx_bytes(length);
+    gsm_socket_touch_activity(DIALER_SOCKET);
+    return GSM_RESPONSE_OK;
 }
 
 int32_t gsm_ss_dialer_cb(void)
@@ -743,114 +724,60 @@ int32_t gsm_sd_dialer_cb(void)
 
 int32_t gsm_srcev_listener_cb(void)
 {
-	int32_t at_res = gsm_at_response_ready();
-	if(at_res == GSM_RESPONSE_OK)
-	{
-		/* NO CARRIER may have been extracted by the URC handler before we
-		 * see the response buffer.  Check both the buffer and the volatile
-		 * flag set by gsm_URC_callback() to avoid missing the event. */
-		if(strstr((char *)rx.buff, "NO CARRIER:1") != NULL ||
-		   strstr((char *)rx.buff, "NO CARRIER: 1") != NULL ||
-		   gsm_listener_get_no_carrier(GSM_LISTENER_WEB))
-		{
-			at_res = GSM_SOCKET_NO_CARRIER;
-			return at_res;
-		}
-
-		char *hash_ptr = strstr((char *)rx.buff, "\r\n#");
-		if(hash_ptr == NULL){
-			return GSM_ERROR;
-		}
-
-		hash_ptr = strstr((hash_ptr + 3), "\r\n");          //#SRECV 'i atla
-
-		/* Guard against underflow: rx.len is uint16_t, (rx.len - 4) wraps
-		 * to a huge value if rx.len < 4, causing out-of-bounds access. */
-		char *ok_ptr = NULL;
-		if(rx.len >= 4U)
-		{
-			ok_ptr = strstr((char *)&rx.buff[rx.len - 4U], "OK\r\n");
-		}
-
-		if(hash_ptr != NULL && ok_ptr != NULL)
-		{
-			ptrdiff_t raw_len = (ok_ptr - 4) - (hash_ptr + 2);
-			if(raw_len <= 0) { return at_res; }
-			uint16_t length = (uint16_t)raw_len;
-			uint16_t index  = (uint16_t)(hash_ptr - (char *)rx.buff + 2);
-
-			//hes_receive_new_listener_package(&rx.buff[index], length); /* Gelen datayi hes processe gonder */
-			//flash_add_gsm_rx_counter(length);
-
-			gsm_http_server_client_data_received(&rx.buff[index], length);
-
-			gsm_info.rx_counter += length;
-			gsm_info_add_rx_bytes(length);
-			gsm_info.web_ls_rx_counter_last += length;
-			gsm_socket_touch_activity(LISTENER_SOCKET);
-		}
-		else
-		{
-			//hes_receive_new_listener_package((uint8_t *)"ERR", 5);
-		}
-	}
-	return at_res;
+    const int32_t result = gsm_at_response_ready();
+    if (result != GSM_RESPONSE_OK)
+    {
+        return result;
+    }
+    if (gsm_listener_get_no_carrier(GSM_LISTENER_WEB))
+    {
+        return GSM_SOCKET_NO_CARRIER;
+    }
+    uint16_t length = 0U;
+    const uint8_t *payload = at_engine_get_payload(&length);
+    if (payload == NULL)
+    {
+        return GSM_ERROR;
+    }
+    if (length == 0U)
+    {
+        return GSM_RESPONSE_OK;
+    }
+    gsm_http_server_client_data_received(payload, length);
+    gsm_info.rx_counter += length;
+    gsm_info_add_rx_bytes(length);
+    gsm_info.web_ls_rx_counter_last += length;
+    gsm_socket_touch_activity(LISTENER_SOCKET);
+    return GSM_RESPONSE_OK;
 }
 
 int32_t gsm_srcev_iec104_listener_cb(void)
 {
-	int32_t at_res = gsm_at_response_ready();
-	if(at_res == GSM_RESPONSE_OK)
-	{
-		/* NO CARRIER may have been extracted by the URC handler before we
-		 * see the response buffer.  Check both the buffer and the volatile
-		 * flag set by gsm_URC_callback() to avoid missing the event. */
-		if(strstr((char *)rx.buff, "NO CARRIER:3") != NULL ||
-		   strstr((char *)rx.buff, "NO CARRIER: 3") != NULL ||
-		   gsm_listener_get_no_carrier(GSM_LISTENER_IEC104))
-		{
-			at_res = GSM_SOCKET_NO_CARRIER;
-			return at_res;
-		}
-
-		char *hash_ptr = strstr((char *)rx.buff, "\r\n#");
-		if(hash_ptr == NULL){
-			return GSM_ERROR;
-		}
-		hash_ptr = strstr((hash_ptr + 3), "\r\n");          //#SRECV 'i atla
-
-		/* Guard against underflow: rx.len is uint16_t, (rx.len - 4) wraps
-		 * to a huge value if rx.len < 4, causing out-of-bounds access. */
-		char *ok_ptr = NULL;
-		if(rx.len >= 4U)
-		{
-			ok_ptr = strstr((char *)&rx.buff[rx.len - 4U], "OK\r\n");
-		}
-
-		if(hash_ptr != NULL && ok_ptr != NULL)
-		{
-			ptrdiff_t raw_len = (ok_ptr - 4) - (hash_ptr + 2);
-			if(raw_len <= 0) { return at_res; }
-			uint16_t length = (uint16_t)raw_len;
-			uint16_t index  = (uint16_t)(hash_ptr - (char *)rx.buff + 2);
-
-			//hes_receive_new_listener_package(&rx.buff[index], length); /* Gelen datayi hes processe gonder */
-			//flash_add_gsm_rx_counter(length);
-
-			iec104_on_data(&rx.buff[index], length, NULL);
-
-			gsm_info.rx_counter += length;
-			gsm_info_add_rx_bytes(length);
-			gsm_info.iec104_ls_rx_counter_last += length;
-			gsm_socket_touch_activity(IEC104_LISTENER_SOCKET);
-		}
-		else
-		{
-			//hes_receive_new_listener_package((uint8_t *)"ERR", 5);
-		}
-	}
-
-	return at_res;
+    const int32_t result = gsm_at_response_ready();
+    if (result != GSM_RESPONSE_OK)
+    {
+        return result;
+    }
+    if (gsm_listener_get_no_carrier(GSM_LISTENER_IEC104))
+    {
+        return GSM_SOCKET_NO_CARRIER;
+    }
+    uint16_t length = 0U;
+    const uint8_t *payload = at_engine_get_payload(&length);
+    if (payload == NULL)
+    {
+        return GSM_ERROR;
+    }
+    if (length == 0U)
+    {
+        return GSM_RESPONSE_OK;
+    }
+    iec104_on_data(payload, length, NULL);
+    gsm_info.rx_counter += length;
+    gsm_info_add_rx_bytes(length);
+    gsm_info.iec104_ls_rx_counter_last += length;
+    gsm_socket_touch_activity(IEC104_LISTENER_SOCKET);
+    return GSM_RESPONSE_OK;
 }
 
 int32_t gsm_ss_listener_cb(void)
@@ -1129,47 +1056,24 @@ int32_t gsm_sl_listener_cb(void)
 
 int32_t gsm_srcev_trace_cb(void)
 {
-	int32_t at_res = gsm_at_response_ready();
-	if(at_res == GSM_RESPONSE_OK)
-	{
-		if(strstr((char *)rx.buff, "NO CARRIER:3") != NULL || strstr((char *)rx.buff, "NO CARRIER: 3") != NULL) /* Soketten data gelmis fakat su an soket kapali durumda. */
-		{
-			at_res = GSM_SOCKET_NO_CARRIER;
-			return at_res;
-		}
-
-		char *hash_ptr = strstr((char *)rx.buff, "\r\n#");
-		if(hash_ptr == NULL)
-		{
-			return at_res;
-		}
-		hash_ptr = strstr((hash_ptr + 3), "\r\n");          //#SRECV 'i atla
-
-		/* Guard against underflow: rx.len is uint16_t, (rx.len - 4) wraps
-		 * to a huge value if rx.len < 4, causing out-of-bounds access. */
-		char *ok_ptr = NULL;
-		if(rx.len >= 4U)
-		{
-			ok_ptr = strstr((char *)&rx.buff[rx.len - 4U], "OK\r\n");
-		}
-
-		if(hash_ptr != NULL && ok_ptr != NULL)
-		{
-			ptrdiff_t raw_len = (ok_ptr - 4) - (hash_ptr + 2);
-			if(raw_len <= 0) { return at_res; }
-			uint16_t length = (uint16_t)raw_len;
-			//uint16_t index  = (hash_ptr - (char *)rx.buff + 2);
-			//trace_gsm_callback(TR_EVENT_RX_DATA, &rx.buff[index], length); /* Gelen datayi hes processe gonder */
-			//flash_add_gsm_rx_counter(length);
-			gsm_info.rx_counter += length;
-			gsm_info_add_rx_bytes(length);
-		}
-		else
-		{
-			//hes_receive_new_listener_package((uint8_t *)"ERR", 5);
-		}
-	}
-	return at_res;
+    const int32_t result = gsm_at_response_ready();
+    if (result != GSM_RESPONSE_OK)
+    {
+        return result;
+    }
+    uint16_t length = 0U;
+    const uint8_t *payload = at_engine_get_payload(&length);
+    if (payload == NULL)
+    {
+        return GSM_ERROR;
+    }
+    if (length == 0U)
+    {
+        return GSM_RESPONSE_OK;
+    }
+    gsm_info.rx_counter += length;
+    gsm_info_add_rx_bytes(length);
+    return GSM_RESPONSE_OK;
 }
 
 int32_t gsm_ss_trace_cb(void)

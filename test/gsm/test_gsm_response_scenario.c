@@ -90,6 +90,7 @@ void setUp(void)
     signal_tech = GSM_SIGNAL_TECH_NONE;
     signal_level = GSM_SIGNAL_LEVEL_NONE;
     at_engine_get_result_Stub(get_result);
+    at_engine_get_payload_IgnoreAndReturn(NULL);
     bsp_get_tick_IgnoreAndReturn(100U);
     gsm_socket_set_state_Ignore();
 }

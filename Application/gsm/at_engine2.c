@@ -41,6 +41,7 @@ typedef enum
 static const char AT_ERROR_STR[]     = "\r\nERROR\r\n";
 static const char AT_NO_SIM_CARD_STR[] = "\r\n+CME ERROR: 10\r\n";//
 static const char AT_CME_ERROR_STR[] = "+CME ERROR:";
+static const char AT_CMS_ERROR_STR[] = "+CMS ERROR:";
 
 typedef struct
 {
@@ -57,6 +58,7 @@ typedef struct
 	at_engine_state_t state;
 	uint16_t binary_bytes_remaining; /* >0: consuming binary #SRECV payload, skip terminator checks */
 	uint16_t srecv_payload_end;      /* buffer offset one past the last #SRECV payload byte (0 = none) */
+    uint16_t srecv_payload_start;
 	uint32_t timeout;
 	uint32_t send_time;
 	at_engine_result_t result;
@@ -215,13 +217,13 @@ bool at_engine_send_at_command(const void *p_cmd, uint16_t cmd_len,
 
 bool at_engine_send_data(const uint8_t *p_data, uint16_t data_len, uint32_t timeout)
 {
-	/* Adjust timeout for TX duration at 9600 bps */
+	/* Include TX duration at the configured 115200 bps. */
 	uint32_t adjusted_timeout = timeout + (uint32_t)(0.0868f * (float)data_len);
 
 	return at_engine_send_cmd(NULL, 0U,
 		p_data, data_len, true,
 		(const uint8_t *)"OK\r\n", 4U,
-		1U, adjusted_timeout);
+		2U, adjusted_timeout);
 }
 
 static void at_engine_send_process(void)
@@ -267,7 +269,7 @@ static void at_engine_send_process(void)
 	else
 	{
 		CCSLOG(XCOLOR_GREEN, "AT TX> %.*s\r\n",
-		              (int)at_engine.cmd_len, at_engine.cmd);
+		       (int)at_engine.cmd_len, at_engine.cmd);
 
 		at_engine_send_with_dma(at_engine.cmd, at_engine.cmd_len);
 		//send_at_command(at_engine.cmd, at_engine.cmd_len);
@@ -277,7 +279,8 @@ static void at_engine_send_process(void)
 	at_engine.retry_count--;
 	at_engine.response_buffer_len = 0U; /* Clear buffer for fresh response */
 	at_engine.binary_bytes_remaining = 0U; /* Exit any residual binary SRECV mode */
-	at_engine.srecv_payload_end = 0U;      /* No SRECV payload boundary yet */
+	at_engine.srecv_payload_start = 0U;
+    at_engine.srecv_payload_end = 0U;      /* No SRECV payload boundary yet */
 	at_engine.state = AT_ENGINE_WAIT_RESPONSE;
 }
 
@@ -330,6 +333,7 @@ static bool check_urc_in_response(void)
 		"+CGEV:",
 		"#NITZ:",
 		"+CUSD:",
+		"#QSS:",
 	};
 	static const size_t urc_table_size = sizeof(urc_table) / sizeof(urc_table[0]);
 
@@ -340,6 +344,13 @@ static bool check_urc_in_response(void)
     /* Payload is raw data, including NUL and URC-looking text. */
     const uint16_t text_start = at_engine.srecv_payload_end;
     if (text_start > at_engine.response_buffer_len)
+    {
+        return false;
+    }
+    /* CMGR text belongs to the SMS body until its final result. URCs
+     * queued after that result stay in the ring for the next cycle. */
+    if ((text_start == 0U) &&
+        (str_index_of(p_buf, "\r\n+CMGR:") >= 0))
     {
         return false;
     }
@@ -519,8 +530,10 @@ static void check_response_complete(void)
 	}
 
 	/* CME errors, like URCs, must not be searched inside binary data. */
-	if(str_index_of((const char *)at_engine.response_buffer + text_start,
-        AT_CME_ERROR_STR) >= 0)
+	if((str_index_of((const char *)at_engine.response_buffer + text_start,
+        AT_CME_ERROR_STR) >= 0) ||
+       (str_index_of((const char *)at_engine.response_buffer + text_start,
+        AT_CMS_ERROR_STR) >= 0))
 	{
 		/* +CME ERROR lines end with \r\n — check if line is complete */
 		if(buf_len >= 2U &&
@@ -529,7 +542,7 @@ static void check_response_complete(void)
 		{
 			at_engine.state = AT_ENGINE_DONE;
 			at_engine.result = AT_ENGINE_RESULT_ERROR;
-			log_response("CME ERROR");
+			log_response("CME/CMS ERROR");
 		}
 	}
 }
@@ -671,15 +684,22 @@ static bool at_srecv_parse_pending_length(uint16_t *p_len)
 	if (comma == NULL) { return false; }
 	comma++;
 
-	uint16_t len = 0U;
+    uint16_t len = 0U;
+    const uint16_t max_length = (uint16_t)
+        (AT_ENGINE_RESPONSE_BUFFER_SIZE - 1U -
+         at_engine.response_buffer_len);
+    if (*comma == '\r') { return false; }
 	for (const char *p = comma; (*p != '\0') && (*p != '\r'); p++)
 	{
 		if ((*p < '0') || (*p > '9')) { return false; }
-		len = (uint16_t)((uint16_t)(len * 10U) + (uint16_t)((uint8_t)*p - (uint8_t)'0'));
+        const uint32_t next = (uint32_t)len * 10U +
+            (uint32_t)((uint8_t)*p - (uint8_t)'0');
+        if (next > max_length) { return false; }
+        len = (uint16_t)next;
 	}
 
 	*p_len = len;
-	return (len > 0U);
+    return true;
 }
 
 /**
@@ -754,6 +774,7 @@ static void consume_rx_data(bool check_response)
 				at_engine.binary_bytes_remaining = srecv_len;
 				/* Record one-past-the-last payload byte so terminator detection
 				 * ignores any OK/ERROR byte pattern inside the binary payload. */
+                at_engine.srecv_payload_start = at_engine.response_buffer_len;
 				at_engine.srecv_payload_end = (uint16_t)(at_engine.response_buffer_len + srecv_len);
 				continue; /* Binary payload follows -- do not check for OK yet */
 			}
@@ -792,13 +813,13 @@ static void consume_rx_data(bool check_response)
 
 static void at_engine_wait_response_process(void)
 {
-	if(at_engine_check_timeout())
+	consume_rx_data(true);
+	if((at_engine.state == AT_ENGINE_WAIT_RESPONSE) &&
+	   at_engine_check_timeout())
 	{
 		at_engine.state = AT_ENGINE_SEND_CMD; /* Retry */
 		return;
 	}
-
-	consume_rx_data(true);
 
 	/* Do NOT drain the ring buffer here in DONE state.
 	 * SRING URCs may be arriving byte-by-byte via UART ISR.  Reading a
@@ -891,6 +912,7 @@ void at_engine_reset(void)
 	at_engine.response_buffer_len = 0U;
     at_engine.response_buffer[0] = '\0';
     at_engine.binary_bytes_remaining = 0U;
+    at_engine.srecv_payload_start = 0U;
     at_engine.srecv_payload_end = 0U;
 }
 
@@ -948,6 +970,19 @@ const uint8_t *at_engine_get_response(uint16_t *p_length)
 	return at_engine.response_buffer;
 }
 
+const uint8_t *at_engine_get_payload(uint16_t *length)
+{
+    const uint16_t start = at_engine.srecv_payload_start;
+    const uint16_t end = at_engine.srecv_payload_end;
+    const bool available = (start > 0U) && (end >= start) &&
+        (end <= at_engine.response_buffer_len);
+    if (length != NULL)
+    {
+        *length = available ? (uint16_t)(end - start) : 0U;
+    }
+    return available ? &at_engine.response_buffer[start] : NULL;
+}
+
 /* ---------- Buffer Management ---------- */
 
 void at_engine_clear_buff(void)
@@ -961,6 +996,7 @@ void at_engine_clear_buff(void)
 	at_engine.response_buffer_len = 0U;
 	at_engine.response_buffer[0] = '\0';
     at_engine.binary_bytes_remaining = 0U;
+    at_engine.srecv_payload_start = 0U;
     at_engine.srecv_payload_end = 0U;
 }
 
@@ -976,6 +1012,7 @@ void at_engine_cancel(void)
 	at_engine.response_buffer_len = 0U;
     at_engine.response_buffer[0] = '\0';
     at_engine.binary_bytes_remaining = 0U;
+    at_engine.srecv_payload_start = 0U;
     at_engine.srecv_payload_end = 0U;
 	rbuff_clear(&rx_ringbuf);
 }

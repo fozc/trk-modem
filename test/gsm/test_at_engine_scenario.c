@@ -164,6 +164,17 @@ void test_at_error_and_no_sim_responses_are_distinct(void)
     receive_bytes("\r\n+CME ERROR: 10\r\n", 18U);
     TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_NO_SIM, at_engine_get_result());
 }
+void test_sms_error_completes_without_timeout_or_retry(void)
+{
+    static const char response[] = "\r\n+CMS ERROR: 321\r\n";
+    start_command("AT+CMGR=1\r", 3U, 2000U);
+    receive_bytes(response, sizeof(response) - 3U);
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_NONE, at_engine_get_result());
+    receive_bytes(response + sizeof(response) - 3U, 2U);
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_ERROR, at_engine_get_result());
+    TEST_ASSERT_FALSE(at_engine_is_busy());
+    TEST_ASSERT_EQUAL_UINT32(1U, dma_calls);
+}
 void test_at_prompt_without_final_newline_completes(void)
 {
     TEST_ASSERT_TRUE(at_engine_send_at_command("AT#SSEND=1\r", 11U,
@@ -264,6 +275,61 @@ void test_at_data_mode_preserves_binary_bytes(void)
     (void)at_engine_process();
     TEST_ASSERT_EQUAL_MEMORY(payload, transmitted, sizeof(payload));
     TEST_ASSERT_EQUAL_UINT16(sizeof(payload), transmitted_len);
+}
+
+void test_payload_timeout_allows_exactly_two_transmissions(void)
+{
+    const uint8_t payload[] = {0U, 0x1AU, 0xFFU};
+    TEST_ASSERT_TRUE(at_engine_send_data(payload, sizeof(payload), 1000U));
+    (void)at_engine_process();
+    at_engine_dma_tx_complete_callback();
+    now += 1000U;
+    (void)at_engine_process();
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL_UINT32(2U, dma_calls);
+    TEST_ASSERT_EQUAL_MEMORY(payload, transmitted, sizeof(payload));
+    at_engine_dma_tx_complete_callback();
+    now += 1000U;
+    (void)at_engine_process();
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_TIMEOUT, at_engine_get_result());
+    TEST_ASSERT_EQUAL_UINT32(2U, dma_calls);
+}
+
+void test_complete_buffered_response_wins_over_timeout_boundary(void)
+{
+    static const char response[] = "\r\nOK\r\n";
+    start_command("AT\r", 2U, 1000U);
+    for (size_t index = 0U; index < sizeof(response) - 1U; index++)
+    {
+        at_engine_rx_byte((uint8_t)response[index]);
+    }
+    now += 1000U;
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_OK, at_engine_get_result());
+    TEST_ASSERT_EQUAL_UINT32(1U, dma_calls);
+}
+
+void test_qss_urc_is_routed_without_consuming_the_at_response(void)
+{
+    static const char response[] = "\r\n#QSS: 0\r\n\r\nOK\r\n";
+    start_command("AT\r", 1U, 1000U);
+    receive_bytes(response, sizeof(response) - 1U);
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_OK, at_engine_get_result());
+    TEST_ASSERT_EQUAL_UINT32(1U, urc_calls);
+    TEST_ASSERT_EQUAL_STRING("#QSS: 0", last_urc);
+}
+
+void test_sms_body_qss_text_is_not_a_sim_removal_notification(void)
+{
+    static const char response[] =
+        "\r\n+CMGR: \"REC UNREAD\",\"sender\"\r\n#QSS: 0\r\n\r\nOK\r\n";
+    start_command("AT+CMGR=1\r", 1U, 2000U);
+    receive_bytes(response, sizeof(response) - 1U);
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_OK, at_engine_get_result());
+    TEST_ASSERT_EQUAL_UINT32(0U, urc_calls);
+    TEST_ASSERT_EQUAL_MEMORY(response, at_engine_get_response(NULL),
+                             sizeof(response) - 1U);
 }
 void test_at_srecv_embedded_ok_is_not_response_terminator(void)
 {
@@ -387,7 +453,8 @@ void test_at_srecv_all_urc_and_cme_patterns_remain_payload(void)
         {"\r\n#SRECV: 3,17\r\n", "#NITZ: 26/10/05\r\n"},
         {"\r\n#SRECV: 3,15\r\n", "+CUSD: 0,test\r\n"},
         {"\r\n#SRECV: 3,16\r\n", "+CME ERROR: 10\r\n"},
-        {"\r\n#SRECV: 3,16\r\n", "+CME ERROR: 42\r\n"}
+        {"\r\n#SRECV: 3,16\r\n", "+CME ERROR: 42\r\n"},
+        {"\r\n#SRECV: 3,17\r\n", "+CMS ERROR: 321\r\n"}
     };
     for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++)
     {
@@ -606,7 +673,8 @@ void test_at_srecv_real_trailer_errors_after_binary_nul_are_detected(void)
     } cases[] = {
         {"\r\nERROR\r\n", AT_ENGINE_RESULT_ERROR},
         {"\r\n+CME ERROR: 10\r\n", AT_ENGINE_RESULT_NO_SIM},
-        {"\r\n+CME ERROR: 42\r\n", AT_ENGINE_RESULT_ERROR}
+        {"\r\n+CME ERROR: 42\r\n", AT_ENGINE_RESULT_ERROR},
+        {"\r\n+CMS ERROR: 321\r\n", AT_ENGINE_RESULT_ERROR}
     };
     for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++)
     {
@@ -650,6 +718,27 @@ void test_at_srecv_overflow_mid_payload_degrades_to_timeout_and_recovers(void)
     receive_bytes("\r\nOK\r\n", 6U);
     TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_OK, at_engine_get_result());
     TEST_ASSERT_EQUAL_UINT32(0U, urc_calls);
+}
+
+void test_srecv_payload_view_is_cleared_by_buffer_lifecycle(void)
+{
+    void (*const clear_functions[])(void) = {
+        at_engine_clear_buff, at_engine_reset, at_engine_cancel};
+    static const char response[] =
+        "\r\n#SRECV: 1,2\r\nAB\r\n\r\nOK\r\n";
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        at_engine_reset();
+        start_command("AT#SRECV=1,1024\r", 1U, 1000U);
+        receive_bytes(response, sizeof(response) - 1U);
+        uint16_t length = 0U;
+        TEST_ASSERT_NOT_NULL(at_engine_get_payload(&length));
+        TEST_ASSERT_EQUAL_UINT16(2U, length);
+        TEST_ASSERT_EQUAL_MEMORY("AB", at_engine_get_payload(NULL), 2U);
+        clear_functions[index]();
+        TEST_ASSERT_NULL(at_engine_get_payload(&length));
+        TEST_ASSERT_EQUAL_UINT16(0U, length);
+    }
 }
 
 /*** end of file ***/
