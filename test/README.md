@@ -1,7 +1,65 @@
 # Test Altyapısı
 
-**Sürüm:** 1.75
-**Tarih:** 2026-10-23
+**Sürüm:** 1.76
+**Tarih:** 2026-10-24
+
+## Çalışma sayaçları
+
+**Amaç:** Konfigürasyon NVRAM yazımlarını periyodik sayaçlardan ayırmak.
+**Kullanım yeri:** `Application/runtime_stats.c`, mevcut `spi_flash_log` ve
+web/seri terminaldeki `stats` komutu.
+
+Kayıt aralığı 15 dakika olmalıdır. İki 4 KiB sektör
+`0x234000–0x235FFF` aralığındadır; önceki Flash alanlarının adresleri
+korunur. NVRAM şeması 1 olarak kalır; sayaç alanları konfigürasyondan çıkarılmıştır.
+Her kayıt 64 bayttır: 2 bayt sequence, 60 bayt payload ve en son yazılan 2 bayt CRC. Payload little-endian biçimindedir:
+version (2 bayt, 1), flags (2 bayt, bit 0 RTC geçerli), UTC (4 bayt) ve
+13 adet uint32_t sayaç. RTC geçersizse UTC sıfırdır.
+
+Sayaç sırası: lifetime saniyesi, GSM RX/TX baytları, web/IEC server/IEC
+client bağlantıları, IEC aktif saniyesi, GSM watchdog kurtarmaları, Modbus
+istek/CRC/UART/TX hataları ve açılış sayısıdır. Bağlantı sayısı yalnız
+kapalıdan bağlıya geçişte artmalıdır. IEC süresi mevcut link-active bilgisini
+bir saniyelik ana süreç timer'ında örnekler. Modbus istek sayısı CRC'si doğru,
+cihaza adreslenmiş istekleri (exception yanıtları dahil) ve işlenen FC06
+broadcast yazımlarını içerir; başka cihazların isteklerini içermez. CRC hatası
+tüm bus üzerindeki bozuk tam çerçeveleri sayar. UART sayacı RX line error
+bildirimlerini, TX sayacı DMA hatası, gönderim başlatma hatası, meşgulken
+düşen yanıt ve timeout yollarını sayar. GSM kurtarmaları watchdog'un soft
+recovery/modül yeniden başlatma girişimleridir; MCU hard reseti bu sayaca
+eklenmez. uint32_t sayaçlar taşmada modulo 2^32 devam eder.
+
+Sahada cihaz yoktur; eski sayaçları taşıyan migration (veri aktarımı) kodu
+bulunmaz. Eski lifetime ve web/IEC oturum alanları NVRAM'den çıkarılmıştır.
+Şema 1'de NVRAM boyutu 1976 bayttır (önceki 1988 bayt); eski konfigürasyonlar
+mevcut varsayılan ayar yolunu kullanır. Boş sayaç günlüğü sıfırdan başlar.
+Açılışta Flash'a sayaç kaydı yazılmaz; ilk checkpoint (kalıcı kayıt) 15 dakika
+sonunda yapılır. Açılış sayacı da bu kayda dahildir. Dolayısıyla kayıt öncesi
+resetlerde boot artışı ve diğer son değişimler kaybolabilir. Önceki
+kaydedilmiş toplam korunur. Kesin reset geçmişi için mevcut bootlog
+kullanılmalıdır. Mevcut periyodik reset öncesinde son snapshot ayrıca
+kaydedilir; tüm resetlere yeni bir flush eklenmez. Factory default işlemi
+yalnız NVRAM'i etkiler; bu günlükteki cihaz ömür sayaçlarını temizlemez.
+
+Yeni kayıt okunup sequence ve payload doğrulanmadan başarılı sayılmamalıdır.
+Yarım kayıt/CRC hatasında önceki geçerli kayıt kullanılmalıdır. Açılışta SPI
+okuma hatası veya bilinmeyen kayıt sürümü varsa alan silinmemelidir; kalıcı
+kayıt kapalı kalırken RAM sayaçları işlemeye devam eder. Periyodik yazım hatası
+loglanır ve sonraki deneme 15 dakika sonradır. Başarılı checkpoint'ler arasında
+ani güç kaybında en çok yaklaşık 15 dakikalık veri kaybolur; devam eden Flash
+hatasında kayıp süresi uzayabilir. Halka en fazla 128 kayıt tutar; sektör
+geçişinde diğer sektörün 64 kaydı korunur (yaklaşık 16–32 saat geçmiş).
+
+`stats` güncel RAM sayaçlarını gösterir. `stats history 0` en yeni sekiz
+kalıcı kaydı CSV olarak, yeni kayıttan eskiye gösterir; `8`, `16`, … ile
+sayfalama yapılmalıdır. `127` son olası kayıttır. Bu komutlar salt okunurdur.
+
+`test/` dizininden `ceedling test:runtime_stats`,
+`ceedling test:runtime_stats_shell`, GSM kenar senaryoları ve Modbus DMA
+senaryosu çalıştırılmalıdır. NOR modeli gerçek spi_flash_log üzerinde yarım
+yazma, kayıp CRC, silme/okuma hatası, bozuk kayıt, sektör dönüşü, boş
+günlük başlangıcı, uint32_t taşması ve timer wrap yollarını sınar. HTTP JSON testi LifeTime'ın
+ayrı sayaçtan geldiğini doğrular. Host testleri fiziksel Flash sürelerini ve elektrik kesintisi davranışını ölçmez.
 
 ## JSON testleri
 

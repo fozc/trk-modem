@@ -31,10 +31,12 @@
 #include "modbus_process.h"
 #include "breaker.h"
 #include "iec104_process.h"
+#include "iec104.h"
 #include "iec104_event_log.h"
 #include "web_server.h"
 #include "gsm_process_contiki.h"
 #include "modem_config.h"
+#include "runtime_stats.h"
 #include "periodic_reset.h"
 #include "app_ipc.h"
 #include "boot.h"
@@ -99,7 +101,7 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 		if(timer_expired(&life_time_timer)){
 			timer_reset(&life_time_timer);
 			//nvram_lifetime_increment(1);
-			modem_config_lifetime_tick();
+			runtime_stats_tick(iec104_is_link_active());
 
 		}
 
@@ -268,9 +270,14 @@ __attribute__ ((noreturn)) void app_main(void)
 	autostart_start(autostart_processes);
 
 	nvram_init();
+	if (!runtime_stats_init())
+	{
+		CSLOG_ERR("Runtime statistics storage unavailable\r\n");
+	}
 	rf_store_init();   /* RF fider store'unu NVRAM last-known aynasindan yukle */
 	//rf_dummy_init();
 	shell_init("Troika >\r\n", NULL, bsp_putchr);
+	runtime_stats_shell_init();
 
 	reset_source_print();
 

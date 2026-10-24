@@ -1,6 +1,9 @@
 /*
  * gsm_wtd.c
  *
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
+ *
  * Software watchdog for the GSM/AT engine.
  * Detects stuck busy states and performs graduated recovery.
  */
@@ -13,6 +16,7 @@
 #include "gsm_listener_process.h"
 #include "gsm_log.h"
 #include "gsm_elog.h"
+#include "runtime_stats.h"
 #include "at_engine2.h"
 #include "bsp.h"
 
@@ -48,7 +52,7 @@ static uint8_t  s_liveness_recovery_count;
  * ------------------------------------------------------------------------- */
 
 /**
- * @brief Feed the GSM watchdog — call whenever real progress occurs.
+ * @brief Feed the GSM watchdog - call whenever real progress occurs.
  *
  * "Progress" = gsm is not busy, or a state transition happened.
  */
@@ -107,6 +111,7 @@ static void liveness_check(void)
 
 	if (s_liveness_recovery_count <= GSM_WTD_LIVENESS_MAX_RECOVERIES)
 	{
+		runtime_stats_add(RUNTIME_GSM_RECOVERIES, 1U);
 		gsm_request_module_restart();
 	}
 	else
@@ -188,10 +193,11 @@ static void gsm_wtd_log_diagnostic(elog_code_t code)
 }
 
 /**
- * @brief Soft recovery — release busy lock, reset AT engine, idle listeners.
+ * @brief Soft recovery - release busy lock, reset AT engine, idle listeners.
  */
 static void gsm_wtd_soft_recover(void)
 {
+	runtime_stats_add(RUNTIME_GSM_RECOVERIES, 1U);
 	gsm_wtd_log_diagnostic(ELOG_GSM_WTD_SOFT_RECOVERY);
 
 	LOG(WARNING, "[GSM WTD] Soft recovery (%u/%u)",
@@ -233,7 +239,7 @@ void gsm_wtd_check(void)
 	 * gsm_power_on sinirsiz retry dongusu sirasinda poll dongusu
 	 * kosmadigindan bu kontrol tetiklenmez. */
 
-	/* Feed when GSM is not busy — normal operation */
+	/* Feed when GSM is not busy - normal operation */
 	if (!gsm_is_busy())
 	{
 		gsm_wtd_feed();
@@ -242,7 +248,7 @@ void gsm_wtd_check(void)
 		return;
 	}
 
-	/* GSM is busy — check if stuck */
+	/* GSM is busy - check if stuck */
 	if ((gsm_get_tick() - s_wtd_last_activity) < GSM_WTD_TIMEOUT_MS)
 	{
 		return; /* Still within timeout */
@@ -257,7 +263,7 @@ void gsm_wtd_check(void)
 	{
 		gsm_wtd_log_diagnostic(ELOG_GSM_WTD_HARD_RESET);
 
-		CSLOG_ERR("[GSM WTD] Hard reset — %u soft recoveries exhausted",
+		CSLOG_ERR("[GSM WTD] Hard reset - %u soft recoveries exhausted",
 		    (unsigned)GSM_WTD_RESET_THRESHOLD);
 		s_wtd_soft_recovery_count = 0;
 		gsm_wtd_feed();

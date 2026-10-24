@@ -2,7 +2,8 @@
  * modem_types.h
  *
  *  Created on: Feb 1, 2026
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef MODEM_TYPES_H_
@@ -71,7 +72,6 @@ typedef struct
     int32_t  time_zone;                       // RW Saat dilimi offseti saat cinsinden, +/-12
     coordinates_t coordinates;                //RO Cihaz koordinat bilgileri
     uint32_t production_date;                 // RO Uretim tarihi epoch olarak
-    uint32_t lifetime;                        // RO Cihazin toplam calisma suresi saniye cinsinden
     uint32_t periodic_modem_reset_period;     // RW Periyodik modem reset periyodu saniye cinsinden
     uint16_t web_first_data_timeout_sec;         // RW Web listener: ilk veri zaman asimi (s), 0=kapali
     uint16_t web_idle_timeout_sec;               // RW Web listener: bosta kalma zaman asimi (s), 0=kapali
@@ -79,8 +79,6 @@ typedef struct
     uint16_t iec104_idle_timeout_sec;            // RW IEC104 listener: bosta kalma zaman asimi (s), 0=kapali
     uint32_t commissioning_time;              // RO Devreye alma zamani (epoch)
     uint8_t  rf_firmware_version[4];          // RO RF firmware versiyonu semantic version
-    uint32_t web_session_counter;                 // RO Modem oturum sayaci
-    uint32_t iec_session_counter;                 // RO Modem oturum sayaci
 	char    imei[16];			/* Modemdeki GSM modulun IMEI numarasi */
 	char    phone_num[12];       /* Simkart'a ait tel. no*/
 }__attribute__((packed)) modem_config_t;

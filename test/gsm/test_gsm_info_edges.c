@@ -5,11 +5,13 @@
  * Runtime storage and telemetry boundary contracts, no mocked algorithm.
  */
 #include "unity.h"
+#include "mock_runtime_stats.h"
 #include "gsm_info.h"
 #include <string.h>
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     gsm_info_init();
 }
 void tearDown(void)
@@ -306,4 +308,16 @@ void test_gsm_cesq_reserved_lte_does_not_override_valid_3g(void)
     gsm_info_get_cesq_report(&report);
     TEST_ASSERT_EQUAL_STRING("4G / LTE", report.active_technology);
 }
+void test_traffic_totals_are_forwarded_without_reinit_reset(void)
+{
+    runtime_stats_add_StopIgnore();
+    runtime_stats_add_Expect(RUNTIME_GSM_RX_BYTES, 123U);
+    gsm_info_add_rx_bytes(123U);
+    runtime_stats_add_Expect(RUNTIME_GSM_TX_BYTES, UINT32_MAX);
+    gsm_info_add_tx_bytes(UINT32_MAX);
+    gsm_info_init();
+    runtime_stats_add_Expect(RUNTIME_GSM_TX_BYTES, 7U);
+    gsm_info_add_tx_bytes(7U);
+}
+
 /*** end of file ***/

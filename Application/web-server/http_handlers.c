@@ -10,6 +10,7 @@
 
 #define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_handlers.h"
+#include "modem_config.h"
 #include "http_response.h"
 #include "http_session_token.h"
 #include "bsp_random.h"
@@ -676,7 +677,7 @@ static void write_device_identity(json_writer_t *writer,
     /* TODO: Convert epoch to human-readable date format */
     web_json_uint32(writer, "UretimTarihi",
                     (uint32_t)(config->production_date));
-    web_json_uint32(writer, "LifeTime", (uint32_t)(config->lifetime));
+    web_json_uint32(writer, "LifeTime", modem_config_get_lifetime());
 
     /* Son resetten bu yana gecen sure (saniye) - bsp_get_run_time uzerinden
      * ayri cagri (shell'deki "Run Time" satiri ile ayni kaynak). NVRAM'de

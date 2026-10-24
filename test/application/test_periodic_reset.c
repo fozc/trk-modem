@@ -9,6 +9,7 @@
  */
 
 #include "unity.h"
+#include "mock_runtime_stats.h"
 
 #include <stdint.h>
 
@@ -61,11 +62,11 @@ static void system_reset_callback(int call_count)
     system_reset_count++;
 }
 
-static int sync_callback(int call_count)
+static bool sync_callback(int call_count)
 {
     (void)call_count;
     sync_count++;
-    return sync_result;
+    return sync_result == 0;
 }
 
 void setUp(void)
@@ -78,7 +79,7 @@ void setUp(void)
     system_reset_count = 0U;
     sync_count = 0U;
     sync_result = 0;
-    modem_config_sync_StubWithCallback(sync_callback);
+    runtime_stats_save_StubWithCallback(sync_callback);
     modem_config_get_reset_period_StubWithCallback(get_period_callback);
     bsp_system_reset_StubWithCallback(system_reset_callback);
 

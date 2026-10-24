@@ -94,13 +94,11 @@ Headless CI/Docker işi kullanıcı kararıyla ertelidir.
 Mevcut NVRAM ABI korunmalıdır. Kaynaklar:
 [types.h](../Application/types.h), [nvram.c](../Application/nvram.c).
 
-KODDAN_OKUNDU: NVRAM_SCHEMA_VERSION 3U; nvram_t için sizeof assert
-2476U, crc ofseti 2472U. Header magic/version/length/sequence taşır.
-Bunlar kaynak assert değerleridir; bu paket çalışmasında hedef
-compiler ile yeniden ölçülmedi.
-(Düzeltme 12.10.2026: bu kayıt önce 2U yazmıştı; types.h 216-270
-satırlarından yeniden okunup 3U olarak güncellendi. sizeof/crc
-değerleri değişmedi. Şema değişikliği değildir.)
+24.10.2026 kullanıcı kararı: sahada cihaz yoktur; NVRAM_SCHEMA_VERSION
+1U olarak kalır ve migration yapılmaz. `nvram_t` boyutu 1976U, crc ofseti
+1972U'dur. Değerler GCC 14.3 / Cortex-M33 derlemesindeki assert'lerle
+doğrulanmıştır. Header magic/version/length/sequence taşır; eski boyuttaki
+görüntüler length kontrolünden geçemediğinde mevcut default yolu kullanılır.
 
 Mevcut değişiklik kuralı: alanlar crc öncesinde kuyruğa eklenir;
 şema sürümü artırılır; hedef sizeof/offsetof kontrolleri güncellenir.
@@ -158,7 +156,7 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 | Dummy üreticiler korunur | Gerçek veri/altyapı henüz yoktur. Dummy kaldırılmaz; veri kaynağı bulgusu tamamlandı sayılmaz. Üretim raporu §9.3/§9.29. |
 | #if 0 blokları korunur | Kullanıcı açıkça kaldırılmasını istemedikçe kod temizliği kapsamında silinmez. Kök AGENTS.md. |
 | Contiki ve ST/CubeMX uyarı düzeltmeleri kapsam dışıdır | 8 Contiki, 5 ST driver, 1 Core tanısı kullanıcı kararıyla bırakılmıştır. Uyarı susturma veya vendor yamasıyla gizlenmez. [güncel warning kararı §10.3](../URETIM_HAZIRLIK_RAPORU_2026-10.md#103-korunan-kararlar-ve-taşınan-kanıt-özeti), kapsam dışındaki 14 uyarı. |
-| Lifetime mevcut NVRAM alanında kalır | 25 saatte bir ve mevcut periyodik reset öncesinde sync vardır. Ayrı Flash alanı/migration veya her reset için flush yetkisi verilmemiştir. Üretim raporu §9.1. |
+| Çalışma sayaçları ayrı SPI Flash günlüğünde tutulur | 24.10.2026 kullanıcı onayı önceki NVRAM lifetime kararını günceller: mevcut spi_flash_log ile 0x234000–0x235FFF aralığında iki sektör, 64 bayt kayıt ve 15 dakika checkpoint kullanılır. Kullanıcı sahada cihaz olmadığını belirtti: eski NVRAM lifetime ve listener oturum alanları kaldırılır; migration yapılmaz. NVRAM şema 1 olarak kalır; boyut 1976 bayttır. Kullanıcının açık kararıyla migration yapılmaz; eski boyuttaki konfigürasyonlar length kontrolüyle mevcut default yolunu kullanır. Boş sayaç günlüğü sıfırdan başlar; ilk kayıt 15 dakika sonunda yapılır. Mevcut periyodik reset öncesinde sayaçlar kaydedilir; her reset için yeni flush mekanizması eklenmez. Kullanım ve testler: [test rehberi](../test/README.md#çalışma-sayaçları). |
 | Random altyapısı BSP'dedir | HTTP token doğrudan bsp_random_word kullanır; fallback bu API içindedir. HAL başlangıcı main/CubeMX'tedir. Erişilebilirlik fallback'i güvenli entropy sayılmaz. Üretim raporu §9.1. |
 | Geliştirme anahtarları şimdilik Git'te kalır | Anahtarlar otomatik silinmez/taşınmaz veya geçmiş yeniden yazılmaz. Saha öncesi yeni üretim anahtarları hazırlanıp doğrulanmalıdır. [keys/README.md](../keys/README.md), üretim raporu §9.5. |
 | BOLATeX teslim/iletişim belgeleri git dışıdır | 12.10.2026 kullanıcı kararı: dört BOLATeX belgesi (sorular, PowerBoard I2C protokolü, RF-SCP yanıt kontrolü, modem uygulama planı) tüm dallardan geçmişten silindi ve yalnız yerelde tutulur. Geçmiş yeniden yazma istisnası bu açık kararla verilmiştir; anahtar satırındaki yasağın kapsamı değişmez. |

@@ -10,6 +10,8 @@
 /* Keep log arguments compiled; LTO removes unused shell handlers. */
 #undef NO_SHELL_LOG
 #include "unity.h"
+TEST_SOURCE_FILE("cp56time2a.c")
+#include "mock_runtime_stats.h"
 #include "mock_bsp.h"
 #include "power_board_scp.h"
 #include "mock_power_board_control.h"
@@ -159,6 +161,7 @@ bool rf_eui64_is_zero(const uint8_t eui[RF_EUI64_LEN])
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     modbus_power_stats_invalidate_snapshot();
     modbus_system_stats_invalidate_snapshot_Ignore();
     fault_log_get_temp_count_IgnoreAndReturn(0U);

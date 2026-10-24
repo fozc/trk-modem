@@ -8,6 +8,7 @@
  * Actual HTTP JSON handlers with storage, clock and terminal boundaries.
  */
 #include "json_config.h"
+#include "modem_config.h"
 #include "web_json.h"
 #include "iec104_config.h"
 #include "iec104_util.h"
@@ -43,6 +44,11 @@ static struct
 static json_writer_t *terminal_writer;
 static size_t terminal_bytes;
 static uint32_t terminal_calls;
+
+uint32_t modem_config_get_lifetime(void)
+{
+    return 123456789U;
+}
 
 const modem_config_t *get_device_config(void)
 {
@@ -204,6 +210,7 @@ int main(void)
     (void)memcpy(firmware.short_commit_hash, "abc1234", 8U);
     reset_response();
     handle_get_device_config_json();
+    assert(strstr(response, "\"LifeTime\":123456789") != NULL);
     emit_response();
 
     iec.scada_ip_address = 0xC0A80101U;

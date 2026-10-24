@@ -50,6 +50,7 @@ def main():
         json.loads(line) for line in output.splitlines()]
     assert device["SimKartAPN"] == 'a"b\\c\n'
     assert device["PreserveOutputStates"] is True
+    assert device["LifeTime"] == 123456789
     assert iec["ScadaIPAdresi"] == "192.168.1.1"
     count = len(iec["Hatlar"]["inUse"])
     assert iec["Hatlar"]["IOA_R_AnlikAkim"] == list(range(100, 100 + count))

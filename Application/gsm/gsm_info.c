@@ -8,6 +8,7 @@
  */
 
 #include "gsm_info.h"
+#include "runtime_stats.h"
 #include <string.h>
 
 /* ---------- Internal state ---------- */
@@ -356,11 +357,13 @@ uint32_t gsm_info_get_ip(void)
 void gsm_info_add_rx_bytes(uint32_t count)
 {
     s_info.rx_counter += count;
+    runtime_stats_add(RUNTIME_GSM_RX_BYTES, count);
 }
 
 void gsm_info_add_tx_bytes(uint32_t count)
 {
     s_info.tx_counter += count;
+    runtime_stats_add(RUNTIME_GSM_TX_BYTES, count);
 }
 
 void gsm_info_get_rxtx_counters(uint32_t *p_tx, uint32_t *p_rx)

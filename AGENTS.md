@@ -184,9 +184,11 @@ before changing the affected behavior. In particular:
 - Respect explicit deferrals and scope exclusions. Contiki kernel and the
   excluded ST/CubeMX warning fixes remain out of scope unless reopened by
   the user. BMS reader fixes do not authorize enabling the reader.
-- Lifetime remains in the existing NVRAM field. Do not move it to a separate
-  Flash area or migrate it without a new user decision. Account for Flash
-  endurance when choosing persistence frequency.
+- Runtime counters use the approved two-sector SPI Flash log, with a
+  15-minute checkpoint (user decision 2026-10-24). No field devices exist:
+  obsolete NVRAM counter fields and migration code are removed. Schema
+  remains 1 by explicit user decision; the length check sends older layouts
+  to defaults. An empty statistics log starts at zero. Reuse spi_flash_log and account for Flash endurance.
 - Preserve the distinction between the BSP availability random fallback and
   secure random APIs. HAL startup belongs to main/CubeMX; do not repeat it
   in `bsp_random_init()`. Reuse existing BSP, reset and retry infrastructure.

@@ -161,7 +161,6 @@ void nvram_set_defaults(void)
 	nvram.modem_config.coordinates.lac[0] = '\0';
 	nvram.modem_config.coordinates.ci[0] = '\0';
 	nvram.modem_config.production_date = 0;
-	nvram.modem_config.lifetime = 0;
 	nvram.modem_config.periodic_modem_reset_period = 86400; // 24 hours
 	nvram.modem_config.commissioning_time = 0;
 	nvram.modem_config.rf_firmware_version[0] = 0;
@@ -259,7 +258,6 @@ void nvram_dump()
 	CSLOG_NODT("    - LAC                    : %.4s\r\n", nvram.modem_config.coordinates.lac);
 	CSLOG_NODT("    - CI                     : %.4s\r\n", nvram.modem_config.coordinates.ci);
 	CSLOG_NODT("  Production Date (Epoch)    : %lu\r\n", nvram.modem_config.production_date);
-	CSLOG_NODT("  Lifetime (seconds)         : %lu\r\n", nvram.modem_config.lifetime);
 	CSLOG_NODT("  Periodic Reset Period (s)  : %lu\r\n", nvram.modem_config.periodic_modem_reset_period);
 	CSLOG_NODT("  Commissioning Time (Epoch) : %lu\r\n", nvram.modem_config.commissioning_time);
 	CSLOG_NODT("  RF Firmware Version        : %u.%u.%u.%u\r\n",
@@ -267,8 +265,6 @@ void nvram_dump()
 			nvram.modem_config.rf_firmware_version[1],
 			nvram.modem_config.rf_firmware_version[2],
 			nvram.modem_config.rf_firmware_version[3]);
-	CSLOG_NODT("  WEB Session Counter            : %lu\r\n", nvram.modem_config.web_session_counter);
-	CSLOG_NODT("  IEC Session Counter            : %lu\r\n", nvram.modem_config.iec_session_counter);
 	CSLOG_NODT("\r\n");
 
 	/* IEC104 CONFIG SECTION */

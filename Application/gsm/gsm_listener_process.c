@@ -47,7 +47,7 @@ static const gsm_listener_cfg_t s_cfg_web = {
 		[LS_AT_ACCEPT_CONN]  = ATQUERY_ACCEPT_LISTENER_CONN,
 	},
 
-	.on_connected    = modem_config_webserver_client_connected_cb,
+	.on_connected    = NULL, /* Counted by gsm_socket_set_state. */
 	.on_closed       = webserver_on_connection_closed,
 	.reset_session   = gsm_reset_web_session_info,
 };
@@ -68,7 +68,7 @@ static const gsm_listener_cfg_t s_cfg_iec104 = {
 		[LS_AT_ACCEPT_CONN]  = ATQUERY_ACCEPT_IEC104_LISTENER_CONN,
 	},
 
-	.on_connected    = modem_config_iec_client_connected_cb,
+	.on_connected    = NULL, /* Counted by gsm_socket_set_state. */
 	.on_closed       = iec104_process_socket_closed_cb,
 	.reset_session   = gsm_reset_iec104_session_info,
 };

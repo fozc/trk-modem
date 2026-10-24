@@ -303,6 +303,11 @@ static void modbus_process_frame(modbus_slave_t *p_ctx, const uint8_t *frame, ui
 
     uint8_t function_code = frame[MODBUS_OFFSET_FC];
 
+    if (!is_broadcast || (function_code == MODBUS_FC_WRITE_SINGLE_REGISTER))
+    {
+        p_ctx->request_count++;
+    }
+
     switch (function_code) {
         case MODBUS_FC_READ_HOLDING_REGISTERS:
             /* Reads cannot be issued to the broadcast address. */
@@ -371,6 +376,11 @@ void libmodbusrtu_modbus_set_slave_id(modbus_slave_t *p_ctx, uint8_t id)
     if ((id >= MODBUS_SLAVE_ID_MIN) && (id <= MODBUS_SLAVE_ID_MAX)) {
         p_ctx->slave_id = id;
     }
+}
+
+uint32_t libmodbusrtu_modbus_get_request_count(const modbus_slave_t *p_ctx)
+{
+    return p_ctx->request_count;
 }
 
 uint8_t libmodbusrtu_modbus_get_last_exception(const modbus_slave_t *p_ctx)

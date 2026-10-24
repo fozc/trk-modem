@@ -1,10 +1,14 @@
 /*
  * test_gsm_wtd_liveness_scenario.c
  *
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
+ *
  * GSM software watchdog liveness recovery scenarios.
  */
 
 #include "unity.h"
+#include "mock_runtime_stats.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -94,6 +98,7 @@ gsm_log_level_t gsm_log_get_level(void)
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     (void)memset(&gsm, 0, sizeof(gsm));
     tick_now = 1000U;
     busy_state = 0U;
@@ -120,6 +125,9 @@ void test_recent_ping_does_not_trigger_recovery(void)
 
 void test_silence_requests_two_restarts_then_hard_reset(void)
 {
+    runtime_stats_add_StopIgnore();
+    runtime_stats_add_Expect(RUNTIME_GSM_RECOVERIES, 1U);
+    runtime_stats_add_Expect(RUNTIME_GSM_RECOVERIES, 1U);
     gsm_wtd_liveness_ping();
     tick_now += 11U * 60U * 1000U;
     gsm_wtd_check();
