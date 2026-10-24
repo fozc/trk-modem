@@ -118,6 +118,146 @@ void test_static_setting_error_still_uses_existing_init_reset(void)
     TEST_ASSERT_EQUAL_UINT8(GSM_RESET_MODULE, gsm_get_init_state());
 }
 
+void test_busy_sim_is_polled_again_without_resetting_modem(void)
+{
+    gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_SIMCARD_STATUS, 1U);
+    gsm_init_old();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_CPIN_BUSY);
+    gsm_set_delay_Expect(300U);
+    gsm_set_free_Expect();
+    gsm_init_old();
+    TEST_ASSERT_EQUAL_UINT8(GSM_CHECK_SIMCARD_AND_PIN, gsm_get_init_state());
+    TEST_ASSERT_EQUAL_UINT8(GSM_INIT_PHASE_SEND, gsm.init_phase);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_SIMCARD_STATUS, 1U);
+    gsm_init_old();
+}
+
+void test_enhrst_success_waits_twenty_seconds_before_common_init(void)
+{
+    gsm_set_init_state(GSM_REBOOT);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_ENHRST, 1U);
+    gsm_init_old();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_RESPONSE_OK);
+    gsm_set_delay_Expect(20000U);
+    gsm_set_main_state_Expect(GSM_COMMON_INIT_MODE);
+    gsm_set_free_Expect();
+    gsm_init_old();
+    TEST_ASSERT_EQUAL_UINT8(GSM_SOFT_INIT, gsm_get_init_state());
+}
+
+void test_enhrst_timeout_allows_boot_before_another_reset(void)
+{
+    gsm_set_init_state(GSM_REBOOT);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_ENHRST, 1U);
+    gsm_init_old();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_TIMEOUT);
+    gsm_set_delay_Expect(20000U);
+    gsm_set_free_Expect();
+    gsm_init_old();
+    TEST_ASSERT_EQUAL_UINT8(GSM_RESET_MODULE, gsm_get_init_state());
+}
+
+void test_reset_ladder_waits_for_modem_nvm_before_enhrst(void)
+{
+    gsm.reboot_counter = 0U;
+    gsm_set_init_state(GSM_RESET_MODULE);
+    led_driver_set_modem_mode_Expect(LED_MODEM_ERROR);
+    gsm_set_delay_Expect(5000U);
+    gsm_init_old();
+    TEST_ASSERT_EQUAL_UINT8(GSM_REBOOT, gsm_get_init_state());
+}
+
+void test_common_init_enables_qss_notifications(void)
+{
+    bool found = false;
+    gsm_load_common_init_vector();
+    while (gsm_get_init_state() != GSM_INIT_DONE)
+    {
+        found = found ||
+            (gsm_get_init_state() == GSM_ENABLE_SIM_STATUS_URC);
+        gsm_init_next_step();
+    }
+    TEST_ASSERT_TRUE(found);
+}
+
+void test_puk_keeps_sim_error_led_and_waits_without_sending_pin(void)
+{
+    gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_SIMCARD_STATUS, 1U);
+    gsm_init_old();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_CPIN_SIMPUK);
+    led_driver_set_modem_mode_Expect(LED_MODEM_NO_SIM);
+    gsm_set_delay_Expect(3000U);
+    gsm_set_free_Expect();
+    gsm_init_old();
+    TEST_ASSERT_EQUAL_UINT8(GSM_CHECK_SIMCARD_AND_PIN, gsm_get_init_state());
+}
+
+void test_pin_required_respects_development_build_setting(void)
+{
+    gsm_set_init_state(GSM_CHECK_SIMCARD_AND_PIN);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_SIMCARD_STATUS, 1U);
+    gsm_init_old();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_CPIN_SIMPIN);
+    gsm_set_delay_Expect((GSM_AUTO_PIN_ENABLED != 0U) ? 50U : 3000U);
+    gsm_set_free_Expect();
+    gsm_init_old();
+    TEST_ASSERT_EQUAL_UINT8((GSM_AUTO_PIN_ENABLED != 0U) ? GSM_SET_PIN_NO :
+        GSM_CHECK_SIMCARD_AND_PIN, gsm_get_init_state());
+}
+
+void test_pin_success_verifies_ready_without_advancing_init_vector(void)
+{
+    gsm_set_init_state(GSM_SET_PIN_NO);
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_SET_PIN_NO, 1U);
+    gsm_init_old();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_RESPONSE_OK);
+    gsm_set_delay_Expect(300U);
+    gsm_set_free_Expect();
+    gsm_init_old();
+    TEST_ASSERT_EQUAL_UINT8(GSM_CHECK_SIMCARD_AND_PIN, gsm_get_init_state());
+
+    gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_SIMCARD_STATUS, 1U);
+    gsm_init_old();
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_CPIN_NO_SIM);
+    led_driver_set_modem_mode_Expect(LED_MODEM_NO_SIM);
+    gsm_set_delay_Expect(3000U);
+    gsm_set_free_Expect();
+    gsm_init_old();
+}
+
+void test_pin_error_does_not_resubmit_until_card_removal(void)
+{
+    const uint32_t errors[] = {GSM_CPIN_PINNO_ERROR, GSM_TIMEOUT};
+    for (size_t index = 0U; index < 2U; index++)
+    {
+        gsm_set_init_state(GSM_SET_PIN_NO);
+        gsm_engine_send_query_ExpectAndReturn(ATQUERY_SET_PIN_NO, 1U);
+        gsm_init_old();
+        gsm_engine_get_query_res_ExpectAndReturn(errors[index]);
+        gsm_set_delay_Expect(3000U);
+        gsm_set_free_Expect();
+        gsm_init_old();
+        gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_SIMCARD_STATUS, 1U);
+        gsm_init_old();
+        gsm_engine_get_query_res_ExpectAndReturn(GSM_CPIN_SIMPIN);
+        gsm_set_delay_Expect(3000U);
+        gsm_set_free_Expect();
+        gsm_init_old();
+        TEST_ASSERT_EQUAL_UINT8(GSM_CHECK_SIMCARD_AND_PIN,
+                               gsm_get_init_state());
+
+        gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_SIMCARD_STATUS, 1U);
+        gsm_init_old();
+        gsm_engine_get_query_res_ExpectAndReturn(GSM_CPIN_NO_SIM);
+        led_driver_set_modem_mode_Expect(LED_MODEM_NO_SIM);
+        gsm_set_delay_Expect(3000U);
+        gsm_set_free_Expect();
+        gsm_init_old();
+    }
+}
+
 void test_reenabled_vector_steps_configure_and_open_without_listener_reopen(void)
 {
     static const uint8_t vector[] = {
@@ -168,6 +308,51 @@ void test_reenabled_vector_steps_configure_and_open_without_listener_reopen(void
         gsm.listener[GSM_LISTENER_WEB].state);
     TEST_ASSERT_EQUAL_UINT8(GSM_LS_IDLE,
         gsm.listener[GSM_LISTENER_IEC104].state);
+}
+
+void test_registration_errors_leave_wait_phase_and_query_ceer(void)
+{
+    const gsm_init_state_t states[] = {
+        GSM_CHECK_GPRS_NEWTWORK_STATE, GSM_CHECK_LTE_NEWTWORK_STATE};
+    const uint32_t queries[] = {
+        ATQUERY_GET_GPRS_NETWORK_STATE, ATQUERY_GET_LTE_NETWORK_STATE};
+    for (size_t index = 0U; index < 2U; index++)
+    {
+        gsm_set_init_state(states[index]);
+        gsm_engine_send_query_ExpectAndReturn(queries[index], 1U);
+        gsm_init_old();
+        TEST_ASSERT_EQUAL(GSM_INIT_PHASE_WAIT_RESPONSE, gsm.init_phase);
+        gsm_engine_get_query_res_ExpectAndReturn(GSM_ERROR);
+        gsm_set_free_Expect();
+        gsm_init_old();
+        TEST_ASSERT_EQUAL(GSM_GET_CEER, gsm_get_init_state());
+        TEST_ASSERT_EQUAL(GSM_INIT_PHASE_SEND, gsm.init_phase);
+        gsm_engine_send_query_ExpectAndReturn(ATQUERY_CEER, 1U);
+        gsm_init_old();
+        TEST_ASSERT_EQUAL(GSM_INIT_PHASE_WAIT_RESPONSE, gsm.init_phase);
+    }
+}
+
+void test_registration_search_keeps_polling_both_networks(void)
+{
+    gsm_set_init_state(GSM_CHECK_GPRS_NEWTWORK_STATE);
+    for (size_t cycle = 0U; cycle < 3U; cycle++)
+    {
+        gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_GPRS_NETWORK_STATE, 1U);
+        gsm_init_old();
+        gsm_engine_get_query_res_ExpectAndReturn(GSM_GPRS_NETWORK_SEARCHING);
+        gsm_set_free_Expect();
+        gsm_init_old();
+        TEST_ASSERT_EQUAL(GSM_CHECK_LTE_NEWTWORK_STATE, gsm_get_init_state());
+        TEST_ASSERT_EQUAL(GSM_INIT_PHASE_SEND, gsm.init_phase);
+        gsm_engine_send_query_ExpectAndReturn(ATQUERY_GET_LTE_NETWORK_STATE, 1U);
+        gsm_init_old();
+        gsm_engine_get_query_res_ExpectAndReturn(GSM_LTE_NETWORK_SEARCHING);
+        gsm_set_free_Expect();
+        gsm_init_old();
+        TEST_ASSERT_EQUAL(GSM_CHECK_GPRS_NEWTWORK_STATE, gsm_get_init_state());
+        TEST_ASSERT_EQUAL(GSM_INIT_PHASE_SEND, gsm.init_phase);
+    }
 }
 
 /*** end of file ***/

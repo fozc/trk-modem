@@ -34,6 +34,7 @@ TEST_SOURCE_FILE("gsm_sms.c")
 static uint16_t active_t3_timeout;
 static uint16_t active_listen_port;
 static uint32_t expected_timeout;
+static uint8_t expected_retries;
 
 uint16_t iec104_get_t3_timeout(void)
 {
@@ -82,6 +83,7 @@ void setUp(void)
     active_t3_timeout = 60U;
     active_listen_port = 2404U;
     expected_timeout = 2000U;
+    expected_retries = 2U;
     memset(&gsm, 0, sizeof(gsm));
     memset(&gsm_info, 0, sizeof(gsm_info));
     at_engine_get_response_Stub(get_response);
@@ -187,6 +189,21 @@ void test_no_sim_result_preserves_error_and_mode_transition(void)
     TEST_ASSERT_EQUAL_UINT8(GSM_SIM_ERROR_MODE, gsm_get_main_state());
 }
 
+void test_cpin_numeric_busy_reports_retryable_sim_state(void)
+{
+    response_text = "\r\n+CME ERROR: 14\r\n";
+    response_result = AT_ENGINE_RESULT_ERROR;
+    gsm_info_set_sim_state_Expect(GSM_SIM_STATE_BUSY);
+    TEST_ASSERT_EQUAL_INT32(GSM_CPIN_BUSY, gsm_cpin_get_cb());
+}
+
+void test_cpin_other_numeric_error_is_not_sim_busy(void)
+{
+    response_text = "\r\n+CME ERROR: 140\r\n";
+    response_result = AT_ENGINE_RESULT_ERROR;
+    TEST_ASSERT_EQUAL_INT32(GSM_ERROR, gsm_cpin_get_cb());
+}
+
 void test_substring_boundaries_and_resume_pointer_are_preserved(void)
 {
     char source[] = "before<123>after";
@@ -254,7 +271,7 @@ static bool check_at_command(const void *command, uint16_t command_len,
     TEST_ASSERT_EQUAL_MEMORY(expected_command, command, command_len);
     TEST_ASSERT_EQUAL_MEMORY(GSM_OK_STR, expected_response, GSM_OK_STR_LEN);
     TEST_ASSERT_EQUAL_UINT8(GSM_OK_STR_LEN, response_len);
-    TEST_ASSERT_EQUAL_UINT8(3U, retries);
+    TEST_ASSERT_EQUAL_UINT8(expected_retries, retries);
     TEST_ASSERT_EQUAL_UINT32(expected_timeout, timeout);
     return true;
 }
@@ -267,8 +284,77 @@ void test_at_command_bytes_and_length_are_unchanged(void)
     TEST_ASSERT_EQUAL_UINT32(1U, gsm_engine_send_query(ATQUERY_DISABLE_ECHO));
     gsm_set_free();
     modem_config_get_sim_apn_IgnoreAndReturn("internet");
+    expected_retries = 1U;
     expected_command = "AT+CGDCONT=1,\"IP\",\"internet\"\r";
     TEST_ASSERT_EQUAL_UINT32(1U, gsm_engine_send_query(ATQUERY_SET_APN));
+}
+
+void test_pin_command_uses_saved_pin_and_one_transmission(void)
+{
+    at_engine_is_busy_IgnoreAndReturn(false);
+    at_engine_send_at_command_Stub(check_at_command);
+    expected_retries = 1U;
+    expected_timeout = 5000U;
+    const uint16_t pins[] = {7U, 1234U, 54321U};
+    const char *commands[] = {
+        "AT+CPIN=\"0007\"\r", "AT+CPIN=\"1234\"\r", "AT+CPIN=\"54321\"\r"
+    };
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        modem_config_get_sim_pin_ExpectAndReturn(pins[index]);
+        expected_command = commands[index];
+        TEST_ASSERT_EQUAL_UINT32(1U,
+            gsm_engine_send_query(ATQUERY_SET_PIN_NO));
+        gsm_set_free();
+    }
+}
+
+void test_pin_error_codes_are_decoded_from_error_results(void)
+{
+    response_result = AT_ENGINE_RESULT_ERROR;
+    response_text = "\r\n+CME ERROR: 16\r\n";
+    TEST_ASSERT_EQUAL_INT32(GSM_CPIN_PINNO_ERROR, gsm_cpin_set_cb());
+    response_text = "\r\n+CME ERROR: 13\r\n";
+    TEST_ASSERT_EQUAL_INT32(GSM_CPIN_SIM_FAILUER, gsm_cpin_set_cb());
+    response_text = "\r\n+CME ERROR: 160\r\n";
+    TEST_ASSERT_EQUAL_INT32(GSM_ERROR, gsm_cpin_set_cb());
+}
+
+void test_sms_callback_receives_only_valid_received_messages(void)
+{
+    response_text = "\r\n+CMGR: \"REC UNREAD\",\"+90555\",\"\",\"date\""
+                    "\r\nhello\r\n\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT32(GSM_SMS_REC_UNREAD, gsm_CMGR_cb());
+    response_text = "\r\n+CMGR: \"REC READ\",\"+90555\",\"\",\"date\""
+                    "\r\nhello\r\n\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT32(GSM_SMS_REC_READ, gsm_CMGR_cb());
+    response_text = "\r\n+CMGR: \"REC UNREAD\"\r\nbroken\r\nOK\r\n";
+    TEST_ASSERT_EQUAL_INT32(GSM_ERROR, gsm_CMGR_cb());
+    response_result = AT_ENGINE_RESULT_ERROR;
+    response_text = "\r\n+CMS ERROR: 321\r\n";
+    TEST_ASSERT_EQUAL_INT32(GSM_SMS_NO_SMS, gsm_CMGR_cb());
+}
+
+void test_qss_setting_and_network_wait_budgets_use_single_attempt(void)
+{
+    at_engine_is_busy_IgnoreAndReturn(false);
+    at_engine_send_at_command_Stub(check_at_command);
+    expected_retries = 1U;
+    expected_command = "AT#QSS=2\r";
+    TEST_ASSERT_EQUAL_UINT32(1U,
+        gsm_engine_send_query(ATQUERY_ENABLE_SIM_STATUS_URC));
+    gsm_set_free();
+    expected_timeout = 60000U;
+    expected_command = "AT+CGATT=1\r";
+    TEST_ASSERT_EQUAL_UINT32(1U,
+        gsm_engine_send_query(ATQUERY_ATTACH_GPRS));
+    gsm_set_free();
+    expected_timeout = 160000U;
+    expected_command = "AT#SGACT=1,1\r";
+    modem_config_get_sim_apn_username_ExpectAndReturn("");
+    modem_config_get_sim_apn_password_ExpectAndReturn("");
+    TEST_ASSERT_EQUAL_UINT32(1U,
+        gsm_engine_send_query(ATQUERY_ACTIVATE_GPRS));
 }
 
 void test_long_at_command_is_rejected_before_sending(void)
@@ -555,6 +641,7 @@ void test_cops_error_and_timeout_do_not_update_rat_or_led(void)
 
 void test_iec104_modem_idle_timeout_uses_active_t3_with_ten_second_margin(void)
 {
+    expected_retries = 1U;
     const uint16_t values[] = {20U, 60U, 65525U};
     const char *commands[] = {
         "AT#SCFG=3,1,0,30,600,50\r",
@@ -658,6 +745,17 @@ void test_invalid_ntp_calendar_preserves_existing_clock(void)
         response_text = invalid[index];
         TEST_ASSERT_EQUAL_INT32(GSM_ERROR, gsm_ntp_cb());
     }
+}
+
+void test_registration_callbacks_preserve_modem_error_and_timeout(void)
+{
+    response_text = "\r\nERROR\r\n";
+    response_result = AT_ENGINE_RESULT_ERROR;
+    TEST_ASSERT_EQUAL_INT32(GSM_ERROR, gsm_cgreg_get_cb());
+    TEST_ASSERT_EQUAL_INT32(GSM_ERROR, gsm_cereg_get_cb());
+    response_result = AT_ENGINE_RESULT_TIMEOUT;
+    TEST_ASSERT_EQUAL_INT32(GSM_TIMEOUT, gsm_cgreg_get_cb());
+    TEST_ASSERT_EQUAL_INT32(GSM_TIMEOUT, gsm_cereg_get_cb());
 }
 
 /*** end of file ***/

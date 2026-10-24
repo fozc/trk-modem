@@ -24,6 +24,8 @@
 #include "iec104_process.h"
 #include "gsm_log.h"
 #include "gsm_wtd.h"
+#include "gsm_info.h"
+#include "gsm_socket.h"
 
 extern gsm_t gsm;
 
@@ -81,6 +83,32 @@ void gsm_URC_callback(uint8_t *msg, uint16_t len)
     (void)len;
 
 	if(msg == NULL) { return; }
+
+    if (strncmp((const char *)msg, "#QSS: ", 6U) == 0)
+    {
+        const char *status = (const char *)msg + 6U;
+        if ((len != 7U) || (*status < '0') || (*status > '3'))
+        {
+            return;
+        }
+        if (*status == '0')
+        {
+            gsm_info_set_sim_state(GSM_SIM_STATE_NOT_INSERTED);
+            if (gsm_get_main_state() == GSM_NORMAL_MODE)
+            {
+                gsm_set_main_state(GSM_SIM_ERROR_MODE);
+            }
+        }
+        else if (*status == '1')
+        {
+            gsm_info_set_sim_state(GSM_SIM_STATE_UNKNOWN);
+        }
+        else
+        {
+            gsm_info_set_sim_state(GSM_SIM_STATE_READY);
+        }
+        return;
+    }
 
 	char *ptr = strstr((char *)msg, "SRING: 1");
 	if(ptr != NULL)
@@ -536,8 +564,14 @@ void gsm_module_event_process(void)
  */
 void gsm_sim_error_mode(void)
 {
-	CSLOG_ERR("SIM error mode - resetting modem.\r\n");
-	bsp_system_reset();
+	CSLOG_ERR("SIM removed - restarting modem services.\r\n");
+	for (uint8_t socket = 0U; socket < (uint8_t)GSM_SOCKET_COUNT; socket++)
+	{
+		gsm_socket_set_state(socket, '0');
+	}
+	gsm_internet_connection_faild_cd();
+	gsm_reset_iec104_session_info();
+	gsm_request_module_restart();
 }
 
 void gsm_normal_mode(void)
@@ -721,7 +755,7 @@ void gsm_process_old(void)
 
 	if (gsm.delay_flag)
 	{
-		if (gsm.delay_timer < gsm_get_tick())
+		if ((int32_t)(gsm_get_tick() - gsm.delay_timer) >= 0)
 		{
 			gsm.delay_flag = 0;
 		}

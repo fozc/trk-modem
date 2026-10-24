@@ -1704,23 +1704,21 @@ int32_t gsm_cereg_get_cb(void)
  */
 int32_t gsm_cpin_set_cb(void)
 {
-	int32_t at_res = 0;
-	at_res = gsm_at_response_ready();
-	switch (at_res) {
-		case GSM_RESPONSE_OK:
-			if(str_index_of((const char *)rx.buff, "READY") > -1)
-				at_res = GSM_RESPONSE_OK;
-			else
-				if(str_index_of((const char *)rx.buff, "ERROR: 13") > -1)
-					at_res = GSM_CPIN_SIM_FAILUER;
-			else
-			if(str_index_of((const char *)rx.buff, "ERROR: 16") > -1) /*<\r><\n>ERROR<\r><\n> hatali pin  +CME ERROR: 16 */
-				at_res = GSM_CPIN_PINNO_ERROR;
-		case GSM_ERROR:
-		case GSM_TIMEOUT:
-			break;
-		default:
-			break;
+	int32_t at_res = gsm_at_response_ready();
+	if (at_res == GSM_ERROR)
+	{
+		if (strstr((const char *)rx.buff, "ERROR: 13\r\n") != NULL)
+		{
+			at_res = GSM_CPIN_SIM_FAILUER;
+		}
+		else if (strstr((const char *)rx.buff, "ERROR: 16\r\n") != NULL)
+		{
+			at_res = GSM_CPIN_PINNO_ERROR;
+		}
+		else
+		{
+			/* Preserve other modem errors. */
+		}
 	}
 	return at_res;
 }
@@ -1770,6 +1768,11 @@ int32_t gsm_cpin_get_cb(void)
 			}
 			break;
 		case GSM_ERROR:
+			if(strstr((const char *)rx.buff, "ERROR: 14\r\n") != NULL)
+			{
+				at_res = GSM_CPIN_BUSY;
+				gsm_info_set_sim_state(GSM_SIM_STATE_BUSY);
+			}
 			if(strstr((const char *)rx.buff, "ERROR: 10") != NULL)
 			{
 				at_res = GSM_CPIN_NO_SIM;
@@ -2806,7 +2809,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 	uint16_t port = 0;
 	uint8_t at_buff[128] = {'A', 'T'};
 	size_t at_len = 2U;
-	uint8_t try = 3;
+	uint8_t try = 2U;
 	uint8_t const *res = GSM_OK_STR;
 	uint8_t res_len    = GSM_OK_STR_LEN;
 
@@ -2852,12 +2855,20 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			at_len += xsprintf(buff_ptr, "#SWPKGV"); //"+CGMR"
 			break;
 		case ATQUERY_GET_SIMCARD_STATUS:
+			timeout = 5000U;
 			gsm.at_callback = gsm_cpin_get_cb;
 			at_len += xsprintf(buff_ptr, "+CPIN?");
 			break;
+		case ATQUERY_ENABLE_SIM_STATUS_URC:
+			try = 1U;
+			at_len += xsprintf(buff_ptr, "#QSS=2");
+			break;
 		case ATQUERY_SET_PIN_NO:
+			timeout = 5000U;
 			gsm.at_callback = gsm_cpin_set_cb;
-			//at_len += xsprintf(buff_ptr, "+CPIN=%4d", flash_get_sim_pin_no());
+			try = 1U;
+			at_len += xsprintf(buff_ptr, "+CPIN=\"%04u\"",
+			    (unsigned int)modem_config_get_sim_pin());
 			break;
 		case ATQUERY_SET_SERVICE_CLASS:
 			at_len += xsprintf(buff_ptr, "+FCLASS=0");
@@ -2897,6 +2908,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			at_len += xsprintf(buff_ptr, "+CUSD=1,*101#");
 			break;
 		case ATQUERY_SET_APN:
+			try = 1U;
 			/* APN yoksa "" gonderilir */
 			gsm.at_callback = gsm_cgdcont_cb;
 			char_ptr = modem_config_get_sim_apn();
@@ -2904,39 +2916,48 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			break;
 
 		case ATQUERY_SOCKET_1_CONFIG_SCFG:
+			try = 1U;
 			at_len += xsprintf(buff_ptr, "#SCFG=1,1,0,60,600,50");
 			break;
 		case ATQUERY_SOCKET_2_CONFIG_SCFG:
+			try = 1U;
 			at_len += xsprintf(buff_ptr, "#SCFG=2,1,0,60,600,50");
 			break;
 		case ATQUERY_SOCKET_3_CONFIG_SCFG:
+			try = 1U;
 			at_len += xsprintf(buff_ptr, "#SCFG=3,1,0,%u,600,50",
                 (unsigned int)((uint32_t)iec104_get_t3_timeout() +
                     IEC104_MODEM_IDLE_MARGIN_SECONDS));
 			break;
 
 		case ATQUERY_SOCKET_1_CONFIG_SCFGEXT:
+			try = 1U;
 			gsm.at_callback = gsm_scfgext1_set_cb;
 			at_len += xsprintf(buff_ptr, "#SCFGEXT=1,1,0,20,0,0");
 			break;
 		case ATQUERY_SOCKET_2_CONFIG_SCFGEXT:
+			try = 1U;
 			gsm.at_callback = gsm_scfgext1_set_cb;
 			at_len += xsprintf(buff_ptr, "#SCFGEXT=2,1,0,0,0,0");
 			break;
 		case ATQUERY_SOCKET_3_CONFIG_SCFGEXT:
+			try = 1U;
 			gsm.at_callback = gsm_scfgext1_set_cb;
 			at_len += xsprintf(buff_ptr, "#SCFGEXT=3,1,0,20,0,0");
 			break;
 
 		case ATQUERY_SOCKET_1_CONFIG_SCFGEXT2:
+			try = 1U;
 			gsm.at_callback = gsm_scfgext2_set_cb;
 			at_len += xsprintf(buff_ptr, "#SCFGEXT2=1,1,1,0,0,2");
 			break;
 		case ATQUERY_SOCKET_2_CONFIG_SCFGEXT2:
+			try = 1U;
 			gsm.at_callback = gsm_scfgext2_set_cb;
 			at_len += xsprintf(buff_ptr, "#SCFGEXT2=2,0,0,0,0,2");
 			break;
 		case ATQUERY_SOCKET_3_CONFIG_SCFGEXT2:
+			try = 1U;
 			gsm.at_callback = gsm_scfgext2_set_cb;
 			at_len += xsprintf(buff_ptr, "#SCFGEXT2=3,0,0,0,0,2");
 			break;
@@ -2965,12 +2986,14 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			at_len += xsprintf(buff_ptr, "#FRWL=1,\"1.1.1.1\",\"0.0.0.0\"");
 			break;
 		case ATQUERY_ATTACH_GPRS:
-			timeout = 16000UL; /* 10 sec */
+			timeout = 60000UL;
+			try = 1U;
 			gsm.at_callback = gsm_cgatt_cb;
 			at_len += xsprintf(buff_ptr, "+CGATT=1");
 			break;
 		case ATQUERY_ACTIVATE_GPRS:
 			timeout = 160*1000UL;
+			try = 1U;
 			gsm.at_callback = gsm_sgact_set_cb;
 			at_len += xsprintf(buff_ptr, "#SGACT=1,1");
 			char_ptr = modem_config_get_sim_apn_username();
@@ -3077,10 +3100,12 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			at_len += xsprintf(buff_ptr, "#SS=3");
 			break;
 		case ATQUERY_GET_IEC104_LISTENER_SOCKET_DATA:   /* Listener sokete gelen datayi oku */
+			try = 1U;
 			gsm.at_callback = gsm_srcev_iec104_listener_cb;
 			at_len += xsprintf(buff_ptr, "#SRECV=3,1024");
 			break;
 		case ATQUERY_SET_IEC104_LISTENER_SOCKET_DATA_MODE: /* Listener soketi data moduna gecir. Sokete data gondermeden once bu cmd gondrilmeli */
+			try = 1U;
 			timeout = 2000;
 		    res     = GSM_REC_READY;
 		    res_len = GSM_REC_READY_LEN;
@@ -3124,10 +3149,12 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			at_len += xsprintf(buff_ptr, "#SS=1");
 			break;
 		case ATQUERY_GET_LISTENER_SOCKET_DATA:   /* Listener sokete gelen datayi oku */
+			try = 1U;
 			gsm.at_callback = gsm_srcev_listener_cb;
 			at_len += xsprintf(buff_ptr, "#SRECV=1,1024");
 			break;
 		case ATQUERY_SET_LISTENER_SOCKET_DATA_MODE: /* Listener soketi data moduna gecir. Sokete data gondermeden once bu cmd gondrilmeli */
+			try = 1U;
 			timeout = 2000;
 		    res     = GSM_REC_READY;
 		    res_len = GSM_REC_READY_LEN;
@@ -3170,6 +3197,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			at_len += xsprintf(buff_ptr, "#SS=2");
 			break;
 		case ATQUERY_SET_DIALER_SOCKET_DATA_MODE:
+			try = 1U;
 			timeout = 2000;
 		    res     = GSM_REC_READY;
 		    res_len = GSM_REC_READY_LEN;
@@ -3180,6 +3208,7 @@ uint32_t gsm_engine_send_query(uint8_t query)
 			//flash_add_gsm_tx_counter(gsm.tx_index);
 			break;
 		case ATQUERY_GET_DIALER_SOCKET_DATA:
+			try = 1U;
 			gsm.at_callback = gsm_srcev_dialer_cb;
 			at_len += xsprintf(buff_ptr, "#SRECV=2,1024");
 			break;
