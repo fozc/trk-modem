@@ -64,7 +64,7 @@ void test_socket_registers_select_web_iec104_and_dialer_independently(void)
 
 void test_invalid_address_or_null_returns_false_without_changing_output(void)
 {
-    const uint16_t invalid[] = {0U, 49399U, 49409U, UINT16_MAX};
+    const uint16_t invalid[] = {0U, 49399U, 49410U, UINT16_MAX};
     for (size_t index = 0U; sizeof(invalid) / sizeof(invalid[0]) > index;
          index++)
     {
@@ -74,6 +74,16 @@ void test_invalid_address_or_null_returns_false_without_changing_output(void)
     }
     TEST_ASSERT_FALSE(modbus_gsm_stats_read(49400U, NULL));
     TEST_ASSERT_FALSE(modbus_gsm_stats_read(49408U, NULL));
+}
+
+void test_sim_status_register_preserves_all_states_including_puk(void)
+{
+    for (uint8_t state = (uint8_t)GSM_SIM_STATE_UNKNOWN;
+         state <= (uint8_t)GSM_SIM_STATE_ERROR; state++)
+    {
+        gsm_info_get_sim_state_ExpectAndReturn((gsm_sim_state_t)state);
+        expect_register(49409U, state);
+    }
 }
 
 /*** end of file ***/

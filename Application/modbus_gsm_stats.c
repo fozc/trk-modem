@@ -100,6 +100,9 @@ bool modbus_gsm_stats_read(uint16_t reg_addr, uint16_t* value)
         case GSM_REG(socket_state_dialer):
             *value = (uint16_t)gsm_get_socket_state((uint8_t)DIALER_SOCKET);
             return true;
+        case GSM_REG(sim_state):
+            *value = (uint16_t)gsm_info_get_sim_state();
+            return true;
         default:
             /* Dense layout: only reachable if a member loses its case.
              * Return 0 so a bulk read of the block never raises exception

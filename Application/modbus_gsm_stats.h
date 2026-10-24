@@ -41,6 +41,7 @@ typedef struct
     uint16_t socket_state_web;      /* socket_state_t: web listener      */
     uint16_t socket_state_iec104;   /* socket_state_t: IEC104 listener   */
     uint16_t socket_state_dialer;   /* socket_state_t: HES dialer client */
+    uint16_t sim_state;            /* gsm_sim_state_t; PUK required = 3 */
 } modbus_gsm_stats_map_t;
 
 bool modbus_gsm_stats_read(uint16_t reg_addr, uint16_t* value);
