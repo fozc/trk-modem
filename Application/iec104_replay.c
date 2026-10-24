@@ -112,7 +112,7 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 			fail_count++;
 			if (fail_count >= REPLAY_MAX_CONSEC_FAIL)
 			{
-				CSLOG_ERR("replay: art arda %u basarisiz kayit, duruyorum\r\n",
+				CSLOG_ERR("replay: art arda %u basarisiz kayit, replay durduruldu\r\n",
 				          (unsigned int)fail_count);
 				break;
 			}
