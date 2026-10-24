@@ -9,6 +9,7 @@
  */
 #undef NO_SHELL_LOG
 #include "unity.h"
+#include "mock_runtime_stats.h"
 #include "mock_bsp.h"
 #include "mock_power_board_control.h"
 #include "mock_elog.h"
@@ -121,6 +122,7 @@ static void set_config(uint32_t baud, uint8_t stop)
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     elog_log_uart_recovery_Ignore();
     uart_abort_tx_IgnoreAndReturn(true);
     fake_tick = 0U;

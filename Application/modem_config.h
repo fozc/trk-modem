@@ -75,8 +75,6 @@ void modem_config_set_production_date(uint32_t date);
 // lifetime
 uint32_t modem_config_get_lifetime(void);
 void modem_config_set_lifetime(uint32_t lifetime);
-/** Main context, once per second; saves the existing image every 25h. */
-void modem_config_lifetime_tick(void);
 
 // periodic_modem_reset_period (Read-Write)
 uint32_t modem_config_get_reset_period(void);
@@ -104,9 +102,6 @@ void modem_config_set_imei(const char* imei);
 const char* modem_config_get_imei(void);
 
 
-//Callbacks
-
-void modem_config_webserver_client_connected_cb(void);
-void modem_config_iec_client_connected_cb(void);
-
 #endif /* MODEM_CONFIG_H_ */
+
+/*** end of file ***/

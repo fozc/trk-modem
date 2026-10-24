@@ -380,33 +380,7 @@ static void test_retry_reuses_sequence(void)
     check(images_equal(), "T17: slots consistent");
 }
 
-/* Lifetime is part of the existing image, not separate storage. */
-static void test_lifetime_persistence_boundary(void)
-{
-    boot_virgin();
-    nvram_get_modem_config_rw()->lifetime = 120U;
-    check(0 == nvram_sync(false), "lifetime: baseline sync OK");
 
-    nvram_get_modem_config_rw()->lifetime = 150U;
-    reboot();
-    check(120U == nvram_get_modem_config()->lifetime,
-          "lifetime: unsaved increment lost after reload");
-
-    nvram_get_modem_config_rw()->lifetime = 180U;
-    check(0 == nvram_sync(false), "lifetime: updated sync OK");
-    reboot();
-    check(180U == nvram_get_modem_config()->lifetime,
-          "lifetime: saved increment survives reload");
-
-    nvram_get_modem_config_rw()->lifetime = 200U;
-    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_AFTER_ERASE);
-    check(0 != nvram_sync(false), "lifetime: failed save reported");
-    reboot();
-    check(180U == nvram_get_modem_config()->lifetime,
-          "lifetime: previous saved value survives failed save");
-}
-
-/* Factory IOA ranges must stay disjoint when all lines are enabled. */
 static void test_iec_default_address_regions(void)
 {
     boot_virgin();
@@ -791,20 +765,24 @@ static void test_relay_states_and_retention(void)
           "relay: enabling saves current state, not stale state");
 }
 
-static void test_old_length_uses_defaults_without_schema_bump(void)
+static void test_previous_layout_uses_defaults(void)
 {
     boot_virgin();
-    uint8_t old_image[1984];
-    memcpy(old_image, mock_slot_image_rw(MOCK_SLOT_A), sizeof(old_image));
+    uint8_t old_image[1988];
+    memset(old_image, 0, sizeof(old_image));
+    memcpy(old_image, mock_slot_image_rw(MOCK_SLOT_A), sizeof(nvram_t));
+    const uint32_t old_schema = 1U;
+    memcpy(&old_image[4], &old_schema, sizeof(old_schema));
     const uint32_t old_length = sizeof(old_image);
     memcpy(&old_image[8], &old_length, sizeof(old_length));
     const uint32_t crc = crc32_finalize(crc32_update(
         crc32_init(), old_image, sizeof(old_image) - sizeof(uint32_t)));
-    memcpy(&old_image[1980], &crc, sizeof(crc));
+    memcpy(&old_image[sizeof(old_image) - sizeof(crc)], &crc, sizeof(crc));
     memcpy(mock_slot_image_rw(MOCK_SLOT_A), old_image, sizeof(old_image));
     memcpy(mock_slot_image_rw(MOCK_SLOT_B), old_image, sizeof(old_image));
     reboot();
-    check(1U == NVRAM_SCHEMA_VERSION, "relay: schema unchanged by user decision");
+    check(1U == NVRAM_SCHEMA_VERSION,
+          "runtime stats: schema stays 1 by user decision");
     check(sizeof(nvram_t) == img(MOCK_SLOT_A)->length,
           "relay: old length reprovisions current layout");
     check(nvram_retain_output_states() && (0U == nvram_get_relay_states()),
@@ -814,7 +792,7 @@ static void test_old_length_uses_defaults_without_schema_bump(void)
 int main(void)
 {
     test_relay_states_and_retention();
-    test_old_length_uses_defaults_without_schema_bump();
+    test_previous_layout_uses_defaults();
     test_rf_inventory_journal_survives_save_and_torn_clear();
     test_schema_three_uses_defaults_without_migration();
     test_invalid_header_or_crc_uses_valid_peer_without_data_loss();
@@ -828,7 +806,6 @@ int main(void)
     test_factory_iec_addresses_are_unchanged();
     test_iec_default_address_regions();
     test_periodic_default_is_off_and_saved_interval_survives_reboot();
-    test_lifetime_persistence_boundary();
     test_normal_flow();
     test_recovery_only_a();
     test_recovery_only_b();

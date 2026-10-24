@@ -251,38 +251,25 @@ typedef struct
     uint32_t crc;
 }nvram_t;
 
-/* Layout kaymasini derleme hatasina cevir (rf_feeder_t bekcisi
- * rf_types.h icindedir). Bu yapi degistiginde NVRAM_SCHEMA_VERSION
- * bump edilir. 2460 = GCC 14.3.rel1 / Cortex-M33 olcumu (Y3.11);
- * v2'de rf_log_level eski kuyruk padding'ine oturdu - boyut ve crc
- * ofseti degismedi (rfwu 2-hizali, 20 bayt; rf_log_level @2454).
- * BL-21: rfwu oturumuna fw_crc+fw_size (8 bayt) eklendi - kuyruk
- * kaydi; eski goruntuler length bekcisinden dusup default-reset olur
- * (uretim oncesi kural, types.h NVRAM_SCHEMA_VERSION notu).
- * v5 olcumu: modbus_line_config_t (91 B/hat x 7) power_line_t icinden ve
- * modbus_configs_t addr_aku/addr_reset (4 B) kaldirildi; nvram_t 2624 ->
- * 1984, crc 2620 -> 1980, journal 2472 -> 1832 (host GCC olcumu; tipler
- * pak'li/4B hizali, ARM ABI ile ayni - proje derlemesi teyit eder).
- * CRC goruntunun length-4 bayti uzerinde hesaplanir - layout kaysa
- * eski flash goruntuleri sessizce CRC'den dusup default-reset
- * olurdu; bu bekci kaymayi derleme zamaninda yakalar.
- * 2026-10-21 user decision: no field devices; schema stays 1. Relay
- * command bits and output retention are appended at 1980/1981.
- * Cortex-M33 GCC 14.3: size 1988, crc 1984. Old length uses defaults. */
+/* Schema 1: lifetime and session counters live in runtime_stats only.
+ * No field devices exist (user decision 2026-10-24); schema stays 1.
+ * Old configurations use the existing defaults path without migration:
+ * header length rejects the old layout before loading its payload.
+ * Layout values verified with GCC 14.3 / Cortex-M33. */
 _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
 _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
 _Static_assert(sizeof(rf_inventory_journal_t) == 148U,
                "RF inventory journal layout");
-_Static_assert(offsetof(nvram_t, rf_inventory_journal) == 1832U,
-               "Schema v1 journal offset (stop_bits absorbed by _Alignas padding)");
-_Static_assert(offsetof(nvram_t, relay_states) == 1980U,
+_Static_assert(offsetof(nvram_t, rf_inventory_journal) == 1820U,
+               "Schema v1 journal offset");
+_Static_assert(offsetof(nvram_t, relay_states) == 1968U,
                "nvram_t: relay states at tail");
-_Static_assert(offsetof(nvram_t, retain_output_states) == 1981U,
+_Static_assert(offsetof(nvram_t, retain_output_states) == 1969U,
                "nvram_t: output retention offset");
-_Static_assert(sizeof(nvram_t) == 1988U, "nvram_t schema v1 layout");
-_Static_assert(offsetof(nvram_t, crc) == 1984U, "nvram_t: crc at tail");
+_Static_assert(sizeof(nvram_t) == 1976U, "nvram_t schema v1 layout");
+_Static_assert(offsetof(nvram_t, crc) == 1972U, "nvram_t: crc at tail");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */

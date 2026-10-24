@@ -9,6 +9,7 @@
  */
 #undef NO_SHELL_LOG
 #include "unity.h"
+#include "mock_runtime_stats.h"
 #include "mock_bsp.h"
 #include "power_board_scp.h"
 #include "mock_power_board_control.h"
@@ -194,6 +195,9 @@ static void simulate_tx_complete(void)
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
+    rx_error_count = 0U;
+    atomic_store_explicit(&tx_error_count, 0U, memory_order_relaxed);
     elog_log_uart_recovery_Ignore();
     modbus_system_stats_invalidate_snapshot_Ignore();
     fake_tick = 0U;
@@ -561,6 +565,60 @@ void test_process_timer_recovers_tx_without_further_rx_events(void)
     TEST_ASSERT_FALSE(s_modbus_tx_busy);
     TEST_ASSERT_EQUAL_UINT8(0U, oe_level);
     TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+}
+
+static uint32_t totals[RUNTIME_COUNTER_COUNT];
+
+static void count_event(runtime_counter_t counter, uint32_t amount, int call)
+{
+    (void)call;
+    TEST_ASSERT_LESS_THAN_UINT32(RUNTIME_COUNTER_COUNT, counter);
+    totals[counter] += amount;
+}
+
+void test_runtime_counters_follow_requests_crc_uart_and_tx_failure_paths(void)
+{
+    (void)memset(totals, 0, sizeof(totals));
+    runtime_stats_add_StopIgnore();
+    runtime_stats_add_Stub(count_event);
+    exchange();
+    simulate_tx_complete();
+    TEST_ASSERT_EQUAL_UINT32(1U, totals[RUNTIME_MODBUS_REQUESTS]);
+
+    static const uint8_t bad_crc[] = {1U, 6U, 0x27U, 0x12U, 0U, 1U, 0U, 0U};
+    for (size_t index = 0U; index < sizeof(bad_crc); index++)
+    {
+        modbus_process_isr_rx_byte(bad_crc[index]);
+    }
+    fake_tick += 20U;
+    TEST_ASSERT_EQUAL(MODBUS_POLL_HANDLED, modbus_poll(&s_modbus));
+    TEST_ASSERT_EQUAL_UINT32(1U, totals[RUNTIME_MODBUS_REQUESTS]);
+    TEST_ASSERT_EQUAL_UINT32(1U, totals[RUNTIME_MODBUS_CRC_ERRORS]);
+
+    modbus_process_isr_rx_error();
+    TEST_ASSERT_EQUAL_UINT32(0U, totals[RUNTIME_MODBUS_UART_ERRORS]);
+    (void)modbus_poll(&s_modbus);
+    (void)modbus_poll(&s_modbus);
+    TEST_ASSERT_EQUAL_UINT32(1U, totals[RUNTIME_MODBUS_UART_ERRORS]);
+    TEST_ASSERT_EQUAL_UINT32(1U, totals[RUNTIME_MODBUS_CRC_ERRORS]);
+
+    fake_tick += 20U; /* UART-error recovery needs a new silence gap. */
+    dma_start_result = HAL_ERROR;
+    exchange();
+    TEST_ASSERT_EQUAL_UINT32(1U, totals[RUNTIME_MODBUS_TX_ERRORS]);
+    dma_start_result = HAL_OK;
+    exchange();
+    dma_channel_enabled = false;
+    uart_dma_request_enabled = false;
+    huart4.gState = HAL_UART_STATE_READY;
+    dma_tx_handle.State = HAL_DMA_STATE_READY;
+    huart4.ErrorCode = HAL_UART_ERROR_DMA;
+    HAL_UART_ErrorCallback(&huart4);
+    TEST_ASSERT_EQUAL_UINT32(1U, totals[RUNTIME_MODBUS_TX_ERRORS]);
+    (void)modbus_poll(&s_modbus);
+    (void)modbus_poll(&s_modbus);
+    TEST_ASSERT_EQUAL_UINT32(2U, totals[RUNTIME_MODBUS_TX_ERRORS]);
+    TEST_ASSERT_EQUAL_UINT32(3U, totals[RUNTIME_MODBUS_REQUESTS]);
 }
 
 /*** end of file ***/

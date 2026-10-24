@@ -9,6 +9,7 @@
  */
 
 #include "unity.h"
+#include "mock_runtime_stats.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -19,6 +20,7 @@
 #include "modem_config.h"
 
 static modem_config_t stored_config;
+static uint32_t runtime_counts[RUNTIME_COUNTER_COUNT];
 static bool last_sync_force;
 static uint32_t sync_count;
 static int sync_result;
@@ -43,8 +45,25 @@ static int sync_callback(bool force, int call_count)
     return sync_result;
 }
 
+static uint32_t get_runtime_lifetime(runtime_counter_t counter, int call)
+{
+    (void)call;
+    TEST_ASSERT_LESS_THAN_UINT32(RUNTIME_COUNTER_COUNT, counter);
+    return runtime_counts[counter];
+}
+
+static void set_runtime_lifetime(runtime_counter_t counter,
+                                  uint32_t seconds, int call)
+{
+    (void)call;
+    runtime_counts[counter] = seconds;
+}
+
 void setUp(void)
 {
+    (void)memset(runtime_counts, 0, sizeof(runtime_counts));
+    runtime_stats_get_StubWithCallback(get_runtime_lifetime);
+    runtime_stats_set_StubWithCallback(set_runtime_lifetime);
     memset(&stored_config, 0, sizeof(stored_config));
     last_sync_force = true;
     sync_count = 0U;
@@ -259,16 +278,16 @@ void test_modem_config_set_copies_writable_fields_and_clamps_period(void)
     TEST_ASSERT_EQUAL_UINT16(8088U, stored_config.web_interface_port);
 }
 
-void test_modem_config_session_callbacks_increment_with_unsigned_wrap(void)
+void test_session_accessors_do_not_modify_the_configuration_image(void)
 {
-    stored_config.web_session_counter = UINT32_MAX;
-    stored_config.iec_session_counter = UINT32_MAX;
-
-    modem_config_webserver_client_connected_cb();
-    modem_config_iec_client_connected_cb();
-
-    TEST_ASSERT_EQUAL_UINT32(0U, stored_config.web_session_counter);
-    TEST_ASSERT_EQUAL_UINT32(0U, stored_config.iec_session_counter);
+    const modem_config_t original = stored_config;
+    modem_config_set_web_session_counter(UINT32_MAX);
+    modem_config_set_iec_session_counter(10U);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX,
+                             modem_config_get_web_session_counter());
+    TEST_ASSERT_EQUAL_UINT32(10U, modem_config_get_iec_session_counter());
+    TEST_ASSERT_EQUAL_MEMORY(&original, &stored_config, sizeof(original));
+    TEST_ASSERT_EQUAL_UINT32(0U, sync_count);
 }
 
 void test_modem_config_imei_accepts_bounded_unterminated_input(void)
@@ -297,46 +316,17 @@ void test_modem_config_imei_shorter_and_empty_inputs_replace_old_value(void)
     TEST_ASSERT_EQUAL_STRING("", modem_config_get_imei());
 }
 
-/*** end of file ***/
 
-void test_lifetime_update_changes_nvram_ram_without_automatic_sync(void)
+
+void test_lifetime_update_does_not_modify_the_configuration_image(void)
 {
-    stored_config.lifetime = 120U;
+    const modem_config_t original = stored_config;
+    runtime_counts[RUNTIME_LIFETIME] = 150U;
     modem_config_set_lifetime(modem_config_get_lifetime() + 1U);
-    TEST_ASSERT_EQUAL_UINT32(121U, stored_config.lifetime);
+    TEST_ASSERT_EQUAL_UINT32(151U, runtime_counts[RUNTIME_LIFETIME]);
+    TEST_ASSERT_EQUAL_MEMORY(&original, &stored_config, sizeof(original));
     TEST_ASSERT_EQUAL_UINT32(0U, sync_count);
 }
 
-void test_lifetime_saves_only_at_25_hour_boundary(void)
-{
-    sync_result = 0;
-    for (uint32_t second = 0U; 89999U > second; second++)
-    {
-        modem_config_lifetime_tick();
-    }
-    TEST_ASSERT_EQUAL_UINT32(89999U, stored_config.lifetime);
-    TEST_ASSERT_EQUAL_UINT32(0U, sync_count);
-    modem_config_lifetime_tick();
-    TEST_ASSERT_EQUAL_UINT32(90000U, stored_config.lifetime);
-    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
-    TEST_ASSERT_FALSE(last_sync_force);
-}
 
-void test_lifetime_failed_save_does_not_retry_each_second(void)
-{
-    sync_result = -1;
-    for (uint32_t second = 0U; 90000U > second; second++)
-    {
-        modem_config_lifetime_tick();
-    }
-    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
-    for (uint32_t second = 0U; 89999U > second; second++)
-    {
-        modem_config_lifetime_tick();
-    }
-    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
-    sync_result = 0;
-    modem_config_lifetime_tick();
-    TEST_ASSERT_EQUAL_UINT32(2U, sync_count);
-    TEST_ASSERT_EQUAL_UINT32(180000U, stored_config.lifetime);
-}
+/*** end of file ***/

@@ -1,8 +1,11 @@
 /**
  * @file  gsm_socket.c
  * @brief Centralized socket state and session tracking implementation.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  */
 #include "gsm_socket.h"
+#include "runtime_stats.h"
 #include "bsp.h"
 #include <string.h>
 
@@ -126,6 +129,8 @@ void gsm_socket_set_state(uint8_t socket, uint8_t state)
     if (!was_connected && now_connected)
     {
         session_start(p);
+        runtime_stats_add((runtime_counter_t)(RUNTIME_WEB_SESSIONS + socket),
+                          1U);
     }
     else if (was_connected && !now_connected)
     {

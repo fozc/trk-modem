@@ -5,6 +5,7 @@
  * Public socket/session contracts with a deterministic clock.
  */
 #include "unity.h"
+#include "mock_runtime_stats.h"
 #include "gsm_socket.h"
 #include "mock_bsp.h"
 #include <string.h>
@@ -24,6 +25,7 @@ static uint32_t get_epoch(int call_count)
 }
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     tick = 100U;
     epoch = 1700000000U;
     bsp_get_tick_Stub(get_tick);
@@ -199,4 +201,27 @@ void test_socket_reconnect_restarts_first_data_watch_and_sockets_are_isolated(vo
     TEST_ASSERT_EQUAL_UINT32(0U, gsm_socket_get_stats(0U)->error_count);
     TEST_ASSERT_EQUAL_UINT32(1U, gsm_socket_get_stats(1U)->error_count);
 }
+void test_persistent_sessions_count_only_connection_edges_per_socket(void)
+{
+    runtime_stats_add_StopIgnore();
+    static const runtime_counter_t counters[] =
+    {
+        RUNTIME_WEB_SESSIONS, RUNTIME_IEC_SERVER_SESSIONS,
+        RUNTIME_IEC_CLIENT_SESSIONS
+    };
+    for (uint8_t socket = 0U; socket < GSM_SOCKET_COUNT; socket++)
+    {
+        runtime_stats_add_Expect(counters[socket], 1U);
+        gsm_socket_set_state(socket, '2');
+        gsm_socket_set_state(socket, '2');
+        gsm_socket_set_state(socket, '3');
+        gsm_socket_set_state(socket, '3');
+        gsm_socket_set_state(socket, '0');
+        runtime_stats_add_Expect(counters[socket], 1U);
+        gsm_socket_set_state(socket, '3');
+    }
+    gsm_socket_set_state(UINT8_MAX, '2');
+    gsm_socket_init();
+}
+
 /*** end of file ***/

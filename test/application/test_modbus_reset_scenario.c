@@ -8,6 +8,7 @@
  * Verify relay control and reset through the real Modbus RTU core.
  */
 #include "unity.h"
+#include "mock_runtime_stats.h"
 #include "mock_bsp.h"
 #include "mock_reboot.h"
 #include "mock_modbus_config.h"
@@ -145,6 +146,7 @@ static bool get_relay(relay_channel_t channel, int call_count)
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     modbus_system_stats_invalidate_snapshot_Ignore();
     modbus_power_stats_invalidate_snapshot_Ignore();
     fake_tick = 0U;

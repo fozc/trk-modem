@@ -10,14 +10,9 @@
 #include "nvram.h"
 #include "bsp.h"
 #include "periodic_reset.h"
+#include "runtime_stats.h"
 
 #define modem_config (nvram_get_modem_config_rw())
-
-#define LIFETIME_SYNC_INTERVAL_SECONDS (25U * 60U * 60U)
-
-/* Main process only; reset each boot and after each save attempt. */
-static uint32_t lifetime_sync_seconds;
-
 int modem_config_sync(void)
 {
 	return nvram_sync(false);
@@ -243,27 +238,12 @@ void modem_config_set_production_date(uint32_t date)
 // lifetime
 uint32_t modem_config_get_lifetime(void)
 {
-	return modem_config->lifetime;
+	return runtime_stats_get(RUNTIME_LIFETIME);
 }
 
 void modem_config_set_lifetime(uint32_t lifetime)
 {
-	modem_config->lifetime = lifetime;
-}
-
-/* Called once per lifetime second by the main process. */
-void modem_config_lifetime_tick(void)
-{
-    modem_config_set_lifetime(modem_config_get_lifetime() + 1U);
-    lifetime_sync_seconds++;
-    if (LIFETIME_SYNC_INTERVAL_SECONDS <= lifetime_sync_seconds)
-    {
-        lifetime_sync_seconds = 0U;
-        if (0 != modem_config_sync())
-        {
-            CSLOG_ERR("[Lifetime] NVRAM sync failed; next attempt in 25h\r\n");
-        }
-    }
+	runtime_stats_set(RUNTIME_LIFETIME, lifetime);
 }
 
 // periodic_modem_reset_period (Read-Write)
@@ -311,23 +291,23 @@ void modem_config_set_rf_firmware_version(const uint8_t* version)
 // web session_counter
 uint32_t modem_config_get_web_session_counter(void)
 {
-	return modem_config->web_session_counter;
+	return runtime_stats_get(RUNTIME_WEB_SESSIONS);
 }
 
 void modem_config_set_web_session_counter(uint32_t counter)
 {
-	modem_config->web_session_counter = counter;
+	runtime_stats_set(RUNTIME_WEB_SESSIONS, counter);
 }
 
 // iec session_counter
 uint32_t modem_config_get_iec_session_counter(void)
 {
-	return modem_config->iec_session_counter;
+	return runtime_stats_get(RUNTIME_IEC_SERVER_SESSIONS);
 }	
 
 void modem_config_set_iec_session_counter(uint32_t counter)
 {
-	modem_config->iec_session_counter = counter;
+	runtime_stats_set(RUNTIME_IEC_SERVER_SESSIONS, counter);
 }
 
 void modem_config_get_simcard_phone_number(phone_number_t* phone_number)
@@ -382,29 +362,4 @@ const char* modem_config_get_imei(void)
 	return (const char*)modem_config->imei;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-void modem_config_webserver_client_connected_cb(void)
-{
-	modem_config->web_session_counter++;
-}
-
-void modem_config_iec_client_connected_cb(void)
-{
-	modem_config->iec_session_counter++;
-}
+/*** end of file ***/

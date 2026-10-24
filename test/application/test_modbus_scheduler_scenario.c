@@ -9,6 +9,7 @@
  */
 #undef NO_SHELL_LOG
 #include "unity.h"
+#include "mock_runtime_stats.h"
 #include "mock_bsp.h"
 #include "power_board_scp.h"
 #include "mock_power_board_control.h"
@@ -125,6 +126,7 @@ static void isr_feed_command(uint8_t slave)
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     modbus_system_stats_invalidate_snapshot_Ignore();
     fake_tick = 0U;
     relay_on_calls = 0U;

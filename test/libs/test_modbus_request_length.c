@@ -433,7 +433,7 @@ void test_idle_gap_handles_tick_wrap_and_dispatches_exactly_once(void)
     TEST_ASSERT_EQUAL_UINT32(1U, response_count);
 }
 
-/*** end of file ***/
+
 
 
 void test_short_frame_after_exception_does_not_relog_stale_error(void)
@@ -477,3 +477,25 @@ void test_foreign_frame_after_exception_does_not_relog_stale_error(void)
     TEST_ASSERT_EQUAL_UINT8(0U,
         libmodbusrtu_modbus_get_last_exception(&guarded.context));
 }
+
+void test_request_counter_excludes_foreign_crc_and_ignored_broadcast_frames(void)
+{
+    send_request(MODBUS_FC_READ_HOLDING_REGISTERS, 1U, 8U, true);
+    TEST_ASSERT_EQUAL_UINT32(1U,
+        libmodbusrtu_modbus_get_request_count(&guarded.context));
+    send_request(MODBUS_FC_READ_HOLDING_REGISTERS, 5U, 8U, true);
+    send_request(MODBUS_FC_READ_HOLDING_REGISTERS, 1U, 8U, false);
+    send_request(MODBUS_FC_READ_HOLDING_REGISTERS, 0U, 8U, true);
+    TEST_ASSERT_EQUAL_UINT32(1U,
+        libmodbusrtu_modbus_get_request_count(&guarded.context));
+    send_request(MODBUS_FC_WRITE_SINGLE_REGISTER, 0U, 8U, true);
+    send_request(0x7FU, 1U, 8U, true);
+    TEST_ASSERT_EQUAL_UINT32(3U,
+        libmodbusrtu_modbus_get_request_count(&guarded.context));
+    guarded.context.request_count = UINT32_MAX;
+    send_request(MODBUS_FC_WRITE_SINGLE_REGISTER, 1U, 8U, true);
+    TEST_ASSERT_EQUAL_UINT32(0U,
+        libmodbusrtu_modbus_get_request_count(&guarded.context));
+}
+
+/*** end of file ***/

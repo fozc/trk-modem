@@ -45,6 +45,7 @@ typedef struct
     uint8_t SPIFLASH_SECTION_IEC104_LOG                      [0x002000];  /*    8 KB  0x230000 */
     /* 8 KB, address 0x232000. */
     uint8_t SPIFLASH_SECTION_RF_EVENT_LOG[0x002000];
+    uint8_t SPIFLASH_SECTION_RUNTIME_STATS[0x002000];
 } spi_flash_layout_t;
 
 /* ------------------------------------------------------------------ */
@@ -103,6 +104,15 @@ _Static_assert(RF_EVENT_LOG_ADDR == 0x232000U,
                "RF event region must follow the existing log regions");
 _Static_assert(RF_EVENT_LOG_SIZE == 8192U,
                "RF event region must contain two 4 KB sectors");
+
+/* Periodic operating counters, separate from configuration. */
+#define RUNTIME_STATS_ADDR \
+    SPIFLASH_SECTION_ADDR(SPIFLASH_SECTION_RUNTIME_STATS)
+#define RUNTIME_STATS_SIZE \
+    SPIFLASH_SECTION_SIZE(SPIFLASH_SECTION_RUNTIME_STATS)
+
+_Static_assert(RUNTIME_STATS_ADDR == 0x234000U,
+               "Runtime statistics must not move existing regions");
 
 /* Firmware */
 #define FIRMWARE_FLASH_AREA_SIZE            SPIFLASH_SECTION_SIZE(SPIFLASH_SECTION_FIRMWARE_A)

@@ -11,6 +11,7 @@
 #include "periodic_reset.h"
 
 #include "modem_config.h"
+#include "runtime_stats.h"
 #include "bsp.h"
 #include "contiki.h"
 
@@ -50,11 +51,11 @@ void periodic_reset_tick(void)
     if (timer_expired(&s_timer))
     {
         CCSLOG(XCOLOR_RED,
-               "[PeriodicReset] Period elapsed (%lu s) — resetting device.\r\n",
+               "[PeriodicReset] Period elapsed (%lu s) - resetting device.\r\n",
                s_period_s);
-        if (0 != modem_config_sync())
+        if (!runtime_stats_save())
         {
-            CSLOG_ERR("[PeriodicReset] NVRAM sync failed; resetting\r\n");
+            CSLOG_ERR("[PeriodicReset] Runtime stats save failed; resetting\r\n");
         }
         bsp_system_reset();
     }

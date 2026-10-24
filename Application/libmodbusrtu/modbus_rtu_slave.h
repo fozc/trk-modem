@@ -213,6 +213,7 @@ typedef struct
     modbus_read_reg_callback_t  read_callback;  /**< FC03 read hook.         */
     modbus_write_reg_callback_t write_callback; /**< FC06 write hook.        */
 
+    uint32_t request_count; /* CRC-valid addressed requests; main only. */
     uint8_t last_exception_code;                /**< Last exception sent (0=none). */
 } modbus_slave_t;
 
@@ -317,6 +318,7 @@ void libmodbusrtu_register_critical_section(modbus_slave_t *p_ctx,
  *         or was not addressed to this slave.
  */
 uint8_t libmodbusrtu_modbus_get_last_exception(const modbus_slave_t *p_ctx);
+uint32_t libmodbusrtu_modbus_get_request_count(const modbus_slave_t *p_ctx);
 
 /**
  * @brief Store one received byte - call from the UART RX interrupt.

@@ -10,6 +10,7 @@
  */
 
 #include "unity.h"
+#include "mock_runtime_stats.h"
 #include "rf.h"
 #include "mock_rf_inventory.h"
 #include "mock_bsp.h"
@@ -38,6 +39,7 @@ TEST_SOURCE_FILE("power_board_scp.c")
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     modbus_system_stats_invalidate_snapshot_Ignore();
     modbus_power_stats_invalidate_snapshot_Ignore();
     reset_fixture();

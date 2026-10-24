@@ -23,6 +23,7 @@
 #include "relay.h"
 #include "rtc.h"
 #include "nvram.h"
+#include "runtime_stats.h"
 #include "uart.h"
 #include "gpio_defs.h"
 #include "contiki.h"
@@ -30,6 +31,7 @@
 #include "main.h"
 #include "stm32u3xx_hal.h"
 #include <string.h>
+#include <stdatomic.h>
 
 #ifndef MODBUS_TX_USE_DMA
 #define MODBUS_TX_USE_DMA 1
@@ -53,6 +55,23 @@ static modbus_slave_t s_modbus;
  * Keep one age-check time for both words and all RF fields in a response.
  */
 static uint32_t rf_sample_ms;
+/* RX errors have one UART4 ISR writer. Main drains under its existing
+ * NVIC critical section. DMA errors can arrive from the DMA vector too;
+ * that independent counter needs atomic exchange, not UART4 masking.
+ */
+static volatile uint32_t rx_error_count;
+static _Atomic uint32_t tx_error_count;
+#if defined(__arm__) || defined(__thumb__)
+_Static_assert(__atomic_always_lock_free(sizeof(tx_error_count), 0),
+               "ISR TX error counter must be lock free");
+#else
+_Static_assert(ATOMIC_INT_LOCK_FREE == 2,
+               "Host word atomics must be lock free");
+#endif
+#if !RF_SCP_OVER_MODBUS_PORT
+static void modbus_rx_critical_enter(void);
+static void modbus_rx_critical_exit(void);
+#endif
 
 static modbus_poll_result_t modbus_poll(modbus_slave_t *slave)
 {
@@ -63,7 +82,26 @@ static modbus_poll_result_t modbus_poll(modbus_slave_t *slave)
     /* MB-08: each FC03 response starts with fresh time/data snapshots. */
     modbus_system_stats_invalidate_snapshot();
     modbus_power_stats_invalidate_snapshot();
-    return libmodbusrtu_modbus_process(slave);
+#if !RF_SCP_OVER_MODBUS_PORT
+    modbus_rx_critical_enter();
+    const uint32_t rx_errors = rx_error_count;
+    rx_error_count = 0U;
+    modbus_rx_critical_exit();
+    runtime_stats_add(RUNTIME_MODBUS_UART_ERRORS, rx_errors);
+#endif
+    runtime_stats_add(RUNTIME_MODBUS_TX_ERRORS,
+        atomic_exchange_explicit(&tx_error_count, 0U, memory_order_relaxed));
+    const uint32_t before = libmodbusrtu_modbus_get_request_count(slave);
+    const modbus_poll_result_t result = libmodbusrtu_modbus_process(slave);
+    runtime_stats_add(RUNTIME_MODBUS_REQUESTS,
+        libmodbusrtu_modbus_get_request_count(slave) - before);
+    if ((result == MODBUS_POLL_HANDLED) &&
+        (libmodbusrtu_modbus_get_last_exception(slave) ==
+         MODBUS_EXCEPTION_CRC_ERROR))
+    {
+        runtime_stats_add(RUNTIME_MODBUS_CRC_ERRORS, 1U);
+    }
+    return result;
 }
 
 /* Baud rate currently active on UART4; skips a redundant BRR write when the
@@ -162,6 +200,7 @@ static void uart_write(const uint8_t *data, uint16_t len)
      * pure safety guard. If a transfer is somehow still in flight, drop this
      * response rather than block the cooperative scheduler. */
     if (s_modbus_tx_busy) {
+        runtime_stats_add(RUNTIME_MODBUS_TX_ERRORS, 1U);
         CSLOG_ERR("Modbus TX busy, dropping response\r\n");
         return;
     }
@@ -183,6 +222,7 @@ static void uart_write(const uint8_t *data, uint16_t len)
     LL_USART_ClearFlag_TC(UART4);
 
     if (HAL_UART_Transmit_DMA(&huart4, s_modbus_tx_dma_buf, len) != HAL_OK) {
+        runtime_stats_add(RUNTIME_MODBUS_TX_ERRORS, 1U);
         /* Failed to start: release the bus and clear the busy flag. */
         gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
         s_modbus_tx_busy = false;
@@ -233,6 +273,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     if ((huart == &huart4) && s_modbus_tx_busy &&
         (0U != (huart->ErrorCode & HAL_UART_ERROR_DMA)))
     {
+        (void)atomic_fetch_add_explicit(&tx_error_count, 1U,
+                                        memory_order_relaxed);
         CSLOG_ERR("MODBUS: TX DMA hatasi - OE ve busy serbest birakildi\r\n");
         gpio_set_pin(MODBUS_OE_BSP_GPIO, MODBUS_OE_BSP_PIN, GPIO_LOW);
         s_modbus_tx_busy = false;
@@ -440,6 +482,7 @@ static void modbus_check_tx_timeout(void)
         timeout_ms += s_modbus.frame_silence_ms;
         if ((HAL_GetTick() - tx_started_ms) >= timeout_ms)
         {
+            runtime_stats_add(RUNTIME_MODBUS_TX_ERRORS, 1U);
             const bool stopped = modbus_abort_tx();
             elog_log_uart_recovery(4U, stopped, 0U, 0U);
             CSLOG_ERR("MODBUS: TX completion timeout, recovery=%u\r\n",
@@ -654,6 +697,7 @@ void modbus_process_isr_rx_byte(uint8_t byte)
 
 void modbus_process_isr_rx_error(void)
 {
+	rx_error_count++;
 	/* UART4 line error (PE/FE/NE/ORE): invalidate the frame in flight. */
 	libmodbusrtu_modbus_rx_error(&s_modbus);
 }

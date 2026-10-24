@@ -6,11 +6,13 @@
  * become a technology or a level; sentinels and valid fallbacks stay.
  */
 #include "unity.h"
+#include "mock_runtime_stats.h"
 #include "gsm_signal_led.h"
 #include "gsm_info.h"
 
 void setUp(void)
 {
+    runtime_stats_add_Ignore();
     gsm_info_init();
     (void)gsm_signal_led_get_tech();  /* keep module linked */
 }
