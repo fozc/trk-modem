@@ -25,6 +25,7 @@
 #include "gsm_signal_led.h"
 TEST_SOURCE_FILE("gsm_signal_led.c")
 TEST_SOURCE_FILE("datetime.c")
+TEST_SOURCE_FILE("gsm_sms.c")
 
 /* Keep the actual callbacks and IPv4 parser in this scenario. */
 #include "../../Application/gsm/gsm_engine.c"
