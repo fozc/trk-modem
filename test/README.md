@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.77
+**Sürüm:** 1.78
 **Tarih:** 2026-10-25
 
 ## GSM SIM, SMS ve AT zamanlama testleri
@@ -39,6 +39,27 @@ Diğer modüllerle regresyon için `test/` dizininde `ruby -S ceedling test:all`
 çalıştırılmalıdır. ARM Release derlemesi donanım rehberi A.1'e göre
 sınanmalıdır. Yeni `gsm_sms.c` kaynağı için eski yerel CubeIDE build
 listeleri yeniden üretilmelidir.
+
+Listener testleri, kapanma bildiriminden sonra yeni `SSENDEXT` isteği
+oluşmamasını ve kapalı `SS=0` durumunda `SH` gönderilmemesini doğrular.
+Prompt/payload bekleyen işlem tamamlanmalı; kapanış bir listener'a aitse
+diğer listener'ın TX durumu korunmalıdır. `SH` hatası sonrası kapanma
+bilgisi, socket durumu doğrulanana kadar korunur.
+
+Cihazda tekrar için depo kökünde aşağıdaki komut kullanılmalıdır:
+
+```text
+python test/system/gsm_disconnect_test.py <modem_ip> --console COM18 --rounds 2
+```
+
+Bu test COM18'i kullanır; FIN/RST ile bağlantıyı farklı aşamalarda keser.
+4096 byte POST gövdesi tamamlandıktan sonra da kesme yapılır. Her kesmeden
+sonra HTTP gövdesi referans yanıtla karşılaştırılır ve eşzamanlı IEC104
+TESTFR yanıtı doğrulanır. Konsol kaydında `SS=0` sonrası `SH` ve kapanma
+bildirimi sonrası yeni bağlantı kabul edilmeden `SSENDEXT` bulunmamalıdır.
+Röle komutu, ayar yazımı veya firmware chunk
+aktarımı yapılmaz. Konsol kaydı `test/build/` altında tutulur. Testten
+önce doğru firmware yüklenmeli ve harici web istemcileri kapatılmalıdır.
 
 Host testleri gerçek SIM, SMS teslimi veya modem güç çevrimi kanıtı değildir.
 
