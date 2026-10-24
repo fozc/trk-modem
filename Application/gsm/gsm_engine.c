@@ -60,6 +60,7 @@
 #include "iec104_config.h"
 #include "iec104.h"
 #include "gsm_socket.h"
+#include "gsm_sms.h"
 #include "bsp.h"
 #include "rtc.h"
 #include "datetime.h"
@@ -2414,38 +2415,26 @@ int32_t gsm_CCED_cb(void)
 
 int32_t gsm_CMGR_cb(void)
 {
-	int32_t at_res = gsm_at_response_ready();
-	if(at_res == GSM_RESPONSE_OK) /* <\r><\n>+CMGR: "REC UNREAD","+905365107600","","19/01/21,11:51:31+12"<\r><\n>Cccccccc<\r><\n>OK<\r><\n><\r> */
-	{
-		if(rx.len == 6 && memcmp(rx.buff, "\r\nOK\r\n", 6) == 0)
-		{
-			at_res = GSM_SMS_NO_SMS;
-		}
-		else
-		{
-			int32_t index = str_index_of((char *)rx.buff, "REC UNREAD");
-			if(index > 0)
-			{
-				int32_t index1 = str_index_of_th((char *)rx.buff, "\r\n", 2);
-				int32_t index2 = str_index_of_th((char *)rx.buff, "\r\n", 3);
-
-				if(index1 > 0 && index2 > 0 && (index2 - index1 >= 2))
-				{
-					uint8_t phone_num[17] = {};
-					str_substr((char *)&rx.buff[index + 11], (char *)phone_num, ",\"", "\",", 16);
-					//sms_receive_sms(&rx.buff[index1 + 2], index2 - index1 - 2, phone_num);
-				}
-
-				at_res = GSM_SMS_REC_UNREAD;
-			}
-			else
-			{
-				at_res = GSM_SMS_REC_READ; /* REC UNREAD haricindekiler burada degerlendiriliyor */
-			}
-		}
-	}
-
-	return at_res;
+    int32_t result = gsm_at_response_ready();
+    if (result == GSM_RESPONSE_OK)
+    {
+        if ((rx.len == 6U) && (memcmp(rx.buff, "\r\nOK\r\n", 6U) == 0))
+        {
+            return GSM_SMS_NO_SMS;
+        }
+        bool is_unread = false;
+        if (!gsm_sms_handle_response(rx.buff, rx.len, &is_unread))
+        {
+            return GSM_ERROR;
+        }
+        return is_unread ? GSM_SMS_REC_UNREAD : GSM_SMS_REC_READ;
+    }
+    if ((result == GSM_ERROR) &&
+        (strstr((const char *)rx.buff, "+CMS ERROR: 321\r\n") != NULL))
+    {
+        result = GSM_SMS_NO_SMS;
+    }
+    return result;
 }
 
 int32_t gsm_COPS_search_cb(void)

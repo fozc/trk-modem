@@ -2,6 +2,8 @@
  * gsm_periodical.c
  *
  * Periodical GSM checks: signal quality, SMS, COPS, socket info, GPRS.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  * Each check is implemented as a static step function with
  * send / wait-response phases (mirroring gsm_init pattern).
  */
@@ -199,7 +201,7 @@ static void gsm_periodical_step_check_sms(void)
 	}
 
 	uint8_t next = 0;
-	if (res != GSM_SMS_NO_SMS)
+	if ((res == GSM_SMS_REC_UNREAD) || (res == GSM_SMS_REC_READ))
 	{
 		next = GSM_DELETE_SMS;
 	}

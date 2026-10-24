@@ -141,6 +141,23 @@ void test_absent_sms_returns_to_idle_without_delete(void)
     TEST_ASSERT_EQUAL_UINT8(0U, gsm.periodical_event_state);
 }
 
+void test_failed_sms_read_is_not_followed_by_delete(void)
+{
+    const uint32_t errors[] = {GSM_ERROR, GSM_TIMEOUT};
+    for (size_t index = 0U; index < 2U; index++)
+    {
+        gsm.periodical_event_state = GSM_CHECK_SMS;
+        gsm.periodical_phase = GSM_INIT_PHASE_WAIT_RESPONSE;
+        gsm_get_main_state_ExpectAndReturn(GSM_NORMAL_MODE);
+        gsm_engine_get_query_res_ExpectAndReturn(errors[index]);
+        gsm_get_tick_ExpectAndReturn(fake_tick);
+        gsm_set_delay_Expect(50U);
+        gsm_set_free_Expect();
+        gsm_periodical_event_process();
+        TEST_ASSERT_EQUAL_UINT8(0U, gsm.periodical_event_state);
+    }
+}
+
 void test_listener_gprs_request_checked_first_and_cleared_when_up(void)
 {
     gsm.net_check_requested = 1U;
