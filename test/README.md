@@ -1,7 +1,46 @@
 # Test Altyapısı
 
-**Sürüm:** 1.76
-**Tarih:** 2026-10-24
+**Sürüm:** 1.77
+**Tarih:** 2026-10-25
+
+## GSM SIM, SMS ve AT zamanlama testleri
+
+**Amaç:** SIM durumunu, alınan SMS callback'ini ve AT beklemelerini sınamak.
+
+**Kullanım yeri:** Merkezi GSM testleri ve Modbus register haritası.
+
+`test/` dizininde `ruby -S ceedling "test:pattern[(gsm|at_engine|modbus_map)]"`
+çalıştırılmalıdır. Gerçek Contiki döngüsü için depo kökünde
+`make -C test/integration/gsm run_coldboot run_restart_loop` kullanılmalıdır.
+Bu testler 25 ms döngüyü sanal saatle sınar; fiziksel süreyi ölçmez.
+
+SMS testleri göndereni, çok satırlı metni, bozuk yanıtı ve hata sonrası
+silme isteği oluşmamasını doğrular. SMS üzerinden komut çalıştırılmaz.
+QSS testleri normal modda SIM çıkarılınca mevcut modem restart sürecine
+geçildiğini ve SMS içindeki QSS metninin bildirim sayılmadığını doğrular.
+SIM durumu 49409 register'ında okunmalıdır; değerler Modbus haritası §7.4'te
+tanımlıdır. PUK mevcut SIM hata LED'ini kullanır.
+
+Otomatik PIN girişi geliştirmede `GSM_AUTO_PIN_ENABLED=0` ile kapalıdır.
+Üretimde açılmadan önce PIN açık derleme de aynı init testleriyle sınanmalıdır.
+Depo kökünde `ruby test/scripts/run_gsm_pin.rb` çalıştırılmalıdır. Bu komut
+aynı init testlerini ayrı build dizininde `GSM_AUTO_PIN_ENABLED=1` ile
+çalıştırır; üretim varsayılanını değiştirmez.
+
+Alım testleri gerçek AT motoru ve GSM callback'lerini birlikte kullanır.
+Payload (taşınan veri) içindeki `NO CARRIER`, `OK`, `ERROR`, `#QSS`,
+`SRING` ve NUL byte'ları değişmeden teslim edilmelidir. 1024 byte alım,
+yanıtın farklı noktalardan bölünmesi, eksik payload, boş payload ve bozuk
+uzunluk alanı sınanır. Kayıt sorgularındaki doğrudan `ERROR` yanıtı CEER
+akışına geçmelidir; normal şebeke aramasında CGREG/CEREG sorgulamaları
+sürmelidir. Okuma boyutu 1024 byte olarak korunur.
+
+Diğer modüllerle regresyon için `test/` dizininde `ruby -S ceedling test:all`
+çalıştırılmalıdır. ARM Release derlemesi donanım rehberi A.1'e göre
+sınanmalıdır. Yeni `gsm_sms.c` kaynağı için eski yerel CubeIDE build
+listeleri yeniden üretilmelidir.
+
+Host testleri gerçek SIM, SMS teslimi veya modem güç çevrimi kanıtı değildir.
 
 ## Çalışma sayaçları
 
