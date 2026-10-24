@@ -149,6 +149,33 @@ static inline void ls_set_state(gsm_listener_ctx_t *ctx, uint8_t new_state)
 	ctx->phase = GSM_INIT_PHASE_SEND;
 }
 
+/* The shared TX slot may belong to the other listener. */
+static void cancel_listener_tx(const gsm_listener_cfg_t *cfg)
+{
+    if (gsm_get_tx_direction() == cfg->tx_direction)
+    {
+        gsm_set_tx_error();
+        gsm_set_tx_state(GSM_TX_READY);
+    }
+}
+
+static void finish_listener_close(const gsm_listener_cfg_t *cfg)
+{
+    cancel_listener_tx(cfg);
+    gsm_listener_set_no_carrier(cfg->id, 0U);
+    gsm_listener_set_rx_available(cfg->id, 0U);
+    gsm_listener_request_close_socket_clear(cfg->id);
+    if (cfg->on_closed != NULL)
+    {
+        cfg->on_closed();
+    }
+    if (cfg->reset_session != NULL)
+    {
+        cfg->reset_session();
+    }
+    ls_led_update(cfg->id, LED_LISTENER_OFF);
+}
+
 static void handle_idle(const gsm_listener_cfg_t *p_cfg,
                         gsm_listener_ctx_t *ctx)
 {
@@ -158,17 +185,14 @@ static void handle_idle(const gsm_listener_cfg_t *p_cfg,
 		ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
 		ls_set_state(ctx, GSM_LS_CLOSE_SOCKET);
 	}
-	else if (gsm_listener_get_no_carrier(p_cfg->id))
-	{
-		gsm_listener_set_no_carrier(p_cfg->id, 0);
-		gsm_listener_request_close_socket_clear(p_cfg->id);
-		ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
-		gsm_socket_record_disconnect(p_cfg->socket_id, SOCK_DISC_NO_CARRIER);
-		if (p_cfg->on_closed != NULL) {
-			p_cfg->on_closed();
-		}
-		ls_set_state(ctx, GSM_LS_CLOSE_SOCKET);
-	}
+    else if (gsm_listener_get_no_carrier(p_cfg->id))
+    {
+        cancel_listener_tx(p_cfg);
+        gsm_listener_request_close_socket_clear(p_cfg->id);
+        ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
+        gsm_socket_record_disconnect(p_cfg->socket_id, SOCK_DISC_NO_CARRIER);
+        ls_set_state(ctx, GSM_LS_CHECK_SOCKET);
+    }
 	else if (gsm_listener_get_new_conn_req(p_cfg->id))
 	{
 		gsm_listener_request_close_socket_clear(p_cfg->id);
@@ -347,18 +371,22 @@ static void handle_check_socket_info(const gsm_listener_cfg_t *p_cfg,
 static void handle_data_mode(const gsm_listener_cfg_t *p_cfg,
                                  gsm_listener_ctx_t *ctx)
 {
-	if (gsm_listener_is_close_socket_requested(p_cfg->id))
-	{
-	        CSLOG_WARN("GSM: Close socket requested by protocol layer during DATA_MODE.\r\n");
-	        ls_set_state(ctx, GSM_LS_IDLE);
-	        return;
-	}
-
-	if (ctx->phase == GSM_INIT_PHASE_SEND)
-	{
-		ls_send(ctx, p_cfg->at_cmd[LS_AT_DATA_MODE]);
-		return;
-	}
+    if (ctx->phase == GSM_INIT_PHASE_SEND)
+    {
+        if (gsm_listener_get_no_carrier(p_cfg->id))
+        {
+            cancel_listener_tx(p_cfg);
+            ls_set_state(ctx, GSM_LS_CHECK_SOCKET);
+            return;
+        }
+        if (gsm_listener_is_close_socket_requested(p_cfg->id))
+        {
+            ls_set_state(ctx, GSM_LS_IDLE);
+            return;
+        }
+        ls_send(ctx, p_cfg->at_cmd[LS_AT_DATA_MODE]);
+        return;
+    }
 
 	uint32_t res = gsm_engine_get_query_res();
 	if (res == 0U) {
@@ -378,14 +406,10 @@ static void handle_data_mode(const gsm_listener_cfg_t *p_cfg,
 			}
 			break;
 
-		case GSM_NO_CARRIER:
-			gsm_socket_record_disconnect(p_cfg->socket_id, SOCK_DISC_NO_CARRIER);
-			gsm_set_socket_state(p_cfg->socket_id, SOCKET_CLOSED);
-            if (NULL != p_cfg->on_closed)
-            {
-                p_cfg->on_closed();
-            }
-			if (p_cfg->reset_session != NULL) { p_cfg->reset_session(); }
+        case GSM_NO_CARRIER:
+            gsm_socket_record_disconnect(p_cfg->socket_id, SOCK_DISC_NO_CARRIER);
+            gsm_set_socket_state(p_cfg->socket_id, SOCKET_CLOSED);
+            finish_listener_close(p_cfg);
 			gsm_set_delay(1000);
 			ls_set_state(ctx, (GSM_LISTENER_IEC104 == p_cfg->id) ?
                 GSM_LS_CONFIG_SOCKET : GSM_LS_OPEN_SOCKET);
@@ -437,13 +461,21 @@ static void handle_send_data(const gsm_listener_cfg_t *p_cfg,
 
 	switch (res)
 	{
-		case GSM_RESPONSE_OK:
-			gsm_set_delay(50);
-			ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
-			gsm_set_socket_state(p_cfg->socket_id, SOCKET_CONNECTED);
-			ctx->had_data_activity = 1U;
-			ls_set_state(ctx, GSM_LS_IDLE);
-			break;
+        case GSM_RESPONSE_OK:
+            gsm_set_delay(50);
+            ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
+            ctx->had_data_activity = 1U;
+            if (gsm_listener_get_no_carrier(p_cfg->id))
+            {
+                gsm_set_socket_state(p_cfg->socket_id, SOCKET_CLOSED);
+                ls_set_state(ctx, GSM_LS_CHECK_SOCKET);
+            }
+            else
+            {
+                gsm_set_socket_state(p_cfg->socket_id, SOCKET_CONNECTED);
+                ls_set_state(ctx, GSM_LS_IDLE);
+            }
+            break;
 
 		case GSM_NO_CARRIER:
 			gsm_set_delay(1000);
@@ -500,18 +532,32 @@ static void handle_check_socket(const gsm_listener_cfg_t *p_cfg,
 	{
 		case GSM_RESPONSE_OK:
 			ctx->socket_timer = gsm_get_tick() + GSM_LS_SOCKET_TIMER_MS;
-			switch (gsm_get_raw_socket_state(p_cfg->socket_id))
+            const uint8_t socket_state = gsm_get_raw_socket_state(p_cfg->socket_id);
+            if (gsm_listener_get_no_carrier(p_cfg->id) &&
+                ((socket_state == '1') || (socket_state == '2') ||
+                 (socket_state == '3')))
+            {
+                ls_set_state(ctx, GSM_LS_CLOSE_SOCKET);
+                break;
+            }
+            if ((socket_state == '4') || (socket_state == '5'))
+            {
+                if (gsm_listener_get_no_carrier(p_cfg->id))
+                {
+                    finish_listener_close(p_cfg);
+                }
+            }
+            switch (socket_state)
 			{
 				case '0': /* Closed */
 					LOG_TRACE(_GSM_, "[LS:%u] Soket Kapali", (unsigned)p_cfg->id);
 					gsm_set_socket_state(p_cfg->socket_id, SOCKET_CLOSED);
-					if (p_cfg->reset_session != NULL) { p_cfg->reset_session(); }
-					if (p_cfg->on_closed    != NULL) { p_cfg->on_closed(); }
+                    finish_listener_close(p_cfg);
 					if (gsm_listener_get_new_conn_req(p_cfg->id))
 					{
 						gsm_listener_set_new_conn_req(p_cfg->id, 0);
 					}
-					ls_set_state(ctx, GSM_LS_CLOSE_SOCKET);
+					ls_set_state(ctx, GSM_LS_CHECK_NET);
 					break;
 				case '1': /* Opened */
 					gsm_set_socket_state(p_cfg->socket_id, SOCKET_OPENED);
@@ -605,23 +651,11 @@ static void handle_close_socket(const gsm_listener_cfg_t *p_cfg,
 		return;
 	}
 
-	if (p_cfg->on_closed != NULL) {
-		p_cfg->on_closed();
-	}
-	ls_led_update(p_cfg->id, LED_LISTENER_OFF);
-
-	if (gsm_listener_get_no_carrier(p_cfg->id))
-	{
-		gsm_listener_set_no_carrier(p_cfg->id, 0);
-	}
-
 	switch (res)
 	{
 		case GSM_RESPONSE_OK:
 		case GSM_ERROR:
-			if (p_cfg->reset_session != NULL) {
-				p_cfg->reset_session();
-			}
+            finish_listener_close(p_cfg);
 			ctx->temp_counter = 0;
 			ls_set_state(ctx, GSM_LS_CHECK_NET);
 			gsm_set_delay(50);
