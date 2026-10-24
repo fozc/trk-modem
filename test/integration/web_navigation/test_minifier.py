@@ -1,5 +1,6 @@
 """Regression checks for the production embedded-web build pipeline."""
 import gzip
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -18,6 +19,30 @@ spec.loader.exec_module(module)
 
 
 class EmbeddedWebMinifierTest(unittest.TestCase):
+    def test_generated_etag_tracks_exact_bytes_and_encoding(self):
+        spec = importlib.util.spec_from_file_location("html_to_c", CONVERTER)
+        converter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(converter)
+        tags = set()
+        with tempfile.TemporaryDirectory() as folder:
+            for compression, flag in ((None, 0), ("gzip", 1), ("br", 2)):
+                for payload in (b"abc", b"abd", b"", b"\x00\xff\r\n"):
+                    content = (payload if compression else
+                               payload.decode("latin1"))
+                    expected_bytes = (payload if compression else
+                                      content.encode("utf-8"))
+                    converter.write_c_array(content, "fixture", folder,
+                                            "fixture.html", compression)
+                    source = (Path(folder) / "fixture_html.c").read_text()
+                    literal = re.search(
+                        r'\.etag = ("(?:\\.|[^"\\])*")', source)[1]
+                    tag = json.loads(literal)
+                    expected = '"' + hashlib.sha256(
+                        bytes([flag]) + expected_bytes).hexdigest() + '"'
+                    self.assertEqual(expected, tag)
+                    tags.add(tag)
+        self.assertEqual(12, len(tags))
+
     def test_dynamic_responses_fit_queue_and_static_sizes_match(self):
         server = (ROOT / "Application/gsm/gsm_http_server.c").read_text()
         queue_kib = int(re.search(
@@ -32,13 +57,17 @@ class EmbeddedWebMinifierTest(unittest.TestCase):
         self.assertLessEqual(dynamic_size, capacity)
         for name in ("index", "fw_update", "loading"):
             folder = ROOT / "Application/web-server"
-            array = (folder / (name + "_html.c")).read_text().split("};")[0]
+            source = (folder / (name + "_html.c")).read_text()
+            array = source.split("};")[0]
             payload = bytes(int(value, 16) for value in re.findall(
                 r"0x([0-9A-Fa-f]{2})", array))
             header = (folder / (name + "_html.h")).read_text()
             size = int(re.search(r"_HTML_DATA_SIZE (\d+)U", header)[1])
             self.assertEqual(size, len(payload))
             self.assertTrue(gzip.decompress(payload))
+            literal = re.search(r'\.etag = ("(?:\\.|[^"\\])*")', source)[1]
+            self.assertEqual('"' + hashlib.sha256(
+                bytes([1]) + payload).hexdigest() + '"', json.loads(literal))
 
     def test_literals_and_public_handlers_keep_their_behavior(self):
         html = """<!-- outside --><pre>keep  spaces\n next</pre>

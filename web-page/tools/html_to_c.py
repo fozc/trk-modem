@@ -18,6 +18,7 @@ Example:
 import os
 import sys
 import gzip
+import hashlib
 import importlib.util
 import io
 
@@ -149,7 +150,11 @@ def write_c_array(html_content, output_name, output_dir, source_html_file, compr
         f.write(f'    .data = {array_name}_data,\n')
         f.write(f'    .length = {data_length},\n')
         f.write(f'    .is_gzipped = {compression_flag},\n')
-        f.write(f'    .content_type = "text/html"\n')
+        payload = (html_content if is_compressed else
+                   html_content.encode('utf-8'))
+        etag = hashlib.sha256(bytes([compression_flag]) + payload).hexdigest()
+        f.write(f'    .content_type = "text/html",\n')
+        f.write(f'    .etag = "\\"{etag}\\""\n')
         f.write('};\n\n')
         
         # Generate getter function

@@ -3933,7 +3933,8 @@ static const html_resource_t index_html_resource = {
     .data = index_html_data,
     .length = 47057,
     .is_gzipped = 1,
-    .content_type = "text/html"
+    .content_type = "text/html",
+    .etag = "\"d6c8620ef5a0df5c722642e6039f01ce3fdf8e872ba2404aec08ef7fe65c2627\""
 };
 
 const html_resource_t* get_index_html(void) {

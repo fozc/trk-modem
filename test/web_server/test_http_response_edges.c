@@ -70,7 +70,7 @@ void test_static_html_defers_only_the_body_after_accepting_header(void)
 {
     static const uint8_t body[] = {0U, 1U, 2U};
     const html_resource_t resource =
-        {body, sizeof(body), HTML_COMPRESS_NONE, "text/html"};
+        {body, sizeof(body), HTML_COMPRESS_NONE, "text/html", NULL};
     http_response_set_static_sender(defer_static);
     http_send_html_resource(&resource);
     TEST_ASSERT_EQUAL_UINT32(1U, static_calls);
@@ -84,7 +84,7 @@ void test_failed_header_does_not_accept_a_static_body(void)
 {
     static const uint8_t body[] = {1U};
     const html_resource_t resource =
-        {body, sizeof(body), HTML_COMPRESS_GZIP, "text/html"};
+        {body, sizeof(body), HTML_COMPRESS_GZIP, "text/html", NULL};
     fail_on_call = 1;
     http_response_set_static_sender(defer_static);
     http_send_html_resource(&resource);
@@ -189,7 +189,7 @@ void test_brotli_resource_sends_br_encoding_and_payload(void)
 {
     static const uint8_t data[] = {0x11U, 0x22U};
     const html_resource_t resource =
-        {data, sizeof(data), HTML_COMPRESS_BR, "text/html"};
+        {data, sizeof(data), HTML_COMPRESS_BR, "text/html", NULL};
 
     http_send_html_resource(&resource);
     TEST_ASSERT_NOT_NULL(strstr(output, "Content-Encoding: br\r\n"));
@@ -202,7 +202,7 @@ void test_matching_if_none_match_gets_304_without_body(void)
 {
     static const uint8_t data[] = {0x11U, 0x22U};
     const html_resource_t resource =
-        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html"};
+        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html", NULL};
     char request[128];
 
     /* First response reveals the exact ETag ("<content-hash>"). */
@@ -237,7 +237,7 @@ void test_star_if_none_match_also_gets_304(void)
 {
     static const uint8_t data[] = {0x33U};
     const html_resource_t resource =
-        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html"};
+        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html", NULL};
 
     http_response_note_request_headers(
         "GET / HTTP/1.1\r\nIf-None-Match: *\r\n\r\n", 35);
@@ -249,7 +249,7 @@ void test_no_if_none_match_sends_full_page_with_etag(void)
 {
     static const uint8_t data[] = {0x44U};
     const html_resource_t resource =
-        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html"};
+        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html", NULL};
 
     http_response_note_request_headers(NULL, 0);
     http_send_html_resource(&resource);
@@ -262,7 +262,7 @@ void test_stale_if_none_match_still_gets_full_page(void)
 {
     static const uint8_t data[] = {0x55U};
     const html_resource_t resource =
-        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html"};
+        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html", NULL};
 
     http_response_note_request_headers(
         "GET / HTTP/1.1\r\nIf-None-Match: \"old-hash-999\"\r\n\r\n", 46);
@@ -275,7 +275,7 @@ void test_null_resource_falls_back_to_default_page(void)
 {
     static const uint8_t data[] = "DEFAULT";
     const html_resource_t fallback =
-        {data, sizeof(data) - 1U, HTML_COMPRESS_NONE, "text/html"};
+        {data, sizeof(data) - 1U, HTML_COMPRESS_NONE, "text/html", NULL};
 
     get_default_html_ExpectAndReturn(&fallback);
     http_send_html_resource(NULL);
@@ -320,7 +320,7 @@ void test_equal_length_changed_page_cannot_reuse_an_old_etag(void)
     static const uint8_t first[] = {1U, 2U};
     static const uint8_t second[] = {1U, 3U};
     html_resource_t resource =
-        {first, sizeof(first), HTML_COMPRESS_GZIP, "text/html"};
+        {first, sizeof(first), HTML_COMPRESS_GZIP, "text/html", NULL};
     char tag[67];
     char request[128];
     resource_tag(&resource, tag);
@@ -337,7 +337,7 @@ void test_encoding_is_part_of_resource_etag_identity(void)
 {
     static const uint8_t bytes[] = {1U};
     html_resource_t resource =
-        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html"};
+        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html", NULL};
     char gzip_tag[67];
     char brotli_tag[67];
     resource_tag(&resource, gzip_tag);
@@ -350,7 +350,7 @@ void test_weak_tag_in_list_with_case_and_whitespace_gets_bodyless_304(void)
 {
     static const uint8_t bytes[] = {1U};
     const html_resource_t resource =
-        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html"};
+        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html", NULL};
     char tag[67];
     char request[160];
     resource_tag(&resource, tag);
@@ -368,7 +368,7 @@ void test_embedded_header_name_and_body_are_not_conditional_headers(void)
 {
     static const uint8_t bytes[] = {1U};
     const html_resource_t resource =
-        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html"};
+        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html", NULL};
     const char *requests[] =
     {
         "GET / HTTP/1.1\r\nX-If-None-Match: *\r\n\r\n",
@@ -388,7 +388,7 @@ void test_overlong_conditional_header_cannot_match_a_truncated_prefix(void)
 {
     static const uint8_t bytes[] = {1U};
     const html_resource_t resource =
-        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html"};
+        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html", NULL};
     char tag[67];
     char request[400];
     resource_tag(&resource, tag);
@@ -407,7 +407,7 @@ void test_gzip_package_is_raw_binary_with_private_revalidation(void)
 {
     static const uint8_t data[] = {0x1FU, 0x8BU, 0U, 0xFFU};
     const html_resource_t resource =
-        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html"};
+        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html", NULL};
 
     http_send_gzip_package(&resource);
     TEST_ASSERT_NOT_NULL(strstr(output, "Content-Type: application/gzip"));
@@ -422,11 +422,11 @@ void test_gzip_package_rejects_invalid_resources_before_hashing(void)
 {
     const html_resource_t invalid[] =
     {
-        {NULL, 1U, HTML_COMPRESS_GZIP, "text/html"},
-        {(const uint8_t *)"x", 0U, HTML_COMPRESS_GZIP, "text/html"},
-        {(const uint8_t *)"x", 1U, HTML_COMPRESS_NONE, "text/html"},
+        {NULL, 1U, HTML_COMPRESS_GZIP, "text/html", NULL},
+        {(const uint8_t *)"x", 0U, HTML_COMPRESS_GZIP, "text/html", NULL},
+        {(const uint8_t *)"x", 1U, HTML_COMPRESS_NONE, "text/html", NULL},
         {(const uint8_t *)"x", (uint32_t)INT_MAX + 1U,
-         HTML_COMPRESS_GZIP, "text/html"}
+         HTML_COMPRESS_GZIP, "text/html", NULL}
     };
 
     for (size_t index = 0U; index < sizeof(invalid) / sizeof(invalid[0]);
@@ -440,6 +440,39 @@ void test_gzip_package_rejects_invalid_resources_before_hashing(void)
     output_len = 0U;
     http_send_gzip_package(NULL);
     TEST_ASSERT_NOT_NULL(strstr(output, "500 Internal Server Error"));
+}
+
+void test_precomputed_etag_matches_runtime_for_html_and_package(void)
+{
+    static const uint8_t bytes[] = {0U, 1U, 0xFFU};
+    html_resource_t resource =
+        {bytes, sizeof(bytes), HTML_COMPRESS_GZIP, "text/html", NULL};
+    char expected[67];
+    char actual[67];
+    char request[160];
+
+    resource_tag(&resource, expected);
+    resource.etag = expected;
+    resource_tag(&resource, actual);
+    TEST_ASSERT_EQUAL_STRING(expected, actual);
+
+    (void)xsnprintf(request, sizeof(request),
+        "GET / HTTP/1.1\r\nIf-None-Match: %s\r\n\r\n", expected);
+    http_response_note_request_headers(request, (int)strlen(request));
+    http_send_html_resource(&resource);
+    TEST_ASSERT_NOT_NULL(strstr(output, "304 Not Modified"));
+    const char *end = strstr(output, "\r\n\r\n");
+    TEST_ASSERT_NOT_NULL(end);
+    TEST_ASSERT_EQUAL_size_t(output_len, (size_t)(end - output) + 4U);
+
+    output_len = 0U;
+    output[0] = '\0';
+    http_send_gzip_package(&resource);
+    TEST_ASSERT_NOT_NULL(strstr(output, "304 Not Modified"));
+    TEST_ASSERT_NOT_NULL(strstr(output, "private, no-cache"));
+    end = strstr(output, "\r\n\r\n");
+    TEST_ASSERT_NOT_NULL(end);
+    TEST_ASSERT_EQUAL_size_t(output_len, (size_t)(end - output) + 4U);
 }
 
 /*** end of file ***/

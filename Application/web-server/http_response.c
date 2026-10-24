@@ -299,9 +299,14 @@ void http_response_note_request_headers(const char *buffer, int length)
     }
 }
 
-static void build_resource_etag(const html_resource_t *resource,
-                               char out[ETAG_MAX_LEN])
+static const char *resource_etag(const html_resource_t *resource,
+                                 char out[ETAG_MAX_LEN])
 {
+    if (resource->etag != NULL)
+    {
+        return resource->etag;
+    }
+
     static const char hex[] = "0123456789abcdef";
     uint8_t hash[32];
     sha256_ctx context;
@@ -317,6 +322,7 @@ static void build_resource_etag(const html_resource_t *resource,
     }
     out[65] = '"';
     out[66] = '\0';
+    return out;
 }
 
 static bool resource_not_modified(const char *etag)
@@ -397,8 +403,8 @@ void http_send_gzip_package(const html_resource_t *resource)
         http_send_error(500, "Application package unavailable");
         return;
     }
-    char etag[ETAG_MAX_LEN];
-    build_resource_etag(resource, etag);
+    char etag_buffer[ETAG_MAX_LEN];
+    const char *etag = resource_etag(resource, etag_buffer);
     if (send_not_modified(etag, "private, no-cache"))
     {
         return;
@@ -434,8 +440,8 @@ void http_send_html_resource(const html_resource_t *resource)
     if (resource->is_gzipped != HTML_COMPRESS_NONE) {
         /* Determine Content-Encoding based on compression type */
         const char *encoding = (resource->is_gzipped == HTML_COMPRESS_BR) ? "br" : "gzip";
-        char etag[ETAG_MAX_LEN];
-        build_resource_etag(resource, etag);
+        char etag_buffer[ETAG_MAX_LEN];
+        const char *etag = resource_etag(resource, etag_buffer);
 
         /* Conditional GET: the page never changes within one immutable
          * representation, so a matching If-None-Match (or "*") saves the full
