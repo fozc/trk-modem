@@ -233,7 +233,8 @@ static const html_resource_t loading_html_resource = {
     .data = loading_html_data,
     .length = 2662,
     .is_gzipped = 1,
-    .content_type = "text/html"
+    .content_type = "text/html",
+    .etag = "\"b63ff3f88e616da04487c2d2021da11dfcbc8ba907778d472cbd9a1094f85039\""
 };
 
 const html_resource_t* get_loading_html(void) {

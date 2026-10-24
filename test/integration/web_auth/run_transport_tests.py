@@ -6,6 +6,8 @@ No ports are opened; modem TX completion is explicitly controlled by the test.
 """
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -104,11 +106,15 @@ for name in ["index", "fw_update", "loading"]:
     embedded = (root / f"Application/web-server/{name}_html.c").read_text(encoding="utf-8")
     payload = bytes(int(value, 16) for value in re.findall(
         r"0x([0-9a-fA-F]{2})", embedded.split("};")[0]))
+    etag_literal = re.search(r'\.etag = ("(?:\\.|[^"\\])*")', embedded)[1]
+    assert json.loads(etag_literal) == ('"' + hashlib.sha256(
+        bytes([1]) + payload).hexdigest() + '"')
     resources.append(f"static const uint8_t real_{name}_data[] = {{" +
                      ",".join(str(value) for value in payload) + "};\n" +
                      f"static const html_resource_t real_{name} = " +
                      "{real_" + name + "_data, sizeof(real_" + name +
-                     "_data), HTML_COMPRESS_GZIP, \"text/html\"};\n")
+                     "_data), HTML_COMPRESS_GZIP, \"text/html\", " +
+                     etag_literal + "};\n")
 (output / "real_resources.h").write_text("".join(resources), encoding="ascii")
 
 production_handlers = (root / "Application/web-server/http_handlers.c").read_text(
@@ -135,6 +141,13 @@ static uint8_t pending_data[1500];
 static char wire[131072];
 static size_t wire_length;
 static bool authenticated;
+static uint32_t hash_calls;
+void __real_sha256_update(sha256_ctx *ctx, const uint8_t *data, size_t len);
+void __wrap_sha256_update(sha256_ctx *ctx, const uint8_t *data, size_t len)
+{
+    hash_calls++;
+    __real_sha256_update(ctx, data, len);
+}
 extern web_server_io_t io;
 #define transport io
 static bool reject_tx;
@@ -143,7 +156,7 @@ static char handler_buffer[4096];
 #include "real_resources.h"
 static const uint8_t page_data[] = {1U, 2U, 3U};
 static const html_resource_t page =
-    {page_data, sizeof(page_data), HTML_COMPRESS_GZIP, "text/html"};
+    {page_data, sizeof(page_data), HTML_COMPRESS_GZIP, "text/html", NULL};
 
 static const html_resource_t *selected_page = &page;
 
@@ -277,7 +290,7 @@ static void check_static_stream(void)
     {
         reset_test();
         const html_resource_t resource = {large_static_body, lengths[index],
-                                         HTML_COMPRESS_GZIP, "text/html"};
+                                         HTML_COMPRESS_GZIP, "text/html", NULL};
         selected_page = &resource;
         receive_request("GET /index.html HTTP/1.1\r\n\r\n");
         assert(-1 == transport.send_static("replace", 7U));
@@ -331,7 +344,7 @@ static void check_json_copy_and_rejected_queue_send(void)
 static void check_stream_disconnect_and_pipelining(void)
 {
     const html_resource_t resource = {large_static_body,
-        sizeof(large_static_body), HTML_COMPRESS_GZIP, "text/html"};
+        sizeof(large_static_body), HTML_COMPRESS_GZIP, "text/html", NULL};
     const char request[] = "GET /status/board?t=valid HTTP/1.1\r\n\r\n";
     for (uint32_t chunks = 0U; 3U > chunks; chunks++)
     {
@@ -518,6 +531,7 @@ int main(void)
     puts("PASS: real GET router/transport emits 304 without body and clears stale request context");
 
     const html_resource_t *resources[] = {&real_index, &real_fw_update};
+    hash_calls = 0U;
     for (size_t index = 0U; 2U > index; index++)
     {
         reset_test();
@@ -605,10 +619,12 @@ int main(void)
     finish_response();
     assert(NULL != strstr(wire, "HTTP/1.1 401 "));
     puts("PASS: validated package saves body bytes; changed content sends new bytes; ETag never bypasses auth");
+    assert(0U == hash_calls);
+    puts("PASS: generated HTML/package ETags need no runtime SHA-256 calls");
 
 
     const html_resource_t invalid_package = {
-        page_data, sizeof(page_data), HTML_COMPRESS_NONE, "text/html"};
+        page_data, sizeof(page_data), HTML_COMPRESS_NONE, "text/html", NULL};
     const html_resource_t *invalid_resources[] = {NULL, &invalid_package};
     for (size_t index = 0U; 2U > index; index++)
     {
@@ -689,6 +705,7 @@ command += sources + [str(output / "test_transport.c"),
                       str(root / "Application/gsm/ring_buff.c"),
                       str(root / "Application/libs/xprintf.c"),
                       str(root / "Application/libs/sha256.c"),
+                      "-Wl,--wrap=sha256_update",
                       "-lm", "-o", str(output / "test_transport.exe")]
 subprocess.run(command, check=True)
 result = subprocess.run([str(output / "test_transport.exe")],

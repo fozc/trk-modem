@@ -66,7 +66,7 @@ void test_compressed_resource_preserves_payload_length_and_encoding(void)
 {
     const uint8_t data[] = {0x1FU, 0x8BU, 0x00U, 0xFFU};
     const html_resource_t resource =
-        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html"};
+        {data, sizeof(data), HTML_COMPRESS_GZIP, "text/html", NULL};
     http_send_html_resource(&resource);
     TEST_ASSERT_NOT_NULL(strstr(output, "Content-Encoding: gzip\r\n"));
     TEST_ASSERT_NOT_NULL(strstr(output, "Content-Length: 4\r\n"));
@@ -77,7 +77,7 @@ void test_compressed_resource_preserves_payload_length_and_encoding(void)
 void test_oversized_resource_is_rejected_before_reading_body(void)
 {
     const html_resource_t resource =
-        {NULL, (uint32_t)INT_MAX + 1U, HTML_COMPRESS_NONE, "text/html"};
+        {NULL, (uint32_t)INT_MAX + 1U, HTML_COMPRESS_NONE, "text/html", NULL};
     http_send_html_resource(&resource);
     TEST_ASSERT_NOT_NULL(strstr(output, "HTTP/1.1 500 "));
     TEST_ASSERT_NOT_NULL(strstr(output, "HTML resource too large"));

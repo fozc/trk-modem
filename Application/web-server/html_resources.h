@@ -1,6 +1,9 @@
 /**
  * @file html_resources.h
  * @brief HTML resource management with wrapper functions
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  * 
  * Provides type-safe access to HTML resources with automatic fallback
  * to default 404 page when resource is not found.
@@ -26,6 +29,9 @@ typedef struct {
     uint32_t length;            /**< Data length in bytes */
     uint8_t is_gzipped;         /**< 0: plain, 1: gzip, 2: brotli */
     const char* content_type;   /**< MIME type (e.g., "text/html") */
+    /* Optional quoted SHA-256 of encoding byte + immutable payload.
+     * NULL keeps runtime hashing for resources without a generated tag. */
+    const char *etag;
 } html_resource_t;
 
 /**

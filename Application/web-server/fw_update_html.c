@@ -771,7 +771,8 @@ static const html_resource_t fw_update_html_resource = {
     .data = fw_update_html_data,
     .length = 9116,
     .is_gzipped = 1,
-    .content_type = "text/html"
+    .content_type = "text/html",
+    .etag = "\"9a9d07a42d86b4375b5b5a025169cfd4bef9c7abcca55229075d7eac2c0830b0\""
 };
 
 const html_resource_t* get_fw_update_html(void) {
