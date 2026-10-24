@@ -25,7 +25,7 @@
  *   49000 .. 49016     system statistics (read-only)
  *   49200 .. 49237     power-board SCP summary (read-only)
  *   49300 .. 49378     BMS telemetry (read-only)
- *   49400 .. 49408     GSM status (read-only)
+ *   49400 .. 49409     GSM status (read-only)
  *   50000              battery-warning control register (read-only)
  *   50001              modem-reset command register (FC06, value 1)
  *   50002 .. 50003     relay commanded states (FC03/FC06, values 0/1)
@@ -59,7 +59,7 @@
 #define MODBUS_MAP_BMS_BASE         49300U
 #define MODBUS_MAP_BMS_REG_COUNT    79U
 #define MODBUS_MAP_GSM_BASE         49400U
-#define MODBUS_MAP_GSM_REG_COUNT    9U
+#define MODBUS_MAP_GSM_REG_COUNT    10U
 
 #define MODBUS_MAP_CTRL_AKU_UYARISI     50000U
 #define MODBUS_MAP_CTRL_MODEM_RESET     50001U

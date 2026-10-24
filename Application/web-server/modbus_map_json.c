@@ -265,6 +265,8 @@ static const register_field_t gsm_fields[] = {
           "UINT16", ""),
     FIELD(MODBUS_MAP_GSM_BASE, modbus_gsm_stats_map_t, socket_state_dialer,
           "UINT16", ""),
+    FIELD(MODBUS_MAP_GSM_BASE, modbus_gsm_stats_map_t, sim_state,
+          "UINT16", ""),
 };
 
 static void emit_fields(json_writer_t *writer, const char *name,

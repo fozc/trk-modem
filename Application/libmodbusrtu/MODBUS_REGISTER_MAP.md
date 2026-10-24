@@ -6,8 +6,8 @@
 
 | | |
 |---|---|
-| Dokuman surumu | 2.2 |
-| Tarih | 2026-10-21 |
+| Dokuman surumu | 2.3 |
+| Tarih | 2026-10-25 |
 | Protokol | Modbus RTU (seri) |
 | Cihaz rolu | Slave (sunucu) |
 
@@ -562,7 +562,8 @@ hucresel gerilimler ve sicakliklar, calisma durumu, MOS ve hata kodlari.
 ### 7.4 GSM Durumu Blogu (49400 / base-0 9400)
 
 Modem sagligi: GSM durum, sinyal kalitesi (ham AT+CSQ), kusak (RAT), soket
-durumlari ve son Modbus exception kaydi. 9 register (49400..49408). Kaynak
+durumlari, SIM durumu ve son Modbus exception kaydi.
+10 register (49400..49409). Kaynak
 modul: `Application/modbus_gsm_stats.c`.
 
 | Mantiksal | Base-0 | Alan | Tip | Birim/Anlam |
@@ -576,6 +577,7 @@ modul: `Application/modbus_gsm_stats.c`.
 | 49406 | 9406 | socket_state_web | UINT16 | Web listener soket durumu (bkz. asagida) |
 | 49407 | 9407 | socket_state_iec104 | UINT16 | IEC104 listener soket durumu |
 | 49408 | 9408 | socket_state_dialer | UINT16 | HES dialer (musteri) soket durumu |
+| 49409 | 9409 | sim_state | UINT16 | 0=bilinmiyor, 1=hazır, 2=PIN gerekli, 3=PUK gerekli, 4=meşgul, 5=SIM yok, 6=SIM arızası, 7=hata |
 
 - `gsm_signal_csq`: CSQ = 0 cok zayif, 31 cok iyi; 99 olculmedi/bilinmiyor.
 - Soket durumlari (`socket_state_t`): 0=kapali, 1=acik, 2=okunmayi bekleyen
@@ -717,6 +719,7 @@ satiri almistir.
 | 2.0 | 2026-10-15 | Register haritasi tamamen sabitlesti (modbus_map.h): adresler NVRAM/web uzerinden degistirilemez. Fider bloklari yeniden tasarlandi: 4 fider x 1000 register (40000-43999); IEC104 bilgi aynasi (anlik akim, enerji/yuk/rf/trip_failed + alan bazli zaman damgalari), SCADA'ya yonelik RF canli olcumleri ve fider/faz kalite register'lari tek blokta. Gecici/kalici ariza kayit listeleri (faz basina 15 kayit) Modbus tarafina eklendi. 49500 RF kalite blogu kaldirildi (kalite fider bloklarina gomuldu). Aku uyarisi/modem reset adresleri sabitlendi (50000/50001). Yapilandirilabilir ayarlar CihazID + baud rate e indirildi. |
 | 2.1 | 2026-10-16 | Yerel röle 1/2 için 50002/50003 adresleri eklendi. Aynı adreslerde FC03 komut durumu okuma ve FC06 0/1 yazma desteklenir; ayrıntılar §6.1. |
 | 2.2 | 2026-10-21 | Web tercihiyle son komutların kalıcılığı, kayıt hatası 0x04 ve Flash kayıt süresinin master timeout'una etkisi; §6.1. |
+| 2.3 | 2026-10-25 | GSM bloğunun sonuna 49409 SIM durumu eklendi; mevcut adresler korundu. PIN, PUK, meşgul ve SIM yok durumları için bölüm 7.4 kullanılmalıdır. |
 | 1.10 | 2026-10-06 | Anlık arıza alanları kaldırıldı; offset 0–5/12–17 ayrıldı. Durum polariteleri SCP ile eşitlendi. |
 
 ## Web arayüzünde register adresleri
