@@ -746,10 +746,10 @@ static void gsm_init_step_connect_gprs(void)
 			break;
 		case GSM_ERROR:
 			if (strstr((char *) at_engine_get_response(NULL), "ERROR: 553") != NULL) {
-				LOG_TRACE(WARNING,"_GSM_ GPRS daha once aktif edilmis !. Ama resetten geliyoruz :)");
+				LOG_TRACE(WARNING,"_GSM_ GPRS daha once aktif edilmis !. (ERROR: 553) Ama resetten geliyoruz :)");
 			}
 			if (strstr((char *) at_engine_get_response(NULL), "ERROR: 555") != NULL) {
-				LOG_TRACE(WARNING,"_GSM_ Activation faid !");
+				LOG_TRACE(WARNING,"_GSM_ Activation faid ! (ERROR: 555)");
 			}
 			if (gsm.temp_counter++ > 2)
 			{
