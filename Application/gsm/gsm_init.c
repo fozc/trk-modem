@@ -44,7 +44,6 @@
 extern gsm_t gsm;
 
 static uint32_t s_connection_time = 0;
-static uint8_t  s_pin_reset_state = 0;
 static uint8_t  cold_boot_count   = 0;
 /* Preserve a submitted PIN across modem retries until READY or removal. */
 static bool pin_attempted = false;
@@ -264,7 +263,6 @@ static void gsm_init_step_soft_init(void)
 
 
 
-	gsm.reboot_counter = 0;
 	gsm.no_sim = 0;
 	gsm.temp_counter = 0;
 	gsm.init_cgreg_state = 0;
@@ -290,18 +288,15 @@ static void gsm_init_step_soft_init(void)
 static void gsm_init_step_reset_module(void)
 {
 	led_driver_set_modem_mode(LED_MODEM_ERROR);
-	if (s_pin_reset_state)
+	if (gsm.reboot_counter >= 2U)
 	{
 		if (cold_boot_count < GSM_COLD_BOOT_MAX_ATTEMPTS)
 		{
-			/* ENHRST ve pin reset basamaklari tukenmis, modem hala
-			 * yanit vermiyor. Modemin tam guc cevrimi (soguk baslatma)
-			 * istenir: MCU ayakta kalir, paylasilan I2C hatti ve
-			 * diger servisler etkilenmez. Guc dizisini gsm_power_on
-			 * sureci, sonraki tam yeniden init'i gsm_process_contiki
-			 * dongusu yurutur. */
+			/* This board has no separate modem reset pin. After two
+			 * unsuccessful AT resets, request the existing power cycle.
+             * gsm_power_on and the Contiki supervisor own that sequence. */
 			++cold_boot_count;
-			CSLOG_ERR("Modem cold boot (%u/%u) - ENHRST/pin reset exhausted\r\n",
+			CSLOG_ERR("Modem cold boot (%u/%u) - AT reset exhausted\r\n",
 			          (unsigned)cold_boot_count,
 			          (unsigned)GSM_COLD_BOOT_MAX_ATTEMPTS);
 			gsm_elog_modem_event_with_arg(ELOG_GSM_COLD_BOOT,
@@ -310,42 +305,18 @@ static void gsm_init_step_reset_module(void)
 			return;
 		}
 		CSLOG_ERR("Hard Reset!\r\nWaiting for EWDT reset...\r\n");
-		/* Kalici kanit: modem kurulumu PIN reset ve soguk baslatma
+		/* Kalici kanit: modem kurulumu AT reset ve soguk baslatma
 		 * denemeleri sonrasi da tukendi, cihaz bilincl olarak EWDT
 		 * reseti bekliyor. Bu kayit olmadan reset sonrasi neden oldugu
 		 * anlasilamazdi (RAM izi yok olur). */
 		gsm_elog_modem_event(ELOG_GSM_INIT_EXHAUSTED);
 		while(1);
 	}
-	if (++gsm.reboot_counter > 2)
-	{
-		gsm_set_init_state(GSM_PIN_RESET);
-		s_pin_reset_state = 1;
-	}
-	else
-	{
-		gsm_set_init_state(GSM_REBOOT);
-		/* Allow pending modem NVM writes to finish before ENHRST. */
-		gsm_set_delay(5000U);
-	}
+    ++gsm.reboot_counter;
+    gsm_set_init_state(GSM_REBOOT);
+    /* Allow pending modem NVM writes to finish before ENHRST. */
+    gsm_set_delay(5000U);
 	gsm.prev_creg = 0;
-}
-
-static void gsm_init_step_pin_reset(void)
-{
-	uint32_t res = gsm_pin_reset_module();
-	if (res == GSM_OK)
-	{
-		gsm.no_sim = 0;
-		gsm.temp_counter = 0;
-		gsm.tx_flag = GSM_TX_NOT_AVAILABLE;
-		gsm.module_state = 1;
-		gsm_info_init();
-		gsm_set_delay(3000);
-		gsm_load_common_init_vector();
-		gsm_set_main_state(GSM_COMMON_INIT_MODE);
-		gsm_set_init_state(GSM_SOFT_INIT);
-	}
 }
 
 static void gsm_init_step_check_module(void)
@@ -917,9 +888,10 @@ static void gsm_init_step_reboot(void)
 	uint32_t res = gsm_engine_get_query_res();
 	if (res != 0U)
 	{
-		if (res == GSM_RESPONSE_OK)
+		if ((res == GSM_RESPONSE_OK) || (res == GSM_TIMEOUT))
 		{
-			gsm.reboot_counter = 0;
+            /* Immediate reboot may remove UART before the final OK.
+             * Probe through common init after the boot wait. */
 			gsm_set_delay(20000);
 			gsm_set_init_vector(gsm_common_init_vector, sizeof(gsm_common_init_vector));
 			gsm_set_main_state(GSM_COMMON_INIT_MODE);
@@ -927,7 +899,7 @@ static void gsm_init_step_reboot(void)
 		}
 		else
 		{
-			gsm_set_delay((res == GSM_TIMEOUT) ? 20000U : 50U);
+			gsm_set_delay(50U);
 			gsm_set_init_state(GSM_RESET_MODULE);
 		}
 		gsm_set_free();
@@ -1066,10 +1038,6 @@ static void gsm_init_step_done(void)
 {
 	gsm.module_state = 0;
 	gsm_set_init_state(0);
-	gsm.reboot_counter = 0;
-	/* Init basarili - kurtarma merdiveninin tamam yeniden hak kazandi. */
-	s_pin_reset_state = 0;
-	cold_boot_count = 0U;
 	if (gsm_get_main_state() == GSM_COMMON_INIT_MODE)
 	{
 		gsm_set_init_vector(gsm_LE910R1_init_vector, sizeof(gsm_LE910R1_init_vector));
@@ -1077,6 +1045,9 @@ static void gsm_init_step_done(void)
 	}
 	else
 	{
+        /* Common AT setup alone does not prove module init recovered. */
+        gsm.reboot_counter = 0U;
+        cold_boot_count = 0U;
         /* Listener opening is shared by startup and reconnect.
          * Modem init invalidates the dynamic IEC104 timeout cache. */
         for (size_t index = 0U; index < GSM_LISTENER_COUNT; index++)
@@ -1119,7 +1090,9 @@ void gsm_init_old(void)
 		/* Control states (no AT command) */
 		case GSM_SOFT_INIT:                       gsm_init_step_soft_init();              break;
 		case GSM_RESET_MODULE:                    gsm_init_step_reset_module();           break;
-		case GSM_PIN_RESET:                       gsm_init_step_pin_reset();              break;
+		case GSM_PIN_RESET: /* Legacy state: board uses AT reset then power. */
+            gsm_init_step_reset_module();
+            break;
 
 		/* Simple steps: error -> reset, delay 50 */
 		case GSM_FACTORY_RESET:                   gsm_init_simple_step(ATQUERY_FACTORY_RESET,            false, 50);   break;

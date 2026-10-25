@@ -6,11 +6,10 @@
  *              fatihozcan@gmail.com
  *
  * GSM kurtarma merdiveninin karar mantigi (gsm_init.c) host testleri.
- * Uretim dosyasi #include edilir; statik durumlara (s_pin_reset_state,
- * cold_boot_count) dogrudan erisilir, tum dis bagimliliklar stub'lanir.
+ * Uretim dosyasi #include edilir; statik durumlara (cold_boot_count) dogrudan erisilir, tum dis bagimliliklar stub'lanir.
  *
  * Kapsam:
- *   - ENHRST/pin-reset merdiveni: reboot_counter akisi (REBOOT x2 -> PIN_RESET)
+ *   - ENHRST/power-cycle ladder: REBOOT x2 -> cold boot
  *   - Tukeme: soguk baslatma istegi (bayrak + sayac + elog arg'lari),
  *     maksimum deneme siniri ve init-basarisi sifirlamasi
  *   - "hang" modu: haklar bitince adim while(1)'e dusmeli (disaridan
@@ -142,7 +141,6 @@ static void reset_ladder_state(void)
     elog_last_arg      = 0U;
     elog_cold_boot_calls = 0U;
     elog_exhausted_calls = 0U;
-    s_pin_reset_state  = 0U;
     cold_boot_count    = 0U;
 }
 
@@ -152,22 +150,22 @@ static void ladder_lower_steps(void)
     gsm_init_step_reset_module();
     TEST_CHECK(gsm.init_state == (uint8_t)GSM_REBOOT,
                "lower ladder 1st call -> GSM_REBOOT");
-    TEST_CHECK(s_pin_reset_state == 0U, "1st call leaves pin-reset untried");
+    TEST_CHECK(gsm.reboot_counter == 1U, "first ENHRST uses one attempt");
 
     gsm_init_step_reset_module();
     TEST_CHECK(gsm.init_state == (uint8_t)GSM_REBOOT,
                "lower ladder 2nd call -> GSM_REBOOT");
 
-    /* Ucuncu cagri: pin reset kademnesi isaretlenir */
+    /* Third failure: board has no separate reset pin */
     gsm_init_step_reset_module();
-    TEST_CHECK(gsm.init_state == (uint8_t)GSM_PIN_RESET,
-               "lower ladder 3rd call -> GSM_PIN_RESET");
-    TEST_CHECK(s_pin_reset_state == 1U, "3rd call marks pin-reset tried");
+    TEST_CHECK(gsm_module_restart_requested(),
+               "third failure requests power cycle after two ENHRST attempts");
+    TEST_CHECK(gsm.reboot_counter == 2U, "cold boot preserves failed AT budget");
 }
 
 static void cold_boot_request_tests(void)
 {
-    /* Pin reset sonrasi modem olmezse tukeme: 1. soguk baslatma istegi */
+    /* After two unsuccessful AT resets: 1. soguk baslatma istegi */
     gsm_init_step_reset_module();
 
     TEST_CHECK(cold_boot_count == 1U, "exhaustion: attempt counter -> 1");
@@ -198,15 +196,39 @@ static void init_success_resets_tests(void)
     gsm_init_step_done();
 
     TEST_CHECK(cold_boot_count == 0U, "init success clears cold boot count");
-    TEST_CHECK(s_pin_reset_state == 0U, "init success clears pin-reset mark");
     TEST_CHECK(gsm.reboot_counter == 0U, "init success clears reboot counter");
 
     /* Tazelendikten sonra tukeme yeniden 2 hak ister */
-    s_pin_reset_state = 1U;
+    gsm.reboot_counter = 2U;
     gsm_init_step_reset_module();
     TEST_CHECK(cold_boot_count == 1U,
                "after reset, exhaustion grants fresh attempt");
     TEST_CHECK(elog_last_arg == 1U, "fresh attempt numbered from 1");
+}
+
+static void partial_init_keeps_recovery_budget(void)
+{
+    reset_ladder_state();
+    cold_boot_count = 1U;
+    gsm.reboot_counter = 2U;
+    gsm_load_common_init_vector();
+    gsm_set_main_state(GSM_COMMON_INIT_MODE);
+    gsm_set_init_state(GSM_SOFT_INIT);
+    gsm_init_old();
+    TEST_CHECK(gsm.reboot_counter == 2U,
+               "soft init preserves unsuccessful reboot count");
+    gsm_set_init_state(GSM_INIT_DONE);
+    gsm_init_old();
+    TEST_CHECK(cold_boot_count == 1U,
+               "common init does not refill cold boot budget");
+    TEST_CHECK(gsm.reboot_counter == 2U,
+               "common init preserves unsuccessful reboot count");
+    gsm_set_init_state(GSM_RESET_MODULE);
+    gsm_init_old();
+    TEST_CHECK(cold_boot_count == 2U,
+               "failure after common init advances to second cold boot");
+    TEST_CHECK(restart_flag_sets == 1U,
+               "failure after partial init requests supervisor recovery");
 }
 
 static void dispatch_integration_test(void)
@@ -214,7 +236,7 @@ static void dispatch_integration_test(void)
     /* gsm_init_old() dispatcher uzerinden erisim: tukeme durumunda
      * FSM donmayan bir sekilde bayrak birakip cikmali. */
     reset_ladder_state();
-    s_pin_reset_state = 1U;
+    gsm.reboot_counter = 2U;
     gsm.init_state = (uint8_t)GSM_RESET_MODULE;
 
     gsm_init_old();
@@ -231,7 +253,7 @@ int main(int argc, char *argv[])
     if ((argc > 1) && (strcmp(argv[1], "hang") == 0))
     {
         reset_ladder_state();
-        s_pin_reset_state = 1U;
+        gsm.reboot_counter = 2U;
         cold_boot_count   = GSM_COLD_BOOT_MAX_ATTEMPTS;
         gsm_init_step_reset_module();  /* beklenen: donmadan cikmaz */
         printf("ERROR: exhaustion returned - while(1) not reached\r\n");
@@ -242,15 +264,16 @@ int main(int argc, char *argv[])
     ladder_lower_steps();
 
     reset_ladder_state();
-    s_pin_reset_state = 1U;  /* pin reset zaten denendigi durumu */
+    gsm.reboot_counter = 2U;  /* Both AT reset attempts exhausted. */
     cold_boot_request_tests();
 
     reset_ladder_state();
-    s_pin_reset_state = 1U;
+    gsm.reboot_counter = 2U;
     cold_boot_count   = 1U;  /* bir hak kullanilmis baslangic */
     init_success_resets_tests();
 
     dispatch_integration_test();
+    partial_init_keeps_recovery_budget();
 
     printf("\r\n=== cold boot ladder tests: %u passed, %u failed ===\r\n",
            test_pass, test_fail);
