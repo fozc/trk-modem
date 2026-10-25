@@ -26,6 +26,7 @@
 #include "gsm_wtd.h"
 #include "gsm_info.h"
 #include "gsm_socket.h"
+#include "led_driver.h"
 
 extern gsm_t gsm;
 
@@ -345,6 +346,9 @@ void gsm_internet_connection_on_cb(void)
 /* Internet baglantisi koparsa bu fonk. cagrilir */
 void gsm_internet_connection_faild_cd(void)
 {
+	led_driver_set_gsm_mode(LED_GSM_OFF);
+	led_driver_set_web_mode(LED_LISTENER_OFF);
+	led_driver_set_iec104_mode(LED_LISTENER_OFF);
 	gsm_reset_web_session_info();
 	gsm_set_gprs_state(0);
 	gsm_set_socket_state(IEC104_LISTENER_SOCKET, SOCKET_CLOSED);
@@ -565,6 +569,7 @@ void gsm_module_event_process(void)
 void gsm_sim_error_mode(void)
 {
 	CSLOG_ERR("SIM removed - restarting modem services.\r\n");
+	led_driver_set_modem_mode(LED_MODEM_NO_SIM);
 	for (uint8_t socket = 0U; socket < (uint8_t)GSM_SOCKET_COUNT; socket++)
 	{
 		gsm_socket_set_state(socket, '0');

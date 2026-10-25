@@ -12,6 +12,7 @@
 #include "mock_gsm_socket.h"
 #include "mock_web_server.h"
 #include "mock_iec104_process.h"
+#include "mock_led_driver.h"
 #include "gsm_types.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -192,10 +193,14 @@ void test_qss_rejects_unknown_or_incomplete_status(void)
 void test_sim_error_closes_services_and_requests_existing_module_restart(void)
 {
     gsm_clear_module_restart();
+    led_driver_set_modem_mode_Expect(LED_MODEM_NO_SIM);
     for (uint8_t socket = 0U; socket < (uint8_t)GSM_SOCKET_COUNT; socket++)
     {
         gsm_socket_set_state_Expect(socket, '0');
     }
+    led_driver_set_gsm_mode_Expect(LED_GSM_OFF);
+    led_driver_set_web_mode_Expect(LED_LISTENER_OFF);
+    led_driver_set_iec104_mode_Expect(LED_LISTENER_OFF);
     gsm_reset_web_session_info_Expect();
     gsm_set_gprs_state_Expect(0U);
     gsm_set_socket_state_Expect(IEC104_LISTENER_SOCKET, SOCKET_CLOSED);
@@ -207,6 +212,25 @@ void test_sim_error_closes_services_and_requests_existing_module_restart(void)
     gsm_sim_error_mode();
     TEST_ASSERT_TRUE(gsm_module_restart_requested());
     gsm_clear_module_restart();
+}
+
+void test_network_loss_clears_all_connection_leds_without_modem_restart(void)
+{
+    gsm_clear_module_restart();
+    led_driver_set_gsm_mode_Expect(LED_GSM_OFF);
+    led_driver_set_web_mode_Expect(LED_LISTENER_OFF);
+    led_driver_set_iec104_mode_Expect(LED_LISTENER_OFF);
+    gsm_reset_web_session_info_Expect();
+    gsm_set_gprs_state_Expect(0U);
+    gsm_set_socket_state_Expect(IEC104_LISTENER_SOCKET, SOCKET_CLOSED);
+    gsm_set_socket_state_Expect(LISTENER_SOCKET, SOCKET_CLOSED);
+    gsm_set_socket_state_Expect(DIALER_SOCKET, SOCKET_CLOSED);
+    webserver_on_connection_closed_Expect();
+    iec104_process_socket_closed_cb_Expect();
+
+    gsm_internet_connection_faild_cd();
+
+    TEST_ASSERT_FALSE(gsm_module_restart_requested());
 }
 
 /*** end of file ***/
