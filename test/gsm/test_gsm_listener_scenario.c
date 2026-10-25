@@ -261,6 +261,18 @@ void test_completed_payload_does_not_reconnect_socket_after_carrier_loss(void)
     TEST_ASSERT_EQUAL(GSM_LS_CHECK_SOCKET, ctx->state);
 }
 
+void test_missing_prompt_enters_modem_reset_instead_of_socket_commands(void)
+{
+    gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_WEB];
+    ctx->state = GSM_LS_DATA_MODE;
+    ctx->phase = GSM_INIT_PHASE_WAIT_RESPONSE;
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_TIMEOUT);
+    gsm_reset_process_old_Expect();
+    gsm_set_tx_error_Expect();
+    gsm_set_tx_state_Expect(GSM_TX_READY);
+    gsm_listener_web_process();
+}
+
 void test_confirmed_closed_socket_cleans_once_and_skips_sh(void)
 {
     gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_WEB];
