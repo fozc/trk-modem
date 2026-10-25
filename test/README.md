@@ -1105,18 +1105,18 @@ kanıtlamaz. Bu sınırlar ve ertelenen işler
 **Amaç:** SCADA tarafından gelen baytların doğru işlenmesini ve cihazın
 ürettiği APDU (uygulama protokol veri birimi) yanıtlarını doğrular.
 
-**Kullanım yeri:** `iec104/test_iec104_protocol_scenario.c` dosyasında 59
-senaryo bulunur. Her senaryo bağımsız başlangıç durumuyla çalışır.
+**Kullanım yeri:** Senaryolar `iec104/test_iec104_protocol_scenario.c`
+dosyasındadır. Her senaryo bağımsız başlangıç durumuyla çalışır.
 
 | Alan | Kontrol edilen durumlar |
 |---|---|
-| Bağlantı | STARTDT, STOPDT, bağlantı açılmadan gelen veri, TESTFR yanıtı ve yeniden açılış |
+| Bağlantı | STARTDT ile aynı alımdaki devam frame'i, tekrar STARTDT ve STOPDT sonrası sıra/ACK bilgisinin korunması; STOPDT_CON öncesi bekleyen ACK'ler ve t1; taşımanın reddettiği onaylar |
 | TCP veri akışı | Her bölünme noktası, tek tek gelen baytlar, birleşik çerçeveler, araya giren ilgisiz baytlar ve eksik kuyruk |
-| Boyut sınırları | Geçersiz APDU uzunluğu, 253 bayt APDU sınırı, fazla büyük TCP verisi ve dolan tamponun toparlanması |
+| Boyut sınırları | Geçersiz APDU uzunluğu, kısa I-frame başlığı, uzun S/U-frame, komut VSQ nesne sayısı, 253 bayt APDU sınırı, fazla büyük TCP verisi ve dolan tamponun toparlanması |
 | ACK (alındı onayı) | Tekrarlanan, eski, kısmi ve henüz gönderilmemiş çerçeveyi onaylayan ACK; komut içindeki hatalı ACK |
 | Sıra numarası | Beklenen sıra dışındaki giriş, alma sayacının taşması ve gönderme/ACK sayaçlarının 32.768 adımlık tam döngüsü |
 | Pencere ve süre | k gönderme sınırı, w alma sınırı, t1/t2/t3 eşikleri, kısmi ACK sonrası süre ve taşıma hatasından sonra yeniden deneme |
-| Interrogation (genel sorgu) | Onay-veri-bitiş sırası, olumlu/olumsuz bitiş, adres ve COT (gönderim nedeni) kontrolü |
+| Interrogation (genel sorgu) | QOI 20/21/22 için k=1 ile onay-veri-bitiş sırası; taşıma doluyken devam, eksiksiz ve tekrarsız IOA kümesi, originator address korunması ve reset ile iptal |
 | Reset komutu | Genel reset, bekleyen olayları temizleme, bilinmeyen QRP (reset türü), yanlış IOA (bilgi nesnesi adresi) ve eksik komut |
 | Saat eşitleme | Yanıt baytları, originator address (isteği gönderen adres), milisaniye dahil RTC (gerçek zaman saati) alanları, invalid (geçersiz) biti ve eksik zaman damgası |
 | Arıza verisi | Taşıma kesilince kaldığı yerden devam etme; atlanan veya yinelenen kayıt olmaması |
@@ -1134,11 +1134,9 @@ ceedling test:test_iec104_protocol_scenario
 
 **Kapsam sınırı:** Bu testler host üzerinde çalışır. Gerçek SCADA ile ağ
 üzerinden birlikte çalışma, cihaz zamanlaması ve standart uygunluk testi
-ayrıca yapılmalıdır. Saat komutu işleyicisi şu anda yalnız invalid bitini
-kontrol eder; takvim alanlarını tam doğrulamaz. CP56Time2a birim testleri
-doğrulama işlevini sınar, ancak komut işleyicisi bu işlevi çağırmaz.
-Bu açık nokta protokol paketinin tamamlanmış olduğu şeklinde
-yorumlanmamalıdır.
+ayrıca yapılmalıdır. Saat komutunun `cp56time2a_is_valid()` ile takvim
+doğrulaması ve RTC servisinin başarısız yanıtı gerçek komut girişinden
+sınanır.
 
 2026-10-01 tarihli temiz `gcov:all` koşusunda 268 Ceedling testi geçmiştir;
 başarısız veya atlanan test yoktur. Aynı değişikliklerle 7 integration paketi
