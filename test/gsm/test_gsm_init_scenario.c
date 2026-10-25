@@ -135,6 +135,7 @@ void test_busy_sim_is_polled_again_without_resetting_modem(void)
 
 void test_enhrst_success_waits_twenty_seconds_before_common_init(void)
 {
+    gsm.reboot_counter = 2U;
     gsm_set_init_state(GSM_REBOOT);
     gsm_engine_send_query_ExpectAndReturn(ATQUERY_ENHRST, 1U);
     gsm_init_old();
@@ -144,18 +145,20 @@ void test_enhrst_success_waits_twenty_seconds_before_common_init(void)
     gsm_set_free_Expect();
     gsm_init_old();
     TEST_ASSERT_EQUAL_UINT8(GSM_SOFT_INIT, gsm_get_init_state());
+    TEST_ASSERT_EQUAL_UINT8(2U, gsm.reboot_counter);
 }
 
-void test_enhrst_timeout_allows_boot_before_another_reset(void)
+void test_enhrst_timeout_probes_modem_after_boot_before_another_reset(void)
 {
     gsm_set_init_state(GSM_REBOOT);
     gsm_engine_send_query_ExpectAndReturn(ATQUERY_ENHRST, 1U);
     gsm_init_old();
     gsm_engine_get_query_res_ExpectAndReturn(GSM_TIMEOUT);
     gsm_set_delay_Expect(20000U);
+    gsm_set_main_state_Expect(GSM_COMMON_INIT_MODE);
     gsm_set_free_Expect();
     gsm_init_old();
-    TEST_ASSERT_EQUAL_UINT8(GSM_RESET_MODULE, gsm_get_init_state());
+    TEST_ASSERT_EQUAL_UINT8(GSM_SOFT_INIT, gsm_get_init_state());
 }
 
 void test_reset_ladder_waits_for_modem_nvm_before_enhrst(void)
