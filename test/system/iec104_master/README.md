@@ -46,8 +46,8 @@ python test/system/iec104_master/run_suite.py --host 188.59.76.59
 
 # konsollu + kabul modu + opt-in mutasyonlar
 python test/system/iec104_master/run_suite.py --host 188.59.76.59 \
-    --console COM16 --require-device --setup-feeders \
-    --clock-sync --mutate-eventlog
+    --console COM18 --require-device --clock-sync --mutate-eventlog \
+    --periodic-test --reset-test
 
 # merkez koşudan (wrapper): hedef yoksa SKIP
 IEC104_DEVICE_HOST=188.59.76.59 ruby test/run_all.rb integration
@@ -68,6 +68,10 @@ bağlanmamalıdır.
 | i05_testfr_idle | cihaz t3 TESTFR_ACT → master CON → GI canlılığı (master t3'ü cihazdan büyük seçilir) | cihaz |
 | i06_replay_reconnect | sentetik kayıt replay: içerik + en-yeni-önce sıra + unsent tükenmesi | `--mutate-eventlog` + `--console` |
 | i07_replay_retention | replay ortasında link kesintisi: kayıt kaybı yok (de5604c), pencere 2 en-yeni-önce | `--mutate-eventlog` + `--console` |
+| j05_start_stop_sequences | Tekrar STARTDT; bekleyen I-frame ACK'sinden sonra STOPDT_CON; aynı TCP oturumunda tekrar STARTDT ve GI ile kesintisiz N(S) | cihaz |
+| j06_malformed_frame_headers | Kısa I-frame başlığı, uzun U-frame ve geçersiz komut VSQ nesne sayısında bağlantının kapanması; ASDU yanıtı üretilmemesi | cihaz |
+| j07_coalesced_startdt_interrogation | Tek TCP gönderiminde STARTDT + GI; tam ve tekrarsız IOA kümesi | etkin IEC104 hatları |
+| j08_window_and_reset | K=1/W=1 altında gönderilemeyen reset onayında reboot olmaması; tam GI, ardından onaylı QRP=1 ile gerçek reset ve NTP/RTC doğrulaması; ayarlar finally ile geri yüklenir | `--reset-test` + `--console`, etkin hatlar |
 
 ## Sonuç ve çıkış kodları
 
@@ -105,6 +109,18 @@ görüntüsü: port/CA/T0-T3/K/W/satır IOA haritası, vaka sonuçları),
   teşhisle başarısız kabul edilir (operatör filtresi raporlanır).
 - Oracle bir yazılım stack'idir (lib60870); gerçek SCADA donanımı ve
   standart uygunluk (conformance) testi kapsam dışıdır.
+- j05–j07, c104'ün doğrudan üretmediği sıra ve bozuk paket yolları için
+  mevcut socket master'ı kullanır. j07'de tek TCP gönderimi yapılması,
+  GSM tarafında tek alım callback'i oluştuğunun fiziksel kanıtı değildir;
+  aynı callback'teki birleşik veri ayrıca host testinde sınanır.
+- Etkin IEC104 hatları yoksa tam veri kümesi sınanmadan başarılı kabul
+  yapılmamalıdır. Bench için hatlar geçici açılacaksa önce tam
+  `/config/iec104` yanıtı kaydedilmeli, sonunda geri yazılıp JSON olarak
+  birebir karşılaştırılmalıdır. RF/AY ayarları bu test için değiştirilmemelidir.
+- Tam vaka listesi `--require-device` ile çalıştırılacaksa mutasyon
+  bayraklarına `--reset-test` de eklenmelidir. Bu vaka gerçek reboot
+  yapar; negatif komut testleriyle karıştırılmamalıdır. Reset sonrasında
+  web oturumu yeniden açılır ve pencere ayarları geri okunarak doğrulanır.
 
 ## 19.10.2026 gerçek cihaz kabul kapsamı
 

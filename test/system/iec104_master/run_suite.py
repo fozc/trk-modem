@@ -93,6 +93,8 @@ def main():
                              "NVRAM degisikligi)")
     parser.add_argument("--periodic-test", action="store_true",
                         help="p01: temporarily set PeriodicSend=5 and restore")
+    parser.add_argument("--reset-test", action="store_true",
+                        help="j08: temporary K=1/W=1, real QRP=1 reset, restore")
     parser.add_argument("--evtlog-count", type=int, default=5)
     parser.add_argument("--user", default="admin")
     parser.add_argument("--password", default=None,

@@ -1,6 +1,8 @@
 """Real-device negative commands and explicitly withheld IEC104 ACKs."""
 import datetime
+import json
 import re
+import socket
 import time
 
 import apdu
@@ -201,9 +203,201 @@ def j04_invalid_clock(ctx):
         wire.stop()
 
 
+def j05_start_stop_sequences(ctx):
+    """Duplicate STARTDT and STOPDT must preserve the TCP session state."""
+    wire = _open(ctx, auto_ack=False)
+    try:
+        start = time.monotonic() - 5
+        initialized, _ = wire.wait(lambda f: f[1] == "rx" and
+            (f[3].get("asdu") or {}).get("type") == 70, 10, t0=start)
+        if not initialized:
+            return "FAIL", ["Initialization missing"]
+        duplicate_at = time.monotonic()
+        wire._send(bytes.fromhex("680407000000"))
+        confirmed, _ = wire.wait(lambda f: f[1] == "rx" and
+            f[3].get("u") == "STARTDT_CON", 10, t0=duplicate_at)
+        if not confirmed:
+            return "FAIL", ["Duplicate STARTDT confirmation missing"]
+        stop_at = time.monotonic()
+        wire._send(bytes.fromhex("680413000000"))
+        early, _ = wire.wait(lambda f: f[1] == "rx" and
+            f[3].get("u") == "STOPDT_CON", 1, t0=stop_at)
+        if early:
+            return "FAIL", ["STOPDT confirmed before pending I-frame ACK"]
+        wire.acknowledge()
+        stopped, _ = wire.wait(lambda f: f[1] == "rx" and
+            f[3].get("u") == "STOPDT_CON", 10, t0=stop_at)
+        if not stopped:
+            return "FAIL", ["STOPDT did not complete after ACK"]
+        wire.auto_ack = True
+        restart_at = time.monotonic()
+        wire._send(bytes.fromhex("680407000000"))
+        started, _ = wire.wait(lambda f: f[1] == "rx" and
+            f[3].get("u") == "STARTDT_CON", 10, t0=restart_at)
+        if not started:
+            return "FAIL", ["STARTDT after STOPDT failed"]
+        wire.interrogate(21)
+        done, _ = wire.wait(lambda f: apdu.frame_is_i_asdu(
+            f, "rx", 100, cot=10, pn=0), 30, t0=restart_at)
+        if not done:
+            return "FAIL", ["GI after STOPDT/STARTDT did not complete"]
+        return "PASS", ["Duplicate STARTDT, pending ACK then STOPDT_CON, "
+                        "restart and GI; all received N(S) continuous"]
+    finally:
+        wire.stop()
+
+
+def j06_malformed_frame_headers(ctx):
+    """Malformed headers must close the session without command execution."""
+    ca = ctx.oracle["ca"]
+    command = bytes((105, 0, 6, 0, ca & 255, ca >> 8, 0, 0, 0, 2))
+    invalid = [bytes.fromhex("680400000200"),
+               bytes.fromhex("6809000002006401060001"),
+               bytes.fromhex("68050700000000")]
+    for vsq in (0, 2, 0x82):
+        body = bytes((command[0], vsq)) + command[2:]
+        invalid.append(bytes((0x68, 14, 0, 0, 2, 0)) + body)
+    for raw in invalid:
+        wire = _open(ctx)
+        try:
+            initialized, _ = wire.wait(lambda f: f[1] == "rx" and
+                (f[3].get("asdu") or {}).get("type") == 70,
+                10, t0=time.monotonic() - 5)
+            if not initialized:
+                return "FAIL", ["Initialization missing before malformed input"]
+            sent_at = time.monotonic()
+            wire._send(raw)
+            wire.wait(lambda f: False, 15, t0=sent_at)
+            if wire.is_connected:
+                return "FAIL", ["Malformed frame did not close: " + raw.hex()]
+            if any(f[1] == "rx" and f[3].get("kind") == "I"
+                   for f in wire.since(sent_at)):
+                return "FAIL", ["Malformed input produced an ASDU reply"]
+        finally:
+            wire.stop()
+    return "PASS", ["%d malformed header/VSQ inputs closed cleanly" % len(invalid)]
+
+
+def j07_coalesced_startdt_interrogation(ctx):
+    ctx.master.stop()
+    wait_listener(ctx)
+    wire = WireMaster(ctx.master.host, ctx.master.port, ctx.oracle["ca"],
+                      ctx.master.evidence)
+    try:
+        wire.sock = socket.create_connection((wire.host, wire.port), 30)
+        ca = wire.ca
+        start = bytes.fromhex("680407000000")
+        query = bytes((0x68, 14, 0, 0, 0, 0, 100, 1, 6, 0,
+                       ca & 255, ca >> 8, 0, 0, 0, 20))
+        sent_at = time.monotonic()
+        wire.sock.sendall(start + query)
+        wire._record("tx", start)
+        wire._record("tx", query)
+        wire.send_sn = 1
+        done, _ = wire.wait(lambda f: apdu.frame_is_i_asdu(
+            f, "rx", 100, cot=10, pn=0), 30, t0=sent_at)
+        if not done:
+            return "FAIL", ["GI coalesced with STARTDT was lost"]
+        data = [f for f in wire.since(sent_at) if f[1] == "rx" and
+                (f[3].get("asdu") or {}).get("cot") == 20]
+        ioas = [obj["ioa"] for f in data
+                for obj in f[3]["asdu"].get("objects", [])]
+        if set(ioas) != ctx.expected["station"] or len(ioas) != len(set(ioas)):
+            return "FAIL", ["Coalesced GI IOA set incomplete or repeated"]
+        return "PASS", ["One TCP send: STARTDT + GI; %d unique IOAs" % len(ioas)]
+    finally:
+        wire.stop()
+
+
+def j08_window_and_reset(ctx):
+    """Full window cannot trigger reboot before ACT_CON is accepted."""
+    if not getattr(ctx.args, "reset_test", False) or ctx.console is None:
+        return "SKIP", ["Requires --reset-test and --console"]
+    status, body = ctx.web.request("/config/iec104")
+    if status != 200:
+        raise RuntimeError("Window test configuration unavailable")
+    saved = json.loads(body)
+    (ctx.outdir / "window-config-before.json").write_text(body, encoding="utf-8")
+    status, body = ctx.web.request("/config/device")
+    if status != 200:
+        raise RuntimeError("Device timezone unavailable")
+    timezone = int(json.loads(body)["TimeZone"])
+    ctx.master.stop()
+    wait_listener(ctx)
+    wire = None
+    try:
+        if ctx.web.request("/config/iec104", dict(saved, K=1, W=1,
+                                                  PeriodicSend=0))[0] != 200:
+            raise RuntimeError("Window test configuration rejected")
+        wire = _open(ctx, auto_ack=False)
+        initialized, _ = wire.wait(lambda f: apdu.frame_is_i_asdu(
+            f, "rx", 70), 10, t0=time.monotonic() - 5)
+        if not initialized:
+            return "FAIL", ["Initialization missing"]
+        blocked_at = time.monotonic()
+        wire.command(105, bytes((0, 0, 0, 1)), acknowledge_sn=0)
+        wire.wait(lambda f: False, 8, t0=blocked_at)
+        if not wire.is_connected or any(apdu.frame_is_i_asdu(
+                f, "rx", 105) for f in wire.since(blocked_at)):
+            return "FAIL", ["Full window produced reset reply or reboot"]
+        wire.auto_ack = True
+        wire.acknowledge()
+        gi_at = time.monotonic()
+        wire.interrogate(20)
+        done, _ = wire.wait(lambda f: apdu.frame_is_i_asdu(
+            f, "rx", 100, cot=10, pn=0), 75, t0=gi_at)
+        data = [f for f in wire.since(gi_at) if f[1] == "rx" and
+                (f[3].get("asdu") or {}).get("cot") == 20]
+        ioas = [obj["ioa"] for f in data
+                for obj in f[3]["asdu"].get("objects", [])]
+        if (not done or set(ioas) != ctx.expected["station"] or
+                len(ioas) != len(set(ioas))):
+            return "FAIL", ["K=1 GI incomplete or repeated"]
+        with ctx.console.lock:
+            mark = len(ctx.console.lines)
+        reset_at = time.monotonic()
+        wire.command(105, bytes((0, 0, 0, 1)))
+        confirmed, _ = wire.wait(lambda f: apdu.frame_is_i_asdu(
+            f, "rx", 105, cot=7, pn=0), 10, t0=reset_at)
+        if not confirmed:
+            return "FAIL", ["Reset ACT_CON missing"]
+        wire.wait(lambda f: False, 20, t0=reset_at)
+        if wire.is_connected:
+            return "FAIL", ["Confirmed reset did not close the connection"]
+        from check_ntp_reset import ADJUSTED, verify_ntp
+        if not ctx.console.wait_for(ADJUSTED, timeout_s=120, since=mark):
+            return "FAIL", ["Fresh NTP synchronization after reset missing"]
+        ctx.console.drain(3)
+        result = verify_ntp([line for _, line in
+            ctx.console.new_lines(since=mark)], timezone)
+        (ctx.outdir / "reset-ntp.json").write_text(json.dumps(result, indent=2))
+        return "PASS", ["K=1 blocks reset without ACT_CON; %d unique GI IOAs; "
+                        "accepted reset followed by fresh NTP and RTC proof" % len(ioas)]
+    finally:
+        if wire is not None:
+            wire.stop()
+        # Reset clears the device's authentication session.
+        from oracle import derive_admin_password
+        ctx.web.token = None
+        ctx.web.login(ctx.args.user, ctx.args.password or
+                      derive_admin_password(ctx.master.host))
+        status, _ = ctx.web.request("/config/iec104", saved)
+        read_status, body = ctx.web.request("/config/iec104")
+        if status != 200 or read_status != 200 or json.loads(body) != saved:
+            raise RuntimeError("Window test configuration restoration failed")
+
+
 CASES = {
     "j01_negative_commands": (j01_negative_commands, "Unsupported/invalid commands"),
     "j02_withheld_ack": (j02_withheld_ack, "No consumption before explicit ACK"),
     "j03_lost_ack_reconnect": (j03_lost_ack_reconnect, "Missing ACK plus reconnect"),
     "j04_invalid_clock": (j04_invalid_clock, "Invalid clocks preserve RTC"),
+    "j05_start_stop_sequences": (j05_start_stop_sequences,
+                                "STARTDT/STOPDT and pending ACK sequence"),
+    "j06_malformed_frame_headers": (j06_malformed_frame_headers,
+                                    "Short/oversized headers and invalid VSQ"),
+    "j07_coalesced_startdt_interrogation": (j07_coalesced_startdt_interrogation,
+                                           "STARTDT and GI in one TCP send"),
+    "j08_window_and_reset": (j08_window_and_reset,
+                            "K=1, rejected/accepted reboot and NTP (--reset-test)"),
 }
