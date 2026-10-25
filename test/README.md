@@ -1129,15 +1129,43 @@ sınırlarını (Type 1/13/30/34/36/45) ve sonraki Type 36 nesnesinin
 255 bayt sınırına sığmadığını doğrular. Type 34 için kapasite hesabı,
 üretimde bu tipin desteklendiği anlamına gelmez.
 
+#### Tam frame golden vektörleri
+
+**Amaç:** `iec104/test_iec104_golden_vectors.c` içindeki sabit byte
+dizileriyle gerçek üretim girişlerinin tüm APDU yanıtını karşılaştırmak.
+Beklenen diziler üretim serializer'ı veya packed C yapılarıyla
+üretilmemelidir. Uzunluk ve her byte, `0x68` başlangıcından son nesnenin
+son byte'ına kadar karşılaştırılır. Mevcut platform fake'i yalnız RTC,
+veri kaynağı ve taşıma sınırında kullanılır.
+
+| Type / yol | Tam frame kapsamı |
+|---|---|
+| 1 / 13 | GI20 içinde üç nesneli durum ve float frame'leri; ACT_CON/veri/ACT_TERM dizisinin tamamı |
+| 30 | Tek nesneli spontane, üç nesneli GI22 ve iki nesneli arıza replay frame'i |
+| 31 | Mevcut tek nesneli double-point göndericisi |
+| 36 | Tek nesneli spontane, üç nesneli GI21, iki nesneli arıza replay; float işareti, kesir, kalite ve zaman |
+| 70 / 100 | Başlangıç bildirimi ve GI20/21/22 onay/bitiş frame'leri |
+| 103 / 105 | Saat ve reset komutlarının olumlu/olumsuz yanıtları; yanlış CA/COT; RTC ve reboot olayı yan etkileri |
+| 45 / 46 | Desteklenmeyen komutların tam negatif yanıtları; handler etkinleştirilmez |
+| APCI / TCP | I/S/U kontrol alanları, 15-bit sıra sarma, aynı TCP verisindeki iki komut ve saat komutunun bütün bölünme noktaları |
+
+Type 1/13 için aktif üretim yolu üç fazı birlikte gönderir. Type 31
+göndericisi tek nesnelidir. Sırf test için yeni tekli/çoklu gönderim API'si
+eklenmez; mevcut girişler sınanır. Golden vektörler sıfır olmayan CA/OA ve
+üç byte IOA, `1.0`, `-2.5`, `0.15625` float değerleri, IV/NT/SB/BL/OV
+kaliteleri ve SU içeren CP56Time2a ile alan/byte yer değiştirmelerini yakalar.
+
 Başarılı gönderimlerin tamamında başlangıç baytı, en küçük çerçeve boyutu ve
 uzunluk alanının gerçek bayt sayısıyla eşleşmesi kontrol edilir. İlgili
 senaryolarda yanıtın sıra numarası, COT, P/N (olumlu/olumsuz onay), adres,
 veri alanları ve sayaçların son değeri de kontrol edilir.
 
-Yalnız protokol senaryoları `test/` dizininden şu komutla çalıştırılmalıdır:
+Protokol ve golden paketleri `test/` dizininden şu komutlarla
+çalıştırılmalıdır:
 
 ```text
 ceedling test:test_iec104_protocol_scenario
+ceedling test:test_iec104_golden_vectors
 ```
 
 **Kapsam sınırı:** Bu testler host üzerinde çalışır. Gerçek SCADA ile ağ
