@@ -1121,6 +1121,14 @@ dosyasındadır. Her senaryo bağımsız başlangıç durumuyla çalışır.
 | Saat eşitleme | Yanıt baytları, originator address (isteği gönderen adres), milisaniye dahil RTC (gerçek zaman saati) alanları, invalid (geçersiz) biti ve eksik zaman damgası |
 | Arıza verisi | Taşıma kesilince kaldığı yerden devam etme; atlanan veya yinelenen kayıt olmaması |
 
+Aktif Type 1/13/30/31/36 nesnelerinin boyutları ve float, kalite, zaman
+alanlarının ofsetleri `iec104_types.h` içindeki `_Static_assert`
+kontrolleriyle host ve Cortex-M33 derlemelerinde sınanır.
+`test_iec104_util` SQ=0 için paket başına 60/30/22/18/16/60 nesne
+sınırlarını (Type 1/13/30/34/36/45) ve sonraki Type 36 nesnesinin
+255 bayt sınırına sığmadığını doğrular. Type 34 için kapasite hesabı,
+üretimde bu tipin desteklendiği anlamına gelmez.
+
 Başarılı gönderimlerin tamamında başlangıç baytı, en küçük çerçeve boyutu ve
 uzunluk alanının gerçek bayt sayısıyla eşleşmesi kontrol edilir. İlgili
 senaryolarda yanıtın sıra numarası, COT, P/N (olumlu/olumsuz onay), adres,
