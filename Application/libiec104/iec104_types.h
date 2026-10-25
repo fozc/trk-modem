@@ -2,13 +2,16 @@
  * iec104_types.h
  *
  *  Created on: 26 Tem 2025
- *      Author: fatih
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
  */
 
 #ifndef IEC104_TYPES_H_
 #define IEC104_TYPES_H_
 
 #include <stdint.h>
+#include <stddef.h>
+#include <float.h>
 
 
 #pragma pack(1)  // Byte alignment icin
@@ -19,7 +22,7 @@ Ikinci grup: SP=Single Point, ME=Measured Value, IC=Interrogation Command
 Ucucu grup: NA=No time tag, TB/TD/TF=Time tag variants
                             TB: CP56Time2a
 
-Son: Type numarası
+Son: Type number
 */
 
 // Sabitler - BOYUT HESAPLAMALARI ILE DUZELTME
@@ -35,15 +38,16 @@ Son: Type numarası
 // VSQ teorik limit: 127 object, AMA pratikte paket boyutu limiti var!
 
 // Type'a gore maksimum object sayilari:
-#define MAX_TYPE1_OBJECTS    60   // 243 / 4 = 60 (IOA:3 + SIQ:1)
-#define MAX_TYPE13_OBJECTS   34   // 243 / 7 = 34 (IOA:3 + Float:4)
-#define MAX_TYPE30_OBJECTS   24   // 243 / 10 = 24 (IOA:3 + SIQ:1 + Time:6)
-#define MAX_TYPE34_OBJECTS   20   // 243 / 12 = 20 (IOA:3 + Float:4 + Time:5)
-#define MAX_TYPE36_OBJECTS   17   // 243 / 14 = 17 (IOA:3 + Float:4 + Time:7)
-#define MAX_TYPE45_OBJECTS   60   // 243 / 4 = 60 (IOA:3 + SCO:1)
+#define MAX_TYPE1_OBJECTS    (243U / sizeof(m_sp_na_1_t))
+#define MAX_TYPE13_OBJECTS   (243U / sizeof(m_me_nc_1_t))
+#define MAX_TYPE30_OBJECTS   (243U / sizeof(m_sp_tb_1_t))
+/* Type 34: IOA(3), normalized value(2), QDS(1), CP56Time2a(7). */
+#define MAX_TYPE34_OBJECTS   (243U / 13U)
+#define MAX_TYPE36_OBJECTS   (243U / sizeof(m_me_tf_1_t))
+#define MAX_TYPE45_OBJECTS   (243U / sizeof(c_sc_na_1_t))
 
 // Guvenli genel maksimum (en buyuk object boyutuna gore)
-#define MAX_OBJECTS_SAFE     17   // En guvenli deger (Type 36 bazinda)
+#define MAX_OBJECTS_SAFE     MAX_TYPE36_OBJECTS
 
 // UYARI: VSQ'da 127'ye kadar tanimlanabilir ama fiziksel paket boyutu
 // 255 byte ile sinirlidir! Buyuk object'ler icin cok daha az object sigar.
@@ -109,7 +113,7 @@ typedef struct {
     uint8_t type_id;  // Type Identification - Veri tipi (1-127)
     vsq_t vsq;     // Variable Structure Qualifier
     cot_t cot;     // Cause of Transmission - iletim nedeni
-    uint8_t originator_address;   // oa, Originator Address (0-255), (opsiyonel, COT'da T biti 1 ise), master adresi(scada?)
+    uint8_t originator_address;   // Always present in the 2-byte IEC104 COT.
     uint16_t common_asdu_address; // ca, Common Address - Ortak adres (Station address) (slave adresi, 0-65535 ?)
 }__attribute__((packed)) asdu_header_t;
 
@@ -474,7 +478,7 @@ typedef enum
 typedef enum
 {
     // Standart Genel Sorgulama (Station Interrogation)
-    QOI_STATION             = 20, // 0x14 - Tüm istasyon icin genel sorgulama
+    QOI_STATION             = 20, // 0x14 - Station interrogation
 
     // Grup Sorgulamalari (Group Interrogations)
     QOI_GROUP_1             = 21, // 0x15
@@ -495,7 +499,7 @@ typedef enum
     QOI_GROUP_16            = 36, // 0x24
 
     // Sayac Sorgulamalari (Counter Interrogation) - C_CI_NA_1 icin
-    QOI_COUNTER_STATION     = 64, // 0x40 - Tüm sayaclar (Global)
+    QOI_COUNTER_STATION     = 64, // 0x40 - All counters (Global)
     QOI_COUNTER_GROUP_1     = 65, // 0x41
     QOI_COUNTER_GROUP_2     = 66, // 0x42
     QOI_COUNTER_GROUP_3     = 67, // 0x43
@@ -561,4 +565,23 @@ typedef enum
 
 #pragma pack()  // Normal alignment'a don
 
+/* Guard the active wire ABI on both the host and the Cortex-M33 build.
+ * Bit-field byte order is additionally checked through protocol tests. */
+_Static_assert(sizeof(float) == 4U && FLT_RADIX == 2 && FLT_MANT_DIG == 24,
+               "IEC104 requires binary32 float");
+_Static_assert(sizeof(m_sp_na_1_t) == 4U, "Type 1 wire size");
+_Static_assert(sizeof(m_me_nc_1_t) == 8U, "Type 13 wire size");
+_Static_assert(sizeof(m_sp_tb_1_t) == 11U, "Type 30 wire size");
+_Static_assert(sizeof(m_dp_tb_1_t) == 11U, "Type 31 wire size");
+_Static_assert(sizeof(m_me_tf_1_t) == 15U, "Type 36 wire size");
+_Static_assert(offsetof(m_me_nc_1_t, value) == 3U, "Float wire offset");
+_Static_assert(offsetof(m_me_nc_1_t, quality) == 7U, "QDS wire offset");
+_Static_assert(offsetof(m_sp_tb_1_t, timestamp) == 4U, "SP time offset");
+_Static_assert(offsetof(m_me_tf_1_t, timestamp) == 8U, "ME time offset");
+_Static_assert(offsetof(iec104_package_t, frame.asdu_header) == 6U,
+               "ASDU wire offset");
+_Static_assert(DATA_START_IDX == 12U, "Information object wire offset");
+
 #endif /* IEC104_TYPES_H_ */
+
+/*** end of file ***/

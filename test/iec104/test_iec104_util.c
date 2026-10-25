@@ -91,4 +91,20 @@ void test_iec104_each_wire_byte_maps_to_expected_bit_range(void)
                             iec104_ioa_3byte_to_uint32(high));
 }
 
+void test_iec104_object_capacities_match_actual_wire_sizes(void)
+{
+    TEST_ASSERT_EQUAL_UINT32(60U, MAX_TYPE1_OBJECTS);
+    TEST_ASSERT_EQUAL_UINT32(30U, MAX_TYPE13_OBJECTS);
+    TEST_ASSERT_EQUAL_UINT32(22U, MAX_TYPE30_OBJECTS);
+    TEST_ASSERT_EQUAL_UINT32(18U, MAX_TYPE34_OBJECTS);
+    TEST_ASSERT_EQUAL_UINT32(16U, MAX_TYPE36_OBJECTS);
+    TEST_ASSERT_EQUAL_UINT32(60U, MAX_TYPE45_OBJECTS);
+    TEST_ASSERT_EQUAL_UINT32(16U, MAX_OBJECTS_SAFE);
+    TEST_ASSERT_TRUE(DATA_START_IDX +
+        MAX_TYPE36_OBJECTS * sizeof(m_me_tf_1_t) <= sizeof(iec104_package_t));
+    TEST_ASSERT_TRUE(DATA_START_IDX +
+        (MAX_TYPE36_OBJECTS + 1U) * sizeof(m_me_tf_1_t) >
+        sizeof(iec104_package_t));
+}
+
 /*** end of file ***/
