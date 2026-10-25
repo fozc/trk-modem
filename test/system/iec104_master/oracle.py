@@ -44,14 +44,19 @@ class WebDevice:
             sep = "&" if "?" in path else "?"
             url += sep + "t=" + urllib.parse.quote(self.token)
         body = None
+        content_type = "application/json"
         if data is not None:
-            body = json.dumps(data, separators=(",", ":")).encode("ascii")
+            if isinstance(data, bytes):
+                body = data
+                content_type = "application/octet-stream"
+            else:
+                body = json.dumps(data, separators=(",", ":")).encode("ascii")
         last_error = None
         for attempt in range(REQUEST_ATTEMPTS):
             req = urllib.request.Request(
                 url, data=body,
-                headers={"Content-Type": "application/json"},
-                method=method or ("POST" if body else "GET"))
+                headers={"Content-Type": content_type},
+                method=method or ("POST" if data is not None else "GET"))
             try:
                 with self.opener.open(req, timeout=self.timeout) as resp:
                     return resp.status, \
