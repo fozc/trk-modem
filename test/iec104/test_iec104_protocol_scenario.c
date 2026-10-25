@@ -624,14 +624,9 @@ void test_k_window_stops_and_reopens(void)
     /* SCADA acknowledges everything sent so far. */
     feed_s_frame(iec104_get_send_sn());
 
-    TEST_CHECK(0U == iec104_get_k(), "acknowledgement empties the window");
-
-    tx_clear();
-    build_interrogation(frame, 1U, 1U, TEST_COMMON_ADDRESS, QOI_STATION_REQ);
-    iec104_data_received(frame, sizeof(frame));
-    libiec104_poll();
-
-    TEST_CHECK(count_i_frames() > 0U, "window reopens after the acknowledgement");
+    TEST_CHECK(iec104_get_k() <= k_max, "resumed data respects the window");
+    TEST_CHECK(count_i_frames() > emitted,
+               "acknowledgement allows pending interrogation data to resume");
     TEST_CHECK(emitted > 0U, "the first burst was not empty");
 }
 
@@ -978,7 +973,7 @@ void test_i_frame_before_startdt_is_dropped(void)
     TEST_CHECK(0U == tx_count, "I-frames before STARTDT are ignored");
 }
 
-void test_incomplete_interrogation_terminates_negatively(void)
+void test_interrogation_transport_rejection_resumes_without_losing_data(void)
 {
     uint8_t frame[16];
 
@@ -986,20 +981,32 @@ void test_incomplete_interrogation_terminates_negatively(void)
     start_link();
     enable_all_lines();
 
-    /* Refuse one data APDU; the master must not be told the interrogation
-     * completed successfully. */
-    transport_reject_index = 2;
+    /* Accept ACT_CON and one data APDU, then hold the transport full. */
+    transport_budget = 2;
 
     build_interrogation(frame, 0U, iec104_get_send_sn(), TEST_COMMON_ADDRESS,
                         QOI_STATION_REQ);
     iec104_data_received(frame, sizeof(frame));
     libiec104_poll();
 
+    TEST_ASSERT_EQUAL_INT(-1, find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM));
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    transport_budget = -1;
+    libiec104_poll();
     const int term = find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM);
 
-    TEST_CHECK(term >= 0, "an incomplete interrogation is still terminated");
-    TEST_CHECK((term >= 0) && (1U == frame_asdu_pn(tx_log[term])),
-               "a dropped object makes ACT_TERM negative");
+    TEST_CHECK(term >= 0, "the resumed interrogation terminates");
+    TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[term]));
+    size_t objects = 0U;
+    for (size_t index = 0U; index < tx_count; index++)
+    {
+        if (frame_is_i(tx_log[index]) &&
+            (COT_INTERROGATED_STATION == frame_asdu_cot(tx_log[index])))
+        {
+            objects += tx_log[index][7] & 0x7FU;
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT32(MAX_POWER_LINE_COUNT * 12U, objects);
 }
 
 void test_station_interrogation_sends_untimed_values_and_quality(void)
@@ -2454,6 +2461,359 @@ void test_active_t3_remains_unchanged_until_reinitialization(void)
     TEST_ASSERT_EQUAL_UINT16(60U, iec104_get_t3_timeout());
     setup_idle_timeout(65535U);
     TEST_ASSERT_EQUAL_UINT16(60U, iec104_get_t3_timeout());
+}
+
+void test_startdt_preserves_coalesced_following_frame(void)
+{
+    uint8_t frames[22] = {0x68U, 4U, 7U, 0U, 0U, 0U};
+    setup(64U, 32U);
+    build_interrogation(&frames[6], 0U, 0U, TEST_COMMON_ADDRESS,
+                        QOI_STATION_REQ);
+    iec104_data_received(frames, sizeof(frames));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_receive_sn());
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0,
+        find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM));
+}
+
+void test_duplicate_startdt_preserves_sequences_and_pending_frames(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    const uint16_t next_sn = iec104_get_send_sn();
+    const uint16_t pending = iec104_get_k();
+    tx_clear();
+    feed_u_frame(IEC104_STARTDT_ACT);
+    TEST_ASSERT_EQUAL_UINT16(next_sn, iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_receive_sn());
+    TEST_ASSERT_EQUAL_UINT16(pending, iec104_get_k());
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+}
+
+void test_stop_start_preserves_connection_sequence_numbers(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    feed_s_frame(iec104_get_send_sn());
+    const uint16_t next_sn = iec104_get_send_sn();
+    feed_u_frame(IEC104_STOPDT_ACT);
+    feed_u_frame(IEC104_STARTDT_ACT);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_receive_sn());
+    TEST_ASSERT_EQUAL_UINT16(next_sn + 1U, iec104_get_send_sn());
+}
+
+void test_rejected_startdt_confirmation_does_not_activate_link(void)
+{
+    setup(64U, 32U);
+    transport_budget = 0;
+    feed_u_frame(IEC104_STARTDT_ACT);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(0U, event_count);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_send_sn());
+    transport_budget = -1;
+    feed_u_frame(IEC104_STARTDT_ACT);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+}
+
+void test_rejected_reset_confirmation_does_not_request_reboot(void)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    transport_budget = 0;
+    build_reset_process(frame, 0U, 1U, TEST_COMMON_ADDRESS, 0U, 1U);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_NOT_EQUAL(IEC104_EVT_REBOOT_REQUESTED, last_event);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_short_i_frame_closes_without_using_previous_asdu(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    tx_clear();
+    const uint8_t frame[] = {0x68U, 4U, 2U, 0U, 4U, 0U};
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_command_vsq_cannot_claim_missing_objects_or_zero_objects(void)
+{
+    const uint8_t counts[] = {0U, 2U, 0x82U};
+    for (size_t index = 0U; index < sizeof(counts); index++)
+    {
+        uint8_t frame[16];
+        setup(64U, 32U);
+        start_link();
+        build_reset_process(frame, 0U, 1U, TEST_COMMON_ADDRESS, 0U, 1U);
+        frame[7] = counts[index];
+        iec104_data_received(frame, sizeof(frame));
+        libiec104_poll();
+        TEST_ASSERT_NOT_EQUAL(IEC104_EVT_REBOOT_REQUESTED, last_event);
+        TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    }
+}
+
+static void configure_live_ioas(void)
+{
+    for (uint8_t feeder = 0U; feeder < MAX_POWER_LINE_COUNT; feeder++)
+    {
+        iec104_line_config_t line = {.in_use = 1U};
+        ioa_3byte_t *fields[] = {line.anlik_akim, line.enerji_varyok,
+            line.yuk_akimi_varyok, line.rf_haberlesme_varyok,
+            line.trip_failed};
+        for (size_t family = 0U; family < 5U; family++)
+        {
+            for (size_t phase = 0U; phase < 3U; phase++)
+            {
+                fields[family][phase] = iec104_make_ioa_3byte((uint32_t)
+                    (1U + family * MAX_POWER_LINE_COUNT * 3U +
+                     feeder * 3U + phase));
+            }
+        }
+        TEST_ASSERT_TRUE(iec104_set_line_config(feeder, &line));
+    }
+}
+
+static void assert_unique_interrogated_points(uint8_t qoi)
+{
+    bool seen[MAX_POWER_LINE_COUNT * 3U * 5U] = {false};
+    size_t total = 0U;
+    for (size_t index = 0U; index < tx_count; index++)
+    {
+        if (!frame_is_i(tx_log[index]) ||
+            (qoi != frame_asdu_cot(tx_log[index])))
+        {
+            continue;
+        }
+        const size_t count = tx_log[index][7] & 0x7FU;
+        const uint8_t type = frame_asdu_type(tx_log[index]);
+        const size_t object_size = (20U == qoi) ?
+            ((M_ME_NC_1 == type) ? 8U : 4U) :
+            ((M_ME_TF_1 == type) ? 15U : 11U);
+        for (size_t object = 0U; object < count; object++)
+        {
+            const uint8_t *data = &tx_log[index][12U + object * object_size];
+            const uint32_t ioa = (uint32_t)data[0] |
+                ((uint32_t)data[1] << 8U) | ((uint32_t)data[2] << 16U);
+            TEST_ASSERT_TRUE((ioa > 0U) && (ioa <= sizeof(seen)));
+            TEST_ASSERT_FALSE(seen[ioa - 1U]);
+            seen[ioa - 1U] = true;
+            total++;
+        }
+    }
+    const size_t families = (20U == qoi) ? 5U : ((21U == qoi) ? 1U : 4U);
+    TEST_ASSERT_EQUAL_UINT32(MAX_POWER_LINE_COUNT * 3U * families, total);
+}
+
+void test_interrogation_window_one_resumes_confirm_data_and_termination(void)
+{
+    const uint8_t queries[] = {20U, 21U, 22U};
+    for (size_t query = 0U; query < sizeof(queries); query++)
+    {
+        uint8_t frame[16];
+        setup_mode(1U, 1U, true);
+        start_link();
+        configure_live_ioas();
+        build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS,
+                            queries[query]);
+        frame[9] = 17U;
+        iec104_data_received(frame, sizeof(frame));
+        libiec104_poll();
+        for (size_t attempt = 0U; attempt < 64U; attempt++)
+        {
+            if (find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM) >= 0)
+            {
+                break;
+            }
+            feed_s_frame(iec104_get_send_sn());
+        }
+        const int term = find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT(0, term);
+        TEST_ASSERT_EQUAL_UINT8(0U, frame_asdu_pn(tx_log[term]));
+        size_t objects = 0U;
+        for (size_t index = 0U; index < tx_count; index++)
+        {
+            if (frame_is_i(tx_log[index]))
+            {
+                TEST_ASSERT_EQUAL_UINT8(17U, tx_log[index][9]);
+                if (C_IC_NA_1 != frame_asdu_type(tx_log[index]))
+                {
+                    objects += tx_log[index][7] & 0x7FU;
+                }
+            }
+        }
+        const size_t families = (20U == queries[query]) ? 5U :
+                                ((21U == queries[query]) ? 1U : 4U);
+        TEST_ASSERT_EQUAL_UINT32(MAX_POWER_LINE_COUNT * 3U * families,
+                                 objects);
+        assert_unique_interrogated_points(queries[query]);
+    }
+}
+
+void test_stopdt_accepts_pending_ack_before_confirming_stop(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    send_initialization(1U);
+    const uint16_t next_sn = iec104_get_send_sn();
+    tx_clear();
+    feed_u_frame(IEC104_STOPDT_ACT);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count); /* S ACK for received I-frame. */
+    TEST_ASSERT_FALSE(frame_is_u(tx_log[0]));
+    feed_s_frame(next_sn);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_k());
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_STOPDT_CON, frame_u_func(tx_log[1]));
+}
+
+void test_stopdt_outstanding_ack_keeps_t1_running(void)
+{
+    setup(64U, 32U);
+    start_link();
+    send_pending_reset(0U, 1U);
+    feed_u_frame(IEC104_STOPDT_ACT);
+    for (size_t second = 0U; second < 16U; second++)
+    {
+        iec104_tick();
+        libiec104_poll();
+    }
+    TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+}
+
+void test_stopdt_retries_rejected_confirmation(void)
+{
+    setup(64U, 32U);
+    start_link();
+    transport_budget = 0;
+    feed_u_frame(IEC104_STOPDT_ACT);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    transport_budget = -1;
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_STOPDT_CON, frame_u_func(tx_log[0]));
+}
+
+void test_duplicate_startdt_preserves_tracked_delivery_callback(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U,
+                                                    capture_event_ack));
+    const uint16_t next_sn = iec104_get_send_sn();
+    feed_u_frame(IEC104_STARTDT_ACT);
+    TEST_ASSERT_TRUE(iec104_event_ack_pending());
+    TEST_ASSERT_EQUAL_UINT16(next_sn, iec104_get_send_sn());
+    feed_s_frame(next_sn);
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+    TEST_ASSERT_EQUAL_UINT16(42U, acknowledged_record);
+}
+
+void test_single_object_sequence_vsq_remains_accepted(void)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS, 20U);
+    frame[7] = 0x81U;
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0,
+        find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM));
+}
+
+void test_oversized_control_frame_closes_without_activating_link(void)
+{
+    setup(64U, 32U);
+    const uint8_t frame[] = {0x68U, 5U, 7U, 0U, 0U, 0U, 0U};
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_interrogation_retries_confirmation_and_termination(void)
+{
+    uint8_t frame[16];
+    setup(64U, 32U);
+    start_link();
+    build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS, 20U);
+    transport_budget = 0;
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    transport_budget = 1;
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    transport_budget = -1;
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_TERM, frame_asdu_cot(tx_log[1]));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+}
+
+void test_reset_cancels_pending_live_interrogation(void)
+{
+    uint8_t frame[16];
+    setup(1U, 1U);
+    start_link();
+    configure_live_ioas();
+    build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS, 20U);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, count_i_frames());
+    iec104_reset();
+    start_link();
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_other_command_does_not_replace_pending_interrogation_originator(void)
+{
+    uint8_t frame[16];
+    setup(1U, 1U);
+    start_link();
+    configure_live_ioas();
+    build_interrogation(frame, 0U, 1U, TEST_COMMON_ADDRESS, 20U);
+    frame[9] = 17U;
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    /* A second command updates the reply address while GI is blocked. */
+    build_reset_process(frame, 1U, 1U, TEST_COMMON_ADDRESS, 0U, 0U);
+    frame[9] = 99U;
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    for (size_t attempt = 0U; attempt < 64U; attempt++)
+    {
+        feed_s_frame(iec104_get_send_sn());
+        if (find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM) >= 0)
+        {
+            break;
+        }
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0,
+        find_asdu(C_IC_NA_1, COT_ACTIVATION_TERM));
+    for (size_t index = 0U; index < tx_count; index++)
+    {
+        if (frame_is_i(tx_log[index]))
+        {
+            TEST_ASSERT_EQUAL_UINT8(17U, frame_asdu_oa(tx_log[index]));
+        }
+    }
 }
 
 /*** end of file ***/
