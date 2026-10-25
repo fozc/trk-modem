@@ -428,11 +428,11 @@ static void handle_data_mode(const gsm_listener_cfg_t *p_cfg,
 
 		case GSM_TIMEOUT:
 			LOG_TRACE(_GSM_, "[LS:%u] DATA_MODE timeout", (unsigned)p_cfg->id);
-			ctx->socket_timer = gsm_get_tick() + 2000U;
-			ls_set_state(ctx, GSM_LS_CHECK_SOCKET);
+            /* A lost prompt may leave the modem waiting for payload.
+             * Use the bounded AT-reset/power-cycle recovery ladder. */
+            gsm_reset_process_old();
 			gsm_set_tx_error();
 			gsm_set_tx_state(GSM_TX_READY);
-			gsm_set_delay(500);
 			gsm_set_free();
 			break;
 
