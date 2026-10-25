@@ -37,14 +37,14 @@ def wait_listener(console, start, timeout=25):
     raise AssertionError("web listener did not return to listening")
 
 
-def get_page(host, console, timeout=25):
+def get_page(host, console, timeout=25, response_timeout=8):
     deadline = time.monotonic() + timeout
     last_error = None
     while time.monotonic() < deadline:
         try:
             with socket.create_connection((host, 80), timeout=4) as client:
                 client.sendall(drop.build_get_request(host, 80, "/loading.html"))
-                status, headers, body, complete = drop.recv_response(client, 8)
+                status, headers, body, complete = drop.recv_response(client, response_timeout)
                 if not complete or " 200 " not in status:
                     raise AssertionError("unexpected HTTP status: " + status)
                 if len(body) != int(headers["content-length"]):

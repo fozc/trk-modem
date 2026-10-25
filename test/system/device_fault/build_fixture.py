@@ -8,6 +8,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -34,12 +35,21 @@ def fixture_sources(original):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--outdir", type=Path, required=True)
+    parser.add_argument("--kind", choices=("modbus", "gsm"), default="modbus")
     args = parser.parse_args()
     args.outdir.mkdir(parents=True, exist_ok=False)
-    paths = [ROOT / name for name in ("Application/bsp/bsp.c",
-             "Application/app_main.c", "Release/makefile")]
+    transform = fixture_sources
+    header = Path(__file__).with_name("fixture.h")
+    source_paths = ("Application/bsp/bsp.c", "Application/app_main.c",
+                    "Release/makefile")
+    if args.kind == "gsm":
+        sys.path.insert(0, str(ROOT / "test/system/gsm_fault"))
+        from fixture_sources import fixture_sources as transform, SOURCE_PATHS
+        source_paths = SOURCE_PATHS
+        header = ROOT / "test/system/gsm_fault/fixture.h"
+    paths = [ROOT / name for name in source_paths]
     original = [path.read_bytes() for path in paths]
-    modified = fixture_sources(original)
+    modified = transform(original)
     manifest = {"test_only": True, "production_image": False,
                 "source_sha256": {str(path.relative_to(ROOT)):
                     hashlib.sha256(data).hexdigest()
@@ -56,7 +66,7 @@ def main():
         shutil.copy2(latest, args.outdir / "fixture.efw")
         shutil.copy2(ROOT / "Release/troika-smart-breaker-modem.elf",
                      args.outdir / "fixture.elf")
-        shutil.copy2(Path(__file__).with_name("fixture.h"),
+        shutil.copy2(header,
                      args.outdir / "fixture-tested.h")
         manifest["efw_sha256"] = hashlib.sha256(latest.read_bytes()).hexdigest()
     finally:

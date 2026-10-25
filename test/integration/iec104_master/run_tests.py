@@ -35,6 +35,7 @@ def suite_python():
 
 def main():
     for selftest in (SELFTEST,
+                     SYSTEM / "test_web_client.py",
                      SYSTEM / "test_cases_selftest.py",
                      SYSTEM / "test_wire_master.py",
                      SYSTEM / "test_wire_cases.py",
