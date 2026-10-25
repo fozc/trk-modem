@@ -72,6 +72,7 @@ void gsm_wtd_liveness_ping(void)
 {
 	s_liveness_last_activity = gsm_get_tick();
 	s_liveness_recovery_count = 0;
+    s_wtd_soft_recovery_count = 0U;
 }
 
 /**
@@ -243,7 +244,6 @@ void gsm_wtd_check(void)
 	if (!gsm_is_busy())
 	{
 		gsm_wtd_feed();
-		s_wtd_soft_recovery_count = 0;
 		liveness_check();
 		return;
 	}

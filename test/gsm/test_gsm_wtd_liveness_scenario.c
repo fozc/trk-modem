@@ -176,4 +176,35 @@ void test_busy_engine_owns_recovery(void)
     TEST_ASSERT_EQUAL_UINT(0U, bsp_reset_calls);
 }
 
+void test_repeated_busy_timeouts_without_at_progress_escalate_to_reset(void)
+{
+    gsm_wtd_check();
+    for (size_t attempt = 0U; attempt < 3U; attempt++)
+    {
+        busy_state = 1U;
+        tick_now += 5U * 60U * 1000U;
+        gsm_wtd_check();
+        if (attempt < 2U)
+        {
+            TEST_ASSERT_EQUAL_UINT(0U, bsp_reset_calls);
+            TEST_ASSERT_EQUAL_UINT8(0U, busy_state);
+            gsm_wtd_check();
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT(1U, bsp_reset_calls);
+}
+
+void test_completed_at_progress_refills_busy_recovery_budget(void)
+{
+    gsm_wtd_check();
+    for (size_t attempt = 0U; attempt < 4U; attempt++)
+    {
+        busy_state = 1U;
+        tick_now += 5U * 60U * 1000U;
+        gsm_wtd_check();
+        TEST_ASSERT_EQUAL_UINT(0U, bsp_reset_calls);
+        gsm_wtd_liveness_ping();
+    }
+}
+
 /*** end of file ***/
