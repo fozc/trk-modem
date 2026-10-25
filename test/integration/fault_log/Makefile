@@ -62,6 +62,7 @@ $(TARGET): $(TEST_OBJS) $(LIB_OBJS)
 run: $(TARGET)
 	@./$(TARGET)
 	python ../../system/device_fault/test_fault_evidence.py
+	python ../../system/test_gsm_firmware_evidence.py
 
 clean:
 	@$(RM_RF) $(BUILD)

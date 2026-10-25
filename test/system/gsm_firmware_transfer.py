@@ -27,6 +27,40 @@ def fletcher16(data):
     return (second << 8) | first
 
 
+def verify_approved_boot(console, host):
+    """Consume bound approval in BSL and require a newer persistent record."""
+    def record_sequence(event):
+        console.send("su admin")
+        time.sleep(0.3)
+        start = len(console.all_lines())
+        console.send("bootlog dump 8")
+        hit = console.wait_for(r"^\s*(\d+)\s+.*\s" + event + r"\s", 15, since=start)
+        if hit is None:
+            raise AssertionError("missing persistent " + event)
+        return int(hit[2].group(1))
+
+    installed = record_sequence("FW_INSTALL_OK")
+    start = len(console.all_lines())
+    console.send("reset")
+    if console.wait_for(r"SPI flash: AT25SF321B", 40, since=start) is None:
+        raise AssertionError("approval verification reboot missing")
+    get_page(host, console, timeout=180)
+    approved = record_sequence("FW_APPROVED")
+    if approved <= installed:
+        raise AssertionError("approval belongs to an older installation")
+    if any("GSMTEST FIXTURE" in line for _, line in console.new_lines(since=start)):
+        raise AssertionError("device returned to a test fixture")
+    if console.send_and_wait("gsmtest status", r"Command not found", 5) is None:
+        raise AssertionError("GSM fault command remains on the device")
+    probe = IecProbe(host)
+    try:
+        probe.ping()
+    finally:
+        probe.close()
+    print("PASS persistent normal-image approval: install seq=%d, approval seq=%d; no fault command; HTTP/IEC OK" %
+          (installed, approved), flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("host")
@@ -46,13 +80,14 @@ def main():
         web.login("admin", derive_admin_password(args.host))
 
         def request(path, body=None, method=None):
-            start = len(console.all_lines())
             status, payload = web.request(path, body, method)
             result = json.loads(payload)
             if status != 200 or result.get("status", "ok") != "ok":
                 raise AssertionError("firmware endpoint rejected " + path.split("?", 1)[0])
             if path != "/fw_apply":
-                wait_listener(console, start, timeout=40)
+                # The response has completed. A listener event preceding
+                # that response belongs to this request's connection.
+                wait_listener(console, len(console.all_lines()), timeout=40)
             return result
 
         metadata = {"s": len(data), "h": fletcher16(data[:64])}
@@ -109,13 +144,7 @@ def main():
             if console.wait_for(r"SPI flash: AT25SF321B", 100, since=start) is None:
                 raise AssertionError("post-install boot was not captured")
             get_page(args.host, console, timeout=180)
-            probe = IecProbe(args.host)
-            probe.ping()
-            console.send("su admin")
-            time.sleep(0.3)
-            console.send("bootlog dump 8")
-            if console.wait_for(r"FW_APPROVED", 15, since=start) is None:
-                raise AssertionError("new image approval not observed")
+            verify_approved_boot(console, args.host)
             print("PASS GSM firmware install, approved boot and HTTP/IEC recovery", flush=True)
     finally:
         if probe is not None:

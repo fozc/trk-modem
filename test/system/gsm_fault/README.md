@@ -84,3 +84,17 @@ Aktarım boyunca IEC104 TESTFR yanıtı denetlenir. `--apply`, BSL kurulumunu
 başlatır; bu seçenek için yükleme/reset yetkisi bulunmalıdır. Sonrasında
 onaylı açılış ve HTTP/IEC104 doğrulanır. Bu koşu fiziksel güç kesintisi
 veya MCU resetinden sonra aktarım ofsetinin kalıcılığını kanıtlamaz.
+BSL onayı için kontrollü ek reset uygulanır; `FW_APPROVED` sıra numarası
+son `FW_INSTALL_OK` numarasından büyük olmalıdır. Eski onay kaydı ve
+fixture'a geri dönüş, merkezi `fault_log` hedefindeki negatif verdict
+(sonuç kararı) testlerinde reddedilir.
+
+Büyük çıkış gövdeleri, derlenmiş kaynak dizileriyle karşılaştırılabilir:
+
+```powershell
+python test/system/gsm_http_resources_test.py 188.59.76.59 --log test/build/gsm-resources.log
+```
+
+Bu test için cihazdaki imajın gömülü HTML kaynakları çalışma diziniyle
+aynı olmalıdır. Üç sayfanın tüm gzip baytları, uzunluk ve gzip CRC'si
+doğrulanır; eş zamanlı IEC104 TESTFR bağlantısı korunur.
