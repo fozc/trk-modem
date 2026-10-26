@@ -107,4 +107,15 @@ void test_iec104_object_capacities_match_actual_wire_sizes(void)
         sizeof(iec104_package_t));
 }
 
+void test_legacy_time_objects_match_reference_wire_layout(void)
+{
+    const cp24time2a_t time = {.milliseconds = 12345U,
+        .minute = 59U, .iv_bit = 1U};
+    const uint8_t expected[] = {0x39U, 0x30U, 0xBBU};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, &time, sizeof(expected));
+    TEST_ASSERT_EQUAL_UINT32(11U, sizeof(m_sp_tb_1_object_t));
+    TEST_ASSERT_EQUAL_UINT32(13U, sizeof(m_me_td_1_object_t));
+    TEST_ASSERT_EQUAL_UINT32(6U, offsetof(m_me_td_1_object_t, timestamp));
+}
+
 /*** end of file ***/
