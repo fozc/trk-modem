@@ -85,7 +85,7 @@ def _collect_interrogation(master, t0, qoi, data_deadline_s=30.0):
                   "concurrent": concurrent}
 
 
-def _check_gi_frames(detail, qoi, ca, currents, states):
+def _check_gi_frames(detail, qoi, ca, currents, states, battery_ioa=0):
     """Strict GI response validation.
 
     Every data frame must carry the expected common address, the
@@ -114,10 +114,11 @@ def _check_gi_frames(detail, qoi, ca, currents, states):
                         measurement_type:
                     return "akim IOA %d tip %s (beklenen olcum %d)" % (
                         ioa, asdu["type"], measurement_type)
-                if ioa in states and asdu["type"] != \
-                        state_type:
+                expected_state = (apdu.TYPE_M_SP_NA_1 if
+                                  ioa == battery_ioa else state_type)
+                if ioa in states and asdu["type"] != expected_state:
                     return "durum IOA %d tip %s (beklenen %d)" % (
-                        ioa, asdu["type"], state_type)
+                        ioa, asdu["type"], expected_state)
     return None
 
 
@@ -196,7 +197,8 @@ def i02_gi_station(ctx):
         return "FAIL", ["QOI=20 %s gelmedi" % detail["stage"]]
     ca = ctx.oracle["ca"]
     failure = _check_gi_frames(detail, 20, ca, ctx.expected["group1"],
-                               ctx.expected["group2"])
+                               ctx.expected["group2"],
+                               ctx.oracle.get("battery_ioa", 0))
     if failure:
         return "FAIL", ["GI cevabi yapisi gecersiz: %s" % failure]
     got = _ioas(detail["data"])
@@ -274,7 +276,8 @@ def i03_gi_groups(ctx):
             return "FAIL", ["QOI=%d %s gelmedi" % (qoi, detail["stage"])]
         failure = _check_gi_frames(detail, qoi, ca,
                                    ctx.expected["group1"],
-                                   ctx.expected["group2"])
+                                   ctx.expected["group2"],
+                                   ctx.oracle.get("battery_ioa", 0))
         if failure:
             return "FAIL", ["QOI=%d cevap yapisi gecersiz: %s" %
                             (qoi, failure)]
@@ -298,7 +301,8 @@ def i03_gi_groups(ctx):
                             (qoi, detail["stage"])]
         failure = _check_gi_frames(detail, qoi, ca,
                                    ctx.expected["group1"],
-                                   ctx.expected["group2"])
+                                   ctx.expected["group2"],
+                                   ctx.oracle.get("battery_ioa", 0))
         if failure:
             return "FAIL", ["QOI=%d cevap yapisi gecersiz: %s" %
                             (qoi, failure)]

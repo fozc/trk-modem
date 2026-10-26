@@ -22,6 +22,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import platform
 import subprocess
@@ -82,6 +83,8 @@ def main():
     parser.add_argument("--require-device", action="store_true",
                         help="cihaz erisilemez veya vaka SKIP kalirsa "
                              "exit 1")
+    parser.add_argument("--enable-iec104-lines", action="store_true",
+                        help="temporarily enable all IEC104 lines and restore configuration")
     parser.add_argument("--setup-feeders", action="store_true",
                         help="RF store bossa fider 1,2 yapilandir "
                              "(NVRAM degisikligi)")
@@ -131,6 +134,9 @@ def main():
     results = {}
     console = None
     master = None
+    web = None
+    saved_iec104 = None
+    saved_rf = None
     try:
         # ---- oracle (web + console) ------------------------------------
         try:
@@ -163,6 +169,23 @@ def main():
                 console_state["gsm_ip"] != args.host:
             print("UYARI: konsol IP %s != hedef %s" %
                   (console_state["gsm_ip"], args.host))
+
+        if args.enable_iec104_lines:
+            status, payload = web.request("/config/iec104")
+            if status != 200:
+                raise RuntimeError("IEC104 configuration snapshot unavailable")
+            saved_iec104 = json.loads(payload)
+            saved_rf = snap["rf_store"]
+            (outdir / "iec104-config-before.json").write_text(payload, encoding="utf-8")
+            import copy
+            enabled = copy.deepcopy(saved_iec104)
+            enabled["Hatlar"]["inUse"] = [True] * len(enabled["Hatlar"]["inUse"])
+            if web.request("/config/iec104", enabled)[0] != 200:
+                raise RuntimeError("Temporary IEC104 line configuration rejected")
+            snap = oracle_mod.read_oracle(web)
+            if not all(line["in_use"] for line in snap["lines"]):
+                raise RuntimeError("Temporary IEC104 lines were not enabled")
+            print("--enable-iec104-lines: enabled %d lines; RF configuration unchanged" % len(snap["lines"]))
 
         feeders = oracle_mod.store_feeders(snap["rf_store"])
         if args.setup_feeders:
@@ -263,8 +286,22 @@ def main():
     finally:
         if master is not None:
             master.stop()
-        if console is not None:
-            console.close()
+        try:
+            if saved_iec104 is not None:
+                web.token = None
+                web.login(args.user, args.password or oracle_mod.derive_admin_password(args.host))
+                if web.request("/config/iec104", saved_iec104)[0] != 200:
+                    raise RuntimeError("IEC104 configuration restoration rejected")
+                restored = oracle_mod.read_oracle(web)
+                status, payload = web.request("/config/iec104")
+                if status != 200 or json.loads(payload) != saved_iec104:
+                    raise RuntimeError("IEC104 configuration restoration mismatch")
+                if restored["rf_store"] != saved_rf:
+                    raise RuntimeError("RF configuration differs after IEC104 bench run")
+                print("RESTORED: full IEC104 configuration matches; RF configuration unchanged", flush=True)
+        finally:
+            if console is not None:
+                console.close()
 
 
 if __name__ == "__main__":
