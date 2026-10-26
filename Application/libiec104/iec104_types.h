@@ -152,8 +152,8 @@ typedef struct {
 typedef struct {
     uint16_t milliseconds;     // Milisaniye (0-59999)
     uint8_t  minute      : 6;  // Dakika (0-59)
-    uint8_t  iv_bit      : 1;  // IV bit (Invalid)
     uint8_t  res1        : 1;  // Reserved
+    uint8_t  iv_bit      : 1;  // IV bit (Invalid)
 }__attribute__((packed)) cp24time2a_t;
 
 // Quality Descriptor for measured values Package
@@ -374,16 +374,16 @@ typedef struct {
 typedef struct {
     ioa_3byte_t   ioa;       // Information Object Address
     siq_t         siq;       // Single Point + Quality
-    cp24time2a_t  timestamp; // 3-byte zaman damgasi
+    cp56time2a_t  timestamp; // 7-byte time tag
 }__attribute__((packed)) m_sp_tb_1_object_t;  // Type 30 - Single Point with Time Tag
 
-// Type 34: M_ME_TD_1 - Measured Value (Float) with Time Tag Package
+// Type 34: M_ME_TD_1 - Normalized Value with CP56Time2a
 typedef struct {
-    ioa_3byte_t   ioa;       // Information Object Address
-    float                 value;     // IEEE 754 float deger
-    qds_t         quality;   // Quality Descriptor
-    cp24time2a_t  timestamp; // 3-byte zaman damgasi
-}__attribute__((packed)) m_me_td_1_object_t;  // Type 34 - Measured Value Float with Time Tag
+    ioa_3byte_t   ioa;
+    int16_t       value;
+    qds_t         quality;
+    cp56time2a_t  timestamp;
+}__attribute__((packed)) m_me_td_1_object_t;
 
 // Type 36: M_ME_TF_1 - Measured Value (Float) with Long Time Tag Package
 typedef struct {
@@ -539,7 +539,7 @@ typedef enum
 #define TYPE_M_DP_TB_1      31   // Double Point + Time Tag
 #define TYPE_M_ST_TB_1      32   // Step Position + Time Tag
 #define TYPE_M_BO_TB_1      33   // Bitstring + Time Tag
-#define TYPE_M_ME_TD_1      34   // Measured Float + Time Tag
+#define TYPE_M_ME_TD_1      34   // Measured Normalized + Time Tag
 #define TYPE_M_ME_TE_1      35   // Measured Scaled + Time Tag
 #define TYPE_M_ME_TF_1      36   // Measured Float + Long Time Tag
 #define TYPE_C_SC_NA_1      45   // Single Command
@@ -554,7 +554,7 @@ typedef enum
 // Protokol kisaltma aciklamalari:
 // M_SP_NA_1: Monitor, Single Point, No time tag, Type 1
 // M_ME_NC_1: Monitor, Measured value, Normalized, C=Short floating point, Type 1
-// M_SP_TB_1: Monitor, Single Point, Time tag B (3 byte), Type 1
+// M_SP_TB_1: Monitor, Single Point, Time tag B (7 byte), Type 1
 // M_ME_TD_1: Monitor, Measured value, Time tag D, Type 1
 // M_ME_TF_1: Monitor, Measured value, Time tag F (7 byte), Type 1
 // C_SC_NA_1: Control, Single Command, No time tag, Type 1
@@ -574,6 +574,9 @@ _Static_assert(sizeof(m_me_nc_1_t) == 8U, "Type 13 wire size");
 _Static_assert(sizeof(m_sp_tb_1_t) == 11U, "Type 30 wire size");
 _Static_assert(sizeof(m_dp_tb_1_t) == 11U, "Type 31 wire size");
 _Static_assert(sizeof(m_me_tf_1_t) == 15U, "Type 36 wire size");
+_Static_assert(sizeof(cp24time2a_t) == 3U, "CP24 wire size");
+_Static_assert(sizeof(m_sp_tb_1_object_t) == 11U, "Type 30 object size");
+_Static_assert(sizeof(m_me_td_1_object_t) == 13U, "Type 34 object size");
 _Static_assert(offsetof(m_me_nc_1_t, value) == 3U, "Float wire offset");
 _Static_assert(offsetof(m_me_nc_1_t, quality) == 7U, "QDS wire offset");
 _Static_assert(offsetof(m_sp_tb_1_t, timestamp) == 4U, "SP time offset");
