@@ -21,6 +21,7 @@
 #include "rf.h"
 #include "iec104_application.h"
 #include "iec104_elog.h"
+#include "power_board_scp.h"
 
 static iec104_config_t iec104_config = {0};
 /* Owned by the cooperative main context; no ISR access. */
@@ -389,6 +390,28 @@ static int read_trip_failed(uint32_t line_index, uint8_t phase,
     return 0;
 }
 
+/* Same battery alarm set as Modbus 50000; other power alarms are excluded. */
+static int read_battery_warning(siq_t *value)
+{
+    if (NULL == value)
+    {
+        return -1;
+    }
+    power_board_snapshot_t power;
+    *value = (siq_t){.invalid = 1U};
+    if (power_board_get_snapshot(HAL_GetTick(), &power) &&
+        power.has_summary &&
+        (0U != (power.valid_fields & POWER_VALID_ALARMS)))
+    {
+        const uint32_t battery_alarms = (1UL << 0U) | (1UL << 2U) |
+            (1UL << 3U) | (1UL << 4U) | (1UL << 5U) | (1UL << 7U) |
+            (1UL << 8U) | (1UL << 18U) | (1UL << 20U);
+        *value = (siq_t){.spi =
+            (uint8_t)((power.active_alarms & battery_alarms) != 0U)};
+    }
+    return 0;
+}
+
 PROCESS(iec104_process, "iec104_process");
 PROCESS_THREAD(iec104_process, ev, data)
 {
@@ -406,7 +429,8 @@ PROCESS_THREAD(iec104_process, ev, data)
 	    .get_enerji_varyok = read_enerji_varyok,
 	    .get_yuk_akimi_varyok = read_yuk_akimi_varyok,
 	    .get_rf_haberlesme_varyok = read_rf_haberlesme_varyok,
-        .get_trip_failed = read_trip_failed
+        .get_trip_failed = read_trip_failed,
+        .get_battery_warning = read_battery_warning
 	  },
 	  &iec104_config);
 

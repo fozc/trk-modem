@@ -17,6 +17,7 @@
 #include "mock_gsm_socket.h"
 #include "mock_iec104_application.h"
 #include "mock_iec104_elog.h"
+#include "mock_power_board_scp.h"
 #include <string.h>
 
 TEST_SOURCE_FILE("rf.c")
@@ -75,6 +76,7 @@ static void live(float amps, const cp56time2a_t *time)
 
 void setUp(void)
 {
+    power_board_get_snapshot_IgnoreAndReturn(false);
     tick = 0U;
     (void)memset(&configured_feeder, 0, sizeof(configured_feeder));
     configured_feeder.in_use = true;
@@ -279,6 +281,47 @@ void test_stalled_uptime_invalidates_measurements_but_fsm_error_does_not(void)
     TEST_ASSERT_TRUE(rf_handle_live(&sample, tick, &received));
     TEST_ASSERT_EQUAL_INT(0, read_anlik_akim(0U, 0U, &value, &quality, &time));
     TEST_ASSERT_EQUAL_UINT8(0U, quality.invalid);
+}
+
+static power_board_snapshot_t battery_snapshot;
+static bool battery_available;
+
+static bool get_battery_snapshot(uint32_t now_ms,
+    power_board_snapshot_t *out, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_UINT32(tick, now_ms);
+    *out = battery_snapshot;
+    return battery_available;
+}
+
+void test_battery_reader_uses_powerboard_alarm_validity_and_battery_bits(void)
+{
+    siq_t value;
+    const uint8_t codes[] = {0U, 2U, 3U, 4U, 5U, 7U, 8U, 18U, 20U};
+    battery_snapshot = (power_board_snapshot_t){.has_summary = true,
+        .valid_fields = POWER_VALID_ALARMS};
+    battery_available = true;
+    power_board_get_snapshot_StopIgnore();
+    power_board_get_snapshot_StubWithCallback(get_battery_snapshot);
+    for (size_t index = 0U; index < sizeof(codes); index++)
+    {
+        battery_snapshot.active_alarms = (uint32_t)1U << codes[index];
+        TEST_ASSERT_EQUAL_INT(0, read_battery_warning(&value));
+        TEST_ASSERT_EQUAL_UINT8(1U, value.spi);
+        TEST_ASSERT_EQUAL_UINT8(0U, value.invalid);
+    }
+    battery_snapshot.active_alarms = 1U << 1U;
+    TEST_ASSERT_EQUAL_INT(0, read_battery_warning(&value));
+    TEST_ASSERT_EQUAL_UINT8(0U, value.spi);
+    TEST_ASSERT_EQUAL_UINT8(0U, value.invalid);
+    battery_snapshot.valid_fields = 0U;
+    TEST_ASSERT_EQUAL_INT(0, read_battery_warning(&value));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.invalid);
+    battery_available = false;
+    TEST_ASSERT_EQUAL_INT(0, read_battery_warning(&value));
+    TEST_ASSERT_EQUAL_UINT8(1U, value.invalid);
+    TEST_ASSERT_EQUAL_INT(-1, read_battery_warning(NULL));
 }
 
 /*** end of file ***/

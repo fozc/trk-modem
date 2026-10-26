@@ -1,7 +1,7 @@
 # IEC104 yapılandırma ve adres rehberi
 
-Sürüm: 1.7
-Tarih: 2026-10-11
+Sürüm: 1.10
+Tarih: 2026-10-26
 
 ## Amaç
 
@@ -98,9 +98,13 @@ Bu bölüm global bağlantı/zamanlama ayarlarını açıklar. Fider IOA alanlar
 mevcut NVRAM getter'ları üzerinden okunur; bu çalışmada bunlar için ayrı
 bir oturum görüntüsü eklenmemiştir.
 
-Akü uyarısı IOA'sı yapılandırmada vardır; incelenen aktif IEC104 kodunda
-bu IOA'dan akü uyarısı yayımlayan bir yol bulunmamıştır. Alanın olması,
-bu yayının tamamlandığı anlamına gelmez.
+Akü uyarısı yapılandırılan IOA'da Type 1 (`M_SP_NA_1`) olarak yayımlanır.
+PowerBoard alarm kodları 0/2/3/4/5/7/8/18/20 arasından biri etkinse değer
+1, hiçbiri etkin değilse 0 olur; Modbus 50000 ile aynı alarm kümesi kullanılır.
+Özet yoksa veya alarm bilgisi geçerli değilse SIQ IV=1 olur. Nokta GI20 ve
+GI22 yanıtlarına dahildir; değer veya kalite değiştiğinde COT=3 ile gönderilir.
+Kaynak zaman damgası bulunmadığından zaman etiketi eklenmez. BMS reader
+bu yayın için etkinleştirilmez.
 
 `C_RP_NA_1` reset işleyicisi IOA=0 veya yapılandırılan ModemReset adresini
 kabul eder. QRP=1 için onay ve ardından gecikmeli reboot yapılır. QRP=2
@@ -108,6 +112,38 @@ kabul eder. QRP=1 için onay ve ardından gecikmeli reboot yapılır. QRP=2
 bildirimler, arşiv ve cihazın çalışma durumu korunur.
 Diğer QRP değerleri olumsuz onay alır. Yapılandırmadaki sıfır IOA yasağı,
 protokol reset komutunun IOA=0 kullanımını değiştirmez.
+
+
+Saat ayarlama isteği Type 103 ve COT=6 ile gönderilmelidir. COT=3 dahil
+diğer sebepler COT=45/PN=1 ile reddedilmelidir. Desteklenen komutlarda
+test biti veya P/N biti işaretliyse ACT_CON/PN=1 dönülmeli; RTC, sorgu ve
+reboot işlemi başlatılmamalıdır. Yanıtta isteğin test biti korunmalıdır.
+
+K penceresi veya taşıma doluysa tek komut yanıtı bekletilmelidir.
+Kontrol alanı gönderim sırasında güncel N(S)/N(R) ile kurulmalıdır.
+Bekleyen yanıt varken işlenemeyen ikinci istek gelirse veya bekleme T1'e
+ulaşırsa bağlantı kapatılmalıdır. Reset yalnız olumlu onay taşıma
+katmanına kabul edildikten sonra istenmelidir.
+
+T1, onaylanmamış her paketin ilk gönderim zamanına göre izlenmelidir.
+Kısmi ACK kalan paketlere yeni süre vermemelidir. STOPDT sonrasında
+T3/TESTFR denetimi sürmelidir. Type 70, TCP oturumunun ilk STARTDT
+işleminde gönderilmeli; taşıma reddinde yeniden denenmeli ve aynı
+oturumdaki STOPDT/STARTDT geçişinde tekrarlanmamalıdır. Geçersiz akış
+başlangıcı/uzunluğu, STARTDT öncesi I/S-frame veya gönderim penceresi
+dışındaki ACK bağlantıyı kapatmalıdır; veri içinde yeni başlangıç
+aranarak komut işlenmemelidir.
+
+QOI 20–24 ve saat komutları IOA=0 ile gönderilmelidir. Başka IOA,
+COT=47 ve P/N=1 ile reddedilmelidir; saat ve sorgu durumu korunmalıdır.
+Aynı anda bir sorgu yürütülür. QOI 23/24 de isteğin OA'sını saklar;
+onay, veri ve bitiş gönderimleri pencere veya taşıma doluluğunda bekler.
+STOPDT aktarımı duraklatır; soket kapanışı bekleyen sorguyu iptal eder.
+Replay arıza kaydı ve sonraki RF/alarm durum yayını K=1 altında frame frame
+devam eder. İlk arıza frame'i kabul edilip ikincisi beklerse yalnız kalan
+34 baytlık frame saklanır; ilk frame yeniden gönderilmez. Kalıcı kayıt,
+ikinci frame'in master ACK'i alınmadan tüketilmiş sayılmamalıdır. Soket
+kapanırsa bekleyen RAM frame'i bırakılır; kalıcı kayıt yeniden gönderilir.
 
 ## Kontrol komutlarının mevcut durumu
 
@@ -370,3 +406,5 @@ Kaynak dosyalar: `Application/nvram.c`, `Application/nvram.h`,
 | 1.6 | 2026-10-10 | Sabit ayarlar init'te kalır; soket açılışları listener'a taşınır, dinamik IEC104 SCFG RAM önbelleği kullanır |
 | 1.7 | 2026-10-11 | Eski init fonksiyonları korunur; vektör adımları yorum satırıyla kapalı tutulur, yeniden etkinleştirme sınanır |
 | 1.8 | 2026-10-19 | QRP=2 olumsuz onay; son LIVE alım zamanını koruyan zamanlanmış COT=3 yenileme, dört veri ailesi ve kalite kuralları |
+| 1.9 | 2026-10-25 | IOA kontrolü, arıza sorgularında devam/OA korunumu, K=1 durum yayını ve PowerBoard kaynaklı tek bit akü uyarısı |
+| 1.10 | 2026-10-26 | Test/P-N komut koruması, tek bekleyen yanıt, paket gönderim zamanına göre T1, STOPDT canlılık ve katı akış kontrolü |

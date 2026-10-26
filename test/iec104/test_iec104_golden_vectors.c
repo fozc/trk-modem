@@ -16,6 +16,7 @@
 
 #include "iec104.h"
 #include "iec104_config.h"
+#include "iec104_config.h"
 #include "iec104_platform_fake.h"
 
 #include <stdbool.h>
@@ -640,6 +641,27 @@ void test_golden_invalid_clock_full_negative_response(void)
     TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
 }
 
+void test_golden_spontaneous_clock_full_unknown_cause_response(void)
+{
+    const uint8_t request[] =
+    {
+        0x68U, 0x14U, 0x00U, 0x00U, 0x02U, 0x00U, 0x67U, 0x01U, 0x03U, 0x3CU,
+        0x34U, 0x12U, 0x00U, 0x00U, 0x00U, 0x6BU, 0xE6U, 0x39U, 0x97U, 0xF9U,
+        0x0AU, 0x1AU
+    };
+    const uint8_t response[] =
+    {
+        0x68U, 0x14U, 0x02U, 0x00U, 0x02U, 0x00U, 0x67U, 0x01U, 0x6DU, 0x3CU,
+        0x34U, 0x12U, 0x00U, 0x00U, 0x00U, 0x6BU, 0xE6U, 0x39U, 0x97U, 0xF9U,
+        0x0AU, 0x1AU
+    };
+
+    feed_frame(request, sizeof(request));
+    TEST_ASSERT_EQUAL_UINT32(1U, captured_count);
+    assert_frame(0U, response, sizeof(response));
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+}
+
 void test_golden_general_reset_full_confirmation(void)
 {
     feed_frame(reset_request, sizeof(reset_request));
@@ -712,6 +734,71 @@ void test_golden_clock_response_at_every_tcp_split_boundary(void)
         assert_frame(0U, clock_con, sizeof(clock_con));
         TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
     }
+}
+
+static int read_battery(siq_t *value)
+{
+    *value = (siq_t){.spi = 1U, .invalid = 1U};
+    return 0;
+}
+
+void test_golden_battery_warning_full_spontaneous_frame(void)
+{
+    const iec104_config_t config = {.common_address = 0x1234U,
+        .originator_address = 0x5AU, .k_max = 64U, .w_max = 24U,
+        .t1_max = 15U, .t2_max = 10U, .t3_max = 60U};
+    const iec104_io_t io = {.send = capture_frame,
+        .get_battery_warning = read_battery};
+    const uint8_t expected[] = {0x68U, 0x0EU, 0x02U, 0x00U,
+        0x00U, 0x00U, 0x01U, 0x01U, 0x03U, 0x5AU, 0x34U, 0x12U,
+        0x10U, 0x27U, 0x00U, 0x81U};
+    iec104_init(&io, &config);
+    iec104_config_set_ioa_aku_uyarisi(iec104_make_ioa_3byte(10000U));
+    captured_count = 0U;
+    feed_frame(start_act, sizeof(start_act));
+    TEST_ASSERT_EQUAL_UINT32(3U, captured_count);
+    assert_frame(2U, expected, sizeof(expected));
+}
+
+
+
+/* Test commands keep T=1 in their negative confirmation and never execute. */
+void test_golden_test_clock_full_negative_confirmation_without_rtc_application(void)
+{
+    const uint8_t request[] =
+    {
+        0x68U, 0x14U, 0x00U, 0x00U, 0x02U, 0x00U, 0x67U, 0x01U, 0x86U, 0x3CU,
+        0x34U, 0x12U, 0x00U, 0x00U, 0x00U, 0x6BU, 0xE6U, 0x39U, 0x97U, 0xF9U,
+        0x0AU, 0x1AU
+    };
+    const uint8_t response[] =
+    {
+        0x68U, 0x14U, 0x02U, 0x00U, 0x02U, 0x00U, 0x67U, 0x01U, 0xC7U, 0x3CU,
+        0x34U, 0x12U, 0x00U, 0x00U, 0x00U, 0x6BU, 0xE6U, 0x39U, 0x97U, 0xF9U,
+        0x0AU, 0x1AU
+    };
+    feed_frame(request, sizeof(request));
+    TEST_ASSERT_EQUAL_UINT32(1U, captured_count);
+    assert_frame(0U, response, sizeof(response));
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+}
+
+void test_golden_test_reset_full_negative_confirmation_without_reboot(void)
+{
+    const uint8_t request[] =
+    {
+        0x68U, 0x0EU, 0x00U, 0x00U, 0x02U, 0x00U, 0x69U, 0x01U, 0x86U, 0x3CU,
+        0x34U, 0x12U, 0x00U, 0x00U, 0x00U, 0x01U
+    };
+    const uint8_t response[] =
+    {
+        0x68U, 0x0EU, 0x02U, 0x00U, 0x02U, 0x00U, 0x69U, 0x01U, 0xC7U, 0x3CU,
+        0x34U, 0x12U, 0x00U, 0x00U, 0x00U, 0x01U
+    };
+    feed_frame(request, sizeof(request));
+    TEST_ASSERT_EQUAL_UINT32(1U, captured_count);
+    assert_frame(0U, response, sizeof(response));
+    TEST_ASSERT_NOT_EQUAL(IEC104_EVT_REBOOT_REQUESTED, last_event);
 }
 
 /*** end of file ***/

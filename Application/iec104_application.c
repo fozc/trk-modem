@@ -121,10 +121,8 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
     static uint8_t feeder_id;
     static phase_id_t phase_id;
     static iec104_fault_emit_state_t emit_state;
-    static bool link_lost;
 
     PROCESS_EXITHANDLER({
-        iec104_send_general_interrogation_term(QOI_GROUP_3, link_lost ? 1U : 0U);
         CSLOG("Finished sending temporary fault data for all feeders and phases. Exiting process.\r\n");
         CSLOG("%s EXIT \r\n", PROCESS_CURRENT()->name);
 
@@ -135,21 +133,24 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
     CSLOG("PROCESS %s START \r\n", PROCESS_CURRENT()->name);
     etimer_set(&timer, 100);
     feeder_id = 0;
-    link_lost = false;
 
     PT_SEM_WAIT(&iec104_send_temporary_faults.pt, &iec104_tx_sem);
 
     CSLOG("Starting to send temporary fault data for feeders and phases...\r\n");
-    iec104_send_general_interrogation_con(QOI_GROUP_3, 0);
+    while (!iec104_send_general_interrogation_con(QOI_GROUP_3, 0U))
+    {
+        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+        etimer_reset(&timer);
+    }
 
-    for(feeder_id = 0; (feeder_id < MAX_POWER_LINE_COUNT) && !link_lost; feeder_id++)
+    for(feeder_id = 0; (feeder_id < MAX_POWER_LINE_COUNT); feeder_id++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(feeder_id);
         if (line == NULL || !line->iec104.in_use) {
             continue;
         }
 
-        for(phase_id = PHASE_L1; (phase_id < PHASE_MAX) && !link_lost; phase_id++)
+        for(phase_id = PHASE_L1; (phase_id < PHASE_MAX); phase_id++)
         {
             emit_state = (iec104_fault_emit_state_t){0};
 
@@ -157,21 +158,18 @@ PROCESS_THREAD(iec104_send_temporary_faults, ev, data)
                                                       COT_INTERROGATED_GROUP3,
                                                       &emit_state))
             {
-                /* Hat dustuyse yayim asla tamamlanamaz; semafor birakilabilsin
-                 * diye donguden temiz cikilir. */
-                if(!iec104_is_link_active())
-                {
-                    link_lost = true;
-                    break;
-                }
-
+                /* STOPDT pauses this producer; socket close exits it. */
                 PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
                 etimer_reset(&timer);
             }
         }
     }
 
-    iec104_send_general_interrogation_term(QOI_GROUP_3, link_lost ? 1U : 0U);
+    while (!iec104_send_general_interrogation_term(QOI_GROUP_3, 0U))
+    {
+        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+        etimer_reset(&timer);
+    }
 
     PT_SEM_SIGNAL(&process_pt, &iec104_tx_sem);
 
@@ -187,10 +185,8 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
     static uint8_t feeder_id;
     static phase_id_t phase_id;
     static iec104_fault_emit_state_t emit_state;
-    static bool link_lost;
 
     PROCESS_EXITHANDLER({
-        iec104_send_general_interrogation_term(QOI_GROUP_4, link_lost ? 1U : 0U);
         CSLOG("Finished sending permanent fault data for all feeders and phases. Exiting process.\r\n");
         CSLOG("%s EXIT \r\n", PROCESS_CURRENT()->name);
     });
@@ -200,21 +196,24 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
     CSLOG("PROCESS %s START \r\n", PROCESS_CURRENT()->name);
     etimer_set(&timer, 100);
     feeder_id = 0;
-    link_lost = false;
 
     PT_SEM_WAIT(&iec104_send_permanent_faults.pt, &iec104_tx_sem);
 
     CSLOG("Starting to send permanent fault data for feeders and phases...\r\n");
-    iec104_send_general_interrogation_con(QOI_GROUP_4, 0);
+    while (!iec104_send_general_interrogation_con(QOI_GROUP_4, 0U))
+    {
+        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+        etimer_reset(&timer);
+    }
 
-    for(feeder_id = 0; (feeder_id < MAX_POWER_LINE_COUNT) && !link_lost; feeder_id++)
+    for(feeder_id = 0; (feeder_id < MAX_POWER_LINE_COUNT); feeder_id++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(feeder_id);
         if (line == NULL || !line->iec104.in_use) {
             continue;
         }
 
-        for(phase_id = PHASE_L1; (phase_id < PHASE_MAX) && !link_lost; phase_id++)
+        for(phase_id = PHASE_L1; (phase_id < PHASE_MAX); phase_id++)
         {
             emit_state = (iec104_fault_emit_state_t){0};
 
@@ -222,21 +221,18 @@ PROCESS_THREAD(iec104_send_permanent_faults, ev, data)
                                                       COT_INTERROGATED_GROUP4,
                                                       &emit_state))
             {
-                /* Hat dustuyse yayim asla tamamlanamaz; semafor birakilabilsin
-                 * diye donguden temiz cikilir. */
-                if(!iec104_is_link_active())
-                {
-                    link_lost = true;
-                    break;
-                }
-
+                /* STOPDT pauses this producer; socket close exits it. */
                 PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
                 etimer_reset(&timer);
             }
         }
     }
 
-    iec104_send_general_interrogation_term(QOI_GROUP_4, link_lost ? 1U : 0U);
+    while (!iec104_send_general_interrogation_term(QOI_GROUP_4, 0U))
+    {
+        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+        etimer_reset(&timer);
+    }
 
     PT_SEM_SIGNAL(&process_pt, &iec104_tx_sem);
 

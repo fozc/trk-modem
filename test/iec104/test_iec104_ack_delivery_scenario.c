@@ -29,6 +29,7 @@
 #include "mock_gsm_socket.h"
 #include "mock_iec104_application.h"
 #include "mock_iec104_elog.h"
+#include "mock_power_board_scp.h"
 #include "mock_rtc.h"
 #include "mock_time_service.h"
 #include <string.h>
@@ -166,6 +167,7 @@ static void add_records(bool alarm)
 
 void setUp(void)
 {
+    power_board_get_snapshot_IgnoreAndReturn(false);
     config_apply_pending = false;
     reset_fixture();
     now = 0U;
@@ -411,6 +413,27 @@ void test_runtime_config_without_connected_master_prepares_new_listener(void)
     iec104_process_apply_pending_config();
     TEST_ASSERT_EQUAL_UINT16(65525U, iec104_get_t3_timeout());
     TEST_ASSERT_FALSE(config_apply_pending);
+}
+
+void test_window_one_persists_record_until_second_frame_ack(void)
+{
+    close_link();
+    config.k_max = 1U;
+    iec104_init(&(iec104_io_t){.send = iec104_send}, &config);
+    start_link();
+    add_records(false);
+    iec104_tx_process();
+    TEST_ASSERT_EQUAL_UINT8(M_ME_TF_1, gsm_payload[6]);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
+    acknowledge(iec104_get_send_sn());
+    iec104_tx_process();
+    TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, gsm_payload[6]);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
+    TEST_ASSERT_TRUE(iec104_event_ack_pending());
+    acknowledge(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+    reboot_fixture();
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
 }
 
 /*** end of file ***/
