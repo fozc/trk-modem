@@ -59,6 +59,7 @@ typedef struct
     int (*get_rf_haberlesme_varyok)(uint32_t power_line_index, uint8_t phase, siq_t *value, cp56time2a_t *timestamp);
     int (*get_trip_failed)(uint32_t power_line_index, uint8_t phase,
                            siq_t *value, cp56time2a_t *timestamp);
+    int (*get_battery_warning)(siq_t *value);
 
 }iec104_io_t;
 
@@ -107,6 +108,7 @@ bool iec104_emit_event_record(const iec104_event_record_t *record);
 typedef void (*iec104_event_ack_fn_t)(uint16_t record_id);
 /* One persistent event at a time. Acceptance is not delivery: on_ack runs
  * only after validated N(R) covers every I-frame emitted for this record.
+ * A rejected trailing fault frame is retained and polled until accepted.
  * Reset abandons the callback without consuming the persistent record.
  * A record intentionally skipped by the existing emitter has no I-frames
  * and completes immediately. Called in cooperative process context only. */
@@ -137,8 +139,8 @@ cp56time2a_t iec104_get_last_clock_sync_time(void);
 
 
 
-void iec104_send_general_interrogation_con(iec104_qoi_t qoi, uint8_t is_negative);
-void iec104_send_general_interrogation_term(iec104_qoi_t qoi, uint8_t is_negative);
+bool iec104_send_general_interrogation_con(iec104_qoi_t qoi, uint8_t is_negative);
+bool iec104_send_general_interrogation_term(iec104_qoi_t qoi, uint8_t is_negative);
 
 
 bool iec104_is_link_active(void);

@@ -51,7 +51,12 @@ static struct
     uint16_t record_id;
     uint16_t end_sn;
     iec104_event_ack_fn_t on_ack;
+    uint8_t pending_frame[sizeof(apci_header_t) + sizeof(asdu_header_t) +
+                          2U * sizeof(m_sp_tb_1_t)];
+    uint8_t pending_len;
 } event_ack;
+_Static_assert(sizeof(event_ack.pending_frame) == 34U,
+               "Trailing fault frame wire size");
  
 // Gonderilen I-frame paketlere Onay almadan maksimum gonderilecek mesaj sayisi. Doldugunda t1 sure sonunda tekrar gonderim yapilir.
  static uint16_t k_counter = 0; // Henuz SCADA'dan ACK alinmamis I-frame sayisi
@@ -59,7 +64,12 @@ static struct
 static uint16_t w_counter = 0; // Henuz ACK gondermedigimiz alinan I-frame sayisi
  
 static uint32_t t0_timer = 0;
-static uint32_t t1_timer = 0;
+/* K is uint8_t (up to 255). Indexing by the low sequence byte also
+ * works across the 15-bit N(S) wrap. Store timestamps, never frame copies.
+ * Owned by the cooperative protocol context; no ISR accesses this table. */
+#define IEC104_ACK_TIME_SLOTS 256U
+static uint32_t sent_at[IEC104_ACK_TIME_SLOTS];
+static uint32_t protocol_tick;
 static uint32_t t2_timer = 0;
 static uint32_t t3_timer = 0;
 
@@ -84,13 +94,26 @@ typedef enum
 _Static_assert(UINT8_MAX >= PERIODIC_IDLE, "Periodic cursor must fit");
 /* Cooperative protocol context; no ISR accesses this cursor. */
 static uint8_t periodic_next = PERIODIC_IDLE;
+/* Resume the current RF/alarm snapshot after transport/window rejection. */
+static uint8_t rf_snapshot_next;
+static uint8_t battery_previous;
+static bool battery_sent;
 
-static bool wait_for_ack = false;
+/* One bounded command reply; a second blocked request closes the session. */
+static struct
+{
+    uint8_t frame[sizeof(iec104_package_t)];
+    uint16_t length;
+    uint32_t queued_at;
+    bool request_reboot;
+} command_reply;
  
 static cp56time2a_t last_clock_sync_time = {0};
 static iec104_config_t config = {0};
 
 static bool wait_for_testfr_con = false; /* TESTFR_CON paketi bekleniyor mu? */
+static bool session_started;
+static bool initialization_pending;
 static bool link_active = false; /* SCADA ile STARTDT suresci tamamlandi mi? */
 /* STOPDT_CON waits for outstanding I-frame acknowledgements. */
 static bool stopdt_pending = false;
@@ -98,7 +121,7 @@ static bool stopdt_pending = false;
 /* Islenen son komutun OA'si; onaylar ve sorgulama cevaplari bununla doner. */
 static uint8_t response_originator_address = 0;
 
-/* One live interrogation, owned by the cooperative protocol process. */
+/* One interrogation, owned by the cooperative protocol/application paths. */
 typedef enum
 {
     INTERROGATION_IDLE,
@@ -117,6 +140,10 @@ static struct
 
 static void poll_interrogation(void);
 static void poll_stopdt(void);
+static void poll_command_reply(void);
+static bool send_command_reply(const uint8_t *data, uint16_t length, bool request_reboot);
+static void poll_event_record(void);
+static bool send_battery_warning(cause_of_transmission_t cause);
 
 static void iec104_send_periodic_update(void);
 bool iec104_send_phase_currents(cause_of_transmission_t cause);
@@ -131,7 +158,7 @@ void iec104_send_rf_communication_states_for(uint8_t feeder_id, uint8_t phase, c
 
 void iec104_tick(void)
 {
-	if (!link_active && !stopdt_pending){
+	if (!session_started){
 		return;
 	}
 
@@ -144,9 +171,7 @@ void iec104_tick(void)
         testfr_timer++;
     }
 
-    if(wait_for_ack){
-        t1_timer++;
-    }
+    protocol_tick++;
 
     if (periodical_send_interval < config.periodical_send_interval)
     {
@@ -225,13 +250,7 @@ static bool iec104_send(const uint8_t *data, size_t length)
 
 	if(is_i_frame)
 	{
-		// T1 zamanlayicisi yalnizca ilk onaysiz pakette sifirlanip baslatilmalidir
-		if(k_counter == 0)
-		{
-			t1_timer = 0;
-			wait_for_ack = true;
-		}
-
+        sent_at[send_sn % IEC104_ACK_TIME_SLOTS] = protocol_tick;
 		k_counter++;
 		send_sn = (send_sn + 1) & 0x7FFF; // 15-bit maskeleme
 
@@ -293,7 +312,75 @@ static inline i_format_control_t make_iframe_control(uint16_t send_seq, uint16_t
     };
 }
 
-/* Kalite bayraklari standart SIQ/DIQ bit konumlarinda gelir: BL(4) SB(5) NT(6) IV(7). */
+/**
+ * @brief Close a failed protocol session without consuming durable events.
+ */
+static void close_protocol_session(void)
+{
+    iec104_reset();
+    notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
+}
+
+/**
+ * @brief Submit a command reply now, or retain one frame until K/TX permits.
+ * @param data Complete response APDU; copied before returning if blocked.
+ * @param length APDU length, bounded by the validated request or fixed reply size.
+ * @param request_reboot Request application reboot after transport acceptance.
+ * @return True if accepted or retained; false if another reply already occupies the slot.
+ * @note A queued reply has no assigned N(S); control fields are rebuilt on retry.
+ *       Reboot is requested only after the positive confirmation is accepted.
+ */
+static bool send_command_reply(const uint8_t *data, uint16_t length, bool request_reboot)
+{
+    if (command_reply.length != 0U)
+    {
+        close_protocol_session();
+        return false;
+    }
+    if (iec104_send(data, length))
+    {
+        if (request_reboot)
+        {
+            notify_event(IEC104_EVT_REBOOT_REQUESTED);
+        }
+        return true;
+    }
+    (void)memcpy(command_reply.frame, data, length);
+    command_reply.length = length;
+    command_reply.queued_at = protocol_tick;
+    command_reply.request_reboot = request_reboot;
+    return true;
+}
+
+static void poll_command_reply(void)
+{
+    if (command_reply.length == 0U)
+    {
+        return;
+    }
+    if ((protocol_tick - command_reply.queued_at) >= config.t1_max)
+    {
+        close_protocol_session();
+        return;
+    }
+    if (!link_active)
+    {
+        return;
+    }
+    const i_format_control_t control = make_iframe_control(send_sn, receive_sn);
+    (void)memcpy(&command_reply.frame[2], &control, sizeof(control));
+    if (iec104_send(command_reply.frame, command_reply.length))
+    {
+        const bool request_reboot = command_reply.request_reboot;
+        command_reply.length = 0U;
+        if (request_reboot)
+        {
+            notify_event(IEC104_EVT_REBOOT_REQUESTED);
+        }
+    }
+}
+
+/* Quality flag bit positions: BL(4), SB(5), NT(6), IV(7). */
 static inline siq_t make_siq(uint8_t value, uint8_t quality)
 {
     return (siq_t){
@@ -329,7 +416,10 @@ static inline asdu_header_t make_asdu_header(uint8_t type_id, cot_t cot, uint16_
     return (asdu_header_t){
         .type_id = type_id,
         .cot = cot,
-        .originator_address = originator_address,
+        .originator_address =
+            ((INTERROGATION_IDLE != interrogation.stage) &&
+             (cot.cause == interrogation.qoi)) ?
+            interrogation.originator_address : originator_address,
         .common_asdu_address = common_address,
         .vsq = {
             .number_of_objects = vsq_number_of_objects & 0x7FU, // 1: single object, != 1: multiple objects
@@ -374,7 +464,7 @@ void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config
 
     // k > w secilmeli
     k_counter = 0;
-    t1_timer = 0;
+    protocol_tick = 0U;
 
     w_counter = 0;
     t2_timer = 0;
@@ -436,7 +526,7 @@ void iec104_send_end_of_initialization(void)
     pkt.frame.m_ei_na_1.ioa.ioa_low = 0x00;
     pkt.frame.m_ei_na_1.coi.initialization_cause = 0; // Cause of Initialization (0=Normal, 1=Restart, etc.)
 
-    iec104_send(pkt.data, pkt_length );
+    initialization_pending = !iec104_send(pkt.data, pkt_length);
 }
 
 static bool send_interrogation_response(iec104_qoi_t qoi,
@@ -467,23 +557,34 @@ static bool send_interrogation_response(iec104_qoi_t qoi,
     pkt.frame.c_ic_na_1_command.ioa.ioa_low = 0x00; 
     pkt.frame.c_ic_na_1_command.qoi = (uint8_t)qoi; // Qualifier of Interrogation (20=Station, 21=Group1, etc.)
 
-    return iec104_send(pkt.data, 16U);
+    return (is_negative != 0U) ? send_command_reply(pkt.data, 16U, false) : iec104_send(pkt.data, 16U);
 }
 
-void iec104_send_general_interrogation_con(iec104_qoi_t qoi,
+bool iec104_send_general_interrogation_con(iec104_qoi_t qoi,
                                           uint8_t is_negative)
 {
-    (void)send_interrogation_response(qoi, COT_ACTIVATION_CON,
-                                     is_negative,
-                                     response_originator_address);
+    const uint8_t originator =
+        ((0U == is_negative) &&
+         (INTERROGATION_IDLE != interrogation.stage) &&
+         ((uint8_t)qoi == interrogation.qoi)) ?
+        interrogation.originator_address : response_originator_address;
+    return send_interrogation_response(qoi, COT_ACTIVATION_CON,
+                                        is_negative, originator);
 }
 
-void iec104_send_general_interrogation_term(iec104_qoi_t qoi,
+bool iec104_send_general_interrogation_term(iec104_qoi_t qoi,
                                            uint8_t is_negative)
 {
-    (void)send_interrogation_response(qoi, COT_ACTIVATION_TERM,
-                                     is_negative,
-                                     response_originator_address);
+    const bool pending = (INTERROGATION_IDLE != interrogation.stage) &&
+                         ((uint8_t)qoi == interrogation.qoi);
+    const bool accepted = send_interrogation_response(qoi,
+        COT_ACTIVATION_TERM, is_negative, pending ?
+        interrogation.originator_address : response_originator_address);
+    if (accepted && pending)
+    {
+        interrogation.stage = INTERROGATION_IDLE;
+    }
+    return accepted;
 }
 
 void iec104_interrogation_send_m_sp_tb_1_objects(const ioa_3byte_t *ioas, const siq_t *states)
@@ -624,11 +725,12 @@ bool iec104_interrogation_send_all_objects(void)
 void iec104_interrogation_handler(const iec104_package_t *pkt)
 {
     const uint8_t qoi = pkt->frame.c_ic_na_1_command.qoi;
-    if ((qoi >= QOI_STATION) && (qoi <= QOI_GROUP_2))
+    if ((qoi >= QOI_STATION) && (qoi <= QOI_GROUP_4))
     {
         if (INTERROGATION_IDLE != interrogation.stage)
         {
-            iec104_send_general_interrogation_con((iec104_qoi_t)qoi, 1U);
+            (void)iec104_send_general_interrogation_con(
+                (iec104_qoi_t)qoi, 1U);
             return;
         }
         interrogation.qoi = qoi;
@@ -636,18 +738,23 @@ void iec104_interrogation_handler(const iec104_package_t *pkt)
         interrogation.next = (QOI_GROUP_2 == qoi) ?
                              MAX_POWER_LINE_COUNT : 0U;
         interrogation.stage = INTERROGATION_CONFIRM;
-    }
-    else if(pkt->frame.c_ic_na_1_command.qoi == 23)
-    {
-    	iec104_interrogation_send_group3();
-    }
-    else if(pkt->frame.c_ic_na_1_command.qoi == 24)
-    {
-    	iec104_interrogation_send_group4();
+        if (QOI_GROUP_3 == qoi)
+        {
+            iec104_interrogation_send_group3();
+        }
+        else if (QOI_GROUP_4 == qoi)
+        {
+            iec104_interrogation_send_group4();
+        }
+        else
+        {
+            /* Live groups are emitted by poll_interrogation(). */
+        }
     }
     else
     {
-        iec104_send_general_interrogation_con(pkt->frame.c_ic_na_1_command.qoi, 1);
+        (void)iec104_send_general_interrogation_con(
+            pkt->frame.c_ic_na_1_command.qoi, 1U);
     }
 }
 
@@ -791,7 +898,7 @@ void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)
     pkt_response.frame.asdu_header.cot.cause = COT_ACTIVATION_CON;
     pkt_response.frame.asdu_header.cot.pn_bit = (uint8_t)(is_valid_time ? 0U : 1U);
 
-    iec104_send(pkt_response.data, frame_length);
+    (void)send_command_reply(pkt_response.data, frame_length, false);
 
     if(!is_valid_time){
         CSLOG("Invalid timestamp received!\r\n");
@@ -825,7 +932,7 @@ void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt)
 	act_con.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
 	act_con.frame.asdu_header.cot.cause = COT_ACTIVATION_CON;
 	act_con.frame.asdu_header.cot.pn_bit = 0;
-	act_con.frame.asdu_header.cot.test_bit = 0;
+	/* Preserve the request test flag in every confirmation. */
 
 	CSLOG("Processing C_RP_NA_1 command: IOA %u, QRP %u\r\n",
 	      (unsigned)ioa, (unsigned)qrp_value);
@@ -837,7 +944,7 @@ void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt)
 		CSLOG_WARN("C_RP_NA_1: invalid IOA %u (expected 0 or %u)\r\n",
 		           (unsigned)ioa, (unsigned)conf_ioa);
 		act_con.frame.asdu_header.cot.pn_bit = 1; // Olumsuz onay
-		(void)iec104_send(act_con.data, frame_length);
+		(void)send_command_reply(act_con.data, frame_length, false);
 		return;
 	}
 
@@ -850,24 +957,21 @@ void iec104_c_rp_na_1_command_handler(const iec104_package_t *pkt)
 			 *    kuyrugundan cikip hatta gitmesi icin gecikmeli
 			 *    fiziksel reset tetikler (katmanlama: kutuphane
 			 *    dogrudan NVIC'e dokunmaz) */
-            if (iec104_send(act_con.data, frame_length))
-            {
-                notify_event(IEC104_EVT_REBOOT_REQUESTED);
-            }
+            (void)send_command_reply(act_con.data, frame_length, true);
 			break;
 
 		case IEC104_QRP_RESET_PENDING_EVENTS:
 			CSLOG_WARN("C_RP_NA_1: pending event reset not supported\r\n");
             /* Preserve pending deliveries and the archive. */
             act_con.frame.asdu_header.cot.pn_bit = 1U;
-			(void)iec104_send(act_con.data, frame_length);
+			(void)send_command_reply(act_con.data, frame_length, false);
 			break;
 
 		case IEC104_QRP_NOT_USED:
 		default:
 			/* Tanimsiz QRP: olumsuz onay (P/N=1) */
 			act_con.frame.asdu_header.cot.pn_bit = 1;
-			(void)iec104_send(act_con.data, frame_length);
+			(void)send_command_reply(act_con.data, frame_length, false);
 			break;
 	}
 }
@@ -908,7 +1012,15 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
              * Sequence numbers, pending ACKs and RX bytes survive. */
             link_active = true;
             stopdt_pending = false;
-            iec104_send_end_of_initialization();
+            if (!session_started)
+            {
+                session_started = true;
+                initialization_pending = true;
+            }
+            if (initialization_pending)
+            {
+                iec104_send_end_of_initialization();
+            }
             notify_event(IEC104_EVT_LINK_ACTIVATED);
         }
         break;
@@ -998,15 +1110,6 @@ bool on_ack_received(uint16_t nr)
 
     if (num_acked > 0)
     {
-        /* Gecikmeli veya mukerrer eski ACK kontrolu (15-bit Underflow Filtresi)
-         * Eger num_acked degeri muazzam buyuk bir sayi ciktiysa (Orn: 32718),
-         * bu master'in geriden gelen eski bir N(R) numarasini tekrar ettigini gosterir. */
-        if (num_acked > (0x7FFF - config.k_max))
-        {
-            CSLOG("-> Delayed/Duplicate old ACK ignored (nr: %d, ack_sn: %d)\r\n", nr, ack_sn);
-            return true;
-        }
-
         if (num_acked <= k_counter)
         {
             const uint16_t event_distance =
@@ -1015,18 +1118,8 @@ bool on_ack_received(uint16_t nr)
             k_counter -= num_acked;
             ack_sn = nr;
 
-            // T1 Zamanlayicisi Yonetimi
-            if (k_counter == 0)
-            {
-                wait_for_ack = false;
-                t1_timer = 0; // Bekleyen paket kalmadi, T1 durduruldu
-                CSLOG("All frames acknowledged\r\n");
-            }
-            else
-            {
-                t1_timer = 0; // Kismi onay geldi, kalan en eski paket icin T1 yeniden baslatildi
-            }
             if ((NULL != event_ack.on_ack) &&
+                (0U == event_ack.pending_len) &&
                 (0U < event_distance) && (num_acked >= event_distance))
             {
                 const iec104_event_ack_fn_t callback = event_ack.on_ack;
@@ -1075,7 +1168,7 @@ void iec104_send_negative_ack(const iec104_package_t *original_pkt, uint8_t caus
     pkt.frame.asdu_header.cot.cause = cause & 0x3FU;
     pkt.frame.asdu_header.cot.pn_bit = 1; // Negatif onay
 
-    iec104_send(pkt.data, frame_length);
+    (void)send_command_reply(pkt.data, frame_length, false);
 }
 
 static uint8_t get_type_id_length(uint8_t TypeId)
@@ -1103,18 +1196,6 @@ static bool is_command_asdu(uint8_t type_id)
     return (C_SC_NA_1 == type_id) || (C_DC_NA_1 == type_id) ||
            (C_IC_NA_1 == type_id) || (C_CS_NA_1 == type_id) ||
            (C_RP_NA_1 == type_id);
-}
-
-/* Bu yigin komutlari yalnizca ACT ile isler; saat senkronu ayrica SPONT
- * ile de gelebilir. Kalan sebepler (orn. DEACT) desteklenmiyor. */
-static bool is_accepted_command_cot(uint8_t type_id, uint8_t cause)
-{
-    if (COT_ACTIVATION == cause)
-    {
-        return true;
-    }
-
-    return (C_CS_NA_1 == type_id) && (COT_SPONTANEOUS == cause);
 }
 
 void iec104_process_i_frame(const i_format_control_t *iframe)
@@ -1178,6 +1259,17 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         }
     }
 
+    poll_command_reply();
+    if (!link_active)
+    {
+        return;
+    }
+    if (command_reply.length != 0U)
+    {
+        close_protocol_session();
+        return;
+    }
+
     // ASDU Tip Destegi
     bool is_supported = false;
     for (size_t i = 0; i < sizeof(supported_asdu_types) / sizeof(supported_asdu_types[0]); i++)
@@ -1199,7 +1291,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         package.frame.asdu_header.cot.cause = UkTypeId;
         package.frame.asdu_header.cot.pn_bit = 1; // Negatif onay
 
-        iec104_send(package.data, frame_length);
+        (void)send_command_reply(package.data, frame_length, false);
         return;
     }
 
@@ -1215,7 +1307,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         package.frame.asdu_header.cot.cause = UkComAdrASDU; // Unknown Common Address of ASDU
         package.frame.asdu_header.cot.pn_bit = 1;           // Negative Confirmation (P/N = 1)
 
-        iec104_send(package.data, frame_length);
+        (void)send_command_reply(package.data, frame_length, false);
         return;
     }
 
@@ -1255,17 +1347,33 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         return;
     }
 
-    /* Beyan edilen sebep desteklenmiyorsa komut islenmez; aksi halde orn.
-     * DEACT ile gelen bir sorgulama aktivasyon gibi calistirilirdi. */
+    /* Control-direction commands require ACT(6), including clock sync.
+     * A C_CS_NA_1 SPONT(3) is not an instruction to set the slave clock.
+     * Reject before dispatch so RTC and last accepted time stay unchanged. */
     if (is_command_asdu(package.frame.asdu_header.type_id) &&
-        !is_accepted_command_cot(package.frame.asdu_header.type_id,
-                                 package.frame.asdu_header.cot.cause))
+        (package.frame.asdu_header.cot.cause != COT_ACTIVATION))
     {
         CSLOG_WARN("Unsupported COT %d for command type %d\r\n",
                    package.frame.asdu_header.cot.cause,
                    package.frame.asdu_header.type_id);
 
         iec104_send_negative_ack(&package, UkCauseTx);
+        return;
+    }
+
+    if (is_command_asdu(package.frame.asdu_header.type_id) &&
+        ((package.frame.asdu_header.cot.test_bit != 0U) || (package.frame.asdu_header.cot.pn_bit != 0U)))
+    {
+        iec104_send_negative_ack(&package, COT_ACTIVATION_CON);
+        return;
+    }
+
+    const uint8_t type_id = package.frame.asdu_header.type_id;
+    if (((C_IC_NA_1 == type_id) || (C_CS_NA_1 == type_id)) &&
+        (0U != iec104_ioa_3byte_to_uint32(
+            package.frame.c_ic_na_1_command.ioa)))
+    {
+        iec104_send_negative_ack(&package, UkIOA);
         return;
     }
 
@@ -1302,9 +1410,13 @@ void iec104_reset(void)
 {
 	/* Socket/session reset never acknowledges outstanding event data. */
 	event_ack.on_ack = NULL;
+    event_ack.pending_len = 0U;
+    session_started = false;
+    initialization_pending = false;
+    command_reply.length = 0U;
 	link_active = false;
     stopdt_pending = false;
-    wait_for_ack = false;
+
     wait_for_testfr_con = false;
 
     response_originator_address = 0;
@@ -1320,13 +1432,15 @@ void iec104_reset(void)
     ack_sn = 0;
 
     t0_timer = 0;
-    t1_timer = 0;
+    protocol_tick = 0U;
     t2_timer = 0;
     t3_timer = 0;
 
     periodical_send_interval = 0U;
     periodic_next = PERIODIC_IDLE;
     interrogation.stage = INTERROGATION_IDLE;
+    rf_snapshot_next = 0U;
+    battery_sent = false;
 
     package_ready = false;
     memset(&package, 0, sizeof(package));
@@ -1409,21 +1523,11 @@ void iec104_data_received(const uint8_t *data, uint16_t length)
         return;
     }
 
-	if(length > IEC104_RX_BUFFER_SIZE){
-		/* Yigin tek basina arabellege sigmiyor: akis senkronu zaten kayip. */
-		CSLOG_ERR("IEC104 RX chunk too large! Data length: %u, Buffer size: %u\r\n",
-		          (unsigned)length, (unsigned)IEC104_RX_BUFFER_SIZE);
-		iec104_rx_buffer_len = 0;
-		return;
-	}
-
-	if((uint32_t)iec104_rx_buffer_len + (uint32_t)length > IEC104_RX_BUFFER_SIZE){
-		/* Basta tamamlanmayan bir kare bekliyor. Yeni veriyi kirpmak yerine
-		 * bayat kalintiyi at: kirpma sessiz bozulma, atma tek seferlik kayiptir. */
-		CSLOG_ERR("IEC104 RX buffer full, dropping %u stale bytes (incoming %u)\r\n",
-		          (unsigned)iec104_rx_buffer_len, (unsigned)length);
-		iec104_rx_buffer_len = 0;
-	}
+    if (((uint32_t)iec104_rx_buffer_len + length) > IEC104_RX_BUFFER_SIZE)
+    {
+        close_protocol_session();
+        return;
+    }
 
 	memcpy(&iec104_rx_buffer[iec104_rx_buffer_len], data, length);
 	iec104_rx_buffer_len += length;
@@ -1454,24 +1558,29 @@ void iec104_process_package(void)
 {
     uint16_t idx = 0;
 
-    // Minimum frame boyutu: 6 byte (APCI header)
-    while(idx + 6 <= iec104_rx_buffer_len)
+    /* Validate the prefix as soon as it arrives. A valid incomplete APDU
+     * stays buffered; an invalid prefix never starts a new scan in TCP data. */
+    while(idx < iec104_rx_buffer_len)
     {
         // Start byte ara
         if(iec104_rx_buffer[idx] != IEC104_START_BYTE)
         {
-            idx++;
-            continue;
+            close_protocol_session();
+            return;
         }
 
+        if ((idx + 2U) > iec104_rx_buffer_len)
+        {
+            break;
+        }
         uint8_t apdu_length = iec104_rx_buffer[idx + 1];
 
         // APDU length validation (4-253 arasi olmali)
         if(apdu_length < 4 || apdu_length > 253)
         {
             CSLOG("Invalid APDU length: %d\r\n", apdu_length);
-            idx++;
-            continue;
+            close_protocol_session();
+            return;
         }
 
         uint16_t frame_length = apdu_length + 2; // +2 for start byte and length byte
@@ -1524,7 +1633,8 @@ void iec104_process_package(void)
                     }
                     else
                     {
-                        CSLOG_WARN("Protokol Ihlali: Hat aktiflesmeden (STARTDT oncesi) S-Frame reddedildi!\r\n");
+                        close_protocol_session();
+                        return;
                     }
                 }
                 else if(iec104_is_i_format(&package))
@@ -1537,7 +1647,8 @@ void iec104_process_package(void)
                     }
                     else
                     {
-                        CSLOG_WARN("Protokol Ihlali: Hat aktiflesmeden (STARTDT oncesi) I-Frame reddedildi!\r\n");
+                        close_protocol_session();
+                        return;
                     }
                 }
                 else
@@ -1585,7 +1696,7 @@ void libiec104_poll(void)
 		iec104_process_package();
 	}
 
-	if (!link_active && !stopdt_pending) {
+	if (!session_started) {
 		return;
 	}
 
@@ -1598,17 +1709,10 @@ void libiec104_poll(void)
 		}
 	}
 
-    if(t1_timer > config.t1_max)
+    if ((k_counter != 0U) &&
+        ((protocol_tick - sent_at[ack_sn % IEC104_ACK_TIME_SLOTS]) >= config.t1_max))
     {
-        CSLOG_WARN("T1 timer expired, resend is necessary\r\n");
-
-        iec104_reset();
-        notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
-    }
-
-    if (stopdt_pending)
-    {
-        poll_stopdt();
+        close_protocol_session();
         return;
     }
 
@@ -1622,6 +1726,7 @@ void libiec104_poll(void)
 
             iec104_reset();
             notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
+            return;
         }
     }
     else if (t3_timer >= (uint32_t)config.t3_max +
@@ -1638,11 +1743,31 @@ void libiec104_poll(void)
     }
 
 
-    if (link_active)
+    if (stopdt_pending)
     {
-        poll_interrogation();
+        poll_stopdt();
     }
-    if (link_active && (INTERROGATION_IDLE == interrogation.stage) &&
+    if (initialization_pending && (protocol_tick >= config.t1_max))
+    {
+        close_protocol_session();
+        return;
+    }
+    if (link_active && initialization_pending)
+    {
+        iec104_send_end_of_initialization();
+    }
+    poll_command_reply();
+    if (link_active && (command_reply.length == 0U) && !initialization_pending)
+    {
+        poll_event_record();
+        poll_interrogation();
+        if (INTERROGATION_IDLE == interrogation.stage)
+        {
+            (void)send_battery_warning(COT_SPONTANEOUS);
+        }
+    }
+    if (link_active && (command_reply.length == 0U) && !initialization_pending &&
+        (INTERROGATION_IDLE == interrogation.stage) &&
         (0U != config.periodical_send_interval) &&
         ((PERIODIC_IDLE != periodic_next) ||
          (periodical_send_interval >= config.periodical_send_interval)))
@@ -1783,10 +1908,8 @@ void iec104_send_M_ME_TF_1(cot_t cot, ioa_3byte_t ioa, float value, qds_t qualit
  * hatlara IOA atar); IKM tanimadigi IOA'lari yok sayar. Kayitli veri
  * yapilandirma durumuna bakilmaksizin gider (sertname 2.2.4.2).
  *
- * Odun: ME ASDU'yu gonderip SP reddedilirse false donulur ve kayit
- * bastan denenecegi icin master'da ME bir kopya olusur. Kopya, kayiptan
- * iyidir; k-pencere on kontrolu bunu sadece pencere icin kapatir,
- * TX kuyrugu icin kapatilamaz.
+ * Tracked delivery retains the second frame until accepted and only
+ * completes after its master ACK. The untracked API requires two slots.
  * --------------------------------------------------------------- */
 static ioa_3byte_t fault_record_ioa(const fault_log_t *record, uint8_t field)
 {
@@ -1824,7 +1947,78 @@ static ioa_3byte_t fault_record_ioa(const fault_log_t *record, uint8_t field)
     }
 }
 
-bool iec104_emit_evtlog_record(const fault_log_t *record)
+static bool send_fault_record_me(const fault_log_t *record)
+{
+    /* ASDU 1 - M_ME_TF_1: ariza akimi + ariza suresi (2 obje) */
+    iec104_package_t pkt;
+    const size_t me_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
+                          + (sizeof(m_me_tf_1_t) * 2U);
+
+    memset(&pkt, 0, me_len + 2U);
+
+    pkt.frame.apci.start_char  = IEC104_START_BYTE;
+    pkt.frame.apci.apdu_length = (uint8_t)((sizeof(m_me_tf_1_t) * 2U) + 10U);
+    pkt.frame.apci.i_frame     = make_iframe_control(send_sn, receive_sn);
+    pkt.frame.asdu_header      = make_asdu_header(M_ME_TF_1,
+        (cot_t){.cause = COT_SPONTANEOUS, .pn_bit = 0, .test_bit = 0},
+        config.originator_address, config.common_address, 2U, 0U);
+
+    m_me_tf_1_t *me = (m_me_tf_1_t *)&pkt.data[DATA_START_IDX];
+
+    me[0].ioa       = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_AKIM);
+    me[0].value     = fault_log_current_amps(record);
+    me[0].quality   = (qds_t){0};
+    me[0].timestamp = record->tm;
+
+    me[1].ioa       = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_SURE);
+    me[1].value     = (float)record->fault_duration_ms;
+    me[1].quality   = (qds_t){0};
+    me[1].timestamp = record->tm;
+
+    return iec104_send(pkt.data, me_len + 2U);
+}
+
+static bool send_fault_record_sp(const fault_log_t *record, bool tracked)
+{
+    /* ASDU 2 - M_SP_TB_1: history energy and load state (2 objects). */
+    iec104_package_t pkt;
+    const size_t sp_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
+                          + (sizeof(m_sp_tb_1_t) * 2U);
+
+    memset(&pkt, 0, sp_len + 2U);
+
+    pkt.frame.apci.start_char  = IEC104_START_BYTE;
+    pkt.frame.apci.apdu_length = (uint8_t)((sizeof(m_sp_tb_1_t) * 2U) + 10U);
+    pkt.frame.apci.i_frame     = make_iframe_control(send_sn, receive_sn);
+    pkt.frame.asdu_header      = make_asdu_header(M_SP_TB_1,
+        (cot_t){.cause = COT_SPONTANEOUS, .pn_bit = 0, .test_bit = 0},
+        config.originator_address, config.common_address, 2U, 0U);
+
+    m_sp_tb_1_t *sp = (m_sp_tb_1_t *)&pkt.data[DATA_START_IDX];
+
+    sp[0].ioa = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_ENERJI);
+    sp[0].siq = make_siq(record->info.power_status, 0U);
+    sp[0].timestamp = record->tm;
+    sp[1].ioa = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_YUK_AKIMI);
+    sp[1].siq = make_siq(record->info.nominal_current_status, 0U);
+    sp[1].timestamp = record->tm;
+
+    if (iec104_send(pkt.data, sp_len + 2U))
+    {
+        return true;
+    }
+    if (tracked)
+    {
+        /* The caller's record may be on the stack. Retain only the
+         * remaining 34-byte frame, never a pointer to caller storage. */
+        (void)memcpy(event_ack.pending_frame, pkt.data, sp_len + 2U);
+        event_ack.pending_len = (uint8_t)(sp_len + 2U);
+        return true;
+    }
+    return false;
+}
+
+static bool emit_fault_record(const fault_log_t *record, bool tracked)
 {
     if (NULL == record)
     {
@@ -1859,67 +2053,20 @@ bool iec104_emit_evtlog_record(const fault_log_t *record)
         return true;
     }
 
-    /* Iki ASDU atomik gitmeli: pencere ikisine birden yetmiyorsa hic baslama. */
-    if ((k_counter + 2U) > config.k_max)
+    const uint16_t required = tracked ? 1U : 2U;
+    if ((k_counter + required) > config.k_max)
     {
         return false;
     }
 
 
-    /* ASDU 1 - M_ME_TF_1: ariza akimi + ariza suresi (2 obje) */
-    iec104_package_t pkt;
-    const size_t me_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
-                          + (sizeof(m_me_tf_1_t) * 2U);
+    return send_fault_record_me(record) &&
+           send_fault_record_sp(record, tracked);
+}
 
-    memset(&pkt, 0, me_len + 2U);
-
-    pkt.frame.apci.start_char  = IEC104_START_BYTE;
-    pkt.frame.apci.apdu_length = (uint8_t)((sizeof(m_me_tf_1_t) * 2U) + 10U);
-    pkt.frame.apci.i_frame     = make_iframe_control(send_sn, receive_sn);
-    pkt.frame.asdu_header      = make_asdu_header(M_ME_TF_1,
-        (cot_t){.cause = COT_SPONTANEOUS, .pn_bit = 0, .test_bit = 0},
-        config.originator_address, config.common_address, 2U, 0U);
-
-    m_me_tf_1_t *me = (m_me_tf_1_t *)&pkt.data[DATA_START_IDX];
-
-    me[0].ioa       = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_AKIM);
-    me[0].value     = fault_log_current_amps(record);
-    me[0].quality   = (qds_t){0};
-    me[0].timestamp = record->tm;
-
-    me[1].ioa       = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_SURE);
-    me[1].value     = (float)record->fault_duration_ms;
-    me[1].quality   = (qds_t){0};
-    me[1].timestamp = record->tm;
-
-    if (!iec104_send((uint8_t *)&pkt, me_len + 2U))
-    {
-        return false;
-    }
-
-    /* ASDU 2 - M_SP_TB_1: history energy and load state (2 objects). */
-    const size_t sp_len = (sizeof(apci_header_t) - 2) + sizeof(asdu_header_t)
-                          + (sizeof(m_sp_tb_1_t) * 2U);
-
-    memset(&pkt, 0, sp_len + 2U);
-
-    pkt.frame.apci.start_char  = IEC104_START_BYTE;
-    pkt.frame.apci.apdu_length = (uint8_t)((sizeof(m_sp_tb_1_t) * 2U) + 10U);
-    pkt.frame.apci.i_frame     = make_iframe_control(send_sn, receive_sn);
-    pkt.frame.asdu_header      = make_asdu_header(M_SP_TB_1,
-        (cot_t){.cause = COT_SPONTANEOUS, .pn_bit = 0, .test_bit = 0},
-        config.originator_address, config.common_address, 2U, 0U);
-
-    m_sp_tb_1_t *sp = (m_sp_tb_1_t *)&pkt.data[DATA_START_IDX];
-
-    sp[0].ioa = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_ENERJI);
-    sp[0].siq = make_siq(record->info.power_status, 0U);
-    sp[0].timestamp = record->tm;
-    sp[1].ioa = fault_record_ioa(record, TEMPORARY_FAULT_FIELD_YUK_AKIMI);
-    sp[1].siq = make_siq(record->info.nominal_current_status, 0U);
-    sp[1].timestamp = record->tm;
-
-    return iec104_send((uint8_t *)&pkt, sp_len + 2U);
+bool iec104_emit_evtlog_record(const fault_log_t *record)
+{
+    return emit_fault_record(record, false);
 }
 
 static bool emit_alarm_record(const iec104_alarm_record_t *record)
@@ -1987,7 +2134,10 @@ bool iec104_emit_event_record_tracked(const iec104_event_record_t *record,
         return false;
     }
     const uint16_t before = send_sn;
-    if (!iec104_emit_event_record(record))
+    const bool accepted = (IEC104_EVENT_FAULT == record->kind) ?
+        emit_fault_record(&record->payload.fault, true) :
+        iec104_emit_event_record(record);
+    if (!accepted)
     {
         return false;
     }
@@ -2513,16 +2663,8 @@ static bool send_rf_state_objects(cause_of_transmission_t cause,
                                   const m_sp_tb_1_t *objects, uint8_t obj_count)
 {
     const uint8_t max_objs_per_packet = (253U - 10U) / sizeof(m_sp_tb_1_t);
-    /* Reserve enough k-window capacity for the entire state snapshot. */
-    const uint32_t packets = ((uint32_t)obj_count + max_objs_per_packet - 1U) /
-                              max_objs_per_packet;
-    if ((uint32_t)k_counter + packets > config.k_max)
-    {
-        return false;
-    }
-
     // Paketlere bol ve gonder
-    uint8_t sent = 0;
+    uint8_t sent = rf_snapshot_next;
     while (sent < obj_count)
     {
         uint8_t batch = obj_count - sent;
@@ -2551,22 +2693,20 @@ static bool send_rf_state_objects(cause_of_transmission_t cause,
         }
 
         sent += batch;
+        rf_snapshot_next = sent;
     }
 
-    return (sent >= obj_count);
+    if (sent >= obj_count)
+    {
+        rf_snapshot_next = 0U;
+        return true;
+    }
+    return false;
 }
 
 bool iec104_send_rf_communication_states(cause_of_transmission_t cause)
 {
     CSLOG("Sending RF communication states\r\n");
-
-    uint8_t active_powerline_count = breaker_get_active_powerline_count();
-
-    if (active_powerline_count == 0)
-    {
-        CSLOG("No active power lines, skipping\r\n");
-        return true;
-    }
 
     // IEC 104 APDU max 253 byte, ASDU header 10 byte
     // Max obje sayisi: (253 - 10) / sizeof(m_sp_tb_1_t)
@@ -2997,9 +3137,62 @@ static void iec104_send_periodic_update(void)
     periodical_send_interval = 0U;
 }
 
+static void poll_event_record(void)
+{
+    if ((NULL != event_ack.on_ack) && (0U != event_ack.pending_len))
+    {
+        const i_format_control_t control =
+            make_iframe_control(send_sn, receive_sn);
+        (void)memcpy(&event_ack.pending_frame[2], &control, sizeof(control));
+        if (iec104_send(event_ack.pending_frame, event_ack.pending_len))
+        {
+            event_ack.end_sn = send_sn;
+            event_ack.pending_len = 0U;
+        }
+    }
+}
+
+static bool send_battery_warning(cause_of_transmission_t cause)
+{
+    if (NULL == iec_io.get_battery_warning)
+    {
+        return true;
+    }
+    const ioa_3byte_t ioa = iec104_config_get_ioa_aku_uyarisi();
+    if (0U == iec104_ioa_3byte_to_uint32(ioa))
+    {
+        return true;
+    }
+    m_sp_na_1_t object = {.ioa = ioa, .siq = {.invalid = 1U}};
+    (void)iec_io.get_battery_warning(&object.siq);
+    uint8_t siq_byte;
+    (void)memcpy(&siq_byte, &object.siq, sizeof(siq_byte));
+    if ((COT_SPONTANEOUS == cause) && battery_sent &&
+        (siq_byte == battery_previous))
+    {
+        return true;
+    }
+    iec104_package_t packet = {0};
+    packet.frame.apci.start_char = IEC104_START_BYTE;
+    packet.frame.apci.apdu_length = 14U;
+    packet.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+    packet.frame.asdu_header = make_asdu_header(M_SP_NA_1,
+        (cot_t){.cause = (uint8_t)cause & 0x3FU}, config.originator_address,
+        config.common_address, 1U, 0U);
+    (void)memcpy(&packet.data[DATA_START_IDX], &object, sizeof(object));
+    if (!iec104_send(packet.data, 16U))
+    {
+        return false;
+    }
+    battery_previous = siq_byte;
+    battery_sent = true;
+    return true;
+}
+
 static void poll_interrogation(void)
 {
-    if (INTERROGATION_IDLE == interrogation.stage)
+    if ((INTERROGATION_IDLE == interrogation.stage) ||
+        (interrogation.qoi >= QOI_GROUP_3))
     {
         return;
     }
@@ -3029,6 +3222,11 @@ static void poll_interrogation(void)
             return;
         }
         interrogation.next++;
+    }
+    if ((INTERROGATION_DATA == interrogation.stage) &&
+        (QOI_GROUP_1 != qoi) && !send_battery_warning(cause))
+    {
+        return;
     }
     interrogation.stage = INTERROGATION_TERMINATE;
     if (send_interrogation_response(qoi, COT_ACTIVATION_TERM, 0U,

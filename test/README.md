@@ -1,7 +1,19 @@
 # Test Altyapısı
 
-**Sürüm:** 1.78
-**Tarih:** 2026-10-25
+**Sürüm:** 1.80
+**Tarih:** 2026-10-26
+
+## Mevcut IEC104 protokol regresyonları
+
+**Amaç:** Application/libiec104 üretim girişinden komut yan etkilerini,
+K/TX doluluğunda yanıtın korunmasını ve paket başına T1 süresini sınamak.
+
+**Kullanım yeri:** test/ içinde ceedling test:pattern[iec104].
+Test/P-N işaretli saat/reset/GI, tam-frame golden yanıtlar, kısmi ACK,
+timestamp slotlarının yeniden kullanımı, STOPDT sırasında TESTFR,
+başlangıç bildirimi retry ve bozuk akışın kapanması doğrulanmalıdır.
+Python SCADA ve cihaz koşusu
+[master süitinin kullanımına](system/iec104_master/README.md) göre yapılmalıdır.
 
 ## GSM SIM, SMS ve AT zamanlama testleri
 
@@ -1129,6 +1141,20 @@ sınırlarını (Type 1/13/30/34/36/45) ve sonraki Type 36 nesnesinin
 255 bayt sınırına sığmadığını doğrular. Type 34 için kapasite hesabı,
 üretimde bu tipin desteklendiği anlamına gelmez.
 
+`iec104/test_iec104_fault_query_scenario.c` gerçek QOI 23/24 uygulama
+süreçlerini, protokolü ve Contiki scheduler'ı birlikte çalıştırır. K=1,
+reddedilen onay/bitiş, araya giren komutta OA korunması, eşzamanlı sorgu
+reddi, STOPDT sonrası devam ve soket kapanışında iptal sınanır.
+ACK/delivery paketi K=1 altında arıza kaydını iki frame ile gönderir;
+yalnız ikinci frame onaylandıktan sonra kalıcı unsent sayısının düştüğünü
+ve yeniden başlangıçta bu durumun korunduğunu doğrular. Taşıma ikinci
+frame'i reddettiğinde ilk frame tekrarlanmamalı; çağıranın kayıt tamponu
+değişse de saklanan ikinci frame korunmalıdır.
+Akü uyarısı testleri PowerBoard alarm kümesini, geçersiz kaynağın IV
+bitini, değişiklik bildiriminin yeniden denenmesini ve GI20 kapsamını doğrular.
+Eski CP24 ve Type 30/34 tanımları wire byte ve boyut testlerine dahildir;
+bu kontroller Type 34 desteğini etkinleştirmez.
+
 #### Tam frame golden vektörleri
 
 **Amaç:** `iec104/test_iec104_golden_vectors.c` içindeki sabit byte
@@ -1165,6 +1191,7 @@ Protokol ve golden paketleri `test/` dizininden şu komutlarla
 
 ```text
 ceedling test:test_iec104_protocol_scenario
+ceedling test:test_iec104_fault_query_scenario
 ceedling test:test_iec104_golden_vectors
 ```
 
