@@ -133,6 +133,7 @@ def read_oracle(web):
         "port": int(cfg.get("Port", 2404)),
         "ca": int(cfg.get("CommonAddr", 1)),
         "oa": int(cfg.get("OriginatorAddr", 1)),
+        "battery_ioa": int(cfg.get("AkuUyarisi", 0)),
         "t0": int(cfg.get("T0", 90)), "t1": int(cfg.get("T1", 45)),
         "t2": int(cfg.get("T2", 30)), "t3": int(cfg.get("T3", 60)),
         "k": int(cfg.get("K", 64)), "w": int(cfg.get("W", 24)),
@@ -166,6 +167,8 @@ def expected_ioa_sets(oracle):
         # IOA space for replay/group3-4 content checks.
         fault_space.add(line["temp_fault_base"])
         fault_space.add(line["perm_fault_base"])
+    if oracle.get("battery_ioa", 0):
+        states.add(oracle["battery_ioa"])
     return currents | states, currents, states, fault_space
 
 

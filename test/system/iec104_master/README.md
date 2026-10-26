@@ -46,7 +46,7 @@ python test/system/iec104_master/run_suite.py --host 188.59.76.59
 
 # konsollu + kabul modu + opt-in mutasyonlar
 python test/system/iec104_master/run_suite.py --host 188.59.76.59 \
-    --console COM18 --require-device --clock-sync --mutate-eventlog \
+    --console COM18 --require-device --enable-iec104-lines --clock-sync --mutate-eventlog \
     --periodic-test --reset-test
 
 # merkez koşudan (wrapper): hedef yoksa SKIP
@@ -71,7 +71,19 @@ bağlanmamalıdır.
 | j05_start_stop_sequences | Tekrar STARTDT; bekleyen I-frame ACK'sinden sonra STOPDT_CON; aynı TCP oturumunda tekrar STARTDT ve GI ile kesintisiz N(S) | cihaz |
 | j06_malformed_frame_headers | Kısa I-frame başlığı, uzun U-frame ve geçersiz komut VSQ nesne sayısında bağlantının kapanması; ASDU yanıtı üretilmemesi | cihaz |
 | j07_coalesced_startdt_interrogation | Tek TCP gönderiminde STARTDT + GI; tam ve tekrarsız IOA kümesi | etkin IEC104 hatları |
-| j08_window_and_reset | K=1/W=1 altında gönderilemeyen reset onayında reboot olmaması; tam GI, ardından onaylı QRP=1 ile gerçek reset ve NTP/RTC doğrulaması; ayarlar finally ile geri yüklenir | `--reset-test` + `--console`, etkin hatlar |
+| j08_window_and_reset | K=1/W=1 altında bekleyen olumsuz komut yanıtının ACK sonrasında iletilmesi; tam GI20 ve QOI 23/24, ardından onaylı QRP=1 ile gerçek reset ve NTP/RTC doğrulaması; ayarlar finally ile geri yüklenir | `--reset-test` + `--console`, etkin hatlar |
+
+--enable-iec104-lines yalnız IEC104 hatlarını geçici açmalıdır.
+Tam ayar görüntüsü iec104-config-before.json içinde saklanmalı;
+süit sonunda hata durumunda da geri yüklenip birebir karşılaştırılmalıdır.
+RF/AY yapılandırması değiştirilmemelidir.
+
+| Ek vaka | Doğrulanan | Koşul |
+|---|---|---|
+| j09_flagged_commands | Test/P-N işaretli reset ve saat isteğinde yan etki olmaması, test biti ve payload korunması; COT=3 saat isteğinin reddi | konsol |
+| j10_stopped_connection_liveness | STOPDT sonrasında TESTFR ve ardından başlangıç bildirimi tekrarlanmadan STARTDT/GI | cihaz |
+| j11_partial_ack_deadline | K=2/T1=20 altında iki bekleyen frame'den yalnız ilki onaylandığında kalan frame'in ilk gönderim süresinde timeout olması; ayarlar finally ile geri yüklenir | --reset-test, konsol |
+| j12_deferred_clock_confirmation | K=1 doluyken saat onayının beklemesi; ACK sonrasında aynı CP56 ile gönderim ve RTC uygulaması; pencere ayarı finally ile geri yüklenir | --clock-sync, --reset-test, konsol |
 
 ## Sonuç ve çıkış kodları
 
@@ -260,3 +272,12 @@ Geçersiz NTP takvimi offset hesabından önce doğrulanır. Yeni yedi NTP
 regresyonu `test/gsm/test_gsm_response_scenario.c` içindedir. Bunlar gerçek
 GSM callback girişini, RTC sınırında gözlenen takvimi ve geçersiz girişte
 RTC'ye yazılmamasını denetler.
+
+Akü uyarısı oracle içindeki `battery_ioa` ile GI20/GI22 kümelerine
+katılır; Type 1 beklenir. Fider durumları GI22 için Type 30 olarak kalır.
+Negatif komut vakası, QOI 20–24 ve saat komutunun sıfır olmayan IOA ile
+COT=47/P/N=1 almasını da doğrular.
+
+`j08` ayrıca `--mutate-eventlog` verildiğinde K=1 altında bir sentetik
+arıza kaydı ve ardından 42 noktalı kapanış snapshot'ını (güncel durum
+görüntüsü) eksiksiz ve tekrarsız doğrular. Kayıt kalıcı test arşivinde kalır.
