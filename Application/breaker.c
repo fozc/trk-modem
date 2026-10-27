@@ -34,12 +34,13 @@ static void breaker_shell_dump_line(uint32_t line_index)
     const power_line_t  *p_line   = breaker_get_power_line_by_idx(line_index);
 
     if ((p_feeder == NULL) || (p_line == NULL)) {
-        CSLOG_WARN("[BREAKER] Line %u: no data\r\n", (unsigned)(line_index + 1U));
+        SHELL_LOG("[BREAKER] Line %u: no data\r\n", (unsigned)(line_index + 1U));
         return;
     }
 
     SHELL_LOG("[BREAKER] === Line %u (index %u) ===\r\n",
           (unsigned)(line_index + 1U), (unsigned)line_index);
+    SHELL_LOG("[BREAKER] Legacy dummy/test values; actual RF observations: rf live <feeder>.\r\n");
     SHELL_LOG("[BREAKER] In use: %s\r\n", p_line->iec104.in_use ? "yes" : "no");
     SHELL_LOG("[BREAKER] %-22s | %10s | %10s | %10s\r\n",
           "Field", "L1", "L2", "L3");

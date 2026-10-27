@@ -41,6 +41,18 @@ void elog_init(void);
 void elog_add(elog_code_t _code, elog_level_t level, const void *data, size_t data_len);
 void elog_add_entry(const elog_entry_t *entry);
 
+typedef enum
+{
+    ELOG_RF_MAINTENANCE_FRAM = 0,
+    ELOG_RF_MAINTENANCE_MH,
+    ELOG_RF_MAINTENANCE_AY
+} elog_rf_maintenance_kind_t;
+
+/* Persist and verify the audit intent before submitting the actual COMMIT. */
+bool elog_log_rf_commit(uint8_t line, uint8_t feeder, uint8_t group_id, uint16_t cfg_crc);
+void elog_log_rf_maintenance(elog_rf_maintenance_kind_t kind, uint8_t feeder, uint8_t phase,
+                             uint8_t subcode, uint16_t hash);
+
 /* Copy up to count entries into entries[], skipping the skip_newest newest
  * ones. Entries are returned newest first; the number of entries actually
  * copied is reported through *out_count. Returns 0 on success, non-zero on
@@ -196,6 +208,9 @@ void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
 /* info: - (event only; the timestamp carries the moment of detection).
  * Level: ERROR (system is about to lose power / shut down). */
 void elog_log_power_panic(void);
+
+/* RF feeder/phase are one-based; this records an alarm edge, not operator acknowledgement. */
+void elog_log_rf_trip_failure(uint8_t feeder, uint8_t phase, bool active);
 
 
 /* ---- ELOG_WEB_LOGIN_FAIL --------------------------------------------- */

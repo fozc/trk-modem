@@ -109,4 +109,24 @@ void test_get_never_starts_an_apply_operation(void)
     route_and_handle_request(&request);
 }
 
+void test_alarm_ack_requires_authenticated_admin_and_post(void)
+{
+    http_request_t request = {.method = HTTP_METHOD_POST, .path = "/alarm/rf/ack", .body = "{}"};
+    http_handlers_is_authenticated_ExpectAndReturn(false);
+    http_send_error_Expect(401, "Unauthorized");
+    route_and_handle_request(&request);
+    http_handlers_is_authenticated_ExpectAndReturn(true);
+    http_handlers_is_admin_ExpectAndReturn(false);
+    http_send_error_Expect(403, "Admin role required");
+    route_and_handle_request(&request);
+    http_handlers_is_authenticated_ExpectAndReturn(true);
+    http_handlers_is_admin_ExpectAndReturn(true);
+    handle_post_rf_alarm_ack_Expect("{}");
+    route_and_handle_request(&request);
+    request.method = HTTP_METHOD_GET;
+    http_handlers_is_authenticated_ExpectAndReturn(true);
+    http_send_not_found_Expect();
+    route_and_handle_request(&request);
+}
+
 /*** end of file ***/

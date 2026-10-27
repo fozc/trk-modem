@@ -1,6 +1,6 @@
 # Architecture — Smart Breaker Modem
 
-Sürüm: 1.4.0 · Tarih: 2026-10-11 · Durum: mevcut proje profili; açık kararlar var.
+Sürüm: 1.11.0 · Tarih: 2026-10-27 · Durum: mevcut proje profili; açık kararlar var.
 
 ## A00. Amaç ve durum
 
@@ -169,9 +169,13 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 | Modbus RF akımı ve iletişimi ayrıdır | 06.10.2026 kullanıcı kararı: mevcut anlık akım adresleri SCP kaynağını kullanır; eksik/eski/geçersiz akım NaN olur. RF alanı yalnız canlı veri tazeliğini gösterir. Geçersiz ölçüm güncel RF bağlantısını 0 yapmaz. Aynı FC03 RF alanları tek zaman örneği kullanır; adres/NVRAM düzeni değişmez. |
 | RF enerji/yük ve ayrı kalite bloğu | 06.10.2026 kullanıcı kararı: doküman esas alınır, eski nominal gösterge adları korunmaz. Enerji/yük LIVE bit 0/1 kaynağıdır. Mevcut değer adresleri 0/1; 49500–49520 salt okunur faz kalite bloğunda bit 0 akım, bit 1 enerji, bit 2 yük geçerliliğidir. Eksik/eski örnek kalite=0; son Boolean korunur, hiç örnek yoksa 0 olur. Web/sunucu adres çakışmasını reddeder. NVRAM boyutu/sırası değişmez. Koruma nominal akımı ayrı anlamını korur. Üretim raporu §10.27. |
 | Anlık arıza özetleri kaldırılır | 06.10.2026 kullanıcı kararı: arıza akımı/süresi/tipi canlı göstergeleri kaldırılır, geçici/kalıcı listeler kalır. NVRAM yuvaları reserved olur; kalan adresler korunur. Olay yük biti doğrudan saklanır; eski ters anlamlı liste sürümü 2 reddedilir, yeni fault schema 3'tür. Spontane/replay ilk liste kaydı IOA'larından kendi olay zamanıyla gönderilir; hazırlanan paket 06.10.2026 kullanıcı commit talebiyle onaylandı. |
-| RF operatör onay kanalı sorulur | 06.10.2026 kullanıcı kararı: onayın yerel RTU operatörü veya SCADA merkezinden gelmesi BOLATeX'e BQ-16 ile sorulur. Yeni web düğmesi/yazma API'si cevap bekler. Mevcut terminal `rf alarm-ack` ve servis davranışı değiştirilmez. |
-| RF web Kaydet onayı uygulamayı başlatır | 08.10.2026 kullanıcı kararı önceki K5 web ayrımını güncelledi. Tüm etkin fiderler `rf_apply` ile sırayla uygulanır; grup kimliği otomatik seçilir. Ayrı Uygula/Yalnız kaydet yoktur. Güncel kurallar uygulama planı 0.28'dir (doc/RF_SCP_MODEM_UYGULAMA_PLANI.md, yerel dosya, git dışı); doğrulama üretim raporu §10.36. |
+| RF alarmı bildirilir; operatör web üzerinden onaylar | 26.10.2026 kullanıcı kararı: mevcut faz bazlı IEC104 TripFailed IOA ve Modbus trip_failed alanları kullanılır; alarm açılması/kapanması ELOG'a da yazılır. Kalıcı kayıt almak alarm mandalını temizlemez. Sonraki açık kullanıcı onayıyla yönetici web ekranına manuel onay eklenir. Onay bildirimi IOA 300000–300023 aralığına ayrılır; mantıksal satır/faz için 300000 + 3×satır + faz kullanılır, son üç adres ayrılmış kalır. Bildirim M_SP_TB_1 ve mevcut kalıcı replay yolunu kullanır; kullanıcı/kaynak/zaman ve ilgili olay bilgisi mevcut günlükte saklanır, NVRAM yerleşimi değişmez. Güncel LIVE yokken ikinci teyit gerekir; son LIVE=1 iken onay alarmı kapatmaz. IEC104 bildirimi veya çevrimdışı kalıcı kaydın otomatik onay sayılması BQ-16 ek sorusunda sorulur; olumlu yanıt gelmeden uygulanmaz. |
+| RF reset kabulünde ek darbe ölçümü istenmez | 27.10.2026 kullanıcı kararı: C14 için osiloskopla süre ölçümü kabul kapısı değildir. Kaynak/host 100 ms ve sarma/bırakma kontrolü ile gerçek MH reset/yeniden kurulum/LIVE kanıtı kullanılır. Fiziksel darbe ölçüldüğü iddia edilmez. |
+| RF COMMIT ve bakım olayları mevcut ELOG kullanır | 27.10.2026 açık kullanıcı onayı: her COMMIT öncesinde RF_CFG_COMMIT (64), zaman/geçerlilik, satır/fider, group_id ve cfg_crc ile yazılır ve geri okunur. Doğrulama başarısızsa COMMIT gönderilmez; UNCERTAIN ve açık operatör işlemi gerekir. Bu iz APPLIED kanıtı değildir. MH/AY 143 alt kod 4–6 ve FRAM degraded, RF_MAINTENANCE (63) olarak mevcut halkaya yazılır. Bakım kaydı koruma işlemini engellemez. ELOG boyutu, sektörleri, NVRAM şeması ve 104 adresleri değişmez. |
+| RF servis taşıması yarım işlem işareti taşır | 27.10.2026 kullanıcı onayı: mevcut envanter günlüğünün ayrılmış iki baytı kalıcı servis işareti için kullanılır. NVRAM boyutu/şeması değişmez. Yönetici terminali yalnız aynı fiderde boş ve hiç kullanılmamış hedefe, operatör beyanıyla taşıma başlatır. Normal Kaydet engeli korunur. Mevcut boşaltma, EPOCH bütçesi ve RF reset yolu kullanılır. İşaret yalnız 201/120, MH reset/yeniden kurulum, yeni kaynak LIVE ve 90 s koşullarıyla temizlenir. RTU restart'ında kanıt kaybolursa otomatik devam/temizleme yapılmaz; bakım gereği gösterilir. Kullanım ve test sınırları test/README.md içindedir. |
+| RF web Kaydet onayı uygulamayı başlatır | 08.10.2026 kullanıcı kararı önceki K5 web ayrımını güncelledi. Tüm etkin fiderler `rf_apply` ile sırayla uygulanır; grup kimliği otomatik seçilir. Ayrı Uygula/Yalnız kaydet yoktur. Güncel kurallar uygulama planı 0.28'dir (doc/RF_SCP_MODEM_UYGULAMA_PLANI.md, yerel dosya, git dışı); doğrulama üretim raporu §10.36. 26.10.2026 R2.3 uyumluluk düzenlemesi: bilinen EUI'nin bölge/fider/fazını değiştiren normal Kaydet isteği, kayıt ve RF başlamadan 409 ile reddedilir. Aynı konuma kart değişimi korunur; atanmış kart taşıma, üreticinin §1.2 servis sırasıdır. Bu engel taşıma otomasyonu değildir. |
 | Fider toplamı dizi kanıtıyla kesinleşir | 13.10.2026 kullanıcı talimatı: R2 ve v0.15'e uyulur. 1/7 için 1 s kuralı korunur; 142 kesişen faz dizi aralıklarıyla eşlenir. Aynı grupta 1/7 geçici toplamı kaldırır. Katılan AY'lerde T_Mem_Dead sonrası idle LIVE, sonraki pending=0 LIVE ve bunlardan sonra taze HEAD/boş halka gerekir. Web Pending/IsFinal ile kesinleşmemiş toplamı ayırır. Clock_quality 0/2 veya eksik kimlik/dizi kanıtı kesin toplam değildir; sayısal saat toleransı uydurulmaz. A/RAM kalıcılık kararı ve faz listeleri korunur. |
+| Powerboard E1 ömür alanları RAM ve mevcut gösterim yolundadır | 27.10.2026 kullanıcı onayı: E1 ofset 39/41/43 için üç uint16_t ömür alanı decoder ve mevcut snapshot/status yoluna eklenir. Eski 39 baytlık mesajda ve 0xFFFF değerinde bilinmiyor gösterilir; geçerli sıfır korunur. Ömür alanları web ve terminalde gösterilir. NVRAM, 104/Modbus adresleri ve koruma davranışı değişmez. |
 | Powerboard tüketicileri SCP kaynağını kullanır | 06.10.2026 kullanıcı kararı: 49200 tabanı korunarak 38 register yeni harita kurulur. Özet/alarm modeli system_status, web, Modbus ve shell kaynağıdır; eski I²C process başlatılmaz. Kaynaklar silinmez; GPIO power-panic ve kapalı BMS reader korunur. E5–E8 müşteri kontrolü shell ile bağlıdır; GEN/yankı/E1 ve komut sonucu ayrımı korunur. Ayarsız ayar/periyot ve E7 bitiş ayrımı BQ-12–14'tedir. Web/Modbus yazma arayüzü ayrıca ele alınır. Ayrıntılar modem uygulama planındadır (doc/RF_SCP_MODEM_UYGULAMA_PLANI.md, yerel dosya, git dışı). |
 | PowerBoard ertelemeleri korunur | BMS Y8.4–Y8.7 yazılım düzeltmeleri tamamlandı; reader init hâlâ kapalıdır. Düzeltme etkinleştirme yetkisi değildir. Üretim raporu §9.31–§9.33. |
 | GSM sabit ayarlar ve listener açılışı ayrılır | 10.10.2026 kullanıcı kararı: sabit web SCFG ve iki soketin SCFGEXT/SCFGEXT2 ayarları genel init'te kalır. İlk açılış ve reconnect, GSM listener süreçlerinden yürür. Dinamik IEC104 SCFG son başarılı timeout'u RAM'de tutar; değişmemiş değer atlanır, genel modem init tamamlandığında cache geçersiz sayılır. Ayrı Flash alanı yoktur. Üretim raporu §10.59. |
@@ -189,9 +193,13 @@ yeniden açılmış sayılmamalıdır.
 ## A10. Dil ve proje stili
 
 Mevcut depo tercihi: C11 / Embedded C++20; varsayılan C.
-Yeni kod: Allman braces, 4 boşluk, 80 sütun, LF, tab yok;
+Yeni kod: Allman braces, 4 boşluk, LF, tab yok;
 karşılaştırmada değişken/fonksiyon solda, sabit sağda; unsigned sabitlerde U;
 sonsuz döngüde for (;;). g_/s_/p_ kullanılmaz.
+26.10.2026 kullanıcı kararıyla satır bölme eşiği 120 sütundur; eski 80 sütun
+zorunluluğu kaldırılmıştır. Yalnız çok uzun ifadeler bölünmelidir. Devam
+satırları satır başına göre ek girintiyle değil, ilk argümanın veya devam
+eden ifadenin başlangıcıyla hizalanmalıdır.
 Yeni C++ üye adlarında da açıklayıcı snake_case tercih edilir;
 harici API ve mevcut sınıfların isimleri topluca değiştirilmez.
 
@@ -266,3 +274,9 @@ Bu paketin oluşturulması bu kararların kabulü sayılmaz.
 | 2026-10-10 | 1.3.0 | A09.1: GSM sabit ayarları genel init'te, soket açılışları listener'da ve dinamik SCFG RAM önbelleği |
 | 2026-10-11 | 1.4.0 | A09.1: Eski GSM init fonksiyonları ve dispatcher korunur; yalnız vektör adımları kapatılır |
 | 2026-10-23 | 1.5.0 | A09.1: Bağımsız JSON kabul aşaması; A10: kullanıcı kararıyla klasik karşılaştırmalar |
+| 2026-10-26 | 1.6.0 | A09.1: Alarmın IEC104/Modbus/ELOG bildirimi ve üretici yanıtını bekleyen otomatik onay önerisi |
+| 2026-10-27 | 1.7.0 | A09.1: Kullanıcı onaylı manuel yönetici web onayı ve 300000–300023 adres tahsisi |
+| 2026-10-27 | 1.8.0 | A09.1: Kullanıcı onaylı kalıcı servis işareti, aynı fider taşıma sırası ve yarıda kalma sınırı |
+| 2026-10-27 | 1.9.0 | A09.1: Açık kullanıcı onaylı COMMIT kalıcı iz/geri okuma engeli ve RF bakım ELOG kayıtları |
+| 2026-10-27 | 1.10.0 | A09.1: Kullanıcı onaylı E1 üç akü ömrü alanı ve eski mesaj/bilinmiyor gösterimi |
+| 2026-10-27 | 1.11.0 | A09.1: Kullanıcı kararıyla ek RF reset darbe ölçümü kabul kapısından çıkarıldı |

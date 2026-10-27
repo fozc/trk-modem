@@ -9,6 +9,7 @@
  */
 
 #include "unity.h"
+#include "mock_elog.h"
 TEST_SOURCE_FILE("json.c")
 #include "rf_group.h"
 #include "rf_apply.h"
@@ -18,6 +19,7 @@ TEST_SOURCE_FILE("json.c")
 #include "mock_rf_comm.h"
 #include "mock_rf_inventory.h"
 #include "../fixtures/rf_scp_vectors.h"
+#include "../fixtures/rf_scp_r23_vectors.h"
 #include <math.h>
 #include <string.h>
 
@@ -37,6 +39,7 @@ static bool inventory_matches;
 static bool binding_valid;
 static bool accept_request;
 static bool epoch_ready;
+static bool relocation;
 static size_t request_count;
 static scp_packet_t requests[300];
 static scp_cmd_done_fn_t callback;
@@ -48,6 +51,12 @@ uint32_t HAL_GetTick(void);
 uint32_t HAL_GetTick(void)
 {
     return tick;
+}
+
+static bool has_relocation(int call_count)
+{
+    (void)call_count;
+    return relocation;
 }
 
 static bool is_free(int call_count)
@@ -128,6 +137,19 @@ static rf_group_status_t status(void)
 
     TEST_ASSERT_TRUE(rf_group_get_status(&out));
     return out;
+}
+
+static bool verify_commit_before_tx(uint8_t line, uint8_t fider, uint8_t group_id, uint16_t crc, int call_count)
+{
+    (void)line;
+    (void)fider;
+    (void)group_id;
+    (void)crc;
+    (void)call_count;
+    TEST_ASSERT_EQUAL_size_t(4U, request_count);
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_CFG_WRITE, requests[request_count - 1U].cmd);
+    TEST_ASSERT_EQUAL_UINT8(3U, status().writes_acked);
+    return true;
 }
 
 static void reply(scp_cmd_result_t result, scp_packet_t *packet)
@@ -211,8 +233,20 @@ static void inventory_wait(rf_inventory_wait_t *out, int call_count)
     *out = (rf_inventory_wait_t){.reason = "none"};
 }
 
+static void recover_idle_group(void)
+{
+    rf_group_process(tick);
+    scp_packet_t initial = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK, .data_len = 8U};
+    reply(SCP_CMD_OK, &initial);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_IDLE, status().state);
+    request_count = 0U;
+    callback = NULL;
+}
+
 void setUp(void)
 {
+    elog_log_rf_commit_IgnoreAndReturn(true);
     rf_inventory_get_wait_StubWithCallback(inventory_wait);
     const size_t count = sizeof(rf_scp_vectors) /
                          sizeof(rf_scp_vectors[0]);
@@ -270,7 +304,11 @@ void setUp(void)
     rf_inventory_config_finished_Ignore();
     rf_inventory_get_status_IgnoreAndReturn(RF_INVENTORY_READY);
     rf_inventory_prepare_save_IgnoreAndReturn(true);
+    relocation = false;
+    rf_inventory_has_relocation_StubWithCallback(has_relocation);
     rf_inventory_has_pending_IgnoreAndReturn(false);
+    rf_inventory_service_pending_IgnoreAndReturn(false);
+    recover_idle_group();
 }
 
 void tearDown(void)
@@ -279,6 +317,10 @@ void tearDown(void)
 
 void test_captured_group_is_written_three_times_and_verified_after_commit(void)
 {
+    elog_log_rf_commit_StopIgnore();
+    elog_log_rf_commit_ExpectAndReturn(3U, feeder.config.fider_id, 1U,
+                                      rf_config_writable_crc(&feeder.config), true);
+    elog_log_rf_commit_AddCallback(verify_commit_before_tx);
     write_three_and_commit();
     TEST_ASSERT_EQUAL_UINT32(5U, request_count);
     for (size_t index = 1U; index < 4U; index++)
@@ -507,6 +549,7 @@ void test_uncertain_write_explicit_retry_rewrites_all_frozen_members(void)
     for (size_t failed_member = 0U; failed_member < 3U; failed_member++)
     {
         rf_group_init();
+        recover_idle_group();
         request_count = 0U;
         TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
         unused_group();
@@ -764,9 +807,9 @@ void test_rtu_restart_resets_group_metadata_and_does_not_restore_applied(void)
     TEST_ASSERT_TRUE(rf_group_is_active());
     rf_group_init();
     TEST_ASSERT_EQUAL_UINT8(0U, status().group_id);
-    TEST_ASSERT_EQUAL_INT(RF_GROUP_IDLE, status().state);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_CHECKING, status().state);
     TEST_ASSERT_FALSE(rf_group_matches_config());
-    TEST_ASSERT_FALSE(rf_group_is_active());
+    TEST_ASSERT_TRUE(rf_group_is_active());
 }
 
 void test_existing_peer_terminal_report_cannot_apply_an_unsent_job(void)
@@ -1067,6 +1110,43 @@ void test_transport_busy_waits_without_starting_or_losing_targets(void)
     rf_apply_process();
     TEST_ASSERT_EQUAL_INT(RF_GROUP_CHECKING, status().state);
     TEST_ASSERT_EQUAL_UINT8(1U, status().group_id);
+}
+
+void test_failed_commit_audit_sends_no_commit_does_not_retry_and_keeps_abort_available(void)
+{
+    TEST_ASSERT_TRUE(rf_group_start(2U, 1U));
+    unused_group();
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        rf_group_process(tick);
+        ack();
+    }
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_COMMITTING, status().state);
+    const size_t before = request_count;
+    elog_log_rf_commit_StopIgnore();
+    elog_log_rf_commit_ExpectAndReturn(3U, feeder.config.fider_id, 1U,
+                                      rf_config_writable_crc(&feeder.config), false);
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_UNCERTAIN, status().state);
+    TEST_ASSERT_EQUAL_size_t(before, request_count);
+    rf_group_process(tick + 10000U);
+    rf_group_process(tick + 20000U);
+    TEST_ASSERT_EQUAL_size_t(before, request_count);
+    TEST_ASSERT_TRUE(rf_group_can_abort());
+    TEST_ASSERT_TRUE(rf_group_abort());
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_CFG_ABORT, requests[request_count - 1U].cmd);
+    ack();
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_CANCELLED, status().state);
+}
+
+void test_durable_service_move_blocks_normal_save_before_storage_or_rf(void)
+{
+    rf_inventory_service_pending_StopIgnore();
+    rf_inventory_service_pending_IgnoreAndReturn(true);
+    TEST_ASSERT_FALSE(rf_apply_can_save());
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_BUSY, rf_apply_save());
+    TEST_ASSERT_EQUAL_INT(0, rf_nvram_fake_sync_count());
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
 }
 
 void test_inventory_upload_or_drain_blocks_save_before_nvram(void)
@@ -1806,6 +1886,34 @@ void test_failed_target_save_restores_journal_and_never_starts_rf(void)
     TEST_ASSERT_EQUAL_MEMORY(&feeder, rf_store_get(2U), sizeof(feeder));
 }
 
+void test_missing_failed_reasons_one_and_nine_never_become_applied(void)
+{
+    const uint8_t reasons[] = {1U, 9U};
+    for (size_t index = 0U; index < sizeof(reasons); index++)
+    {
+        rf_group_init();
+        transport_free = true;
+        recover_idle_group();
+        write_three_and_commit();
+        ack();
+        rf_scp_message_t report = captured_report(1U);
+        report.body.config.state = 4U;
+        report.body.config.reason = reasons[index];
+        report.body.config.member_bitmap = 7U;
+        TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+        TEST_ASSERT_EQUAL_INT(RF_GROUP_FAILED, status().state);
+        TEST_ASSERT_EQUAL_UINT8(reasons[index], status().report.reason);
+        char json[1024];
+        size_t length;
+        TEST_ASSERT_TRUE(rf_group_status_json_build(json, sizeof(json), &length));
+        TEST_ASSERT_NOT_NULL(strstr(json, "\"State\":\"failed\""));
+        report.body.config.state = 2U;
+        report.body.config.reason = 0U;
+        (void)rf_group_handle_status(&report);
+        TEST_ASSERT_EQUAL_INT(RF_GROUP_FAILED, status().state);
+    }
+}
+
 void test_r23_range_failure_reason_3_preserves_all_member_bitmap(void)
 {
     write_three_and_commit();
@@ -1834,6 +1942,153 @@ void test_r23_write_error_02_is_uncertain_without_applied_claim_or_blind_retry(v
     TEST_ASSERT_EQUAL_INT(RF_GROUP_UNCERTAIN, status().state);
     rf_group_process(tick);
     TEST_ASSERT_EQUAL_size_t(before, request_count);
+}
+
+static void check_r23_status_capture(const char *source, uint8_t group_id, uint8_t reason, uint8_t bitmap)
+{
+    TEST_ASSERT_TRUE(rf_group_start(2U, group_id));
+    unused_group();
+    for (size_t member = 0U; member < 3U; member++)
+    {
+        rf_group_process(tick);
+        TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_WRITE, requests[request_count - 1U].cmd);
+        ack();
+    }
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_COMMIT, requests[request_count - 1U].cmd);
+    ack();
+    size_t reports = 0U;
+    for (size_t index = 0U; index < sizeof(rf_scp_r23_vectors) / sizeof(rf_scp_r23_vectors[0]); index++)
+    {
+        const rf_scp_r23_vector_t *vector = &rf_scp_r23_vectors[index];
+        const uint8_t *frame = vector->logical;
+        if ((strcmp(source, vector->source) != 0) || (RF_SCP_ADDR_RTU != frame[0]) ||
+            ((RF_SCP_CMD_CFG_STATUS_GET != frame[3]) && (RF_SCP_CMD_CFG_STATUS_NOTIFY != frame[3])) ||
+            (SCP_TYPE_ERROR == frame[2]) || (group_id != frame[7]))
+        {
+            continue;
+        }
+        scp_packet_t packet = {.dst = frame[0], .src = frame[1], .type = frame[2],
+            .cmd = frame[3], .seq = frame[4], .data_len = frame[5]};
+        (void)memcpy(packet.data, &frame[7], packet.data_len);
+        rf_scp_message_t report;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &report));
+        (void)rf_group_handle_status(&report);
+        TEST_ASSERT_NOT_EQUAL(RF_GROUP_APPLIED, status().state);
+        reports++;
+    }
+    TEST_ASSERT_GREATER_THAN_size_t(1U, reports);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_FAILED, status().state);
+    TEST_ASSERT_EQUAL_UINT8(reason, status().report.reason);
+    TEST_ASSERT_EQUAL_UINT8(bitmap, status().report.member_bitmap);
+    const size_t before = request_count;
+    rf_group_process(tick + 90000U);
+    TEST_ASSERT_EQUAL_size_t(before, request_count);
+}
+
+void test_r23_captured_staged_progress_timeout_and_late_queries_remain_failed(void)
+{
+    check_r23_status_capture("AY_R23_05c_yapilandirma_zaman_asimi_durum_sorgusu.csv", 50U, 5U, 1U);
+    TEST_ASSERT_EQUAL_UINT8(13U, status().report.attempts);
+}
+
+void test_r23_captured_inventory_rejection_never_claims_application(void)
+{
+    check_r23_status_capture("AY_R23_05a_yapilandirma_ret_envanter_disi.csv", 64U, 2U, 4U);
+}
+
+void test_relocation_save_stops_before_journal_storage_or_rf_activity(void)
+{
+    TEST_ASSERT_TRUE(rf_store_stage_begin());
+    rf_feeder_t *candidate = rf_store_get_mutable(2U);
+    (void)memcpy(candidate->s_eui64, candidate->r_eui64, 8U);
+    (void)memset(candidate->r_eui64, 0, 8U);
+    relocation = true;
+    const int before = rf_nvram_fake_sync_count();
+    TEST_ASSERT_EQUAL_INT(RF_APPLY_SAVE_MAINTENANCE, rf_apply_save());
+    TEST_ASSERT_EQUAL_INT(before, rf_nvram_fake_sync_count());
+    TEST_ASSERT_EQUAL_UINT8(0U, nvram_get_rf_inventory_journal()->pending);
+    TEST_ASSERT_EQUAL_MEMORY(&feeder, rf_store_get(2U), sizeof(feeder));
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    TEST_ASSERT_FALSE(rf_apply_is_running());
+    rf_store_stage_abort();
+}
+
+void test_cold_start_queries_zero_only_after_inventory_and_never_writes(void)
+{
+    rf_group_init();
+    inventory_loaded = false;
+    rf_inventory_get_status_IgnoreAndReturn(RF_INVENTORY_IDLE);
+    TEST_ASSERT_FALSE(rf_group_is_active());
+    TEST_ASSERT_FALSE(rf_group_start(2U, 7U));
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    rf_inventory_get_status_IgnoreAndReturn(RF_INVENTORY_READY);
+    inventory_active = true;
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    inventory_active = false;
+    inventory_loaded = true;
+    rf_group_hub_restarted();
+    TEST_ASSERT_FALSE(rf_apply_can_save());
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_STATUS_GET, requests[0].cmd);
+    TEST_ASSERT_EQUAL_UINT8(0U, requests[0].data[0]);
+    TEST_ASSERT_EQUAL_INT(SCP_TYPE_GET, requests[0].type);
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK, .data_len = 8U};
+    reply(SCP_CMD_OK, &packet);
+    rf_group_process(300000U);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_IDLE, status().state);
+    TEST_ASSERT_FALSE(rf_group_matches_config());
+    TEST_ASSERT_TRUE(rf_apply_can_save());
+}
+
+void test_cold_start_active_peer_blocks_new_group_without_attributing_applied(void)
+{
+    rf_group_init();
+    rf_group_process(tick);
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_CFG_STATUS_GET, .type = SCP_TYPE_ACK,
+        .data_len = 8U, .data = {9U, 2U, 7U}};
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_TRUE(rf_group_is_active());
+    TEST_ASSERT_FALSE(rf_group_start(2U, 7U));
+    TEST_ASSERT_EQUAL_UINT8(0U, status().line);
+    TEST_ASSERT_EQUAL_UINT8(0U, status().feeder);
+    rf_group_process(5000U);
+    TEST_ASSERT_EQUAL_UINT8(9U, requests[1].data[0]);
+    packet.data[1] = 3U;
+    packet.data[4] = 0x6DU;
+    packet.data[5] = 0x09U;
+    reply(SCP_CMD_OK, &packet);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_ID_IN_USE, status().state);
+    TEST_ASSERT_FALSE(rf_group_matches_config());
+    TEST_ASSERT_FALSE(rf_group_is_active());
+    TEST_ASSERT_EQUAL_size_t(2U, request_count);
+    TEST_ASSERT_TRUE(rf_group_start(2U, 7U));
+}
+
+void test_cold_start_timeout_stays_unknown_until_explicit_status_and_does_not_repeat(void)
+{
+    rf_group_init();
+    rf_group_process(tick);
+    reply(SCP_CMD_TIMEOUT, NULL);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_UNCERTAIN, status().state);
+    rf_group_process(300000U);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+    rf_scp_message_t message = {.cmd = RF_SCP_CMD_CFG_STATUS_NOTIFY, .type = SCP_TYPE_SET,
+        .body.config = {.group_id = 11U, .state = 4U, .reason = 8U}};
+    TEST_ASSERT_FALSE(rf_group_handle_status(&message));
+    message.cmd = RF_SCP_CMD_CFG_STATUS_GET;
+    message.type = SCP_TYPE_ACK;
+    TEST_ASSERT_TRUE(rf_group_handle_status(&message));
+    TEST_ASSERT_TRUE(status().has_report);
+    TEST_ASSERT_EQUAL_UINT8(8U, status().report.reason);
+    TEST_ASSERT_EQUAL_UINT8(0U, status().line);
+    TEST_ASSERT_FALSE(rf_group_matches_config());
 }
 
 /*** end of file ***/

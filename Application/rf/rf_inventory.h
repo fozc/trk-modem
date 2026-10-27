@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "rf_comm.h"
+#include "rf_scp_codec.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -75,6 +76,39 @@ bool rf_inventory_matches_config(void);
 /* Stage old identities before rf_store_sync publishes a new desired image. */
 bool rf_inventory_prepare_save(void);
 bool rf_inventory_has_pending(void);
+/* Includes a durable interrupted service move; ordinary save/config cannot clear it. */
+bool rf_inventory_service_pending(void);
+
+typedef enum
+{
+    RF_MOVE_IDLE = 0,
+    RF_MOVE_DRAINING,
+    RF_MOVE_ASSIGNING,
+    RF_MOVE_EPOCH,
+    RF_MOVE_WAIT_EVENTS,
+    RF_MOVE_RESET,
+    RF_MOVE_WAIT_LIVE,
+    RF_MOVE_COMPLETE,
+    RF_MOVE_INTERRUPTED,
+    RF_MOVE_STORAGE_ERROR,
+    RF_MOVE_SAVE_FAILED
+} rf_move_state_t;
+
+typedef struct
+{
+    rf_move_state_t state;
+    uint8_t line;
+    uint8_t from_phase;
+    uint8_t to_phase;
+} rf_move_status_t;
+
+/* Zero-based row/phases. Operator must attest that the empty target was never used. */
+bool rf_inventory_move_begin(uint8_t line, uint8_t from_phase, uint8_t to_phase, bool confirm_unused);
+void rf_inventory_move_status(rf_move_status_t *out);
+/* Retry final marker persistence only while this RTU session retains all proof. */
+bool rf_inventory_move_finish(void);
+/* Normal configuration writes cannot perform the R2.3 service relocation sequence. */
+bool rf_inventory_has_relocation(void);
 
 /** Send an operator-selected assignment/deletion (feeder zero deletes).
  * The caller owns persistence; this transport API does not alter NVRAM.
@@ -96,6 +130,27 @@ void rf_inventory_config_finished(uint8_t feeder, uint8_t reason);
 /* False while event-144 maintenance is queued or during the minimum local
  * wait after its acknowledged epoch refresh; not RF proof. */
 bool rf_inventory_epoch_ready(uint8_t feeder);
+
+typedef struct
+{
+    bool active;
+    bool has_report;
+    bool retry_used;
+    bool uncertain;
+    uint8_t expected_phases;
+    uint8_t report_phases;
+    uint8_t received_phases;
+    uint8_t checked_phases;
+    uint8_t missing_phases;
+} rf_epoch_status_t;
+
+/* Diagnostic observations, never APPLIED evidence or a campaign identity. */
+bool rf_inventory_get_epoch_status(uint8_t feeder, rf_epoch_status_t *out);
+void rf_inventory_epoch_event(const rf_scp_event_t *event, bool source_matches, uint32_t now_ms);
+/* Observe a validated, bound LIVE before rf_handle_live updates its cache. */
+void rf_inventory_epoch_live(const rf_scp_live_t *live, uint32_t now_ms);
+void rf_inventory_epoch_head_started(void);
+void rf_inventory_epoch_ring_empty(void);
 bool rf_inventory_get_boundary(uint32_t *total);
 
 /** True for accepted nonempty READY/PARTIAL inventory, false for EMPTY. */

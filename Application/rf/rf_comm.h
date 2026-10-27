@@ -81,6 +81,9 @@ uint8_t rf_comm_get_hub_major(void);
 /** Request a time refresh; it will not start another inventory upload. */
 void rf_comm_sync_time(void);
 
+/** Start an operator-requested 100 ms reset while idle; false leaves the hub unchanged. */
+bool rf_comm_reset_hub(void);
+
 /**
  * @brief Poll dongusunden cagirilir: timeout kontrolu, retry,
  *        tamamlanan komutun callback'i.

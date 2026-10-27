@@ -8,6 +8,7 @@
  * Verify real RF cache and registered IEC104 current/link readers.
  */
 #include "unity.h"
+#include "mock_elog.h"
 #include "rf.h"
 #include "mock_rf_inventory.h"
 #include "mock_bsp.h"

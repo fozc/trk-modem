@@ -207,7 +207,7 @@ typedef struct
     rf_inventory_delete_t entries[RF_INVENTORY_JOURNAL_CAPACITY];
     uint8_t pending;
     uint8_t count;
-    uint16_t reserved;
+    uint16_t reserved; /* Nonzero: interrupted/pending RF service move (R2.3). */
 } rf_inventory_journal_t;
 
 /* IEC104 olay gunlugu replay durumu. Gonderilmemis kayitlar her zaman tek
@@ -262,6 +262,8 @@ _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
 _Static_assert(offsetof(nvram_t, sequence) == 12U, "nvram_t: sequence@12");
 _Static_assert(sizeof(rf_inventory_journal_t) == 148U,
                "RF inventory journal layout");
+_Static_assert(offsetof(rf_inventory_journal_t, reserved) == 146U,
+               "RF service marker reuses the reserved journal tail");
 _Static_assert(offsetof(nvram_t, rf_inventory_journal) == 1820U,
                "Schema v1 journal offset");
 _Static_assert(offsetof(nvram_t, relay_states) == 1968U,

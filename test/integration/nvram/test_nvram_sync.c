@@ -621,6 +621,37 @@ static void test_rf_inventory_journal_survives_save_and_torn_clear(void)
           "RF journal: newest verified clear wins and repairs backup");
 }
 
+static void test_service_move_marker_and_target_survive_real_store_save_and_torn_clear(void)
+{
+    boot_virgin();
+    rf_store_init();
+    check(rf_store_stage_begin(), "service move: stage target");
+    rf_feeder_t *target = rf_store_get_mutable(FEEDER_1);
+    memset(target->r_eui64, 0, sizeof(target->r_eui64));
+    memset(target->t_eui64, 0, sizeof(target->t_eui64));
+    target->t_eui64[0] = 0x11U;
+    nvram_get_rf_inventory_journal()->reserved = 0xA540U;
+    check(rf_store_sync() == 0, "service move: target and marker saved together");
+    check(images_equal() && (img(MOCK_SLOT_A)->schema_version == 1U) &&
+          (img(MOCK_SLOT_A)->length == sizeof(nvram_t)), "service move: layout and schema unchanged");
+    reboot();
+    rf_store_init();
+    check((nvram_get_rf_inventory_journal()->reserved == 0xA540U) &&
+          (rf_store_get(FEEDER_1)->r_eui64[0] == 0U) && (rf_store_get(FEEDER_1)->t_eui64[0] == 0x11U),
+          "service move: reboot restores pending marker with the new target");
+    nvram_get_rf_inventory_journal()->reserved = 0U;
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_AFTER_ERASE);
+    check(nvram_save(false) == NVRAM_SAVE_FAILED, "service move: torn clear reports failure");
+    reboot();
+    rf_store_init();
+    check((nvram_get_rf_inventory_journal()->reserved == 0xA540U) &&
+          (rf_store_get(FEEDER_1)->t_eui64[0] == 0x11U), "service move: old verified copy preserves the guard");
+    nvram_get_rf_inventory_journal()->reserved = 0U;
+    check(nvram_save(false) == NVRAM_SAVE_COMPLETE, "service move: verified clear succeeds");
+    reboot();
+    check(nvram_get_rf_inventory_journal()->reserved == 0U, "service move: cleared marker survives reboot");
+}
+
 static void test_modbus_config_primary_only_boot_selects_new(void)
 {
     /* MB-07: a save that writes A (new baud) but fails on B leaves the
@@ -794,6 +825,7 @@ int main(void)
     test_relay_states_and_retention();
     test_previous_layout_uses_defaults();
     test_rf_inventory_journal_survives_save_and_torn_clear();
+    test_service_move_marker_and_target_survive_real_store_save_and_torn_clear();
     test_schema_three_uses_defaults_without_migration();
     test_invalid_header_or_crc_uses_valid_peer_without_data_loss();
     test_repair_interrupted_at_every_page_retains_committed_settings();

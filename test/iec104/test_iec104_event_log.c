@@ -36,6 +36,73 @@ void tearDown(void)
 {
 }
 
+void test_operator_ack_is_durable_and_replayable_without_a_second_sync(void)
+{
+    const iec104_alarm_ack_record_t ack = {.feeder = 6U, .phase = 2U,
+        .source = IEC104_ALARM_ACK_SOURCE_WEB, .user = IEC104_ALARM_ACK_USER_ADMIN,
+        .event = 105U, .boot = 123U, .uptime = 456789U, .event_crc = 0xABCDU,
+        .time = {.iv_bit = 1U}};
+    uint16_t seq;
+    TEST_ASSERT_TRUE(iec104_event_log_add_alarm_ack(&ack, &seq));
+    reboot_fixture();
+    iec104_event_record_t stored;
+    uint16_t restored_seq;
+    TEST_ASSERT_TRUE(iec104_event_log_read_newest_unsent(&stored, &restored_seq));
+    TEST_ASSERT_EQUAL_UINT16(seq, restored_seq);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_EVENT_TRIP_FAILURE_ACK, stored.kind);
+    TEST_ASSERT_EQUAL_MEMORY(&ack, &stored.payload.alarm_ack, sizeof(ack));
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
+}
+
+void test_operator_ack_invalid_identity_or_sync_failure_never_writes_a_record(void)
+{
+    iec104_alarm_ack_record_t ack = {.source = IEC104_ALARM_ACK_SOURCE_WEB,
+        .user = IEC104_ALARM_ACK_USER_ADMIN};
+    const uint32_t writes = program_calls;
+    uint16_t seq = 123U;
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm_ack(NULL, &seq));
+    ack.user = 0U;
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm_ack(&ack, &seq));
+    ack.user = IEC104_ALARM_ACK_USER_ADMIN;
+    ack.source = 0U;
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm_ack(&ack, &seq));
+    ack.source = IEC104_ALARM_ACK_SOURCE_WEB;
+    ack.phase = 3U;
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm_ack(&ack, &seq));
+    ack.phase = 0U;
+    ack.feeder = MAX_POWER_LINE_COUNT;
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm_ack(&ack, &seq));
+    ack.feeder = 0U;
+    sync_fails = true;
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm_ack(&ack, &seq));
+    TEST_ASSERT_EQUAL_UINT32(writes, program_calls);
+    TEST_ASSERT_EQUAL_UINT16(123U, seq);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+    sync_fails = false;
+    reboot_fixture();
+    iec104_event_record_t stored;
+    TEST_ASSERT_FALSE(iec104_event_log_read_newest_unsent(&stored, &seq));
+}
+
+void test_failed_operator_ack_flash_write_does_not_replay_a_phantom_ack_after_restart(void)
+{
+    const iec104_alarm_ack_record_t ack = {.source = IEC104_ALARM_ACK_SOURCE_WEB,
+        .user = IEC104_ALARM_ACK_USER_ADMIN};
+    uint16_t seq = 123U;
+    program_fails = true;
+    TEST_ASSERT_FALSE(iec104_event_log_add_alarm_ack(&ack, &seq));
+    TEST_ASSERT_EQUAL_UINT16(123U, seq);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+    program_fails = false;
+    reboot_fixture();
+    iec104_event_record_t stored;
+    TEST_ASSERT_FALSE(iec104_event_log_read_newest_unsent(&stored, &seq));
+    TEST_ASSERT_TRUE(iec104_event_log_add_alarm_ack(&ack, &seq));
+    reboot_fixture();
+    TEST_ASSERT_TRUE(iec104_event_log_read_newest_unsent(&stored, &seq));
+    TEST_ASSERT_EQUAL_UINT8(IEC104_EVENT_TRIP_FAILURE_ACK, stored.kind);
+}
+
 void test_newest_unsent_records_keep_payload_and_survive_reinitialization(void)
 {
     fault_log_t record = {0};

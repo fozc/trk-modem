@@ -2103,6 +2103,68 @@ static bool emit_alarm_record(const iec104_alarm_record_t *record)
     return iec104_send((const uint8_t *)&packet, length);
 }
 
+bool iec104_alarm_ack_range_available(void)
+{
+    if (iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(config.ioa_aku_uyarisi), 1U) ||
+        iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(config.ioa_modem_reset), 1U))
+    {
+        return false;
+    }
+    const uint32_t span = TEMPORARY_FAULT_COUNT * TEMPORARY_FAULT_FIELDS_PER_RECORD * PHASE_MAX;
+    for (uint32_t line_index = 0U; line_index < MAX_POWER_LINE_COUNT; line_index++)
+    {
+        const power_line_t *line = breaker_get_power_line_by_idx(line_index);
+        if (line == NULL)
+        {
+            continue;
+        }
+        const ioa_3byte_t *points[] = {line->iec104.anlik_akim, line->iec104.trip_failed,
+            line->iec104.enerji_varyok, line->iec104.yuk_akimi_varyok, line->iec104.rf_haberlesme_varyok};
+        for (size_t field = 0U; field < sizeof(points) / sizeof(points[0]); field++)
+        {
+            for (size_t phase = 0U; phase < PHASE_MAX; phase++)
+            {
+                if (iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(points[field][phase]), 1U))
+                {
+                    return false;
+                }
+            }
+        }
+        if (iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(line->iec104.temporary_fault) +
+                                           line_index * span, span) ||
+            iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(line->iec104.permanent_fault) +
+                                           line_index * span, span))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool emit_alarm_ack_record(const iec104_alarm_ack_record_t *record)
+{
+    if (!link_active || (k_counter >= config.k_max) || !iec104_alarm_ack_range_available())
+    {
+        return false;
+    }
+    if ((record->feeder >= MAX_POWER_LINE_COUNT) || (record->phase >= PHASE_MAX))
+    {
+        return false;
+    }
+    iec104_package_t packet = {0};
+    const size_t length = sizeof(apci_header_t) + sizeof(asdu_header_t) + sizeof(m_sp_tb_1_t);
+    packet.frame.apci.start_char = IEC104_START_BYTE;
+    packet.frame.apci.apdu_length = (uint8_t)(length - 2U);
+    packet.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+    packet.frame.asdu_header = make_asdu_header(M_SP_TB_1,
+        (cot_t){.cause = COT_SPONTANEOUS}, config.originator_address, config.common_address, 1U, 0U);
+    m_sp_tb_1_t *object = (m_sp_tb_1_t *)&packet.data[DATA_START_IDX];
+    object->ioa = iec104_make_ioa_3byte(IEC104_ALARM_ACK_IOA_FIRST + (uint32_t)record->feeder * 3U + record->phase);
+    object->siq = (siq_t){.spi = 1U, .invalid = record->time.iv_bit};
+    object->timestamp = record->time;
+    return iec104_send((const uint8_t *)&packet, length);
+}
+
 bool iec104_emit_event_record(const iec104_event_record_t *record)
 {
     if (NULL == record)
@@ -2115,6 +2177,8 @@ bool iec104_emit_event_record(const iec104_event_record_t *record)
             return iec104_emit_evtlog_record(&record->payload.fault);
         case IEC104_EVENT_TRIP_FAILURE:
             return emit_alarm_record(&record->payload.alarm);
+        case IEC104_EVENT_TRIP_FAILURE_ACK:
+            return emit_alarm_ack_record(&record->payload.alarm_ack);
         default:
             return true;
     }

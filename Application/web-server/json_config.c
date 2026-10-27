@@ -1008,6 +1008,12 @@ static bool add_iec_ioa_range(iec_ioa_range_t *ranges, size_t *count,
     }
 
     const uint32_t last = first + length - 1U;
+    if (iec104_alarm_ack_range_overlaps(first, length))
+    {
+        (void)xsnprintf(iec_address_error, sizeof(iec_address_error),
+                        "IOA overlaps reserved alarm acknowledgement range: %s", field);
+        return false;
+    }
     for (size_t i = 0U; i < *count; i++)
     {
         const uint32_t previous_last =

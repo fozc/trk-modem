@@ -10,8 +10,10 @@
 
 #include "rf_monitor_json.h"
 #include "rf.h"
+#include "rf_events.h"
 #include "rf_config.h"
 #include "rf_faults.h"
+#include "rf_inventory.h"
 #include "web_json.h"
 #include <math.h>
 #include <string.h>
@@ -139,6 +141,25 @@ static void emit_phase(json_writer_t *writer, size_t line, size_t phase,
     emit_bool(writer, "TripFailedAlarm", data.trip_failed);
     emit_bool(writer, "TripFailureLatched", data.trip_failure_latched);
     emit_bool(writer, "UptimeStalled", data.uptime_stalled);
+    if (detailed && data.trip_failed)
+    {
+        rf_alarm_event_t event;
+        emit_u32(writer, "AlarmRevision", data.alarm_revision);
+        (void)json_write_key(writer, web_json_span("AlarmEvent"));
+        if (rf_get_alarm_event(data.source, &event))
+        {
+            (void)json_write_object_begin(writer);
+            emit_u32(writer, "Code", event.event);
+            emit_u32(writer, "Boot", event.boot);
+            emit_u32(writer, "Uptime", event.uptime);
+            emit_u32(writer, "CRC", event.crc);
+            (void)json_write_object_end(writer);
+        }
+        else
+        {
+            (void)json_write_null(writer);
+        }
+    }
     if (data.has_live)
     {
         emit_u32(writer, "LiveAgeMs", now_ms - data.last_live_ms);
@@ -189,9 +210,33 @@ static void emit_service_status(json_writer_t *writer)
                     (uint32_t)((unsigned)status.source_mismatches));
     emit_u32(writer, "StoreResetReason", status.store_reset_reason);
     emit_u32(writer, "CounterStatus", status.counter_status);
+    emit_bool(writer, "EventStoreDegraded", rf_events_storage_degraded());
     emit_u32(writer, "EpochFeeder", status.epoch_feeder);
     emit_u32(writer, "EpochPhases", status.epoch_phases);
     emit_u32(writer, "EpochDurationMs", status.epoch_duration_ms);
+    (void)json_write_key(writer, web_json_span("Epoch"));
+    (void)json_write_array_begin(writer);
+    for (uint8_t feeder = 1U; feeder <= 4U; feeder++)
+    {
+        rf_epoch_status_t epoch;
+        if (!rf_inventory_get_epoch_status(feeder, &epoch) || (epoch.expected_phases == 0U))
+        {
+            continue;
+        }
+        (void)json_write_object_begin(writer);
+        emit_u32(writer, "Feeder", feeder);
+        emit_bool(writer, "Active", epoch.active);
+        emit_bool(writer, "HasReport", epoch.has_report);
+        emit_bool(writer, "RetryUsed", epoch.retry_used);
+        emit_bool(writer, "Uncertain", epoch.uncertain);
+        emit_u32(writer, "Expected", epoch.expected_phases);
+        emit_u32(writer, "ReportPhases", epoch.report_phases);
+        emit_u32(writer, "Received120", epoch.received_phases);
+        emit_u32(writer, "Checked", epoch.checked_phases);
+        emit_u32(writer, "Missing120", epoch.missing_phases);
+        (void)json_write_object_end(writer);
+    }
+    (void)json_write_array_end(writer);
     (void)json_write_object_end(writer);
 }
 

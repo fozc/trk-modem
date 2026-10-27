@@ -329,6 +329,12 @@ static void route_and_handle_request(http_request_t *request)
             return;
         }
 
+        if (strcmp(request->path, "/alarm/rf/ack") == 0)
+        {
+            handle_post_rf_alarm_ack(request->body);
+            return;
+        }
+
         if (strcmp(request->path, "/config/rf") == 0) {
         	handle_post_rf_config_json(request->body);
             return;

@@ -2065,6 +2065,45 @@ void test_group_one_emits_only_phase_currents_without_fault_summary(void)
     TEST_ASSERT_EQUAL_UINT8(3U, objects);
 }
 
+void test_operator_ack_event_uses_reserved_ioa_timestamp_and_window_limits(void)
+{
+    setup(1U, 1U);
+    iec104_event_record_t record = {.kind = IEC104_EVENT_TRIP_FAILURE_ACK,
+        .payload.alarm_ack = {.feeder = 6U, .phase = PHASE_L3}};
+    record.payload.alarm_ack.time = cp56time2a_make(12345U, 0U, 12U, 7U, 3U, 10U, 26U);
+    TEST_ASSERT_FALSE(iec104_emit_event_record(&record));
+    start_link();
+    TEST_ASSERT_TRUE(iec104_alarm_ack_range_available());
+    TEST_ASSERT_TRUE(iec104_emit_event_record(&record));
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, tx_log[0][6]);
+    TEST_ASSERT_EQUAL_UINT8(COT_SPONTANEOUS, tx_log[0][8] & 0x3FU);
+    const m_sp_tb_1_t *object = (const m_sp_tb_1_t *)&tx_log[0][DATA_START_IDX];
+    TEST_ASSERT_EQUAL_UINT32(300020U, iec104_ioa_3byte_to_uint32(object->ioa));
+    TEST_ASSERT_EQUAL_UINT8(1U, object->siq.spi);
+    TEST_ASSERT_EQUAL_MEMORY(&record.payload.alarm_ack.time, &object->timestamp, sizeof(object->timestamp));
+    TEST_ASSERT_FALSE(iec104_emit_event_record(&record));
+    feed_s_frame(iec104_get_send_sn());
+    transport_budget = 0;
+    TEST_ASSERT_FALSE(iec104_emit_event_record(&record));
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_k());
+}
+
+void test_operator_ack_collision_checks_inactive_points_and_fault_ranges(void)
+{
+    setup(12U, 8U);
+    iec104_line_config_t line = {0};
+    line.trip_failed[PHASE_L2] = iec104_make_ioa_3byte(300023U);
+    TEST_ASSERT_TRUE(iec104_set_line_config(0U, &line));
+    TEST_ASSERT_FALSE(iec104_alarm_ack_range_available());
+    line.trip_failed[PHASE_L2] = iec104_make_ioa_3byte(300024U);
+    TEST_ASSERT_TRUE(iec104_set_line_config(0U, &line));
+    TEST_ASSERT_TRUE(iec104_alarm_ack_range_available());
+    line.temporary_fault = iec104_make_ioa_3byte(299999U);
+    TEST_ASSERT_TRUE(iec104_set_line_config(0U, &line));
+    TEST_ASSERT_FALSE(iec104_alarm_ack_range_available());
+}
+
 void test_alarm_event_uses_configured_ioa_value_quality_and_original_time(void)
 {
     setup(2U, 2U);
