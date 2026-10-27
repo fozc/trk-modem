@@ -38,7 +38,7 @@ assert metadata["PhaseOffset"] == 4 and metadata["PhaseStride"] == 24
 assert metadata["FeederCount"] == 4 and metadata["FaultRecords"] == 15
 for group, base, count in [("Phase", 0, 24), ("Record", 0, 8),
                             ("System", 49000, 17), ("Power", 49200, 38),
-                            ("Bms", 49300, 79), ("Gsm", 49400, 9)]:
+                            ("Bms", 49300, 79), ("Gsm", 49400, 10)]:
     occupied = set()
     for name, address, width, kind, unit in metadata[group]:
         assert isinstance(name, str) and isinstance(unit, str)
@@ -49,6 +49,7 @@ for group, base, count in [("Phase", 0, 24), ("Record", 0, 8),
         assert not occupied.intersection(registers), (group, name)
         occupied.update(registers)
     assert occupied == set(range(base, base + count)), group
+assert ["sim_state", 49409, 1, "UINT16", ""] in metadata["Gsm"]
 assert metadata["Control"][-2:] == [
     ["relay1", 50002, 1, "UINT16", "0/1"],
     ["relay2", 50003, 1, "UINT16", "0/1"],

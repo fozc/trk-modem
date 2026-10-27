@@ -95,6 +95,14 @@ async function checkPage(html, label) {
     }
     for (const language of ['tr', 'en']) {
         run(`LNG = '${language}';`);
+        const replacementGuide = run('renderRf({})');
+        for (const text of language === 'tr'
+            ? ['aynı ziyarette', 'state=1', 'fault count=0', 'Boot_Counter', 'Kaydet bu AY resetlerini yapmaz']
+            : ['same visit', 'state=1', 'fault count=0', 'Boot_Counter', 'Save does not perform']) {
+            assert.ok(replacementGuide.includes(text), text);
+        }
+        assert.ok(replacementGuide.includes(language === 'tr'
+            ? 'bölgeyi değiştirmeyin' : 'do not change the zone'));
         const registerMap = {
             AddressBase:40000,FeederBase:40000,FeederStride:1000,
             FeederCount:4,FeederQualityOffset:0,
@@ -288,6 +296,25 @@ async function checkPage(html, label) {
           assert.ok(powerRows.includes(language === 'tr'
               ? '4 etkin — 0x00089001' : '4 active — 0x00089001'));
           assert.ok(powerRows.includes('>3 s<'));
+          const life = run(`renderBoard({PowerValidFields:1,TelemetriYasi:0,
+              BatteryEquivalentCycles:0,BatteryRemainingCycles:2500,BatteryRemainingYearsX10:120})`);
+          assert.ok(life.includes('>0<'));
+          assert.ok(life.includes('>2500<'));
+          assert.ok(life.includes(language === 'tr' ? '>12.0 yıl<' : '>12.0 years<'));
+          const unknownLife = run(`renderBoard({PowerValidFields:1,TelemetriYasi:0,
+              BatteryEquivalentCycles:65535,BatteryRemainingCycles:65535,BatteryRemainingYearsX10:120})`);
+          assert.ok(!unknownLife.includes('65535'));
+          assert.ok(unknownLife.includes(language === 'tr' ? '>12.0 yıl<' : '>12.0 years<'));
+          const expiredLife = run(`renderBoard({PowerValidFields:1,TelemetriYasi:0,
+              BatteryEquivalentCycles:65534,BatteryRemainingCycles:0,BatteryRemainingYearsX10:0})`);
+          assert.ok(expiredLife.includes('>65534<'));
+          assert.ok(expiredLife.includes(language === 'tr' ? '0,1 yıldan az' : 'Less than 0.1 year'));
+          const staleLife = run(`renderBoard({PowerValidFields:1,TelemetriYasi:31,
+              BatteryEquivalentCycles:9,BatteryRemainingCycles:2491,BatteryRemainingYearsX10:119})`);
+          assert.ok(staleLife.includes('vstale'));
+          const invalidLife = run(`renderBoardRow({PowerValidFields:0,BatteryRemainingCycles:2491},
+              ['BatteryRemainingCycles','cycles',''],{stale:false})`);
+          assert.ok(invalidLife.includes('vinv'));
           const powerNulls = run(`renderBoard({DcVoltaji:null,
               GirisAkimi:null,GirisGucu:null,AkuGucu:null,Kaynak:null,
               TelemetriYasi:null,AlarmMaskesi:null,KartDurum:null,
