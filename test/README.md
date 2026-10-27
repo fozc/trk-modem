@@ -1,7 +1,293 @@
 # Test Altyapısı
 
-**Sürüm:** 1.80
-**Tarih:** 2026-10-26
+**Sürüm:** 1.88
+**Tarih:** 2026-10-27
+
+## SCP R2.3 gerçek akış ve reset regresyonları
+
+**Amaç:** R2.3 tesliminin sekiz CSV dosyasındaki 1.161 frame (çerçeve) ile üretim SCP parser,
+payload decoder, yapılandırma sonucu, güç kartı iptali ve arıza toplamı davranışını sınamak.
+
+**Kullanım yeri:** Depo kökünde fixture (test verisi) güncelliği, `test/` içinde Ceedling çalıştırılmalıdır:
+
+```text
+python test/scripts/generate_rf_scp_vectors.py --r23 --check
+ruby -S ceedling "test:pattern[(rf|scp|power_board|bsp_rf_reset)]"
+ruby -S ceedling test:all
+```
+
+Kaynak teslim güncellendiğinde `--r23` ile, `--check` olmadan fixture üretilmelidir.
+R1 fixture ve testleri korunmalıdır. Beklenen mantıksal/hat baytları CSV'den alınmaktadır;
+üretim codec'inden beklenen çıktı üretilmemektedir. Sıra `sira` sütunudur; kayıt zamanındaki
+1 ms geri gidiş akış sırasını değiştirmemelidir. Kaynak SHA-256 değerleri header'da tutulmaktadır.
+
+| Test | Doğrulanan davranış |
+|---|---|
+| `scp/test_scp_r23_capture.c` | Bütün frame'lerin çözülmesi, birebir yeniden kodlanması, UART parçalanması, CRC reddi ve timeout sonrası toparlanma |
+| `rf/test_rf_r23_capture.c` | Gelen bütün payload/kayıtların çözülmesi; gerçek açma ve iki ayrı geçici arızanın fider toplamları |
+| `rf/test_rf_group.c` | Gerçek STAGED → FAILED/sebep 5 ve envanter dışı ret; geç sorguların sonucu APPLIED yapmaması |
+| `rf/test_rf_error_retry_scenario.c` | `0x28 [0]`, R2.3 kimliğiyle BOOT olmadan başlangıç; ek EPOCH hakkının BUSY ile tüketilmemesi; reset guards ve 100 ms/tick wrap |
+| `power_board/test_power_board_control.c` | Gerçek b4 → b6/b1 → b1 → b2 iptal dizisi; servis b5 sonucu, restart ve aküden kalan bitlerin ayrımı |
+| `bsp/test_bsp_rf_reset.c` | Düşük çıkış değerinin ve open-drain kipinin çıkış etkinleşmeden hazırlanması; bırakırken giriş/yüksek empedans |
+
+**Kapsam sınırı:** Host testleri fiziksel reset darbesini veya RF aktarım süresini ölçmemektedir.
+100 ms reset değeri 26.10.2026 kullanıcı talimatıdır; süre mevcut process poll çevrimine yuvarlanır.
+`rf reset`, köprü/aktif SCP/aktif envanter/aktif grup veya uygulama işlemi varken reddedilir.
+Reset, eski oturumun hazır bilgisini geçersiz kılar; yeniden kurulum mevcut BOOT/TIME_SYNC/olay deposu
+koruması/envanter yoludur. Reset bırakıldıktan sonra BOOT gelmezse mevcut 10 saniyelik
+GET_STATUS periyodu kullanılır. Otomatik reset/retry katmanı eklenmemiştir.
+
+06/07 golden dosyalarında üçüncü fazın LIVE durumu 0'dır. R2.3 §4.8 her üç fazda durum 1
+istediğinden test bu kayıtlardan kesin kapanış üretmemelidir. Belge/akış netleştirmesi mevcut
+`doc/BOLATEXE_SORULACAKLAR.md` BQ-28 kaydında takip edilmektedir. R2.3 b5 sonuç dalı, güç kartı
+restart ve birden çok 144 için gerçek kayıt teslim edilmemiştir; ilgili testler belgeye dayalıdır.
+Teslimin üçüncü kişilere paylaşmama koşulu fixture için de korunmalıdır.
+
+## R2.3 müşteri ayarları, EPOCH takibi ve taşıma sınırı
+
+**Amaç:** Ana SCP belgesi §5.4, §4.3 ve §1.2 koşullarını mevcut üretim girişlerinde doğrulamak.
+
+**Kullanım yeri:** `test/` içinde aşağıdaki merkezi Ceedling komutu çalıştırılmalıdır:
+
+```text
+ruby -S ceedling "test:pattern[(power_board_control|rf_error_retry_scenario|rf_group|rf_events)]"
+```
+
+Powerboard periyot yazımında GET bayt 14 `0xFF` ise b7 sıfırlanmalıdır; diğer değerlerde b7 korunmalıdır.
+Güncel özette kapasite 7, ayar kaynağı 0 ve doğrulama 3 ise `battery-replaced` reddedilmelidir.
+Geçerli 7 Ah akü bu birleşimden ayrı sınanmalıdır. İptal komutu engellenmemelidir.
+
+EPOCH takibi `rf status` ve faz izleme ekranında görülmelidir. Alınan 120 kayıtları tanı bilgisidir;
+gecikmiş kayıtlar ortak kampanya kimliği taşımadığından APPLIED kanıtı olarak kullanılmamalıdır.
+201 faz maskesi ile 120 maskesi ayrı gösterilmelidir.
+
+120 yokluğu için 201 alımından 90 saniye, 201 yoksa EPOCH ACK'inden 180 saniye beklenmelidir.
+Bundan sonra ilgili fazdan pending=0 LIVE ve daha sonra başlatılmış HEAD ile boş halka gözlenmelidir.
+HEAD beklenirken pending artarsa o HEAD'in faz kanıtı bırakılmalıdır. Hiç LIVE gelmeyen fazın 120'si
+"gelmedi" sayılmamalıdır; kontrol edilmemiş faz olarak tutulmalıdır.
+
+Eksik 120 ile ilk yapılandırmanın TIMEOUT'u aynı tek ek EPOCH hakkını kullanmalıdır.
+BUSY bu hakkı tüketmemelidir. Ek istek ACK alınca hak tüketilmelidir; ACK alınamaması veya kalıcı ret
+sonrasında yeni HEAD/144 gözlemleri otomatik yenilemeyi yeniden başlatmamalıdır.
+AY yeniden başlaması, pending=99, MH olay deposu sıfırlaması veya kimlik değişmesi takibi belirsiz
+bırakmalıdır. APPLIED, bekleyen tanı yenilemesini durdurmalıdır. Bu takip RAM'dedir; yeni kalıcı alan yoktur.
+
+Normal web Kaydet akışında bilinen bir EUI'nin bölge/fider/faz konumu değiştirilmemelidir.
+Bu istek storage (kalıcı kayıt) ve RF işlemi başlamadan HTTP 409 ile reddedilmelidir;
+eski ayar, envanter ve alarm korunmalıdır. Aynı konuma farklı kart takılması ve kartın kaldırılması
+bu engelden ayrı sınanmalıdır. Silip yeniden ekleme, atanmış kartı taşıma yöntemi olarak kullanılmamalıdır.
+Atanmış kart taşınacaksa üreticinin R2.3 §1.2 servis sırası uygulanmalıdır; farklı fidere taşımanın
+üretici sırası henüz verilmemiştir. Bu değişiklik faz taşıma otomasyonu sağlamamaktadır.
+
+Gerçek HTTP handler engeli mevcut `test/integration/web_auth/run_tests.py` ile,
+web kaynak üretimi `test/integration/web_navigation/test_minifier.py` ile sınanmalıdır.
+Host testleri fiziksel RF yenilemesini, açmayı veya reset darbesini ölçmemektedir.
+
+## R2.3 açma başarısızlığı alarmı ve olay kaydı
+
+**Amaç:** SCP 101/105 olayları ve LIVE alarm bilgisinin kalıcı kayıt, IEC104 ve
+Modbus yollarında korunmasını doğrulamak.
+
+**Kullanım yeri:** `test/` içinde aşağıdaki Ceedling komutu çalıştırılmalıdır:
+
+```text
+ruby -S ceedling "test:pattern[(rf_events|rf_alarm_log|elog_uart_recovery|iec104_rf_live|modbus_map|iec104_protocol_scenario)]"
+```
+
+Mevcut `trip_failed` alanları kullanılmalıdır. İlk mantıksal fider satırının
+fabrika IEC104 IOA değerleri L1/L2/L3 için 1070/1071/1072'dir; sonraki satırlar
+100 artar. Cihazdaki yapılandırılmış IOA değerleri esas alınmalıdır. Bildirim
+`M_SP_TB_1`, `COT_SPONTANEOUS` ve olayın zaman bilgisiyle gönderilmelidir.
+Bağlantı yokken mevcut kalıcı IEC104 kuyruğu ve replay (yeniden gönderim) yolu kullanılmalıdır.
+
+Modbus ilk fider satırının mantıksal holding adresleri 40018/40042/40066'dır;
+sonraki satırlar 1000 artar. FC03 sorgusu alarm durumunu döndürmelidir;
+Modbus kendiliğinden bildirim göndermez. LIVE örneği yokken kayıtla açılan
+alarm da okunabilmelidir.
+
+ELOG kodu 61 (`RF_TRIP_FAILURE`) fiziksel RF fideri, fazı ve active/cleared
+durumunu RTU kayıt zamanı ile saklamalıdır. Aynı aktif alarmın yinelenen kaydı
+ikinci bir durum değişimi üretmemelidir. IEC104 günlüğünün sync (kalıcılaştırma)
+işlemi başarısızken başarılı durum bildirimi veya ELOG durum değişimi üretilmemelidir.
+
+Kalıcı kayıt alınması operatör onayı sayılmamalıdır ve alarm mandalını
+temizlememelidir. Aynı AY açılışında LIVE 1→0 kapanışı korunmalıdır.
+IEC104 bildirimi veya çevrimdışı kalıcı kayıt ile otomatik onay önerisi
+`doc/BOLATEXE_SORULACAKLAR.md` BQ-16 ek sorusunda üretici yanıtını beklemektedir.
+Host testleri fiziksel açma başarısızlığı oluşturulduğunu kanıtlamamaktadır.
+
+## Manuel yönetici alarm onayı
+
+**Amaç:** Kullanıcının onayladığı R2.3 §4.5 operatör onayını web, kalıcı kayıt ve IEC104 üzerinden sınamak.
+
+**Kullanım yeri:** `test/` içinde aşağıdaki merkezi Ceedling komutu çalıştırılmalıdır:
+
+```text
+ruby -S ceedling "test:pattern[(rf_events|rf_error_retry_scenario|iec104_event_log|iec104_protocol_scenario|iec104_ack_delivery_scenario|http_rf_group_routes|json_config_bounds|elog_uart_recovery)]"
+```
+
+Web ekranı ve gerçek HTTP handler kontrolleri depo kökünden çalıştırılmalıdır:
+
+```text
+python test/integration/web_auth/run_tests.py
+python test/integration/web_navigation/test_minifier.py
+```
+
+Yönetici, RF izleme ekranında fideri okumalı ve ilgili fazın **Onayla** düğmesini kullanmalıdır.
+İlk teyitte EUI, ilgili 101/105 kaydı, boot/uptime, son LIVE alarm biti ve veri yaşı gösterilmelidir.
+Güncel LIVE yoksa ikinci teyit istenmelidir. POST `/alarm/rf/ack` yalnız yöneticiye açık olmalıdır;
+eski EUI/revision ile yapılan işlem reddedilmelidir. Kayıt hatasında alarm mandalı korunmalıdır.
+Son LIVE alarm biti 1 ise çevrimdışıyken de "onaylandı, alarm sürüyor" durumu korunmalıdır.
+
+Onay bildirimi `M_SP_TB_1` ile `300000 + 3 × mantıksal_satır + faz` IOA adresine gönderilmelidir;
+satır ve faz sıfır tabanlıdır. 300021–300023 ayrılmış kalmalıdır. 300000–300023 aralığıyla çakışan
+normal IEC104 ayarı reddedilmelidir. Onay kaydı 20 bayt yük ve mevcut 25 bayt günlük kaydına sığmalıdır;
+NVRAM yerleşimi değişmemelidir. Yeniden başlatma sonrası replay, gerçek APCI ACK gelmeden kaydı
+tüketmemelidir. ELOG 62 kullanıcı/kaynak, ilgili olay ve devam etme durumunu göstermelidir.
+
+Uzun LIVE boşluğunda uptime aynı kalırsa yeniden başlama çıkarımı, ölçümleri geçerli yapmamalıdır.
+Host testi fiziksel arızayı, Flash güç kesintisi ölçümünü veya gerçek SCADA kabulünü kanıtlamamaktadır.
+
+## R1 ve R2 karışık olay kayıtları
+
+**Amaç:** SCP R2.3 §4.7–4.8'in R1 kaynak özeti sıfır kayıtlar için verdiği kuralı mevcut olay zincirinde sınamak.
+
+**Kullanım yeri:** `test/` içinde `ceedling "test:pattern[(rf_faults|rf_events|rf_r23_capture|rf_error_retry_scenario)]"`.
+
+R1 `6 → 3` ve sıfır kapanış sayacı, önceki 100/101/117, kesici açmadan geçen arıza,
+ara adım olan sayaçlı 3, yeniden başlama ve kopya kayıt ayrı sınanmalıdır. R2 özetli kayıtta 3,
+geçici arıza yerine kullanılmamalıdır. Gerçek RANGE yanıtı üretim decoder üzerinden ham günlük,
+faz listesi ve replay kuyruğuna geçmeli; sonra taze HEAD doğrulamasıyla tüketilmelidir.
+
+R1 kayıtları hash ile doğrulanmış gibi gösterilmemelidir. Atanmış kayıt mevcut kabul edilmiş
+bölge/fider/faz eşlemesini kullanır; bu yolun ön koşulu mevcut envanterin taşıma/değişim öncesi
+boşaltılmasıdır. Line_ID=0 olan 117, bilinmeyen fider kovasında kalmalı; güncel fidere bağlanmamalıdır.
+144/EPOCH bakım gözleminde R2 kaynak hash doğrulaması korunmalıdır. Ham kaynak kaydı değiştirilmemelidir.
+
+## Aynı fiderde servis taşıması ve kalıcı işaret
+
+**Amaç:** R2.3 §1.2 sırasını, kullanıcı onaylı servis işaretiyle yürütmek ve yarım işlemin hazır görünmesini engellemek.
+
+**Kullanım yeri:** Yönetici terminali ve merkezi `rf_error_retry_scenario` / `rf_group` Ceedling paketleri.
+Gerçek NVRAM ve RF store birlikteliği `test/integration/nvram` paketinde sınanır.
+
+Örnek komutlar:
+
+```text
+su admin
+rf move 1 1 3 confirm-unused
+rf move status
+```
+
+İlk sayı RTU'nun 1–7 arasındaki fider satırıdır; diğer sayılar eski ve yeni fazdır (1–3).
+Fiziksel RF fideri satırın mevcut ayarından alınır; bu komut farklı fidere veya bölgeye taşımaz.
+`confirm-unused`, boş hedefin geçmişte hiç kullanılmadığına ilişkin operatör beyanıdır;
+bu geçmiş yazılımda otomatik doğrulanmış sayılmamalıdır. Konum takası ve dolu hedef reddedilmelidir.
+
+Normal Kaydet engeli korunmalıdır. Servis sırası şu adımları izlemelidir:
+
+1. Eski AY çevrimiçiyse pending=0 LIVE beklenmeli; sonra mevcut MH boşaltma ve taze HEAD yolu tamamlanmalıdır.
+2. Yeni eşleme ve servis işareti birlikte, mevcut NVRAM kopyalarına doğrulanarak yazılmalıdır.
+3. Yeni konuma `0x06` gönderilmeli, ACK sonrası aynı fiziksel fidere `0x2A` gönderilmelidir.
+4. Fiderin 201'i ve yeni konumdan doğrulanmış 120 beklenmelidir. Mevcut tek ek EPOCH bütçesi kullanılmalıdır.
+   201 faz maskesi ve 120 birebir eşit olmak zorunda sayılmamalıdır.
+5. RF_RESET ile MH yeniden başlatılmalı; olağan saat/olay koruma/envanter sırası tamamlanmalıdır.
+6. Yeni kaynaktan güncel LIVE, envanter eşleşmesi ve son EPOCH ACK'inden en az 90 saniye doğrulanmalıdır.
+   Ancak bundan sonra servis işareti kalıcı temizlenmelidir.
+
+İşaret, mevcut `rf_inventory_journal_t.reserved` alanının iki baytını kullanır; şema 1, günlük boyutu
+148 bayt, alan ofseti 146 ve NVRAM boyutu 1976 bayt kalmalıdır. Normal envanter tamamlanması işareti
+silmemelidir. İşaret varken normal Kaydet ve yapılandırma engellenmelidir. Bilinmeyen sıfır dışı işaret
+güvenli biçimde engel bırakmalıdır. FRAM degraded iken eski kayıtlar doğrulanamayacağından taşıma başlamamalıdır.
+
+Son işaret yazımı başarısızsa `rf move finish`, aynı RTU oturumundaki kanıtları yeniden kontrol ederek
+kalıcı yazmayı tekrar deneyebilir. Bu komut kör temizleme değildir. RTU yeniden başlarsa RAM kanıtı kaybolur;
+işaret korunmalı, durum `interrupted` ve bakım gereği olarak gösterilmelidir. Otomatik EPOCH veya otomatik
+devam yapılmamalıdır; `finish` bu durumda reddedilmelidir. Kesilmiş işlemin elle kurtarılması ayrı bakım
+işidir; işaretin elle silinmesi kabul kanıtı sayılmamalıdır.
+
+**Kapsam sınırı:** Host testleri fiziksel RF taşınmasını veya reset darbesini ölçmez. Bu turda cihazda gerçek
+konum değişimi yapılmamıştır. Envanter değişimi kart değişimiyse üç faz birlikte açma kipindeki diğer AY'lerin
+aynı ziyarette, LIVE state=1/count=0 iken servis konsolundan reboot edilmesi ve Boot_Counter değişiminin
+izlenmesi üreticinin §1.2 talimatıdır; RTU bu AY resetlerini otomatik yapmış gibi gösterilmemelidir.
+
+## Ek rapordan doğrulanan hata yolları
+
+**Amaç:** Degraded açılış, RF bakım uyarısı ve Powerboard tekilleştirme düzeltmelerinin tekrarını önlemek.
+
+**Kullanım yeri:** `rf_events`, `rf_error_retry_scenario`, `power_board_scp` ve `rf_group` Ceedling testleri.
+
+Degraded olay deposunda ilk envanter yüklenmelidir; olay koruması başarılı yapılmış gibi gösterilmemelidir.
+Eski kayıtlara erişim ve servis boşaltması durmuş kalmalıdır. Web/terminal bu ayrımı açık göstermelidir.
+143 bakım bilgisi düğüm bazında tutulmalıdır; başka düğümün bilgi kaydı uyarıyı kapatmamalıdır.
+Kart değişiminde eski kartın uyarısı yeni karta aktarılmamalıdır. Bilinmeyen alt kod bilinen uyarıyı silmemelidir.
+
+Aynı SON_NEFES oturumunda neden güncellenmeli, neden değişimi tek başına ikinci kesinti ELOG kaydı üretmemelidir.
+Alarm maskesinde gerçek değişim varsa mevcut alarm kenarı kaydı korunmalıdır. TELEMETRI_YOK'un ikinci başladı
+çerçevesi (deger0=2), maske değişmese de yüksek seviyede kaydedilmelidir. CFG FAILED sebep 1/9, gecikmiş
+ilerleme bildirimiyle APPLIED hâline gelmemelidir.
+
+## R2.3 açılış grup sorgusu ve olay açıklamaları
+
+**Amaç:** RTU tek başına yeniden başladığında §1.11/§4.9 son grup sorgusunu otomatik yürütmek.
+
+**Kullanım yeri:** `rf_group`, `rf_events`, `rf_scp_codec`, `rf_error_retry_scenario` Ceedling testleri.
+
+İlk saat/olay koruma/envanter sırasından sonra 0x28[0] gönderilmelidir. Bu okuma envanteri engellememelidir.
+Aktif MH grubu gözlenirse yeni yapılandırma başlamamalıdır. Yanıt fider/EUI taşımaz; bilinmeyen bir fidere
+APPLIED sonucu bağlanmamalıdır. Terminal grup bilinmediğini açık göstermelidir. Timeout otomatik WRITE,
+COMMIT veya yeni sınırsız sorgu döngüsü başlatmamalıdır; açık terminal sorgusuyla tekrar okunabilir.
+Yeni bir kalıcı kurtarma modeli eklenmemelidir. MH restart'ta bilinen yerel COMMIT için reason8 yolu korunmalıdır.
+
+Olay STORE konsol satırı SCP tablosunun bilinen olay adını göstermelidir. 139 varsayılan ayar/sayaç alt nedeni,
+140 reddedilen komut ve bilinmeyen olay ayrılmalıdır. Ham kayıt değişmemelidir. 139/140 arıza sayılmamalıdır;
+140 deneme sayacı değildir. R2.3 sonrası firmware geri sürümü BOLATeX servis onayı olmadan yapılmamalıdır.
+RF kilidi, koruma işlevinin devre dışı olduğu şeklinde yorumlanmamalıdır. 143 alt kod4–6 için mevcut bakım
+ELOG/uyarı ve ERROR02 yönlendirmesi kullanılmalıdır; otomatik ağ anahtarı yenileme yapılmamalıdır.
+
+## Powerboard E1 akü ömrü alanları
+
+**Amaç:** SCP R2.3 §5.2 ofset 39/41/43 alanlarını mevcut decoder → snapshot → system status → JSON/web
+ve terminal yolundan göstermek.
+
+**Kullanım yeri:** `rf_scp_codec`, `power_board_scp`, `system_status` Ceedling testleri ve `web_navigation` paketi.
+
+`equivalent_cycles`, `remaining_cycles` ve `remaining_years_x10` unsigned 16 bit little-endian olarak
+okunmalıdır. Tam 45 baytlık bölüm yoksa üç alan UINT16_MAX olmalıdır; 39 baytlık eski mesaj yeni bir
+snapshot oluştururken önceki ömür değerlerini taşımamalıdır. 45 bayttan sonraki bilinmeyen ekler mevcut
+alanları değiştirmemelidir. Her alanın 0xFFFF değeri bağımsız bilinmiyor durumudur; geçerli sıfır kaybolmamalıdır.
+Kalan takvim ömrü, çevrim değerleri bilinmezken de geçerli olabilir. Takvim ömrü 0, web'de 0,1 yıldan az
+olarak gösterilmelidir. 120 değeri 12,0 yıldır; terminal ham 0,1 yıl birimini açık belirtmelidir.
+
+JSON alanları `BatteryEquivalentCycles`, `BatteryRemainingCycles`, `BatteryRemainingYearsX10` olarak
+ham uint16 değerlerini taşır. Mevcut PowerValidFields/TelemetriYasi kalite yolu korunmalıdır. Geçersiz/eski
+özet geçerli güncel ömür olarak gösterilmemelidir. NVRAM ve 104/Modbus haritası değişmemelidir.
+
+## RF COMMIT denetim izi ve bakım ELOG kaydı
+
+**Amaç:** R2.3 §4.9 grup bilgisini kalıcı saklamak ve RF bakım olaylarını mevcut ELOG üzerinden görünür kılmak.
+
+**Kullanım yeri:** `rf_group`, `rf_events` ve `elog_uart_recovery` Ceedling paketleri; cihazda `elog dump`.
+
+COMMIT gönderiminden hemen önce `RF_CFG_COMMIT` (kod 64) yazılmalı ve mevcut Flash log okuma yolu ile
+birebir geri okunmalıdır. Kayıt, RTU satırı, fiziksel fider, group_id, cfg_crc ve saat geçerliliğini taşır.
+Saat geçersizse zaman 0 ve clock=unknown olmalıdır. Başlatılmamış ELOG, yazma hatası, eksik/bozuk geri okuma
+ve aynı içerikli eski kaydın dönmesi COMMIT'i durdurmalıdır. Grup UNCERTAIN kalmalı; otomatik COMMIT tekrarı
+başlamamalıdır. Mevcut ABORT ve açık operatör işlemleri kullanılmalıdır.
+
+Bu kayıt gönderim öncesi niyettir; ACK veya APPLIED kanıtı sayılmamalıdır. İstek alt katmanda kabul edilmezse
+kayıt mevcut olabilir. Sonuç ve uygulanan ayar kanıtı yine SCP durum raporundan alınmalıdır. RTU restart'ından
+sonra RAM'deki APPLIED bilgisi korunmuş gibi gösterilmemelidir. 122 kayıtları ham arşivde korunur; §4.9'daki
+isteğe bağlı zaman/uptime ile 122 eşlemesi uygulanmış gibi sunulmamalıdır.
+
+`RF_MAINTENANCE` (kod 63), MH/AY 143 alt kod 4–6 ve FRAM degraded durumunda mevcut ELOG'a yazılır.
+MH/AY ayrımı, fiziksel fider/faz, alt kod ve kaynak hash'i saklanmalıdır. AY kaydı doğrulanmış kaynağa
+bağlanmalıdır; ham olay saklanamazsa türetilmiş bakım kaydı üretilmemelidir. Bakım kaydı koruma akışını
+engellemez. Bu kayıtlar kesinti sayacı değildir; aynı ham kaydın yeniden işlenmesi bakım kaydını yineleyebilir.
+
+Mevcut sonlu ELOG halkası ve saklama süresi korunur; yeni sektör, kuyruk veya NVRAM alanı eklenmez.
+Flash read API'si hata kodu döndürmez; geri okuma CRC ve tam içerik karşılaştırmasıyla doğrulanır.
+Host testleri fiziksel SPI hata algılama kapsamını genişletmiş sayılmamalıdır.
 
 ## Mevcut IEC104 protokol regresyonları
 
@@ -1664,6 +1950,9 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-27 | 1.88 | Açılış 0x28[0], kimliği bilinmeyen grup, olay tablosu açıklamaları ve tam alan ofset vektörleri. |
+| 2026-10-27 | 1.87 | E1 akü ömrü decoder/cache/JSON/web/terminal; eski mesaj, bilinmiyor, geçerli sıfır ve kalite regresyonları. |
+| 2026-10-27 | 1.86 | R2.3 servis taşıması/kalıcı işaret, COMMIT izi/geri okuma engeli, bakım ELOG; 2023 Ceedling, 561 NVRAM kontrolü ve gerçek MH/137 aktarım kabulü. E1 ömür alanları ayrıca açık tutuldu. |
 | 2026-10-12 | 1.49 | R2 sınır regresyonları: 85 yeni Unity testi (1212→1297; son ekleme: çoklu alarm batch/hata/restart pencereleri), ölü dal yönlerinin savunma/artefakt/gürültü sınıflandırması |
 | 2026-10-10 | 1.41 | Kalıcı IEC104 kayıtlarının N(R) sonrası tüketilmesi, gerçek TX/ACK/log regresyonu ve master ACK aralığına uygun replay toplama süresi |
 | 2026-10-10 | 1.40 | SCP R2 HIL seti: simülatör R2 modeli (81 self-test), cases_r2 (8 cihaz vakası, toplam 45), 0x48 tüketim taşıması; iec104 master i07 replay tutma vakası; rf_real_mh gerçek MH duman süiti; bench konsol yarışına yeniden deneme |

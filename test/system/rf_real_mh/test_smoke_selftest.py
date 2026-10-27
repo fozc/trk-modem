@@ -115,7 +115,7 @@ class SmokeTests(unittest.TestCase):
                 console.close.assert_called_once()
 
     def quality(self, qds=0, timestamp=b"\x00\x00\x00\x00\x01\x01\x1a",
-                terminate=True, cot=21):
+                terminate=True, cot=21, type_id=36):
         sys.path.insert(0, str(ROOT / "test/system/iec104_master"))
         import apdu
         queries = []
@@ -133,7 +133,7 @@ class SmokeTests(unittest.TestCase):
             def interrogate(self, qoi):
                 queries.append(qoi)
                 bodies = [bytes.fromhex("64 01 07 00 01 00 00 00 00 15"),
-                          bytes((36, 1, cot, 0, 1, 0, 6, 4, 0)) +
+                          bytes((type_id, 1, cot, 0, 1, 0, 6, 4, 0)) +
                           struct.pack("<f", 12.5) + bytes((qds,)) + timestamp]
                 if terminate:
                     bodies.append(bytes.fromhex(
@@ -174,6 +174,9 @@ class SmokeTests(unittest.TestCase):
         self.assertEqual("FAIL", self.quality(
             timestamp=b"\x00\x00\x80\x00\x01\x01\x1a")[0])
         self.assertEqual("FAIL", self.quality(timestamp=b"")[0])
+
+    def test_group_quality_does_not_accept_station_gi_measurement_type(self):
+        self.assertEqual("FAIL", self.quality(type_id=13, timestamp=b"")[0])
 
     def test_quality_requires_termination_and_matching_cot(self):
         self.assertEqual("FAIL", self.quality(terminate=False)[0])

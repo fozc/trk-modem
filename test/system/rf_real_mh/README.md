@@ -1,7 +1,7 @@
 # Gerçek MH Duman Süiti (`rf_real_mh`)
 
-**Sürüm:** 1.4
-**Tarih:** 2026-10-20
+**Sürüm:** 1.6
+**Tarih:** 2026-10-27
 
 HIL süiti (`test/system/rf_hil`) PC'deki simülatörün oynadığı MH'ye karşı
 koşar; bu süit gerçek MH ve ayırıcı kartlarla doğrulama yapar. Üretim
@@ -12,7 +12,7 @@ Bu süit, simülatörün yakalayamayacağı tek sınıfı hedefler: gerçek hub
 davranışı. Örnek: VINCI'de geçersiz ölçüm/zaman damgası görülürken
 LIVE_DATA akışı da yoktu. 10.10.2026 kullanıcı bilgisine göre AY–MH
 bağlantısı henüz kurulmamıştı; bu gözlem MH firmware arızasını kanıtlamaz.
-`m3_live_boot` akışı, m7 ise gerçek IEC104 kalite ve zaman damgasını sınar.
+`m3_live_boot` akışı, m7 ise gerçek IEC104 GI21 ölçüm kalitesi ve zaman damgasını sınar. İstasyon GI20 tip13 zaman etiketsizdir; projenin grup GI21 yanıtı tip36 ve CP56 taşır. Bu iki sorgu karıştırılmamalıdır.
 
 ## Ön koşullar
 
@@ -68,7 +68,7 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
 | m4_ring_consume | HEAD ve eşleşen tüketme ACK'iyle ordinal/slot ilerlemesi | gerçek ilerleme = PASS; kayıt tüketimi gözlenmezse SKIP; kontrollü kayıt için ön koşul 4 |
 | m5_epoch_201 | `--epoch`: eşleşen ACK ve fider 1 MH olay 201 gözlemi | 100 s gözlem penceresinde ACK/201 yok = FAIL; 120 şart değildir; PASS APPLIED kabulü değildir |
 | m6_bootless | `--reset-dut`: BOOT_NOTIFY gelmeden kurulum | BOOT geldi = FAIL (MH de yeniden başlamış; pencereyi kaydır) |
-| m7_asdu_quality | `--104-host`: canlı akan fiderlerin GI ölçüm noktalarında kalite VE CP56 damga geçerli | canlı akış + tüm noktalar IV = FAIL (VINCI belirtisi); geçerli ölçüm + iv=1 damga = FAIL |
+| m7_asdu_quality | `--104-host`: canlı akan fiderlerin GI21 noktalarında M_ME_TF_1 (36), geçerli kalite ve CP56 | Canlı akış varken bütün ölçümler IV veya geçerli ölçümde zaman IV ise FAIL. İstasyon GI20'nin zaman etiketsiz tip13 yanıtı burada kabul edilmez. |
 
 ## Sınırlar
 
@@ -88,6 +88,8 @@ python test/system/rf_real_mh/run_smoke.py --console COM16 \
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-27 | 1.6 | Servis taşıması için konum geçmişi/operatör teyidi, geri dönüş sınırı ve 27.10 cihaz koşusunun kabul kapsamı düzeltildi. |
+| 2026-10-27 | 1.5 | m7 için GI20 tip13 / GI21 tip36 ayrımı belgelendi ve regresyonla sabitlendi; kalite/CP56 ve sonlandırma/COT kontrolleri korundu. |
 | 2026-10-20 | 1.4 | m8 gerçek APPLIED/bitmap/CRC kabulü; sıralı log kurulumu ve reset öncesi taze konsol sınırı |
 | 2026-10-13 | 1.3 | v0.15 BQ-23: 120 tanı niteliği, m5 gözlem kapsamı ve APPLIED kesin kabul sınırı |
 | 2026-10-12 | 1.2 | m4 için AY TEST kaydı rehberine atıf; güncel tüketme kanıtı |
@@ -123,3 +125,43 @@ eşlemesi geri alındı. Web Kaydet'in başlattığı otomatik batch (toplu iş)
 sürerken ayrıca m8 başlatılmamalıdır; önce grup terminal duruma gelmelidir.
 Tam kabul için üç ayrı canlı kart gerekir. L1'deki F11A/F1BE eşleme farkı
 kapanış raporunda korunmuştur.
+
+
+## Servis taşıması için kullanım kuralları
+
+**Amaç:** SCP R2.3 §1.2 servis sırasını, yalnız boş hedef seçimiyle karıştırmadan uygulamak.
+
+**Kullanım yeri:** `rf move` ile aynı fider içinde faz değiştirme. Kaynak gereklilik
+[üretici belgesi §1.2](../../../doc/BOLATeX_Teslim_R2.3/MH_STM32_RTU_SCP_Arayuzu_R2.3.md)
+içindedir.
+
+### Kurallar
+
+- Hedefin hem boş olduğu hem aynı fiderde daha önce hiç kullanılmadığı operatör tarafından doğrulanmalıdır.
+- `confirm-unused`, operatörün bu geçmişi doğruladığı anlamına gelmelidir. Yanıt alınmaması teyit sayılmamalıdır.
+- Güncel envanterin boş olması geçmiş kullanımın kanıtı sayılmamalıdır. RTU kalıcı konum geçmişi tutmaz;
+  geçmiş kullanım bu komutla otomatik doğrulanmış gösterilmemelidir.
+- Daha önce kullanılmış ya da geçmişi bilinmeyen hedef için `confirm-unused` verilmemelidir.
+  Desteklenen servis yolu üreticiyle netleştirilmelidir.
+- Testten önce kart/EUI/fider/faz eşleşmesi ve hedefin kullanım geçmişi kaydedilmelidir.
+  Yetkilendirme testin yapacağı kalıcı eşleme değişikliğini kapsamalıdır.
+- Taşıma sonunda eski faz boşalsa da geri taşıma için hiç kullanılmamış hedef sayılmamalıdır.
+  Ters yönde aynı komutu vermek standart geri yükleme yöntemi olarak önerilmemelidir.
+- Protokol adımlarının tamamlanması ve güncel LIVE verisi, doğrulanmamış konum geçmişini geçerli kılmamalıdır.
+- Test sonundaki eşleme, eski ayarlardan geri yükleme yapılmış gibi gösterilmeden kaydedilmelidir.
+
+### 27.10.2026 koşusunun kapsamı
+
+`.temp_files/r23-hw/26_rf_move.log`, F1AE için L2→L3 sırasında envanter güncellemesi, EPOCH,
+201/hedef120, MH reseti ve tamamlanma çıktısını gösterir. `27_monitor_after_move.json` dosyasında
+F1BE L1'de, L2 boş, F1AE L3'te ve canlıdır. Bu, servis akışının çalıştığına ilişkin cihaz gözlemidir.
+
+Ancak yukarıdaki 20.10 kaydında F1BE'nin faz3 deneyi zaten vardır. Bu geçmiş açıklığa kavuşmadan
+27.10 hedefi hiç kullanılmamış kabul edilemez; koşu §1.2 ön koşulu doğrulanmış fiziksel kabul sayılmaz.
+Bu turda yeniden taşıma veya ters yönde geri yükleme yapılmadı. Sonraki koşuların eşlemesi cihazdan
+okunmalıdır; L1/L2 varsayılmamalıdır.
+
+İki fiziksel AY bulunması COMMIT isteğini genel olarak imkansız yapmaz: 20.10 koşusu üç WRITE sonrası
+MH `FAILED/NOT_LIVE` sonucuna ulaşmıştır. 27.10 taşıması sonundaki boş L2 ise üç üye gerektiren
+mevcut grup başlangıcını engeller. Üç gerçek AY, başarılı APPLIED/bitmap/CRC fiziksel kabulü için gerekir;
+bu koşu yeni kalıcı COMMIT izinin cihaz testini gerçekleştirmiş değildir.

@@ -437,16 +437,13 @@ def m6_bootless(ctx):
 
 
 @case("m7_asdu_quality",
-      "(--104-host) canli fiderlerin ASDU kalite/timetag'i gecerli")
+      "(--104-host) canli fiderlerin GI21 kalite/timetag'i gecerli")
 def m7_asdu_quality(ctx):
-    """GI21 live points must carry valid quality AND a timestamp.
+    """The project's GI21 uses M_ME_TF_1 (36) with a CP56 timestamp.
 
-    Closes the 2026-10-10 review point: m3 (LIVE_DATA on the wire) alone
-    does not prove the SCADA side sees valid data. With live traffic on
-    the console, the station interrogation must contain at least one
-    non-invalid measurement, and every non-invalid measurement must also
-    carry a valid (iv=0) CP56 timestamp - the exact VINCI timetag-IV
-    symptom class."""
+    Station GI20 uses M_ME_NC_1 (13); do not apply that rule to GI21.
+    LIVE on the wire must yield valid SCADA quality and valid time here.
+    """
     if not ctx.args.host_104:
         return "SKIP", ["--104-host <ip> ile acilir (c104 venv gerekir)"]
     live_lines = [text for text in observe(ctx, 12.0)
