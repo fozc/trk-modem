@@ -982,10 +982,10 @@ static void MX_GPIO_Init(void)
   LL_GPIO_ResetOutputPin(GPIOA, RF_IO1_Pin|MODBUS_OE_Pin);
 
   /**/
-  LL_GPIO_ResetOutputPin(GPIOB, RF_RESET_Pin|GSM_ONOFF_Pin|GSM_SHUTDOWM_Pin);
+  LL_GPIO_ResetOutputPin(GPIOD, BMS_OE_Pin|SPI2_CS_Pin|BMS_RE_Pin|GSM_POWER_ONOFF_Pin);
 
   /**/
-  LL_GPIO_ResetOutputPin(GPIOD, BMS_OE_Pin|SPI2_CS_Pin|BMS_RE_Pin|GSM_POWER_ONOFF_Pin);
+  LL_GPIO_ResetOutputPin(GPIOB, GSM_ONOFF_Pin|GSM_SHUTDOWM_Pin);
 
   /**/
   LL_GPIO_SetOutputPin(GPIOB, LED_3_Pin|LED_2_Pin);
@@ -1030,7 +1030,8 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(RF_IO1_GPIO_Port, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = VREG_SENS_Pin|DIN1_Pin|DIN2_Pin|DIN3_Pin;
+  GPIO_InitStruct.Pin = VREG_SENS_Pin|RF_RESET_Pin|DIN1_Pin|DIN2_Pin
+                          |DIN3_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -1059,14 +1060,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_OPENDRAIN;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(MODBUS_EN_FLT_GPIO_Port, &GPIO_InitStruct);
-
-  /**/
-  GPIO_InitStruct.Pin = RF_RESET_Pin;
-  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
-  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_OPENDRAIN;
-  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
-  LL_GPIO_Init(RF_RESET_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   GPIO_InitStruct.Pin = O_GPIO2_Pin|LL_GPIO_PIN_3|LL_GPIO_PIN_4|LL_GPIO_PIN_5;
