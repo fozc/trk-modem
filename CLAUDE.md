@@ -56,7 +56,10 @@ The most load-bearing rules, restated so they are never missed:
   enforce lock-free ISR-path atomics with
   `_Static_assert(__atomic_always_lock_free(sizeof(T), 0), ...)`
   next to the definition.
-- **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns,
+- **BARR-C:2018 style** — Allman braces, 4 spaces; use 120 columns as
+  the wrapping guide. Wrap only very long statements and align continuation
+  lines with the first argument or the start of the continued expression,
+  not the statement indentation. Use
   descriptive snake_case without `g_/s_/p_` prefixes (repo deviation),
   conventional comparisons (`obj == NULL`, `strcmp(key, "APN") == 0`),
   `for (;;)` for infinite loops,
