@@ -1,4 +1,4 @@
-"""Convert BOLATeX R1 captures to reproducible Ceedling fixtures.
+"""Convert BOLATeX R1 or R2.3 captures to reproducible Ceedling fixtures.
 
 Expected bytes come from the delivered CSVs, never from production codecs.
 Run with --check to detect a stale generated header without writing files.
@@ -7,6 +7,7 @@ Run with --check to detect a stale generated header without writing files.
 import argparse
 import binascii
 import csv
+from decimal import Decimal
 import hashlib
 from pathlib import Path
 
@@ -63,7 +64,7 @@ def validate_row(row):
     return logical, wire
 
 
-def generate():
+def generate(r23=False):
     parts = ["""/*
  * rf_scp_vectors.h
  *
@@ -93,10 +94,13 @@ typedef struct
 
 """]
     entries = []
-    files = sorted(CAPTURE_ROOT.glob("AY_*.csv"))
-    files += sorted(CAPTURE_ROOT.glob("PWRB_*.csv"))
-    if len(files) != 14:
-        raise ValueError(f"Expected 14 scenario captures, found {len(files)}")
+    capture_root = (TEST_ROOT.parent / "doc" / "BOLATeX_Teslim_R2.3"
+                    / "BOLATeX_Teslim_R2.3_Ornek_Akis_Seti") if r23 else CAPTURE_ROOT
+    expected_files = 8 if r23 else 14
+    files = sorted(capture_root.glob("AY_*.csv"))
+    files += sorted(capture_root.glob("PWRB_*.csv"))
+    if len(files) != expected_files:
+        raise ValueError(f"Expected {expected_files} scenario captures, found {len(files)}")
     for path in files:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         parts.append(f"/* {path.name}\n * SHA-256: {digest}\n */\n")
@@ -112,8 +116,13 @@ typedef struct
                         f"static const uint8_t captured_{name}_{index}[] =\n{{\n"
                         + byte_lines(data) + "\n};\n\n"
                     )
+                elapsed = ""
+                if r23:
+                    if int(row["sira"]) != row_number - 1:
+                        raise ValueError(f"{path.name}:{row_number}: Invalid causal order")
+                    elapsed = f" {int(Decimal(row['t_s']) * 1000)}U,"
                 entries.append(
-                    f'    {{"{path.name}", {row_number}U,\n'
+                    f'    {{"{path.name}", {row_number}U,{elapsed}\n'
                     f"     captured_logical_{index}, sizeof(captured_logical_{index}),\n"
                     f"     captured_wire_{index}, sizeof(captured_wire_{index})}},"
                 )
@@ -121,21 +130,33 @@ typedef struct
     parts.append("\n".join(entries))
     parts.append("\n};\n\n#endif /* RF_SCP_VECTORS_H */\n")
     parts.append("\n/*** end of file ***/\n")
-    return "".join(parts), len(entries)
+    generated = "".join(parts)
+    if r23:
+        generated = generated.replace("    uint16_t row;", "    uint16_t row;\n    uint32_t elapsed_ms;")
+        generated = generated.replace("Oct 5, 2026", "Oct 26, 2026")
+        generated = generated.replace("rf_scp_vectors", "rf_scp_r23_vectors")
+        generated = generated.replace("RF_SCP_VECTORS", "RF_SCP_R23_VECTORS")
+        generated = generated.replace("rf_scp_vector_t", "rf_scp_r23_vector_t")
+        generated = generated.replace("captured_", "captured_r23_")
+        generated = generated.replace("Captured R1 bytes", "Captured R2.3 bytes")
+    return generated, len(entries)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--r23", action="store_true", help="Use the R2.3 delivery (8 captures)")
     args = parser.parse_args()
-    generated, count = generate()
+    output = OUTPUT.with_name("rf_scp_r23_vectors.h") if args.r23 else OUTPUT
+    revision = "R2.3" if args.r23 else "R1"
+    generated, count = generate(args.r23)
     if args.check:
-        if not OUTPUT.exists() or OUTPUT.read_text(encoding="ascii") != generated:
-            parser.exit(1, "R1 fixtures are stale; regenerate them.\n")
-        print(f"R1 fixtures match all {count} frames from 14 captures.")
+        if not output.exists() or output.read_text(encoding="ascii") != generated:
+            parser.exit(1, f"{revision} fixtures are stale; regenerate them.\n")
+        print(f"{revision} fixtures match all {count} frames.")
     else:
-        OUTPUT.write_text(generated, encoding="ascii", newline="\n")
-        print(f"Generated {count} captured R1 frame vectors.")
+        output.write_text(generated, encoding="ascii", newline="\n")
+        print(f"Generated {count} captured {revision} frame vectors.")
 
 
 if __name__ == "__main__":
