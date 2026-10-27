@@ -42,6 +42,21 @@ typedef struct
     uint16_t boot_counter;
 } rf_scp_live_t;
 
+/* R2.3 section 4.5: compare reception elapsed time with AY uptime.
+ * Unsigned tick subtraction also handles a single millisecond tick wrap. */
+static inline bool rf_scp_uptime_discontinuous(uint32_t previous_uptime, uint32_t previous_ms,
+                                              uint32_t uptime, uint32_t now_ms)
+{
+    if (uptime < previous_uptime)
+    {
+        return true;
+    }
+    const uint64_t elapsed_ms = (uint32_t)(now_ms - previous_ms);
+    const uint64_t uptime_ms = (uint64_t)(uptime - previous_uptime) * 1000U;
+    return (elapsed_ms > uptime_ms) ? ((elapsed_ms - uptime_ms) > 30000U) :
+                                    ((uptime_ms - elapsed_ms) > 30000U);
+}
+
 typedef struct
 {
     uint8_t msg_type;
@@ -100,6 +115,9 @@ typedef struct
     uint8_t last_gasp_count;
     uint32_t active_alarms;
     uint8_t soc_flags;
+    uint16_t equivalent_cycles;
+    uint16_t remaining_cycles;
+    uint16_t remaining_years_x10;
 } rf_scp_power_summary_t;
 
 typedef struct

@@ -459,7 +459,13 @@ static rf_cmd_status_t incoming_length(const scp_packet_t *packet)
             notification = true;
             break;
         case RF_SCP_CMD_PWR_ALARM:
-            length = 11U; notification = true; break;
+            if (11U > packet->data_len)
+            {
+                return RF_CMD_ERR_LEN;
+            }
+            length = packet->data_len;
+            notification = true;
+            break;
         case RF_SCP_CMD_PWR_CFG2:
             if ((1U != packet->data_len) && (23U != packet->data_len))
             {
@@ -624,6 +630,15 @@ static rf_cmd_status_t decode_power_family(const scp_packet_t *packet,
                 return RF_CMD_ERR_VERSION;
             }
             decode_power(data, &out->body.power);
+            out->body.power.equivalent_cycles = UINT16_MAX;
+            out->body.power.remaining_cycles = UINT16_MAX;
+            out->body.power.remaining_years_x10 = UINT16_MAX;
+            if (packet->data_len >= 45U)
+            {
+                out->body.power.equivalent_cycles = scp_unpack_u16(&data[39]);
+                out->body.power.remaining_cycles = scp_unpack_u16(&data[41]);
+                out->body.power.remaining_years_x10 = scp_unpack_u16(&data[43]);
+            }
             break;
         case RF_SCP_CMD_PWR_ALARM:
             if (1U != data[0])

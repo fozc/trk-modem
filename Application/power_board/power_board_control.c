@@ -167,7 +167,7 @@ static bool send_settings(void)
     data[10] = desired.rate_permille;
     data[14] = desired.capacity_ah;
     data[15] = desired.period_sec;
-    if (0U != (desired.mask & POWER_SETTING_PERIOD))
+    if ((0U != (desired.mask & POWER_SETTING_PERIOD)) && (0xFFU != status.config[14]))
     {
         /* Both operands occupy at most one byte. */
         data[15] = (uint8_t)(data[15] | (status.config[14] & 0x80U));
@@ -217,7 +217,7 @@ static void check_settings(void)
         (void)power_board_get_snapshot(now_ms, &power);
         const uint8_t verdict = (power.summary.flags2 >> 4U) & 7U;
         if ((0U == (power.valid_fields & POWER_VALID_SUMMARY)) ||
-            ((0U != verdict) && (2U != verdict)) ||
+            (0U != verdict) ||
             (capacity && ((power.summary.capacity_ah != desired.capacity_ah) ||
              (power.received_age_ms > elapsed - verify_delay_ms))) ||
             (rate && (power.summary.charge_rate_permille != desired.rate_permille)))
@@ -254,7 +254,7 @@ static bool handle_cancel_result(void)
             status.command_state = POWER_COMMAND_MONITORING;
         }
         else if ((0U == status.result) ||
-                 (0U != (status.command_flags & 8U)))
+                 ((5U == status.result_command) && (0U != (status.command_flags & 8U))))
         {
             status.command_state = POWER_COMMAND_APPLIED;
             awaiting_command = false;
@@ -278,7 +278,8 @@ static bool handle_cancel_result(void)
     }
     if ((0U != status.result_command) && (255U == status.result) &&
         (0U == status.transmissions) &&
-        (0U == (status.command_flags & 0x1EU)))
+        (0U == (status.command_flags & 0x10U)) &&
+        ((5U != status.result_command) || (0U == (status.command_flags & 0x0EU))))
     {
         cancel_verification_pending = false;
         status.command_state = POWER_COMMAND_RESTARTED;
@@ -353,7 +354,7 @@ bool power_board_handle_command_result(const rf_scp_message_t *message)
     }
     else if (0U != (status.command_flags & 4U))
     {
-        status.command_state = POWER_COMMAND_CANCELLED;
+        status.command_state = POWER_COMMAND_UNCERTAIN;
         awaiting_command = false;
     }
     else if (255U != status.result)
@@ -589,6 +590,18 @@ static bool send_command(uint8_t command, uint8_t parameter)
          (POWER_SETTINGS_APPLIED != status.settings_state))))
     {
         return false;
+    }
+    if (5U == command)
+    {
+        power_board_snapshot_t power;
+        (void)power_board_get_snapshot(HAL_GetTick(), &power);
+        if ((0U != (power.valid_fields & POWER_VALID_SUMMARY)) &&
+            (7U == power.summary.capacity_ah) &&
+            (0U == (power.summary.flags2 & 0x0CU)) &&
+            (0x30U == (power.summary.flags2 & 0x70U)))
+        {
+            return false;
+        }
     }
     if (!send_request(RF_SCP_CMD_PWR_COMMAND, SCP_TYPE_SET, data, sizeof(data)))
     {

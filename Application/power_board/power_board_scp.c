@@ -39,6 +39,9 @@ void power_board_scp_init(void)
 {
     power_board_control_init();
     (void)memset(&snapshot, 0, sizeof(snapshot));
+    snapshot.summary.equivalent_cycles = UINT16_MAX;
+    snapshot.summary.remaining_cycles = UINT16_MAX;
+    snapshot.summary.remaining_years_x10 = UINT16_MAX;
     summary_current = false;
     alarms_current = false;
     have_alarm_seq = false;
@@ -104,6 +107,11 @@ static void store_alarm(uint8_t source, const rf_scp_message_t *message,
     {
         level = (1U == message->body.alarm.value0) ? ELOG_LEVEL_ERROR :
                                                   ELOG_LEVEL_WARN;
+    }
+    if ((source == RF_SCP_CMD_PWR_ALARM) && (message->body.alarm.code == 13U) &&
+        (message->body.alarm.state == 1U) && (message->body.alarm.value0 == 2U))
+    {
+        level = ELOG_LEVEL_ERROR;
     }
     elog_add(ELOG_PWR_SCP_ALARM, level, info, sizeof(info));
 }
@@ -266,8 +274,8 @@ bool power_board_handle_alarm(const rf_scp_message_t *message,
     if ((0x20U == message->body.alarm.code) &&
         (2U == message->body.alarm.state))
     {
-        log_event = !snapshot.has_last_gasp || snapshot.last_gasp_cancelled ||
-                    (snapshot.last_gasp_cause != message->body.alarm.value0) ||
+        /* SCP 5.3: predicted and actual drops with one session are one outage. */
+        log_event = !snapshot.has_last_gasp ||
                     (snapshot.last_gasp_session != message->body.alarm.value1);
         snapshot.has_last_gasp = true;
         snapshot.last_gasp_cancelled = false;
@@ -295,7 +303,9 @@ bool power_board_handle_alarm(const rf_scp_message_t *message,
     else
     {
         log_event = (2U == message->body.alarm.state) ||
-                    (previous != snapshot.active_alarms);
+                    (previous != snapshot.active_alarms) ||
+                    ((message->body.alarm.code == 13U) && (message->body.alarm.state == 1U) &&
+                     (message->body.alarm.value0 == 2U));
     }
     if (log_event || (previous != snapshot.active_alarms))
     {
@@ -415,6 +425,21 @@ bool power_board_get_snapshot(uint32_t now_ms, power_board_snapshot_t *out)
     return true;
 }
 
+static void print_lifetime(const char *name, uint16_t value)
+{
+#ifdef DISABLE_SHELL_LOG
+    (void)name;
+#endif
+    if (value == UINT16_MAX)
+    {
+        SHELL_LOG("%s=unknown\r\n", name);
+    }
+    else
+    {
+        SHELL_LOG("%s=%u\r\n", name, (unsigned)value);
+    }
+}
+
 static int power_board_scp_shell(int argc, char **argv)
 {
     power_board_snapshot_t power;
@@ -446,6 +471,11 @@ static int power_board_scp_shell(int argc, char **argv)
               (unsigned)power.last_gasp_session,
               (unsigned)power.last_gasp_cause,
               (unsigned)power.last_gasp_cancelled);
+    const bool has_lifetime = ((power.valid_fields & POWER_VALID_SUMMARY) != 0U) &&
+                              (power.telemetry_age_sec <= 30U);
+    print_lifetime("EFC (cycles)", has_lifetime ? power.summary.equivalent_cycles : UINT16_MAX);
+    print_lifetime("Remaining cycles", has_lifetime ? power.summary.remaining_cycles : UINT16_MAX);
+    print_lifetime("Remaining life (0.1 year)", has_lifetime ? power.summary.remaining_years_x10 : UINT16_MAX);
     return 0;
 }
 

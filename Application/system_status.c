@@ -118,6 +118,9 @@ void system_status_update(void)
     system_status.battery_temp_x10    = (int16_t)((int16_t)telemetry->battery_temperature * 10);
     system_status.battery_soc_x10     = telemetry->soc_tenths;
     system_status.battery_soh_x10     = (uint16_t)((uint16_t)telemetry->soh_percent * 10U);
+    system_status.battery_equivalent_cycles = telemetry->equivalent_cycles;
+    system_status.battery_remaining_cycles = telemetry->remaining_cycles;
+    system_status.battery_remaining_years_x10 = telemetry->remaining_years_x10;
     system_status.charge_state    = telemetry->charge_phase;
     system_status.charge_verdict = (telemetry->flags >> 6U) & 3U;  // R1 charge verdict: unknown/no/yes/conflict.
 

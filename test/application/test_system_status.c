@@ -454,7 +454,9 @@ void test_status_json_preserves_all_fields_order_and_exact_fit(void)
         "\"GsmSig\":-85,\"GsmRAT\":4,\"GsmRxlev\":12,\"GsmRscp\":18,"
         "\"GsmRsrp\":42,\"GsmRsrq\":25,\"GsmCREG\":1,\"GsmCGREG\":2,"
         "\"GsmCEREG\":3,\"BataryaAkimi\":-321,\"BatteryTemp\":245,"
-        "\"BatterySOC\":-125,\"BatterySOH\":960,\"OrtamSicakligi\":0,"
+        "\"BatterySOC\":-125,\"BatterySOH\":960,"
+        "\"BatteryEquivalentCycles\":0,\"BatteryRemainingCycles\":0,\"BatteryRemainingYearsX10\":0,"
+        "\"OrtamSicakligi\":0,"
         "\"HeaterState\":0,\"HeaterPower\":0,\"PowerValidFields\":65535,"
         "\"BatterySOCAbsolute\":1}";
     struct
@@ -495,6 +497,30 @@ void test_status_json_rejects_invalid_arguments_without_writes(void)
     TEST_ASSERT_FALSE(system_status_json_build(&status, buffer, 0U, &length));
     TEST_ASSERT_EQUAL_STRING("keep", buffer);
     TEST_ASSERT_EQUAL_UINT32(17U, length);
+}
+
+void test_lifetime_values_reach_status_json_and_unknowns_replace_previous_values(void)
+{
+    char json[2048];
+    size_t length = 0U;
+    fake_telemetry.equivalent_cycles = 0U;
+    fake_telemetry.remaining_cycles = 2500U;
+    fake_telemetry.remaining_years_x10 = 120U;
+    const system_status_t *status = system_status_get();
+    TEST_ASSERT_EQUAL_UINT16(0U, status->battery_equivalent_cycles);
+    TEST_ASSERT_EQUAL_UINT16(2500U, status->battery_remaining_cycles);
+    TEST_ASSERT_EQUAL_UINT16(120U, status->battery_remaining_years_x10);
+    TEST_ASSERT_TRUE(system_status_json_build(status, json, sizeof(json), &length));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryEquivalentCycles\":0"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryRemainingCycles\":2500"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryRemainingYearsX10\":120"));
+    fake_telemetry.equivalent_cycles = UINT16_MAX;
+    fake_telemetry.remaining_cycles = UINT16_MAX;
+    status = system_status_get();
+    TEST_ASSERT_TRUE(system_status_json_build(status, json, sizeof(json), &length));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryEquivalentCycles\":65535"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryRemainingCycles\":65535"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"BatteryRemainingYearsX10\":120"));
 }
 
 /*** end of file ***/

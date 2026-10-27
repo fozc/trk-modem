@@ -97,6 +97,9 @@ bool system_status_json_build(const system_status_t *status, char *buffer,
     web_json_int32(&writer, "BatteryTemp", status->battery_temp_x10);
     web_json_int32(&writer, "BatterySOC", status->battery_soc_x10);
     web_json_int32(&writer, "BatterySOH", status->battery_soh_x10);
+    web_json_int32(&writer, "BatteryEquivalentCycles", status->battery_equivalent_cycles);
+    web_json_int32(&writer, "BatteryRemainingCycles", status->battery_remaining_cycles);
+    web_json_int32(&writer, "BatteryRemainingYearsX10", status->battery_remaining_years_x10);
     web_json_int32(&writer, "OrtamSicakligi", 0);
     web_json_int32(&writer, "HeaterState", 0);
     web_json_int32(&writer, "HeaterPower", 0);
