@@ -8,6 +8,7 @@
  * Verify SCP power quality, alarm correction and session deduplication.
  */
 #include "unity.h"
+#include "shell_log_enabled.h"
 #include "console_log_enabled.h"
 #define CSLOG_MODULE LOG_MOD_RF
 #include "power_board_scp.h"
@@ -32,6 +33,16 @@ static uint8_t log_info[16];
 static log_lvl_t console_level;
 static char console_output[4096];
 static size_t console_length;
+
+static void capture_shell(int character, int call_count)
+{
+    (void)call_count;
+    if ((sizeof(console_output) - 1U) > console_length)
+    {
+        console_output[console_length++] = (char)character;
+        console_output[console_length] = '\0';
+    }
+}
 
 static void capture_console(int character)
 {
@@ -113,6 +124,7 @@ void setUp(void)
     console_length = 0U;
     console_output[0] = '\0';
     xdev_out(capture_console);
+    shell_putchr_StubWithCallback(capture_shell);
     console_logger_level_enabled_StubWithCallback(console_level_enabled);
     rtc_print_now_Ignore();
     power_board_control_init_Ignore();
@@ -125,6 +137,35 @@ void setUp(void)
 void tearDown(void)
 {
     xdev_out(NULL);
+}
+
+void test_lifetime_summary_replaces_old_values_and_shell_marks_unknown_or_stale(void)
+{
+    char *args[] = {"pwrboard", "show"};
+    TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, read_snapshot(0U).summary.equivalent_cycles);
+    TEST_ASSERT_EQUAL_INT(0, power_board_scp_shell(2, args));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "Remaining cycles=unknown"));
+    rf_scp_message_t message = summary();
+    message.body.power.equivalent_cycles = 0U;
+    message.body.power.remaining_cycles = 2500U;
+    message.body.power.remaining_years_x10 = 120U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    console_length = 0U;
+    console_output[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, power_board_scp_shell(2, args));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "EFC (cycles)=0"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "Remaining cycles=2500"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "Remaining life (0.1 year)=120"));
+    message.body.power.equivalent_cycles = UINT16_MAX;
+    message.body.power.remaining_cycles = UINT16_MAX;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, read_snapshot(0U).summary.remaining_cycles);
+    TEST_ASSERT_EQUAL_UINT16(120U, read_snapshot(0U).summary.remaining_years_x10);
+    power_board_scp_hub_restarted();
+    console_length = 0U;
+    console_output[0] = '\0';
+    TEST_ASSERT_EQUAL_INT(0, power_board_scp_shell(2, args));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "Remaining life (0.1 year)=unknown"));
 }
 
 void test_summary_raw_capture_keeps_last_packet_with_reception_time(void)
@@ -302,6 +343,30 @@ void test_summary_repairs_a_lost_alarm_edge_and_logs_full_32_bit_masks(void)
     TEST_ASSERT_EQUAL_UINT32(2U, log_calls);
 }
 
+void test_telemetry_loss_escalation_is_recorded_as_high_even_when_active_mask_is_unchanged(void)
+{
+    rf_scp_message_t message = alarm(1U, 13U, 1U, 0U);
+    message.body.alarm.value0 = 1U;
+    message.body.alarm.active = UINT32_C(1) << 13U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 0U));
+    TEST_ASSERT_EQUAL_UINT32(1U, log_calls);
+    TEST_ASSERT_EQUAL_INT(ELOG_LEVEL_WARN, last_log_level);
+    message.body.alarm.seq = 2U;
+    message.body.alarm.value0 = 2U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 10000U));
+    TEST_ASSERT_EQUAL_UINT32(2U, log_calls);
+    TEST_ASSERT_EQUAL_INT(ELOG_LEVEL_ERROR, last_log_level);
+    TEST_ASSERT_EQUAL_UINT8(2U, log_info[6]);
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 10001U));
+    TEST_ASSERT_EQUAL_UINT32(2U, log_calls);
+    message.body.alarm.seq = 3U;
+    message.body.alarm.state = 0U;
+    message.body.alarm.value0 = 0U;
+    message.body.alarm.active = 0U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 11000U));
+    TEST_ASSERT_EQUAL_INT(ELOG_LEVEL_INFO, last_log_level);
+}
+
 void test_same_session_last_gasp_updates_cause_without_a_second_episode(void)
 {
     rf_scp_message_t message = alarm(1U, 0x20U, 2U, 7U);
@@ -315,6 +380,7 @@ void test_same_session_last_gasp_updates_cause_without_a_second_episode(void)
     TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 2U));
     TEST_ASSERT_EQUAL_UINT8(7U, read_snapshot(2U).last_gasp_session);
     TEST_ASSERT_EQUAL_UINT8(1U, read_snapshot(2U).last_gasp_cause);
+    TEST_ASSERT_EQUAL_UINT32(1U, log_calls);
     message = alarm(3U, 0x21U, 2U, 7U);
     TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 22000U));
     TEST_ASSERT_TRUE(read_snapshot(22000U).last_gasp_cancelled);

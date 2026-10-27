@@ -33,6 +33,9 @@ typedef struct
     int16_t battery_temp_x10;   // x10 C; validity in power_valid_fields.
     int16_t battery_soc_x10;    // Batarya SOC (x10 %, isaretli)
     uint16_t battery_soh_x10;   // Batarya SOH (x10 %)
+    uint16_t battery_equivalent_cycles;
+    uint16_t battery_remaining_cycles;
+    uint16_t battery_remaining_years_x10;
     uint8_t charge_state; // Batarya Sarj Durumu
     /* R1 5.2 ek alanlari: geccerlilik power_valid_fields ile tasinir. */
     uint16_t dc_voltage;        // DC giris gerilimi (mV)

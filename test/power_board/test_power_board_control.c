@@ -14,6 +14,7 @@
 #include "mock_rf_comm.h"
 #include "mock_power_board_scp.h"
 #include "../fixtures/rf_scp_vectors.h"
+#include "../fixtures/rf_scp_r23_vectors.h"
 #include <string.h>
 
 TEST_SOURCE_FILE("rf_scp_codec.c")
@@ -253,7 +254,7 @@ void test_capacity_waits_for_36_seconds_echo_and_new_matching_summary(void)
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_APPLY,
                           control_status().settings_state);
     TEST_ASSERT_FALSE(power_board_battery_replaced());
-    power.summary.flags2 = 0x20U; /* Current limiting is not rejection. */
+    power.summary.flags2 = 0x20U; /* Clipping is not confirmed application. */
     power.summary.capacity_ah = 12U;
     power_board_control_process(tick);
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_APPLY,
@@ -264,6 +265,10 @@ void test_capacity_waits_for_36_seconds_echo_and_new_matching_summary(void)
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_APPLY,
                           control_status().settings_state);
     power.received_age_ms = 0U;
+    power_board_control_process(tick);
+    TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_WAIT_APPLY, control_status().settings_state);
+    TEST_ASSERT_FALSE(power_board_battery_replaced());
+    power.summary.flags2 = 0U;
     power_board_control_process(tick);
     TEST_ASSERT_EQUAL_INT(POWER_SETTINGS_APPLIED,
                           control_status().settings_state);
@@ -456,7 +461,7 @@ void test_cancel_ack_does_not_claim_that_battery_counters_were_preserved(void)
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_MONITORING,
                           control_status().command_state);
     result_report(42U, 255U, 4U);
-    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_CANCELLED,
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_UNCERTAIN,
                           control_status().command_state);
     result_report(42U, 255U, 8U);
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED,
@@ -999,6 +1004,103 @@ void test_r23_zero_transmissions_without_cancel_bit_reports_board_restart(void)
     TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_RESTARTED,
                           control_status().command_state);
+}
+
+void test_r23_captured_battery_cancel_tracks_outcome_without_claiming_counters_preserved(void)
+{
+    static const power_command_state_t expected[] = {POWER_COMMAND_ACCEPTED,
+        POWER_COMMAND_CANCELLED, POWER_COMMAND_MONITORING, POWER_COMMAND_UNCERTAIN};
+    size_t reports = 0U;
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(5U, 9U);
+    for (size_t index = 0U; index < sizeof(rf_scp_r23_vectors) / sizeof(rf_scp_r23_vectors[0]); index++)
+    {
+        const rf_scp_r23_vector_t *vector = &rf_scp_r23_vectors[index];
+        const uint8_t *frame = vector->logical;
+        if (RF_SCP_CMD_PWR_RESULT != frame[3])
+        {
+            continue;
+        }
+        scp_packet_t packet = {.dst = frame[0], .src = frame[1], .type = frame[2],
+            .cmd = frame[3], .seq = frame[4], .data_len = frame[5]};
+        (void)memcpy(packet.data, &frame[7], packet.data_len);
+        rf_scp_message_t message;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &message));
+        TEST_ASSERT_TRUE(power_board_handle_command_result(&message));
+        TEST_ASSERT_LESS_THAN_size_t(sizeof(expected) / sizeof(expected[0]), reports);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[reports], control_status().command_state, vector->source);
+        reports++;
+    }
+    TEST_ASSERT_EQUAL_size_t(4U, reports);
+    TEST_ASSERT_EQUAL_HEX8(4U, control_status().command_flags);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+}
+
+void test_r23_service_cancel_ignores_sticky_battery_outcome_bits(void)
+{
+    rf_scp_message_t report = {.cmd = RF_SCP_CMD_PWR_RESULT,
+        .type = SCP_TYPE_SET, .body.command_result = {.command = 1U,
+            .seq = 9U, .result = 255U, .flags = 0x68U}};
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_MONITORING, control_status().command_state);
+    report.body.command_result.flags = 0x48U;
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_UNCERTAIN, control_status().command_state);
+    report.body.command_result.result = 2U;
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_REJECTED, control_status().command_state);
+}
+
+void test_r23_service_restart_ignores_sticky_battery_outcome_bits(void)
+{
+    const rf_scp_message_t report = {.cmd = RF_SCP_CMD_PWR_RESULT,
+        .type = SCP_TYPE_SET, .body.command_result = {.command = 3U,
+            .seq = 9U, .result = 255U, .flags = 8U}};
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_RESTARTED, control_status().command_state);
+}
+
+void test_r23_period_ff_get_clears_hidden_bit(void)
+{
+    const power_settings_request_t setting = {.mask = POWER_SETTING_PERIOD, .period_sec = 2U};
+    scp_packet_t response = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .cmd = RF_SCP_CMD_PWR_CFG2, .type = SCP_TYPE_ACK, .data_len = 23U};
+
+    TEST_ASSERT_TRUE(power_board_write_settings(&setting));
+    response.data[0] = 1U;
+    response.data[1] = 1U;
+    response.data[2] = 7U;
+    response.data[15] = 0xFFU;
+    reply(SCP_CMD_OK, &response);
+    TEST_ASSERT_EQUAL_size_t(2U, request_count);
+    TEST_ASSERT_EQUAL_HEX8(0x02U, requests[1].data[15]);
+}
+
+void test_r23_unknown_capacity_blocks_battery_command_but_not_cancel(void)
+{
+    power.summary.capacity_ah = 7U;
+    power.summary.flags2 = 0x30U;
+    TEST_ASSERT_FALSE(power_board_battery_replaced());
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+    TEST_ASSERT_TRUE(power_board_cancel_command());
+    TEST_ASSERT_EQUAL_UINT8(0U, requests[0].data[0]);
+}
+
+void test_r23_known_seven_ah_capacity_allows_battery_command(void)
+{
+    power.summary.capacity_ah = 7U;
+    power.summary.flags2 = 4U;
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    TEST_ASSERT_EQUAL_HEX8(5U, requests[0].data[0]);
+    TEST_ASSERT_EQUAL_HEX8(0xA5U, requests[0].data[1]);
+}
+
+void test_r23_stale_unknown_capacity_does_not_override_current_command_policy(void)
+{
+    power.summary.capacity_ah = 7U;
+    power.summary.flags2 = 0x30U;
+    power.valid_fields = 0U;
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
 }
 
 /*** end of file ***/

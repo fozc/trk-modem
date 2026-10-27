@@ -158,7 +158,8 @@ void test_incoming_length_errors_preserve_previous_output(void)
             packet.data_len++;
             if (((RF_SCP_CMD_LOG_READ_HEAD == packet.cmd) &&
                  (SCP_TYPE_ACK == packet.type)) ||
-                ((RF_SCP_CMD_PWR_SUMMARY == packet.cmd) &&
+                (((RF_SCP_CMD_PWR_SUMMARY == packet.cmd) ||
+                  (RF_SCP_CMD_PWR_ALARM == packet.cmd)) &&
                  (SCP_TYPE_SET == packet.type)))
             {
                 TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
@@ -817,6 +818,7 @@ void test_customer_power_config_rejects_unset_capacity_and_bad_period(void)
 void test_r2_summary_accepts_tail_extension_and_rejects_short_body(void)
 {
     scp_packet_t packet = first_packet(RF_SCP_CMD_PWR_SUMMARY, SCP_TYPE_SET);
+    packet.data_len = 45U;
     rf_scp_message_t original;
     TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
         rf_scp_decode_message(&packet, &original));
@@ -931,6 +933,7 @@ void test_r2_event_all_short_lengths_preserve_output(void)
 void test_r2_summary_every_supported_tail_length_keeps_known_fields(void)
 {
     scp_packet_t packet = first_packet(RF_SCP_CMD_PWR_SUMMARY, SCP_TYPE_SET);
+    packet.data_len = 39U;
     rf_scp_message_t previous;
     TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
         rf_scp_decode_message(&packet, &previous));
@@ -943,8 +946,40 @@ void test_r2_summary_every_supported_tail_length_keeps_known_fields(void)
             RF_CMD_ERR_LEN : RF_CMD_OK;
         TEST_ASSERT_EQUAL_INT(expected,
             rf_scp_decode_message(&packet, &output));
-        TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+        rf_scp_message_t expected_output = previous;
+        if (length >= 45U)
+        {
+            expected_output.body.power.equivalent_cycles = 0xA5A5U;
+            expected_output.body.power.remaining_cycles = 0xA5A5U;
+            expected_output.body.power.remaining_years_x10 = 0xA5A5U;
+        }
+        TEST_ASSERT_EQUAL_MEMORY(&expected_output, &output, sizeof(output));
     }
+}
+
+void test_r23_summary_lifetime_fields_are_little_endian_and_optional(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_PWR_SUMMARY, SCP_TYPE_SET);
+    rf_scp_message_t output;
+    packet.data_len = 45U;
+    scp_pack_u16(&packet.data[39], 0x1234U);
+    scp_pack_u16(&packet.data[41], 0U);
+    scp_pack_u16(&packet.data[43], 120U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &output));
+    TEST_ASSERT_EQUAL_HEX16(0x1234U, output.body.power.equivalent_cycles);
+    TEST_ASSERT_EQUAL_UINT16(0U, output.body.power.remaining_cycles);
+    TEST_ASSERT_EQUAL_UINT16(120U, output.body.power.remaining_years_x10);
+    packet.data_len = 39U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &output));
+    TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, output.body.power.equivalent_cycles);
+    TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, output.body.power.remaining_cycles);
+    TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, output.body.power.remaining_years_x10);
+    packet.data_len = 45U;
+    (void)memset(&packet.data[39], 0xFF, 4U);
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &output));
+    TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, output.body.power.equivalent_cycles);
+    TEST_ASSERT_EQUAL_UINT16(UINT16_MAX, output.body.power.remaining_cycles);
+    TEST_ASSERT_EQUAL_UINT16(120U, output.body.power.remaining_years_x10);
 }
 
 void test_r2_consume_ack_all_tail_and_pending_values_are_range_checked(void)
@@ -1221,6 +1256,24 @@ void test_power_alarm_version_and_state_bounds_are_rejected(void)
     packet.data[0] = 0U;
     TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_VERSION,
                           rf_scp_decode_message(&packet, &message));
+}
+
+void test_power_alarm_ignores_appended_fields_and_preserves_output_on_short_frames(void)
+{
+    scp_packet_t packet = first_packet(RF_SCP_CMD_PWR_ALARM, SCP_TYPE_SET);
+    rf_scp_message_t previous;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &previous));
+    (void)memset(&packet.data[11], 0xA5, sizeof(packet.data) - 11U);
+    for (size_t length = 0U; length <= sizeof(packet.data); length++)
+    {
+        packet.data_len = (uint8_t)length;
+        rf_scp_message_t output = previous;
+        TEST_ASSERT_EQUAL_INT((length < 11U) ? RF_CMD_ERR_LEN : RF_CMD_OK,
+                              rf_scp_decode_message(&packet, &output));
+        TEST_ASSERT_EQUAL_MEMORY(&previous, &output, sizeof(output));
+    }
+    packet.data[0] = 2U;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_VERSION, rf_scp_decode_message(&packet, &previous));
 }
 
 void test_cfg2_response_rejects_invalid_echo_flag(void)
@@ -1500,6 +1553,114 @@ void test_hub_counters_reject_slot_hundred_everywhere(void)
     scp_pack_u16(packet.data, 100U);
     TEST_ASSERT_EQUAL_INT(RF_CMD_ERR_PARAM,
                           rf_scp_decode_message(&packet, &message));
+}
+
+void test_document_live_offsets_preserve_every_field_from_distinct_wire_values(void)
+{
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_LIVE_DATA, .data_len = 33U,
+        .data = {0x13U, 0x12U, 0x34U, 0x56U, 0x78U, 0x04U, 0x03U, 0x02U, 0x01U,
+            5U, 2U, 0U, 0U, 0x48U, 0x41U, 0U, 0U, 0xFCU, 0x41U, 0U, 0U, 0xA0U, 0x3FU,
+            0x85U, 0xFFU, 0xD6U, 0xA5U, 1U, 1U, 98U, 0xFEU, 0xCDU, 0xABU}};
+    rf_scp_message_t message;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &message));
+    const rf_scp_live_t *live = &message.body.live;
+    TEST_ASSERT_EQUAL_UINT8(0x13U, live->source);
+    TEST_ASSERT_EQUAL_HEX32(0x78563412U, live->seq);
+    TEST_ASSERT_EQUAL_HEX32(0x01020304U, live->uptime_sec);
+    TEST_ASSERT_EQUAL_UINT8(5U, live->state);
+    TEST_ASSERT_EQUAL_UINT8(2U, live->fault_count);
+    TEST_ASSERT_EQUAL_FLOAT(12.5f, live->current_amps);
+    TEST_ASSERT_EQUAL_FLOAT(31.5f, live->trip_voltage);
+    TEST_ASSERT_EQUAL_FLOAT(1.25f, live->harvest_voltage);
+    TEST_ASSERT_EQUAL_INT16(-123, live->temperature);
+    TEST_ASSERT_EQUAL_INT8(-42, live->rssi);
+    TEST_ASSERT_EQUAL_HEX8(0xA5U, live->flags);
+    TEST_ASSERT_TRUE(live->fsm_error);
+    TEST_ASSERT_TRUE(live->trip_failed);
+    TEST_ASSERT_EQUAL_UINT8(98U, live->log_pending);
+    TEST_ASSERT_EQUAL_HEX8(0xFEU, live->log_wrap_low);
+    TEST_ASSERT_EQUAL_HEX16(0xABCDU, live->boot_counter);
+}
+
+void test_document_power_offsets_preserve_units_signs_and_lifetime_fields(void)
+{
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_PWR_SUMMARY, .data_len = 45U,
+        .data = {1U, 82U, 0xC3U, 0x45U, 3U, 2U, 4U, 9U,
+            0x34U, 0x12U, 0x45U, 0x23U, 0xBFU, 0xFEU, 0x56U, 0x34U, 0x67U, 0x45U,
+            0x18U, 0xFCU, 0xD2U, 0x04U, 0xD7U, 0xF6U, 0x80U, 0xF2U, 0x38U, 0xFEU,
+            98U, 0xE7U, 45U, 54U, 100U, 250U, 0x78U, 0x56U, 0x34U, 0x12U, 3U,
+            0x34U, 0x12U, 0xC4U, 0x09U, 120U, 0U}};
+    rf_scp_message_t message;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &message));
+    const rf_scp_power_summary_t *power = &message.body.power;
+    TEST_ASSERT_EQUAL_UINT8(82U, power->seq);
+    TEST_ASSERT_EQUAL_HEX8(0xC3U, power->flags);
+    TEST_ASSERT_EQUAL_HEX8(0x45U, power->flags2);
+    TEST_ASSERT_EQUAL_UINT8(3U, power->age_sec);
+    TEST_ASSERT_EQUAL_UINT8(2U, power->source);
+    TEST_ASSERT_EQUAL_UINT8(4U, power->charge_phase);
+    TEST_ASSERT_EQUAL_UINT8(9U, power->session);
+    TEST_ASSERT_EQUAL_HEX16(0x1234U, power->pv_mv);
+    TEST_ASSERT_EQUAL_HEX16(0x2345U, power->dc_mv);
+    TEST_ASSERT_EQUAL_INT16(-321, power->input_ma);
+    TEST_ASSERT_EQUAL_HEX16(0x3456U, power->system_mv);
+    TEST_ASSERT_EQUAL_HEX16(0x4567U, power->battery_mv);
+    TEST_ASSERT_EQUAL_INT16(-1000, power->battery_ma);
+    TEST_ASSERT_EQUAL_INT16(1234, power->input_power_10mw);
+    TEST_ASSERT_EQUAL_INT16(-2345, power->battery_power_10mw);
+    TEST_ASSERT_EQUAL_INT16(-3456, power->system_power_10mw);
+    TEST_ASSERT_EQUAL_INT16(-456, power->soc_tenths);
+    TEST_ASSERT_EQUAL_UINT8(98U, power->soh_percent);
+    TEST_ASSERT_EQUAL_INT8(-25, power->battery_temperature);
+    TEST_ASSERT_EQUAL_INT8(45, power->board_temperature);
+    TEST_ASSERT_EQUAL_UINT8(54U, power->capacity_ah);
+    TEST_ASSERT_EQUAL_UINT8(100U, power->charge_rate_permille);
+    TEST_ASSERT_EQUAL_UINT8(250U, power->last_gasp_count);
+    TEST_ASSERT_EQUAL_HEX32(0x12345678U, power->active_alarms);
+    TEST_ASSERT_EQUAL_UINT8(3U, power->soc_flags);
+    TEST_ASSERT_EQUAL_HEX16(0x1234U, power->equivalent_cycles);
+    TEST_ASSERT_EQUAL_UINT16(2500U, power->remaining_cycles);
+    TEST_ASSERT_EQUAL_UINT16(120U, power->remaining_years_x10);
+}
+
+void test_document_event_offsets_preserve_complete_record_and_independent_crc(void)
+{
+    /* CRC reference: Python binascii.crc_hqx over the first 58 bytes. */
+    static const uint8_t raw[60] = {
+        0xD2U, 0x47U, 0x04U, 0x0EU, 0x5BU, 0x0AU, 0x1AU, 0x5AU, 0x07U, 0x04U,
+        0x03U, 0x02U, 0x55U, 0x01U, 0x01U, 0x00U, 0x00U, 0x48U, 0x41U, 0x00U,
+        0x00U, 0x80U, 0x3EU, 0x78U, 0x56U, 0x34U, 0x12U, 0x00U, 0x00U, 0xFCU,
+        0x41U, 0x00U, 0x00U, 0xA0U, 0x3FU, 0x00U, 0x00U, 0x50U, 0x40U, 0x85U,
+        0xFFU, 0x21U, 0x43U, 0x32U, 0x54U, 0x00U, 0x00U, 0x00U, 0x41U, 0xCDU,
+        0xABU, 0x04U, 0x03U, 0x02U, 0x01U, 0x01U, 0x87U, 0x17U, 0x75U, 0xB2U};
+    rf_scp_event_t event;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_event(raw, sizeof(raw), &event));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(raw, event.timestamp, 7U);
+    TEST_ASSERT_EQUAL_UINT8(90U, event.event);
+    TEST_ASSERT_EQUAL_UINT8(7U, event.zone);
+    TEST_ASSERT_EQUAL_UINT8(4U, event.feeder);
+    TEST_ASSERT_EQUAL_UINT8(3U, event.phase);
+    TEST_ASSERT_EQUAL_UINT8(2U, event.fault_count);
+    TEST_ASSERT_EQUAL_UINT8(85U, event.soh_ratio);
+    TEST_ASSERT_EQUAL_UINT8(1U, event.nominal_current_status);
+    TEST_ASSERT_EQUAL_UINT8(1U, event.energy_status);
+    TEST_ASSERT_EQUAL_FLOAT(12.5f, event.current_amps);
+    TEST_ASSERT_EQUAL_FLOAT(0.25f, event.di_dt);
+    TEST_ASSERT_EQUAL_HEX32(0x12345678U, event.duration_ms);
+    TEST_ASSERT_EQUAL_FLOAT(31.5f, event.trip_voltage);
+    TEST_ASSERT_EQUAL_FLOAT(1.25f, event.harvest_voltage);
+    TEST_ASSERT_EQUAL_FLOAT(3.25f, event.reference_voltage);
+    TEST_ASSERT_EQUAL_INT16(-123, event.temperature);
+    TEST_ASSERT_EQUAL_HEX16(0x4321U, event.permanent_faults);
+    TEST_ASSERT_EQUAL_HEX16(0x5432U, event.temporary_faults);
+    TEST_ASSERT_EQUAL_FLOAT(8.0f, event.soh_idc);
+    TEST_ASSERT_EQUAL_HEX16(0xABCDU, event.boot_counter);
+    TEST_ASSERT_EQUAL_HEX32(0x01020304U, event.uptime_sec);
+    TEST_ASSERT_EQUAL_UINT8(1U, event.clock_quality);
+    TEST_ASSERT_EQUAL_HEX16(0x1787U, event.src_eui_hash);
+    TEST_ASSERT_EQUAL_HEX16(0xB275U, event.crc);
 }
 
 /*** end of file ***/
