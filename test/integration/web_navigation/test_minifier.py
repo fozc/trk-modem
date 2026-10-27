@@ -103,6 +103,80 @@ process.stdout.write(vm.runInNewContext(s+';JSON.stringify(result)'));
         self.assertEqual('[&<>"\']', actual["regex"])
         self.assertEqual("row 9: nested " + actual["text"], actual["rendered"])
 
+    def test_real_rf_monitor_separates_epoch_diagnostics_and_uncertain_retry(self):
+        html = (ROOT / "web-page/index.html").read_text(encoding="utf-8")
+        function = re.search(r"function buildRfMonitorTable\(d\)\{.*?^\}",
+                             html, re.S | re.M).group(0)
+        checker = """const fs=require('node:fs'),vm=require('node:vm');
+const code=JSON.parse(fs.readFileSync(0,'utf8'));
+const c={LNG:'en',t:x=>x,esc:x=>String(x),fmt:x=>String(x),rfLiveFlag:()=>null};
+vm.createContext(c);vm.runInContext(code,c);
+const render=e=>c.buildRfMonitorTable({Phases:[],Maintenance:{Epoch:[e]}});
+const observed=render({Feeder:1,HasReport:true,ReportPhases:6,Received120:1});
+if(!observed.includes('201 phases L2, L3, received 120 L1'))throw Error(observed);
+if(!observed.includes('success requires APPLIED'))throw Error(observed);
+const unknown=render({Feeder:1,Uncertain:true,Missing120:1,RetryUsed:false});
+if(!unknown.includes('Outcome uncertain; automatic retry stopped.'))throw Error(unknown);
+if(unknown.includes('One extra refresh pending.'))throw Error(unknown);
+const exhausted=render({Feeder:1,Missing120:1,RetryUsed:true});
+if(!exhausted.includes('contact Bolatex'))throw Error(exhausted);
+const degraded=c.buildRfMonitorTable({Phases:[],Maintenance:{EventStoreDegraded:true}});
+if(!degraded.includes('event retrieval is unavailable. Contact Bolatex.'))throw Error(degraded);
+"""
+        subprocess.run(["node", "-e", checker], input=json.dumps(function),
+                       encoding="utf-8", capture_output=True, check=True)
+
+    def test_operator_alarm_ack_requires_explicit_offline_confirmation_and_keeps_snapshot(self):
+        html = (ROOT / "web-page/index.html").read_text(encoding="utf-8")
+        functions = "\n".join(re.search(r"function " + name + r"\([^\n]*?\)\{.*?^\}",
+                                       html, re.S | re.M).group(0)
+                              for name in ("buildRfMonitorTable", "ackRfAlarm"))
+        checker = """const fs=require('node:fs'),vm=require('node:vm');
+const code=JSON.parse(fs.readFileSync(0,'utf8'));
+const dialogs=[],sent=[];
+const phase={Eui64:'00124B0038C9F1BE',TripFailedAlarm:true,TripFailureLatched:true,
+ AlarmRevision:7,Online:false,HasData:true,LiveAgeMs:60000,Live:{TripFailed:true},
+ AlarmEvent:{Code:105,Boot:3,Uptime:50}};
+const c={LNG:'en',s_role:'admin',loading:false,t:x=>x,esc:x=>String(x),fmt:x=>String(x),
+ rfLiveFlag:()=>null,pageCache:{rfmon:[{LineId:1,Phases:[phase]}]},pageReadAt:{'rfmon:0':Date.now()},
+ confirmAction:(msg,fn)=>dialogs.push({msg,fn}),showLoad:()=>{},hideLoad:()=>{},toast:()=>{},
+ userError:x=>String(x),readRfFeeder:async()=>{},api:async(path,options)=>{
+ sent.push({path,body:JSON.parse(options.body)});return {success:true};}};
+vm.createContext(c);vm.runInContext(code,c);
+if(!c.buildRfMonitorTable(c.pageCache.rfmon[0]).includes('ackRfAlarm(0,0)'))throw Error('missing admin action');
+c.s_role='user';
+if(c.buildRfMonitorTable(c.pageCache.rfmon[0]).includes('ackRfAlarm('))throw Error('user action visible');
+c.ackRfAlarm(0,0);if(dialogs.length)throw Error('user confirmation opened');
+c.s_role='admin';c.ackRfAlarm(0,0);
+if(dialogs.length!==1||sent.length)throw Error('first confirmation bypassed');
+if(!dialogs[0].msg.includes('105, boot 3, uptime 50'))throw Error('event identity missing');
+phase.AlarmRevision=8;phase.Eui64='00124B0038C9F1AE';
+dialogs.shift().fn();
+if(dialogs.length!==1||sent.length)throw Error('offline confirmation bypassed');
+(async()=>{await dialogs.shift().fn();
+if(sent.length!==1||sent[0].path!=='/alarm/rf/ack')throw Error('wrong request');
+if(sent[0].body.Revision!==7||sent[0].body.Eui64!=='00124B0038C9F1BE'||!sent[0].body.ConfirmOffline)
+ throw Error('confirmed snapshot replaced');})();
+"""
+        subprocess.run(["node", "-e", checker], input=json.dumps(functions),
+                       encoding="utf-8", capture_output=True, check=True)
+
+    def test_initial_rf_group_does_not_claim_known_applied_settings(self):
+        html = (ROOT / "web-page/index.html").read_text(encoding="utf-8")
+        function = re.search(r"function buildRfGroupStatus\(group\)\{.*?^\}",
+                             html, re.S | re.M).group(0)
+        checker = """const fs=require('node:fs'),vm=require('node:vm');
+const code=JSON.parse(fs.readFileSync(0,'utf8'));
+const c={t:x=>x,esc:x=>String(x),buildRfFailure:()=>''};
+vm.createContext(c);vm.runInContext(code,c);
+const unknown=c.buildRfGroupStatus({State:'idle',BatchState:'idle',HasReport:false});
+if(!unknown.includes('rfAppliedUnknown'))throw Error(unknown);
+const applied=c.buildRfGroupStatus({State:'applied',MatchesDesired:true});
+if(applied.includes('rfAppliedUnknown'))throw Error(applied);
+"""
+        subprocess.run(["node", "-e", checker], input=json.dumps(function),
+                       encoding="utf-8", capture_output=True, check=True)
+
     def test_invalid_javascript_is_rejected(self):
         with self.assertRaises(RuntimeError):
             module.SafeHTMLMinifier().minify_html(

@@ -108,7 +108,8 @@ const I18N={
     iecSboHelp:"SBO: select before operate. The timeout is used when SBO is enabled. A periodic interval of 0 disables periodic sending.",
     errT2:"T2 must be less than T1.",
     actualIoa:"Actual IOA range",
-    rfRowHelp:"The row number is a configuration slot, not the assigned feeder number. Zone changes require MH restart; Save does not restart MH automatically.",
+    rfRowHelp:"Row is an RTU configuration slot, not the feeder number. After commissioning, do not change the zone; contact BOLATeX.",
+    rfReplacementHint:"After replacing an AY in three-phase trip mode, reboot the other AYs on that feeder at the same visit via their service consoles, with LIVE state=1 and fault count=0. Check Boot_Counter in RF monitoring. Save does not perform AY reboots.",
     rfCancelRequested:"Cancellation requested. Refresh status to check the result.",
     rfMaintenance:"Maintenance required. Check the phase device and its communication.",
     present:"Present",
@@ -391,6 +392,7 @@ const I18N={
     mb_socket_state_web:"Web connection state",
     mb_socket_state_iec104:"IEC104 connection state",
     mb_socket_state_dialer:"Dialer connection state",
+    mb_sim_state:"SIM state",
     mb_battery_warning:"Battery warning mask",
     mb_modem_reset:"Restart device",
     mb_relay1:"Relay 1 commanded state",
@@ -478,6 +480,11 @@ const I18N={
     fCharge:"Charge",
     fChargeSt:"Charge State",
     fCap:"Capacity",
+    fEfc:"Used full cycles (EFC)",
+    fRemainingCycles:"Remaining cycles",
+    fRemainingYears:"Calendar life left",
+    unitYears:"years",
+    lifeBelowTenth:"Less than 0.1 year",
     fAmb:"Ambient Temp",
     fHeatSt:"Heater State",
     fHeatPw:"Heater Power",
@@ -539,6 +546,7 @@ const I18N={
     rfGroupRequested:"Request started; refresh the status to follow the result.",
     rfGroupChanged:"Previous settings applied; desired settings have changed.",
     rfGroupIdle:"No application started",
+    rfAppliedUnknown:"The settings currently applied on the AY are unknown; no retained APPLIED evidence is available.",
     rfGroupChecking:"Checking group",
     rfGroupWriting:"Sending settings",
     rfGroupCommitting:"Starting application",
@@ -573,7 +581,7 @@ const I18N={
     rfReasonUnknown:"MH did not report a specific cause (code {code}).",
     rfReason_1:"One or more group devices have no current live data.",
     rfReason_2:"A target device is missing from the MH inventory.",
-    rfReason_3:"MH reported an out-of-range setting.",
+    rfReason_3:"The configuration block is out of range and was not sent to the devices. Correct the settings and use a new group ID.",
     rfReason_4:"MH reported an authentication error.",
     rfReason_5:"The device operation timed out.",
     rfReason_6:"Settings may have been applied to only some devices; full application is unconfirmed.",
@@ -688,7 +696,8 @@ const I18N={
     iecSboHelp:"SBO: komuttan önce seçim (select before operate). Süre, SBO etkin olduğunda kullanılır. Periyodik gönderimde 0 değeri periyodik gönderimi kapatır.",
     errT2:"T2, T1’den küçük olmalıdır.",
     actualIoa:"Gerçek IOA aralığı",
-    rfRowHelp:"Satır numarası yapılandırma yuvasıdır; atanan Fider No değildir. Bölge değişikliği MH’nin yeniden başlatılmasını gerektirir; Kaydet MH’yi otomatik yeniden başlatmaz.",
+    rfRowHelp:"Satır RTU yapılandırma yuvasıdır, Fider No değildir. Devreye aldıktan sonra bölgeyi değiştirmeyin; BOLATeX’e başvurun.",
+    rfReplacementHint:"Üç faz birlikte açmada AY değişiminde, aynı fiderdeki diğer AY’leri aynı ziyarette, LIVE state=1 ve fault count=0 iken servis konsolundan reboot edin. Boot_Counter değişimini RF İzleme’de doğrulayın. Kaydet bu AY resetlerini yapmaz.",
     rfCancelRequested:"İptal isteği gönderildi. Sonucu kontrol etmek için durumu yenileyin.",
     rfMaintenance:"Bakım gerekli. Faz cihazını ve haberleşmesini kontrol edin.",
     present:"Var",
@@ -971,6 +980,7 @@ const I18N={
     mb_socket_state_web:"Web bağlantı durumu",
     mb_socket_state_iec104:"IEC104 bağlantı durumu",
     mb_socket_state_dialer:"Arama bağlantısı durumu",
+    mb_sim_state:"SIM durumu",
     mb_battery_warning:"Akü uyarı maskesi",
     mb_modem_reset:"Cihazı yeniden başlat",
     mb_relay1:"Röle 1 komut durumu",
@@ -1058,6 +1068,11 @@ const I18N={
     fCharge:"Şarj",
     fChargeSt:"Şarj Durumu",
     fCap:"Kapasite",
+    fEfc:"Eşdeğer tam çevrim (EFC)",
+    fRemainingCycles:"Kalan çevrim",
+    fRemainingYears:"Kalan takvim ömrü",
+    unitYears:"yıl",
+    lifeBelowTenth:"0,1 yıldan az",
     fAmb:"Ortam Sıcaklığı",
     fHeatSt:"Isıtıcı Durumu",
     fHeatPw:"Isıtıcı Gücü",
@@ -1119,6 +1134,7 @@ const I18N={
     rfGroupRequested:"İstek başlatıldı; sonucu izlemek için durumu yenileyin.",
     rfGroupChanged:"Önceki ayar uygulandı; istenen ayar değişti.",
     rfGroupIdle:"Uygulama başlatılmadı",
+    rfAppliedUnknown:"AY üzerinde uygulanmış güncel ayarlar bilinmiyor; saklanmış APPLIED kanıtı yok.",
     rfGroupChecking:"Grup kontrol ediliyor",
     rfGroupWriting:"Ayar gönderiliyor",
     rfGroupCommitting:"Uygulama başlatılıyor",
@@ -1153,7 +1169,7 @@ const I18N={
     rfReasonUnknown:"MH kesin hata nedeni bildirmedi (kod {code}).",
     rfReason_1:"Bir veya daha fazla grup cihazından güncel canlı veri alınamıyor.",
     rfReason_2:"Hedef cihaz MH envanterinde bulunmuyor.",
-    rfReason_3:"MH, ayar değerinin izin verilen aralıkta olmadığını bildirdi.",
+    rfReason_3:"Ayar bloğu izin verilen aralıkta değil; ayırıcılara gönderilmedi. Ayarları düzeltip yeni bir grup kimliğiyle gönderin.",
     rfReason_4:"MH kimlik doğrulama hatası bildirdi.",
     rfReason_5:"Cihaz işlemi zaman aşımına uğradı.",
     rfReason_6:"Ayarlar bazı cihazlarda uygulanmış olabilir; tüm cihazlarda uygulandığı doğrulanmadı.",
@@ -1516,6 +1532,7 @@ function buildRfGroupStatus(group){
     if(!group.GroupStarted)return html;
   }
   if(!group.BatchState||group.BatchState==='idle')html+='<p><strong>'+esc(title)+'</strong></p>';
+  if(group.State==='idle')html+='<p class="hint">'+esc(t('rfAppliedUnknown'))+'</p>';
   html+=buildRfFailure(group);
   html+='<details><summary>'+esc(t('rfDetails'))+'</summary>';
   if(group.Line)html+='<p>'+esc(tf('rfStoreLineTpl',{n:group.Line}))+' · '+esc(t('rfGroupId'))+': '+esc(group.GroupId)+'</p>';
@@ -1564,7 +1581,7 @@ async function abortRfConfig(){
   try{showLoad();await api('/config/rf/abort',{method:'POST'});hideLoad();toast(t('rfCancelRequested'),'info');await readRfGroupStatus()}catch(e){hideLoad();toast(t('tErr')+e.message,'err');await readRfGroupStatus()}
 }
 function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[]).filter(u=>u&&u.EUI64);
-  let s=pageHead(t('rfTitle'),'rf',t('rfSub'))+'<div class="card"><div class="card-head"><div><h3>'+esc(t('rfCard'))+'</h3><div class="sub">'+esc(t('rfCardSub'))+'</div><p class="hint">'+esc(t('rfRowHelp'))+'</p></div></div><div class="card-body">';
+  let s=pageHead(t('rfTitle'),'rf',t('rfSub'))+'<div class="card"><div class="card-head"><div><h3>'+esc(t('rfCard'))+'</h3><div class="sub">'+esc(t('rfCardSub'))+'</div><p class="hint">'+esc(t('rfRowHelp'))+'</p><p class="hint">'+esc(t('rfReplacementHint'))+'</p></div></div><div class="card-body">';
   s+= '<div class="tabbar">'+Array.from({length:FEEDER_TABS},(_,i)=>'<button class="tab '+(i===0?'active':'')+'" onclick="selectRfTab('+i+')">'+esc(tf('rfStoreLineTpl',{n:i+1})+' · '+t('fFeedId')+' '+(rows.HatID?.[i]??0))+'</button>').join('')+'</div>';
   const ints=[['SetEdilebilirAcmaArizaSayisi','fFaultCount',1,4],['OluHatAkimiDogrulamaSuresi','fVerify',80,200],['YenilenmeSifirlamaSuresi','fReset',10,300]];
   const floats=[['SistemNominalAkimi','fNomCur',2,200],['SetEdilebilirActirmaEsikAkimi','fIa',5,240],['ArtimliAkimEsigi','fDidt',1,2200],['HatKopukHatBosta','fBreak',0.3,5]];
@@ -1614,9 +1631,9 @@ function formatAlarmMask(value){if(value==null)return '-';if(value===0)return t(
 function alarmDetail(value){const n=activeAlarmNames(value).length;return (LNG==='tr'?n+' etkin — ':n+' active — ')+'0x'+value.toString(16).toUpperCase().padStart(8,'0')}
 function formatBoardState(v){if(v==null)return '-';const tr=LNG==='tr';const p=[];p.push((v&1)?(tr?'Telemetri güncel':'Telemetry current'):(tr?'Telemetri güncel değil':'Telemetry stale'));if(v&2)p.push(tr?'Güç ölçümü geçerli':'Power measurement valid');if(v&4)p.push(tr?'Şarj denetleyicisi güncel değil':'Charger data stale');if(v&8)p.push(tr?'Deşarj ölçülemiyor':'Discharge not measurable');const md=(v>>4)&3,cs=(v>>6)&3;p.push((tr?'MH–kart bağlantısı: ':'MH link: ')+(tr?['etkin','geçici devre dışı','devre dışı','bilinmiyor'][md]:['active','temporarily disabled','disabled','unknown'][md]));p.push((tr?'Şarj durumu: ':'Charging: ')+(tr?['bilinmiyor','şarj yok','şarj oluyor','çelişkili'][cs]:['unknown','not charging','charging','conflicting'][cs]));return p.join(' · ')}
 function formatBoardState2(v){if(v==null)return '-';const tr=LNG==='tr';const p=[];if(v&128)p.push(tr?'Kart ölçümü güncel değil':'Board measurement stale');const ve=(v>>4)&7,sr=(v>>2)&3,pw=v&3;p.push((tr?'Ayar doğrulama: ':'Setting verification: ')+(tr?['doğrulandı','kullanılmıyor','kırpıldı','kaynak MH değil','uygulanıyor','reddedildi','beklemede','bilinmiyor'][ve]:['verified','unused','clipped','source not MH','applying','rejected','waiting','unknown'][ve]));p.push((tr?'Ayar kaynağı: ':'Setting source: ')+(tr?['yok','MH','servis','bilinmiyor'][sr]:['none','MH','service','unknown'][sr]));p.push((tr?'Sistem gücü ölçümü: ':'System power measurement: ')+(tr?['hazırlanıyor','ölçülüyor','güncel değil','geçersiz'][pw]:['initializing','measuring','stale','invalid'][pw]));return p.join(' · ')}
-  const NOSensor={OrtamSicakligi:1,HeaterState:1,HeaterPower:1,PanelAkimi:1};const PBITS={PanelVoltaji:2,DcVoltaji:2,BataryaVoltaji:2,GirisAkimi:4,BataryaAkimi:4|1<<14,GirisGucu:8,AkuGucu:8,Kaynak:1<<12,TelemetriYasi:1,KartDurum:1,KartDurum2:1,AlarmMaskesi:1<<13,ChargeState:1<<10,ChargePertance:32|1<<14,BatterySOC:32|1<<14,Capacity:1<<11,BatteryTemp:1<<8,BatterySOH:1<<7,Temp:1<<9};
+  const NOSensor={OrtamSicakligi:1,HeaterState:1,HeaterPower:1,PanelAkimi:1};const PBITS={PanelVoltaji:2,DcVoltaji:2,BataryaVoltaji:2,GirisAkimi:4,BataryaAkimi:4|1<<14,GirisGucu:8,AkuGucu:8,Kaynak:1<<12,TelemetriYasi:1,KartDurum:1,KartDurum2:1,AlarmMaskesi:1<<13,ChargeState:1<<10,ChargePertance:32|1<<14,BatterySOC:32|1<<14,Capacity:1<<11,BatteryEquivalentCycles:1,BatteryRemainingCycles:1,BatteryRemainingYearsX10:1,BatteryTemp:1<<8,BatterySOH:1<<7,Temp:1<<9};
 function measState(x){if(typeof x.PowerValidFields!=='number')return null;const m=x.PowerValidFields;const miss=[];if(!(m&2))miss.push(t('msVolt'));if((m&16388)!==16388)miss.push(t('msCur'));if(!(m&8))miss.push(t('msPow'));if((m&16416)!==16416)miss.push(t('msSoc'));if(!(m&128))miss.push(t('msSoh'));if((m&768)!==768)miss.push(t('msTemp'));if(!(m&1024))miss.push(t('msCharge'));if(!(m&2048))miss.push(t('msCap'));if(!(m&4096))miss.push(t('msSrc'));const stale=(typeof x.TelemetriYasi==='number'&&x.TelemetriYasi>30&&x.TelemetriYasi<255)||x.tlmNone;const txt=(miss.length?t('msInvalid')+': '+miss.join(', '):t('msAll'))+(stale?' · '+t('msStaleTlm'):'');return{txt:txt,bad:miss.length>0,stale:stale}}
-function renderBoardRow(x,f,ms){const pb=PBITS[f[0]];const inv=(x.ADCValid===0&&['3V3','3V8','5V','TDIE','TDIEMax','TDIEMin','ADCSampleAgeMs'].includes(f[0]))||(pb!==undefined&&typeof x.PowerValidFields==='number'&&(pb&x.PowerValidFields)!==pb)||(f[0]==='TelemetriYasi'&&(x.tlmNone||x.TelemetriYasi>=255))||(f[0]==='OlcumDurumu'&&ms&&ms.bad);const stale=(f[0]==='TelemetriYasi'&&typeof x.TelemetriYasi==='number'&&x.TelemetriYasi>30&&x.TelemetriYasi<255)||(f[0]==='OlcumDurumu'&&ms&&!ms.bad&&ms.stale);return '<div class="kv"><span class="k">'+esc(f[1])+'</span><span class="v'+(inv?' vinv':stale?' vstale':'')+'"'+((inv||stale)?' title="'+esc(inv?t('invData'):t('staleData'))+'"':'')+'>'+esc(f[0]==='GsmRAT'?formatNetwork(x):f[0]==='GsmRxlev'?formatSignal(x.GsmRxlev,'rxlev'):f[0]==='GsmRscp'?formatSignal(x.GsmRscp,'rscp'):f[0]==='GsmRsrp'?formatSignal(x.GsmRsrp,'rsrp'):f[0]==='GsmRsrq'?formatSignal(x.GsmRsrq,'rsrq'):f[0]==='GsmSig'?fmtCsq(x.GsmSig):f[0]==='OlcumDurumu'?(ms?ms.txt:'-'):NOSensor[f[0]]||x[f[0]]==null?t('notAvailable'):f[0]==='KartDurum'?formatBoardState(x.KartDurum):f[0]==='KartDurum2'?formatBoardState2(x.KartDurum2):f[0]==='Kaynak'?formatPowerSource(x.Kaynak):f[0]==='AlarmMaskesi'?formatAlarmMask(x.AlarmMaskesi):f[0]==='ChargeState'?formatChargePhase(x[f[0]]):f[3]!==undefined?fmt(x[f[0]]/f[3],f[2],f[4]!==undefined?f[4]:2):fmt(x[f[0]],f[2]))+(f[0]!=='OlcumDurumu'&&(inv||stale)?' · '+esc(t(inv?'msInvalid':'staleData')):'')+'</span></div>';}
+function renderBoardRow(x,f,ms){const pb=PBITS[f[0]];const life=['BatteryEquivalentCycles','BatteryRemainingCycles','BatteryRemainingYearsX10'].includes(f[0]);const inv=(x.ADCValid===0&&['3V3','3V8','5V','TDIE','TDIEMax','TDIEMin','ADCSampleAgeMs'].includes(f[0]))||(pb!==undefined&&typeof x.PowerValidFields==='number'&&(pb&x.PowerValidFields)!==pb)||(f[0]==='TelemetriYasi'&&(x.tlmNone||x.TelemetriYasi>=255))||(f[0]==='OlcumDurumu'&&ms&&ms.bad);const stale=(life&&ms&&ms.stale)||(f[0]==='TelemetriYasi'&&typeof x.TelemetriYasi==='number'&&x.TelemetriYasi>30&&x.TelemetriYasi<255)||(f[0]==='OlcumDurumu'&&ms&&!ms.bad&&ms.stale);return '<div class="kv"><span class="k">'+esc(f[1])+'</span><span class="v'+(inv?' vinv':stale?' vstale':'')+'"'+((inv||stale)?' title="'+esc(inv?t('invData'):t('staleData'))+'"':'')+'>'+esc(f[0]==='GsmRAT'?formatNetwork(x):f[0]==='GsmRxlev'?formatSignal(x.GsmRxlev,'rxlev'):f[0]==='GsmRscp'?formatSignal(x.GsmRscp,'rscp'):f[0]==='GsmRsrp'?formatSignal(x.GsmRsrp,'rsrp'):f[0]==='GsmRsrq'?formatSignal(x.GsmRsrq,'rsrq'):f[0]==='GsmSig'?fmtCsq(x.GsmSig):f[0]==='OlcumDurumu'?(ms?ms.txt:'-'):NOSensor[f[0]]||x[f[0]]==null?t('notAvailable'):f[0]==='KartDurum'?formatBoardState(x.KartDurum):f[0]==='KartDurum2'?formatBoardState2(x.KartDurum2):f[0]==='Kaynak'?formatPowerSource(x.Kaynak):f[0]==='AlarmMaskesi'?formatAlarmMask(x.AlarmMaskesi):f[0]==='ChargeState'?formatChargePhase(x[f[0]]):f[0]==='BatteryRemainingYearsX10'&&x[f[0]]===0?t('lifeBelowTenth'):f[3]!==undefined?fmt(x[f[0]]/f[3],f[2],f[4]!==undefined?f[4]:2):fmt(x[f[0]],f[2]))+(f[0]!=='OlcumDurumu'&&(inv||stale)?' · '+esc(t(inv?'msInvalid':'staleData')):'')+'</span></div>';}
 function renderMobileNetwork(x){
   const fields=[['GsmRxlev','2G RSSI','','rxlev',2],['GsmRscp','3G RSCP','','rscp',3],['GsmRsrp','4G RSRP','','rsrp',4],['GsmRsrq','4G RSRQ','','rsrq',4]];
   const regs=x.GsmRAT===4?[x.GsmCEREG]:[2,3].includes(x.GsmRAT)?[x.GsmCREG,x.GsmCGREG]:[];
@@ -1657,7 +1674,7 @@ function renderDigitalIO(x){
   }
   return html+'</div><p class="device-note">'+esc(t('dipNote'))+'</p></div>';
 }
-function renderBoard(d){const x={...d};if(x.ADCValid===0){['3V3','3V8','5V','TDIE','TDIEMax','TDIEMin','ADCSampleAgeMs'].forEach(k=>{x[k]=null})}if(typeof x.BatteryTemp==='number'&&x.BatteryTemp<=-990)x.BatteryTemp=null;if(x.BatterySOH===2550)x.BatterySOH=null;if(x.TelemetriYasi===255){x.TelemetriYasi=null;x.tlmNone=1}const ms=measState(x);let s=pageHead(t('mBoard'),'board',t('boardSub'),false);if(!d)return s+'<div class="card"><div class="card-body"><div class="empty">'+t('boardPress')+'</div></div></div>';const groups=[[t('gSolar'),[['PanelAkimi',t('fCur'),'mA'],['PanelVoltaji',t('fVolt'),'mV'],['DcVoltaji',t('fDcIn'),'mV'],['GirisAkimi',t('fInCur'),'mA'],['GirisGucu',t('fInPw'),'mW',10,1],['Kaynak',t('fSrc'),'']]],[t('gBattery'),[['BataryaVoltaji',t('fVolt'),'mV'],['BataryaAkimi',t('fCur'),'mA'],['BatteryTemp',t('fTemp'),'°C',10,1],['ChargePertance',t('fCharge'),'%',10,1],['ChargeState',t('fChargeSt'),''],['BatterySOC','SOC','%',10,1],['BatterySOH','SOH','%',10,1],['Capacity',t('fCap'),'Ah'],['AkuGucu',t('fBatPw'),'mW',10,1]]],[t('gRails'),[['3V3','3.3V','mV'],['3V8','3.8V','mV'],['5V','5V','mV'],['ADCSampleAgeMs',t('fAdcAge'),'ms']]],[t('gSystem'),[['OrtamSicakligi',t('fAmb'),'°C'],['HeaterState',t('fHeatSt'),''],['HeaterPower',t('fHeatPw'),'']]],[t('gTemp'),[['Temp',t('fTemp'),'°C'],['TempMax',t('fTmax'),'°C'],['TempMin',t('fTmin'),'°C'],['TDIE',t('fDie'),'°C'],['TDIEMax',t('fDieMax'),'°C'],['TDIEMin',t('fDieMin'),'°C']]]];s+='<div class="grid g2" style="align-items:start"><div>'+renderMobileNetwork(x)+renderDigitalIO(x)+'</div>'+renderPowerBoard(x,ms);groups.forEach(g=>{s+='<div class="card"><div class="card-head"><h3>'+esc(g[0])+'</h3></div><div class="kv-list">';g[1].forEach(f=>{s+=renderBoardRow(x,f,ms)});s+='</div>'+(g[0]===t('gBattery')&&Number(x.BatteryCapacityUnknown)===1?'<p class="hint">'+esc(t('rfCapacityUnknown'))+'</p>':'')+'</div>'});s+='</div>';return s}
+function renderBoard(d){const x={...d};for(const key of ['BatteryEquivalentCycles','BatteryRemainingCycles','BatteryRemainingYearsX10']){if(x[key]===65535)x[key]=null}if(x.ADCValid===0){['3V3','3V8','5V','TDIE','TDIEMax','TDIEMin','ADCSampleAgeMs'].forEach(k=>{x[k]=null})}if(typeof x.BatteryTemp==='number'&&x.BatteryTemp<=-990)x.BatteryTemp=null;if(x.BatterySOH===2550)x.BatterySOH=null;if(x.TelemetriYasi===255){x.TelemetriYasi=null;x.tlmNone=1}const ms=measState(x);let s=pageHead(t('mBoard'),'board',t('boardSub'),false);if(!d)return s+'<div class="card"><div class="card-body"><div class="empty">'+t('boardPress')+'</div></div></div>';const groups=[[t('gSolar'),[['PanelAkimi',t('fCur'),'mA'],['PanelVoltaji',t('fVolt'),'mV'],['DcVoltaji',t('fDcIn'),'mV'],['GirisAkimi',t('fInCur'),'mA'],['GirisGucu',t('fInPw'),'mW',10,1],['Kaynak',t('fSrc'),'']]],[t('gBattery'),[['BataryaVoltaji',t('fVolt'),'mV'],['BataryaAkimi',t('fCur'),'mA'],['BatteryTemp',t('fTemp'),'°C',10,1],['ChargePertance',t('fCharge'),'%',10,1],['ChargeState',t('fChargeSt'),''],['BatterySOC','SOC','%',10,1],['BatterySOH','SOH','%',10,1],['Capacity',t('fCap'),'Ah'],['BatteryEquivalentCycles',t('fEfc'),''],['BatteryRemainingCycles',t('fRemainingCycles'),''],['BatteryRemainingYearsX10',t('fRemainingYears'),t('unitYears'),10,1],['AkuGucu',t('fBatPw'),'mW',10,1]]],[t('gRails'),[['3V3','3.3V','mV'],['3V8','3.8V','mV'],['5V','5V','mV'],['ADCSampleAgeMs',t('fAdcAge'),'ms']]],[t('gSystem'),[['OrtamSicakligi',t('fAmb'),'°C'],['HeaterState',t('fHeatSt'),''],['HeaterPower',t('fHeatPw'),'']]],[t('gTemp'),[['Temp',t('fTemp'),'°C'],['TempMax',t('fTmax'),'°C'],['TempMin',t('fTmin'),'°C'],['TDIE',t('fDie'),'°C'],['TDIEMax',t('fDieMax'),'°C'],['TDIEMin',t('fDieMin'),'°C']]]];s+='<div class="grid g2" style="align-items:start"><div>'+renderMobileNetwork(x)+renderDigitalIO(x)+'</div>'+renderPowerBoard(x,ms);groups.forEach(g=>{s+='<div class="card"><div class="card-head"><h3>'+esc(g[0])+'</h3></div><div class="kv-list">';g[1].forEach(f=>{s+=renderBoardRow(x,f,ms)});s+='</div>'+(g[0]===t('gBattery')&&Number(x.BatteryCapacityUnknown)===1?'<p class="hint">'+esc(t('rfCapacityUnknown'))+'</p>':'')+'</div>'});s+='</div>';return s}
 
 function renderDevice(d){const x=d||{};let s=pageHead(t('devTitle'),'device',t('devSub'));s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devInfo'))+'</h3><div class="sub">'+esc(t('devInfoSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=textField('dev-SeriNumarasi',t('fSerial'),x.SeriNumarasi,'64',true)+textField('dev-UretimTarihi',t('fMfg'),fmtEpoch(x.UretimTarihi),'64',true)+textField('dev-LifeTime',t('fLife'),fmtLifetime(x.LifeTime),'64',true)+textField('dev-RunTime',t('fRun'),fmtLifetime(x.RunTime),'64',true)+textField('dev-ModemYazilimVeriyonu',t('fMfw'),x.ModemYazilimVeriyonu,'64',true)+textField('dev-RFYazilimVeriyonu',t('fRfw'),x.RFYazilimVeriyonu,'64',true)+textField('dev-KurulumTarihi',t('fFwDate'),fmtEpoch(x.KurulumTarihi),'64',true)+textField('dev-CihazKoordinati',t('fCell'),x.CihazKoordinati&&typeof x.CihazKoordinati==='object'?`MCC:${x.CihazKoordinati.MCC} MNC:${x.CihazKoordinati.MNC} LAC:${x.CihazKoordinati.LAC} CI:${x.CihazKoordinati.CI}`:x.CihazKoordinati||'-','128',true)+textField('dev-DevreyeAlinmaZamani-display',t('fComm'),fmtEpoch(x.DevreyeAlinmaZamani),'64',true)+textField('dev-Time',t('fRtc'),fmtEpoch(x.Time),'64',true);s+='</div></div></div>';
   s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devCfg'))+'</h3><div class="sub">'+esc(t('devCfgSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=numField('dev-DevreyeAlinmaZamani',LNG==='tr'?'Devreye alınma zamanı (UTC epoch)':'Commissioning time (UTC epoch)',x.DevreyeAlinmaZamani,0,4294967295);
@@ -2013,6 +2030,15 @@ function buildRfMonitorTable(d){
   const maintenance=phases.some(p=>p?.UptimeStalled===true||p?.Live?.FsmError===true);
   let html=maintenance?'<p class="hint">'+esc(t('rfMaintenance'))+'</p>':'';
   const service=d.Maintenance||{};
+  if(service.EventStoreDegraded===true)html+='<p class="hint">'+esc(LNG==='tr'?'MH olay belleği bozuk kipte: envanter yüklenebilir, olaylar alınamaz. BOLATeX ile görüşün.':'MH event storage is degraded: inventory can load, event retrieval is unavailable. Contact Bolatex.')+'</p>';
+  for(const epoch of service.Epoch||[]){
+    const phasesFor=mask=>[0,1,2].filter(i=>(Number(mask)&(1<<i))!==0).map(i=>'L'+(i+1)).join(', ')||'—';
+    const detail=LNG==='tr'?`EPOCH fider ${epoch.Feeder}: 201 fazları ${epoch.HasReport?phasesFor(epoch.ReportPhases):'bekleniyor'}, alınan 120 ${phasesFor(epoch.Received120)}. Bunlar tanı bilgisidir; başarı APPLIED ile doğrulanır.`:`EPOCH feeder ${epoch.Feeder}: 201 phases ${epoch.HasReport?phasesFor(epoch.ReportPhases):'pending'}, received 120 ${phasesFor(epoch.Received120)}. Diagnostic observations; success requires APPLIED.`;
+    html+='<p class="hint">'+esc(detail)+'</p>';
+    if(epoch.Missing120)html+='<p class="hint">'+esc((LNG==='tr'?'120 gelmedi: ':'Missing 120: ')+phasesFor(epoch.Missing120)+(epoch.Uncertain?(LNG==='tr'?'. Sonuç belirsiz; otomatik yineleme durdu.':'. Outcome uncertain; automatic retry stopped.'):epoch.RetryUsed?(LNG==='tr'?'. Ek yenileme kullanıldı; bakım gerekli, Bolatex ile görüşün.':'. Extra refresh used; maintenance required, contact Bolatex.'):(LNG==='tr'?'. Tek ek yenileme bekliyor.':'. One extra refresh pending.')))+'</p>';
+    if(epoch.RetryUsed&&!epoch.Missing120)html+='<p class="hint">'+esc(LNG==='tr'?'Tek ek EPOCH yenilemesi kullanıldı.':'The single extra EPOCH refresh has been used.')+'</p>';
+    if(epoch.Uncertain)html+='<p class="hint">'+esc(LNG==='tr'?'EPOCH takibi kesildi: yeniden başlama veya olay kaybı var. Bakımda kontrol edin.':'EPOCH tracking interrupted by restart or event loss. Check during maintenance.')+'</p>';
+  }
   const resetLabels=LNG==='tr'?['','biçimlendirme','durum kaybı','servis silmesi']:['','formatting','state loss','service clear'];
   if(Number.isInteger(service.StoreResetReason)&&service.StoreResetReason>0){
     html+='<p class="hint">'+esc((LNG==='tr'?'Son MH olay deposu işlemi: ':'Last MH event store operation: ')+(resetLabels[service.StoreResetReason]||service.StoreResetReason))+'</p>';
@@ -2043,7 +2069,32 @@ function buildRfMonitorTable(d){
     }
     html+='</tr>';
   }
+  if(typeof s_role!=='undefined'&&s_role==='admin'){
+    html+='<tr><td>'+esc(LNG==='tr'?'Alarm onayı':'Alarm acknowledgement')+'</td>';
+    for(let index=0;index<3;index++){
+      const phase=phases[index];
+      const pending=phase?.TripFailedAlarm===true&&phase?.TripFailureLatched===true&&phase.AlarmRevision>0;
+      html+='<td>'+(pending?'<button class="btn btn-danger btn-small" onclick="ackRfAlarm('+(d.LineId-1)+','+index+')">'+esc(LNG==='tr'?'Onayla':'Acknowledge')+'</button>':esc(phase?.TripFailedAlarm===true&&phase?.TripFailureLatched===false?(LNG==='tr'?'Onaylandı; alarm sürüyor':'Acknowledged; alarm ongoing'):'—'))+'</td>';
+    }
+    html+='</tr>';
+  }
   return html+'</tbody></table></div>';
+}
+function ackRfAlarm(line,phase){
+  if(loading||s_role!=='admin')return;
+  const data=pageCache.rfmon?.[line]?.Phases?.[phase];
+  if(!data?.TripFailureLatched||!data.AlarmRevision)return;
+  const request={Line:line+1,Phase:phase+1,Eui64:data.Eui64,Revision:data.AlarmRevision,ConfirmOffline:false};
+  const elapsed=Math.max(0,Date.now()-(pageReadAt['rfmon:'+line]||0));
+  const age=Number.isFinite(data.LiveAgeMs)?data.LiveAgeMs+elapsed:null;
+  const event=data.AlarmEvent;
+  const detail='L'+(phase+1)+' / '+data.Eui64+'\n'+(event?`Event ${event.Code}, boot ${event.Boot}, uptime ${event.Uptime} s`:(LNG==='tr'?'İlgili 101/105 kaydı yok; LIVE alarmı.':'No related 101/105 record; LIVE alarm.'))+'\nLIVE: '+(data.Live?.TripFailed==null?'—':Number(data.Live.TripFailed))+'; '+(LNG==='tr'?'veri yaşı':'data age')+': '+(age==null?'—':Math.floor(age)+' ms');
+  const send=async()=>{try{showLoad();const result=await api('/alarm/rf/ack',{method:'POST',body:JSON.stringify(request)});hideLoad();if(result.success===false)throw new Error(result.error||t('tFailed'));await readRfFeeder(line)}catch(e){hideLoad();toast(t('tErr')+userError(e),'err')}};
+  confirmAction((LNG==='tr'?'Bu açma başarısızlığı alarmını operatör olarak onaylıyor musunuz? Onay kalıcı kaydedilir ve SCADA’ya bildirilir.':'Acknowledge this trip failure alarm as operator? The acknowledgement is stored durably and reported to SCADA.')+'\n'+detail,()=>{
+    if(data.Online!==true||age==null||age>=30000){
+      confirmAction(LNG==='tr'?'Güncel LIVE verisi yok. Alarmın fiziksel olarak bittiği doğrulanmadı. Bu durumda da operatör onayı vermek istiyor musunuz?':'No current LIVE data. Physical alarm resolution is unconfirmed. Acknowledge in this condition?',()=>{request.ConfirmOffline=true;return send()});
+    }else return send();
+  });
 }
 async function readBoard(){await readPage('board')}
 

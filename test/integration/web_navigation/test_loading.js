@@ -103,6 +103,8 @@ async function until(predicate) {
 
 async function check(html, label) {
     const payload = resource('index');
+    assert.ok(payload.length <= 48 * 1024,
+        `index gzip is ${payload.length} bytes; loader and cache limit is 48 KiB`);
     const expected = zlib.gunzipSync(payload).toString('utf8');
     assert.ok(!/Downloading|Ana sayfa|Home|Uygulama indiriliyor/.test(html));
     const idle = start(html, {autoSubmit: false});
