@@ -67,8 +67,11 @@ server. STM32CubeIDE project (`.cproject`, `.ioc`) — **not** CMake.
   Exact-width atomic
   typedefs (`atomic_uint8_t` etc.) are C11-optional — use `_Atomic T`
   or the mandatory `atomic_uint_leastN_t`/`_fastN_t` family.
-- **BARR-C:2018 style** — Allman braces, 4 spaces, 80 columns, LF line
-  endings, no tabs, conventional comparisons
+- **BARR-C:2018 style** — Allman braces, 4 spaces, LF line endings,
+  no tabs. Use 120 columns as the wrapping guide; wrap only very long
+  statements and align continuation lines with the first argument or
+  the start of the continued expression, not the statement indentation.
+  Use conventional comparisons
   (`obj == NULL`, `strcmp(key, "APN") == 0`), `for (;;)` for infinite
   loops, signed/unsigned never mixed, unsigned constants suffixed (`6U`),
   `/*** end of file ***/`

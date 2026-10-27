@@ -36,9 +36,12 @@ generic naming/cleanup examples below. ISR protection selection follows
 
 ### 1.2  Line Width
 
-- Maximum **80 characters** per line (all source files).
-- Lines exceeding this limit shall be wrapped at a logical break point and the
-  continuation indented for readability.
+- Repo override (user decision 2026-10-26): use **120 columns** as the
+  wrapping guide. Do not enforce the former 80-column limit.
+- Keep readable statements on one line; wrap only very long expressions
+  at logical break points.
+- Align continuation lines with the first argument or the start of the
+  continued expression, not the indentation of the statement itself.
 
 ### 1.3  Braces
 
@@ -233,8 +236,8 @@ typedef struct
 - Each indentation level is **4 spaces**.
 - `case` labels in a `switch` are indented one level from `switch`; case body is
   indented one level from `case`.
-- Long lines shall be wrapped and continuation lines indented for maximum
-  readability.
+- Continuation alignment follows section 1.2; do not apply a fixed extra
+  indentation from the start of the statement.
 
 ```c
 sys_error_handler(int32_t err)
@@ -979,7 +982,7 @@ The following abbreviations may be used **without** local explanation:
 | Rule Area | Primary Enforcement | Secondary Enforcement |
 |-----------|--------------------|-----------------------|
 | Language baseline (1.1) | Compiler flags | Code review |
-| Line width (1.2) | Automated scan at build | — |
+| Long-line readability and alignment (1.2) | Code formatter | Code review |
 | Braces (1.3) | Automated tool / beautifier | Code review |
 | Parentheses (1.4) | Code review | Static analysis |
 | Abbreviations (1.5) | Code review | — |
