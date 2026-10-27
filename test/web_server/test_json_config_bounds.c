@@ -473,6 +473,21 @@ void test_iec_rejects_overlapping_fault_ranges(void)
     TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
 }
 
+void test_iec_reserves_operator_ack_addresses_in_points_and_fault_ranges(void)
+{
+    enable_valid_lines();
+    iec.line.ioa_r_trip_failed[0] = 300000U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    iec.line.ioa_r_trip_failed[0] = 300023U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    iec.line.ioa_r_trip_failed[0] = 300024U;
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{}", &iec));
+    iec.line.temporary_fault_base[0] = 299999U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    iec.line.temporary_fault_base[0] = 299820U;
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{}", &iec));
+}
+
 void test_iec_rejects_zero_and_ioa_overflow_before_writing(void)
 {
     iec.ioa_aku_uyarisi = 0U;

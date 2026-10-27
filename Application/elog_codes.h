@@ -56,6 +56,10 @@ typedef enum
 
 	// Communication codes (60..69)
     ELOG_UART_TX_RECOVERY      = 60,
+    ELOG_RF_TRIP_FAILURE       = 61,  /* info: RF feeder(1), phase(1), active(1) */
+    ELOG_RF_ALARM_ACK          = 62,  /* web/admin, event boot/uptime/CRC and EUI hash */
+    ELOG_RF_MAINTENANCE        = 63,  /* kind, feeder, phase, subcode, EUI hash */
+    ELOG_RF_CFG_COMMIT         = 64,  /* line, feeder, group, cfg_crc, clock-valid */
 
 	// Audit codes (70..79)
 	ELOG_WEB_LOGIN_FAIL        = 70,  /* info: ip(4) burst_count(2) */
@@ -103,6 +107,10 @@ static inline const char* elog_code_to_string(elog_code_t code)
 		case ELOG_PWR_PANIC:              return "PWR_PANIC";
 		case ELOG_WEB_LOGIN_FAIL:         return "WEB_LOGIN_FAIL";
         case ELOG_UART_TX_RECOVERY: return "UART_TX_RECOVERY";
+        case ELOG_RF_TRIP_FAILURE: return "RF_TRIP_FAILURE";
+        case ELOG_RF_ALARM_ACK: return "RF_ALARM_ACK";
+        case ELOG_RF_MAINTENANCE: return "RF_MAINTENANCE";
+        case ELOG_RF_CFG_COMMIT: return "RF_CFG_COMMIT";
 
 		default: return "UNKNOWN_CODE";
 	}

@@ -29,6 +29,7 @@
 #include "rf_inventory.h"
 #include "rf_log.h"
 #include "rf.h"
+#include "rf_events.h"
 #include "rf_group.h"
 #include "rf_apply.h"
 #include "rf_hil_transport.h"
@@ -160,12 +161,29 @@ static int rf_shell_status(int argc, char **argv)
               (unsigned)rf_comm_get_hub_major());
     SHELL_LOG("Envanter: %s\r\n",
               inventory_status_name(rf_inventory_get_status()));
+    if (rf_events_storage_degraded())
+    {
+        SHELL_LOG("MH event storage degraded: inventory allowed, event retrieval unavailable; contact Bolatex.\r\n");
+    }
     rf_inventory_wait_t wait;
     rf_inventory_get_wait(&wait);
     SHELL_LOG("Inventory wait: %s total_ms=%u reason_ms=%u\r\n",
               wait.reason, (unsigned)wait.total_ms, (unsigned)wait.reason_ms);
     SHELL_LOG("Kesif kuyrugu: %u cihaz\r\n",
              (unsigned)rf_discovery_get_count());
+    for (uint8_t feeder = 1U; feeder <= 4U; feeder++)
+    {
+        rf_epoch_status_t epoch;
+        if (rf_inventory_get_epoch_status(feeder, &epoch) && (epoch.expected_phases != 0U))
+        {
+            SHELL_LOG("EPOCH fider=%u active=%u 201=%u mask=0x%02X 120=0x%02X "
+                      "checked=0x%02X missing=0x%02X extra=%u uncertain=%u (diagnostic only)\r\n",
+                      (unsigned)feeder, (unsigned)epoch.active, (unsigned)epoch.has_report,
+                      (unsigned)epoch.report_phases, (unsigned)epoch.received_phases,
+                      (unsigned)epoch.checked_phases, (unsigned)epoch.missing_phases,
+                      (unsigned)epoch.retry_used, (unsigned)epoch.uncertain);
+        }
+    }
 
     return 0;
 }
@@ -434,7 +452,7 @@ static void on_config_status_done(scp_cmd_result_t result,
     if ((SCP_CMD_OK == result) && (NULL != packet) &&
         (RF_CMD_OK == rf_scp_decode_message(packet, &message)))
     {
-        if (requested_group != message.body.config.group_id)
+        if ((requested_group != 0U) && (requested_group != message.body.config.group_id))
         {
             SHELL_LOG("CFG_STATUS: unexpected group ID\r\n");
             return;
@@ -481,6 +499,64 @@ static bool parse_group_id(const char *text, uint8_t *group)
     }
     *group = (uint8_t)value;
     return true;
+}
+
+static int rf_shell_move(int argc, char **argv)
+{
+    if ((argc == 1) || ((argc == 2) && (strcmp(argv[1], "status") == 0)))
+    {
+#ifndef DISABLE_SHELL_LOG
+        static const char *const names[] = {"idle", "draining", "assigning", "epoch", "waiting-201-120",
+            "reset", "waiting-new-live", "complete", "interrupted", "storage-error", "final-save-failed"};
+        rf_move_status_t status;
+        rf_inventory_move_status(&status);
+        const size_t state = (size_t)status.state;
+        SHELL_LOG("Service move: %s line=%u L%u->L%u pending=%u\r\n",
+                  (state < sizeof(names) / sizeof(names[0])) ? names[state] : "unknown",
+                  (unsigned)(status.line + 1U), (unsigned)(status.from_phase + 1U),
+                  (unsigned)(status.to_phase + 1U), (unsigned)rf_inventory_service_pending());
+        if ((status.state == RF_MOVE_INTERRUPTED) || (status.state == RF_MOVE_STORAGE_ERROR))
+        {
+            SHELL_LOG("Maintenance required; config remains blocked while the durable marker is set.\r\n"
+                      "No automatic EPOCH retry or unverified service-marker clear.\r\n");
+        }
+        if (status.state == RF_MOVE_SAVE_FAILED)
+        {
+            SHELL_LOG("Final save failed; admin may retry rf move finish while this RTU session retains proof.\r\n");
+        }
+#endif
+        return 0;
+    }
+    if (shell_get_session_level() != SHELL_LVL_SUPER_USER)
+    {
+        SHELL_LOG("Admin role required for service relocation\r\n");
+        return -1;
+    }
+    if ((argc == 2) && (strcmp(argv[1], "finish") == 0))
+    {
+        const bool finished = rf_inventory_move_finish();
+        SHELL_LOG("Service move finish: %s; inspect rf move status\r\n", finished ? "verified" : "not completed");
+        return finished ? 0 : -1;
+    }
+    uint8_t line;
+    uint8_t from;
+    uint8_t to;
+    if ((argc != 5) || !parse_group_id(argv[1], &line) || (line < 1U) ||
+        !parse_group_id(argv[2], &from) || (from < 1U) || (from > 3U) ||
+        !parse_group_id(argv[3], &to) || (to < 1U) || (to > 3U) ||
+        (strcmp(argv[4], "confirm-unused") != 0))
+    {
+        SHELL_LOG("Usage: rf move <line 1..7> <from 1..3> <to 1..3> confirm-unused\r\n"
+                  "Attest that the empty target has never been used; same feeder only.\r\n");
+        return -1;
+    }
+    if (!rf_inventory_move_begin((uint8_t)(line - 1U), (uint8_t)(from - 1U), (uint8_t)(to - 1U), true))
+    {
+        SHELL_LOG("Move not started; check accepted inventory, empty target and active operations\r\n");
+        return -1;
+    }
+    SHELL_LOG("Service move queued; inspect rf move status. Configuration is blocked until verified completion.\r\n");
+    return 0;
 }
 
 static int rf_shell_config_status(int argc, char **argv)
@@ -547,6 +623,10 @@ static int rf_shell_config_state(int argc, char **argv)
               (unsigned)status.group_id, (unsigned)status.feeder,
               group_state_name(status.state), (unsigned)status.writes_acked,
               (unsigned)status.expected_crc);
+    if ((RF_GROUP_IDLE == status.state) || (status.line == 0U))
+    {
+        SHELL_LOG("Applied AY settings: unknown; no retained APPLIED evidence\r\n");
+    }
     if (status.has_report)
     {
         SHELL_LOG("MH state=%s bitmap=0x%02X reason=%u cfg_crc=0x%04X\r\n",
@@ -575,11 +655,13 @@ static int rf_shell_command(int argc, char *argv[])
     if (argc < 2)
     {
         SHELL_LOG(
-                 "Usage: rf <disc|status|inv|time|epoch|live|"
+                 "Usage: rf <disc|status|reset|inv|move|time|epoch|live|"
                  "cfg-status|cfg-apply|cfg-state|cfg-abort|log>\r\n"
                  "  disc   : kesif kuyruguna sanal cihaz ekle\r\n"
                  "  status : hub ve link durumu\r\n"
+                 "  reset  : MH reset (100 ms); idle transport required\r\n"
                  "  inv    : envanteri yeniden push et\r\n"
+                 "  move   : privileged same-feeder service relocation; status is read-only\r\n"
                  "  time   : saati esitle (envanteri yeniden yuklemez)\r\n"
                  "  epoch N: MH degisimi bakimi; ilk TIMEOUT'ta tek "
                  "epoch tekrari\r\n"
@@ -605,6 +687,21 @@ static int rf_shell_command(int argc, char *argv[])
     if (0 == strcmp(argv[1], "inv"))
     {
         return rf_shell_inv(argc - 1, &argv[1]);
+    }
+    if (strcmp(argv[1], "move") == 0)
+    {
+        return rf_shell_move(argc - 1, &argv[1]);
+    }
+
+    if (strcmp(argv[1], "reset") == 0)
+    {
+        if ((argc != 2) || !rf_comm_reset_hub())
+        {
+            SHELL_LOG("RF reset not started; check arguments, bridge and active operations\r\n");
+            return -1;
+        }
+        SHELL_LOG("MH reset started; waiting for BOOT_NOTIFY and startup recovery\r\n");
+        return 0;
     }
 
     if (0 == strcmp(argv[1], "log"))
@@ -657,7 +754,9 @@ void rf_shell_init(void)
         .desc = "RF hub islemleri\r\n"
                 "\trf disc                 - kesif kuyruguna test EUI ekle\r\n"
                 "\trf status               - hub ve hat ozet durumu\r\n"
+                "\trf reset                - MH reset pulse (100 ms, idle only)\r\n"
                 "\trf inv                  - envanter push baslat\r\n"
+                "\trf move [status]        - service relocation; admin start requires confirm-unused\r\n"
                 "\trf time                 - saat esitleme iste\r\n"
                 "\trf epoch <1..4>         - epoch yenile (MH degisimi)\r\n"
                 "\trf live <fider> [faz]   - tam LIVE paketi (3 faz/tek faz)\r\n"

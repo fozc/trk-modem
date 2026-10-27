@@ -53,7 +53,7 @@ void rf_apply_hub_restarted(void)
 bool rf_apply_can_save(void)
 {
     return !rf_apply_is_running() && !rf_group_is_active() &&
-           !rf_inventory_is_active();
+           !rf_inventory_is_active() && !rf_inventory_service_pending();
 }
 
 void rf_apply_get_status(rf_apply_status_t *out)
@@ -69,6 +69,10 @@ rf_apply_save_result_t rf_apply_save(void)
     if (!rf_apply_can_save())
     {
         return RF_APPLY_SAVE_BUSY;
+    }
+    if (rf_inventory_has_relocation())
+    {
+        return RF_APPLY_SAVE_MAINTENANCE;
     }
     rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
     const rf_inventory_journal_t previous = *journal;

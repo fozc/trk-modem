@@ -13,6 +13,15 @@
 #include <stdbool.h>
 #include "types.h"
 
+#define IEC104_ALARM_ACK_IOA_FIRST 300000U
+#define IEC104_ALARM_ACK_IOA_LAST  300023U
+
+static inline bool iec104_alarm_ack_range_overlaps(uint32_t first, uint32_t length)
+{
+    return (first != 0U) && (length != 0U) && (first <= IEC104_ALARM_ACK_IOA_LAST) &&
+           (((uint64_t)first + length - 1U) >= IEC104_ALARM_ACK_IOA_FIRST);
+}
+
 #define IEC104_T3_MIN_SECONDS          20U
 #define IEC104_T3_MAX_SECONDS          65525U
 #define IEC104_T3_DEFAULT_SECONDS      60U

@@ -9,6 +9,7 @@
  */
 
 #include "unity.h"
+#include "mock_elog.h"
 #include "console_log_enabled.h"
 #define CSLOG_MODULE LOG_MOD_RF
 #include "rf_events.h"
@@ -101,6 +102,10 @@ static rf_inventory_entry_t binding_entry_storage;
 static size_t alarm_writes;
 static size_t alarm_emit_calls;
 static iec104_alarm_record_t written_alarm;
+static bool ack_range_available;
+static bool ack_success;
+static size_t ack_writes;
+static iec104_alarm_ack_record_t written_ack;
 
 static uint32_t read_u32(const uint8_t *data)
 {
@@ -118,6 +123,21 @@ bool iec104_is_link_active(void);
 bool iec104_is_link_active(void)
 {
     return link_active;
+}
+
+bool iec104_alarm_ack_range_available(void);
+bool iec104_alarm_ack_range_available(void)
+{
+    return ack_range_available;
+}
+
+static bool save_operator_ack(const iec104_alarm_ack_record_t *record, uint16_t *seq, int call_count)
+{
+    (void)call_count;
+    written_ack = *record;
+    ack_writes++;
+    *seq = 99U;
+    return ack_success;
 }
 
 bool iec104_emit_evtlog_record(const fault_log_t *record);
@@ -410,6 +430,11 @@ static void verify_head_then_expect_consume(uint16_t batch_tail)
 
 void setUp(void)
 {
+    elog_log_rf_maintenance_Ignore();
+    elog_log_rf_trip_failure_Ignore();
+    rf_inventory_epoch_event_Ignore();
+    rf_inventory_epoch_head_started_Ignore();
+    rf_inventory_epoch_ring_empty_Ignore();
     console_level = LOG_LVL_NORMAL;
     console_length = 0U;
     console_output[0] = '\0';
@@ -437,6 +462,9 @@ void setUp(void)
     replay_writes = 0U;
     replay_success = true;
     alarm_success = true;
+    ack_range_available = true;
+    ack_success = true;
+    ack_writes = 0U;
     alarm_fail_on_write = -1;
     sync_calls = 0;
     sync_fail_at = -1;
@@ -468,6 +496,7 @@ void setUp(void)
     iec104_event_log_add_StubWithCallback(save_replay);
     iec104_replay_send_record_StubWithCallback(send_replay);
     iec104_event_log_add_alarm_StubWithCallback(save_alarm);
+    iec104_event_log_add_alarm_ack_StubWithCallback(save_operator_ack);
     iec104_event_log_sync_IgnoreAndReturn(0);
     rf_events_init();
 }
@@ -643,6 +672,7 @@ void test_unknown_event_is_only_saved_as_raw(void)
     rf_events_process(tick);
     TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
     TEST_ASSERT_EQUAL_UINT32(0U, fault_writes);
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "name=Unknown event"));
     verify_head_then_expect_consume(36U);
     TEST_ASSERT_EQUAL_UINT16(37U, (uint16_t)(read_u32(request.data) % 100U));
 }
@@ -808,6 +838,33 @@ void test_repeated_busy_checks_fram_and_degraded_stops_events_until_boot(void)
     TEST_ASSERT_EQUAL_UINT32(3U, requests);
 }
 
+void test_boot_degraded_fram_skips_unavailable_protection_and_still_loads_inventory(void)
+{
+    rf_events_init();
+    TEST_ASSERT_TRUE(rf_events_boot_protect());
+    rf_events_process(tick);
+    scp_packet_t error = {.type = SCP_TYPE_ERROR, .data_len = 1U, .data = {RF_SCP_ERR_BUSY}};
+    respond(&error);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_GET_FRAM_STATS, request.cmd);
+    elog_log_rf_maintenance_StopIgnore();
+    elog_log_rf_maintenance_Expect(ELOG_RF_MAINTENANCE_FRAM, 0U, 0U, 1U, 0U);
+    rf_inventory_start_ExpectAndReturn(true);
+    scp_packet_t fram = {.dst = RF_SCP_ADDR_RTU, .src = RF_SCP_ADDR_HUB,
+        .type = SCP_TYPE_ACK, .cmd = RF_SCP_CMD_GET_FRAM_STATS,
+        .data_len = 8U, .data = {0U, 0U, 0U, 0U, 0U, 0U, 1U, 0U}};
+    respond(&fram);
+    TEST_ASSERT_TRUE(rf_events_inventory_allowed());
+    TEST_ASSERT_FALSE(boot_protected);
+    TEST_ASSERT_EQUAL_STRING("mh_degraded", rf_events_drain_reason());
+    TEST_ASSERT_TRUE(rf_events_storage_degraded());
+    uint32_t total = 0U;
+    TEST_ASSERT_FALSE(rf_events_drain_complete(&total));
+    tick += 60000U;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, requests);
+}
+
 void test_empty_ring_is_polled_after_sixty_seconds_when_notify_is_lost(void)
 {
     rf_events_process(tick);
@@ -881,11 +938,16 @@ void test_stored_101_opens_latched_trip_failure_alarm(void)
     TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
     TEST_ASSERT_EQUAL_UINT32(1U, fault_writes);
     TEST_ASSERT_TRUE(rf_get_source_data((1U << 2) | 1U, tick, &data));
-    TEST_ASSERT_FALSE(data.trip_failed);
-    TEST_ASSERT_FALSE(data.trip_failure_latched);
+    TEST_ASSERT_TRUE(data.trip_failed);
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
     TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
     TEST_ASSERT_EQUAL_UINT8(1U, written_alarm.active);
     TEST_ASSERT_EQUAL_UINT8(2U, written_alarm.feeder);
+    /* Durable receipt must not publish a clear on the next process pass. */
+    rf_alarm_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_get_source_data((1U << 2) | 1U, tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failed);
     verify_head_then_expect_consume(36U);
 }
 
@@ -915,7 +977,7 @@ void test_stored_105_opens_latched_trip_failure_alarm(void)
     rf_events_process(tick);
     TEST_ASSERT_EQUAL_UINT32(0U, fault_writes);
     TEST_ASSERT_TRUE(rf_get_source_data((1U << 2) | 1U, tick, &data));
-    TEST_ASSERT_FALSE(data.trip_failure_latched);
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
     TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
 }
 
@@ -1251,6 +1313,109 @@ static scp_packet_t alarm_packet(void)
     return packet;
 }
 
+static rf_alarm_ack_request_t prepare_operator_ack(void)
+{
+    const bsp_rtc_t rtc = {.year = 26U, .month = 10U, .day = 27U};
+    bsp_get_datetime_IgnoreAndReturn(rtc);
+    const scp_packet_t packet = alarm_packet();
+    rf_scp_event_t event;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_event(packet.data, packet.data_len, &event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    (void)memcpy(feeder.r_eui64, binding_entry_storage.eui64, sizeof(feeder.r_eui64));
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_phase_data(2U, PHASE_L1, tick, &data));
+    rf_alarm_ack_request_t ack = {.line = 2U, .phase = PHASE_L1, .revision = data.alarm_revision};
+    (void)memcpy(ack.eui64, data.eui64, sizeof(ack.eui64));
+    return ack;
+}
+
+static void verify_operator_elog(elog_code_t code, elog_level_t level, const void *data, size_t data_len,
+                                 int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_INT(ELOG_RF_ALARM_ACK, code);
+    TEST_ASSERT_EQUAL_INT(ELOG_LEVEL_INFO, level);
+    TEST_ASSERT_EQUAL_size_t(16U, data_len);
+    const uint8_t *info = data;
+    TEST_ASSERT_EQUAL_UINT8(1U, info[0]);
+    TEST_ASSERT_EQUAL_UINT8(1U, info[1]);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_ALARM_ACK_SOURCE_WEB, info[2]);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_ALARM_ACK_USER_ADMIN, info[3]);
+    TEST_ASSERT_EQUAL_UINT8(105U, info[4]);
+    TEST_ASSERT_EQUAL_UINT8(1U, info[5]);
+    TEST_ASSERT_EQUAL_UINT16(written_ack.boot, (uint16_t)((uint16_t)info[6] | ((uint16_t)info[7] << 8U)));
+    TEST_ASSERT_EQUAL_UINT32(written_ack.uptime, read_u32(&info[8]));
+}
+
+void test_operator_ack_requires_offline_confirmation_and_persistence_before_clearing(void)
+{
+    rf_alarm_ack_request_t ack = prepare_operator_ack();
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_OFFLINE, rf_alarm_acknowledge(&ack));
+    TEST_ASSERT_EQUAL_size_t(0U, ack_writes);
+    ack.confirm_offline = true;
+    ack_success = false;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_STORAGE, rf_alarm_acknowledge(&ack));
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
+    ack_success = true;
+    elog_add_StubWithCallback(verify_operator_elog);
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_OK, rf_alarm_acknowledge(&ack));
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_FALSE(data.trip_failure_latched);
+    TEST_ASSERT_FALSE(data.trip_failed);
+    TEST_ASSERT_EQUAL_UINT8(2U, written_ack.feeder);
+    TEST_ASSERT_EQUAL_UINT8(105U, written_ack.event);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_ALARM_ACK_USER_ADMIN, written_ack.user);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_ALARM_ACK_SOURCE_WEB, written_ack.source);
+    const size_t writes = ack_writes;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_STALE, rf_alarm_acknowledge(&ack));
+    TEST_ASSERT_EQUAL_size_t(writes, ack_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, requests);
+}
+
+void test_operator_ack_rejects_changed_identity_revision_and_reserved_ioa_collision(void)
+{
+    rf_alarm_ack_request_t ack = prepare_operator_ack();
+    ack.confirm_offline = true;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_INVALID, rf_alarm_acknowledge(NULL));
+    ack.revision++;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_STALE, rf_alarm_acknowledge(&ack));
+    ack.revision--;
+    ack.eui64[7]++;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_STALE, rf_alarm_acknowledge(&ack));
+    ack.eui64[7]--;
+    ack_range_available = false;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_IOA_CONFLICT, rf_alarm_acknowledge(&ack));
+    TEST_ASSERT_EQUAL_size_t(0U, ack_writes);
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
+}
+
+void test_operator_ack_of_stale_asserted_live_stays_ongoing_until_same_boot_zero(void)
+{
+    rf_alarm_ack_request_t ack = prepare_operator_ack();
+    rf_scp_live_t live = {.source = 5U, .boot_counter = 1U, .uptime_sec = 100U,
+        .trip_failed = true};
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick, NULL));
+    tick += 65000U;
+    ack.confirm_offline = true;
+    elog_add_Ignore();
+    const size_t announcements = alarm_writes;
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_OK, rf_alarm_acknowledge(&ack));
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failed);
+    TEST_ASSERT_FALSE(data.trip_failure_latched);
+    TEST_ASSERT_EQUAL_size_t(announcements, alarm_writes);
+    live.trip_failed = false;
+    live.uptime_sec = 165U;
+    TEST_ASSERT_TRUE(rf_handle_live(&live, tick, NULL));
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_FALSE(data.trip_failed);
+}
+
 void test_failed_alarm_queue_holds_tail_and_does_not_acknowledge_receipt(void)
 {
     scp_packet_t packet = alarm_packet();
@@ -1272,7 +1437,7 @@ void test_failed_alarm_queue_holds_tail_and_does_not_acknowledge_receipt(void)
     TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
     TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
     TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
-    TEST_ASSERT_FALSE(data.trip_failure_latched);
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
     confirm_consumption();
 }
 
@@ -1294,7 +1459,7 @@ void test_alarm_sync_failure_retries_without_adding_or_sending_twice(void)
     TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
     TEST_ASSERT_EQUAL_size_t(1U, alarm_emit_calls);
     TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
-    TEST_ASSERT_FALSE(data.trip_failure_latched);
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
 }
 
 void test_acknowledged_duplicate_alarm_does_not_reopen_or_enqueue_again(void)
@@ -1304,6 +1469,7 @@ void test_acknowledged_duplicate_alarm_does_not_reopen_or_enqueue_again(void)
     TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
         rf_scp_decode_event(packet.data, packet.data_len, &event));
     TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    TEST_ASSERT_TRUE(rf_ack_trip_failure(5U));
     TEST_ASSERT_TRUE(rf_alarm_record(&event));
     TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
     rf_hub_restarted();
@@ -1344,7 +1510,7 @@ void test_alarm_identity_cache_keeps_128_entries_and_resets_only_with_rtu(void)
     TEST_ASSERT_TRUE(rf_handle_alarm_event(&last));
 }
 
-void test_live_alarm_is_acknowledged_only_after_storage_and_remains_ongoing(void)
+void test_live_alarm_storage_preserves_latch_until_same_boot_live_clear(void)
 {
     (void)alarm_packet();
     const cp56time2a_t time = cp56time2a_make(10000U, 0U, 12U,
@@ -1359,7 +1525,7 @@ void test_live_alarm_is_acknowledged_only_after_storage_and_remains_ongoing(void
     rf_alarm_process(tick);
     TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
     TEST_ASSERT_TRUE(data.trip_failed);
-    TEST_ASSERT_FALSE(data.trip_failure_latched);
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
     TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
     live.uptime_sec++;
     live.trip_failed = false;
@@ -1464,6 +1630,25 @@ void test_r2_new_live_boot_does_not_resolve_a_previous_alarm(void)
     TEST_ASSERT_TRUE(data.trip_failure_latched);
 }
 
+void test_r1_bound_slot_alarm_is_durable_and_duplicate_does_not_reopen(void)
+{
+    scp_packet_t packet = alarm_packet();
+    scp_pack_u16(&packet.data[56], 0U);
+    update_crc(&packet);
+    rf_scp_event_t event;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_event(packet.data, 60U, &event));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
+    TEST_ASSERT_TRUE(rf_ack_trip_failure(5U));
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_FALSE(data.trip_failure_latched);
+}
+
 void test_r2_source_collision_and_unknown_identity_cannot_reopen_alarm(void)
 {
     scp_packet_t packet = alarm_packet();
@@ -1473,11 +1658,13 @@ void test_r2_source_collision_and_unknown_identity_cannot_reopen_alarm(void)
     TEST_ASSERT_TRUE(rf_event_source_matches(&event));
     TEST_ASSERT_TRUE(rf_handle_alarm_event(&event));
     TEST_ASSERT_TRUE(rf_ack_stored_alarm(binding_entry_storage.eui64));
+    TEST_ASSERT_TRUE(rf_ack_trip_failure(5U));
     hash_collision = true;
     TEST_ASSERT_FALSE(rf_event_source_matches(&event));
     TEST_ASSERT_FALSE(rf_handle_alarm_event(&event));
     hash_collision = false;
     event.src_eui_hash = 0U;
+    event.zone = 2U;
     TEST_ASSERT_FALSE(rf_event_source_matches(&event));
     TEST_ASSERT_FALSE(rf_handle_alarm_event(&event));
     rf_phase_data_t data;
@@ -1493,6 +1680,8 @@ void test_r2_service_records_keep_reset_and_epoch_observations_separate(void)
         .permanent_faults = 7U, .duration_ms = 19600U};
     rf_record_service_event(&event, false);
     event = (rf_scp_event_t){.event = 143U, .fault_count = 4U};
+    elog_log_rf_maintenance_StopIgnore();
+    elog_log_rf_maintenance_Expect(ELOG_RF_MAINTENANCE_MH, 0U, 0U, 4U, 0U);
     rf_record_service_event(&event, false);
     rf_service_status_t status;
     rf_get_service_status(&status);
@@ -1502,6 +1691,69 @@ void test_r2_service_records_keep_reset_and_epoch_observations_separate(void)
     TEST_ASSERT_EQUAL_UINT8(7U, status.epoch_phases);
     TEST_ASSERT_EQUAL_UINT32(19600U, status.epoch_duration_ms);
     TEST_ASSERT_EQUAL_UINT32(0U, status.source_mismatches);
+}
+
+void test_verified_143_maintenance_is_logged_only_after_successful_raw_storage(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 143U;
+    packet.data[11] = 6U;
+    update_crc(&packet);
+    raw_success = false;
+    elog_log_rf_maintenance_StopIgnore();
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    raw_success = true;
+    tick = 60000U;
+    elog_log_rf_maintenance_Expect(ELOG_RF_MAINTENANCE_AY, 1U, 1U, 6U,
+                                  rf_scp_eui_hash(binding_entry_storage.eui64));
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(2U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+}
+
+void test_counter_maintenance_is_kept_per_node_instead_of_cleared_by_another_nodes_info(void)
+{
+    rf_scp_event_t mh = {.event = 143U, .fault_count = 4U};
+    rf_record_service_event(&mh, false);
+    rf_scp_event_t ay = {.event = 143U, .fault_count = 7U, .zone = 1U, .feeder = 1U, .phase = 1U,
+        .src_eui_hash = rf_scp_eui_hash(binding_entry_storage.eui64)};
+    rf_record_service_event(&ay, true);
+    rf_service_status_t status;
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT8(4U, status.counter_status);
+    mh.fault_count = 7U;
+    rf_record_service_event(&mh, false);
+    ay.fault_count = 6U;
+    rf_record_service_event(&ay, true);
+    mh.fault_count = 1U;
+    rf_record_service_event(&mh, false);
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT8(6U, status.counter_status);
+    ay.fault_count = 255U;
+    rf_record_service_event(&ay, true);
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT8(6U, status.counter_status);
+    ay.fault_count = 7U;
+    rf_record_service_event(&ay, true);
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT8(1U, status.counter_status);
+}
+
+void test_replacement_ay_does_not_inherit_previous_cards_counter_maintenance(void)
+{
+    const rf_scp_event_t ay = {.event = 143U, .fault_count = 6U, .zone = 1U, .feeder = 1U, .phase = 1U,
+        .src_eui_hash = rf_scp_eui_hash(binding_entry_storage.eui64)};
+    rf_record_service_event(&ay, true);
+    rf_service_status_t status;
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT8(6U, status.counter_status);
+    binding_entry_storage.eui64[0]++;
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT8(0U, status.counter_status);
 }
 
 void test_r2_verified_unassigned_117_keeps_separate_count_without_mapping(void)
@@ -1517,6 +1769,26 @@ void test_r2_verified_unassigned_117_keeps_separate_count_without_mapping(void)
     rf_fault_stats_t stats;
     TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 0U, &stats));
     TEST_ASSERT_EQUAL_UINT32(1U, stats.permanent);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+}
+
+void test_r1_unassigned_117_stays_in_unknown_feeder_bucket_without_mapping(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 117U;
+    packet.data[9] = 0U;
+    packet.data[10] = 0U;
+    scp_pack_u16(&packet.data[56], 0U);
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    rf_fault_stats_t stats;
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 0U, &stats));
+    TEST_ASSERT_EQUAL_UINT32(1U, stats.permanent);
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &stats));
+    TEST_ASSERT_EQUAL_UINT32(0U, stats.permanent);
     TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
     TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
 }
@@ -1611,7 +1883,7 @@ void test_live_invalid_input_preserves_previous_measurements(void)
     live.state = 7U;
     TEST_ASSERT_FALSE(rf_handle_live(&live, tick, NULL));
     live.state = 0U;
-    live.log_pending = 101U;
+    live.log_pending = 100U;
     TEST_ASSERT_FALSE(rf_handle_live(&live, tick, NULL));
     rf_phase_data_t after;
     TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &after));
@@ -1696,6 +1968,59 @@ void test_wrong_ordinal_consume_ack_requires_fresh_head_before_continuing(void)
     respond(&packet);
     rf_events_process(tick);
     TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+}
+
+void test_unknown_conditional_consume_uses_fresh_head_then_legacy_slot_consume(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    respond(&packet);
+    rf_events_process(tick);
+    confirm_consumption();
+    packet = (scp_packet_t){.cmd = RF_SCP_CMD_LOG_CONSUME_IF,
+        .type = SCP_TYPE_ERROR, .src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .data_len = 1U, .data = {RF_SCP_ERR_UNKNOWN_CMD}};
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    respond(&read_head);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_CONSUME_TO, request.cmd);
+    TEST_ASSERT_EQUAL_UINT8(2U, request.data_len);
+    TEST_ASSERT_EQUAL_UINT16(37U, scp_unpack_u16(request.data));
+    packet = capture(RF_SCP_CMD_LOG_CONSUME_TO, SCP_TYPE_ACK);
+    respond(&packet);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, fault_writes);
+    rf_events_init();
+    TEST_ASSERT_TRUE(rf_events_boot_protect());
+    rf_events_process(tick);
+    respond(&read_head);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_CONSUME_IF, request.cmd);
+}
+
+void test_legacy_consume_fallback_does_not_consume_when_fresh_head_already_passed_target(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    respond(&packet);
+    rf_events_process(tick);
+    confirm_consumption();
+    packet = (scp_packet_t){.cmd = RF_SCP_CMD_LOG_CONSUME_IF,
+        .type = SCP_TYPE_ERROR, .src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .data_len = 1U, .data = {RF_SCP_ERR_UNKNOWN_CMD}};
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    packet = read_head;
+    scp_pack_u16(&packet.data[8], 37U);
+    respond(&packet);
+    const size_t before = requests;
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, requests);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
     TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
 }
 
@@ -2479,6 +2804,36 @@ static void put_alarm_record(scp_packet_t *packet, size_t slot,
     scp_pack_u16(&rec[58], log_calculate_crc16(rec, 58U));
 }
 
+void test_r1_six_then_three_passes_real_range_storage_and_conditional_consume(void)
+{
+    start_read(36U, 39U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data_len = 180U;
+    const uint8_t codes[3] = {4U, 6U, 3U};
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        put_alarm_record(&packet, index, codes[index], 1U, (uint32_t)index + 10U);
+        uint8_t *raw = &packet.data[index * 60U];
+        scp_pack_u16(&raw[56], 0U);
+        scp_pack_u16(&raw[58], log_calculate_crc16(raw, 58U));
+    }
+    respond(&packet);
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        rf_events_process(tick);
+    }
+    TEST_ASSERT_EQUAL_size_t(3U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, fault_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, replay_writes);
+    TEST_ASSERT_EQUAL_UINT8(0U, written_fault.info.type);
+    rf_fault_stats_t stats;
+    TEST_ASSERT_TRUE(rf_faults_get_stats(1U, 1U, &stats));
+    TEST_ASSERT_EQUAL_UINT32(1U, stats.temporary);
+    TEST_ASSERT_EQUAL_UINT32(0U, stats.permanent);
+    confirm_consumption();
+    TEST_ASSERT_EQUAL_UINT32(139U, read_u32(request.data));
+}
+
 static scp_packet_t alarm_batch(uint8_t event_a, uint8_t phase_a,
                                 uint8_t event_b, uint8_t phase_b,
                                 uint32_t uptime_b)
@@ -2877,7 +3232,7 @@ void test_alarm_live_without_source_data_is_ignored(void)
     TEST_ASSERT_EQUAL_size_t(0U, alarm_writes);
 }
 
-void test_alarm_relatch_after_live_repeat_requeues_the_alarm(void)
+void test_repeated_live_latch_does_not_duplicate_an_unchanged_alarm(void)
 {
     (void)alarm_packet();
     const cp56time2a_t time = cp56time2a_make(10000U, 0U, 12U,
@@ -2890,14 +3245,14 @@ void test_alarm_relatch_after_live_repeat_requeues_the_alarm(void)
     rf_alarm_process(tick);
     TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
     TEST_ASSERT_TRUE(rf_alarm_is_idle());
-    /* Operator latches the still-failed phase; the queue re-opens. */
+    /* Re-observing the same active condition is not a new alarm edge. */
     TEST_ASSERT_TRUE(rf_open_trip_failure_alarm(1U, 1U, 1U));
     rf_alarm_live(5U, &time);
-    TEST_ASSERT_FALSE(rf_alarm_is_idle());
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
     /* A repeat while the record is already pending changes nothing. */
     rf_alarm_live(5U, &time);
     rf_alarm_process(tick);
-    TEST_ASSERT_EQUAL_size_t(2U, alarm_writes);
+    TEST_ASSERT_EQUAL_size_t(1U, alarm_writes);
     TEST_ASSERT_EQUAL_UINT8(1U, written_alarm.active);
     TEST_ASSERT_TRUE(rf_alarm_is_idle());
 }
@@ -3109,6 +3464,81 @@ void test_group_capacity_never_blocks_durable_store_or_consume(void)
     TEST_ASSERT_EQUAL_UINT32(1U, stats.uncertain);
     TEST_ASSERT_FALSE(stats.is_final);
     TEST_ASSERT_EQUAL_size_t(129U, consume_requests);
+}
+
+
+static void capture_epoch_record(const rf_scp_event_t *event, bool matches, uint32_t now_ms, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_UINT8(120U, event->event);
+    TEST_ASSERT_EQUAL_UINT8(1U, event->feeder);
+    TEST_ASSERT_TRUE(matches);
+    TEST_ASSERT_EQUAL_UINT32(tick, now_ms);
+}
+
+void test_epoch_120_observer_runs_after_real_record_decode_and_durable_storage(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 120U;
+    update_crc(&packet);
+    rf_inventory_epoch_event_StubWithCallback(capture_epoch_record);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+}
+
+void test_epoch_empty_observation_uses_a_completed_real_head_request(void)
+{
+    rf_events_request_drain();
+    rf_inventory_epoch_head_started_StopIgnore();
+    rf_inventory_epoch_head_started_Expect();
+    rf_inventory_epoch_ring_empty_StopIgnore();
+    rf_inventory_epoch_ring_empty_Expect();
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_LOG_READ_HEAD, request.cmd);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_HEAD, SCP_TYPE_ACK);
+    scp_pack_u16(packet.data, 37U);
+    scp_pack_u16(&packet.data[8], 37U);
+    respond(&packet);
+}
+
+void test_defaulted_configuration_diagnostic_is_named_and_preserved_without_a_fault(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 139U;
+    packet.data[11] = 3U;
+    put_u32(&packet.data[15], 0x7FC00000U);
+    put_u32(&packet.data[23], 0x01FFFFFFU);
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
+    TEST_ASSERT_EQUAL_UINT32(0U, fault_writes);
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "name=AY configuration/counters defaulted"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "Configuration CRC failed; feeder unassigned"));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(packet.data, written_raw, 60U);
+    verify_head_then_expect_consume(36U);
+}
+
+void test_production_lock_diagnostic_names_command_without_counting_a_fault(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 140U;
+    scp_pack_u16(&packet.data[41], 7U);
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    TEST_ASSERT_EQUAL_UINT32(1U, raw_writes);
+    TEST_ASSERT_EQUAL_UINT32(0U, fault_writes);
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "not an attempt counter"));
+    TEST_ASSERT_NOT_NULL(strstr(console_output, "aux=7 detail=key set"));
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(packet.data, written_raw, 60U);
+    verify_head_then_expect_consume(36U);
 }
 
 /*** end of file ***/

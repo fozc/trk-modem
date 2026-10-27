@@ -259,6 +259,33 @@ uint16_t iec104_event_log_get_unsent_count(void)
     return count;
 }
 
+bool iec104_event_log_add_alarm_ack(const iec104_alarm_ack_record_t *entry, uint16_t *seq_out)
+{
+    if (!s_initialized || (entry == NULL) || (entry->feeder >= MAX_POWER_LINE_COUNT) || (entry->phase >= PHASE_MAX) ||
+        (entry->source != IEC104_ALARM_ACK_SOURCE_WEB) || (entry->user != IEC104_ALARM_ACK_USER_ADMIN))
+    {
+        return false;
+    }
+    iec104_event_record_t record = {.kind = IEC104_EVENT_TRIP_FAILURE_ACK};
+    record.payload.alarm_ack = *entry;
+    /* Reserve durable replay coverage before committing the operator event.
+     * A power loss before the payload leaves an unreadable slot, never an ACK.
+     * There is no cooperative yield between this reservation and log_write. */
+    const iec104_evtlog_state_t previous = *s_state;
+    unsent_extend((uint16_t)log_get_next_seq(&s_log));
+    if (iec104_event_log_sync() != 0)
+    {
+        *s_state = previous;
+        return false;
+    }
+    if (!add_record(&record, seq_out))
+    {
+        *s_state = previous;
+        return false;
+    }
+    return true;
+}
+
 /* log_read_last() ziyaretcisi: bir kaydi disari tasir. */
 typedef struct
 {
@@ -278,7 +305,7 @@ static void visit_one(const void *payload, uint32_t payload_size, uint32_t seq, 
 
     (void)memcpy(v->out, payload, sizeof(iec104_event_record_t));
     v->seq = (uint16_t)seq;
-    v->valid = (IEC104_EVENT_TRIP_FAILURE >= v->out->kind) &&
+    v->valid = (IEC104_EVENT_TRIP_FAILURE_ACK >= v->out->kind) &&
                (v->out->crc == record_calc_crc(v->out));
 }
 
@@ -451,6 +478,15 @@ static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq,
 
     iec104_event_record_t event;
     (void)memcpy(&event, payload, sizeof(event));
+    if (IEC104_EVENT_TRIP_FAILURE_ACK == event.kind)
+    {
+        const iec104_alarm_ack_record_t *ack = &event.payload.alarm_ack;
+        (void)ack;
+        SHELL_LOG("  seq=%u alarm-ack F%u Ph%u source=web user=admin event=%u boot=%u uptime=%lu\r\n",
+                  (unsigned)seq, (unsigned)(ack->feeder + 1U), (unsigned)(ack->phase + 1U),
+                  (unsigned)ack->event, (unsigned)ack->boot, (unsigned long)ack->uptime);
+        return;
+    }
     if (IEC104_EVENT_TRIP_FAILURE == event.kind)
     {
         SHELL_LOG("  seq=%u alarm F%u Ph%u active=%u\r\n",

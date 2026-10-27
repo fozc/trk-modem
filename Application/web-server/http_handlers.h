@@ -282,6 +282,7 @@ void handle_get_rf_discovery_json(void);
  * @param json_body JSON request body
  */
 void handle_post_rf_config_json(const char *json_body);
+void handle_post_rf_alarm_ack(const char *json_body);
 void handle_get_rf_group_status_json(void);
 void handle_post_rf_apply(const char *suffix);
 void handle_post_rf_abort(void);

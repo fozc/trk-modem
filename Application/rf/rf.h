@@ -42,6 +42,7 @@ typedef struct
     bool trip_failed;
     bool trip_failure_latched;
     bool uptime_stalled;
+    uint32_t alarm_revision;
     uint8_t source;
 } rf_phase_data_t;
 
@@ -68,11 +69,22 @@ bool rf_get_phase_data(size_t line_index, phase_id_t phase, uint32_t now_ms,
                         rf_phase_data_t *out);
 bool rf_get_anomaly(uint8_t source, uint8_t path, rf_anomaly_data_t *out);
 
-/** BQ-16: offline/event-only acknowledgement is allowed. A fresh asserted
- * live flag leaves the alarm acknowledged and ongoing (latch=false). */
+/** BQ-16: offline/event-only acknowledgement is allowed. The last asserted
+ * live flag leaves the alarm acknowledged and ongoing (latch=false), even offline. */
 bool rf_ack_trip_failure(uint8_t source);
-/* Receipt service may finish storage while the MH inventory is absent.
- * Acknowledge only the exact saved device identity, never its replacement. */
+
+typedef struct
+{
+    uint8_t event;
+    uint16_t boot;
+    uint32_t uptime;
+    uint16_t crc;
+} rf_alarm_event_t;
+
+/* Last verified 101/105 associated with this alarm; false for LIVE-only alarms. */
+bool rf_get_alarm_event(uint8_t source, rf_alarm_event_t *out);
+/* Mark durable delivery for duplicate suppression. This is not operator
+ * acknowledgement and never clears the active trip-failure latch. */
 bool rf_ack_stored_alarm(const uint8_t *eui64);
 
 /** BOLATeX BQ-01: open the trip-failure alarm from a stored event record
@@ -86,7 +98,8 @@ bool rf_open_trip_failure_alarm(uint8_t zone, uint8_t feeder,
  * reopen an alarm. True means durable acknowledgement is needed.
  * The last 128 identities are kept until RTU restart. */
 bool rf_handle_alarm_event(const rf_scp_event_t *event);
-/** True only for an R2 AY matching its accepted slot and unique hash. */
+/** Match the accepted slot/region; R2 also requires a unique EUI hash.
+ * R1 hash-zero identity relies on the mandatory pre-change inventory drain. */
 bool rf_event_source_matches(const rf_scp_event_t *event);
 
 typedef struct

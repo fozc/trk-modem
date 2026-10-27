@@ -155,6 +155,44 @@ void elog_add_entry(const elog_entry_t *entry)
     elog_write_entry(&copy);
 }
 
+bool elog_log_rf_commit(uint8_t line, uint8_t feeder, uint8_t group_id, uint16_t cfg_crc)
+{
+    if ((line < 1U) || (line > 7U) || (feeder < 1U) || (feeder > 4U) || (group_id == 0U) ||
+        !log_is_initialized(&elog_ctx))
+    {
+        return false;
+    }
+    const bool has_time = rtc_hw_is_valid();
+    elog_entry_t entry = {.timestamp = has_time ? elog_timestamp_now() : 0U,
+        .entry_id = (uint16_t)log_get_next_seq(&elog_ctx), .level = ELOG_LEVEL_INFO, .code = ELOG_RF_CFG_COMMIT};
+    entry.info[0] = line;
+    entry.info[1] = feeder;
+    entry.info[2] = group_id;
+    entry.info[3] = (uint8_t)cfg_crc;
+    entry.info[4] = (uint8_t)(cfg_crc >> 8U);
+    entry.info[5] = has_time ? 1U : 0U;
+    if (log_write(&elog_ctx, &entry) != LOG_OK)
+    {
+        return false;
+    }
+    elog_entry_t readback;
+    uint32_t count = 0U;
+    return (elog_read_recent(0U, 1U, &readback, &count) == 0) && (count == 1U) &&
+           (memcmp(&entry, &readback, sizeof(entry)) == 0);
+}
+
+void elog_log_rf_maintenance(elog_rf_maintenance_kind_t kind, uint8_t feeder, uint8_t phase,
+                             uint8_t subcode, uint16_t hash)
+{
+    if ((kind != ELOG_RF_MAINTENANCE_FRAM) && (kind != ELOG_RF_MAINTENANCE_MH) &&
+        (kind != ELOG_RF_MAINTENANCE_AY))
+    {
+        return;
+    }
+    const uint8_t info[6] = {(uint8_t)kind, feeder, phase, subcode, (uint8_t)hash, (uint8_t)(hash >> 8U)};
+    elog_add(ELOG_RF_MAINTENANCE, ELOG_LEVEL_ERROR, info, sizeof(info));
+}
+
 /* ---- reading ---------------------------------------------------------- */
 
 typedef struct
@@ -523,6 +561,37 @@ const char *elog_info_to_text(const elog_entry_t *entry)
                       (info[5] != 0U) ? "set" : "clear",
                       info[0], info[1], info[2], info[3], info[4]);
             break;
+
+        case ELOG_RF_TRIP_FAILURE:
+            xsnprintf(text, sizeof(text), "RF feeder=%u phase=%u %s",
+                      (unsigned)info[0], (unsigned)info[1], (info[2] != 0U) ? "active" : "cleared");
+            break;
+
+        case ELOG_RF_ALARM_ACK:
+            xsnprintf(text, sizeof(text), "RF F%u Ph%u ack web/admin event=%u boot=%u up=%lu %s",
+                      (unsigned)info[0], (unsigned)info[1], (unsigned)info[4],
+                      (unsigned)((uint16_t)info[6] | ((uint16_t)info[7] << 8U)),
+                      (unsigned long)((uint32_t)info[8] | ((uint32_t)info[9] << 8U) |
+                                      ((uint32_t)info[10] << 16U) | ((uint32_t)info[11] << 24U)),
+                      ((info[5] & 2U) != 0U) ? "ongoing" : "closed");
+            break;
+
+        case ELOG_RF_CFG_COMMIT:
+            xsnprintf(text, sizeof(text), "RF COMMIT intent line=%u feeder=%u group=%u cfg_crc=%04X clock=%s",
+                      (unsigned)info[0], (unsigned)info[1], (unsigned)info[2],
+                      (unsigned)((uint16_t)info[3] | ((uint16_t)info[4] << 8U)),
+                      (info[5] != 0U) ? "valid" : "unknown");
+            break;
+
+        case ELOG_RF_MAINTENANCE:
+        {
+            static const char *const names[] = {"FRAM", "MH", "AY"};
+            xsnprintf(text, sizeof(text), "RF maintenance %s feeder=%u phase=%u code=%u hash=%04X; contact Bolatex",
+                      (info[0] < sizeof(names) / sizeof(names[0])) ? names[info[0]] : "unknown",
+                      (unsigned)info[1], (unsigned)info[2], (unsigned)info[3],
+                      (unsigned)((uint16_t)info[4] | ((uint16_t)info[5] << 8U)));
+            break;
+        }
 
         case ELOG_PWR_SCP_ALARM:
             xsnprintf(text, sizeof(text),
@@ -987,6 +1056,16 @@ void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
 void elog_log_power_panic(void)
 {
     elog_add(ELOG_PWR_PANIC, ELOG_LEVEL_ERROR, NULL, 0U);
+}
+
+void elog_log_rf_trip_failure(uint8_t feeder, uint8_t phase, bool active)
+{
+    if ((feeder < 1U) || (feeder > 4U) || (phase < 1U) || (phase > 3U))
+    {
+        return;
+    }
+    const uint8_t info[3] = {feeder, phase, active ? 1U : 0U};
+    elog_add(ELOG_RF_TRIP_FAILURE, active ? ELOG_LEVEL_ERROR : ELOG_LEVEL_INFO, info, sizeof(info));
 }
 
 void elog_log_web_login_fail(uint32_t client_ip)

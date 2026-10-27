@@ -28,7 +28,8 @@ typedef enum
     RF_APPLY_SAVE_BUSY,
     RF_APPLY_SAVE_ERROR,
     RF_APPLY_SAVE_PRIMARY_ONLY,
-    RF_APPLY_SAVE_OK
+    RF_APPLY_SAVE_OK,
+    RF_APPLY_SAVE_MAINTENANCE
 } rf_apply_save_result_t;
 
 typedef enum

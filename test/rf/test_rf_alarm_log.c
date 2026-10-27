@@ -11,6 +11,7 @@
  */
 
 #include "unity.h"
+#include "mock_elog.h"
 /* Must precede every include that reaches console_logger_config.h:
  * drops NO_CONSOLE_LOG for this translation unit so the real CSLOG
  * macros (and the announcement guard) compile in. */
@@ -55,6 +56,12 @@ bool iec104_is_link_active(void);
 bool iec104_is_link_active(void)
 {
     return link_up;
+}
+
+bool iec104_alarm_ack_range_available(void);
+bool iec104_alarm_ack_range_available(void)
+{
+    return true;
 }
 
 /* Console seam: the module-bound CSLOG macros land here. */
@@ -185,6 +192,7 @@ static rf_scp_event_t alarm_event(void)
 
 void setUp(void)
 {
+    elog_log_rf_trip_failure_Ignore();
     rf_alarm_init();
     tick = 0U;
     binding_ok = true;
@@ -226,9 +234,11 @@ void test_sync_failure_stays_silent_until_retry_succeeds_once(void)
 {
     rf_scp_event_t event = alarm_event();
 
+    elog_log_rf_trip_failure_StopIgnore();
     iec104_event_log_sync_StopIgnore();
     iec104_event_log_sync_ExpectAndReturn(-1);
     iec104_event_log_sync_ExpectAndReturn(0);
+    elog_log_rf_trip_failure_Expect(1U, 1U, true);
     TEST_ASSERT_FALSE(rf_alarm_record(&event));
     TEST_ASSERT_EQUAL_size_t(0U, log_count);
     TEST_ASSERT_FALSE(rf_alarm_is_idle());
@@ -261,6 +271,26 @@ void test_cleared_announcement_is_yellow_and_level_off_is_silent(void)
     log_enabled = false;
     TEST_ASSERT_TRUE(rf_alarm_record(&event));
     TEST_ASSERT_EQUAL_size_t(2U, log_count);
+    TEST_ASSERT_TRUE(rf_alarm_is_idle());
+}
+
+void test_elog_records_physical_alarm_edges_once_when_logical_row_differs(void)
+{
+    rf_scp_event_t event = alarm_event();
+    const cp56time2a_t ts = cp56time2a_make(20000U, 0U, 12U, 7U, 3U, 10U, 26U);
+
+    elog_log_rf_trip_failure_StopIgnore();
+    elog_log_rf_trip_failure_Expect(1U, 1U, true);
+    elog_log_rf_trip_failure_Expect(1U, 1U, false);
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    event.uptime_sec++;
+    TEST_ASSERT_TRUE(rf_alarm_record(&event));
+    rf_get_source_data_StopIgnore();
+    rf_get_source_data_StubWithCallback(read_cleared_source);
+    rf_alarm_live(5U, &ts);
+    rf_alarm_process(tick);
+    rf_alarm_live(5U, &ts);
+    rf_alarm_process(tick);
     TEST_ASSERT_TRUE(rf_alarm_is_idle());
 }
 

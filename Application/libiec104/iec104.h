@@ -144,6 +144,7 @@ bool iec104_send_general_interrogation_term(iec104_qoi_t qoi, uint8_t is_negativ
 
 
 bool iec104_is_link_active(void);
+bool iec104_alarm_ack_range_available(void);
 
 /* Bir fider/faz icin ariza kayitlarinin yayim ilerlemesi. Cagiran sifirlanmis
  * bir kopya ile baslar ve yayim bitene kadar ayni kopyayla geri gelir. */

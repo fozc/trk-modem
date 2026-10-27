@@ -8,6 +8,7 @@
 #include "rf.h"
 #include "rf_config.h"
 #include "rf_inventory.h"
+#include "elog.h"
 #include "stm32u3xx_hal.h"
 #include <math.h>
 #include <string.h>
@@ -26,7 +27,7 @@ typedef struct
     uint8_t event;
     uint8_t zone;
     uint8_t source;
-    bool acknowledged;
+    bool delivered;
     uint8_t eui64[8];
 } rf_alarm_key_t;
 
@@ -34,6 +35,9 @@ typedef struct
 {
     rf_phase_data_t data;
     bool session_live;
+    bool has_alarm_key;
+    uint8_t alarm_key;
+    uint8_t counter_status;
 } rf_phase_cache_t;
 
 /* Owned by cooperative process/shell callers; UART ISR only fills rx_ring. */
@@ -44,6 +48,7 @@ static rf_alarm_key_t alarm_keys[RF_ALARM_KEY_COUNT];
 static size_t alarm_key_count;
 static size_t alarm_key_next;
 static rf_service_status_t service_status;
+static uint32_t alarm_revision;
 
 static bool get_source_index(uint8_t source, size_t *index)
 {
@@ -104,6 +109,7 @@ void rf_init(void)
     alarm_key_count = 0U;
     alarm_key_next = 0U;
     service_status = (rf_service_status_t){0};
+    alarm_revision = 0U;
 }
 
 void rf_get_service_status(rf_service_status_t *out)
@@ -111,6 +117,57 @@ void rf_get_service_status(rf_service_status_t *out)
     if (NULL != out)
     {
         *out = service_status;
+        if ((out->counter_status >= 4U) && (out->counter_status <= 6U))
+        {
+            return;
+        }
+        for (size_t index = 0U; index < RF_PHASE_SLOTS; index++)
+        {
+            const uint8_t source = (uint8_t)((((index / 3U) + 1U) << 2U) | ((index % 3U) + 1U));
+            if ((phase_cache[index].counter_status >= 4U) && (phase_cache[index].counter_status <= 6U))
+            {
+                const rf_phase_cache_t *cache = get_bound_cache(source);
+                if ((cache != NULL) && (cache->counter_status >= 4U) && (cache->counter_status <= 6U))
+                {
+                    out->counter_status = cache->counter_status;
+                    return;
+                }
+            }
+        }
+    }
+}
+
+static void record_counter_status(const rf_scp_event_t *event, bool source_matches)
+{
+    if ((event->fault_count < 1U) || (event->fault_count > 7U))
+    {
+        return; /* Unknown future subcodes cannot clear a known maintenance warning. */
+    }
+    if ((event->src_eui_hash == 0U) && (event->zone == 0U) && (event->feeder == 0U) && (event->phase == 0U))
+    {
+        service_status.counter_status = event->fault_count;
+        if ((event->fault_count >= 4U) && (event->fault_count <= 6U))
+        {
+            elog_log_rf_maintenance(ELOG_RF_MAINTENANCE_MH, 0U, 0U, event->fault_count, 0U);
+        }
+    }
+    else if (source_matches && (event->src_eui_hash != 0U))
+    {
+        const uint8_t source = (uint8_t)((event->feeder << 2U) | event->phase);
+        rf_phase_cache_t *cache = get_bound_cache(source);
+        if (cache != NULL)
+        {
+            cache->counter_status = event->fault_count;
+            if ((event->fault_count >= 4U) && (event->fault_count <= 6U))
+            {
+                elog_log_rf_maintenance(ELOG_RF_MAINTENANCE_AY, event->feeder, event->phase,
+                                         event->fault_count, event->src_eui_hash);
+            }
+        }
+    }
+    else
+    {
+        /* Unverified identities remain only in the raw event archive. */
     }
 }
 
@@ -131,7 +188,7 @@ void rf_record_service_event(const rf_scp_event_t *event, bool source_matches)
     }
     else if (143U == event->event)
     {
-        service_status.counter_status = event->fault_count;
+        record_counter_status(event, source_matches);
     }
     else if ((201U == event->event) && (0U == event->src_eui_hash))
     {
@@ -171,6 +228,7 @@ bool rf_open_trip_failure_alarm(uint8_t zone, uint8_t feeder,
     /* BQ-01/BQ-16: the event opens an alarm without requiring LIVE. */
     cache->data.trip_failed = true;
     cache->data.trip_failure_latched = true;
+    cache->data.alarm_revision = ++alarm_revision;
     return true;
 }
 
@@ -196,14 +254,14 @@ static bool unassigned_source_matches(uint16_t hash)
 
 bool rf_event_source_matches(const rf_scp_event_t *event)
 {
-    if ((NULL == event) || (0U == event->src_eui_hash))
+    if (NULL == event)
     {
         return false;
     }
     if ((117U == event->event) && (0U == event->feeder))
     {
         /* Verify identity only; never infer a current feeder for this log. */
-        return unassigned_source_matches(event->src_eui_hash);
+        return (event->src_eui_hash == 0U) || unassigned_source_matches(event->src_eui_hash);
     }
     if ((1U > event->feeder) || (4U < event->feeder) ||
         (1U > event->phase) || (3U < event->phase))
@@ -214,9 +272,15 @@ bool rf_event_source_matches(const rf_scp_event_t *event)
     rf_inventory_entry_t binding;
     if (!rf_inventory_get_binding(source, &binding) ||
         (binding.zone != event->zone) || rf_eui64_is_zero(binding.eui64) ||
-        (rf_scp_eui_hash(binding.eui64) != event->src_eui_hash))
+        ((event->src_eui_hash != 0U) && (rf_scp_eui_hash(binding.eui64) != event->src_eui_hash)))
     {
         return false;
+    }
+    if (event->src_eui_hash == 0U)
+    {
+        /* R1 has only slot identity. Inventory changes drain old records
+         * before publishing the new binding, as required by SCP 4.7. */
+        return true;
     }
     for (uint8_t phase = 1U; 3U >= phase; phase++)
     {
@@ -261,7 +325,7 @@ bool rf_handle_alarm_event(const rf_scp_event_t *event)
             (key->uptime_sec == event->uptime_sec) &&
             (0 == memcmp(key->eui64, entry.eui64, 8U)))
         {
-            return !key->acknowledged &&
+            return !key->delivered &&
                 rf_open_trip_failure_alarm(event->zone, event->feeder,
                                              event->phase);
         }
@@ -274,10 +338,13 @@ bool rf_handle_alarm_event(const rf_scp_event_t *event)
     {
         .uptime_sec = event->uptime_sec, .boot_counter = event->boot_counter,
         .crc = event->crc, .event = event->event, .zone = event->zone,
-        .source = source, .acknowledged = false,
+        .source = source, .delivered = false,
         .src_eui_hash = event->src_eui_hash
     };
     (void)memcpy(alarm_keys[alarm_key_next].eui64, entry.eui64, 8U);
+    rf_phase_cache_t *cache = get_bound_cache(source);
+    cache->has_alarm_key = true;
+    cache->alarm_key = (uint8_t)alarm_key_next;
     alarm_key_next = (alarm_key_next + 1U) % RF_ALARM_KEY_COUNT;
     if (RF_ALARM_KEY_COUNT > alarm_key_count)
     {
@@ -298,7 +365,7 @@ void rf_hub_restarted(void)
 bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms,
                      const cp56time2a_t *received_time)
 {
-    if ((NULL == live) || (6U < live->state) || (100U < live->log_pending))
+    if ((NULL == live) || (6U < live->state) || (99U < live->log_pending))
     {
         return false;
     }
@@ -312,8 +379,9 @@ bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms,
     const bool boot_changed = data->has_live &&
         (0U != live->boot_counter) && (0U != data->live.boot_counter) &&
         (live->boot_counter != data->live.boot_counter);
-    bool restarted = data->has_live &&
-        (boot_changed || (live->uptime_sec < data->live.uptime_sec));
+    const bool restarted = data->has_live &&
+        (boot_changed || rf_scp_uptime_discontinuous(data->live.uptime_sec, data->last_live_ms,
+                                                    live->uptime_sec, now_ms));
 
     if (restarted && data->trip_failed)
     {
@@ -325,6 +393,8 @@ bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms,
             (!data->has_live || !data->live.trip_failed)))
         {
             data->trip_failure_latched = true;
+            data->alarm_revision = ++alarm_revision;
+            cache->has_alarm_key = false;
         }
         data->trip_failed = true;
     }
@@ -340,7 +410,7 @@ bool rf_handle_live(const rf_scp_live_t *live, uint32_t now_ms,
          * evidence that a previously observed failure was resolved.
          */
     }
-    data->uptime_stalled = !restarted && data->has_live &&
+    data->uptime_stalled = !boot_changed && data->has_live &&
                           (live->uptime_sec == data->live.uptime_sec);
     data->live = *live;
     data->received_time = (NULL != received_time) ? *received_time :
@@ -510,24 +580,9 @@ bool rf_ack_stored_alarm(const uint8_t *eui64)
     for (size_t key = 0U; key < alarm_key_count; key++)
     {
         if ((0 == memcmp(alarm_keys[key].eui64, eui64, 8U)) &&
-            !alarm_keys[key].acknowledged)
+            !alarm_keys[key].delivered)
         {
-            alarm_keys[key].acknowledged = true;
-            changed = true;
-        }
-    }
-    const uint32_t now_ms = HAL_GetTick();
-    for (size_t index = 0U; index < RF_PHASE_SLOTS; index++)
-    {
-        rf_phase_cache_t *cache = &phase_cache[index];
-        if ((0 == memcmp(cache->data.eui64, eui64, 8U)) &&
-            cache->data.trip_failed && cache->data.trip_failure_latched)
-        {
-            cache->data.trip_failure_latched = false;
-            cache->data.trip_failed = cache->data.has_live &&
-                cache->session_live &&
-                ((now_ms - cache->data.last_live_ms) < RF_LIVE_TIMEOUT_MS) &&
-                cache->data.live.trip_failed;
+            alarm_keys[key].delivered = true;
             changed = true;
         }
     }
@@ -550,7 +605,38 @@ bool rf_ack_trip_failure(uint8_t source)
     {
         return false;
     }
-    return rf_ack_stored_alarm(entry.eui64);
+    if (!cache->data.trip_failed || !cache->data.trip_failure_latched)
+    {
+        return false;
+    }
+    (void)rf_ack_stored_alarm(entry.eui64);
+    cache->data.trip_failure_latched = false;
+    cache->data.trip_failed = cache->data.has_live && cache->data.live.trip_failed;
+    return true;
+}
+
+bool rf_get_alarm_event(uint8_t source, rf_alarm_event_t *out)
+{
+    size_t index;
+    rf_inventory_entry_t entry;
+    if ((out == NULL) || !get_source_index(source, &index) ||
+        !rf_inventory_get_binding(source, &entry))
+    {
+        return false;
+    }
+    const rf_phase_cache_t *cache = &phase_cache[index];
+    if (!cache->has_alarm_key || (cache->alarm_key >= alarm_key_count))
+    {
+        return false;
+    }
+    const rf_alarm_key_t *key = &alarm_keys[cache->alarm_key];
+    if ((key->source != source) || (memcmp(key->eui64, entry.eui64, 8U) != 0))
+    {
+        return false;
+    }
+    *out = (rf_alarm_event_t){.event = key->event, .boot = key->boot_counter,
+        .uptime = key->uptime_sec, .crc = key->crc};
+    return true;
 }
 
 /*** end of file ***/

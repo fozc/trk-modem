@@ -9,6 +9,7 @@
  */
 
 #include "unity.h"
+#include "mock_elog.h"
 #include "rf.h"
 #include "modbus_map.h"
 #include "mock_rf_inventory.h"

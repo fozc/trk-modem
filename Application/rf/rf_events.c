@@ -17,6 +17,7 @@
 #include "rf.h"
 #include "rf_faults.h"
 #include "rf_alarm.h"
+#include "elog.h"
 #include "fault_log.h"
 /* HAL types must precede the legacy IEC104 Init macro. */
 #include "stm32u3xx_hal.h"
@@ -83,6 +84,7 @@ static bool drain_requested;
 static bool drain_ready;
 static uint32_t drain_total;
 static uint64_t head_version;
+static bool legacy_consume;
 
 static uint16_t next_slot(uint16_t slot, uint16_t count)
 {
@@ -140,6 +142,7 @@ void rf_events_init(void)
     drain_requested = false;
     drain_ready = false;
     head_version = 0U;
+    legacy_consume = false;
 }
 
 void rf_events_request_drain(void)
@@ -214,7 +217,13 @@ bool rf_events_boot_protect(void)
 
 bool rf_events_inventory_allowed(void)
 {
-    return boot_protected;
+    /* SCP 1.1 explicitly permits inventory when FRAM protection is unavailable. */
+    return boot_protected || (state == EVENTS_DEGRADED);
+}
+
+bool rf_events_storage_degraded(void)
+{
+    return state == EVENTS_DEGRADED;
 }
 
 static void head_received(const rf_scp_message_t *message)
@@ -247,6 +256,7 @@ static void head_received(const rf_scp_message_t *message)
     if (0U == pending)
     {
         rf_faults_ring_empty(head_version, HAL_GetTick());
+        rf_inventory_epoch_ring_empty();
         if (drain_requested)
         {
             drain_total = message->body.log_head.total;
@@ -337,7 +347,14 @@ static void command_done(scp_cmd_result_t result,
     {
         CSLOG_WARN("[RF-LOG] komut tamamlanmadi: state=%u result=%u\r\n",
                    (unsigned)state, (unsigned)result);
-        if ((SCP_CMD_ERR == result) && (NULL != packet) &&
+        if ((EVENTS_CONSUME == state) && !legacy_consume &&
+            (SCP_CMD_ERR == result) && (NULL != packet) &&
+            (1U <= packet->data_len) && (RF_SCP_ERR_UNKNOWN_CMD == packet->data[0]))
+        {
+            legacy_consume = true;
+            state = protect_mode ? EVENTS_HEAD : EVENTS_VERIFY;
+        }
+        else if ((SCP_CMD_ERR == result) && (NULL != packet) &&
             (1U <= packet->data_len) &&
             (RF_SCP_ERR_BUSY == packet->data[0]) &&
             (EVENTS_FRAM != state))
@@ -392,7 +409,7 @@ static void command_done(scp_cmd_result_t result,
                        (unsigned)message.body.log_consume.tail,
                        (unsigned)message.body.log_consume.left,
                        (unsigned long)message.body.log_consume.tail_seq);
-            if (consume_seq != message.body.log_consume.tail_seq)
+            if (!legacy_consume && (consume_seq != message.body.log_consume.tail_seq))
             {
                 state = EVENTS_HEAD;
                 break;
@@ -423,7 +440,13 @@ static void command_done(scp_cmd_result_t result,
             if (message.body.fram.degraded)
             {
                 state = EVENTS_DEGRADED;
+                elog_log_rf_maintenance(ELOG_RF_MAINTENANCE_FRAM, 0U, 0U, 1U, 0U);
                 CSLOG_ERR("[RF] degraded MH event storage; stopped\r\n");
+                if (protect_mode)
+                {
+                    protect_mode = false;
+                    (void)rf_inventory_start();
+                }
             }
             break;
         default:
@@ -523,6 +546,82 @@ static bool save_fault(void)
     return 0 == iec104_event_log_sync();
 }
 
+#ifndef NO_CONSOLE_LOG
+static const char *event_name(uint8_t event)
+{
+    static const struct
+    {
+        uint8_t code;
+        const char *name;
+    } names[] =
+    {
+        {0U, "Line did not return"}, {1U, "Permanent fault: opened"},
+        {2U, "Load current returned"}, {3U, "Fault sequence step/end"},
+        {4U, "Current threshold fault"}, {5U, "Current rate fault"},
+        {6U, "Upstream breaker opened"}, {7U, "Permanent fault: RF opening"},
+        {90U, "AY boot"}, {91U, "Legacy settings saved"}, {92U, "Line break"},
+        {94U, "Manual service opening"}, {95U, "Measurement watchdog"},
+        {97U, "Inrush detected"}, {100U, "Opening cancelled: line energized"},
+        {101U, "Opening failed: capacitor voltage"},
+        {102U, "Legacy startup flag cleared; not an active lock"},
+        {103U, "Protection unexpected state; contact BOLATeX"},
+        {104U, "Dead-line memory expired"}, {105U, "Opening failed: current returned"},
+        {106U, "RF opening rejected: stale measurement"},
+        {115U, "RF opening rejected: phase not ready"}, {116U, "MH binding cleared in service"},
+        {117U, "Opening suppressed: feeder unassigned"}, {118U, "Three-phase mode without feeder"},
+        {119U, "Assignment from a different MH rejected"}, {120U, "Discovery assignment"},
+        {121U, "Staged configuration expired"}, {122U, "Configuration applied on AY"},
+        {134U, "AY RF stalled: restart"}, {135U, "MH RF scheduler stalled: restart"},
+        {136U, "Inventory phase silent"}, {137U, "TEST; not a protection event"},
+        {138U, "MH event store reset/clear"}, {139U, "AY configuration/counters defaulted"},
+        {140U, "Production lock rejected service command; not an attempt counter"},
+        {141U, "Delayed RF opening discarded"}, {142U, "R2 temporary fault completed"},
+        {143U, "RF security counter recovery/lock"}, {144U, "MH authentication rejected; EPOCH required"},
+        {201U, "EPOCH campaign completed; not configuration APPLIED"}
+    };
+    for (size_t index = 0U; index < ARRAY_SIZE(names); index++)
+    {
+        if (names[index].code == event)
+        {
+            return names[index].name;
+        }
+    }
+    if ((event >= 110U) && (event <= 114U))
+    {
+        return "RF common-trip diagnostic";
+    }
+    if ((event >= 123U) && (event <= 133U))
+    {
+        return "Reserved OTA event";
+    }
+    return "Unknown event";
+}
+
+static const char *event_detail(const rf_scp_event_t *event)
+{
+    static const char *const defaults[] = {"Unknown default reason", "Invalid configuration field",
+        "Invalid nominal/threshold pair", "Configuration CRC failed; feeder unassigned",
+        "Configuration read failed; feeder unassigned", "Counter CRC failed", "Counter data inconsistent",
+        "Counter read failed", "Configuration empty; feeder unassigned", "Counter block empty"};
+    if ((event->event == 139U) && (event->fault_count < ARRAY_SIZE(defaults)))
+    {
+        return defaults[event->fault_count];
+    }
+    if (event->event == 140U)
+    {
+        switch (event->permanent_faults)
+        {
+            case 3U: return "set";
+            case 4U: return "default";
+            case 7U: return "key set";
+            case 13U: return "log clear";
+            default: return "Other service command";
+        }
+    }
+    return "See raw record and SCP event table";
+}
+#endif
+
 static void store_record(uint32_t now_ms)
 {
     rf_scp_event_t event;
@@ -557,12 +656,14 @@ static void store_record(uint32_t now_ms)
     if (!fault_classified)
     {
         const bool matches = rf_event_source_matches(&event);
+        const bool source_verified = matches && (event.src_eui_hash != 0U);
         rf_record_service_event(&event, matches);
+        rf_inventory_epoch_event(&event, source_verified, now_ms);
         if ((138U == event.event) && (0U == event.src_eui_hash))
         {
             rf_faults_reset_sequences();
         }
-        else if (matches && (144U == event.event))
+        else if (source_verified && (144U == event.event))
         {
             rf_inventory_note_auth_failure(event.feeder);
         }
@@ -602,10 +703,11 @@ static void store_record(uint32_t now_ms)
     }
     saved_count++;
     CSLOG_WARN("[RF-LOG] STORE: %u/%u kayit saklandi "
-               "event=%u feeder=%u phase=%u\r\n",
+               "event=%u feeder=%u phase=%u name=%s sub=%u aux=%u detail=%s\r\n",
                (unsigned)saved_count, (unsigned)batch_count,
                (unsigned)event.event, (unsigned)event.feeder,
-               (unsigned)event.phase);
+               (unsigned)event.phase, event_name(event.event), (unsigned)event.fault_count,
+               (unsigned)event.permanent_faults, event_detail(&event));
     raw_saved = false;
     fault_added = false;
     replay_added = false;
@@ -633,6 +735,7 @@ static __attribute__((noinline)) void send_command(void)
         case EVENTS_BAD_SLOT:
             request.cmd = RF_SCP_CMD_LOG_READ_HEAD;
             head_version = rf_faults_head_started();
+            rf_inventory_epoch_head_started();
             break;
         case EVENTS_READ:
             request.cmd = RF_SCP_CMD_LOG_READ_RANGE;
@@ -642,12 +745,20 @@ static __attribute__((noinline)) void send_command(void)
             break;
         case EVENTS_CONSUME:
             request.type = SCP_TYPE_SET;
-            request.cmd = RF_SCP_CMD_LOG_CONSUME_IF;
-            request.data_len = 4U;
-            for (size_t index = 0U; index < 4U; index++)
+            if (legacy_consume)
             {
-                request.data[index] =
-                    (uint8_t)(consume_seq >> (8U * index));
+                request.cmd = RF_SCP_CMD_LOG_CONSUME_TO;
+                request.data_len = 2U;
+                scp_pack_u16(request.data, cursor);
+            }
+            else
+            {
+                request.cmd = RF_SCP_CMD_LOG_CONSUME_IF;
+                request.data_len = 4U;
+                for (size_t index = 0U; index < 4U; index++)
+                {
+                    request.data[index] = (uint8_t)(consume_seq >> (8U * index));
+                }
             }
             break;
         case EVENTS_FRAM:

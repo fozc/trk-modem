@@ -202,6 +202,34 @@ void tearDown(void)
     iec104_reset();
 }
 
+void test_operator_ack_replays_after_restart_and_waits_for_real_apci_ack(void)
+{
+    breaker_state.line[2].iec104.trip_failed[1] = iec104_make_ioa_3byte(1071U);
+    const iec104_alarm_ack_record_t entry = {.feeder = 2U, .phase = 1U,
+        .source = IEC104_ALARM_ACK_SOURCE_WEB, .user = IEC104_ALARM_ACK_USER_ADMIN,
+        .event = 105U, .boot = 5U, .uptime = 1234U,
+        .time = {.iv_bit = 1U}};
+    TEST_ASSERT_TRUE(iec104_event_log_add_alarm_ack(&entry, NULL));
+    close_link();
+    reboot_fixture();
+    PT_SEM_INIT(&iec104_tx_sem, 1U);
+    start_link();
+    iec104_replay_link_established();
+    advance(15U * CLOCK_SECOND);
+    iec104_tx_process();
+    TEST_ASSERT_EQUAL_UINT32(1U, gsm_submissions);
+    TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, gsm_payload[6]);
+    const m_sp_tb_1_t *point = (const m_sp_tb_1_t *)&gsm_payload[DATA_START_IDX];
+    TEST_ASSERT_EQUAL_UINT32(300007U, iec104_ioa_3byte_to_uint32(point->ioa));
+    TEST_ASSERT_EQUAL_UINT8(1U, point->siq.spi);
+    TEST_ASSERT_EQUAL_UINT8(1U, point->siq.invalid);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
+    acknowledge(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+    reboot_fixture();
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+}
+
 void test_real_tx_queue_loss_keeps_records_durable_until_reconnected_ack(void)
 {
     add_records(true);

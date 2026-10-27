@@ -20,10 +20,11 @@ void rf_events_process(uint32_t now_ms);
 
 /** BOLATeX BQ-03: run the pre-inventory ring protection (0x40 then a
  * no-op 0x48 at the current tail ordinal) after an MH restart; the inventory
- * upload starts only after successful protection. A failed pair uses
- * the existing event poll interval; the inventory remains paused. */
+ * upload starts after successful protection, or the explicit degraded-FRAM
+ * exception in SCP 1.1. Other failures retain the existing poll interval. */
 bool rf_events_boot_protect(void);
 bool rf_events_inventory_allowed(void);
+bool rf_events_storage_degraded(void);
 
 void rf_events_request_drain(void);
 bool rf_events_drain_complete(uint32_t *total);

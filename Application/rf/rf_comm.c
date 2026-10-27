@@ -20,6 +20,7 @@
 #include "contiki.h"
 #include "timer.h"
 #include "bsp.h"
+#include "bsp_rf_reset.h"
 #include "utils.h"
 #include "uart.h"
 #include "ring_buff.h"
@@ -112,6 +113,9 @@ static struct timer  time_sync_timer;
 static bool          time_sync_timer_started;
 static struct timer  liveness_timer;
 static bool          liveness_timer_started;
+/* Owned by the cooperative shell/process context; never accessed by an ISR. */
+static bool          reset_asserted;
+static uint32_t      reset_started_ms;
 
 /* ======================================================================
  * Process declaration + simulator block
@@ -211,7 +215,7 @@ static void rf_comm_transmit(const uint8_t *frame, size_t frame_len)
 
 bool scp_is_free(void)
 {
-    return !cmd_ctx.busy && !rf_uart_bridge_is_enabled();
+    return !cmd_ctx.busy && !reset_asserted && !rf_uart_bridge_is_enabled();
 }
 
 bool rf_comm_can_load_inventory(void)
@@ -400,6 +404,12 @@ void scp_process(uint32_t now_ms)
 
 static bool can_retry_error(const scp_packet_t *packet)
 {
+    if (RF_SCP_CMD_LOG_CONSUME_TO == packet->cmd)
+    {
+        /* A new legacy consume attempt needs a fresh HEAD/ordinal check.
+         * Let rf_events recover; only unanswered identical requests retry here. */
+        return false;
+    }
     if (RF_SCP_ERR_BUSY == packet->data[0])
     {
         /* CFG2 GEN mismatch requires a fresh GET, not a blind SET. */
@@ -462,6 +472,14 @@ void scp_on_response(const scp_packet_t *pkt)
         CSLOG_WARN("[RF] ERROR cmd=0x%02X seq=%u code=0x%02X\r\n",
                    pkt->cmd, pkt->seq,
                    (0U < pkt->data_len) ? pkt->data[0] : 0U);
+        if ((pkt->data[0] == RF_SCP_ERR_INVALID_PARAM) &&
+            ((pkt->cmd == RF_SCP_CMD_CFG_WRITE) || (pkt->cmd == RF_SCP_CMD_CFG_COMMIT) ||
+             (pkt->cmd == RF_SCP_CMD_EPOCH_REFRESH)))
+        {
+            CSLOG_ERR("[RF] Check MH event 143: codes 4/6 require Bolatex maintenance; "
+                      "code 5 also requires checking network-key provisioning. "
+                      "Check GET_FRAM_STATS degraded too.\r\n");
+        }
         if (can_retry_error(pkt) &&
             (0U < cmd_ctx.retries_left))
         {
@@ -655,6 +673,42 @@ static bool build_time_sync_body(uint8_t out[RF_SCP_TIME_SYNC_BODY_LEN])
     return true;
 }
 
+/* A physical reset and BOOT both invalidate the same cached hub session. */
+static void invalidate_hub_session(void)
+{
+    rf_inventory_reset();
+    rf_hub_restarted();
+    rf_faults_hub_restarted();
+    if (cmd_ctx.busy)
+    {
+        finish_command(SCP_CMD_RESTARTED, NULL);
+    }
+    rf_events_init();
+    rf_group_hub_restarted();
+    rf_apply_hub_restarted();
+    power_board_scp_hub_restarted();
+    power_board_control_hub_restarted();
+}
+
+bool rf_comm_reset_hub(void)
+{
+    if (!scp_is_free() || rf_inventory_is_active() || rf_group_is_active() || rf_apply_is_running())
+    {
+        return false;
+    }
+    reset_asserted = true;
+    reset_started_ms = HAL_GetTick();
+    bsp_rf_reset(true);
+    hub_major = 0U;
+    hub_boot_received = false;
+    time_sync_boot = false;
+    time_sync_pending = false;
+    time_sync_timer_started = false;
+    liveness_timer_started = false;
+    invalidate_hub_session();
+    return true;
+}
+
 /** 0x13 BOOT_NOTIFY isle: surum kontrolu + TIME_SYNC tetikle (G-5, G-4) */
 static void handle_boot_notify(const scp_packet_t *pkt)
 {
@@ -672,18 +726,7 @@ static void handle_boot_notify(const scp_packet_t *pkt)
     time_sync_boot = true;
     time_sync_pending = (RF_SCP_MAJOR_EXPECTED == major);
     time_sync_timer_started = false;
-    rf_inventory_reset();
-    rf_hub_restarted();
-    rf_faults_hub_restarted();
-    if (cmd_ctx.busy)
-    {
-        finish_command(SCP_CMD_RESTARTED, NULL);
-    }
-    rf_events_init();
-    rf_group_hub_restarted();
-    rf_apply_hub_restarted();
-    power_board_scp_hub_restarted();
-    power_board_control_hub_restarted();
+    invalidate_hub_session();
     if (major != RF_SCP_MAJOR_EXPECTED)
     {
         CSLOG_WARN("[RF] BOOT_NOTIFY scp_major=%u (beklenen %u) - uyari, "
@@ -706,9 +749,12 @@ static void handle_live_notification(const rf_scp_live_t *live)
         const bsp_rtc_t rtc = bsp_get_datetime();
         received_time = cp56time2a_from_rtc(&rtc);
     }
-    if (rf_handle_live(live, HAL_GetTick(), &received_time))
+    const uint32_t now_ms = HAL_GetTick();
+    /* Maintenance compares the previous sample before the cache is updated. */
+    rf_inventory_epoch_live(live, now_ms);
+    if (rf_handle_live(live, now_ms, &received_time))
     {
-        rf_faults_live(live, HAL_GetTick());
+        rf_faults_live(live, now_ms);
         rf_alarm_live(live->source, &received_time);
     }
 }
@@ -854,7 +900,7 @@ static void handle_proactive(const scp_packet_t *pkt)
 static void rf_comm_on_data_received(const scp_packet_t *pkt)
 {
     if ((NULL == pkt) || (RF_SCP_ADDR_HUB != pkt->src) ||
-        (0xF0U <= pkt->cmd) || rf_uart_bridge_is_enabled())
+        (0xF0U <= pkt->cmd) || reset_asserted || rf_uart_bridge_is_enabled())
     {
         return;
     }
@@ -926,7 +972,8 @@ static void on_status_done(scp_cmd_result_t result,
                 /* R2 BQ-17: an already configured MH will not send BOOT.
                  * Only the delivered firmware identity proves SCP major.
                  */
-                if (0 == strcmp(status.fw_version, "022555bf"))
+                if ((strcmp(status.fw_version, "022555bf") == 0) ||
+                    (strcmp(status.fw_version, "ac3e9c03") == 0))
                 {
                     hub_major = RF_SCP_MAJOR_EXPECTED;
                     time_sync_boot = true;
@@ -951,6 +998,19 @@ static void on_status_done(scp_cmd_result_t result,
 
 static void rf_comm_periodic_jobs(void)
 {
+    if (reset_asserted)
+    {
+        /* User-selected pulse: at least 100 ms, rounded to the process poll. */
+        if ((uint32_t)(HAL_GetTick() - reset_started_ms) >= 100U)
+        {
+            bsp_rf_reset(false);
+            reset_asserted = false;
+            /* Allow normal BOOT before using the existing status poll fallback. */
+            timer_set(&liveness_timer, CLOCK_SECOND * RF_LIVENESS_PERIOD_S);
+            liveness_timer_started = true;
+        }
+        return;
+    }
     if (time_sync_timer_started && timer_expired(&time_sync_timer) &&
         (RF_SCP_MAJOR_EXPECTED == hub_major))
     {
@@ -1056,6 +1116,7 @@ void rf_comm_init(uint8_t device_address)
     time_sync_boot = false;
     time_sync_timer_started = false;
     liveness_timer_started = false;
+    reset_asserted = false;
     rf_inventory_reset();
     rf_init();
     rf_faults_init();

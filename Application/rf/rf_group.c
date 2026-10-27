@@ -12,6 +12,7 @@
 #include "rf_comm.h"
 #include "rf_inventory.h"
 #include "rf_config.h"
+#include "elog.h"
 #include "stm32u3xx_hal.h"
 #include <string.h>
 
@@ -36,10 +37,16 @@ static rf_group_t group;
 void rf_group_init(void)
 {
     (void)memset(&group, 0, sizeof(group));
+    group.status.state = RF_GROUP_CHECKING;
 }
 
 void rf_group_hub_restarted(void)
 {
+    if (group.status.line == 0U)
+    {
+        rf_group_init();
+        return;
+    }
     if (RF_GROUP_IDLE != group.status.state)
     {
         group.status.state = RF_GROUP_RESTARTED;
@@ -108,6 +115,11 @@ bool rf_group_matches_config(void)
 
 bool rf_group_is_active(void)
 {
+    /* Allow initial inventory, then hold configuration until the read finishes. */
+    if ((group.status.line == 0U) && (group.status.state == RF_GROUP_CHECKING))
+    {
+        return rf_inventory_is_loaded() || (rf_inventory_get_status() == RF_INVENTORY_EMPTY);
+    }
     if ((RF_GROUP_ID_IN_USE == group.status.state) && group.status.has_report &&
         ((1U == group.status.report.state) || (2U == group.status.report.state)))
     {
@@ -217,6 +229,19 @@ bool rf_group_start(size_t line_index, uint8_t group_id)
 
 bool rf_group_handle_status(const rf_scp_message_t *message)
 {
+    if ((message != NULL) && (group.status.line == 0U) &&
+        ((group.status.state == RF_GROUP_CHECKING) || (group.status.state == RF_GROUP_UNCERTAIN)) &&
+        (message->cmd == RF_SCP_CMD_CFG_STATUS_GET) && (message->type == SCP_TYPE_ACK) &&
+        (message->body.config.state <= 4U) && (message->body.config.member_bitmap <= 7U))
+    {
+        /* This response has no feeder/EUI identity; it never proves local APPLIED. */
+        group.status.group_id = message->body.config.group_id;
+        group.status.report = message->body.config;
+        group.status.has_report = true;
+        group.status.state = (message->body.config.state == 0U) ? RF_GROUP_IDLE : RF_GROUP_ID_IN_USE;
+        group.poll_ms = HAL_GetTick();
+        return true;
+    }
     if ((NULL == message) ||
         (!group.commit_sent && (RF_GROUP_ID_IN_USE != group.status.state)) ||
         !(((RF_SCP_CMD_CFG_STATUS_NOTIFY == message->cmd) &&
@@ -305,6 +330,14 @@ static bool handle_status_response(const scp_packet_t *packet)
 static __attribute__((noinline)) void check_group_response(
     scp_cmd_result_t result, const scp_packet_t *packet)
 {
+    if (group.status.line == 0U)
+    {
+        if ((result != SCP_CMD_OK) || !handle_status_response(packet))
+        {
+            group.status.state = RF_GROUP_UNCERTAIN;
+        }
+        return;
+    }
     rf_scp_message_t message;
     if ((SCP_CMD_ERR == result) && (NULL != packet) &&
         (1U <= packet->data_len) &&
@@ -412,6 +445,15 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
 
 static bool send_request(uint8_t command)
 {
+    if (command == RF_SCP_CMD_CFG_COMMIT)
+    {
+        if (!elog_log_rf_commit(group.status.line, group.status.feeder,
+                                group.status.group_id, group.status.expected_crc))
+        {
+            group.status.state = RF_GROUP_UNCERTAIN;
+            return false;
+        }
+    }
     scp_packet_t request = {.cmd = command};
 
     if (RF_SCP_CMD_CFG_WRITE == command)
@@ -495,7 +537,12 @@ void rf_group_process(uint32_t now_ms)
     switch (group.status.state)
     {
         case RF_GROUP_CHECKING:
-            (void)send_request(RF_SCP_CMD_CFG_STATUS_GET);
+            if ((group.status.line != 0U) ||
+                (rf_comm_can_load_inventory() && !rf_inventory_is_active() &&
+                 (rf_inventory_get_status() != RF_INVENTORY_IDLE)))
+            {
+                (void)send_request(RF_SCP_CMD_CFG_STATUS_GET);
+            }
             break;
         case RF_GROUP_WRITING:
         case RF_GROUP_COMMITTING:

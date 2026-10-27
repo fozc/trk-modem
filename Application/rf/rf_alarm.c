@@ -11,6 +11,7 @@
 #include "rf.h"
 #include "rf_config.h"
 #include "rf_inventory.h"
+#include "elog.h"
 #include "stm32u3xx_hal.h"
 #include "iec104.h"
 #include "iec104_replay.h"
@@ -201,6 +202,11 @@ static bool deliver(alarm_delivery_t *delivery)
         }
     }
 #endif
+    if (!delivery->has_report || (delivery->active != (delivery->record.active != 0U)))
+    {
+        elog_log_rf_trip_failure((uint8_t)(delivery->source >> 2U),
+                                (uint8_t)(delivery->source & 3U), delivery->record.active != 0U);
+    }
     delivery->has_report = true;
     delivery->active = (0U != delivery->record.active);
     delivery->pending = false;
@@ -219,8 +225,7 @@ void rf_alarm_live(uint8_t source, const cp56time2a_t *time)
     if ((NULL == time) || (NULL == delivery) || delivery->pending ||
         !rf_get_source_data(source, HAL_GetTick(), &data) ||
         (!delivery->has_report && !data.trip_failed) ||
-        (delivery->has_report && (delivery->active == data.trip_failed) &&
-         !data.trip_failure_latched))
+        (delivery->has_report && (delivery->active == data.trip_failed)))
     {
         return;
     }
@@ -304,6 +309,80 @@ bool rf_alarm_is_idle(void)
         }
     }
     return true;
+}
+
+static void log_operator_ack(const rf_phase_data_t *data, const iec104_alarm_ack_record_t *ack)
+{
+    uint8_t info[16] = {data->source >> 2U, data->source & 3U, ack->source, ack->user, ack->event,
+        (uint8_t)((data->is_online ? 0U : 1U) | (data->trip_failed ? 2U : 0U))};
+    info[6] = (uint8_t)ack->boot;
+    info[7] = (uint8_t)(ack->boot >> 8U);
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        info[8U + index] = (uint8_t)(ack->uptime >> (index * 8U));
+    }
+    info[12] = (uint8_t)ack->event_crc;
+    info[13] = (uint8_t)(ack->event_crc >> 8U);
+    const uint16_t hash = rf_scp_eui_hash(data->eui64);
+    info[14] = (uint8_t)hash;
+    info[15] = (uint8_t)(hash >> 8U);
+    elog_add(ELOG_RF_ALARM_ACK, ELOG_LEVEL_INFO, info, sizeof(info));
+}
+
+rf_alarm_ack_result_t rf_alarm_acknowledge(const rf_alarm_ack_request_t *request)
+{
+    rf_phase_data_t data;
+    const uint32_t now_ms = HAL_GetTick();
+    if ((request == NULL) || (request->line >= MAX_POWER_LINE_COUNT) || (request->phase >= PHASE_MAX))
+    {
+        return RF_ALARM_ACK_INVALID;
+    }
+    if (!rf_get_phase_data(request->line, (phase_id_t)request->phase, now_ms, &data) ||
+        !data.trip_failed || !data.trip_failure_latched || (data.alarm_revision != request->revision) ||
+        (memcmp(data.eui64, request->eui64, sizeof(data.eui64)) != 0))
+    {
+        return RF_ALARM_ACK_STALE;
+    }
+    if (!data.is_online && !request->confirm_offline)
+    {
+        return RF_ALARM_ACK_OFFLINE;
+    }
+    if (!rf_alarm_is_idle())
+    {
+        return RF_ALARM_ACK_BUSY;
+    }
+    if (!iec104_alarm_ack_range_available())
+    {
+        return RF_ALARM_ACK_IOA_CONFLICT;
+    }
+    rf_alarm_event_t event = {0};
+    if (!rf_get_alarm_event(data.source, &event) && data.has_live)
+    {
+        event.boot = data.live.boot_counter;
+        event.uptime = data.live.uptime_sec;
+    }
+    const iec104_alarm_ack_record_t ack = {.time = cp56time2a_now(), .feeder = request->line,
+        .phase = request->phase, .source = IEC104_ALARM_ACK_SOURCE_WEB, .user = IEC104_ALARM_ACK_USER_ADMIN,
+        .event = event.event, .boot = event.boot, .uptime = event.uptime, .event_crc = event.crc};
+    uint16_t seq;
+    if (!iec104_event_log_add_alarm_ack(&ack, &seq))
+    {
+        return RF_ALARM_ACK_STORAGE;
+    }
+    /* No cooperative yield between validation, persistence and latch update. */
+    if (!rf_ack_trip_failure(data.source))
+    {
+        return RF_ALARM_ACK_STALE;
+    }
+    (void)rf_get_phase_data(request->line, (phase_id_t)request->phase, now_ms, &data);
+    log_operator_ack(&data, &ack);
+    const iec104_event_record_t record = {.kind = IEC104_EVENT_TRIP_FAILURE_ACK, .payload.alarm_ack = ack};
+    if (iec104_is_link_active())
+    {
+        (void)iec104_replay_send_record(&record, seq);
+    }
+    rf_alarm_live(data.source, &ack.time);
+    return RF_ALARM_ACK_OK;
 }
 
 /*** end of file ***/

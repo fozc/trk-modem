@@ -491,7 +491,16 @@ group_code = r'''
 #include "rf_group.h"
 #include "rf_apply.h"
 #include "rf_inventory.h"
+#include "rf_alarm.h"
 #include "json_config.h"
+#include "web_json.h"
+static bool admin_role;
+static uint32_t operator_ack_calls;
+static rf_alarm_ack_result_t operator_ack_result;
+static rf_alarm_ack_request_t received_ack;
+static bool http_handlers_is_admin(void) { return admin_role; }
+rf_alarm_ack_result_t rf_alarm_acknowledge(const rf_alarm_ack_request_t *request)
+{ operator_ack_calls++; received_ack=*request; return operator_ack_result; }
 static char canvas[514], output[512];
 static struct { char *tx_buffer; int tx_buffer_size; } handler_state;
 static int response_status, output_length;
@@ -539,7 +548,9 @@ static void http_send_json(const char *data, int length)
 static void http_send_error(int status, const char *text)
 { (void)text; response_status = status; }
 '''
-for name in ['http_json_reply','parse_rf_settings','handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort','handle_post_rf_config_json']:
+for name in ['hex_nibble','rf_eui64_from_hex']:
+ group_code += extract('Application/rf/rf_config.c',name) + '\n'
+for name in ['http_json_reply','parse_rf_settings','handle_get_rf_group_status_json','handle_post_rf_apply','handle_post_rf_abort','handle_post_rf_config_json','parse_rf_alarm_ack','handle_post_rf_alarm_ack']:
  group_code += extract('Application/web-server/http_handlers.c',name) + '\n'
 group_code += r'''
 int main(void)
@@ -579,9 +590,38 @@ int main(void)
  handle_post_rf_config_json("{}"); assert(response_status == 200);
  assert(commit_calls == 0U && save_calls == 3U);
  assert(strstr(output,"\"success\":true") != NULL);
+ save_result = RF_APPLY_SAVE_MAINTENANCE;
+ const uint32_t old_aborts = stage_aborts;
+ handle_post_rf_config_json("{}"); assert(response_status == 409);
+ assert(stage_aborts == old_aborts + 1U && commit_calls == 0U && save_calls == 4U);
  handle_post_rf_abort(); assert(response_status == 409);
  accepts_abort = true;
  handle_post_rf_abort(); assert(response_status == 200 && abort_calls == 2U);
+ const char *ack="{\"Line\":3,\"Phase\":1,\"Eui64\":\"00124B0038C9F1BE\",\"Revision\":17,\"ConfirmOffline\":false}";
+ handle_post_rf_alarm_ack(ack);assert(response_status==403 && operator_ack_calls==0U);
+ admin_role=true;
+ const char *invalid_acks[]={"{}", "[]", "null",
+  "{\"Line\":3,\"Phase\":1,\"Eui64\":\"\",\"Revision\":17,\"ConfirmOffline\":false}",
+  "{\"Line\":3,\"Phase\":1,\"Eui64\":\"00124B0038C9F1BE\",\"Revision\":0,\"ConfirmOffline\":false}",
+  "{\"Line\":0,\"Phase\":1,\"Eui64\":\"00124B0038C9F1BE\",\"Revision\":17,\"ConfirmOffline\":false}",
+  "{\"Line\":8,\"Phase\":1,\"Eui64\":\"00124B0038C9F1BE\",\"Revision\":17,\"ConfirmOffline\":false}",
+  "{\"Line\":3,\"Phase\":4,\"Eui64\":\"00124B0038C9F1BE\",\"Revision\":17,\"ConfirmOffline\":false}",
+  "{\"Line\":3,\"Phase\":1,\"Eui64\":\"00124B0038C9F1BE\",\"Revision\":17,\"ConfirmOffline\":1}",
+  "{\"Line\":3,\"Line\":3,\"Phase\":1,\"Eui64\":\"00124B0038C9F1BE\",\"Revision\":17,\"ConfirmOffline\":false}",
+  "{\"Line\":3,\"Phase\":1,\"Eui64\":\"00124B0038C9F1BE\",\"Revision\":17,\"ConfirmOffline\":false,\"User\":\"admin\"}"};
+ for(size_t i=0U;i<sizeof(invalid_acks)/sizeof(invalid_acks[0]);i++) {
+  handle_post_rf_alarm_ack(invalid_acks[i]);assert(response_status==400 && operator_ack_calls==0U);
+ }
+ operator_ack_result=RF_ALARM_ACK_OFFLINE;
+ handle_post_rf_alarm_ack(ack);assert(response_status==428 && operator_ack_calls==1U);
+ assert(received_ack.line==2U && received_ack.phase==0U && received_ack.revision==17U);
+ assert(received_ack.eui64[7]==0xBEU && !received_ack.confirm_offline);
+ operator_ack_result=RF_ALARM_ACK_STORAGE;
+ handle_post_rf_alarm_ack(ack);assert(response_status==503);
+ operator_ack_result=RF_ALARM_ACK_STALE;
+ handle_post_rf_alarm_ack(ack);assert(response_status==409);
+ operator_ack_result=RF_ALARM_ACK_OK;
+ handle_post_rf_alarm_ack(ack);assert(response_status==200);
  return 0;
 }
 '''

@@ -52,6 +52,29 @@ bool rf_alarm_record(const rf_scp_event_t *event);
 void rf_alarm_process(uint32_t now_ms);
 bool rf_alarm_is_idle(void);
 
+typedef struct
+{
+    uint8_t line;
+    uint8_t phase;
+    uint8_t eui64[8];
+    uint32_t revision;
+    bool confirm_offline;
+} rf_alarm_ack_request_t;
+
+typedef enum
+{
+    RF_ALARM_ACK_OK,
+    RF_ALARM_ACK_INVALID,
+    RF_ALARM_ACK_STALE,
+    RF_ALARM_ACK_OFFLINE,
+    RF_ALARM_ACK_BUSY,
+    RF_ALARM_ACK_IOA_CONFLICT,
+    RF_ALARM_ACK_STORAGE
+} rf_alarm_ack_result_t;
+
+/* Admin web caller only. Persist identity/user/time before changing the latch. */
+rf_alarm_ack_result_t rf_alarm_acknowledge(const rf_alarm_ack_request_t *request);
+
 #endif /* RF_ALARM_H */
 
 /*** end of file ***/

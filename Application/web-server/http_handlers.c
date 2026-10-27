@@ -38,6 +38,7 @@
 #include "iec104_config.h"
 #include "iec104_util.h"
 #include "rf.h"
+#include "rf_alarm.h"
 #include "rf_config.h"
 #include "rf_discovery.h"
 #include "rf_json.h"
@@ -1591,6 +1592,13 @@ void handle_post_rf_config_json(const char *json_body)
     /* Save the candidate before publishing it or starting RF operations. */
     const rf_apply_save_result_t result = rf_apply_save();
 
+    if (RF_APPLY_SAVE_MAINTENANCE == result)
+    {
+        rf_store_stage_abort();
+        http_send_error(409, "Assigned device relocation requires the R2.3 service procedure; configuration unchanged");
+        return;
+    }
+
     if (RF_APPLY_SAVE_BUSY == result)
     {
         rf_store_stage_abort();
@@ -1629,10 +1637,134 @@ void handle_post_rf_config_json(const char *json_body)
 }
 
 /**
- * @brief Send RF monitor JSON for a specific line range
- *
- * @param line_filter Line index (0..MAX_POWER_LINE_COUNT-1) or -1 for all lines
+ * @brief Parse the confirmed alarm identity; user and source are server-owned.
  */
+static bool parse_rf_alarm_ack(const char *body, rf_alarm_ack_request_t *out)
+{
+    if ((body == NULL) || (out == NULL))
+    {
+        return false;
+    }
+    static const char *const keys[] = {"Line", "Phase", "Eui64", "Revision", "ConfirmOffline"};
+    json_reader_t reader;
+    json_token_t token;
+    char scratch[64];
+    rf_alarm_ack_request_t candidate = {0};
+    uint8_t seen = 0U;
+    if ((json_reader_init(&reader, scratch, sizeof(scratch)) != JSON_OK) ||
+        (json_reader_feed(&reader, (json_span_t){body, strlen(body)}, true) != JSON_OK) ||
+        (json_read(&reader, &token) != JSON_OK) || (token.type != JSON_OBJECT_BEGIN))
+    {
+        return false;
+    }
+    for (;;)
+    {
+        if (json_read(&reader, &token) != JSON_OK)
+        {
+            return false;
+        }
+        if (token.type == JSON_OBJECT_END)
+        {
+            if ((seen != 31U) || (candidate.line < 1U) || (candidate.line > MAX_POWER_LINE_COUNT) ||
+                (candidate.phase < 1U) || (candidate.phase > PHASE_MAX) || (candidate.revision == 0U) ||
+                (json_read(&reader, &token) != JSON_DONE))
+            {
+                return false;
+            }
+            candidate.line--;
+            candidate.phase--;
+            *out = candidate;
+            return true;
+        }
+        if (token.type != JSON_KEY)
+        {
+            return false;
+        }
+        size_t field = 0U;
+        while ((field < sizeof(keys) / sizeof(keys[0])) && !json_token_equals(&token, keys[field]))
+        {
+            field++;
+        }
+        if ((field >= sizeof(keys) / sizeof(keys[0])) || ((seen & (1U << field)) != 0U) ||
+            (json_read(&reader, &token) != JSON_OK))
+        {
+            return false;
+        }
+        seen |= (uint8_t)(1U << field);
+        if (field == 2U)
+        {
+            char hex[RF_EUI64_HEX_LEN];
+            if ((json_token_copy_string(&token, hex, sizeof(hex)) != JSON_ERROR_NONE) ||
+                (strlen(hex) != RF_EUI64_LEN * 2U) ||
+                !rf_eui64_from_hex(candidate.eui64, hex))
+            {
+                return false;
+            }
+        }
+        else if (field == 4U)
+        {
+            if (token.type != JSON_BOOLEAN)
+            {
+                return false;
+            }
+            candidate.confirm_offline = token.boolean;
+        }
+        else if (field == 3U)
+        {
+            if (json_token_uint32(&token, &candidate.revision) != JSON_ERROR_NONE)
+            {
+                return false;
+            }
+        }
+        else if (json_token_uint8(&token, (field == 0U) ? &candidate.line : &candidate.phase) != JSON_ERROR_NONE)
+        {
+            return false;
+        }
+        else
+        {
+            /* Numeric field accepted. */
+        }
+    }
+}
+
+void handle_post_rf_alarm_ack(const char *body)
+{
+    if (!http_handlers_is_admin())
+    {
+        http_send_error(403, "Admin role required");
+        return;
+    }
+    rf_alarm_ack_request_t request;
+    if (!parse_rf_alarm_ack(body, &request))
+    {
+        http_send_error(400, "Invalid alarm acknowledgement");
+        return;
+    }
+    const rf_alarm_ack_result_t result = rf_alarm_acknowledge(&request);
+    switch (result)
+    {
+        case RF_ALARM_ACK_OK:
+            http_send_json("{\"success\":true}", 16);
+            break;
+        case RF_ALARM_ACK_OFFLINE:
+            http_send_error(428, "No fresh LIVE; explicit offline confirmation required");
+            break;
+        case RF_ALARM_ACK_STORAGE:
+            http_send_error(503, "Acknowledgement not stored; alarm unchanged");
+            break;
+        case RF_ALARM_ACK_IOA_CONFLICT:
+            http_send_error(409, "IEC104 configuration overlaps reserved acknowledgement IOAs");
+            break;
+        case RF_ALARM_ACK_BUSY:
+            http_send_error(409, "Alarm delivery pending; refresh and retry");
+            break;
+        default:
+            http_send_error(409, "Alarm changed; refresh before acknowledging");
+            break;
+    }
+}
+
+/** Send one RF line or all lines when line_filter is -1. */
 static void send_rf_monitor_json(int line_filter)
 {
     if ((-1 > line_filter) || (MAX_POWER_LINE_COUNT <= line_filter))

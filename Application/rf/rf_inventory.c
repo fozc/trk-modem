@@ -37,6 +37,7 @@
 #include "rf_faults.h"
 #include "rf.h"
 #include "rf_group.h"
+#include "rf_apply.h"
 #include "nvram.h"
 #include "contiki.h"
 #include "timer.h"
@@ -78,6 +79,16 @@ static bool epoch_for_replacement;
 static uint32_t epoch_started_ms[4];
 static uint8_t epoch_feeder;
 static scp_cmd_done_fn_t epoch_done;
+typedef struct
+{
+    rf_epoch_status_t status;
+    uint32_t report_ms;
+    uint8_t empty_phases;
+    uint8_t head_phases;
+    uint16_t boot_counter[3];
+} epoch_monitor_t;
+
+static epoch_monitor_t epoch_monitors[4];
 static bool waiting_live;
 static uint32_t drain_started_ms;
 static uint32_t reason_started_ms;
@@ -90,9 +101,28 @@ static bool has_boundary;
 static uint32_t boundary_total;
 static uint32_t uploaded_bindings;
 
+/* Cooperative service transaction. Only the interruption marker is persistent;
+ * evidence and the one-extra-EPOCH campaign remain in the existing monitor. */
+static rf_move_status_t move_status;
+static uint32_t move_epoch_ms;
+static void continue_move(void);
+static bool persist_move_target(void);
+static void on_move_update_done(scp_cmd_result_t result, const scp_packet_t *response);
+
 static void begin_upload(void);
 static bool send_update(void);
 static bool complete_inventory_save(void);
+
+static void interrupt_epoch(size_t index)
+{
+    if ((index < 4U) && epoch_monitors[index].status.active)
+    {
+        epoch_monitors[index].status.active = false;
+        epoch_monitors[index].status.uncertain = true;
+        epoch_retry_pending[index] = false;
+        epoch_first_config[index] = false;
+    }
+}
 
 _Static_assert(MAX_POWER_LINE_COUNT >= 7,
                "MH inventory supports seven feeder IDs");
@@ -315,6 +345,72 @@ static bool assignment_retained(const rf_inventory_entry_t *entry,
     return false;
 }
 
+static bool entry_relocated(const rf_inventory_entry_t *entry, bool staged)
+{
+    if (rf_eui64_is_zero(entry->eui64))
+    {
+        return false;
+    }
+    for (size_t line = 0U; line < MAX_POWER_LINE_COUNT; line++)
+    {
+        const rf_feeder_t *target = staged ? rf_store_get_mutable((feeder_id_t)line) :
+                                            rf_store_get((feeder_id_t)line);
+        if ((target == NULL) || !target->in_use)
+        {
+            continue;
+        }
+        const uint8_t *members[3] = {target->r_eui64, target->s_eui64, target->t_eui64};
+        for (size_t phase = 0U; phase < 3U; phase++)
+        {
+            if (memcmp(entry->eui64, members[phase], 8U) == 0)
+            {
+                return (entry->zone != target->config.zone_id) ||
+                       (entry->feeder != target->config.fider_id) || (entry->phase != phase + 1U);
+            }
+        }
+    }
+    return false;
+}
+
+bool rf_inventory_has_relocation(void)
+{
+    for (size_t line = 0U; line < MAX_POWER_LINE_COUNT; line++)
+    {
+        const rf_feeder_t *current = rf_store_get((feeder_id_t)line);
+        if (current == NULL)
+        {
+            continue;
+        }
+        const uint8_t *members[3] = {current->r_eui64, current->s_eui64, current->t_eui64};
+        for (size_t phase = 0U; phase < 3U; phase++)
+        {
+            rf_inventory_entry_t entry = {.zone = current->config.zone_id,
+                .feeder = current->config.fider_id, .phase = (uint8_t)(phase + 1U)};
+            (void)memcpy(entry.eui64, members[phase], 8U);
+            if (entry_relocated(&entry, true))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool bindings_relocated(void)
+{
+    for (size_t line = 0U; line < MAX_POWER_LINE_COUNT; line++)
+    {
+        for (size_t phase = 0U; phase < 3U; phase++)
+        {
+            if (entry_relocated(&bindings[line][phase], false))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static void on_delete_done(scp_cmd_result_t result, const scp_packet_t *rsp)
 {
     (void)rsp;
@@ -472,7 +568,7 @@ static void send_next(void)
 bool rf_inventory_start(void)
 {
     if (rf_inventory_is_active() || !rf_comm_can_load_inventory() ||
-        !rf_events_inventory_allowed() || rf_group_is_active())
+        !rf_events_inventory_allowed() || rf_group_is_active() || bindings_relocated())
     {
         return false;
     }
@@ -652,7 +748,7 @@ static bool target_zone_matches(void)
 bool rf_inventory_prepare_save(void)
 {
     rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
-    if (nvram_is_busy() || !target_zone_matches())
+    if (rf_inventory_service_pending() || nvram_is_busy() || !target_zone_matches())
     {
         return false;
     }
@@ -733,7 +829,7 @@ static bool complete_inventory_save(void)
         return true;
     }
     const rf_inventory_journal_t previous = *journal;
-    *journal = (rf_inventory_journal_t){0};
+    *journal = (rf_inventory_journal_t){.reserved = previous.reserved};
     if (NVRAM_SAVE_COMPLETE != nvram_save(false))
     {
         *journal = previous;
@@ -798,6 +894,10 @@ static void continue_drain(void)
     }
     if (update_pending)
     {
+        if ((move_status.state == RF_MOVE_DRAINING) && !persist_move_target())
+        {
+            return;
+        }
         if (!send_update())
         {
             return;
@@ -835,7 +935,6 @@ static void continue_epoch_retry(void)
         {
             if (rf_inventory_refresh_epoch(feeder, NULL))
             {
-                epoch_retry_pending[feeder - 1U] = false;
                 CSLOG_WARN("[RF-INV] MH replacement: one epoch retry "
                            "for feeder %u; config remains stopped\r\n",
                            (unsigned)feeder);
@@ -847,6 +946,7 @@ static void continue_epoch_retry(void)
 
 void rf_inventory_continue(void)
 {
+    continue_move();
     if (RF_INVENTORY_DRAINING == inventory_status)
     {
         continue_drain();
@@ -877,6 +977,14 @@ void rf_inventory_continue(void)
 
 void rf_inventory_reset(void)
 {
+    if (nvram_get_rf_inventory_journal()->reserved == 0U)
+    {
+        move_status.state = RF_MOVE_IDLE;
+    }
+    else if (move_status.state != RF_MOVE_WAIT_LIVE)
+    {
+        move_status.state = rf_inventory_service_pending() ? RF_MOVE_INTERRUPTED : RF_MOVE_IDLE;
+    }
     const scp_cmd_done_fn_t pending_done =
         (update_pending && !update_sent) ? update_done : NULL;
     if (NULL != pending_done)
@@ -887,6 +995,7 @@ void rf_inventory_reset(void)
     (void)memset(epoch_first_config, 0, sizeof(epoch_first_config));
     (void)memset(epoch_retry_pending, 0, sizeof(epoch_retry_pending));
     (void)memset(epoch_auth_pending, 0, sizeof(epoch_auth_pending));
+    (void)memset(epoch_monitors, 0, sizeof(epoch_monitors));
     epoch_for_replacement = false;
     (void)memset(bindings, 0, sizeof(bindings));
     inventory_status = RF_INVENTORY_IDLE;
@@ -954,6 +1063,10 @@ void rf_inventory_record_ack(const scp_packet_t *request)
     {
         const rf_inventory_entry_t *current =
             &bindings[(size_t)body[1] - 1U][(size_t)body[2] - 1U];
+        if ((current->zone != body[0]) || (memcmp(current->eui64, &body[3], 8U) != 0))
+        {
+            interrupt_epoch((size_t)body[1] - 1U);
+        }
         if (!rf_eui64_is_zero(current->eui64) &&
             ((current->zone != body[0]) ||
              (0 != memcmp(current->eui64, &body[3], 8U))))
@@ -970,6 +1083,7 @@ void rf_inventory_record_ack(const scp_packet_t *request)
             {
                 if ((body[1] != line + 1U) || (body[2] != phase + 1U))
                 {
+                    interrupt_epoch(line);
                     rf_faults_reset_phase((uint8_t)(line + 1U),
                                            (uint8_t)(phase + 1U));
                 }
@@ -1058,7 +1172,7 @@ static void on_update_done(scp_cmd_result_t result,
 bool rf_inventory_update(const rf_inventory_entry_t *entry,
                           scp_cmd_done_fn_t done)
 {
-    if ((NULL == entry) || !rf_inventory_is_loaded() ||
+    if ((NULL == entry) || rf_inventory_service_pending() || !rf_inventory_is_loaded() ||
         !rf_comm_can_load_inventory() || !scp_is_free() || rf_group_is_active())
     {
         return false;
@@ -1076,6 +1190,18 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
     if (inventory_zone_set && (inventory_zone != entry->zone))
     {
         return false;
+    }
+    for (size_t line = 0U; (entry->feeder != 0U) && (line < MAX_POWER_LINE_COUNT); line++)
+    {
+        for (size_t phase = 0U; phase < 3U; phase++)
+        {
+            const rf_inventory_entry_t *current = &bindings[line][phase];
+            if ((memcmp(current->eui64, entry->eui64, 8U) == 0) &&
+                ((current->feeder != entry->feeder) || (current->phase != entry->phase)))
+            {
+                return false;
+            }
+        }
     }
     pending_update = *entry;
     update_done = done;
@@ -1121,7 +1247,145 @@ bool rf_inventory_epoch_ready(uint8_t feeder)
     {
         epoch_waiting[index] = false;
     }
-    return !epoch_waiting[index] && !epoch_auth_pending[index];
+    return !rf_inventory_service_pending() && !epoch_waiting[index] &&
+           !epoch_auth_pending[index] && !epoch_retry_pending[index];
+}
+
+bool rf_inventory_get_epoch_status(uint8_t feeder, rf_epoch_status_t *out)
+{
+    if ((feeder < 1U) || (feeder > 4U) || (out == NULL))
+    {
+        return false;
+    }
+    *out = epoch_monitors[feeder - 1U].status;
+    return true;
+}
+
+void rf_inventory_epoch_event(const rf_scp_event_t *event, bool source_matches, uint32_t now_ms)
+{
+    if (event == NULL)
+    {
+        return;
+    }
+    if ((event->event == 138U) && (event->src_eui_hash == 0U))
+    {
+        for (size_t index = 0U; index < 4U; index++)
+        {
+            interrupt_epoch(index);
+        }
+        return;
+    }
+    if ((event->feeder < 1U) || (event->feeder > 4U))
+    {
+        return;
+    }
+    epoch_monitor_t *monitor = &epoch_monitors[event->feeder - 1U];
+    if (!monitor->status.active)
+    {
+        return;
+    }
+    if ((event->event == 201U) && (event->src_eui_hash == 0U) && !monitor->status.has_report)
+    {
+        monitor->status.has_report = true;
+        monitor->status.report_phases = (uint8_t)(event->permanent_faults & 7U);
+        monitor->report_ms = now_ms;
+        monitor->empty_phases = 0U;
+        monitor->head_phases = 0U;
+        monitor->status.checked_phases = 0U;
+        monitor->status.missing_phases = 0U;
+    }
+    else if ((event->event == 120U) && source_matches && (event->phase >= 1U) && (event->phase <= 3U))
+    {
+        /* Receipt is diagnostic: delayed 120 records have no campaign ID. */
+        const uint8_t bit = (uint8_t)(1U << (event->phase - 1U));
+        monitor->status.received_phases |= bit;
+        monitor->status.missing_phases &= (uint8_t)~bit;
+    }
+    else
+    {
+        /* Other records cannot prove discovery completion. */
+    }
+}
+
+void rf_inventory_epoch_live(const rf_scp_live_t *live, uint32_t now_ms)
+{
+    if (live == NULL)
+    {
+        return;
+    }
+    const uint8_t feeder = live->source >> 2U;
+    const uint8_t phase = live->source & 3U;
+    rf_inventory_entry_t binding;
+    if ((feeder < 1U) || (feeder > 4U) || (phase == 0U) ||
+        (live->state > 6U) || (live->log_pending > 99U) ||
+        !rf_inventory_get_binding(live->source, &binding))
+    {
+        return;
+    }
+    epoch_monitor_t *monitor = &epoch_monitors[feeder - 1U];
+    if (!monitor->status.active)
+    {
+        return;
+    }
+    const uint8_t bit = (uint8_t)(1U << (phase - 1U));
+    rf_phase_data_t previous;
+    const bool restarted = rf_get_source_data(live->source, now_ms, &previous) && previous.has_live &&
+        rf_scp_uptime_discontinuous(previous.live.uptime_sec, previous.last_live_ms, live->uptime_sec, now_ms);
+    if (restarted || (live->log_pending >= 99U) ||
+        ((monitor->boot_counter[phase - 1U] != 0U) && (live->boot_counter != 0U) &&
+         (monitor->boot_counter[phase - 1U] != live->boot_counter)))
+    {
+        interrupt_epoch(feeder - 1U);
+        return;
+    }
+    if (live->boot_counter != 0U)
+    {
+        monitor->boot_counter[phase - 1U] = live->boot_counter;
+    }
+    const uint32_t anchor = monitor->status.has_report ? monitor->report_ms : epoch_started_ms[feeder - 1U];
+    const uint32_t delay_ms = monitor->status.has_report ? 90000U : 180000U;
+    if ((live->log_pending == 0U) && ((uint32_t)(now_ms - anchor) >= delay_ms))
+    {
+        monitor->empty_phases |= bit;
+    }
+    else
+    {
+        monitor->empty_phases &= (uint8_t)~bit;
+        monitor->head_phases &= (uint8_t)~bit;
+    }
+}
+
+void rf_inventory_epoch_head_started(void)
+{
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        epoch_monitors[index].head_phases = epoch_monitors[index].empty_phases;
+    }
+}
+
+void rf_inventory_epoch_ring_empty(void)
+{
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        epoch_monitor_t *monitor = &epoch_monitors[index];
+        if (!monitor->status.active)
+        {
+            continue;
+        }
+        monitor->status.checked_phases |= monitor->head_phases;
+        monitor->status.missing_phases = (uint8_t)(monitor->status.expected_phases &
+            monitor->status.checked_phases & (uint8_t)~monitor->status.received_phases);
+        monitor->head_phases = 0U;
+        if ((monitor->status.missing_phases != 0U) && !monitor->status.retry_used)
+        {
+            if (!epoch_retry_pending[index])
+            {
+                CSLOG_WARN("[RF-INV] feeder=%u missing 120 mask=0x%02X; one extra epoch queued\r\n",
+                           (unsigned)(index + 1U), (unsigned)monitor->status.missing_phases);
+            }
+            epoch_retry_pending[index] = true;
+        }
+    }
 }
 
 static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *packet)
@@ -1133,10 +1397,26 @@ static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *p
     {
         const size_t index = (size_t)epoch_feeder - 1U;
 
+        const bool retry = epoch_retry_pending[index];
+        epoch_monitors[index] = (epoch_monitor_t){.status = {.active = true, .retry_used = retry}};
+        for (size_t phase = 0U; phase < 3U; phase++)
+        {
+            if (!rf_eui64_is_zero(bindings[index][phase].eui64))
+            {
+                epoch_monitors[index].status.expected_phases |= (uint8_t)(1U << phase);
+                rf_phase_data_t data;
+                const uint8_t source = (uint8_t)((epoch_feeder << 2U) | (uint8_t)(phase + 1U));
+                if (rf_get_source_data(source, HAL_GetTick(), &data) && data.has_live)
+                {
+                    epoch_monitors[index].boot_counter[phase] = data.live.boot_counter;
+                }
+            }
+        }
         epoch_started_ms[index] = HAL_GetTick();
         epoch_waiting[index] = true;
-        epoch_first_config[index] = epoch_for_replacement;
+        epoch_first_config[index] = epoch_for_replacement && !retry;
         epoch_auth_pending[index] = false;
+        epoch_retry_pending[index] = false;
     }
     else if ((NULL == packet) || (SCP_CMD_ERR != result) ||
              (0U == packet->data_len) ||
@@ -1144,6 +1424,9 @@ static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *p
     {
         /* Only queue-busy has the documented repeat authorization. */
         epoch_auth_pending[epoch_feeder - 1U] = false;
+        epoch_retry_pending[epoch_feeder - 1U] = false;
+        epoch_monitors[epoch_feeder - 1U].status.active = false;
+        epoch_monitors[epoch_feeder - 1U].status.uncertain = true;
     }
     epoch_for_replacement = false;
     if (NULL != done)
@@ -1154,6 +1437,12 @@ static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *p
 
 bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done)
 {
+    if (rf_inventory_service_pending() &&
+        (((move_status.state != RF_MOVE_EPOCH) && (move_status.state != RF_MOVE_WAIT_EVENTS)) ||
+         (feeder != pending_update.feeder)))
+    {
+        return false;
+    }
     if ((1U > feeder) || (4U < feeder) || !rf_inventory_is_loaded() ||
         !rf_comm_can_load_inventory() || rf_group_is_active())
     {
@@ -1181,6 +1470,10 @@ bool rf_inventory_refresh_epoch(uint8_t feeder, scp_cmd_done_fn_t done)
 
 bool rf_inventory_hub_replaced(uint8_t feeder, scp_cmd_done_fn_t done)
 {
+    if (rf_inventory_service_pending())
+    {
+        return false;
+    }
     if (!rf_inventory_refresh_epoch(feeder, done))
     {
         return false;
@@ -1194,6 +1487,8 @@ bool rf_inventory_hub_replaced(uint8_t feeder, scp_cmd_done_fn_t done)
 void rf_inventory_note_auth_failure(uint8_t feeder)
 {
     if ((1U <= feeder) && (4U >= feeder) &&
+        !epoch_monitors[feeder - 1U].status.active &&
+        !epoch_monitors[feeder - 1U].status.uncertain &&
         !epoch_waiting[feeder - 1U] && !epoch_first_config[feeder - 1U] &&
         !epoch_retry_pending[feeder - 1U])
     {
@@ -1212,7 +1507,230 @@ void rf_inventory_config_finished(uint8_t feeder, uint8_t reason)
     if (epoch_first_config[index])
     {
         epoch_first_config[index] = false;
-        epoch_retry_pending[index] = (5U == reason);
+        epoch_retry_pending[index] = epoch_retry_pending[index] ||
+            ((5U == reason) && !epoch_monitors[index].status.retry_used);
+    }
+    if (0U == reason)
+    {
+        epoch_monitors[index].status.active = false;
+        epoch_monitors[index].status.missing_phases = 0U;
+        epoch_retry_pending[index] = false;
+    }
+}
+
+bool rf_inventory_service_pending(void)
+{
+    return (nvram_get_rf_inventory_journal()->reserved != 0U) ||
+           (move_status.state == RF_MOVE_DRAINING);
+}
+
+void rf_inventory_move_status(rf_move_status_t *out)
+{
+    if (out == NULL)
+    {
+        return;
+    }
+    *out = move_status;
+    const uint16_t marker = nvram_get_rf_inventory_journal()->reserved;
+    if ((marker != 0U) && ((move_status.state == RF_MOVE_IDLE) ||
+        (move_status.state == RF_MOVE_INTERRUPTED)))
+    {
+        out->state = RF_MOVE_INTERRUPTED;
+        out->line = (uint8_t)(marker & 7U);
+        out->from_phase = (uint8_t)((marker >> 3U) & 3U);
+        out->to_phase = (uint8_t)((marker >> 5U) & 3U);
+    }
+}
+
+static uint8_t *move_member(rf_feeder_t *feeder, uint8_t phase)
+{
+    switch (phase)
+    {
+        case 0U: return feeder->r_eui64;
+        case 1U: return feeder->s_eui64;
+        case 2U: return feeder->t_eui64;
+        default: return NULL;
+    }
+}
+
+static uint16_t move_marker(void)
+{
+    return (uint16_t)(0xA500U | move_status.line | ((uint16_t)move_status.from_phase << 3U) |
+                      ((uint16_t)move_status.to_phase << 5U));
+}
+
+bool rf_inventory_move_begin(uint8_t line, uint8_t from_phase, uint8_t to_phase, bool confirm_unused)
+{
+    const rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    if (!confirm_unused || (line >= MAX_POWER_LINE_COUNT) || (from_phase >= 3U) || (to_phase >= 3U) ||
+        (from_phase == to_phase) || rf_inventory_service_pending() || journal->pending || (journal->count != 0U) ||
+        nvram_is_busy() || rf_events_storage_degraded() || rf_inventory_is_active() ||
+        rf_apply_is_running() || rf_group_is_active() ||
+        !rf_inventory_matches_config() || !rf_comm_can_load_inventory() || !scp_is_free())
+    {
+        return false;
+    }
+    const rf_feeder_t *current = rf_store_get((feeder_id_t)line);
+    if ((current == NULL) || !current->in_use || (current->config.zone_id < 1U) ||
+        (current->config.zone_id > 7U) || (current->config.fider_id < 1U) || (current->config.fider_id > 4U))
+    {
+        return false;
+    }
+    rf_feeder_t candidate = *current;
+    const uint8_t *identity = move_member(&candidate, from_phase);
+    rf_inventory_entry_t original;
+    rf_inventory_entry_t occupied;
+    const uint8_t old_source = (uint8_t)((current->config.fider_id << 2U) | (from_phase + 1U));
+    const uint8_t new_source = (uint8_t)((current->config.fider_id << 2U) | (to_phase + 1U));
+    if (rf_eui64_is_zero(identity) || !rf_eui64_is_zero(move_member(&candidate, to_phase)) ||
+        !rf_inventory_get_binding(old_source, &original) ||
+        (original.zone != current->config.zone_id) || (memcmp(original.eui64, identity, 8U) != 0) ||
+        rf_inventory_get_binding(new_source, &occupied))
+    {
+        return false;
+    }
+    pending_update = original;
+    pending_update.phase = (uint8_t)(to_phase + 1U);
+    update_done = on_move_update_done;
+    before_drain = inventory_status;
+    inventory_status = RF_INVENTORY_DRAINING;
+    start_drain_timer();
+    waiting_live = true;
+    update_pending = true;
+    update_sent = false;
+    upload_timer_started = false;
+    move_status = (rf_move_status_t){.state = RF_MOVE_DRAINING, .line = line,
+        .from_phase = from_phase, .to_phase = to_phase};
+    return true;
+}
+
+static bool persist_move_target(void)
+{
+    rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    const uint16_t previous = journal->reserved;
+    if (!rf_store_stage_begin())
+    {
+        return false;
+    }
+    rf_feeder_t *candidate = rf_store_get_mutable((feeder_id_t)move_status.line);
+    if (candidate == NULL)
+    {
+        rf_store_stage_abort();
+        return false;
+    }
+    (void)memcpy(move_member(candidate, move_status.to_phase), pending_update.eui64, 8U);
+    (void)memset(move_member(candidate, move_status.from_phase), 0, 8U);
+    journal->reserved = move_marker();
+    const int result = rf_store_sync();
+    if (result != 0)
+    {
+        if (result < 0)
+        {
+            journal->reserved = previous;
+        }
+        move_status.state = RF_MOVE_STORAGE_ERROR;
+        update_pending = false;
+        update_done = NULL;
+        inventory_status = before_drain;
+        rf_events_finish_drain();
+        return false;
+    }
+    move_status.state = RF_MOVE_ASSIGNING;
+    return true;
+}
+
+static void on_move_update_done(scp_cmd_result_t result, const scp_packet_t *response)
+{
+    (void)response;
+    move_status.state = (result == SCP_CMD_OK) ? RF_MOVE_EPOCH : RF_MOVE_INTERRUPTED;
+}
+
+static void on_move_epoch_done(scp_cmd_result_t result, const scp_packet_t *response)
+{
+    (void)response;
+    move_status.state = (result == SCP_CMD_OK) ? RF_MOVE_WAIT_EVENTS : RF_MOVE_INTERRUPTED;
+}
+
+static void complete_move(void)
+{
+    rf_phase_data_t data;
+    const uint8_t source = (uint8_t)((pending_update.feeder << 2U) | pending_update.phase);
+    if (!rf_inventory_is_loaded() || !rf_inventory_matches_config() ||
+        ((uint32_t)(HAL_GetTick() - move_epoch_ms) < 90000U) ||
+        !rf_get_source_data(source, HAL_GetTick(), &data) || !data.is_online ||
+        (memcmp(data.eui64, pending_update.eui64, 8U) != 0) || nvram_is_busy())
+    {
+        return;
+    }
+    rf_inventory_journal_t *journal = nvram_get_rf_inventory_journal();
+    const uint16_t marker = journal->reserved;
+    if (marker != move_marker())
+    {
+        move_status.state = RF_MOVE_INTERRUPTED;
+        return;
+    }
+    journal->reserved = 0U;
+    if (nvram_save(false) != NVRAM_SAVE_COMPLETE)
+    {
+        journal->reserved = marker;
+        move_status.state = RF_MOVE_SAVE_FAILED;
+        return;
+    }
+    move_status.state = RF_MOVE_COMPLETE;
+}
+
+bool rf_inventory_move_finish(void)
+{
+    if ((move_status.state != RF_MOVE_WAIT_LIVE) && (move_status.state != RF_MOVE_SAVE_FAILED))
+    {
+        return false;
+    }
+    move_status.state = RF_MOVE_WAIT_LIVE;
+    complete_move();
+    return move_status.state == RF_MOVE_COMPLETE;
+}
+
+static void continue_move(void)
+{
+    switch (move_status.state)
+    {
+        case RF_MOVE_EPOCH:
+            if (scp_is_free())
+            {
+                (void)rf_inventory_refresh_epoch(pending_update.feeder, on_move_epoch_done);
+            }
+            break;
+        case RF_MOVE_WAIT_EVENTS:
+        {
+            const epoch_monitor_t *monitor = &epoch_monitors[pending_update.feeder - 1U];
+            if (monitor->status.uncertain)
+            {
+                move_status.state = RF_MOVE_INTERRUPTED;
+            }
+            else if (monitor->status.has_report &&
+                ((monitor->status.received_phases & (1U << move_status.to_phase)) != 0U))
+            {
+                move_epoch_ms = epoch_started_ms[pending_update.feeder - 1U];
+                move_status.state = RF_MOVE_RESET;
+            }
+            else
+            {
+                /* The existing monitor owns the single extra EPOCH budget. */
+            }
+            break;
+        }
+        case RF_MOVE_RESET:
+            move_status.state = RF_MOVE_WAIT_LIVE;
+            if (!rf_comm_reset_hub())
+            {
+                move_status.state = RF_MOVE_RESET;
+            }
+            break;
+        case RF_MOVE_WAIT_LIVE:
+            complete_move();
+            break;
+        default:
+            break;
     }
 }
 

@@ -76,6 +76,8 @@ typedef struct
     size_t group_index;
     bool has_event;
     bool active;
+    bool breaker_open;
+    bool failed;
 } fault_sequence_t;
 
 typedef struct
@@ -501,6 +503,19 @@ static rf_fault_class_t classify_event(uint8_t event)
     }
 }
 
+static rf_fault_class_t classify_sequence(fault_sequence_t *sequence, const rf_scp_event_t *event)
+{
+    sequence->breaker_open = sequence->breaker_open || (event->event == 6U);
+    sequence->failed = sequence->failed || (event->event == 100U) ||
+                       (event->event == 101U) || (event->event == 117U);
+    if ((event->src_eui_hash == 0U) && (event->event == 3U) && (event->fault_count == 0U) &&
+        sequence->breaker_open && !sequence->failed)
+    {
+        return RF_FAULT_TEMPORARY;
+    }
+    return classify_event(event->event);
+}
+
 static bool sequence_accept(fault_sequence_t *sequence,
                             const rf_scp_event_t *event)
 {
@@ -611,7 +626,7 @@ void rf_faults_record_stored(const rf_scp_event_t *event)
 
 static bool record_result(fault_sequence_t *sequence,
                           const rf_scp_event_t *event,
-                          const cp56time2a_t *time)
+                          const cp56time2a_t *time, rf_fault_class_t type)
 {
     size_t own = sequence->group_index;
     if ((RF_GROUPS <= own) || !groups[own].used)
@@ -640,7 +655,7 @@ static bool record_result(fault_sequence_t *sequence,
     candidate.last_version = evidence_version;
     candidate.failed = candidate.failed || (100U == event->event) ||
                        (101U == event->event);
-    candidate.temporary = candidate.temporary || (142U == event->event);
+    candidate.temporary = candidate.temporary || (RF_FAULT_TEMPORARY == type);
     candidate.uncertain = candidate.uncertain ||
         (1U != event->clock_quality) || !cp56time2a_is_valid(time) ||
         (0U == event->boot_counter) ||
@@ -681,7 +696,7 @@ static bool record_result(fault_sequence_t *sequence,
         .event_uptime = event->uptime_sec,
         .src_eui_hash = event->src_eui_hash};
     (void)memcpy(phase->eui64, sequence->eui64, 8U);
-    if (RF_FAULT_NONE != classify_event(event->event))
+    if (RF_FAULT_NONE != type)
     {
         last_records[event->feeder - 1U][event->phase - 1U] = *phase;
     }
@@ -712,10 +727,13 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
         &sequences[event->feeder - 1U][event->phase - 1U];
     bool previously_opened = false;
     fault_participant_t *saved = find_record(event, &previously_opened);
+    if ((saved != NULL) && saved->phase_saved)
+    {
+        return RF_FAULT_NONE; /* Includes sequence-dependent R1 event 3. */
+    }
     if ((RF_FAULT_NONE != classify_event(event->event)) && (NULL != saved))
     {
-        if (saved->phase_saved || (previously_opened &&
-            ((100U == event->event) || (101U == event->event))))
+        if (previously_opened && ((100U == event->event) || (101U == event->event)))
         {
             return RF_FAULT_NONE; /* Raw archive still retains the copy. */
         }
@@ -727,7 +745,7 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
     }
     cp56time2a_t time;
     (void)memcpy(&time, event->timestamp, sizeof(time));
-    rf_fault_class_t type = classify_event(event->event);
+    rf_fault_class_t type = classify_sequence(sequence, event);
     evidence_version++;
     revoke_closure(event->feeder);
     if ((1U == event->event) || (7U == event->event))
@@ -757,7 +775,7 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
     if ((RF_FAULT_NONE != type) ||
         (sequence->active && (RF_GROUPS > sequence->group_index)))
     {
-        const bool opened = record_result(sequence, event, &time);
+        const bool opened = record_result(sequence, event, &time, type);
         if (opened && ((100U == event->event) || (101U == event->event)))
         {
             type = RF_FAULT_NONE;
@@ -775,6 +793,8 @@ rf_fault_class_t rf_faults_classify(const rf_scp_event_t *event)
     {
         sequence->active = false;
         sequence->group_index = NO_GROUP;
+        sequence->breaker_open = false;
+        sequence->failed = false;
     }
     return type;
 }
@@ -791,7 +811,7 @@ static void observe_phase(fault_phase_t *phase,
         phase->closure = CLOSURE_IDLE;
         return;
     }
-    if ((0U == live->boot_counter) || live->fsm_error ||
+    if ((0U == live->boot_counter) ||
         (1U != live->state) || (0U != live->fault_count) ||
         (phase->has_opening &&
          ((live->uptime_sec < phase->opening_uptime) ||
@@ -842,7 +862,7 @@ void rf_faults_live(const rf_scp_live_t *live, uint32_t now_ms)
         (sequence->has_event && (sequence->boot != live->boot_counter)) ||
         (phase->has_live &&
          ((0 != memcmp(phase->eui64, binding.eui64, 8U)) ||
-          (live->uptime_sec < phase->live_uptime))))
+          rf_scp_uptime_discontinuous(phase->live_uptime, phase->live_ms, live->uptime_sec, now_ms))))
     {
         rf_faults_reset_phase(feeder, (uint8_t)(index + 1U));
     }
