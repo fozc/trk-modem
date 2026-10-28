@@ -165,7 +165,8 @@ void nvram_set_modbus_config(const modbus_configs_t *cfg);
 
 /* RFWU firmware-update session */
 const rfwu_nvram_t *nvram_get_rfwu(void);
-void                nvram_set_rfwu(const rfwu_nvram_t *p_rfwu);
+/** Persist a record; false restores its previous RAM value. A verified primary is sufficient. */
+bool                nvram_set_rfwu(const rfwu_nvram_t *p_rfwu);
 
 #endif /* NVRAM_H_ */
 

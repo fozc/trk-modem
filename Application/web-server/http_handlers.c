@@ -1861,6 +1861,7 @@ static struct
     uint32_t fw_crc;      /* BL-21: downloaded image app_crc (0 = unbound) */
     uint32_t fw_size;     /* BL-21: downloaded image app_size (0 = unbound) */
     bool in_progress;
+    bool complete;
 } fw_state = {0};
 
 /* FW Update timeout configuration (in milliseconds) */
@@ -1874,6 +1875,11 @@ static struct
 static const char *fw_version = NULL;
 static const char *fw_build_date = __DATE__;
 static const char *fw_hardware = "TROIKA-SCB-v1";
+
+void fw_update_reset(void)
+{
+    memset(&fw_state, 0, sizeof(fw_state));
+}
 
 void fw_update_register_callbacks(const fw_update_callbacks_t *callbacks)
 {
@@ -2062,8 +2068,7 @@ void handle_get_fw_status(void)
         web_json_uint32(&writer, "fh", (uint32_t)(fw_state.file_hash));
         (void)json_write_object_end(&writer);
     }
-    else if ((fw_state.total_size > 0U) &&
-             (fw_state.received_bytes == fw_state.total_size))
+    else if (fw_state.complete)
     {
         /* Transfer bitti, apply bekliyor - UI butonu gostersin */
         (void)json_write_object_begin(&writer);
@@ -2244,6 +2249,7 @@ void handle_fw_start(const char *json_body)
     fw_state.fw_crc = 0U;
     fw_state.fw_size = 0U;
     fw_state.in_progress = true;
+    fw_state.complete = false;
 
     CCSLOG(XCOLOR_GREEN, "[FW] Flash initialized, ready for chunks\r\n");
     http_json_reply("{\"status\":\"ok\",\"cs\":4096,\"received\":0}");
@@ -2540,6 +2546,7 @@ void handle_fw_finish(const char *json_body)
     }
 
     fw_state.in_progress = false;
+    fw_state.complete = true;
 
     /* BL-21: capture the image identity actually stored in the download
      * section so /fw_apply can bind the update request to it.  Unbound
@@ -2597,7 +2604,7 @@ void handle_fw_apply(void)
 {
     CCSLOG(XCOLOR_CYAN, "[FW] ========== APPLY FW REQUEST ==========\r\n");
 
-    if (!fw_state.in_progress && (0U == fw_state.total_size))
+    if (!fw_state.complete)
     {
         CSLOG_ERR("[FW] ERROR: No firmware downloaded\r\n");
         http_json_reply("{\"status\":\"error\",\"error\":\"no firmware\"}");

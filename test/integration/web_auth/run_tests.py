@@ -332,10 +332,6 @@ length_preamble = r"""
 static const char *fw_version=NULL, *fw_build_date="2026-10-03";
 static const char *fw_hardware="TROIKA-SCB-v1";
 static struct {char *tx_buffer; int tx_buffer_size;} handler_state;
-static struct {
- bool in_progress;
- uint32_t received_bytes, total_size, file_hash;
-} fw_state;
 static int response_length, response_status;
 static void http_send_error(int status,const char *text) { (void)text; response_status=status;response_length=0; }
 static void http_send_json(const char *body,int length) {
@@ -345,6 +341,11 @@ static void http_send_json(const char *body,int length) {
 }
 """
 handler_source=(root/'Application/web-server/http_handlers.c').read_text(encoding='utf8')
+# Use the current production state layout instead of a stale handwritten copy.
+state_end=handler_source.index('} fw_state = {0};')+len('} fw_state = {0};')
+state_start=handler_source.rfind('static struct\n{',0,state_end)
+if state_start < 0: raise RuntimeError('fw_state declaration missing')
+length_preamble+=handler_source[state_start:state_end]+'\n'
 # Keep the real default initializer and setter in the regression harness.
 match=re.search(r'^static const char \*fw_version = ([^;]+);', handler_source,re.M)
 if not match: raise RuntimeError('fw_version default initializer missing')
@@ -402,6 +403,8 @@ int main(void) {
  check_response(handle_get_fw_status,
   "{\"active\":true,\"received\":4294967295,\"total\":4294967295,\"fh\":4294967295}");
  fw_state.in_progress=false;
+ check_response(handle_get_fw_status,"{\"active\":false}");
+ fw_state.complete=true;
  check_response(handle_get_fw_status,
   "{\"active\":false,\"ready\":true,\"received\":4294967295,\"total\":4294967295,\"fh\":4294967295}");
  puts("PASS: actual HTTP handlers and formatter preserve bytes, bounded lengths and guards");

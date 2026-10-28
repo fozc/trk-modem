@@ -79,12 +79,12 @@ def main():
         web = WebDevice(args.host)
         web.login("admin", derive_admin_password(args.host))
 
-        def request(path, body=None, method=None):
+        def request(path, body=None, method=None, expected_status="ok"):
             status, payload = web.request(path, body, method)
             result = json.loads(payload)
-            if status != 200 or result.get("status", "ok") != "ok":
+            if status != 200 or result.get("status", "ok") != expected_status:
                 raise AssertionError("firmware endpoint rejected " + path.split("?", 1)[0])
-            if path != "/fw_apply":
+            if path != "/fw_apply" or expected_status != "ok":
                 # The response has completed. A listener event preceding
                 # that response belongs to this request's connection.
                 wait_listener(console, len(console.all_lines()), timeout=40)
@@ -131,6 +131,12 @@ def main():
                 probe.ping()
             print("ACK firmware bytes=%d/%d" % (offset, len(data)), flush=True)
         assert interrupted, "image did not exercise partial chunk interruption"
+        state = request("/fw_status")
+        assert not state.get("ready") and state["received"] == len(data), state
+        rejected = request("/fw_apply", method="POST", expected_status="error")
+        assert rejected.get("error") == "no firmware", rejected
+        probe.ping()
+        print("PASS all bytes received before FINISH: not ready, Apply rejected, IEC OK", flush=True)
         request("/f", {"s": len(data)})
         state = request("/fw_status")
         assert state.get("ready") and state["received"] == len(data), state

@@ -155,6 +155,14 @@
         - -flto
         - -O2
       # Exercise real HTTP/JSON paths; retain legacy module exceptions.
+      test_firmware_update_scenario:
+        - -Isupport/firmware_update
+        - -Wno-array-parameter
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-variable
+        - -flto
+        - -O2
       test_http_iec_config_scenario:
         - -Wno-array-parameter
         - -Wno-conversion
@@ -232,6 +240,9 @@
         - -O2
 
     :link:
+      test_firmware_update_scenario:
+        - -flto
+        - -O2
       test_elog_uart_recovery:
         - -flto
         - -O2

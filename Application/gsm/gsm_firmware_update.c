@@ -1,8 +1,10 @@
 /*
- * gsm_firmware_update.c
+ * File: gsm_firmware_update.c
+ * Created on: Dec 28, 2025
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  *
- *  Created on: Dec 28, 2025
- *      Author: fatih
+ * One sector buffer shared by HTTP and RFWU in cooperative context.
  */
 #define CSLOG_MODULE LOG_MOD_GSM
 #include "gsm_firmware_update.h"
@@ -13,169 +15,157 @@
 #include "w25qxx.h"
 #include "gsm_log.h"
 #include "reboot.h"
+#include <string.h>
 
-static uint32_t flash_address = FIRMWARE_A_ADDRESS;
-static uint32_t section_end  = FIRMWARE_A_ADDRESS + FIRMWARE_FLASH_AREA_SIZE;
-static uint8_t fw_update_buffer[4096] = {0}; 
-static uint32_t fw_update_buffer_index = 0; 
+static uint32_t flash_address;
+static uint32_t section_end;
+/* Upper-layer offset advances only after an entire callback succeeds. */
+static uint32_t accepted_offset;
+static uint8_t fw_update_buffer[4096];
+static uint32_t fw_update_buffer_index;
+
+static uint32_t write_offset(void)
+{
+    return flash_address - boot_get_download_address() + fw_update_buffer_index;
+}
 
 static int fw_update_init(uint32_t total_size)
 {
-	CCSLOG(XCOLOR_CYAN, "Firmware update init, total size: %d bytes\r\n", total_size);
-
-	/* Reject images that cannot fit in a firmware section before accepting the
-	 * transfer (the per-write guard would otherwise fail only mid-download). */
-	if(total_size > FIRMWARE_FLASH_AREA_SIZE)
-	{
-		CSLOG_ERR("Firmware update init error: size %lu exceeds max %lu bytes\r\n",
-		            (unsigned long)total_size, (unsigned long)FIRMWARE_FLASH_AREA_SIZE);
-		return -1;
-	}
-
-	flash_address = boot_get_download_address();
-	section_end   = flash_address + FIRMWARE_FLASH_AREA_SIZE;
-	fw_update_buffer_index = 0;
-
-	CCSLOG(XCOLOR_CYAN, "Download target: section %c (0x%08lX)\r\n",
-	       (flash_address == FIRMWARE_A_ADDRESS) ? 'A' : 'B',
-	       (unsigned long)flash_address);
-
-	return 0;
+    if ((total_size == 0U) || (total_size > FIRMWARE_FLASH_AREA_SIZE) || !rfwu_cancel())
+    {
+        return -1;
+    }
+    flash_address = boot_get_download_address();
+    section_end = flash_address + total_size;
+    fw_update_buffer_index = 0U;
+    accepted_offset = 0U;
+    CCSLOG(XCOLOR_CYAN, "Download target: section %c (0x%08lX)\r\n",
+           (flash_address == FIRMWARE_A_ADDRESS) ? 'A' : 'B', (unsigned long)flash_address);
+    return 0;
 }
 
 static int fw_update_write_handler(uint32_t offset, const uint8_t *data, uint32_t size)
 {
-	CCSLOG(XCOLOR_CYAN, "Firmware update write, offset: %d, size: %d bytes\r\n", offset, size);
-
-	(void)offset;   /* offset kullanılmıyor; yazım konumu flash_address ile ilerler */
-
-	if((data == NULL) || (size == 0U))
-	{
-		return 0;
-	}
-
-	while(size > 0U)
-	{
-		uint32_t space   = 4096U - fw_update_buffer_index;
-		uint32_t to_copy = (size < space) ? size : space;   /* to_copy ∈ [1, 4096] */
-
-		if(flash_address >= section_end)
-		{
-			CSLOG_ERR("Firmware update write error: Exceeded maximum firmware size!\r\n");
-			return -1;
-		}
-
-		memcpy(&fw_update_buffer[fw_update_buffer_index], data, to_copy);
-		fw_update_buffer_index += to_copy;
-		data += to_copy;
-		size -= to_copy;
-
-		if(fw_update_buffer_index >= 4096U)
-		{
-			int res = w25qxx_write_buff(flash_address, fw_update_buffer, 4096);
-			if(res != W25QXX_RES_OK)
-			{
-				CSLOG_ERR("Firmware update write error: Failed to write to flash! Error code: %d\r\n", res);
-				return -1;
-			}
-			flash_address += 4096U;
-			fw_update_buffer_index = 0U;
-		}
-	}
-
-	return 0;
+    const uint32_t base = boot_get_download_address();
+    const uint32_t total_size = section_end - base;
+    if ((data == NULL) || (size == 0U) || (offset != accepted_offset) ||
+        (offset > total_size) || (size > total_size - offset))
+    {
+        return -1;
+    }
+    const uint32_t next_offset = offset + size;
+    const uint32_t committed = flash_address - base;
+    /* An earlier attempt may have committed a whole-sector prefix of
+     * this same request. Skip that prefix; rebuild only the failed sector.
+     * No extra sector buffer or retry queue is needed. */
+    if (committed > offset)
+    {
+        const uint32_t skip = committed - offset;
+        if (skip > size)
+        {
+            return -1;
+        }
+        data += skip;
+        size -= skip;
+    }
+    uint32_t previous_index = fw_update_buffer_index;
+    while (size > 0U)
+    {
+        const uint32_t space = (uint32_t)sizeof(fw_update_buffer) - fw_update_buffer_index;
+        const uint32_t count = (size < space) ? size : space;
+        memcpy(&fw_update_buffer[fw_update_buffer_index], data, count);
+        fw_update_buffer_index += count;
+        data += count;
+        size -= count;
+        if (fw_update_buffer_index == sizeof(fw_update_buffer))
+        {
+            if (w25qxx_write_buff(flash_address, fw_update_buffer, sizeof(fw_update_buffer)) != W25QXX_RES_OK)
+            {
+                fw_update_buffer_index = previous_index;
+                CSLOG_ERR("Firmware update flash write failed\r\n");
+                return -1;
+            }
+            flash_address += (uint32_t)sizeof(fw_update_buffer);
+            fw_update_buffer_index = 0U;
+            previous_index = 0U;
+        }
+    }
+    accepted_offset = next_offset;
+    return 0;
 }
 
 static int fw_update_finish_handler(uint32_t total_size)
 {
-	CCSLOG(XCOLOR_GREEN, "Firmware update finish, total size: %d bytes\r\n", total_size);
-
-	/* Bug fix: flush the last partial sector if any bytes remain in the buffer.
-	 * Previously the buffer was never flushed unless exactly 4096 bytes accumulated,
-	 * causing the final (partial) sector of every firmware image to be silently lost. */
-	if(fw_update_buffer_index > 0)
-	{
-		int res = w25qxx_write_buff(flash_address, fw_update_buffer, fw_update_buffer_index);
-		if(res != W25QXX_RES_OK)
-		{
-			CSLOG_ERR("Firmware update finish: failed to flush last %lu bytes, error %d\r\n",
-				   fw_update_buffer_index, res);
-			return -1;
-		}
-		flash_address += fw_update_buffer_index;
-		fw_update_buffer_index = 0;
-	}
-
-	/* Goruntunun hangi bolumde kaldigini aktarim sonunda da belirt:
-	 * init'teki "Download target" satiri 66 chunk'lik log altinda kaybolur.
-	 * boot_get_download_address() boot_init'te cozumlenen hedefi dondurur,
-	 * oturum boyunca degismez. */
-	{
-		const uint32_t base = boot_get_download_address();
-
-		CSLOG("FW image stored in section %c (0x%08lX), not applied\r\n",
-			    (base == FIRMWARE_A_ADDRESS) ? 'A' : 'B',
-			    (unsigned long)base);
-	}
-
-	return 0;
+    if ((total_size == 0U) || (section_end - boot_get_download_address() != total_size) ||
+        (accepted_offset != total_size) || (write_offset() != total_size))
+    {
+        return -1;
+    }
+    if (fw_update_buffer_index != 0U)
+    {
+        if (w25qxx_write_buff(flash_address, fw_update_buffer, fw_update_buffer_index) != W25QXX_RES_OK)
+        {
+            return -1;
+        }
+        flash_address += fw_update_buffer_index;
+        fw_update_buffer_index = 0U;
+    }
+    CSLOG("FW image stored in section %c (0x%08lX), not applied\r\n",
+          (boot_get_download_address() == FIRMWARE_A_ADDRESS) ? 'A' : 'B',
+          (unsigned long)boot_get_download_address());
+    return 0;
 }
 
 static void fw_reboot_handler(void)
 {
-	reboot_system_delayed(3000);
+    reboot_system_delayed(3000U);
 }
 
 void gsm_firmware_update_init(void)
 {
-	/* HTTP firmware update callbacks */
-	fw_update_callbacks_t callbacks = {
-		.fw_init   = fw_update_init,
-		.fw_write  = fw_update_write_handler,
-		.fw_finish = fw_update_finish_handler,
-		.fw_reboot = fw_reboot_handler
-	};
-
-	fw_update_register_callbacks(&callbacks);
+    const fw_update_callbacks_t callbacks =
+    {
+        .fw_init = fw_update_init,
+        .fw_write = fw_update_write_handler,
+        .fw_finish = fw_update_finish_handler,
+        .fw_reboot = fw_reboot_handler
+    };
+    fw_update_register_callbacks(&callbacks);
 }
 
-/* ── RFWU flash callbacks ───────────────────────────────────────── */
-
-/*
- * rfwu-specific init: sets the internal flash pointer to the download
- * section base + resume_offset so sequential fw_write calls land
- * in the right place.  resume_offset is always 4 KB-aligned.
- */
 static int fw_update_rfwu_init(uint32_t total_size, uint32_t resume_offset)
 {
-	if(total_size > FIRMWARE_FLASH_AREA_SIZE)
-	{
-		CSLOG_ERR("RFWU init error: size %lu exceeds max %lu bytes\r\n",
-		            (unsigned long)total_size, (unsigned long)FIRMWARE_FLASH_AREA_SIZE);
-		return -1;
-	}
-	const uint32_t section_base = boot_get_download_address();
-
-	flash_address          = section_base + resume_offset;
-	section_end            = section_base + FIRMWARE_FLASH_AREA_SIZE;
-	fw_update_buffer_index = 0U;
-	return 0;
+    if ((total_size == 0U) || (total_size > FIRMWARE_FLASH_AREA_SIZE) ||
+        (resume_offset > total_size) ||
+        ((resume_offset != total_size) && ((resume_offset % sizeof(fw_update_buffer)) != 0U)))
+    {
+        return -1;
+    }
+    /* A new RFWU HELLO takes the same writer and invalidates HTTP resume/apply. */
+    fw_update_reset();
+    const uint32_t base = boot_get_download_address();
+    flash_address = base + resume_offset;
+    section_end = base + total_size;
+    fw_update_buffer_index = 0U;
+    accepted_offset = resume_offset;
+    return 0;
 }
 
-/* Thin wrapper: fw_update_write_handler ignores the offset parameter */
-static int fw_update_rfwu_write(const uint8_t *p_data, uint32_t size)
+static int fw_update_rfwu_write(const uint8_t *data, uint32_t size)
 {
-	return fw_update_write_handler(0U, p_data, size);
+    return fw_update_write_handler(accepted_offset, data, size);
 }
 
 void gsm_firmware_update_rfwu_init(void)
 {
-	static const rfwu_fw_ops_t rfwu_ops = {
-		.fw_init   = fw_update_rfwu_init,
-		.fw_write  = fw_update_rfwu_write,
-		.fw_finish = fw_update_finish_handler,
-		.fw_reboot = fw_reboot_handler,
-	};
-
-	rfwu_register_fw_ops(&rfwu_ops);
+    static const rfwu_fw_ops_t ops =
+    {
+        .fw_init = fw_update_rfwu_init,
+        .fw_write = fw_update_rfwu_write,
+        .fw_finish = fw_update_finish_handler,
+        .fw_reboot = fw_reboot_handler
+    };
+    rfwu_register_fw_ops(&ops);
 }
+
+/*** end of file ***/

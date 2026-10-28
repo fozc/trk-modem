@@ -22,6 +22,6 @@ typedef struct
     uint32_t fw_size;
 } rfwu_nvram_t;
 const rfwu_nvram_t *nvram_get_rfwu(void);
-void nvram_set_rfwu(const rfwu_nvram_t *record);
+bool nvram_set_rfwu(const rfwu_nvram_t *record);
 #endif
 /*** end of file ***/

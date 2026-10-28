@@ -820,8 +820,32 @@ static void test_previous_layout_uses_defaults(void)
           "relay: old CRC bytes cannot become output commands");
 }
 
+static void test_rfwu_save_reports_failure_and_preserves_durable_state(void)
+{
+    boot_virgin();
+    const rfwu_nvram_t previous = *nvram_get_rfwu();
+    rfwu_nvram_t next = previous;
+    next.magic = 0xFEEDFACEU;
+    next.total_size = 8192U;
+    next.received_bytes = 4096U;
+    check(!nvram_set_rfwu(NULL), "RFWU: null record rejected");
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_BEFORE_ERASE);
+    check(!nvram_set_rfwu(&next), "RFWU: primary failure reported");
+    check(memcmp(&previous, nvram_get_rfwu(), sizeof(previous)) == 0,
+          "RFWU: failed save restores RAM record");
+    reboot();
+    check(memcmp(&previous, nvram_get_rfwu(), sizeof(previous)) == 0,
+          "RFWU: reboot retains previous checkpoint");
+    mock_fail_write(MOCK_SLOT_B, MOCK_FAIL_AFTER_ERASE);
+    check(nvram_set_rfwu(&next), "RFWU: verified primary is durable with backup failure");
+    reboot();
+    check(memcmp(&next, nvram_get_rfwu(), sizeof(next)) == 0,
+          "RFWU: durable primary survives reboot and repairs backup");
+}
+
 int main(void)
 {
+    test_rfwu_save_reports_failure_and_preserves_durable_state();
     test_relay_states_and_retention();
     test_previous_layout_uses_defaults();
     test_rf_inventory_journal_survives_save_and_torn_clear();

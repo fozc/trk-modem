@@ -26,6 +26,7 @@
 #ifndef APPLICATION_WEB_SERVER_RAW_TCP_FW_UPDATE_H_
 #define APPLICATION_WEB_SERVER_RAW_TCP_FW_UPDATE_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -33,7 +34,7 @@
 extern "C" {
 #endif
 
-/* ── Protocol constants ─────────────────────────────────────────── */
+/* -- Protocol constants ------------------------------------------- */
 
 /*
  * Wire bytes: 0x52 0x46 0x57 0x55 ("RFWU").
@@ -60,7 +61,7 @@ extern "C" {
 #define RFWU_TAG_SIZE          16U
 #define RFWU_HELLO_SIZE        (8U + RFWU_TAG_SIZE)
 
-/* ── Command / response codes ───────────────────────────────────── */
+/* -- Command / response codes ------------------------------------- */
 
 /** Commands sent by the client to the MCU */
 typedef enum {
@@ -93,7 +94,7 @@ typedef enum {
     RFWU_ERR_SIZE_MISMATCH = 0x07U, /**< FINISH size != expected     */
 } rfwu_error_t;
 
-/* ── Packet header struct ───────────────────────────────────────── */
+/* -- Packet header struct ----------------------------------------- */
 
 /** 12-byte packet header; all fields little-endian */
 typedef struct {
@@ -107,14 +108,14 @@ typedef struct {
 _Static_assert(sizeof(rfwu_header_t) == RFWU_HEADER_SIZE,
                "rfwu_header_t size mismatch");
 
-/* ── Flash operation callbacks ──────────────────────────────────── */
+/* -- Flash operation callbacks ------------------------------------ */
 
 /**
  * @brief Flash callbacks provided by the BSP/application layer.
  *
  * fw_init is called once per transfer:
  *   - resume_offset == 0  : fresh start (erase target region if needed)
- *   - resume_offset  > 0  : resume; always a multiple of 4096
+ *   - resume_offset  > 0  : sector-aligned resume, or total_size for a completed image
  *
  * fw_write is called sequentially from resume_offset onward.
  * The implementation must buffer writes to 4 KB sector boundaries internally.
@@ -126,7 +127,11 @@ typedef struct {
     void (*fw_reboot)(void);
 } rfwu_fw_ops_t;
 
-/* ── Public API ─────────────────────────────────────────────────── */
+/* -- Public API --------------------------------------------------- */
+
+/** Cancel persisted progress before another cooperative transport writes.
+ * False preserves the session and prevents taking the shared writer. */
+bool rfwu_cancel(void);
 
 /**
  * @brief Initialise the RFWU module with the TCP send callback.
