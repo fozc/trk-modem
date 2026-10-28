@@ -43,6 +43,16 @@ static bool read_hardware_word(uint32_t *value)
     {
         return false;
     }
+    /* HAL's normal read only recovers while SECS is set. Auto-reset can
+     * leave SEIS latched after SECS clears; use the same HAL recovery. */
+    if ((__HAL_RNG_GET_FLAG(&hrng, RNG_FLAG_SECS) == RESET) &&
+        (__HAL_RNG_GET_IT(&hrng, RNG_IT_SEI) != RESET))
+    {
+        if (RNG_RecoverSeedError(&hrng) != HAL_OK)
+        {
+            return false;
+        }
+    }
     /* Let HAL recover a current seed error before reading entropy. */
     if (HAL_OK != HAL_RNG_GenerateRandomNumber(&hrng, &word))
     {

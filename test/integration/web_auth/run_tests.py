@@ -259,14 +259,22 @@ bsp_preamble=r"""
 #define RNG_IT_CEI 4U
 #define RNG_IT_SEI 8U
 static unsigned int flags, hal_calls, hal_status;
+static uint32_t recovery_calls;
 static bool inject_clock_error;
 static int hrng;
 #define __HAL_RNG_GET_FLAG(handle,flag) (flags & (flag))
 #define __HAL_RNG_GET_IT(handle,flag) (flags & (flag))
+static unsigned int RNG_RecoverSeedError(void *handle)
+{
+ (void)handle;recovery_calls++;
+ flags &= ~RNG_IT_SEI;
+ return HAL_OK;
+}
 static unsigned int HAL_RNG_GenerateRandomNumber(void *handle,uint32_t *value)
 {
  (void)handle;hal_calls++;
  if (hal_status!=HAL_OK) return hal_status;
+ if ((flags & RNG_IT_SEI)!=0U && (flags & RNG_FLAG_SECS)==0U) return 1U;
  flags &= ~(RNG_FLAG_SECS | RNG_IT_SEI);
  if (inject_clock_error) flags |= RNG_FLAG_CECS;
  *value=0x12345678U;
@@ -313,6 +321,9 @@ int main(void) {
  assert(fallback_logs==3U);
  assert(bsp_random_word(&value) && fallback_logs==3U);
  puts("PASS: fallback logs once per transition and re-arms after hardware recovery");
+ hal_status=HAL_OK;flags=RNG_IT_SEI;
+ assert(bsp_random_word(&value) && value==0x12345678U && recovery_calls==1U);
+ puts("PASS: latched seed interrupt uses existing HAL recovery before reading entropy");
  return 0;
 }
 """

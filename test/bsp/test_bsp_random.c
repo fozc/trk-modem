@@ -22,6 +22,8 @@ static uint32_t flags_after_read;
 static uint32_t next_word;
 static uint32_t read_count;
 static HAL_StatusTypeDef read_status;
+static uint32_t recovery_count;
+static HAL_StatusTypeDef recovery_status;
 
 static HAL_StatusTypeDef read_rng(RNG_HandleTypeDef *handle,
                                  uint32_t *random32bit, int call_count)
@@ -29,9 +31,26 @@ static HAL_StatusTypeDef read_rng(RNG_HandleTypeDef *handle,
     (void)call_count;
     TEST_ASSERT_EQUAL_PTR(&hrng, handle);
     read_count++;
+    /* HAL only recovers a seed error automatically while SECS is set. */
+    if (((test_rng_flags & RNG_IT_SEI) != 0U) && ((test_rng_flags & RNG_FLAG_SECS) == 0U))
+    {
+        return HAL_ERROR;
+    }
     test_rng_flags = flags_after_read;
     *random32bit = next_word;
     return read_status;
+}
+
+static HAL_StatusTypeDef recover_rng(RNG_HandleTypeDef *handle, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_PTR(&hrng, handle);
+    recovery_count++;
+    if (recovery_status == HAL_OK)
+    {
+        test_rng_flags &= ~RNG_IT_SEI;
+    }
+    return recovery_status;
 }
 
 void setUp(void)
@@ -41,7 +60,10 @@ void setUp(void)
     next_word = 0x12345678U;
     read_count = 0U;
     read_status = HAL_OK;
+    recovery_count = 0U;
+    recovery_status = HAL_OK;
     HAL_RNG_GenerateRandomNumber_StubWithCallback(read_rng);
+    RNG_RecoverSeedError_StubWithCallback(recover_rng);
 }
 
 void tearDown(void)
@@ -163,6 +185,60 @@ void test_secure_rng_error_does_not_use_availability_fallback(void)
     TEST_ASSERT_EQUAL_UINT32(before, bsp_get_random_accumulator());
     TEST_ASSERT_TRUE(bsp_random_word(&value));
     TEST_ASSERT_NOT_EQUAL(0U, value);
+}
+
+void test_secure_rng_recovers_a_latched_seed_error_before_reading(void)
+{
+    uint32_t value = 99U;
+    uint32_t before = bsp_get_random_accumulator();
+    test_rng_flags = RNG_IT_SEI;
+
+    TEST_ASSERT_TRUE(bsp_random_secure_word(&value));
+    TEST_ASSERT_EQUAL_UINT32(next_word, value);
+    TEST_ASSERT_EQUAL_UINT32(1U, recovery_count);
+    TEST_ASSERT_EQUAL_UINT32(1U, read_count);
+    TEST_ASSERT_EQUAL_UINT32(before + next_word, bsp_get_random_accumulator());
+}
+
+void test_secure_rng_failed_seed_recovery_preserves_output_and_accumulator(void)
+{
+    uint32_t value = 99U;
+    uint32_t before = bsp_get_random_accumulator();
+    test_rng_flags = RNG_IT_SEI;
+    recovery_status = HAL_ERROR;
+
+    TEST_ASSERT_FALSE(bsp_random_secure_word(&value));
+    TEST_ASSERT_EQUAL_UINT32(0U, value);
+    TEST_ASSERT_EQUAL_UINT32(1U, recovery_count);
+    TEST_ASSERT_EQUAL_UINT32(0U, read_count);
+    TEST_ASSERT_EQUAL_UINT32(before, bsp_get_random_accumulator());
+}
+
+void test_secure_rng_seed_error_during_read_recovers_on_the_next_request(void)
+{
+    uint32_t value = 99U;
+    uint32_t before = bsp_get_random_accumulator();
+    flags_after_read = RNG_IT_SEI;
+
+    TEST_ASSERT_FALSE(bsp_random_secure_word(&value));
+    TEST_ASSERT_EQUAL_UINT32(0U, value);
+    TEST_ASSERT_EQUAL_UINT32(before, bsp_get_random_accumulator());
+    flags_after_read = 0U;
+    TEST_ASSERT_TRUE(bsp_random_secure_word(&value));
+    TEST_ASSERT_EQUAL_UINT32(next_word, value);
+    TEST_ASSERT_EQUAL_UINT32(1U, recovery_count);
+    TEST_ASSERT_EQUAL_UINT32(2U, read_count);
+}
+
+void test_secure_rng_clock_error_does_not_attempt_seed_recovery(void)
+{
+    uint32_t value = 99U;
+    test_rng_flags = RNG_IT_SEI | RNG_FLAG_CECS;
+
+    TEST_ASSERT_FALSE(bsp_random_secure_word(&value));
+    TEST_ASSERT_EQUAL_UINT32(0U, value);
+    TEST_ASSERT_EQUAL_UINT32(0U, recovery_count);
+    TEST_ASSERT_EQUAL_UINT32(0U, read_count);
 }
 
 /*** end of file ***/
