@@ -1139,13 +1139,18 @@ const rfwu_nvram_t *nvram_get_rfwu(void)
     return &nvram.rfwu;
 }
 
-void nvram_set_rfwu(const rfwu_nvram_t *p_rfwu)
+bool nvram_set_rfwu(const rfwu_nvram_t *record)
 {
-    if (!nvram_change_allowed())
+    if ((record == NULL) || !nvram_change_allowed())
     {
-        return;
+        return false;
     }
-    if (p_rfwu == NULL) { return; }
-    nvram.rfwu = *p_rfwu;
-    (void)nvram_sync(false);
+    const rfwu_nvram_t previous = nvram.rfwu;
+    nvram.rfwu = *record;
+    if (nvram_save(false) == NVRAM_SAVE_FAILED)
+    {
+        nvram.rfwu = previous;
+        return false;
+    }
+    return true;
 }

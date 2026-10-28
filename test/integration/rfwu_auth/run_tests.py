@@ -309,6 +309,54 @@ class Protocol(unittest.TestCase):
         self.assertEqual(self.value(10), 16)
         self.assertEqual(self.value(7), 2)
 
+    def test_hello_persistence_failure_never_initializes_flash(self):
+        LIB.fixture_fw_failure(4, True)
+        feed(self.hello(self.challenge(), size=8192))
+        self.rejected(5)
+        self.assertEqual(self.value(2), 0)
+        self.assertEqual(self.value(5), 0)
+
+    def test_checkpoint_failure_requires_hello_at_the_durable_offset(self):
+        feed(self.hello(self.challenge(), size=8192))
+        self.accepted()
+        LIB.fixture_fw_failure(4, True)
+        for offset in range(0, 4096, 1024):
+            feed(packet(2, struct.pack("<I", offset) + b"X" * 1024))
+        self.rejected(5)
+        self.assertEqual(self.value(10), 0)
+        feed(packet(2, struct.pack("<I", 4096) + b"X"))
+        self.rejected(6)
+        LIB.fixture_fw_failure(4, False)
+        feed(self.hello(self.challenge(), size=8192))
+        self.accepted()
+        self.assertEqual(self.value(9), 0)
+
+    def test_aligned_image_is_not_complete_until_finish_is_persisted(self):
+        self.authenticate()
+        for offset in range(0, 4096, 1024):
+            feed(packet(2, struct.pack("<I", offset) + b"X" * 1024))
+            self.accepted()
+        self.assertEqual(self.value(10), 0)
+        LIB.fixture_fw_failure(4, True)
+        feed(packet(3, struct.pack("<I", 4096)))
+        self.rejected(5)
+        self.assertEqual(self.value(10), 0)
+        LIB.fixture_fw_failure(4, False)
+        feed(packet(3, struct.pack("<I", 4096)))
+        self.accepted()
+        self.assertEqual(self.value(10), 4096)
+
+    def test_abort_persistence_failure_preserves_session(self):
+        self.authenticate()
+        LIB.fixture_fw_failure(4, True)
+        feed(packet(6))
+        self.rejected(5)
+        self.assertEqual(self.value(5), 4096)
+        LIB.fixture_fw_failure(4, False)
+        feed(packet(6))
+        self.accepted()
+        self.assertEqual(self.value(5), 0)
+
     def test_data_reassembles_at_every_tcp_split_boundary(self):
         data = packet(2, struct.pack("<I", 0) + b"DATA")
         for boundary in range(1, len(data)):
@@ -342,13 +390,15 @@ class Protocol(unittest.TestCase):
         self.assertEqual(self.value(8), 4)
 
     def test_persisted_resume_uses_sector_boundary_not_ram_head(self):
-        self.authenticate()
+        feed(self.hello(self.challenge(), size=8192))
+        self.accepted()
         for offset in range(0, 4096, 1024):
             feed(packet(2, struct.pack("<I", offset) + b"F" * 1024))
             self.accepted()
             self.assertEqual(self.value(10), 4096 if offset == 3072 else 0)
         LIB.rfwu_on_disconnect()
-        self.authenticate()
+        feed(self.hello(self.challenge(), size=8192))
+        self.accepted()
         self.assertEqual(self.value(9), 4096)
         self.assertEqual(struct.unpack_from("<I", reply()[1])[0], 4096)
 

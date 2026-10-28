@@ -227,7 +227,7 @@ static void send_status(void)
 /* -- NVRAM session helpers ---------------------------------------- */
 
 /* Persist sector-aligned progress; preserves all other NVRAM fields. */
-static void session_persist(uint32_t received_bytes)
+static bool session_persist(uint32_t received_bytes)
 {
     const rfwu_nvram_t *p_cur = nvram_get_rfwu();
     rfwu_nvram_t        upd;
@@ -240,11 +240,11 @@ static void session_persist(uint32_t received_bytes)
     upd.fw_crc         = p_cur->fw_crc;
     upd.fw_size        = p_cur->fw_size;
 
-    nvram_set_rfwu(&upd);
+    return nvram_set_rfwu(&upd);
 }
 
 /* Clear the session record; preserve the shared key. */
-static void session_clear(void)
+static bool session_clear(void)
 {
     const rfwu_nvram_t *p_cur = nvram_get_rfwu();
     rfwu_nvram_t        upd;
@@ -257,9 +257,24 @@ static void session_clear(void)
     upd.fw_crc         = 0U;
     upd.fw_size        = 0U;
 
-    nvram_set_rfwu(&upd);
+    if (!nvram_set_rfwu(&upd))
+    {
+        return false;
+    }
     s.session_active = false;
     s.write_head     = 0U;
+    return true;
+}
+
+bool rfwu_cancel(void)
+{
+    if (!session_clear())
+    {
+        return false;
+    }
+    s.authenticated = false;
+    s.nonce_valid = false;
+    return true;
 }
 
 /* -- Command handlers --------------------------------------------- */
@@ -361,7 +376,11 @@ static void handle_cmd_hello(void)
         upd.shared_key     = p_nv->shared_key; /* Legacy layout only. */
         upd.fw_crc         = 0U;
         upd.fw_size        = 0U;
-        nvram_set_rfwu(&upd);
+        if (!nvram_set_rfwu(&upd))
+        {
+            send_nack(RFWU_ERR_FLASH, 0U);
+            return;
+        }
 
         CCSLOG(XCOLOR_CYAN, "[RFWU] New transfer, size=%lu\r\n", total_size);
     }
@@ -432,8 +451,22 @@ static void handle_cmd_data(void)
     s.write_head += chunk_size;
     uint32_t new_sector = s.write_head / 4096U;
 
-    if (new_sector > prev_sector) {
-        session_persist(new_sector * 4096U);
+    /* FINISH alone publishes complete progress, including aligned files. */
+    uint32_t checkpoint = new_sector * 4096U;
+    if ((checkpoint == p_nv->total_size) && (checkpoint != 0U))
+    {
+        checkpoint -= 4096U;
+    }
+    if ((new_sector > prev_sector) && (checkpoint > p_nv->received_bytes) &&
+        !session_persist(checkpoint))
+    {
+        /* The existing HELLO/resume path resets the shared writer to the
+         * last durable checkpoint; DATA cannot continue with stale metadata. */
+        s.session_active = false;
+        s.authenticated = false;
+        s.write_head = nvram_get_rfwu()->received_bytes;
+        send_nack(RFWU_ERR_FLASH, s.write_head);
+        return;
     }
 
     send_ack(s.write_head);
@@ -492,7 +525,11 @@ static void handle_cmd_finish(void)
             CCSLOG(XCOLOR_YELLOW, "[RFWU] Image header unreadable - update will be unbound\r\n");
         }
 
-        nvram_set_rfwu(&upd);
+        if (!nvram_set_rfwu(&upd))
+        {
+            send_nack(RFWU_ERR_FLASH, s.write_head);
+            return;
+        }
     }
     s.session_active = false;
 
@@ -562,7 +599,11 @@ static void handle_cmd_abort(void)
     }
 
     CCSLOG(XCOLOR_YELLOW, "[RFWU] Transfer aborted\r\n");
-    session_clear();
+    if (!session_clear())
+    {
+        send_nack(RFWU_ERR_FLASH, s.write_head);
+        return;
+    }
     send_ack(0U);
 }
 

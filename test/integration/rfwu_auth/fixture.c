@@ -26,6 +26,7 @@ static bool rng_failure;
 static bool init_failure;
 static bool write_failure;
 static bool finish_failure;
+static bool persistence_failure;
 static uint32_t finish_count;
 static uint32_t written_bytes;
 static uint32_t init_offset;
@@ -35,9 +36,14 @@ const rfwu_nvram_t *nvram_get_rfwu(void)
     return &record;
 }
 
-void nvram_set_rfwu(const rfwu_nvram_t *value)
+bool nvram_set_rfwu(const rfwu_nvram_t *value)
 {
+    if (persistence_failure)
+    {
+        return false;
+    }
     record = *value;
+    return true;
 }
 
 int app_ipc_read_download_image_id(uint32_t *crc, uint32_t *size)
@@ -117,6 +123,7 @@ void fixture_reset(uint32_t key)
     init_failure = false;
     write_failure = false;
     finish_failure = false;
+    persistence_failure = false;
     finish_count = 0U;
     written_bytes = 0U;
     init_offset = 0U;
@@ -184,6 +191,7 @@ void fixture_fw_failure(uint8_t operation, bool failed)
         case 1U: init_failure = failed; break;
         case 2U: write_failure = failed; break;
         case 3U: finish_failure = failed; break;
+        case 4U: persistence_failure = failed; break;
         default: break;
     }
 }

@@ -341,6 +341,9 @@ typedef struct {
     void (*fw_reboot)(void);
 } fw_update_callbacks_t;
 
+/** Invalidate HTTP progress before another transport takes the shared writer. */
+void fw_update_reset(void);
+
 /**
  * @brief Register firmware update callbacks
  * 
