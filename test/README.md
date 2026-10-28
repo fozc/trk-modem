@@ -1,7 +1,56 @@
 # Test Altyapısı
 
-**Sürüm:** 1.88
-**Tarih:** 2026-10-27
+**Sürüm:** 1.92
+**Tarih:** 2026-10-28
+
+## Firmware aktarımı, RNG ve power-panic regresyonları
+
+**Amaç:** HTTP/RFWU aktarımının Flash ve NVRAM hata yollarını ve power-panic
+ISR/main olay sırasını üretim girişleri üzerinden doğrulamak. RNG testleri,
+auto-reset (otomatik toparlanma) sonrasında bekleyen seed hata bayrağını da kapsar.
+
+**Kullanım yeri:** `test/` içinde `ruby -S ceedling "test:pattern[(firmware_update_scenario|bsp_random|power_panic)]"`;
+depo kökünde `make -C test/integration/rfwu_auth run` ve `make -C test/integration/nvram run`.
+Tam host kontrolü `ruby test/run_all.rb all` ile çalıştırılmalıdır.
+
+**Kurallar:**
+
+- Firmware retry (yeniden deneme) testinde gerçek HTTP/RFWU işleyicileri ve ortak yazıcı kullanılmalıdır.
+  NOR sınırındaki double (taklit bileşen), hata dönmeden önce sektörün bir bölümünü değiştirebilmelidir.
+- Başarısız yazma aynı chunk ile tekrarlandığında imaj birebir korunmalıdır. HTTP Apply,
+  yalnız başarılı FINISH sonrasında açılmalıdır. Başka transport (taşıma yolu) yazıcıyı aldığında
+  önceki HTTP resume/apply ve RFWU oturumu geçersiz kılınmalıdır.
+- NVRAM hatasında başarılı kalıcı ilerleme bildirilmemelidir. Checkpoint (kontrol noktası)
+  yazımı başarısızsa mevcut HELLO/resume yolu ile kalıcı konumdan yeniden başlanmalıdır.
+  Tamamlanma, dosya boyutu 4 KB hizalı olsa da yalnız FINISH ile kalıcılaştırılmalıdır.
+- Power-panic HIGH ve sonraki LOW kenarı iki main kontrolü arasında oluştuğunda yeni LOW dönemi
+  ayrı kaydedilmelidir. Önceden kapalı EXTI15 durumu ve bekleyen kenar korunmalıdır.
+- RNG'de aktif seed hatası temizlenip geçmiş hata bayrağı beklediğinde mevcut HAL toparlaması
+  kullanılmalıdır. Toparlama başarısızsa güvenli okuma reddedilmeli; erişilebilirlik fallback'i
+  (yedek üretim yolu) güvenli entropy (rastgelelik kaynağı) olarak kullanılmamalıdır.
+- Web cihaz testi için hedef açık verilmelidir; ayar yazımı için `--allow-config-writes`
+  ayrıca verilmelidir. Bu iki koşul olmadan socket (ağ bağlantısı) açılmamalıdır.
+
+**Örnek:** Açık hedef ve ayar yazma izniyle bench (test düzeneği) kontrolü:
+
+```text
+python test/integration/web_device/run_tests.py 192.0.2.1 --allow-config-writes
+```
+
+Gerçek GSM firmware kontrolü aynı imzalı paketle çalıştırılmalıdır:
+
+```text
+python test/system/gsm_firmware_transfer.py 192.0.2.1 image.efw --console COM18 --log test/build/fw-device.log --apply
+```
+
+Bu kontrol yarım chunk (veri parçası) kesintisini, resume (kaldığı yerden devam), FINISH öncesi
+Apply reddini ve imzalı kurulum/onay akışını sınar. `--apply` verilirse cihaz yeniden başlatılır
+ve paket kurulur; verilmezse doğrulanmış paket uygulama bekler.
+
+**Kapsam:** Host kontrolleri fiziksel Flash güç kesintisi, reset darbesi veya ISR süresi ölçmez.
+IEC104 stack integration bağımlılıkları `test/integration/iec104_stack/requirements.txt`
+dosyasından kurulmalıdır; Windows ve Linux venv (sanal ortam) interpreter yolları desteklenir.
+
 
 ## SCP R2.3 gerçek akış ve reset regresyonları
 
@@ -42,6 +91,27 @@ istediğinden test bu kayıtlardan kesin kapanış üretmemelidir. Belge/akış 
 `doc/BOLATEXE_SORULACAKLAR.md` BQ-28 kaydında takip edilmektedir. R2.3 b5 sonuç dalı, güç kartı
 restart ve birden çok 144 için gerçek kayıt teslim edilmemiştir; ilgili testler belgeye dayalıdır.
 Teslimin üçüncü kişilere paylaşmama koşulu fixture için de korunmalıdır.
+
+## Akü değişti komutunun ELOG izi
+
+**Amaç:** Kullanıcının27.10.2026 talebiyle0x05 komutunun kabulünü ve bildirilen sonucunu kalıcı ELOG'da ayırmak.
+
+**Kullanım yeri:** `power_board_control` ve `elog_uart_recovery` merkezi Ceedling testleri;
+cihazda `elog dump` ve `pwrboard control`.
+
+ELOG54 (`PWR_BATTERY_COMMAND`), mevcut zaman damgasıyla6 bayt saklar:
+SCP kaynak komutu(E6/E7), komut05, SIRA, SONUC, iletim sayısı ve DURUM bitleri.
+E6 ACK yalnız kabul kaydıdır; uygulandı sayılmamalıdır. E7 SONUC=0 veya0x05 akıbetindeki b3,
+uygulandığı bildirimi olarak gösterilmelidir. Diğer sonuçlar ham alanlarıyla saklanmalı ve
+uygulandı gösterilmemelidir. Ret ve doğrulanamadı(b2) WARN seviyesinde tutulmalıdır.
+Aynı E7 raporunun ardışık SET/GET tekrarları mevcut sonuç snapshot'ı karşılaştırılarak tekilleştirilmelidir;
+yeni kimlik cache'i, kuyruk veya zamanlayıcı eklenmemelidir.
+
+ELOG fiziksel akü değişimini algılamaz; komutun kabulünü ve MH'nin bildirdiği sayaç sıfırlama sonucunu kaydeder.
+Son bildirim kaybolursa operatör, ACK'ten beş dakika sonra `pwrboard result-get` ile sorgulamalıdır;
+mevcut sonuç işleyicisi yanıtı değerlendirir. Otomatik beş dakika sorgusu bu kapsamda eklenmedi.
+ELOG geçmişi tek başına bekleyen komutun sonucunu çözmez. Yeni otomatik0x05 gönderimi yoktur.
+NVRAM, günlük boyutu, sektörler ve protokol adresleri değişmemiştir.
 
 ## R2.3 müşteri ayarları, EPOCH takibi ve taşıma sınırı
 
@@ -115,6 +185,25 @@ temizlememelidir. Aynı AY açılışında LIVE 1→0 kapanışı korunmalıdır
 IEC104 bildirimi veya çevrimdışı kalıcı kayıt ile otomatik onay önerisi
 `doc/BOLATEXE_SORULACAKLAR.md` BQ-16 ek sorusunda üretici yanıtını beklemektedir.
 Host testleri fiziksel açma başarısızlığı oluşturulduğunu kanıtlamamaktadır.
+
+## Açık alarm kimliği ve sınırlı olay geçmişi
+
+**Amaç:** Başka fazdaki yoğun olay akışının açık alarmın olay/boot/uptime/CRC bilgisini silmesini önlemek.
+
+**Kullanım yeri:** `test/` içinde `ruby -S ceedling test:test_rf_events`;
+operatör web onayı ve kalıcı IEC104/ELOG onay izi.
+
+Mevcut128 kayıtlık RAM cache'i, açık alarmı gösteren faz referanslarının üzerine yazmamalıdır.
+Korunan yuvalar, son geçerli faz alarmını temsil etmelidir; kalan geçmiş yine sınırlı tutulmalıdır.
+Cache kapasitesi faz sayısından büyük olmalıdır; bu ilişki static assert ile doğrulanır.
+Yeni RAM alanı veya kalıcı veri biçimi eklenmemelidir. RTU restart'ında geri kurma kapsamı,
+BQ-16 yanıtını bekleyen ayrı konudur; bu düzeltme restart kalıcılığı sağlıyor gibi sunulmamalıdır.
+
+Üretim decoder → `rf_alarm_record` → faz cache'i → `rf_alarm_acknowledge` zincirinde L1 alarmı
+korunurken L2'ye256 farklı kayıt uygulanır.127/128 kayıt sınırları, ikinci cache dönüşü,
+olay/boot/uptime/CRC, kopya olayda yeniden kayıt üretmeme ve operatör onayının doğru kimliği
+kalıcı kuyruğa taşıması sınanır. Mevcut tek fazlı eski kayıt tahliyesi testi korunur.
+Host testleri fiziksel RF gecikmesi veya Flash enerji kesintisi ölçümü değildir.
 
 ## Manuel yönetici alarm onayı
 
@@ -300,6 +389,28 @@ timestamp slotlarının yeniden kullanımı, STOPDT sırasında TESTFR,
 başlangıç bildirimi retry ve bozuk akışın kapanması doğrulanmalıdır.
 Python SCADA ve cihaz koşusu
 [master süitinin kullanımına](system/iec104_master/README.md) göre yapılmalıdır.
+
+## Bağımsız IEC104 kütüphanesi
+
+**Amaç:** `Application/iec104_stack` core, server ve modem adaptörünü
+mevcut IEC104 stack'inden bağımsız sınamak.
+
+**Kullanım yeri:** Kütüphane geliştirme, modem entegrasyonu ve regresyon.
+
+`test/` içinde `ceedling test:pattern[iec104_stack]`, repo kökünde
+`python test/integration/iec104_stack/run_tests.py` çalıştırılmalıdır.
+İkinci komut gerçek üretim C dosyalarını derler ve yerel TCP üzerinden
+lib60870 tabanlı c104 SCADA istemcisiyle GI 20–24, kalite/zaman, komutlar,
+K=1 ve kalıcı olay ACK akışını doğrular. Merkezi `all/integration/critical`
+paketlerine dahildir. Eksik compiler/c104 başarısızlık sayılır.
+
+Tam-frame golden vektörler Type 1/13/30/31/36 tekli ve çoklu APDU'ları
+kapsar. Testler core, server, modem ve mevcut IOA hesaplarını gerçekten
+çalıştırır; fixture yalnız transport ve cihaz servislerindedir.
+ARM derlemesi, Doxygen ve entegrasyon sözleşmeleri
+[kütüphane rehberinde](../Application/iec104_stack/README.md) bulunur.
+Bu paket çalışan modem stack'ini değiştirmez; host TCP doğrulaması fiziksel
+GSM/donanım kabul testi sayılmaz.
 
 ## GSM SIM, SMS ve AT zamanlama testleri
 
@@ -950,6 +1061,7 @@ Her integration paketi repo kökünden `make -C` ile tek başına çalışır:
 | `fault_log` | `make -C test/integration/fault_log run` | — |
 | `gsm` | `make -C test/integration/gsm run` | — |
 | `iec104_master` | `make -C test/integration/iec104_master run` | `IEC104_DEVICE_HOST=<ip>` verilmezse self-test + SKIP |
+| `iec104_stack` | `make -C test/integration/iec104_stack run` | `requirements.txt` içindeki c104 ve host compiler gereklidir; cihaz kullanmaz |
 | `modbus_device` | `make -C test/integration/modbus_device run` | `MODBUS_RTU_PORT` verilmezse SKIP |
 | `libs` | `make -C test/integration/libs run` | — |
 | `nvram` | `make -C test/integration/nvram run` | — |
@@ -957,8 +1069,9 @@ Her integration paketi repo kökünden `make -C` ile tek başına çalışır:
 | `rf_hub_sim` | `make -C test/integration/rf_hub_sim run` | — |
 | `rf_real_mh` | `make -C test/integration/rf_real_mh run` | üretim imajı + gerçek MH + `--console COM16` |
 | `rfwu_auth` | `make -C test/integration/rfwu_auth run` | — |
+| `soak` | `make -C test/integration/soak run` | cihazsız self-test her zaman koşar; cihaz koşusu yalnız `SOAK_DEVICE=1` ile (bkz. `test/system/soak/README.md`) |
 | `web_auth` | `make -C test/integration/web_auth run` | — |
-| `web_device` | `make -C test/integration/web_device run` | cihaz web erişimi; `WEB_DEVICE_HOST` (varsayılan 188.59.76.59), cihaz tek web istemcisi hizmet verir — tarayıcı sekmesi test sırasında kapalı olmalıdır |
+| `web_device` | `make -C test/integration/web_device run` | cihazsız self-test; cihaz koşusu için açık hedef ve `--allow-config-writes` verilmelidir (bkz. firmware regresyonları bölümü) |
 | `web_device` (seçili alanlar) | `python test/integration/web_device/run_roundtrip.py` | aynı cihaz erişimi; seçili alanlarda mutasyon/geri yükleme, şema ve ret kontrolleri; RF POST yalnız `--allow-rf-apply` ile çalışır |
 | `web_device` (cihazsız runner testleri) | `python test/integration/web_device/test_roundtrip_helpers.py` | ağ/cihaz kullanmaz; hata yolunda geri yükleme ve yanlış PASS regresyonları |
 | `web_navigation` | `make -C test/integration/web_navigation run` | Node.js |
@@ -979,6 +1092,7 @@ python test/system/iec104_master/test_cases_selftest.py
 python test/system/rf_real_mh/test_parser_selftest.py
 python test/system/rf_real_mh/test_smoke_selftest.py
 python test/system/rf_hil/test_sim_selftest.py
+python test/system/soak/selftest.py
 ```
 
 Ceedling JUnit XML çıktısı `test/build/ceedling/artifacts/test/junit_tests_report.xml`
@@ -1950,6 +2064,10 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-28 | 1.92 | RNG geçmiş seed hata bayrağı için HAL toparlaması; GSM kesinti, FINISH öncesi Apply ve imzalı kurulum kontrolleri. |
+| 2026-10-28 | 1.91 | Firmware retry/kalıcı ilerleme ve transport geçişi; power-panic kenar sırası; açık hedefli web kabulü ve IEC104 bağımlılıkları. |
+| 2026-10-27 | 1.90 | Açık alarmın güncel kimliğini128 kayıtlık cache dönüşünde koruma;256 kayıt ve kalıcı onay kimliği regresyonları. |
+| 2026-10-27 | 1.89 | Akü değişti E6 kabul/E7 sonuç ELOG54; ardışık rapor tekilleştirme ve manuel sonuç sorgusu kapsamı. |
 | 2026-10-27 | 1.88 | Açılış 0x28[0], kimliği bilinmeyen grup, olay tablosu açıklamaları ve tam alan ofset vektörleri. |
 | 2026-10-27 | 1.87 | E1 akü ömrü decoder/cache/JSON/web/terminal; eski mesaj, bilinmiyor, geçerli sıfır ve kalite regresyonları. |
 | 2026-10-27 | 1.86 | R2.3 servis taşıması/kalıcı işaret, COMMIT izi/geri okuma engeli, bakım ELOG; 2023 Ceedling, 561 NVRAM kontrolü ve gerçek MH/137 aktarım kabulü. E1 ömür alanları ayrıca açık tutuldu. |
