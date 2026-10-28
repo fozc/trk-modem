@@ -244,4 +244,29 @@ void test_rf_maintenance_uses_real_writer_and_distinguishes_hub_and_ay(void)
     TEST_ASSERT_EQUAL_UINT32(2U, writes);
 }
 
+void test_battery_command_audit_preserves_timestamp_raw_report_and_honest_outcome(void)
+{
+    const uint8_t accepted[] = {0xE6U, 5U, 42U, UINT8_MAX, 0U, 0U};
+    elog_add(ELOG_PWR_BATTERY_COMMAND, ELOG_LEVEL_INFO, accepted, sizeof(accepted));
+    TEST_ASSERT_EQUAL_UINT32(1000U, stored_entry.timestamp);
+    TEST_ASSERT_EQUAL_MEMORY(accepted, stored_entry.info, sizeof(accepted));
+    TEST_ASSERT_EQUAL_STRING("PWR_BATTERY_COMMAND", elog_code_to_string(ELOG_PWR_BATTERY_COMMAND));
+    TEST_ASSERT_NOT_NULL(strstr(elog_info_to_text(&stored_entry), "accepted; result pending"));
+    TEST_ASSERT_NULL(strstr(elog_info_to_text(&stored_entry), "applied"));
+    uint8_t report[] = {0xE7U, 5U, 43U, UINT8_MAX, 2U, 4U};
+    elog_add(ELOG_PWR_BATTERY_COMMAND, ELOG_LEVEL_WARN, report, sizeof(report));
+    TEST_ASSERT_NOT_NULL(strstr(elog_info_to_text(&stored_entry), "not confirmed"));
+    report[5] = 8U;
+    elog_add(ELOG_PWR_BATTERY_COMMAND, ELOG_LEVEL_INFO, report, sizeof(report));
+    TEST_ASSERT_NOT_NULL(strstr(elog_info_to_text(&stored_entry), "applied"));
+    report[5] = 0U;
+    report[3] = 0U;
+    elog_add(ELOG_PWR_BATTERY_COMMAND, ELOG_LEVEL_INFO, report, sizeof(report));
+    TEST_ASSERT_NOT_NULL(strstr(elog_info_to_text(&stored_entry), "applied"));
+    report[3] = 2U;
+    elog_add(ELOG_PWR_BATTERY_COMMAND, ELOG_LEVEL_WARN, report, sizeof(report));
+    TEST_ASSERT_NOT_NULL(strstr(elog_info_to_text(&stored_entry), "not confirmed"));
+    TEST_ASSERT_EQUAL_UINT32(5U, writes);
+}
+
 /*** end of file ***/

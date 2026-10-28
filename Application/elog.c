@@ -603,6 +603,15 @@ const char *elog_info_to_text(const elog_entry_t *entry)
                       (0xE1U == info[0]) ? info[5] : info[7]);
             break;
 
+        case ELOG_PWR_BATTERY_COMMAND:
+        {
+            const char *outcome = (info[0] == 0xE6U) ? "accepted; result pending" :
+                (((info[3] == 0U) || ((info[5] & 8U) != 0U)) ? "applied" : "not confirmed");
+            xsnprintf(text, sizeof(text), "Battery change %s seq=%u result=%u tx=%u flags=%02X",
+                      outcome, (unsigned)info[2], (unsigned)info[3], (unsigned)info[4], (unsigned)info[5]);
+            break;
+        }
+
         case ELOG_BAT_STATE:
             if (info[1] == 0U)  /* state change */
             {

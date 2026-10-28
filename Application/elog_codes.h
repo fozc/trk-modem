@@ -53,6 +53,7 @@ typedef enum
 	ELOG_BAT_STATE             = 51,  /* info: src(1) event(1) a(1) b(1) soc(1) soh(1) */
 		ELOG_PWR_PANIC             = 52,  /* info: - */
     ELOG_PWR_SCP_ALARM         = 53,  /* SCP event + current/previous mask */
+    ELOG_PWR_BATTERY_COMMAND   = 54,  /* source, command, seq, result, transmissions, flags */
 
 	// Communication codes (60..69)
     ELOG_UART_TX_RECOVERY      = 60,
@@ -104,6 +105,7 @@ static inline const char* elog_code_to_string(elog_code_t code)
 		case ELOG_PWR_ALARM:              return "PWR_ALARM";
 		case ELOG_BAT_STATE:              return "BAT_STATE";
 		case ELOG_PWR_SCP_ALARM: return "PWR_SCP_ALARM";
+        case ELOG_PWR_BATTERY_COMMAND: return "PWR_BATTERY_COMMAND";
 		case ELOG_PWR_PANIC:              return "PWR_PANIC";
 		case ELOG_WEB_LOGIN_FAIL:         return "WEB_LOGIN_FAIL";
         case ELOG_UART_TX_RECOVERY: return "UART_TX_RECOVERY";

@@ -10,6 +10,7 @@
 
 #include "power_board_control.h"
 #include "power_board_scp.h"
+#include "elog.h"
 #include "rf_comm.h"
 #include "scp_endian.h"
 #include "stm32u3xx_hal.h"
@@ -242,6 +243,15 @@ static void store_config(const rf_scp_message_t *message)
     status.last_rejected = message->body.power_config.rejected;
 }
 
+static void log_battery_command(uint8_t source, uint8_t seq, uint8_t result,
+                                uint8_t transmissions, uint8_t flags)
+{
+    const uint8_t info[] = {source, 5U, seq, result, transmissions, flags};
+    const bool rejected = (result >= 1U) && (result <= 4U);
+    const elog_level_t level = (rejected || ((flags & 4U) != 0U)) ? ELOG_LEVEL_WARN : ELOG_LEVEL_INFO;
+    elog_add(ELOG_PWR_BATTERY_COMMAND, level, info, sizeof(info));
+}
+
 static bool handle_cancel_result(void)
 {
     /* R2.3 cancellation does not roll back a command already applied. */
@@ -305,12 +315,23 @@ bool power_board_handle_command_result(const rf_scp_message_t *message)
     {
         return true; /* An unrelated report cannot finish service tracking. */
     }
+    const bool changed = !status.has_result ||
+        (status.result_command != message->body.command_result.command) ||
+        (status.result_seq != message->body.command_result.seq) ||
+        (status.result != message->body.command_result.result) ||
+        (status.transmissions != message->body.command_result.transmissions) ||
+        (status.command_flags != message->body.command_result.flags);
     status.has_result = true;
     status.result_command = message->body.command_result.command;
     status.result_seq = message->body.command_result.seq;
     status.result = message->body.command_result.result;
     status.transmissions = message->body.command_result.transmissions;
     status.command_flags = message->body.command_result.flags;
+    if ((status.result_command == 5U) && changed)
+    {
+        log_battery_command(RF_SCP_CMD_PWR_RESULT, status.result_seq, status.result,
+                            status.transmissions, status.command_flags);
+    }
     if ((5U == status.result_command) && !status.has_command_ack &&
         !cancel_verification_pending)
     {
@@ -479,6 +500,7 @@ static void command_accepted(const rf_scp_message_t *message)
         awaiting_command = true;
         command_ack_ms = HAL_GetTick();
         status.has_result = false; /* Only reports after the ACK are evidence. */
+        log_battery_command(RF_SCP_CMD_PWR_COMMAND, status.command_seq, UINT8_MAX, 0U, 0U);
     }
     else
     {

@@ -11,6 +11,7 @@
 #include "unity.h"
 #include "power_board_control.h"
 #include "scp_endian.h"
+#include "mock_elog.h"
 #include "mock_rf_comm.h"
 #include "mock_power_board_scp.h"
 #include "../fixtures/rf_scp_vectors.h"
@@ -29,6 +30,20 @@ static size_t request_count;
 static scp_packet_t requests[12];
 static scp_cmd_done_fn_t callback;
 static power_board_snapshot_t power;
+static size_t battery_log_count;
+static elog_level_t battery_log_level;
+static uint8_t battery_log_info[6];
+
+static void capture_battery_log(elog_code_t code, elog_level_t level, const void *data,
+                                 size_t data_len, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_INT(ELOG_PWR_BATTERY_COMMAND, code);
+    TEST_ASSERT_EQUAL_size_t(sizeof(battery_log_info), data_len);
+    (void)memcpy(battery_log_info, data, data_len);
+    battery_log_level = level;
+    battery_log_count++;
+}
 
 uint32_t HAL_GetTick(void);
 uint32_t HAL_GetTick(void)
@@ -188,6 +203,9 @@ static void start_capacity(void)
 
 void setUp(void)
 {
+    battery_log_count = 0U;
+    (void)memset(battery_log_info, 0, sizeof(battery_log_info));
+    elog_add_StubWithCallback(capture_battery_log);
     tick = 0U;
     request_count = 0U;
     callback = NULL;
@@ -1101,6 +1119,58 @@ void test_r23_stale_unknown_capacity_does_not_override_current_command_policy(vo
     power.summary.flags2 = 0x30U;
     power.valid_fields = 0U;
     TEST_ASSERT_TRUE(power_board_battery_replaced());
+}
+
+void test_battery_ack_and_applied_result_are_logged_separately_without_duplicate_report(void)
+{
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    TEST_ASSERT_EQUAL_size_t(0U, battery_log_count);
+    command_ack(5U, 42U);
+    const uint8_t accepted[] = {RF_SCP_CMD_PWR_COMMAND, 5U, 42U, UINT8_MAX, 0U, 0U};
+    TEST_ASSERT_EQUAL_size_t(1U, battery_log_count);
+    TEST_ASSERT_EQUAL_MEMORY(accepted, battery_log_info, sizeof(accepted));
+    result_report(43U, 0U, 0U);
+    const uint8_t applied[] = {RF_SCP_CMD_PWR_RESULT, 5U, 43U, 0U, 2U, 0U};
+    TEST_ASSERT_EQUAL_size_t(2U, battery_log_count);
+    TEST_ASSERT_EQUAL_MEMORY(applied, battery_log_info, sizeof(applied));
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED, control_status().command_state);
+    result_report(43U, 0U, 0U);
+    TEST_ASSERT_EQUAL_size_t(2U, battery_log_count);
+}
+
+void test_battery_cancel_outcomes_log_monitoring_uncertainty_and_late_confirmation(void)
+{
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(5U, 42U);
+    result_report(42U, UINT8_MAX, 2U);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_MONITORING, control_status().command_state);
+    TEST_ASSERT_EQUAL_size_t(2U, battery_log_count);
+    result_report(42U, UINT8_MAX, 4U);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_UNCERTAIN, control_status().command_state);
+    TEST_ASSERT_EQUAL_INT(ELOG_LEVEL_WARN, battery_log_level);
+    result_report(42U, UINT8_MAX, 8U);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED, control_status().command_state);
+    TEST_ASSERT_EQUAL_INT(ELOG_LEVEL_INFO, battery_log_level);
+    TEST_ASSERT_EQUAL_size_t(4U, battery_log_count);
+    TEST_ASSERT_EQUAL_UINT8(8U, battery_log_info[5]);
+}
+
+void test_rejected_battery_ack_and_unrelated_result_do_not_log_acceptance_or_change(void)
+{
+    TEST_ASSERT_FALSE(power_board_handle_command_result(NULL));
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(0U, 0U);
+    TEST_ASSERT_EQUAL_size_t(0U, battery_log_count);
+    rf_scp_message_t report = {.cmd = RF_SCP_CMD_PWR_RESULT, .type = SCP_TYPE_SET,
+        .body.command_result = {.command = 3U, .seq = 7U, .result = 0U, .transmissions = 1U}};
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_size_t(0U, battery_log_count);
+    report.body.command_result.command = 5U;
+    report.body.command_result.result = 2U;
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&report));
+    TEST_ASSERT_EQUAL_size_t(1U, battery_log_count);
+    TEST_ASSERT_EQUAL_INT(ELOG_LEVEL_WARN, battery_log_level);
+    TEST_ASSERT_EQUAL_UINT8(2U, battery_log_info[3]);
 }
 
 /*** end of file ***/
