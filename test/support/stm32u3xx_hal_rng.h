@@ -37,6 +37,7 @@ extern uint32_t test_rng_flags;
 
 HAL_StatusTypeDef HAL_RNG_GenerateRandomNumber(RNG_HandleTypeDef *hrng,
                                              uint32_t *random32bit);
+HAL_StatusTypeDef RNG_RecoverSeedError(RNG_HandleTypeDef *hrng);
 
 #endif /* TEST_HAL_RNG_H */
 /*** end of file ***/
