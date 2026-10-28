@@ -143,4 +143,18 @@ void test_power_panic_new_low_episode_logs_again(void)
     TEST_ASSERT_EQUAL_UINT32(2U, elog_count);
 }
 
+void test_power_panic_rise_and_fall_between_checks_log_the_new_episode(void)
+{
+    panic_level = 0U;
+    power_panic_isr_falling_edge();
+    power_panic_check();
+    panic_level = 1U;
+    power_panic_isr_rising_edge();
+    panic_level = 0U;
+    power_panic_isr_falling_edge();
+    power_panic_check();
+    power_panic_check();
+    TEST_ASSERT_EQUAL_UINT32(2U, elog_count);
+}
+
 /*** end of file ***/

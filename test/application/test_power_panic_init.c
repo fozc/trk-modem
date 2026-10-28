@@ -19,6 +19,7 @@ static uint8_t mirror;
 static bool irq_enabled;
 static bool pending_edge;
 static bool inject_edge;
+static bool inject_on_restore;
 
 static uint32_t disable_irq(int call_count)
 {
@@ -31,6 +32,12 @@ static uint32_t disable_irq(int call_count)
 static void restore_irq(uint32_t was_enabled, int call_count)
 {
     (void)call_count;
+    if (inject_on_restore)
+    {
+        inject_on_restore = false;
+        level = 0U;
+        pending_edge = true;
+    }
     if (0U != was_enabled)
     {
         irq_enabled = true;
@@ -82,6 +89,7 @@ void setUp(void)
     irq_enabled = true;
     pending_edge = false;
     inject_edge = false;
+    inject_on_restore = false;
     gpio_read_pin_StubWithCallback(read_pin);
     gpio_set_pin_StubWithCallback(write_pin);
     bsp_power_panic_irq_disable_StubWithCallback(disable_irq);
@@ -131,6 +139,28 @@ void test_init_preserves_previously_disabled_irq_and_pending_edge(void)
     TEST_ASSERT_TRUE(pending_edge);
     restore_irq(1U, 0);
     elog_log_power_panic_Expect();
+    power_panic_check();
+}
+
+void test_check_preserves_previously_disabled_irq(void)
+{
+    level = 0U;
+    power_panic_init();
+    irq_enabled = false;
+    elog_log_power_panic_Expect();
+    power_panic_check();
+    TEST_ASSERT_FALSE(irq_enabled);
+}
+
+void test_edge_arriving_during_check_is_preserved_for_the_next_check(void)
+{
+    power_panic_init();
+    inject_on_restore = true;
+    power_panic_check();
+    TEST_ASSERT_TRUE(irq_enabled);
+    TEST_ASSERT_FALSE(pending_edge);
+    elog_log_power_panic_Expect();
+    power_panic_check();
     power_panic_check();
 }
 
