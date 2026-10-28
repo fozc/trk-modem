@@ -24,6 +24,7 @@ INTEGRATION_SUITES = [
   ["iec104_master", "iec104_master", [[MAKE, "run"]]],
   ["iec104_stack", "iec104_stack", [[MAKE, "run"]]],
   ["modbus_device", "modbus_device", [[MAKE, "run"]]],
+  ["soak", "soak", [[MAKE, "run"]]],
   ["web_auth", "web_auth", [[MAKE, "run"]]],
   ["web_navigation", "web_navigation", [[MAKE, "run"]]],
   ["web_device", "web_device", [[MAKE, "run"]]]
