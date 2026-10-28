@@ -18,6 +18,9 @@
 #define RF_LIVE_TIMEOUT_MS 30000U
 #define RF_ALARM_KEY_COUNT 128U
 
+_Static_assert(RF_ALARM_KEY_COUNT > RF_PHASE_SLOTS,
+               "Alarm history must have space beyond current phase identities");
+
 typedef struct
 {
     uint32_t uptime_sec;
@@ -297,6 +300,23 @@ bool rf_event_source_matches(const rf_scp_event_t *event)
     return true;
 }
 
+static void select_alarm_key(void)
+{
+    /* Each phase can retain one current identity. At least one slot is free
+     * of these references because the history is larger than the phase cache. */
+    for (size_t checked = 0U; checked < RF_ALARM_KEY_COUNT; checked++)
+    {
+        size_t index;
+        if (!get_source_index(alarm_keys[alarm_key_next].source, &index) ||
+            !phase_cache[index].data.trip_failed || !phase_cache[index].has_alarm_key ||
+            (phase_cache[index].alarm_key != alarm_key_next))
+        {
+            return;
+        }
+        alarm_key_next = (alarm_key_next + 1U) % RF_ALARM_KEY_COUNT;
+    }
+}
+
 bool rf_handle_alarm_event(const rf_scp_event_t *event)
 {
     rf_inventory_entry_t entry;
@@ -334,6 +354,7 @@ bool rf_handle_alarm_event(const rf_scp_event_t *event)
     {
         return false;
     }
+    select_alarm_key();
     alarm_keys[alarm_key_next] = (rf_alarm_key_t)
     {
         .uptime_sec = event->uptime_sec, .boot_counter = event->boot_counter,
