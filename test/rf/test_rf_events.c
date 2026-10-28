@@ -3541,4 +3541,68 @@ void test_production_lock_diagnostic_names_command_without_counting_a_fault(void
     verify_head_then_expect_consume(36U);
 }
 
+
+static rf_scp_event_t fill_other_phase_alarm_history(void)
+{
+    const scp_packet_t original = alarm_packet();
+    rf_scp_event_t first;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_event(original.data, original.data_len, &first));
+    TEST_ASSERT_TRUE(rf_alarm_record(&first));
+    enable_phase2_binding();
+    scp_packet_t packet = original;
+    packet.data[10] = 2U;
+    scp_pack_u16(&packet.data[56], rf_scp_eui_hash(second_binding_storage.eui64));
+    for (uint32_t index = 0U; index < 256U; index++)
+    {
+        put_u32(&packet.data[51], 1000U + index);
+        update_crc(&packet);
+        rf_scp_event_t next;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_event(packet.data, packet.data_len, &next));
+        TEST_ASSERT_TRUE(rf_alarm_record(&next));
+        if ((index == 126U) || (index == 127U))
+        {
+            rf_alarm_event_t retained;
+            TEST_ASSERT_TRUE(rf_get_alarm_event(5U, &retained));
+            TEST_ASSERT_EQUAL_UINT8(first.event, retained.event);
+        }
+    }
+    return first;
+}
+
+void test_open_alarm_keeps_identity_after_other_phase_fills_history(void)
+{
+    const rf_scp_event_t first = fill_other_phase_alarm_history();
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_source_data(5U, tick, &data));
+    TEST_ASSERT_TRUE(data.trip_failed);
+    TEST_ASSERT_TRUE(data.trip_failure_latched);
+    rf_alarm_event_t event;
+    const bool found = rf_get_alarm_event(5U, &event);
+    TEST_ASSERT_TRUE(found);
+    TEST_ASSERT_EQUAL_UINT8(first.event, event.event);
+    TEST_ASSERT_EQUAL_UINT16(first.boot_counter, event.boot);
+    TEST_ASSERT_EQUAL_UINT32(first.uptime_sec, event.uptime);
+    TEST_ASSERT_EQUAL_UINT16(first.crc, event.crc);
+    const size_t before = alarm_writes;
+    TEST_ASSERT_TRUE(rf_alarm_record(&first));
+    TEST_ASSERT_EQUAL_size_t(before, alarm_writes);
+}
+
+void test_operator_ack_keeps_identity_after_other_phase_fills_history(void)
+{
+    (void)prepare_operator_ack();
+    const rf_scp_event_t first = fill_other_phase_alarm_history();
+    rf_phase_data_t data;
+    TEST_ASSERT_TRUE(rf_get_phase_data(2U, PHASE_L1, tick, &data));
+    rf_alarm_ack_request_t ack = {.line = 2U, .phase = PHASE_L1,
+        .revision = data.alarm_revision, .confirm_offline = true};
+    (void)memcpy(ack.eui64, data.eui64, sizeof(ack.eui64));
+    elog_add_Ignore();
+    TEST_ASSERT_EQUAL_INT(RF_ALARM_ACK_OK, rf_alarm_acknowledge(&ack));
+    TEST_ASSERT_EQUAL_UINT8(first.event, written_ack.event);
+    TEST_ASSERT_EQUAL_UINT16(first.boot_counter, written_ack.boot);
+    TEST_ASSERT_EQUAL_UINT32(first.uptime_sec, written_ack.uptime);
+    TEST_ASSERT_EQUAL_UINT16(first.crc, written_ack.event_crc);
+}
+
 /*** end of file ***/
