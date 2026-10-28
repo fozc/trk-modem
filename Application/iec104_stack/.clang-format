@@ -1,0 +1,24 @@
+# IEC104-local format, based on the user's fault_ioa example (2026-10-26).
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+BreakBeforeTernaryOperators: false
+PenaltyBreakAssignment: 1000
+PenaltyBreakBeforeFirstCallParameter: 1000
+BreakBeforeBraces: Allman
+IndentCaseLabels: true
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: None
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+BinPackArguments: true
+BinPackParameters: true
+Cpp11BracedListStyle: false
+SortIncludes: Never
+ReflowComments: false

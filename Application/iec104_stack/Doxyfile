@@ -1,0 +1,22 @@
+PROJECT_NAME           = "IEC104 modem stack"
+OUTPUT_DIRECTORY       = ../../test/build/iec104-stack/doxygen
+INPUT                  = README.md iec104_protocol.h \
+                         iec104_asdu.h iec104_core.h \
+                         iec104_server.h iec104_modem.h \
+                         iec104_asdu.c iec104_core.c \
+                         iec104_server.c iec104_modem.c
+USE_MDFILE_AS_MAINPAGE  = README.md
+FILE_PATTERNS          = *.c *.h *.md
+RECURSIVE              = NO
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = YES
+HAVE_DOT               = NO
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_AS_ERROR          = YES
+INPUT_ENCODING         = UTF-8

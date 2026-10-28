@@ -22,6 +22,7 @@ INTEGRATION_SUITES = [
   ["rf_hil", "rf_hil", [[MAKE, "run"]]],
   ["rf_real_mh", "rf_real_mh", [[MAKE, "run"]]],
   ["iec104_master", "iec104_master", [[MAKE, "run"]]],
+  ["iec104_stack", "iec104_stack", [[MAKE, "run"]]],
   ["modbus_device", "modbus_device", [[MAKE, "run"]]],
   ["web_auth", "web_auth", [[MAKE, "run"]]],
   ["web_navigation", "web_navigation", [[MAKE, "run"]]],
@@ -90,7 +91,7 @@ when "logs"
 when "critical"
   results << run_unit("test:all")
   results << run_integration(%w[fault_log libs json gsm nvram rfwu_auth
-                                iec104_master web_auth web_navigation])
+                                iec104_master iec104_stack web_auth web_navigation])
 when "coverage"
   results << run_unit("clobber")
   results << run_unit("gcov:all") if results.all?
