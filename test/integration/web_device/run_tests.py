@@ -10,17 +10,17 @@ the original values, including on failure. Other configuration writes are
 intentional invalid requests that must be rejected without state changes.
 
 Usage: python run_tests.py [host]
-Host default: env WEB_DEVICE_HOST or 188.59.76.59.
+An explicit host (argument or WEB_DEVICE_HOST) and --allow-config-writes are required.
 """
 
+import argparse
 import json
 import os
 import socket
 import sys
 import time
 
-HOST = (sys.argv[1] if len(sys.argv) > 1
-        else os.environ.get("WEB_DEVICE_HOST", "188.59.76.59"))
+HOST = None
 PORT = 80
 FAILURES = []
 
@@ -270,7 +270,16 @@ def test_modbus_stop_bits_cycle():
     return passed
 
 
-def main():
+def main(argv=None):
+    global HOST
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("host", nargs="?", default=os.environ.get("WEB_DEVICE_HOST"))
+    parser.add_argument("--allow-config-writes", action="store_true")
+    args = parser.parse_args(argv)
+    if not args.host or not args.allow_config_writes:
+        print("SKIP: web device checks require an explicit host and --allow-config-writes")
+        return 1 if os.environ.get("REQUIRE_DEVICE") == "1" else 0
+    HOST = args.host
     # Hold the single web client slot; retry while the server settles
     # after a reset so an external page cannot re-grab it first.
     # A bench without the device simply exhausts the loop (SKIP).
@@ -278,7 +287,7 @@ def main():
         sess = DeviceSession()
     except RuntimeError as err:
         print("SKIP: device %s:%d not reachable (%s)" % (HOST, PORT, err))
-        return 0
+        return 1 if os.environ.get("REQUIRE_DEVICE") == "1" else 0
     http_req = sess.request
 
     st, body = http_req("POST", "/auth/login",

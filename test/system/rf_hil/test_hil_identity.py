@@ -134,20 +134,23 @@ class IdentityTests(unittest.TestCase):
 #include <stdbool.h>
 #include "boot.h"
 #include "rf_hil_transport.h"
+#include "rf_inventory.h"
+#include "rf_events.h"
 #define SHELL_LOG(...) printf(__VA_ARGS__)
 static fw_info_t installed = {.size=100U, .fw_crc=0x12345678U,
                              .short_commit_hash="abcdef0"};
 const fw_info_t *boot_get_installed_fw_info(void) { return &installed; }
-static bool scp_is_free(void) { return true; }
-static uint8_t rf_comm_get_hub_major(void) { return 1U; }
+bool scp_is_free(void) { return true; }
+uint8_t rf_comm_get_hub_major(void) { return 1U; }
 /* Keep these stubs in sync with the live rf_shell_status body
  * in rf_shell.c: every new call it makes needs a stub here. */
-static uint8_t rf_inventory_get_status(void) { return 0U; }
-typedef struct { const char *reason; uint32_t total_ms;
-                 uint32_t reason_ms; } rf_inventory_wait_t;
-static void rf_inventory_get_wait(rf_inventory_wait_t *out)
+rf_inventory_status_t rf_inventory_get_status(void) { return RF_INVENTORY_READY; }
+bool rf_events_storage_degraded(void) { return false; }
+bool rf_inventory_get_epoch_status(uint8_t feeder, rf_epoch_status_t *out)
+{ (void)feeder; *out = (rf_epoch_status_t){0}; return false; }
+void rf_inventory_get_wait(rf_inventory_wait_t *out)
 { out->reason = "none"; out->total_ms = 0U; out->reason_ms = 0U; }
-static const char *inventory_status_name(uint8_t status)
+static const char *inventory_status_name(rf_inventory_status_t status)
 { (void)status; return "ready"; }
 static uint8_t rf_discovery_get_count(void) { return 0U; }
 '''
@@ -163,6 +166,7 @@ static uint8_t rf_discovery_get_count(void) { return 0U; }
                             "-I" + str(root / "Application/app_ipc"),
                             "-I" + str(root / "Application/libs"),
                             "-I" + str(root / "Application/libefw"),
+                            "-I" + str(root / "Application/libscp"),
                             str(path), "-o", str(executable)],
                            capture_output=True, text=True)
             self.assertEqual(0, build.returncode, build.stderr)
