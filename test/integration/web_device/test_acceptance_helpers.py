@@ -7,6 +7,45 @@ from unittest.mock import patch
 import run_tests
 
 
+class DeviceOptIn(unittest.TestCase):
+    def test_default_suite_never_opens_a_socket(self):
+        with patch.dict(run_tests.os.environ, {}, clear=True), \
+                patch.object(run_tests, "DeviceSession") as session:
+            self.assertEqual(0, run_tests.main([]))
+            session.assert_not_called()
+
+    def test_explicit_host_still_requires_write_permission(self):
+        with patch.dict(run_tests.os.environ, {}, clear=True), \
+                patch.object(run_tests, "DeviceSession") as session:
+            self.assertEqual(0, run_tests.main(["192.0.2.1"]))
+            session.assert_not_called()
+
+    def test_environment_host_still_requires_write_permission(self):
+        with patch.dict(run_tests.os.environ, {"WEB_DEVICE_HOST": "192.0.2.1"}, clear=True), \
+                patch.object(run_tests, "DeviceSession") as session:
+            self.assertEqual(0, run_tests.main([]))
+            session.assert_not_called()
+
+    def test_required_device_cannot_silently_skip(self):
+        with patch.dict(run_tests.os.environ, {"REQUIRE_DEVICE": "1"}, clear=True), \
+                patch.object(run_tests, "DeviceSession") as session:
+            self.assertEqual(1, run_tests.main([]))
+            session.assert_not_called()
+
+
+    def test_explicit_host_and_permission_reach_the_selected_session(self):
+        with patch.dict(run_tests.os.environ, {}, clear=True), \
+                patch.object(run_tests, "DeviceSession", side_effect=RuntimeError("offline")) as session:
+            self.assertEqual(0, run_tests.main(["192.0.2.1", "--allow-config-writes"]))
+            session.assert_called_once_with()
+            self.assertEqual("192.0.2.1", run_tests.HOST)
+
+    def test_required_but_unreachable_device_fails(self):
+        with patch.dict(run_tests.os.environ, {"REQUIRE_DEVICE": "1"}, clear=True), \
+                patch.object(run_tests, "DeviceSession", side_effect=RuntimeError("offline")):
+            self.assertEqual(1, run_tests.main(["192.0.2.1", "--allow-config-writes"]))
+
+
 class StopBitsCleanup(unittest.TestCase):
     def run_cycle(self, reject_change=False, reject_restore=False,
                   ignore_restore=False, apply_invalid=False):

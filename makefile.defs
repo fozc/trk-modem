@@ -14,3 +14,14 @@ endif
 -include Application/json/json.d
 .DEFAULT_GOAL := all
 endif
+
+# Reuse CubeIDE's existing per-directory compile rules for sources added
+# after an older generated Debug/Release source inventory was created.
+ifeq ($(filter ./Application/bsp/bsp_rf_reset.o,$(OBJS)),)
+USER_OBJS += ./Application/bsp/bsp_rf_reset.o
+-include Application/bsp/bsp_rf_reset.d
+endif
+ifeq ($(filter ./Application/gsm/gsm_sms.o,$(OBJS)),)
+USER_OBJS += ./Application/gsm/gsm_sms.o
+-include Application/gsm/gsm_sms.d
+endif
