@@ -269,4 +269,66 @@ void test_battery_command_audit_preserves_timestamp_raw_report_and_honest_outcom
     TEST_ASSERT_EQUAL_UINT32(5U, writes);
 }
 
+void test_power_panic_writer_preserves_reason_and_severity(void)
+{
+    elog_log_power_panic(ELOG_POWER_PANIC_STARTUP_LOW);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_PWR_PANIC, stored_entry.code);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_LEVEL_ERROR, stored_entry.level);
+    TEST_ASSERT_EQUAL_UINT32(1000U, stored_entry.timestamp);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_PANIC_STARTUP_LOW, stored_entry.info[0]);
+    TEST_ASSERT_EQUAL_STRING("startup_low; input LOW at startup", elog_info_to_text(&stored_entry));
+    elog_log_power_panic(ELOG_POWER_PANIC_FALLING_EDGE);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_LEVEL_ERROR, stored_entry.level);
+    TEST_ASSERT_EQUAL_STRING("falling_edge; new LOW edge observed", elog_info_to_text(&stored_entry));
+}
+
+void test_legacy_power_records_do_not_invent_an_observation_reason(void)
+{
+    elog_add(ELOG_PWR_PANIC, ELOG_LEVEL_ERROR, NULL, 0U);
+    TEST_ASSERT_EQUAL_STRING("reason=unknown (0)", elog_info_to_text(&stored_entry));
+    uint8_t info[16] = {0xE1U};
+    info[3] = 198U;
+    info[5] = 73U;
+    info[8] = 1U;
+    info[9] = 0x90U;
+    info[10] = 8U;
+    elog_add(ELOG_PWR_SCP_ALARM, ELOG_LEVEL_ERROR, info, sizeof(info));
+    TEST_ASSERT_EQUAL_STRING("SCP E1 unknown seq=198 active=00089001 prev=00000000 session=73",
+                             elog_info_to_text(&stored_entry));
+}
+
+void test_power_summary_snapshot_and_change_decode_without_geometry_changes(void)
+{
+    uint8_t info[16] = {0xE1U, ELOG_POWER_SUMMARY_SNAPSHOT};
+    info[3] = 198U;
+    info[5] = 73U;
+    info[8] = 1U;
+    info[9] = 0x90U;
+    info[10] = 8U;
+    elog_add(ELOG_PWR_SCP_ALARM, ELOG_LEVEL_ERROR, info, sizeof(info));
+    TEST_ASSERT_EQUAL_MEMORY(info, stored_entry.info, sizeof(info));
+    TEST_ASSERT_EQUAL_STRING("SCP E1 snapshot seq=198 active=00089001 prev=unknown session=73",
+                             elog_info_to_text(&stored_entry));
+    info[1] = ELOG_POWER_SUMMARY_CHANGE;
+    info[8] = 0U;
+    info[9] = 0U;
+    info[10] = 0U;
+    info[12] = 1U;
+    info[13] = 0x90U;
+    info[14] = 8U;
+    elog_add(ELOG_PWR_SCP_ALARM, ELOG_LEVEL_INFO, info, sizeof(info));
+    TEST_ASSERT_EQUAL_STRING("SCP E1 change seq=198 active=00000000 prev=00089001 session=73",
+                             elog_info_to_text(&stored_entry));
+}
+
+void test_power_e3_event_fields_keep_their_original_meaning(void)
+{
+    uint8_t info[16] = {0xE3U, 4U, 1U, 42U};
+    info[7] = 73U;
+    info[8] = 16U;
+    elog_add(ELOG_PWR_SCP_ALARM, ELOG_LEVEL_WARN, info, sizeof(info));
+    TEST_ASSERT_EQUAL_STRING("SCP E3 code=4 state=1 seq=42 active=00000010 prev=00000000 session=73",
+                             elog_info_to_text(&stored_entry));
+}
+
 /*** end of file ***/

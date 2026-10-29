@@ -477,7 +477,7 @@ void test_console_summary_announces_only_changed_alarm_bits(void)
     message.body.power.active_alarms = 16U;
     TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
     TEST_ASSERT_NOT_NULL(strstr(console_output,
-        "[PB] alarm basladi: AKU_DUSUK (kod=4 maske=0x00000010)"));
+        "[PB] alarm mevcut: AKU_DUSUK (kod=4 maske=0x00000010)"));
     const size_t previous_length = console_length;
     message.body.power.seq++;
     TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
@@ -612,6 +612,83 @@ void test_r23_soc_drop_and_code_18_are_preserved_without_smoothing(void)
     TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
     TEST_ASSERT_EQUAL_INT16(100, read_snapshot(1U).summary.soc_tenths);
     TEST_ASSERT_EQUAL_HEX32(1UL << 18U, read_snapshot(1U).active_alarms);
+}
+
+void test_active_summary_after_each_boot_is_a_snapshot_not_a_new_alarm(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.active_alarms = 0x00089001U;
+    message.body.power.seq = 198U;
+    message.body.power.session = 73U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    TEST_ASSERT_EQUAL_UINT32(1U, log_calls);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_SUMMARY_SNAPSHOT, log_info[1]);
+    TEST_ASSERT_EQUAL(ELOG_LEVEL_ERROR, last_log_level);
+    TEST_ASSERT_EQUAL_UINT8(73U, log_info[5]);
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 300000U));
+    TEST_ASSERT_EQUAL_UINT32(1U, log_calls);
+
+    power_board_scp_init();
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    TEST_ASSERT_EQUAL_UINT32(2U, log_calls);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_SUMMARY_SNAPSHOT, log_info[1]);
+    TEST_ASSERT_EQUAL(ELOG_LEVEL_ERROR, last_log_level);
+}
+
+void test_first_zero_summary_then_nonzero_is_a_change(void)
+{
+    rf_scp_message_t message = summary();
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    TEST_ASSERT_EQUAL_UINT32(0U, log_calls);
+    message.body.power.active_alarms = 1U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    TEST_ASSERT_EQUAL_UINT32(1U, log_calls);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_SUMMARY_CHANGE, log_info[1]);
+    TEST_ASSERT_EQUAL(ELOG_LEVEL_ERROR, last_log_level);
+    message.body.power.active_alarms = 0U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 2U));
+    TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_SUMMARY_CHANGE, log_info[1]);
+    TEST_ASSERT_EQUAL(ELOG_LEVEL_INFO, last_log_level);
+    TEST_ASSERT_EQUAL_UINT8(1U, log_info[12]);
+}
+
+void test_summary_after_mh_restart_is_a_snapshot(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.active_alarms = 16U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 0U));
+    power_board_scp_hub_restarted();
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    TEST_ASSERT_EQUAL_UINT32(2U, log_calls);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_SUMMARY_SNAPSHOT, log_info[1]);
+    TEST_ASSERT_EQUAL_UINT8(7U, log_info[5]);
+}
+
+void test_alarm_event_before_summary_establishes_known_previous_state(void)
+{
+    rf_scp_message_t message = alarm(1U, 4U, 1U, 0U);
+    message.body.alarm.active = 16U;
+    TEST_ASSERT_TRUE(power_board_handle_alarm(&message, 0U));
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_PWR_ALARM, log_info[0]);
+    TEST_ASSERT_EQUAL_UINT8(4U, log_info[1]);
+    TEST_ASSERT_EQUAL_UINT8(1U, log_info[2]);
+    message = summary();
+    message.body.power.active_alarms = 1U;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_SUMMARY_CHANGE, log_info[1]);
+    TEST_ASSERT_EQUAL_UINT8(16U, log_info[12]);
+}
+
+void test_invalid_summary_does_not_establish_a_known_alarm_mask(void)
+{
+    rf_scp_message_t message = summary();
+    message.body.power.active_alarms = 1U;
+    message.type = SCP_TYPE_GET;
+    TEST_ASSERT_FALSE(power_board_handle_summary(&message, 0U));
+    TEST_ASSERT_EQUAL_UINT32(0U, log_calls);
+    message.type = SCP_TYPE_SET;
+    TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
+    TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_SUMMARY_SNAPSHOT, log_info[1]);
 }
 
 /*** end of file ***/
