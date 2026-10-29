@@ -37,7 +37,8 @@ enum
 #define SHELL_DEFAULT_PROMPT "> \r\n"
 #define SHELL_DEFAULT_PASSWORD "admin"
 
-#define SHELL_TEXT_MAXLEN 64
+/* A 63-character NTP hostname plus its config command must fit. */
+#define SHELL_TEXT_MAXLEN 128
 #define SHELL_TEXT_MAXARGS 8
 
 #define SHELL_MAX_CMD_LIST_COUNT 32
@@ -69,6 +70,20 @@ static uint8_t special_chr = 0;
 static uint8_t rx_ready = 0;
 static uint8_t rx_special_ready = 0;
 static shell_putchar_fn_t shell_putchar_fn = NULL;
+/* Both fields are owned by shell_process/main, never by the RX ISR. */
+static shell_putchar_fn_t console_putchar_fn = NULL;
+static shell_secret_handler_t secret_handler = NULL;
+
+bool shell_read_secret(shell_secret_handler_t handler)
+{
+    if ((handler == NULL) || (secret_handler != NULL) ||
+        (console_putchar_fn == NULL) || (shell_putchar_fn != console_putchar_fn))
+    {
+        return false;
+    }
+    secret_handler = handler;
+    return true;
+}
 
 #ifdef SHELL_USER_CONTIKI_PROCESS
 PROCESS(shell_task, "shell_task");
@@ -376,6 +391,12 @@ void shell_on_rx_received(int chr)
 {
 	static uint32_t esc_seq = 0;
 
+    /* A CRLF terminal may send LF after the preceding CR was processed. */
+    if ((chr == '\n') && (rx_idx == 0U))
+    {
+        return;
+    }
+
 	if(rx_state)
 	{
 		if(chr == 0x03) /* ctrl + c, ^C, ETX*/
@@ -482,7 +503,7 @@ void shell_on_rx_received(int chr)
 void shell_process(void)
 {
 #ifdef SHELL_HISTORY
-	if(shell_rx_special_ready())
+	if((secret_handler == NULL) && shell_rx_special_ready())
 	{
 		shell_clear_rx_special_ready();
 		switch(special_chr)
@@ -506,6 +527,27 @@ void shell_process(void)
 
 	if(shell_rx_ready())
 	{
+        if ((secret_handler != NULL) && (shell_putchar_fn == console_putchar_fn))
+        {
+            size_t length = rx_idx;
+            if ((length > 0U) && (rx_buff[length - 1U] == SHELL_ENTER_CODE))
+            {
+                length--;
+            }
+            rx_buff[length] = '\0';
+            shell_secret_handler_t handler = secret_handler;
+            secret_handler = NULL;
+            handler((const char *)rx_buff, length);
+            /* Volatile stores prevent dead-store removal of the secret wipe. */
+            volatile uint8_t *bytes = rx_buff;
+            for (size_t index = 0U; index < sizeof(rx_buff); index++)
+            {
+                bytes[index] = 0U;
+            }
+            shell_clear_rx_special_ready();
+            shell_reset_rx();
+            return;
+        }
 		if((rx_idx == 1 && rx_buff[0] == SHELL_ENTER_CODE))
 		{
 			shell_puts(prompt_buff);
@@ -513,6 +555,12 @@ void shell_process(void)
 			return;
 		}
 
+        if (rx_idx >= SHELL_TEXT_MAXLEN)
+        {
+            shell_puts("Command too long; rejected.\r\n");
+            shell_reset_rx();
+            return;
+        }
 		shell_on_command_received((const char *)rx_buff);
 #ifdef SHELL_HISTOR
 		shell_history_add(sh_history, rx_buff, rx_idx);
@@ -757,6 +805,8 @@ PROCESS_THREAD(shell_task, ev, data)
 void shell_init(const char *prompt, const char *password, shell_putchar_fn_t putchar_fn)
 {
 	shell_putchar_fn = putchar_fn;
+    console_putchar_fn = putchar_fn;
+    secret_handler = NULL;
 
 	if(!prompt){
 		strncpy(prompt_buff, SHELL_DEFAULT_PROMPT, sizeof(prompt_buff) - 1);

@@ -17,6 +17,10 @@ endif
 
 # Reuse CubeIDE's existing per-directory compile rules for sources added
 # after an older generated Debug/Release source inventory was created.
+ifeq ($(filter ./Application/config_shell.o,$(OBJS)),)
+USER_OBJS += ./Application/config_shell.o
+-include Application/config_shell.d
+endif
 ifeq ($(filter ./Application/bsp/bsp_rf_reset.o,$(OBJS)),)
 USER_OBJS += ./Application/bsp/bsp_rf_reset.o
 -include Application/bsp/bsp_rf_reset.d
