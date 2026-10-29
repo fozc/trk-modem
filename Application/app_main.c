@@ -15,6 +15,7 @@
 #include "contiki_process.h"
 #include "version.h"
 #include "shell.h"
+#include "config_shell.h"
 #include "nvram.h"
 #include "rf_config.h"
 #include "rf_scp.h"
@@ -278,6 +279,7 @@ __attribute__ ((noreturn)) void app_main(void)
 	//rf_dummy_init();
 	shell_init("Troika >\r\n", NULL, bsp_putchr);
 	runtime_stats_shell_init();
+    config_shell_init();
 
 	reset_source_print();
 

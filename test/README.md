@@ -1,7 +1,63 @@
 # Test Altyapısı
 
-**Sürüm:** 1.93
+**Sürüm:** 1.94
 **Tarih:** 2026-10-29
+
+## Üretim ve servis ayarları için config komutu
+
+**Amaç:** Seri numarası, üretim/devreye alma tarihleri, GSM ve saat ayarlarını
+`Application/config_shell.c` modülündeki tek `config` komutuyla yönetmek.
+
+**Kullanım yeri:** Yerel seri konsol veya mevcut web terminali. Okuma için
+`config show`, yazma için admin yetkisi kullanılmalıdır. APN password (parola)
+girişi yalnız yerel seri konsolda açılmalıdır; terminalin local echo (yerel
+karakter gösterimi) ayarı kapalı tutulmalıdır.
+
+**Örnek:**
+
+```text
+su admin
+config show
+config set serial 26000123
+config set production-date 2026-10-29
+config set commissioning-time 2026-11-02 08:30:00
+config set time 2026-10-29 16:45:00
+config set apn internet
+config set apn-user kullanici
+config set apn-password
+config set sim-pin 0001
+config set ntp-server pool.ntp.org
+config set ntp-port 123
+config set timezone 3
+```
+
+**Kurallar:**
+
+- Tarih/saat UTC olarak girilmelidir; desteklenen yıl aralığı 2026–2099 olmalıdır.
+  `time` gerçek RTC'ye mevcut `rtc_sync()` servisiyle uygulanmalıdır. NTP/GSM/IEC104
+  üzerinden sonraki saat eşitlemeleri etkin kalmalıdır.
+- Seri numarası 0–99999999, SIM PIN dört rakam, NTP port 1–65535 ve timezone
+  (saat dilimi farkı) -12–14 aralığında olmalıdır. PIN ataması SIM'in PIN'ini değiştirmemelidir.
+- APN, username ve password en fazla 15 karakter olmalıdır. NTP server en fazla
+  63 karakter olmalıdır. Alanlara quote/backslash veya kontrol karakteri kabul edilmemelidir.
+- `apn`, `apn-user` veya `ntp-server` değer verilmeden temizlenebilmelidir.
+  Boş NTP server otomatik NTP sorgusunu kapatmalıdır.
+- `config set apn-password` sonrasındaki yerel satır komut/history (komut geçmişi)
+  olarak işlenmemelidir. Boş satır parolayı silmelidir; parola giriş tamponu işlem sonunda
+  temizlenmelidir. Web terminalindeki komutlar bekleyen yerel parola olarak alınmamalıdır.
+- Her kalıcı atama hemen kaydedilmelidir; ayrıca `save` gerekmemelidir. Tam kayıt
+  hatasında eski RAM ayarı korunmalıdır. Doğrulanmış tek NVRAM kopyası varsa yedek
+  kopya uyarısı verilmelidir. RTC ayarı NVRAM kaydı oluşturmamalıdır.
+- GSM ayarları sonraki modem initialization (başlatma) akışında uygulanmalıdır;
+  atama mevcut bağlantıyı kendiliğinden yeniden başlatmamalıdır.
+
+**Doğrulama:** `test/` içinde `ruby -S ceedling test:test_config_shell`
+çalıştırılabilir. Testler gerçek shell receive/dispatch (giriş/komut yönlendirme)
+yolunu, gerçek tarih dönüşümünü, hatalı girdileri, kayıt hatalarını ve gizli giriş
+ayrımını sınar. Sayı ve tarih/saat ayrıştırmada mevcut `xscanf_ex()` kullanılmalıdır;
+tam girdi tüketimi ve hata sonucu kontrol edilmelidir. Takvim doğrulaması mevcut
+`dt_init()` üzerinden yapılmalıdır. NVRAM ve RTC donanım sınırları mock ile karşılanır; bu testler fiziksel
+Flash kalıcılığı veya RTC beslemesinin kanıtı değildir.
 
 ## Açılış gözlemi ve yeni güç olayı ayrımı
 
@@ -2085,6 +2141,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-29 | 1.94 | Tek config komutuyla kimlik/GSM/RTC atamaları; gizli parola, kayıt hata yolları ve gerçek shell giriş testleri. |
 | 2026-10-29 | 1.93 | E1 snapshot/change ve power-panic startup_low/falling_edge ayrımı; eski kayıtları unknown gösterme ve IRQ regresyonları. |
 | 2026-10-28 | 1.92 | RNG geçmiş seed hata bayrağı için HAL toparlaması; GSM kesinti, FINISH öncesi Apply ve imzalı kurulum kontrolleri. |
 | 2026-10-28 | 1.91 | Firmware retry/kalıcı ilerleme ve transport geçişi; power-panic kenar sırası; açık hedefli web kabulü ve IEC104 bağımlılıkları. |

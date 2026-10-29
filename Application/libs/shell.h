@@ -18,6 +18,8 @@
 #define LIBS_SHELL_H_
 
 #include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
 #include "xprintf.h"
 
 #define SHELL_LVL_USER       0
@@ -89,5 +91,11 @@ int shell_unregister_command(const shell_cmd_t *cmd);
 void shell_on_rx_received(int chr);
 void shell_process(void);
 uint8_t shell_get_session_level(void);
+
+/* Main context only. The next local console line bypasses commands/history.
+ * No characters are echoed by the shell. Redirected/web writers are rejected.
+ * The handler borrows the line only until it returns; the buffer is then wiped. */
+typedef void (*shell_secret_handler_t)(const char *value, size_t length);
+bool shell_read_secret(shell_secret_handler_t handler);
 
 #endif /* LIBS_SHELL_H_ */
