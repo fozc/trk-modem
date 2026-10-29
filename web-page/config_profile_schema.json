@@ -75,28 +75,28 @@
       "lo": 0,
       "hi": 65535,
       "options": [],
-      "label": "Web Ilk Veri Zaman Asimi (sn)"
+      "label": "Web Ilk Veri Timeout (sn)"
     },
     "WebBostaKalmaZamanAsimi": {
       "kind": "int",
       "lo": 0,
       "hi": 65535,
       "options": [],
-      "label": "Web Bosta Kalma Zaman Asimi (sn)"
+      "label": "Web Bosta Kalma Timeout (sn)"
     },
     "IEC104IlkVeriZamanAsimi": {
       "kind": "int",
       "lo": 0,
       "hi": 65535,
       "options": [],
-      "label": "IEC104 Ilk Veri Zaman Asimi (sn)"
+      "label": "IEC104 Ilk Veri Timeout (sn)"
     },
     "IEC104BostaKalmaZamanAsimi": {
       "kind": "int",
       "lo": 0,
       "hi": 65535,
       "options": [],
-      "label": "IEC104 Bosta Kalma Zaman Asimi (sn)"
+      "label": "IEC104 Bosta Kalma Timeout (sn)"
     },
     "DevreyeAlinmaZamani": {
       "kind": "int",
@@ -258,7 +258,7 @@
         57600,
         115200
       ],
-      "label": "Baud Rate"
+      "label": "Baud rate"
     },
     "StopBits": {
       "kind": "combo",
@@ -268,7 +268,7 @@
         1,
         2
       ],
-      "label": "Dur Bit"
+      "label": "Stop bit"
     }
   },
   "rf": {
