@@ -71,7 +71,7 @@ void power_board_scp_hub_restarted(void)
 }
 
 static void store_alarm(uint8_t source, const rf_scp_message_t *message,
-                        uint32_t previous)
+                        uint32_t previous, bool initial_snapshot)
 {
     uint8_t info[16] = {0};
 
@@ -87,6 +87,7 @@ static void store_alarm(uint8_t source, const rf_scp_message_t *message,
     }
     else
     {
+        info[1] = initial_snapshot ? ELOG_POWER_SUMMARY_SNAPSHOT : ELOG_POWER_SUMMARY_CHANGE;
         info[3] = message->body.power.seq;
         info[5] = message->body.power.session;
     }
@@ -133,7 +134,7 @@ const char *power_board_alarm_name(uint8_t code)
     return ((size_t)code < count) ? alarm_names[code] : NULL;
 }
 
-static void announce_alarm_changes(void)
+static void announce_alarm_changes(bool initial_snapshot)
 {
 #if defined(BSP_CONSOLE_LOG)
     if (!console_logger_level_enabled(LOG_MOD_RF, LOG_LVL_NORMAL))
@@ -149,7 +150,7 @@ static void announce_alarm_changes(void)
         {
             const char *name = power_board_alarm_name(code);
             const char *state = (0U != (snapshot.active_alarms & bit)) ?
-                                "basladi" : "kapandi";
+                                (initial_snapshot ? "mevcut" : "basladi") : "kapandi";
 
             CSLOG_WARN("[PB] alarm %s: %s (kod=%u maske=0x%08lX)\r\n",
                        state, (NULL != name) ? name : "?", (unsigned)code,
@@ -157,6 +158,8 @@ static void announce_alarm_changes(void)
         }
     }
     announced_alarms = snapshot.active_alarms;
+#else
+    (void)initial_snapshot;
 #endif
 }
 
@@ -199,6 +202,7 @@ bool power_board_handle_summary(const rf_scp_message_t *message,
         return false;
     }
     const uint32_t previous = snapshot.active_alarms;
+    const bool initial_snapshot = !alarms_current;
 
     if (snapshot.has_summary &&
         (snapshot.summary.session != message->body.power.session))
@@ -214,9 +218,9 @@ bool power_board_handle_summary(const rf_scp_message_t *message,
     alarms_current = true;
     if (previous != snapshot.active_alarms)
     {
-        store_alarm(RF_SCP_CMD_PWR_SUMMARY, message, previous);
+        store_alarm(RF_SCP_CMD_PWR_SUMMARY, message, previous, initial_snapshot);
     }
-    announce_alarm_changes();
+    announce_alarm_changes(initial_snapshot);
     return true;
 }
 
@@ -245,8 +249,8 @@ bool power_board_handle_alarm(const rf_scp_message_t *message,
         have_alarm_seq = true;
         alarms_current = true;
         alarm_ms = now_ms;
-        store_alarm(RF_SCP_CMD_PWR_ALARM, message, previous);
-        announce_alarm_changes();
+        store_alarm(RF_SCP_CMD_PWR_ALARM, message, previous, false);
+        announce_alarm_changes(false);
         return true;
     }
     if (duplicate)
@@ -309,9 +313,9 @@ bool power_board_handle_alarm(const rf_scp_message_t *message,
     }
     if (log_event || (previous != snapshot.active_alarms))
     {
-        store_alarm(RF_SCP_CMD_PWR_ALARM, message, previous);
+        store_alarm(RF_SCP_CMD_PWR_ALARM, message, previous, false);
     }
-    announce_alarm_changes();
+    announce_alarm_changes(false);
     return true;
 }
 

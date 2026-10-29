@@ -20,6 +20,7 @@
 
 static uint8_t panic_level;
 static uint32_t elog_count;
+static elog_power_panic_reason_t last_reason;
 static uint32_t mirror_write_count;
 static gpio_port_t mirror_port;
 static gpio_pin_t mirror_pin;
@@ -44,16 +45,18 @@ static void set_pin_callback(gpio_port_t port, gpio_pin_t pin,
     mirror_write_count++;
 }
 
-static void log_panic_callback(int call_count)
+static void log_panic_callback(elog_power_panic_reason_t reason, int call_count)
 {
     (void)call_count;
     elog_count++;
+    last_reason = reason;
 }
 
 void setUp(void)
 {
     panic_level = 1U;
     elog_count = 0U;
+    last_reason = ELOG_POWER_PANIC_UNKNOWN;
     mirror_write_count = 0U;
     mirror_port = GPIO_A;
     mirror_pin = PIN_0;
@@ -97,6 +100,7 @@ void test_power_panic_init_low_opens_episode_and_logs_once(void)
     power_panic_check();
 
     TEST_ASSERT_EQUAL_UINT32(1U, elog_count);
+    TEST_ASSERT_EQUAL(ELOG_POWER_PANIC_STARTUP_LOW, last_reason);
 }
 
 void test_power_panic_falling_edge_logs_only_while_line_is_low(void)
@@ -141,6 +145,7 @@ void test_power_panic_new_low_episode_logs_again(void)
     power_panic_check();
 
     TEST_ASSERT_EQUAL_UINT32(2U, elog_count);
+    TEST_ASSERT_EQUAL(ELOG_POWER_PANIC_FALLING_EDGE, last_reason);
 }
 
 void test_power_panic_rise_and_fall_between_checks_log_the_new_episode(void)
@@ -155,6 +160,37 @@ void test_power_panic_rise_and_fall_between_checks_log_the_new_episode(void)
     power_panic_check();
     power_panic_check();
     TEST_ASSERT_EQUAL_UINT32(2U, elog_count);
+}
+
+void test_startup_low_then_runtime_edge_have_distinct_reasons(void)
+{
+    panic_level = 0U;
+    power_panic_init();
+    power_panic_check();
+    TEST_ASSERT_EQUAL(ELOG_POWER_PANIC_STARTUP_LOW, last_reason);
+    panic_level = 1U;
+    power_panic_isr_rising_edge();
+    panic_level = 0U;
+    power_panic_isr_falling_edge();
+    power_panic_check();
+    power_panic_check();
+    TEST_ASSERT_EQUAL_UINT32(2U, elog_count);
+    TEST_ASSERT_EQUAL(ELOG_POWER_PANIC_FALLING_EDGE, last_reason);
+}
+
+void test_startup_low_cleared_before_check_is_not_reported_as_a_new_edge(void)
+{
+    panic_level = 0U;
+    power_panic_init();
+    panic_level = 1U;
+    power_panic_isr_rising_edge();
+    power_panic_check();
+    TEST_ASSERT_EQUAL_UINT32(0U, elog_count);
+    panic_level = 0U;
+    power_panic_isr_falling_edge();
+    power_panic_check();
+    TEST_ASSERT_EQUAL_UINT32(1U, elog_count);
+    TEST_ASSERT_EQUAL(ELOG_POWER_PANIC_FALLING_EDGE, last_reason);
 }
 
 /*** end of file ***/

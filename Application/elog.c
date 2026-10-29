@@ -593,7 +593,40 @@ const char *elog_info_to_text(const elog_entry_t *entry)
             break;
         }
 
+        case ELOG_PWR_PANIC:
+            switch (info[0])
+            {
+                case ELOG_POWER_PANIC_STARTUP_LOW:
+                    xsnprintf(text, sizeof(text), "startup_low; input LOW at startup");
+                    break;
+                case ELOG_POWER_PANIC_FALLING_EDGE:
+                    xsnprintf(text, sizeof(text), "falling_edge; new LOW edge observed");
+                    break;
+                default:
+                    xsnprintf(text, sizeof(text), "reason=unknown (%u)", (unsigned)info[0]);
+                    break;
+            }
+            break;
+
         case ELOG_PWR_SCP_ALARM:
+            if (info[0] == 0xE1U)
+            {
+                if (info[1] == ELOG_POWER_SUMMARY_SNAPSHOT)
+                {
+                    xsnprintf(text, sizeof(text),
+                              "SCP E1 snapshot seq=%u active=%02X%02X%02X%02X prev=unknown session=%u",
+                              info[3], info[11], info[10], info[9], info[8], info[5]);
+                }
+                else
+                {
+                    xsnprintf(text, sizeof(text),
+                              "SCP E1 %s seq=%u active=%02X%02X%02X%02X prev=%02X%02X%02X%02X session=%u",
+                              (info[1] == ELOG_POWER_SUMMARY_CHANGE) ? "change" : "unknown",
+                              info[3], info[11], info[10], info[9], info[8],
+                              info[15], info[14], info[13], info[12], info[5]);
+                }
+                break;
+            }
             xsnprintf(text, sizeof(text),
                       "SCP %02X code=%u state=%u seq=%u active="
                       "%02X%02X%02X%02X prev=%02X%02X%02X%02X session=%u",
@@ -1062,9 +1095,10 @@ void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
              info, sizeof(info));
 }
 
-void elog_log_power_panic(void)
+void elog_log_power_panic(elog_power_panic_reason_t reason)
 {
-    elog_add(ELOG_PWR_PANIC, ELOG_LEVEL_ERROR, NULL, 0U);
+    const uint8_t info[] = {(uint8_t)reason};
+    elog_add(ELOG_PWR_PANIC, ELOG_LEVEL_ERROR, info, sizeof(info));
 }
 
 void elog_log_rf_trip_failure(uint8_t feeder, uint8_t phase, bool active)

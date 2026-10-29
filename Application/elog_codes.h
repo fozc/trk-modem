@@ -51,8 +51,8 @@ typedef enum
 	// Power / battery codes (50..59)
 	ELOG_PWR_ALARM             = 50,  /* info: latch(1) live(1) sys_fault(1) bq0(1) bq1(1) rising(1) */
 	ELOG_BAT_STATE             = 51,  /* info: src(1) event(1) a(1) b(1) soc(1) soh(1) */
-		ELOG_PWR_PANIC             = 52,  /* info: - */
-    ELOG_PWR_SCP_ALARM         = 53,  /* SCP event + current/previous mask */
+		ELOG_PWR_PANIC             = 52,  /* info: reason(1); legacy zero = unknown */
+    ELOG_PWR_SCP_ALARM         = 53,  /* SCP event + masks; E1 info[1] = observation kind */
     ELOG_PWR_BATTERY_COMMAND   = 54,  /* source, command, seq, result, transmissions, flags */
 
 	// Communication codes (60..69)

@@ -109,7 +109,7 @@ void test_falling_edge_during_init_is_preserved_and_logged_once(void)
     TEST_ASSERT_TRUE(irq_enabled);
     TEST_ASSERT_FALSE(pending_edge);
     TEST_ASSERT_EQUAL_UINT8(0U, mirror);
-    elog_log_power_panic_Expect();
+    elog_log_power_panic_Expect(ELOG_POWER_PANIC_FALLING_EDGE);
     power_panic_check();
     power_panic_check();
 }
@@ -119,7 +119,7 @@ void test_boot_low_line_is_logged_without_an_edge(void)
     level = 0U;
     power_panic_init();
     TEST_ASSERT_EQUAL_UINT8(0U, mirror);
-    elog_log_power_panic_Expect();
+    elog_log_power_panic_Expect(ELOG_POWER_PANIC_STARTUP_LOW);
     power_panic_check();
 }
 
@@ -138,7 +138,7 @@ void test_init_preserves_previously_disabled_irq_and_pending_edge(void)
     TEST_ASSERT_FALSE(irq_enabled);
     TEST_ASSERT_TRUE(pending_edge);
     restore_irq(1U, 0);
-    elog_log_power_panic_Expect();
+    elog_log_power_panic_Expect(ELOG_POWER_PANIC_FALLING_EDGE);
     power_panic_check();
 }
 
@@ -147,7 +147,7 @@ void test_check_preserves_previously_disabled_irq(void)
     level = 0U;
     power_panic_init();
     irq_enabled = false;
-    elog_log_power_panic_Expect();
+    elog_log_power_panic_Expect(ELOG_POWER_PANIC_STARTUP_LOW);
     power_panic_check();
     TEST_ASSERT_FALSE(irq_enabled);
 }
@@ -159,7 +159,19 @@ void test_edge_arriving_during_check_is_preserved_for_the_next_check(void)
     power_panic_check();
     TEST_ASSERT_TRUE(irq_enabled);
     TEST_ASSERT_FALSE(pending_edge);
-    elog_log_power_panic_Expect();
+    elog_log_power_panic_Expect(ELOG_POWER_PANIC_FALLING_EDGE);
+    power_panic_check();
+    power_panic_check();
+}
+
+void test_pending_edge_does_not_change_the_captured_startup_reason(void)
+{
+    level = 0U;
+    power_panic_init();
+    inject_on_restore = true;
+    elog_log_power_panic_Expect(ELOG_POWER_PANIC_STARTUP_LOW);
+    power_panic_check();
+    elog_log_power_panic_Expect(ELOG_POWER_PANIC_FALLING_EDGE);
     power_panic_check();
     power_panic_check();
 }

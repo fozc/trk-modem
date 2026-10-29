@@ -205,9 +205,24 @@ void elog_log_battery_soc_threshold(uint8_t threshold, bool set,
 
 /* ---- ELOG_PWR_PANIC --------------------------------------------------- */
 
-/* info: - (event only; the timestamp carries the moment of detection).
- * Level: ERROR (system is about to lose power / shut down). */
-void elog_log_power_panic(void);
+typedef enum
+{
+    ELOG_POWER_PANIC_UNKNOWN = 0,
+    ELOG_POWER_PANIC_STARTUP_LOW = 1,
+    ELOG_POWER_PANIC_FALLING_EDGE = 2
+} elog_power_panic_reason_t;
+
+/* info[0]: reason. Zero in legacy records means unknown, not an edge.
+ * Level: ERROR for both an asserted startup input and a new falling edge. */
+void elog_log_power_panic(elog_power_panic_reason_t reason);
+
+/* E1 uses the otherwise unused info[1]; E3 retains its alarm code there. */
+typedef enum
+{
+    ELOG_POWER_SUMMARY_UNKNOWN = 0,
+    ELOG_POWER_SUMMARY_SNAPSHOT = 1,
+    ELOG_POWER_SUMMARY_CHANGE = 2
+} elog_power_summary_kind_t;
 
 /* RF feeder/phase are one-based; this records an alarm edge, not operator acknowledgement. */
 void elog_log_rf_trip_failure(uint8_t feeder, uint8_t phase, bool active);

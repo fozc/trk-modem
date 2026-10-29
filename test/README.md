@@ -1,7 +1,28 @@
 # Test Altyapısı
 
-**Sürüm:** 1.92
-**Tarih:** 2026-10-28
+**Sürüm:** 1.93
+**Tarih:** 2026-10-29
+
+## Açılış gözlemi ve yeni güç olayı ayrımı
+
+**Amaç:** Açılışta görülen mevcut güç durumunu, çalışma sırasında gözlenen yeni olaydan ayırmak.
+
+**Kullanım yeri:** `test/` içinde `ruby -S ceedling "test:pattern[(power_board_scp|power_panic|elog_uart_recovery)]"`.
+
+**Kurallar:** İlk bilinen E1 alarm maskesi sıfırdan farklıysa `snapshot` (mevcut durum görüntüsü)
+olarak kaydedilmelidir; önceki fiziksel durum bilinmediğinden metinde `prev=unknown` gösterilmelidir.
+Bilinen maske değişirse `change` (durum değişikliği) yazılmalıdır. Aynı maskenin tekrarları
+yeniden kaydedilmemelidir. MH restart sonrasındaki ilk maske yeniden bir gözlemdir.
+E3 olaylarının kod/state alanları ve alarm seviyeleri korunmalıdır.
+
+Power-panic açılışta LOW bulunursa `startup_low`, yeni düşen kenarda `falling_edge` yazılmalıdır.
+IRQ yeniden açılırken gelen kenar, yakalanmış kayıt nedenini değiştirmemelidir.
+Her iki kayıt ERROR seviyesinde kalmalıdır. Eski kayıtlarda ayrım bilgisi yoksa `unknown`
+gösterilmeli; geçmiş kayıt başlangıç veya kenar olayı olarak yeniden yorumlanmamalıdır.
+
+**Kapsam:** Mevcut ELOG alanları kullanılmaktadır; kayıt boyutu ve NVRAM düzeni değişmez.
+Host testleri üretim işleyicilerini, yazıcı/decoder yolunu ve IRQ sırasını kapsar;
+fiziksel güç kesintisi veya kenar süresi ölçümü sayılmaz.
 
 ## Firmware aktarımı, RNG ve power-panic regresyonları
 
@@ -2064,6 +2085,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-29 | 1.93 | E1 snapshot/change ve power-panic startup_low/falling_edge ayrımı; eski kayıtları unknown gösterme ve IRQ regresyonları. |
 | 2026-10-28 | 1.92 | RNG geçmiş seed hata bayrağı için HAL toparlaması; GSM kesinti, FINISH öncesi Apply ve imzalı kurulum kontrolleri. |
 | 2026-10-28 | 1.91 | Firmware retry/kalıcı ilerleme ve transport geçişi; power-panic kenar sırası; açık hedefli web kabulü ve IEC104 bağımlılıkları. |
 | 2026-10-27 | 1.90 | Açık alarmın güncel kimliğini128 kayıtlık cache dönüşünde koruma;256 kayıt ve kalıcı onay kimliği regresyonları. |
