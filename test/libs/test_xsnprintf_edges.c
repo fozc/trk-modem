@@ -17,6 +17,14 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#include <unistd.h>
+#include <fcntl.h>
+#endif
 
 void setUp(void)
 {
@@ -252,6 +260,50 @@ void test_integer_limits_truncate_without_touching_bytes_outside_capacity(void)
             TEST_ASSERT_EQUAL_CHAR(0x55, guarded.buffer[position]);
         }
     }
+}
+
+void test_string_precision_never_reads_beyond_the_accessible_page(void)
+{
+    char output[16];
+    char *pages;
+    size_t page_size;
+#if defined(_WIN32)
+    SYSTEM_INFO info;
+    DWORD old_protection;
+    GetSystemInfo(&info);
+    page_size = (size_t)info.dwPageSize;
+    pages = VirtualAlloc(NULL, page_size * 2U, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    TEST_ASSERT_NOT_NULL(pages);
+    TEST_ASSERT_TRUE(VirtualProtect(pages + page_size, page_size, PAGE_NOACCESS, &old_protection));
+#else
+    const long system_page_size = sysconf(_SC_PAGESIZE);
+    TEST_ASSERT_TRUE(system_page_size > 0);
+    page_size = (size_t)system_page_size;
+    const int descriptor = open("/dev/zero", O_RDWR);
+    TEST_ASSERT_TRUE(descriptor >= 0);
+    pages = mmap(NULL, page_size * 2U, PROT_READ | PROT_WRITE, MAP_PRIVATE, descriptor, 0);
+    (void)close(descriptor);
+    TEST_ASSERT_TRUE(pages != MAP_FAILED);
+    TEST_ASSERT_EQUAL_INT(0, mprotect(pages + page_size, page_size, PROT_NONE));
+#endif
+    char *text = pages + page_size - 3U;
+    (void)memcpy(text, "abc", 3U);
+    /* No NUL is readable after the three characters. Precision zero must
+     * also accept a pointer to the inaccessible page without reading it. */
+    const unsigned int exact = xsnprintf(output, sizeof(output), "%.*s", 3, text);
+    const bool exact_matches = (exact == 3U) && (strcmp(output, "abc") == 0);
+    const unsigned int padded = xsnprintf(output, sizeof(output), "%5.3s", text);
+    const bool padding_matches = (padded == 5U) && (strcmp(output, "  abc") == 0);
+    const unsigned int empty = xsnprintf(output, sizeof(output), "%.*s", 0, pages + page_size);
+    const bool empty_matches = (empty == 0U) && (output[0] == '\0');
+#if defined(_WIN32)
+    TEST_ASSERT_TRUE(VirtualFree(pages, 0U, MEM_RELEASE));
+#else
+    TEST_ASSERT_EQUAL_INT(0, munmap(pages, page_size * 2U));
+#endif
+    TEST_ASSERT_TRUE(exact_matches);
+    TEST_ASSERT_TRUE(padding_matches);
+    TEST_ASSERT_TRUE(empty_matches);
 }
 
 /*** end of file ***/
