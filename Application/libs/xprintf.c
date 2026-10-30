@@ -354,15 +354,22 @@ unsigned int xvfprintf (
 		case 's':					/* String */
 			p = va_arg(arp, char*);		/* Get a pointer argument */
 			if (!p) p = "";				/* Null ptr generates a null string */
-			j = strlen(p);
-			if (prec >= 0 && j > (unsigned int)prec) j = (unsigned int)prec;	/* Limited length of string body */
+            j = 0U;
+            while (((prec < 0) || (j < (unsigned int)prec)) && (p[j] != '\0'))
+            {
+                j++;
+            }
 			for ( ; !(f & 2) && j < w; j++){
 				xfputc(func, pad);	/* Left pads */
 				count++;
 			}
-			while (*p && prec--){
+			while ((prec != 0) && *p){
 				xfputc(func, *p++);/* String body */
 				count++;
+                if (prec > 0)
+                {
+                    prec--;
+                }
 			}
 			while (j++ < w){
 				xfputc(func, ' ');		/* Right pads */
