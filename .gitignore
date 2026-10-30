@@ -1,4 +1,5 @@
 .vscode/
+/.temp_files/
 Debug/
 Release/
 build/
