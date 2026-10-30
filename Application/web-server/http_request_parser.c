@@ -1,6 +1,8 @@
 /**
  * @file http_request_parser.c
  * @brief HTTP request parsing implementation
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  */
 
 #define CSLOG_MODULE LOG_MOD_HTTP
@@ -205,6 +207,10 @@ int http_parse_content_length(const char *headers_start, int headers_length)
             }
 
             /* Parse integer */
+            if ((value_start == line_end) || (*value_start < '0') || (*value_start > '9'))
+            {
+                return -1;
+            }
             int content_length = 0;
             while (value_start < line_end && *value_start >= '0' && *value_start <= '9') {
                 int digit = *value_start - '0';
@@ -213,6 +219,14 @@ int http_parse_content_length(const char *headers_start, int headers_length)
                 }
                 content_length = (content_length * 10) + digit;
                 value_start++;
+            }
+            while ((value_start < line_end) && ((*value_start == ' ') || (*value_start == '\t')))
+            {
+                value_start++;
+            }
+            if (value_start != line_end)
+            {
+                return -1;
             }
             
             /* Validate Content-Length limit */
@@ -430,3 +444,5 @@ bool http_get_query_param(const char *query_string,
 
     return false;  /* Key not found */
 }
+
+/*** end of file ***/

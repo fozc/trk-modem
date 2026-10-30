@@ -129,4 +129,54 @@ void test_alarm_ack_requires_authenticated_admin_and_post(void)
     route_and_handle_request(&request);
 }
 
+void test_firmware_chunk_routes_exact_numeric_parameters_and_aliases(void)
+{
+    static const char *const queries[] =
+    {
+        "t=valid&o=42&cs=65535", "offset=42&cs=65535&t=valid",
+        "foo=999&xcs=123&o=42&cs=65535"
+    };
+    http_request_t request = {.method = HTTP_METHOD_POST, .path = "/c", .body = "abc", .body_length = 3};
+
+    for (size_t index = 0U; index < sizeof(queries) / sizeof(queries[0]); index++)
+    {
+        request.query_string = (char *)queries[index];
+        http_handlers_is_authenticated_ExpectAndReturn(true);
+        http_handlers_is_admin_ExpectAndReturn(true);
+        handle_fw_chunk_Expect(42U, (const uint8_t *)request.body, 3U, true, 65535U);
+        route_and_handle_request(&request);
+    }
+    request.path = "/fw_chunk";
+    request.query_string = "offset=4294967295";
+    http_handlers_is_authenticated_ExpectAndReturn(true);
+    http_handlers_is_admin_ExpectAndReturn(true);
+    handle_fw_chunk_Expect(UINT32_MAX, (const uint8_t *)request.body, 3U, false, 0U);
+    route_and_handle_request(&request);
+}
+
+void test_invalid_firmware_chunk_parameters_never_reach_update_handler(void)
+{
+    static const char *const queries[] =
+    {
+        "o=-1", "o=+1", "o=abc", "o=", "o", "o=12x", "o=4294967296",
+        "o=9999999999999999999999", "cs=65536", "cs=-1", "cs=", "cs", "cs=12x",
+        "o=1&offset=2", "cs=1&cs=2"
+    };
+    http_request_t request = {.method = HTTP_METHOD_POST, .path = "/c", .body = "abc", .body_length = 3};
+
+    for (size_t index = 0U; index < sizeof(queries) / sizeof(queries[0]); index++)
+    {
+        request.query_string = (char *)queries[index];
+        http_handlers_is_authenticated_ExpectAndReturn(true);
+        http_handlers_is_admin_ExpectAndReturn(true);
+        http_send_bad_request_Expect();
+        route_and_handle_request(&request);
+    }
+    request.query_string = "foo=123&xcs=456";
+    http_handlers_is_authenticated_ExpectAndReturn(true);
+    http_handlers_is_admin_ExpectAndReturn(true);
+    handle_fw_chunk_Expect(0U, (const uint8_t *)request.body, 3U, false, 0U);
+    route_and_handle_request(&request);
+}
+
 /*** end of file ***/
