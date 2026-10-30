@@ -489,7 +489,41 @@ ARM derlemesi, Doxygen ve entegrasyon sözleşmeleri
 Bu paket çalışan modem stack'ini değiştirmez; host TCP doğrulaması fiziksel
 GSM/donanım kabul testi sayılmaz.
 
+## UART gönderim ve alım teşhisi
+
+**Amaç:** HTTP gönderiminde son `OK` beklenirken UART aktarımı ile modem
+yanıtını birbirinden ayırmak.
+
+**Kullanım yeri:** `GSM_LOG_VERBOSE` açıkken `AT DIAG` kayıtları ve
+`gsm/test_at_engine_scenario.c` regresyonları.
+
+`TX_ACCEPTED`, HAL'in DMA gönderimini başlatmayı kabul ettiğini belirtir.
+`TX_REJECTED`, başlatmanın başarısız olduğunu belirtir; HAL sonucu ayrı hata
+satırındadır. `id` veri işlemini, `attempt` gönderim denemesini, `len` bayt
+sayısını gösterir. `tc` bütün AT/veri gönderimlerinin UART TC tamamlanma
+sayacıdır; `tc_tick` son tamamlanmanın milisaniye zamanıdır. `busy`, kaydın
+alındığı anda gönderim tamamlanmasının beklendiğini gösterir. Sayaçlar bağımsız
+okunur; aynı anda alınmış çok alanlı bir donanım ölçümü değildir.
+
+`RX bytes` AT motoruna teslim edilen baytları, `dropped` dolu halka tamponuna
+yazılamayan baytları sayar. `pe/fe/ne/ore`, parity/framing/noise/overrun hata
+bayraklarının kesmede gözlenme sayılarıdır; kaybolan bayt sayısı değildir.
+Sayaçlar AT reset/cancel sırasında korunmalıdır. Yük içeriği kaydedilmemelidir.
+
+**Doğrulama:** `test/` içinde
+`ruby -S ceedling "test:pattern[(at_engine|at_socket)]"` çalıştırılmalıdır.
+Host testleri tekrar denemelerini, hata sayaçlarını, UART tamamlanma zamanını
+ve yükün logda gizlenmesini sınar. Fiziksel UART hattını ölçmez.
+
 ## GSM SIM, SMS ve AT zamanlama testleri
+
+Ham veri, modem prompt (veri istemi) verdikten sonra en fazla iki kez
+gönderilmelidir: ilk gönderim ve bir retry (yeniden deneme). İkinci denemede
+de son `OK` alınamazsa mevcut toparlanma yolu kullanılmalıdır.
+AT komutlarının kendi retry sayıları bu kuralla değişmez.
+Prompt ile birlikte veya prompt sonrasında, yük başlamadan önce kapanma
+bildirimi görülürse yeni yük verilmemelidir. Modem data mode (veri modu)
+durumu belirsiz olduğundan mevcut modem toparlanması kullanılmalıdır.
 
 **Amaç:** SIM durumunu, alınan SMS callback'ini ve AT beklemelerini sınamak.
 

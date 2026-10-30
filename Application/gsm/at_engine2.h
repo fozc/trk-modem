@@ -39,6 +39,7 @@ bool at_engine_send_at_command(const void *p_cmd, uint16_t cmd_len,
                                const void *p_expected_response,
                                uint8_t expected_response_len,
                                uint8_t retry_count, uint32_t timeout);
+/** @brief Send payload after a prompt, with at most two attempts. */
 bool at_engine_send_data(const uint8_t *p_data, uint16_t data_len, uint32_t timeout);
 at_engine_result_t at_engine_get_result(void);
 int32_t at_engine_process(void);
@@ -83,6 +84,14 @@ void at_engine_cancel(void);
 const char *at_engine_get_state_str(void);
 
 /* ---------- ISR Integration ---------- */
+
+#define AT_ENGINE_RX_PARITY_ERROR  1U
+#define AT_ENGINE_RX_FRAMING_ERROR 2U
+#define AT_ENGINE_RX_NOISE_ERROR   4U
+#define AT_ENGINE_RX_OVERRUN_ERROR 8U
+
+/** @brief Count UART error events before the ISR clears their hardware flags. */
+void at_engine_uart_rx_error(uint32_t errors);
 
 /**
  * @brief UART RX byte handler. Call from the USART1 RX interrupt.

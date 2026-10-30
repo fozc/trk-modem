@@ -8,7 +8,24 @@
 #include "mock_gsm_log.h"
 #include "mock_uart.h"
 #include "ring_buff.h"
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
+
+static char diagnostic_log[4096];
+static void capture_diagnostic_log(const char *format, ...)
+{
+    size_t used = strlen(diagnostic_log);
+    va_list args;
+    va_start(args, format);
+    const int count = vsnprintf(diagnostic_log + used, sizeof(diagnostic_log) - used, format, args);
+    va_end(args);
+    TEST_ASSERT_TRUE(count >= 0);
+    TEST_ASSERT_TRUE((size_t)count < sizeof(diagnostic_log) - used);
+}
+
+#undef CSLOG_NODT
+#define CSLOG_NODT(...) capture_diagnostic_log(__VA_ARGS__)
 
 #undef CCSLOG
 #define CCSLOG(color, ...) ((void)(color))
@@ -28,6 +45,7 @@ static uint32_t abort_calls;
 static uint32_t urc_calls;
 static uint32_t liveness_calls;
 static HAL_StatusTypeDef dma_result;
+static gsm_log_level_t diagnostic_log_level;
 static bool abort_result;
 static bool complete_during_start;
 static uint8_t transmitted[AT_ENGINE_RX_BUFFER_SIZE];
@@ -38,6 +56,11 @@ static uint32_t get_tick(int call_count)
 {
     (void)call_count;
     return now;
+}
+static gsm_log_level_t get_diagnostic_log_level(int call_count)
+{
+    (void)call_count;
+    return diagnostic_log_level;
 }
 HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *handle,
     const uint8_t *data, uint16_t length)
@@ -74,6 +97,17 @@ void gsm_wtd_liveness_ping(void)
 void setUp(void)
 {
     memset(&at_engine, 0, sizeof(at_engine));
+    diagnostic_log[0] = '\0';
+    atomic_store(&uart_rx_bytes, 0U);
+    atomic_store(&uart_rx_dropped, 0U);
+    atomic_store(&uart_tx_completed, 0U);
+    atomic_store(&uart_tx_complete_tick, 0U);
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        atomic_store(&uart_rx_errors[index], 0U);
+    }
+    data_tx_id = 0U;
+    data_tx_attempt = 0U;
     s_tx_done_flag = 0U;
     now = 100U;
     dma_calls = 0U;
@@ -86,7 +120,8 @@ void setUp(void)
     complete_during_start = false;
     memset(last_urc, 0, sizeof(last_urc));
     bsp_get_tick_Stub(get_tick);
-    gsm_log_get_level_IgnoreAndReturn(GSM_LOG_OFF);
+    diagnostic_log_level = GSM_LOG_OFF;
+    gsm_log_get_level_Stub(get_diagnostic_log_level);
     at_engine_init();
 }
 void tearDown(void)
@@ -277,7 +312,7 @@ void test_at_data_mode_preserves_binary_bytes(void)
     TEST_ASSERT_EQUAL_UINT16(sizeof(payload), transmitted_len);
 }
 
-void test_payload_timeout_allows_exactly_two_transmissions(void)
+void test_payload_timeout_sends_binary_payload_twice_and_ignores_late_ok(void)
 {
     const uint8_t payload[] = {0U, 0x1AU, 0xFFU};
     TEST_ASSERT_TRUE(at_engine_send_data(payload, sizeof(payload), 1000U));
@@ -292,6 +327,8 @@ void test_payload_timeout_allows_exactly_two_transmissions(void)
     now += 1000U;
     (void)at_engine_process();
     (void)at_engine_process();
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_TIMEOUT, at_engine_get_result());
+    receive_bytes("\r\nOK\r\n", 6U);
     TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_TIMEOUT, at_engine_get_result());
     TEST_ASSERT_EQUAL_UINT32(2U, dma_calls);
 }
@@ -741,6 +778,92 @@ void test_srecv_payload_view_is_cleared_by_buffer_lifecycle(void)
     }
 }
 
+void test_uart_diagnostics_count_errors_and_ring_drops_without_resetting_on_cancel(void)
+{
+    at_engine_uart_rx_error(AT_ENGINE_RX_PARITY_ERROR | AT_ENGINE_RX_OVERRUN_ERROR);
+    at_engine_uart_rx_error(AT_ENGINE_RX_FRAMING_ERROR | AT_ENGINE_RX_NOISE_ERROR | AT_ENGINE_RX_OVERRUN_ERROR);
+    at_engine_uart_rx_error(0U);
+    for (size_t index = 0U; index < AT_ENGINE_RX_BUFFER_SIZE; index++)
+    {
+        at_engine_rx_byte('A');
+    }
+    TEST_ASSERT_EQUAL_UINT32(AT_ENGINE_RX_BUFFER_SIZE - 1U, rbuff_available(&rx_ringbuf));
+    TEST_ASSERT_EQUAL_UINT32(AT_ENGINE_RX_BUFFER_SIZE, atomic_load(&uart_rx_bytes));
+    TEST_ASSERT_EQUAL_UINT32(1U, atomic_load(&uart_rx_dropped));
+    TEST_ASSERT_EQUAL_UINT32(1U, atomic_load(&uart_rx_errors[0]));
+    TEST_ASSERT_EQUAL_UINT32(1U, atomic_load(&uart_rx_errors[1]));
+    TEST_ASSERT_EQUAL_UINT32(1U, atomic_load(&uart_rx_errors[2]));
+    TEST_ASSERT_EQUAL_UINT32(2U, atomic_load(&uart_rx_errors[3]));
+    at_engine_cancel();
+    TEST_ASSERT_EQUAL_UINT32(0U, rbuff_available(&rx_ringbuf));
+    TEST_ASSERT_EQUAL_UINT32(1U, atomic_load(&uart_rx_dropped));
+    TEST_ASSERT_EQUAL_UINT32(2U, atomic_load(&uart_rx_errors[3]));
+    start_command("AT\r", 1U, 1000U);
+    receive_bytes("\r\nOK\r\n", 6U);
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_OK, at_engine_get_result());
+}
+
+void test_data_diagnostics_report_completion_time_and_preserve_payload_redaction(void)
+{
+    static const uint8_t payload[] = "password=PRIVATE_DATA";
+    diagnostic_log_level = GSM_LOG_VERBOSE;
+    TEST_ASSERT_TRUE(at_engine_send_data(payload, sizeof(payload) - 1U, 1000U));
+    TEST_ASSERT_FALSE(at_engine_send_data(payload, sizeof(payload) - 1U, 1000U));
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL_MEMORY(payload, transmitted, sizeof(payload) - 1U);
+    now = 237U;
+    at_engine_dma_tx_complete_callback();
+    receive_bytes("\r\nOK\r\n", 6U);
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_OK, at_engine_get_result());
+    TEST_ASSERT_NOT_NULL_MESSAGE(strstr(diagnostic_log, "TX_ACCEPTED id=1 attempt=1"), diagnostic_log);
+    TEST_ASSERT_NOT_NULL(strstr(diagnostic_log, "OK id=1 attempt=1"));
+    TEST_ASSERT_NOT_NULL(strstr(diagnostic_log, "tc=1 tc_tick=237 busy=0"));
+    TEST_ASSERT_NULL(strstr(diagnostic_log, "PRIVATE_DATA"));
+}
+
+void test_data_timeout_reports_second_attempt_after_uart_completion(void)
+{
+    const uint8_t payload[] = {1U, 2U, 3U};
+    diagnostic_log_level = GSM_LOG_VERBOSE;
+    TEST_ASSERT_TRUE(at_engine_send_data(payload, sizeof(payload), 1000U));
+    (void)at_engine_process();
+    at_engine_dma_tx_complete_callback();
+    now = 1100U;
+    (void)at_engine_process();
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL_UINT32(2U, dma_calls);
+    TEST_ASSERT_EQUAL_MEMORY(payload, transmitted, sizeof(payload));
+    at_engine_dma_tx_complete_callback();
+    now = 2100U;
+    (void)at_engine_process();
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_TIMEOUT, at_engine_get_result());
+    TEST_ASSERT_NOT_NULL(strstr(diagnostic_log, "TIMEOUT id=1 attempt=2"));
+    TEST_ASSERT_NOT_NULL(strstr(diagnostic_log, "tc=2 tc_tick=1100 busy=0"));
+}
+
+void test_data_retry_waits_for_previous_dma_abort_before_starting_second_dma(void)
+{
+    const uint8_t payload[] = {1U, 2U, 3U};
+    TEST_ASSERT_TRUE(at_engine_send_data(payload, sizeof(payload), 1000U));
+    (void)at_engine_process();
+    now = 1100U;
+    (void)at_engine_process();
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL_UINT32(1U, dma_calls);
+    TEST_ASSERT_FALSE(at_engine_is_tx_done());
+    now = 100U + AT_ENGINE_TX_TIMEOUT_MS;
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL_UINT32(2U, dma_calls);
+    TEST_ASSERT_EQUAL_UINT32(1U, abort_calls);
+    now += 1000U;
+    (void)at_engine_process();
+    (void)at_engine_process();
+    TEST_ASSERT_EQUAL(AT_ENGINE_RESULT_TIMEOUT, at_engine_get_result());
+    at_engine_reset();
+    TEST_ASSERT_TRUE(at_engine_is_tx_done());
+    TEST_ASSERT_EQUAL_UINT32(2U, abort_calls);
+}
 /*** end of file ***/
 
 void test_reset_checks_stuck_transport_even_after_failed_dma_start(void)

@@ -229,7 +229,7 @@ void test_web_carrier_loss_does_not_clear_iec104_tx_or_other_at_query(void)
     TEST_ASSERT_EQUAL(GSM_LS_CHECK_SOCKET, ctx->state);
 }
 
-void test_prompt_wait_is_not_abandoned_for_close_request_or_carrier_loss(void)
+void test_carrier_loss_while_waiting_for_prompt_recovers_without_sending_payload(void)
 {
     gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_WEB];
     ctx->state = GSM_LS_DATA_MODE;
@@ -239,6 +239,30 @@ void test_prompt_wait_is_not_abandoned_for_close_request_or_carrier_loss(void)
     gsm_listener_web_process();
     TEST_ASSERT_EQUAL(GSM_LS_DATA_MODE, ctx->state);
     TEST_ASSERT_EQUAL(GSM_INIT_PHASE_WAIT_RESPONSE, ctx->phase);
+    gsm_engine_get_query_res_ExpectAndReturn(GSM_RESPONSE_OK);
+    gsm_reset_process_old_Expect();
+    gsm_set_tx_error_Expect();
+    gsm_set_tx_state_Expect(GSM_TX_READY);
+    gsm_listener_web_process();
+}
+
+void test_carrier_loss_after_prompt_before_payload_start_recovers_without_socket_send(void)
+{
+    gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_WEB];
+    ctx->state = GSM_LS_SEND_DATA;
+    ctx->phase = GSM_INIT_PHASE_SEND;
+    carrier_lost = 1U;
+    gsm_reset_process_old_Expect();
+    gsm_set_tx_error_Expect();
+    gsm_set_tx_state_Expect(GSM_TX_READY);
+    gsm_listener_web_process();
+}
+
+void test_connected_prompt_starts_payload_and_preserves_response_wait(void)
+{
+    gsm_listener_ctx_t *ctx = &gsm.listener[GSM_LISTENER_WEB];
+    ctx->state = GSM_LS_DATA_MODE;
+    ctx->phase = GSM_INIT_PHASE_WAIT_RESPONSE;
     gsm_engine_get_query_res_ExpectAndReturn(GSM_RESPONSE_OK);
     gsm_set_busy_Expect();
     gsm_set_socket_state_Expect(LISTENER_SOCKET, SOCKET_DATA_MODE);
