@@ -404,6 +404,12 @@ void scp_process(uint32_t now_ms)
 
 static bool can_retry_error(const scp_packet_t *packet)
 {
+    if ((cmd_ctx.last_req.cmd == RF_SCP_CMD_PWR_COMMAND) &&
+        (cmd_ctx.last_req.data_len == 2U) && (cmd_ctx.last_req.data[0] == 0x05U))
+    {
+        /* Battery replacement is an operator action, never a new automatic command. */
+        return false;
+    }
     if (RF_SCP_CMD_LOG_CONSUME_TO == packet->cmd)
     {
         /* A new legacy consume attempt needs a fresh HEAD/ordinal check.
@@ -645,6 +651,11 @@ static void on_time_sync_done(scp_cmd_result_t result,
     else
     {
         CSLOG_WARN("[RF] TIME_SYNC failed; next BOOT/hour may retry\r\n");
+        if (time_sync_boot)
+        {
+            time_sync_boot = false;
+            bridge_to_inventory();
+        }
     }
 }
 
