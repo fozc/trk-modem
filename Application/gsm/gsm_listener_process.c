@@ -396,6 +396,18 @@ static void handle_data_mode(const gsm_listener_cfg_t *p_cfg,
 	switch (res)
 	{
 		case GSM_RESPONSE_OK:
+
+            if (gsm_listener_get_no_carrier(p_cfg->id))
+            {
+                /* A prompt and peer close can arrive together. Do not feed
+                 * a closed socket, or issue socket commands in data mode. */
+                CSLOG_WARN("[LS:%u] Peer closed after prompt; resetting\r\n", (unsigned int)p_cfg->id);
+                gsm_reset_process_old();
+                gsm_set_tx_error();
+                gsm_set_tx_state(GSM_TX_READY);
+                gsm_set_free();
+                return;
+            }
 			gsm_set_busy();
 			gsm_set_socket_state(p_cfg->socket_id, SOCKET_DATA_MODE);
 			ls_set_state(ctx, GSM_LS_SEND_DATA);
@@ -447,6 +459,16 @@ static void handle_send_data(const gsm_listener_cfg_t *p_cfg,
 {
 	if (ctx->phase == GSM_INIT_PHASE_SEND)
 	{
+        if (gsm_listener_get_no_carrier(p_cfg->id))
+        {
+            /* The prompt was consumed but the payload has not started. */
+            CSLOG_WARN("[LS:%u] Peer closed before payload; resetting\r\n", (unsigned int)p_cfg->id);
+            gsm_reset_process_old();
+            gsm_set_tx_error();
+            gsm_set_tx_state(GSM_TX_READY);
+            gsm_set_free();
+            return;
+        }
 		if (gsm_engine_socket_send(p_cfg->at_cmd[LS_AT_SEND_DATA]))
 		{
 			ctx->phase = GSM_INIT_PHASE_WAIT_RESPONSE;

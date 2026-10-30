@@ -16,6 +16,7 @@
 #include "uart.h"
 #include "main.h"
 #include "gsm_log.h"
+#include <stdatomic.h>
 
 typedef enum
 {
@@ -69,6 +70,39 @@ static uint8_t rx_buffer[AT_ENGINE_RX_BUFFER_SIZE] = {0};
 static at_engine_t at_engine = {0};
 static rbuff_t rx_ringbuf;
 
+/* USART1 ISR is the only writer of these cumulative counters. Main reads
+ * independent diagnostic values without masking RX or resetting the counters.
+ * No cross-field publication or coherent multi-field snapshot is required. */
+static _Atomic uint32_t uart_rx_bytes;
+static _Atomic uint32_t uart_rx_dropped;
+static _Atomic uint32_t uart_rx_errors[4];
+static _Atomic uint32_t uart_tx_completed;
+static _Atomic uint32_t uart_tx_complete_tick;
+__extension__ _Static_assert(__atomic_always_lock_free(sizeof(uint32_t), 0), "UART diagnostic counters must be lock-free");
+static uint32_t data_tx_id;
+static uint8_t data_tx_attempt;
+
+static void log_uart_diagnostics(const char *event)
+{
+    if (gsm_log_get_level() < GSM_LOG_VERBOSE)
+    {
+        return;
+    }
+    CSLOG("AT DIAG %s id=%u attempt=%u tick=%u len=%u tc=%u tc_tick=%u busy=%u\r\n",
+          event, (unsigned int)data_tx_id, (unsigned int)data_tx_attempt,
+          (unsigned int)bsp_get_tick(), (unsigned int)at_engine.data_len,
+          (unsigned int)atomic_load_explicit(&uart_tx_completed, memory_order_relaxed),
+          (unsigned int)atomic_load_explicit(&uart_tx_complete_tick, memory_order_relaxed),
+          (unsigned int)!at_engine_is_tx_done());
+    CSLOG("AT DIAG RX bytes=%u dropped=%u pe=%u fe=%u ne=%u ore=%u\r\n",
+          (unsigned int)atomic_load_explicit(&uart_rx_bytes, memory_order_relaxed),
+          (unsigned int)atomic_load_explicit(&uart_rx_dropped, memory_order_relaxed),
+          (unsigned int)atomic_load_explicit(&uart_rx_errors[0], memory_order_relaxed),
+          (unsigned int)atomic_load_explicit(&uart_rx_errors[1], memory_order_relaxed),
+          (unsigned int)atomic_load_explicit(&uart_rx_errors[2], memory_order_relaxed),
+          (unsigned int)atomic_load_explicit(&uart_rx_errors[3], memory_order_relaxed));
+}
+
 static void log_response(const char *p_result_str);
 
 /* TX state for non-blocking (interrupt-driven) send */
@@ -95,7 +129,22 @@ bool at_engine_get_log(void)
 
 void at_engine_rx_byte(uint8_t byte)
 {
-	rbuff_write_byte(&rx_ringbuf, byte);
+    (void)atomic_fetch_add_explicit(&uart_rx_bytes, 1U, memory_order_relaxed);
+    if (rbuff_write_byte(&rx_ringbuf, byte) != 0U)
+    {
+        (void)atomic_fetch_add_explicit(&uart_rx_dropped, 1U, memory_order_relaxed);
+    }
+}
+
+void at_engine_uart_rx_error(uint32_t errors)
+{
+    for (size_t index = 0U; index < 4U; index++)
+    {
+        if ((errors & (1U << index)) != 0U)
+        {
+            (void)atomic_fetch_add_explicit(&uart_rx_errors[index], 1U, memory_order_relaxed);
+        }
+    }
 }
 
 void at_engine_send_with_dma(const uint8_t *p_data, uint16_t len)
@@ -110,8 +159,12 @@ void at_engine_send_with_dma(const uint8_t *p_data, uint16_t len)
 	if(res != HAL_OK)
 	{
 		s_tx_done_flag = 0U; /* Failed to start DMA, allow retry */
-		CSLOG_ERR("AT [DMA TX ERROR]\r\n");
+		CSLOG_ERR("AT [DMA TX ERROR] status=%u\r\n", (unsigned int)res);
 	}
+    if (at_engine.is_data_mode)
+    {
+        log_uart_diagnostics((res == HAL_OK) ? "TX_ACCEPTED" : "TX_REJECTED");
+    }
 }
 
 void at_engine_init(void)
@@ -220,10 +273,16 @@ bool at_engine_send_data(const uint8_t *p_data, uint16_t data_len, uint32_t time
 	/* Include TX duration at the configured 115200 bps. */
 	uint32_t adjusted_timeout = timeout + (uint32_t)(0.0868f * (float)data_len);
 
-	return at_engine_send_cmd(NULL, 0U,
+	bool accepted = at_engine_send_cmd(NULL, 0U,
 		p_data, data_len, true,
 		(const uint8_t *)"OK\r\n", 4U,
-		2U, adjusted_timeout);
+        2U, adjusted_timeout);
+    if (accepted)
+    {
+        data_tx_id++;
+        data_tx_attempt = 0U;
+    }
+    return accepted;
 }
 
 static void at_engine_send_process(void)
@@ -262,7 +321,8 @@ static void at_engine_send_process(void)
 
 	if(at_engine.is_data_mode)
 	{
-		/* data mode TX — no log */
+        /* Record metadata only; never log payload bytes. */
+        data_tx_attempt++;
 		at_engine_send_with_dma(at_engine.data_ptr, at_engine.data_len);
 		//send_at_command(at_engine.cmd, at_engine.cmd_len);
 	}
@@ -429,6 +489,10 @@ static bool check_urc_in_response(void)
  */
 static void log_response(const char *p_result_str)
 {
+    if (at_engine.is_data_mode || (strcmp(p_result_str, "TIMEOUT") == 0))
+    {
+        log_uart_diagnostics(p_result_str);
+    }
 	if (gsm_log_get_level() < GSM_LOG_VERBOSE)
 	{
 		return;
@@ -1052,6 +1116,8 @@ bool at_engine_is_tx_done(void)
 
 void at_engine_dma_tx_complete_callback(void)
 {
+    atomic_store_explicit(&uart_tx_complete_tick, bsp_get_tick(), memory_order_relaxed);
+    (void)atomic_fetch_add_explicit(&uart_tx_completed, 1U, memory_order_relaxed);
 	s_tx_done_flag = 0U;
 }
 
@@ -1111,4 +1177,4 @@ void at_engine_tx_complete_callback(void)
 	s_tx_done_flag = 0U;
 }
 #endif
-/* End of file */
+/*** end of file ***/

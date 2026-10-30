@@ -40,6 +40,7 @@ void setUp(void)
     logs[0] = '\0';
     log_level = GSM_LOG_VERBOSE;
     gsm_log_get_level_Stub(get_log_level);
+    bsp_get_tick_IgnoreAndReturn(0U);
 }
 void tearDown(void)
 {

@@ -29,6 +29,7 @@
 #include "rf_uart_bridge.h"
 #include "shell.h"
 #include "rf_hil_transport.h"
+#include "at_engine2.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -298,6 +299,16 @@ void USART1_IRQHandler(void)
   /* USER CODE BEGIN USART1_IRQn 0 */
 	uint32_t isrflags = READ_REG(USART1->ISR);
 	uint32_t cr1its   = READ_REG(USART1->CR1);
+
+    uint32_t rx_errors = 0U;
+    if ((isrflags & USART_ISR_PE) != 0U) { rx_errors |= AT_ENGINE_RX_PARITY_ERROR; }
+    if ((isrflags & USART_ISR_FE) != 0U) { rx_errors |= AT_ENGINE_RX_FRAMING_ERROR; }
+    if ((isrflags & USART_ISR_NE) != 0U) { rx_errors |= AT_ENGINE_RX_NOISE_ERROR; }
+    if ((isrflags & USART_ISR_ORE) != 0U) { rx_errors |= AT_ENGINE_RX_OVERRUN_ERROR; }
+    if (rx_errors != 0U)
+    {
+        at_engine_uart_rx_error(rx_errors);
+    }
 
 	/* --- Error flags: clear unconditionally --- */
 	if (LL_USART_IsActiveFlag_PE(USART1))  { LL_USART_ClearFlag_PE(USART1);  }
