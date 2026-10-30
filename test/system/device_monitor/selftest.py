@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Soak harness cihazsiz self-test'leri.
+"""Device monitor cihazsiz self-test'leri.
 
 Donanim ACMAZ: konsol/web/modbus portlarina baglanmaz; yalniz saf
 mantik (rotasyon, scheduler, anomali kurallari, trim defteri, kanit
 pili, modbus siniflandirici) ve modul importlari denetlenir.
 `python selftest.py` ile tek basina koşar; integration sarmalayici
-(test/integration/soak) her koşuda once bunu calistirir.
+(test/integration/device_monitor) her koşuda once bunu calistirir.
 """
 
 import json
@@ -211,7 +211,7 @@ def test_module_imports():
         import probes.iec104_probe  # noqa: F401
         import probes.iec104_master_worker  # noqa: F401
         import probes.modbus_map_check  # noqa: F401
-        import run_soak  # noqa: F401
+        import run_monitor  # noqa: F401
         check("module_imports", True)
     except Exception as error:     # noqa: BLE001
         check("module_imports", False, repr(error))
@@ -576,14 +576,85 @@ def test_summarize():
             out.write(json.dumps({"action": "periodic_cycle",
                                   "cycle_ms": 60000.0}) + "\n")
             out.write(json.dumps({"action": "gi", "ok": True}) + "\n")
+            out.write(json.dumps({"action": "gi", "ok": None,
+                                  "skip": "no_in_use_lines"}) + "\n")
         evidence = run_dir / "evidence" / "001-hardfault"
         evidence.mkdir(parents=True)
         text = build_summary(run_dir)
         check("summarize_content",
               "abc1234" in text and "hardfault" in text and "| 2 |" in text
-              and "1/1 basarili" in text and "001-hardfault" in text and
+              and "1 basarili, 0 basarisiz, 1 skip" in text
+              and "001-hardfault" in text and
               "60" in text,
               text[:400])
+
+
+def test_worker_reconnect_and_gi():
+    from types import SimpleNamespace
+    from probes.iec104_master_worker import Iec104MasterWorker
+
+    calls = []
+    records = []
+    findings = []
+    worker = Iec104MasterWorker.__new__(Iec104MasterWorker)
+    worker.master = SimpleNamespace(is_connected=True)
+    check("reconnect_keeps_open_connection", worker._reconnect())
+
+    def connect(timeout_s):
+        calls.append(("connect", timeout_s))
+        worker.master.is_connected = True
+        return False
+
+    worker.master.is_connected = False
+    worker.master.connect = connect
+    check("reconnect_keeps_connection_opened_during_wait",
+          worker._reconnect() and calls == [("connect", 30.0)])
+    worker.writer = SimpleNamespace(write=records.append)
+    worker.detector = SimpleNamespace(report=lambda *args: findings.append(args))
+    worker.has_in_use_lines = False
+    worker.gi_tour()
+    check("gi_no_lines_is_skip", records[-1]["ok"] is None and
+          records[-1]["skip"] == "no_in_use_lines")
+
+    worker.has_in_use_lines = True
+    worker.master.interrogate = lambda qualifier: False
+    worker.gi_tour()
+    check("gi_send_failure_is_recorded", records[-1]["ok"] is False and
+          records[-1]["stage"] == "send" and findings[-1][0] == "iec104_gi_failed")
+
+    calls.clear()
+    worker.master.interrogate = lambda qualifier: calls.append("send") or True
+
+    def collect(master, start, qualifier, data_deadline_s):
+        calls.append("collect")
+        return True, {"stage": "done"}
+
+    worker.modules = {"cases": SimpleNamespace(_collect_interrogation=collect)}
+    worker.validator = SimpleNamespace(verify_gi=lambda detail:
+                                      (True, {"action": "gi", "ok": True}, []))
+    worker.gi_tour()
+    check("gi_sends_before_collecting", calls == ["send", "collect"] and records[-1]["ok"] is True)
+
+
+def test_setup_failure_runs_shutdown():
+    from run_monitor import DeviceMonitor
+
+    calls = []
+    monitor = DeviceMonitor.__new__(DeviceMonitor)
+    monitor.abort_reason = None
+
+    def fail_setup():
+        raise RuntimeError("test setup failure")
+
+    monitor.setup = fail_setup
+    monitor.shutdown = lambda: calls.append("shutdown")
+    try:
+        monitor.run()
+    except RuntimeError:
+        check("setup_failure_closes_resources", calls == ["shutdown"] and
+              "test setup failure" in monitor.abort_reason)
+    else:
+        check("setup_failure_closes_resources", False, "setup failure was swallowed")
 
 
 def main():
@@ -603,6 +674,8 @@ def main():
         test_chain_helpers,
         test_rf_transitions,
         test_summarize,
+        test_worker_reconnect_and_gi,
+        test_setup_failure_runs_shutdown,
     ]
     for test in tests:
         test()

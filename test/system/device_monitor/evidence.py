@@ -22,7 +22,10 @@ import time
 from pathlib import Path
 
 COMMAND_BATTERY = [
-    ("rstsrc", 3.0),
+    # rstsrc burada DEGIL: reset_source_shell_init() app_main'den cagrilmadigi
+    # icin komut bu imajda kayitli degil ("Command not found", accept-4 kaniti);
+    # reset nedeni elog dump icindeki RESET_CAUSE kayitlarindan okunur.
+    ("elog info", 4.0),
     ("elog dump 20", 6.0),
     ("bootlog dump", 6.0),
     ("stats", 3.0),

@@ -55,7 +55,7 @@ class ModbusProbe:
         self.writer = writer
         self.detector = detector
         self.rng = rng
-        self.modbus = load_module("soak_modbus_device", MODBUS_PATH)
+        self.modbus = load_module("device_monitor_modbus_device", MODBUS_PATH)
         self.modbus.SLAVE = slave
         self.modbus.RESPONSE_TIMEOUT_S = timeout_s
         self.ser = serial.Serial(port, baud, bytesize=8, parity="N",

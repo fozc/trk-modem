@@ -2,7 +2,7 @@
 """Koşu dizininden summary.md ureten cevrimdisi analizci.
 
 Kullanim:
-  python summarize.py test/build/soak/<timestamp>
+  python summarize.py test/build/device_monitor/<timestamp>
 
 Okur: manifest.json, metrics.json, anomalies.jsonl, chains.jsonl,
 iec104.jsonl, rf.jsonl; evidence/ dizinini listeler. Yazdigi summary.md:
@@ -88,7 +88,7 @@ def build_summary(run_dir):
     iec104 = read_jsonl(run_dir / "iec104.jsonl")
     rf_states = read_jsonl(run_dir / "rf.jsonl")
 
-    lines = ["# Soak Summary", ""]
+    lines = ["# Cihaz Izleme Ozeti", ""]
     lines.append("- Koşu dizini: `%s`" % run_dir)
     lines.append("- Git: `%s` (dirty=%s) | host=%s | tohum=%s | kip=%s" %
                  (manifest.get("git_short"), manifest.get("git_dirty_files"),
@@ -150,8 +150,11 @@ def build_summary(run_dir):
                       max(timings)))
     else:
         lines.append("- Periyodik cevrim kaydi yok.")
-    ok_gi = sum(1 for r in gi if r.get("ok"))
-    lines.append("- GI turlari: %d/%d basarili" % (ok_gi, len(gi)))
+    ok_gi = sum(1 for r in gi if r.get("ok") is True)
+    skipped_gi = sum(1 for r in gi if r.get("skip"))
+    failed_gi = sum(1 for r in gi if r.get("ok") is False)
+    lines.append("- GI turlari: %d basarili, %d basarisiz, %d skip "
+                 "(hatta hizmet yok)" % (ok_gi, failed_gi, skipped_gi))
     lines.append("")
 
     lines.append("## RF")

@@ -1,6 +1,6 @@
 """Kayit katmani: JSONL yazicilar, ham log rotasyonu, atomik metrics.
 
-Soak harness'in tum cikti dosyalari bu katmandan gecer:
+Device monitor'in tum cikti dosyalari bu katmandan gecer:
 
 - JsonlWriter   : satir basina flush, otomatik wall/mono zaman damgasi
 - RotatingRawLog: boyut esikli rotasyon (serial.log.1, .2, ...); dosya

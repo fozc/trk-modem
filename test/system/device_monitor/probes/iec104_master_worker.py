@@ -18,7 +18,7 @@ ariza uzayindan gelen spontaneler ayri "fault_event" kaydi uretir
 (Faz 3 zincir dogrulayicisinin girdisi).
 
 Tek istemci kurali: 2404'te tek master - bu worker acikken Faz 1
-IecProbeTask koşmaz (run_soak ikisinden birini secer).
+IecProbeTask koşmaz (run_monitor ikisinden birini secer).
 """
 
 import datetime
@@ -39,7 +39,7 @@ FAULT_IOA_FLOOR = 100000
 
 
 class MasterUnavailable(Exception):
-    """c104/venv eksik; run_soak probe kipine duser ya da hizli hata verir."""
+    """c104/venv eksik; run_monitor probe kipine duser ya da hizli hata verir."""
 
 
 def load_master_modules():
@@ -55,17 +55,17 @@ def load_master_modules():
             % (error,))
     return {
         "c104": sys.modules["c104"],
-        "apdu": load_module("soak_apdu", IEC104_DIR / "apdu.py"),
+        "apdu": load_module("device_monitor_apdu", IEC104_DIR / "apdu.py"),
         "master104": load_module(
-            "soak_master104", IEC104_DIR / "master104.py",
+            "device_monitor_master104", IEC104_DIR / "master104.py",
             extra_sys_path=[IEC104_DIR]),
         "cases": load_module(
-            "soak_cases", IEC104_DIR / "cases.py", extra_sys_path=[IEC104_DIR]),
+            "device_monitor_cases", IEC104_DIR / "cases.py", extra_sys_path=[IEC104_DIR]),
         "cases_periodic": load_module(
-            "soak_cases_periodic", IEC104_DIR / "cases_periodic.py",
+            "device_monitor_cases_periodic", IEC104_DIR / "cases_periodic.py",
             extra_sys_path=[IEC104_DIR]),
-        "oracle": load_module("soak_oracle_full", IEC104_DIR / "oracle.py"),
-        "evidence": load_module("soak_jsonl_evidence",
+        "oracle": load_module("device_monitor_oracle_full", IEC104_DIR / "oracle.py"),
+        "evidence": load_module("device_monitor_jsonl_evidence",
                                 IEC104_DIR / "evidence.py"),
     }
 
@@ -286,6 +286,7 @@ class Iec104MasterWorker:
         self.running = False
         self.monitor_thread = None
         self.cursor = time.monotonic()
+        self.ever_connected = False
 
     # -- yasam dongusu -------------------------------------------------
 
@@ -294,7 +295,7 @@ class Iec104MasterWorker:
         self.running = True
         self.monitor_thread = threading.Thread(target=self._monitor,
                                                daemon=True,
-                                               name="soak-iec104")
+                                               name="device-monitor-iec104")
         self.monitor_thread.start()
 
     def stop(self):
@@ -307,13 +308,17 @@ class Iec104MasterWorker:
     def _monitor(self):
         while self.running:
             if not self.master.is_connected:
-                self.validator.connected_since = None
-                self.detector.report(
-                    "iec104_master_disconnected", "warning", "iec104",
-                    "master baglantisi kapandi; yeniden baglaniyor")
+                # Ilk baglanti kurulmadan once 'koptu' raporu yanlis
+                # pozitiftir: yalniz en az bir kez baglanmis sonra
+                # dusen baglanti raporlanir.
+                if self.ever_connected:
+                    self.detector.report(
+                        "iec104_master_disconnected", "warning", "iec104",
+                        "master baglantisi kapandi; yeniden baglaniyor")
                 if not self._reconnect():
                     time.sleep(8.0)
                     continue
+                self.ever_connected = True
                 self.validator.connected_since = time.monotonic()
                 self.cursor = time.monotonic()
             frames = self.master.since(self.cursor)
@@ -327,11 +332,20 @@ class Iec104MasterWorker:
             time.sleep(0.25)
 
     def _reconnect(self):
+        if self.master.is_connected:
+            return True
         try:
             if self.master.connect(timeout_s=30.0):
                 return True
         except Exception:           # noqa: BLE001 (baglanma hatasi asagida raporlanir)
             pass
+        # connect() STARTDT_CON beklerken baglanti kurulmus olabilir
+        # (zaten acik baglantida CON bir daha gelmez). Asagidaki
+        # stop/start döngüsü boyle bir saglikli baglantiyi yikmasin -
+        # ilk-baglanti kapanmasinin istemci tarafi kok nedeni buydu
+        # (.temp_files/iec104-first-link-soak-original/calls.jsonl).
+        if self.master.is_connected:
+            return True
         try:
             self.master.stop()
             self.master.start()
@@ -374,13 +388,23 @@ class Iec104MasterWorker:
 
         oracle.iec104_lines_empty: hattsız cihazda GI veri tasimaz - bos
         beklenen kume 'missing' yanlis alarmi uretir (suite bu durumda
-        GI vakalarini atlar).
+        GI vakalarini atlar). Skip kaydi ok=None tasir: basari sayisi
+        ve skip sayisi ayri raporlanir.
         """
         if not self.has_in_use_lines:
-            self.writer.write({"action": "gi", "ok": True,
+            self.writer.write({"action": "gi", "ok": None,
                                "skip": "no_in_use_lines"})
             return
         t0 = time.monotonic()
+        # _collect_interrogation yalniz ACT_CON/ACT_TERM bekler; istegi
+        # suite (i02) gibi once biz gonderiyoruz.
+        if not self.master.interrogate(20):
+            self.detector.report("iec104_gi_failed", "critical", "iec104",
+                                 "GI istegi gonderilemedi (STARTED yarisi)")
+            self.writer.write({"action": "gi", "ok": False,
+                               "stage": "send",
+                               "ms": round((time.monotonic() - t0) * 1000, 1)})
+            return
         ok, detail = self.modules["cases"]._collect_interrogation(
             self.master, t0, 20, data_deadline_s=30.0)
         if not ok:
