@@ -82,6 +82,61 @@ void http_server_init(int (*send_function)(const void *data, int length))
  * REQUEST ROUTING
  * ============================================================================ */
 
+static bool parse_fw_chunk_query(const char *query, uint32_t *offset, uint16_t *checksum, bool *has_checksum)
+{
+    bool has_offset = false;
+
+    while ((query != NULL) && (*query != '\0'))
+    {
+        const char *end = strchr(query, '&');
+        if (end == NULL)
+        {
+            end = query + strlen(query);
+        }
+        const char *equals = memchr(query, '=', (size_t)(end - query));
+        const size_t key_len = (size_t)(((equals != NULL) ? equals : end) - query);
+        const bool is_offset = ((key_len == 1U) && (query[0] == 'o')) ||
+                               ((key_len == 6U) && (memcmp(query, "offset", 6U) == 0));
+        const bool is_checksum = (key_len == 2U) && (memcmp(query, "cs", 2U) == 0);
+
+        if (is_offset || is_checksum)
+        {
+            if ((equals == NULL) || (equals + 1 == end) ||
+                (is_offset && has_offset) || (is_checksum && *has_checksum))
+            {
+                return false;
+            }
+            const uint32_t limit = is_offset ? UINT32_MAX : UINT16_MAX;
+            uint32_t value = 0U;
+            for (const char *digit = equals + 1; digit < end; digit++)
+            {
+                if ((*digit < '0') || (*digit > '9'))
+                {
+                    return false;
+                }
+                const uint32_t number = (uint32_t)(*digit - '0');
+                if (value > ((limit - number) / 10U))
+                {
+                    return false;
+                }
+                value = value * 10U + number;
+            }
+            if (is_offset)
+            {
+                *offset = value;
+                has_offset = true;
+            }
+            else
+            {
+                *checksum = (uint16_t)value;
+                *has_checksum = true;
+            }
+        }
+        query = (*end == '&') ? end + 1 : end;
+    }
+    return true;
+}
+
 static void route_and_handle_request(http_request_t *request)
 {
     if (!request) {
@@ -371,22 +426,10 @@ static void route_and_handle_request(http_request_t *request)
             uint16_t checksum = 0;
             bool has_checksum = false;
             
-            if (request->query_string) {
-                /* Parse offset from query string - support both "offset=" and "o=" */
-                const char *offset_ptr = strstr(request->query_string, "offset=");
-                if (offset_ptr) {
-                    offset = strtoul(offset_ptr + 7, NULL, 10);
-                } else {
-                    offset_ptr = strstr(request->query_string, "o=");
-                    if (offset_ptr) offset = strtoul(offset_ptr + 2, NULL, 10);
-                }
-                
-                /* Parse checksum - "cs=" parameter */
-                const char *cs_ptr = strstr(request->query_string, "cs=");
-                if (cs_ptr) {
-                    checksum = (uint16_t)strtoul(cs_ptr + 3, NULL, 10);
-                    has_checksum = true;
-                }
+            if (!parse_fw_chunk_query(request->query_string, &offset, &checksum, &has_checksum))
+            {
+                http_send_bad_request();
+                return;
             }
             handle_fw_chunk(offset, (const uint8_t *)request->body, (uint32_t)request->body_length,
                            has_checksum, checksum);
@@ -541,3 +584,5 @@ void http_server_on_receive(const uint8_t *data, int length)
     /* Reset state for next request */
     reset_server_state();
 }
+
+/*** end of file ***/

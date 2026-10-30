@@ -51,30 +51,28 @@ void test_content_length_first_header_wins_when_duplicated(void)
                               headers, (int)(sizeof(headers) - 1U)));
 }
 
-void test_content_length_negative_or_blank_value_reads_as_absent(void)
+void test_content_length_negative_or_blank_value_is_rejected(void)
 {
     static const char negative[] = "Content-Length: -5\r\n";
     static const char blank[] = "Content-Length: \r\n";
 
-    TEST_ASSERT_EQUAL_INT(0,
+    TEST_ASSERT_EQUAL_INT(-1,
                           http_parse_content_length(
                               negative, (int)(sizeof(negative) - 1U)));
-    TEST_ASSERT_EQUAL_INT(0,
+    TEST_ASSERT_EQUAL_INT(-1,
                           http_parse_content_length(
                               blank, (int)(sizeof(blank) - 1U)));
 }
 
 void test_content_length_leading_zeros_and_trailing_garbage(void)
 {
-    /* Current lenient contract: digits are consumed until the first
-     * non-digit and whatever follows is ignored. */
     static const char zeros[] = "Content-Length: 0004\r\n";
     static const char garbage[] = "Content-Length: 12abc\r\n";
 
     TEST_ASSERT_EQUAL_INT(4,
                           http_parse_content_length(
                               zeros, (int)(sizeof(zeros) - 1U)));
-    TEST_ASSERT_EQUAL_INT(12,
+    TEST_ASSERT_EQUAL_INT(-1,
                           http_parse_content_length(
                               garbage, (int)(sizeof(garbage) - 1U)));
 }
@@ -201,6 +199,31 @@ void test_double_dot_anywhere_in_path_is_rejected_strictly(void)
                           http_parse_request(request_data,
                                              (int)(sizeof(request_data) - 1U),
                                              &request));
+}
+
+void test_invalid_content_length_is_rejected_by_request_parser(void)
+{
+    static const char *const values[] = {"abc", "-5", "+5", "", "5x", "5 6", "4609", "99999999999999999999"};
+    char buffer[128];
+    http_request_t request;
+
+    for (size_t index = 0U; index < sizeof(values) / sizeof(values[0]); index++)
+    {
+        (void)strcpy(buffer, "POST /c HTTP/1.1\r\nContent-Length: ");
+        (void)strcat(buffer, values[index]);
+        (void)strcat(buffer, "\r\n\r\nbody");
+        TEST_ASSERT_EQUAL_INT(-1, http_parse_request(buffer, (int)strlen(buffer), &request));
+    }
+}
+
+void test_content_length_accepts_surrounding_http_whitespace(void)
+{
+    char buffer[] = "POST /c HTTP/1.1\r\nContent-Length: \t0004 \t\r\n\r\nbody";
+    http_request_t request;
+
+    TEST_ASSERT_EQUAL_INT(0, http_parse_request(buffer, (int)(sizeof(buffer) - 1U), &request));
+    TEST_ASSERT_EQUAL_INT(4, request.content_length);
+    TEST_ASSERT_EQUAL_INT(4, request.body_length);
 }
 
 /*** end of file ***/
