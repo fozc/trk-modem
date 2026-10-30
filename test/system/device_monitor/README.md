@@ -1,6 +1,6 @@
 # Cihaz İzleme ve Uzun Süreli Doğrulama — device_monitor
 
-**Sürüm:** 1.1
+**Sürüm:** 1.3
 
 **Tarih:** 2026-10-30
 
@@ -79,6 +79,20 @@ Remove-Item Env:DEVICE_MONITOR_DEVICE, Env:DEVICE_MONITOR_HOURS
 Doğrudan `run_monitor.py` kullanımı, kip ve portların komutta açıkça
 belirtilmesini sağladığı için elle yapılan koşularda tercih edilebilir.
 
+## TCP bağlantısını kapatma
+
+Rutin `tcp_drop` görevi `/loading.html` yanıtını tamamen almalıdır.
+`Content-Length` ile alınan gövde uzunluğu eşit ve HTTP durumu 200 olmalıdır.
+Bundan sonra rastgele 0,2–2 saniye beklenmeli ve FIN/RST ile kapatılmalıdır.
+Eksik yanıt, başarılı kapatma olarak kaydedilmemelidir. `web.jsonl` içindeki
+`phase=after-response` ve `response_complete` alanları bu ayrımı gösterir.
+
+Aktarım sırasında erken kapatma ayrı bir hata senaryosudur. Mevcut araçla
+`python test/system/http_port_drop_test.py <IP>/loading.html --phase after-headers --min 0 --max 0 --count 1`
+çalıştırılabilir. FIN için `--graceful` eklenmelidir; varsayılan RST'dir.
+Bu senaryo bilinen modem takılmasını tetikleyebilir. Sonuç, normal aktarım
+başarısı ile ayrı değerlendirilmelidir.
+
 ## Çıktı düzeni ve inceleme için paylaşım
 
 Varsayılan çıktı `test/build/device_monitor/<zaman>/` altındadır.
@@ -111,6 +125,9 @@ kayıtlardaki IP, seri numarası ve diğer kuruma özel bilgiler kontrol edilmel
 
 ## Kurallar ve sınırlar
 
+- Modbus istekleri aynı seri portta sırayla çalışır; yanıt tamamlanmadan
+  başka görev istek göndermez. Web oturumu ve TCP bağlantı kesme denemesi
+  de ortak kilit kullanır; aynı anda ikinci web işlemi başlatılmaz.
 - Çalışan cihazın yapılandırmasını kaydetme, firmware yükleme, günlük silme
   ve cihaz reseti bu altyapının mevcut görevleri arasında değildir.
 - Varsayılan görevler tamamen pasif değildir: web giriş istekleri, IEC104
@@ -139,4 +156,6 @@ bunları ortak zamanlama, kayıt ve anomali toplama altında çalıştırır.
 
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
+| 2026-10-30 | 1.3 | Rutin TCP kesmeleri tam HTTP yanıtından sonraya alındı; erken FIN/RST senaryosu ayrı açıklandı |
+| 2026-10-30 | 1.2 | Modbus işlemleri ve ortak web oturumu sıraya alındı; eşzamanlı erişim regresyonları eklendi |
 | 2026-10-30 | 1.1 | `soak` adı `device_monitor` olarak değiştirildi; elle çalıştırma ve kayıt paylaşımı açıklandı |

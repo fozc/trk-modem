@@ -2,9 +2,9 @@
 
 oracle.WebDevice (test/system/iec104_master/oracle.py) yeniden kullanilir:
 login + ?t= token + 4 deneme x 4 s retry - canli cihazda kanitlanmis
-istemci. Device monitor icin slot surekli TUTULMAZ, istek basi baglanti acilir
-(oracle deseni): sunucu her yanit sonrasi slot'u biraktigindan TCP drop
-kaosu ayni slot'u calmadan yeni baglanti uzerinden uygulanabilir.
+istemci. Istek basi baglanti acilir; ortak oturum ve tek cihaz slotu
+ayni kilitle korunur. TCP drop denemesi normal istek bittikten sonra
+ayri baglanti acar; sonraki poll toparlanmayi dogrular.
 
 Faz 1 dogrulamasi: HTTP 200 + JSON cozumlemesi + gurultu olcumu.
 Endpoint basina tam alan-kumesi/aralik semasi Faz 2'de modbus_map_check
@@ -17,6 +17,7 @@ import hashlib
 import json
 import socket
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -71,24 +72,28 @@ class WebProbe:
         self.token_ok = False
         self.consecutive_failures = 0
         self.syslogs_total = None
+        # Login is also called within _request; both own the same session.
+        self.lock = threading.RLock()
 
     def ensure_login(self):
         """Gerekirse (ilk kez ya da 401 sonrasi) login; token taze tutar."""
-        password = self.oracle.derive_admin_password(self.host)
-        self.web.login("admin", password)
-        self.token_ok = True
+        with self.lock:
+            password = self.oracle.derive_admin_password(self.host)
+            self.web.login("admin", password)
+            self.token_ok = True
 
     def _request(self, path):
         """Basarili istek -> (status, body); hata firlatir (cagiran kaydeder)."""
-        if not self.token_ok:
-            self.ensure_login()
-        started = time.monotonic()
-        try:
-            status, body = self.oracle.WebDevice.request(self.web, path)
-        except Exception:
-            self.token_ok = False
-            raise
-        elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
+        with self.lock:
+            if not self.token_ok:
+                self.ensure_login()
+            started = time.monotonic()
+            try:
+                status, body = self.oracle.WebDevice.request(self.web, path)
+            except Exception:
+                self.token_ok = False
+                raise
+            elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
         return status, body, elapsed_ms
 
     def poll(self):
@@ -152,22 +157,32 @@ class WebProbe:
         self.writer.write(record)
 
     def drop_chaos(self):
-        """Pasif kaos: yeni baglanti ac, GET gonder, rastgele anda RST/FIN at.
+        """Tam HTTP yanitindan sonra baglantiyi RST/FIN ile kapat.
 
-        Slot bizde olmadigi icin (istek basi baglanti) bu eylem normal
-        yoklama akisini bozmaz; sonraki poll toparlanmayi zaten dogrular.
+        Normal isteklerle ayni anda slot acilmaz. Sonraki poll
+        baglantinin kesilmesinden sonra toparlanmayi dogrular.
         """
         graceful = self.rng.random() < 0.5
         detail = ""
+        response_complete = False
         try:
-            with socket.create_connection((self.host, 80), timeout=8) as client:
-                client.sendall(
-                    self.drop.build_get_request(self.host, 80, "/loading.html"))
-                time.sleep(self.rng.uniform(0.2, 2.0))
-                self.drop.drop_connection(client, graceful)
-        except OSError as error:
+            with self.lock:
+                with socket.create_connection((self.host, 80), timeout=8) as client:
+                    client.sendall(
+                        self.drop.build_get_request(self.host, 80, "/loading.html"))
+                    status, headers, body, complete = self.drop.recv_response(client, 15.0)
+                    length = int(headers.get("content-length", "-1"))
+                    if not complete or length < 0 or len(body) != length:
+                        raise OSError("incomplete loading.html response")
+                    if " 200 " not in status:
+                        raise OSError("loading.html -> %s" % status)
+                    response_complete = True
+                    time.sleep(self.rng.uniform(0.2, 2.0))
+                    self.drop.drop_connection(client, graceful)
+        except (OSError, ValueError) as error:
             detail = repr(error)[:200]
         self.writer.write({"action": "tcp_drop", "graceful": graceful,
+                           "phase": "after-response", "response_complete": response_complete,
                            "error": detail or None})
 
     def _note_failure(self, detail):
