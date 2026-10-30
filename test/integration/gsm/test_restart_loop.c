@@ -245,9 +245,12 @@ static void scenario_restart_sw_rdy_never(void)
     const unsigned pulses_before = onoff_pulses;
 
     gsm_request_module_restart();
-    /* 5.2 s dizi + 15 s SW_RDY beklemesi + init: ~21 s sanal zaman.
-     * TEK atimlik olmali - 2. diz baslamamali. */
-    run_for(25000U);
+    /* After the 5.2 s power sequence, readiness may still arrive between
+     * 15 and 20 s. Recovery must not advance to init in that interval. */
+    run_for(22000U);
+    TEST_CHECK(init_old_calls == inits_before,
+               "recovery-wait: readiness window remains open after 15 seconds");
+    run_for(5000U);
 
     TEST_CHECK(onoff_pulses == pulses_before + 1U,
                "recovery-fail: exactly ONE power sequence (single-shot)");
@@ -269,7 +272,7 @@ static void scenario_boot_retry_preserved(void)
     arm_sw_rdy(false);
 
     process_start(&gsm_power_on, NULL);   /* data = NULL: acilis modu */
-    run_for(40000U);  /* 1. dizi (~20.2 s) biter, 2. dizi baslar */
+    run_for(40000U);  /* First sequence (~25.2 s) ends; second starts. */
 
     TEST_CHECK(onoff_pulses >= 2U,
                "boot-mode: unbounded retry preserved (2nd sequence started)");
@@ -292,3 +295,5 @@ int main(void)
 
     return (test_fail == 0U) ? 0 : 1;
 }
+
+/*** end of file ***/

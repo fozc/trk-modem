@@ -65,9 +65,9 @@ PROCESS_THREAD(gsm_power_on, ev, data)
 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
 		gpio_set_pin(GSM_ONOFF_BSP_GPIO, GSM_ONOFF_BSP_PIN, GPIO_LOW);
 
-		CSLOG("Waiting for GSM_SW_RDY (max 15s)...\r\n");
+		CSLOG("Waiting for GSM_SW_RDY (max 20s)...\r\n");
 
-		timer_set(&sw_rdy_timer, 15000);
+		timer_set(&sw_rdy_timer, 20000);
 
 		while(1)
 		{
@@ -81,7 +81,7 @@ PROCESS_THREAD(gsm_power_on, ev, data)
 
 		    if(timer_expired(&sw_rdy_timer))
 		    {
-		    	CSLOG_ERR("GSM_SW_RDY not asserted within 15s\r\n");
+                CSLOG_ERR("GSM_SW_RDY not asserted within 20s\r\n");
 		    	break;
 		    }
 
@@ -169,6 +169,8 @@ void gsm_process_contiki_init(void)
 {
 	process_start(&gsm_process_contiki, NULL);
 }
+
+/*** end of file ***/
 
 
 
