@@ -500,6 +500,54 @@ void test_validated_response_callback_can_send_followup_without_losing_packet(vo
     TEST_ASSERT_TRUE(scp_is_free());
 }
 
+void test_battery_replacement_busy_finishes_without_automatic_new_command(void)
+{
+    const scp_packet_t request = {.type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_PWR_COMMAND,
+                                  .data_len = 2U, .data = {0x05U, 0xA5U}};
+    TEST_ASSERT_TRUE(scp_send_request(&request, command_done));
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_BUSY);
+    TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
+    TEST_ASSERT_EQUAL_INT(SCP_CMD_ERR, done_result);
+    TEST_ASSERT_TRUE(scp_is_free());
+    scp_process(10000U);
+    TEST_ASSERT_EQUAL_UINT32(1U, transmit_calls);
+}
+
+void test_battery_replacement_lost_ack_retries_same_sequence_and_ignores_late_ack(void)
+{
+    const scp_packet_t request = {.type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_PWR_COMMAND,
+                                  .data_len = 2U, .data = {0x05U, 0xA5U}};
+    TEST_ASSERT_TRUE(scp_send_request(&request, command_done));
+    const scp_packet_t first = transmitted;
+    fake_tick = 1000U;
+    scp_process(fake_tick);
+    TEST_ASSERT_EQUAL_UINT32(2U, transmit_calls);
+    TEST_ASSERT_EQUAL_MEMORY(&first, &transmitted, sizeof(first));
+    scp_packet_t ack = {.dst = RF_SCP_ADDR_RTU, .src = RF_SCP_ADDR_HUB,
+                        .type = SCP_TYPE_ACK, .cmd = RF_SCP_CMD_PWR_COMMAND,
+                        .seq = first.seq, .data_len = 2U, .data = {0x05U, 7U}};
+    scp_on_response(&ack);
+    TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
+    TEST_ASSERT_EQUAL_INT(SCP_CMD_OK, done_result);
+    scp_on_response(&ack);
+    TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
+}
+
+void test_power_cancel_busy_keeps_existing_retry_policy(void)
+{
+    const scp_packet_t request = {.type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_PWR_COMMAND,
+                                  .data_len = 2U, .data = {0U, 0U}};
+    TEST_ASSERT_TRUE(scp_send_request(&request, command_done));
+    const uint8_t first_seq = transmitted.seq;
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_BUSY);
+    fake_tick = 1000U;
+    scp_process(fake_tick);
+    TEST_ASSERT_EQUAL_UINT32(2U, transmit_calls);
+    TEST_ASSERT_NOT_EQUAL(first_seq, transmitted.seq);
+    TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[0]);
+    TEST_ASSERT_EQUAL_UINT32(0U, done_calls);
+}
+
 void test_timeout_already_retries_identical_packet_and_sequence(void)
 {
     TEST_ASSERT_TRUE(scp_send_command(SCP_TYPE_GET, RF_SCP_CMD_GET_STATUS,
@@ -1277,6 +1325,45 @@ void test_invalid_rtc_loads_inventory_then_syncs_when_clock_becomes_valid(void)
     TEST_ASSERT_EQUAL_INT(RF_INVENTORY_READY, rf_inventory_get_status());
 }
 
+void test_time_sync_timeout_releases_startup_and_hourly_ack_does_not_reload_inventory(void)
+{
+    notify_boot(1U);
+    rf_comm_periodic_jobs();
+    for (uint32_t attempt = 1U; attempt <= 4U; attempt++)
+    {
+        fake_tick = attempt * RF_CMD_TIMEOUT_MS;
+        scp_process(fake_tick);
+    }
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    TEST_ASSERT_TRUE(rf_comm_can_load_inventory());
+    TEST_ASSERT_FALSE(time_sync_pending);
+    complete_inventory();
+    fake_tick += 3600000U;
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_TIME_SYNC, transmitted.cmd);
+    const uint32_t before_ack = transmit_calls;
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_UINT32(before_ack, transmit_calls);
+    TEST_ASSERT_TRUE(rf_inventory_is_loaded());
+    TEST_ASSERT_FALSE(rf_inventory_is_active());
+}
+
+void test_failed_boot_protection_after_time_error_keeps_inventory_gated(void)
+{
+    notify_boot(1U);
+    rf_comm_periodic_jobs();
+    allow_inventory = false;
+    rf_events_boot_protect_StubWithCallback(NULL);
+    rf_events_boot_protect_ExpectAndReturn(false);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    TEST_ASSERT_EQUAL_UINT32(1U, transmit_calls);
+    TEST_ASSERT_FALSE(rf_inventory_is_active());
+    TEST_ASSERT_TRUE(rf_comm_can_load_inventory());
+    notify_boot(1U);
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_TIME_SYNC, transmitted.cmd);
+}
+
 void test_hourly_time_refresh_does_not_upload_inventory_again(void)
 {
     notify_boot(1U);
@@ -1620,19 +1707,19 @@ void test_mixed_zone_and_invalid_assignment_produce_partial_inventory(void)
     TEST_ASSERT_EQUAL_INT(RF_INVENTORY_PARTIAL, rf_inventory_get_status());
 }
 
-void test_permanent_time_error_does_not_retry_or_load_inventory(void)
+void test_permanent_time_error_continues_inventory_and_new_boot_restarts_time_sync(void)
 {
     notify_boot(1U);
     rf_comm_periodic_jobs();
     deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
     rf_comm_periodic_jobs();
-    TEST_ASSERT_EQUAL_UINT32(1U, transmit_calls);
+    TEST_ASSERT_EQUAL_UINT32(2U, transmit_calls);
     TEST_ASSERT_FALSE(time_sync_pending);
-    TEST_ASSERT_FALSE(rf_inventory_is_active());
-    TEST_ASSERT_FALSE(rf_comm_can_load_inventory());
+    TEST_ASSERT_TRUE(rf_inventory_is_active());
+    TEST_ASSERT_TRUE(rf_comm_can_load_inventory());
     notify_boot(1U);
     rf_comm_periodic_jobs();
-    TEST_ASSERT_EQUAL_UINT32(2U, transmit_calls);
+    TEST_ASSERT_EQUAL_UINT32(3U, transmit_calls);
     TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_TIME_SYNC, transmitted.cmd);
 }
 
@@ -3160,6 +3247,35 @@ void test_unknown_status_without_boot_cannot_guess_major(void)
     TEST_ASSERT_EQUAL_UINT8(0U, rf_comm_get_hub_major());
     TEST_ASSERT_FALSE(time_sync_pending);
     TEST_ASSERT_FALSE(rf_comm_can_load_inventory());
+}
+
+void test_rtu_restart_without_boot_time_error_does_not_wait_an_hour_for_inventory(void)
+{
+    hub_major = 0U;
+    hub_boot_received = false;
+    rf_comm_periodic_jobs();
+    scp_packet_t response = make_response(SCP_TYPE_ACK, 25U);
+    (void)memcpy(&response.data[4], "ac3e9c03", 9U);
+    inject_packet(&response);
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_TIME_SYNC, transmitted.cmd);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    TEST_ASSERT_FALSE(hub_boot_received);
+    TEST_ASSERT_TRUE(rf_comm_can_load_inventory());
+    TEST_ASSERT_TRUE(rf_inventory_is_active());
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+    complete_inventory();
+    fake_tick = 3599999U;
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_GET_STATUS, transmitted.cmd);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    fake_tick = 3600000U;
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_TIME_SYNC, transmitted.cmd);
+    const uint32_t before_ack = transmit_calls;
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_EQUAL_UINT32(before_ack, transmit_calls);
+    TEST_ASSERT_TRUE(rf_inventory_is_loaded());
 }
 
 void test_rf_log_shell_routes_all_levels_only_to_rf_module(void)
