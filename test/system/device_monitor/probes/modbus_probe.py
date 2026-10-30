@@ -11,6 +11,7 @@ capraz dogrulamasi Faz 2 modbus_map_check'te.
 """
 
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -61,23 +62,28 @@ class ModbusProbe:
         self.ser = serial.Serial(port, baud, bytesize=8, parity="N",
                                  stopbits=stopbits, timeout=0.005)
         self.consecutive_failures = 0
+        self.lock = threading.Lock()
 
     def read_range(self, start, count):
         """FC03 okuma -> (values | None, ok); her islem modbus.jsonl'ye yazilir."""
-        req = self.modbus.fc03(self.modbus.SLAVE, start, count)
-        resp, first_ms, complete_ms = self.modbus.request(
-            self.ser, req, 5 + 2 * count)
-        verdict = classify_response(resp, self.modbus.SLAVE, count,
-                                    self.modbus.crc16)
-        record = {"fc": 3, "start": start, "count": count,
-                  "first_ms": round(first_ms, 1) if first_ms else None,
-                  "complete_ms": round(complete_ms, 1)}
-        record.update(verdict)
-        self.writer.write(record)
-        if verdict["ok"]:
-            return verdict["values"], True
-        self.consecutive_failures += 1
-        if self.consecutive_failures >= 5:
+        # FC03 has no transaction ID: hold ownership through the response.
+        with self.lock:
+            req = self.modbus.fc03(self.modbus.SLAVE, start, count)
+            resp, first_ms, complete_ms = self.modbus.request(
+                self.ser, req, 5 + 2 * count)
+            verdict = classify_response(resp, self.modbus.SLAVE, count,
+                                        self.modbus.crc16)
+            record = {"fc": 3, "start": start, "count": count,
+                      "first_ms": round(first_ms, 1) if first_ms else None,
+                      "complete_ms": round(complete_ms, 1)}
+            record.update(verdict)
+            self.writer.write(record)
+            if verdict["ok"]:
+                self.consecutive_failures = 0
+                return verdict["values"], True
+            self.consecutive_failures += 1
+            report_failure = self.consecutive_failures >= 5
+        if report_failure:
             self.detector.report(
                 "modbus_failures", "critical", "modbus",
                 "5+ ardisik basarisiz FC03; son: %s (%s..+%d)" %
@@ -87,10 +93,9 @@ class ModbusProbe:
     def poll(self):
         """Rastgele bir gecerli aralik oku (Faz 1 hafif yoklama)."""
         start, count = self.rng.choice(FAZ1_RANGES)
-        values, ok = self.read_range(start, count)
-        if ok:
-            self.consecutive_failures = 0
+        values, _ = self.read_range(start, count)
         return values
 
     def close(self):
-        self.ser.close()
+        with self.lock:
+            self.ser.close()

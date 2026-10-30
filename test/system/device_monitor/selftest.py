@@ -657,6 +657,199 @@ def test_setup_failure_runs_shutdown():
         check("setup_failure_closes_resources", False, "setup failure was swallowed")
 
 
+def check_serialized_calls(name, first_call, second_call, install_transport):
+    """Hold one real probe operation at its transport boundary."""
+    entered = threading.Event()
+    release = threading.Event()
+    second_started = threading.Event()
+    overlap = threading.Event()
+    errors = []
+    calls = []
+
+    def transport(*args, **kwargs):
+        calls.append((args, kwargs))
+        if len(calls) == 1:
+            entered.set()
+            if not release.wait(3.0):
+                raise RuntimeError("test transport was not released")
+        else:
+            overlap.set()
+        return install_transport.result(*args, **kwargs)
+
+    def invoke(fn, started=None):
+        if started is not None:
+            started.set()
+        try:
+            fn()
+        except Exception as error:
+            errors.append(repr(error))
+
+    with install_transport(transport):
+        first = threading.Thread(target=invoke, args=(first_call,), daemon=True)
+        second = threading.Thread(target=invoke, args=(second_call, second_started), daemon=True)
+        first.start()
+        ready = entered.wait(2.0)
+        second.start()
+        started = second_started.wait(2.0)
+        premature = overlap.wait(0.1)
+        release.set()
+        first.join(3.0)
+        second.join(3.0)
+    check(name, ready and started and not premature and not errors and
+          len(calls) == 2 and not first.is_alive() and not second.is_alive(), str(errors))
+
+
+def test_modbus_transaction_ownership():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from probes.modbus_probe import ModbusProbe
+
+    records = []
+    findings = []
+    writer = SimpleNamespace(write=records.append)
+    detector = SimpleNamespace(report=lambda *args: findings.append(args))
+    with patch("probes.modbus_probe.serial.Serial"):
+        probe = ModbusProbe("unused", writer, detector, random.Random(7))
+
+    def result(serial_port, request, response_length):
+        count = int.from_bytes(request[4:6], "big")
+        start = int.from_bytes(request[2:4], "big")
+        assert response_length == 5 + 2 * count
+        body = bytes([23, 3, count * 2]) + start.to_bytes(2, "big") * count
+        crc = probe.modbus.crc16(body)
+        return body + crc.to_bytes(2, "little"), 1.0, 2.0
+
+    results = []
+    install = lambda fn: patch.object(probe.modbus, "request", side_effect=fn)
+    install.result = result
+    check_serialized_calls("modbus_serializes_short_and_map_reads",
+                           lambda: results.append(probe.read_range(10000, 1)),
+                           lambda: results.append(probe.read_range(2000, 82)), install)
+    check("modbus_responses_keep_request_identity",
+          sorted(values[0] for values, ok in results if ok) == [2000, 10000])
+    probe.consecutive_failures = 4
+    with patch.object(probe.modbus, "request", return_value=(b"", None, 1000.0)):
+        check("modbus_failure_is_reported", probe.read_range(0, 1) == (None, False) and len(findings) == 1)
+    with patch.object(probe.modbus, "request", side_effect=result):
+        check("modbus_map_success_clears_failure_streak",
+              probe.read_range(2000, 82)[1] and probe.consecutive_failures == 0)
+    probe.close()
+
+
+def test_web_session_ownership():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from probes.web_probe import WebProbe
+
+    records = []
+    findings = []
+    probe = WebProbe("127.0.0.1", SimpleNamespace(write=records.append),
+                     SimpleNamespace(report=lambda *args: findings.append(args)), random.Random(7))
+    login_calls = []
+    install = lambda fn: patch.object(probe.oracle.WebDevice, "request", fn)
+    install.result = lambda *args, **kwargs: (200, '{"value":1}')
+    with patch.object(probe.web, "login", side_effect=lambda *args: login_calls.append(args)):
+        check_serialized_calls("web_serializes_login_and_snapshot_requests",
+                               probe.board_snapshot, probe.config_snapshot, install)
+    check("web_shared_session_logs_in_once", len(login_calls) == 1)
+    with patch.object(probe.oracle.WebDevice, "request", side_effect=OSError("test disconnect")):
+        check("web_failure_invalidates_session", probe.board_snapshot() is None and not probe.token_ok)
+    with patch.object(probe.web, "login") as login, \
+            patch.object(probe.oracle.WebDevice, "request", return_value=(200, '{}')):
+        check("web_request_recovers_after_failure", probe.board_snapshot() == {} and login.call_count == 1)
+
+    # A paused normal request must also exclude the separate chaos socket.
+    entered = threading.Event()
+    release = threading.Event()
+    chaos_started = threading.Event()
+    socket_opened = threading.Event()
+
+    def request(*args, **kwargs):
+        entered.set()
+        release.wait(3.0)
+        return 200, '{}'
+
+    def chaos():
+        chaos_started.set()
+        probe.drop_chaos()
+
+    def open_socket(*args, **kwargs):
+        socket_opened.set()
+        raise OSError("test socket closed")
+
+    with patch.object(probe.oracle.WebDevice, "request", request), \
+            patch("probes.web_probe.socket.create_connection", side_effect=open_socket):
+        first = threading.Thread(target=probe.board_snapshot, daemon=True)
+        second = threading.Thread(target=chaos, daemon=True)
+        first.start()
+        ready = entered.wait(2.0)
+        second.start()
+        started = chaos_started.wait(2.0)
+        premature = socket_opened.wait(0.1)
+        release.set()
+        first.join(3.0)
+        second.join(3.0)
+    check("web_chaos_waits_for_normal_request", ready and started and not premature and
+          socket_opened.is_set() and not first.is_alive() and not second.is_alive())
+
+
+def test_web_drop_waits_for_complete_response():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from probes.web_probe import WebProbe
+
+    class ResponseSocket:
+        def __init__(self, response):
+            self.remaining = response
+            self.sent = b""
+            self.closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.closed = True
+
+        def settimeout(self, timeout):
+            pass
+
+        def sendall(self, request):
+            self.sent += request
+
+        def recv(self, count):
+            part = self.remaining[:min(count, 3)]
+            self.remaining = self.remaining[len(part):]
+            return part
+
+    for graceful in (True, False):
+        records = []
+        dropped = []
+        probe = WebProbe("127.0.0.1", SimpleNamespace(write=records.append),
+                         SimpleNamespace(report=lambda *args: None), random.Random(7))
+        client = ResponseSocket(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
+        with patch("probes.web_probe.socket.create_connection", return_value=client), \
+                patch("probes.web_probe.time.sleep"), \
+                patch.object(probe.rng, "random", return_value=0.1 if graceful else 0.9), \
+                patch.object(probe.drop, "drop_connection",
+                             side_effect=lambda sock, fin: dropped.append((sock.remaining, fin))):
+            probe.drop_chaos()
+        check("web_drop_after_complete_%s" % ("fin" if graceful else "rst"),
+              dropped == [(b"", graceful)] and records[-1]["response_complete"] and
+              records[-1]["error"] is None and client.closed)
+
+    for body, header in ((b"he", b"5"), (b"hello", b"bad"), (b"", b"-1")):
+        records = []
+        probe = WebProbe("127.0.0.1", SimpleNamespace(write=records.append),
+                         SimpleNamespace(report=lambda *args: None), random.Random(7))
+        client = ResponseSocket(b"HTTP/1.1 200 OK\r\nContent-Length: " + header + b"\r\n\r\n" + body)
+        with patch("probes.web_probe.socket.create_connection", return_value=client), \
+                patch.object(probe.drop, "drop_connection") as drop:
+            probe.drop_chaos()
+        check("web_drop_rejects_incomplete_%s" % header.decode(),
+              not drop.called and not records[-1]["response_complete"] and
+              records[-1]["error"] is not None and client.closed)
+
+
 def main():
     tests = [
         test_recorder_rotation,
@@ -676,6 +869,9 @@ def main():
         test_summarize,
         test_worker_reconnect_and_gi,
         test_setup_failure_runs_shutdown,
+        test_modbus_transaction_ownership,
+        test_web_session_ownership,
+        test_web_drop_waits_for_complete_response,
     ]
     for test in tests:
         test()
