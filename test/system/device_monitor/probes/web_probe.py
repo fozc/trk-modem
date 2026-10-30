@@ -2,7 +2,7 @@
 
 oracle.WebDevice (test/system/iec104_master/oracle.py) yeniden kullanilir:
 login + ?t= token + 4 deneme x 4 s retry - canli cihazda kanitlanmis
-istemci. Soak icin slot surekli TUTULMAZ, istek basi baglanti acilir
+istemci. Device monitor icin slot surekli TUTULMAZ, istek basi baglanti acilir
 (oracle deseni): sunucu her yanit sonrasi slot'u biraktigindan TCP drop
 kaosu ayni slot'u calmadan yeni baglanti uzerinden uygulanabilir.
 
@@ -65,8 +65,8 @@ class WebProbe:
         self.writer = writer
         self.detector = detector
         self.rng = rng
-        self.oracle = load_module("soak_oracle", ORACLE_PATH)
-        self.drop = load_module("soak_http_drop", DROP_PATH)
+        self.oracle = load_module("device_monitor_oracle", ORACLE_PATH)
+        self.drop = load_module("device_monitor_http_drop", DROP_PATH)
         self.web = self.oracle.WebDevice(host, timeout=login_timeout_s)
         self.token_ok = False
         self.consecutive_failures = 0

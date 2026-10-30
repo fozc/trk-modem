@@ -26,7 +26,7 @@ class Iec104ProbeTask:
         self.host = host
         self.writer = writer
         self.detector = detector
-        module = load_module("soak_gsm_disconnect", GSM_DISCONNECT_PATH,
+        module = load_module("device_monitor_gsm_disconnect", GSM_DISCONNECT_PATH,
                              extra_sys_path=[SYSTEM_DIR])
         self.probe_class = module.IecProbe
         self.consecutive_failures = 0

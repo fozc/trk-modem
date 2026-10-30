@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Birlesik soak supervisor: konsol + web + Modbus + IEC104 + anomali/kanit.
+"""Cihaz izleme ve uzun sureli dogrulama: konsol + web + Modbus + IEC104 + anomali/kanit.
 
 Kullanim (bench, uretim imaji):
-  python run_soak.py auto --console COM18 --rs485 COM10 --hours 24
+  python run_monitor.py auto --console COM18 --rs485 COM10 --hours 24
 
 Guvenlik: gozlem + pasif kaos profilidir - config yazmasi, FW islemi,
 elog/fltlog clear, cihaz reboot YOKTUR. Tek TCP drop kaosu yeni baglanti
-uzerinden uzerine uygulanir. Cikti test/build/soak/<zaman>/ altindadir.
+uzerinden uzerine uygulanir. Cikti test/build/device_monitor/<zaman>/ altindadir.
 
-Ayrintilar: test/system/soak/README.md
+Ayrintilar: test/system/device_monitor/README.md
 """
 
 import argparse
@@ -59,13 +59,13 @@ def try_reexec_with_venv(argv):
     venv hem c104 hem pyserial icerir (kurulum tarifi README'de);
     donus: True = exec basladi (donulmez), False = venv yok.
     """
-    if os.environ.get("SOAK_REEXEC") == "1":
+    if os.environ.get("DEVICE_MONITOR_REEXEC") == "1":
         return False
     for candidate in (IEC104_MASTER_DIR / ".venv" / "Scripts" / "python.exe",
                       IEC104_MASTER_DIR / ".venv" / "bin" / "python"):
         if candidate.exists():
-            os.environ["SOAK_REEXEC"] = "1"
-            print("[soak] c104 yok; venv python ile yeniden basliyor: %s" %
+            os.environ["DEVICE_MONITOR_REEXEC"] = "1"
+            print("[device_monitor] c104 yok; venv python ile yeniden basliyor: %s" %
                   candidate, flush=True)
             os.execv(str(candidate), [str(candidate),
                                       str(Path(__file__).resolve())] + argv)
@@ -94,13 +94,13 @@ def load_config(path):
         return json.load(handle)
 
 
-class SoakSupervisor:
+class DeviceMonitor:
     """Tum kaynaklari kurar, zamanlar ve duzgun kapatir."""
 
     def __init__(self, args, config):
         self.args = args
         self.config = config
-        self.outdir = args.outdir or (REPO_ROOT / "test/build/soak" /
+        self.outdir = args.outdir or (REPO_ROOT / "test/build/device_monitor" /
                                       time.strftime("%Y%m%d-%H%M%S"))
         self.outdir.mkdir(parents=True, exist_ok=False)
         self.rng = random.Random(args.seed)
@@ -149,7 +149,7 @@ class SoakSupervisor:
         """host='auto' ise konsoldan gsm status ile IP cozer."""
         if self.host != "auto":
             return self.host
-        console_io = load_module("soak_console_io", CONSOLE_IO_PATH,
+        console_io = load_module("device_monitor_console_io", CONSOLE_IO_PATH,
                                  extra_sys_path=[IEC104_MASTER_DIR])
         text = self.console.command("gsm status", settle_s=7.0)
         ip = console_io.parse_gsm_ip(text)
@@ -205,7 +205,7 @@ class SoakSupervisor:
             # izler ve duzgun kapanisla dururur.
             self.abort_reason = ("%d ardisik harness hatasi; son: %s:%r" %
                                  (HARNESS_ABORT_ERRORS, name, error))
-            print("[soak] ABORT: %s" % self.abort_reason, flush=True)
+            print("[device_monitor] ABORT: %s" % self.abort_reason, flush=True)
 
     def on_task_success(self, name):
         self.consecutive_harness_errors = 0
@@ -223,7 +223,7 @@ class SoakSupervisor:
             raise RuntimeError("iec104 master kipi web oracle'i gerektirir "
                                "(--skip-web ile master kullanilamaz)")
         web = self.probes["web"]
-        oracle = load_module("soak_oracle", CONSOLE_IO_PATH.parent / "oracle.py")
+        oracle = load_module("device_monitor_oracle", CONSOLE_IO_PATH.parent / "oracle.py")
         snap = None
         cfg = None
         # Once login (oracle baglantiyi kendisi acar; token'siz config
@@ -238,7 +238,7 @@ class SoakSupervisor:
                 if snap and cfg is not None:
                     break
             except Exception as error:      # noqa: BLE001 (kurulum toleransi)
-                print("[soak] oracle deneme %d basarisiz: %r" %
+                print("[device_monitor] oracle deneme %d basarisiz: %r" %
                       (attempt + 1, error), flush=True)
                 time.sleep(10.0)
         if snap is None or cfg is None:
@@ -246,7 +246,7 @@ class SoakSupervisor:
                 raise RuntimeError(
                     "oracle okunamadi (master kipi vazgecmiyor); "
                     "web baglantisini ve slotu kontrol edin")
-            print("[soak] oracle okunamadi -> IEC104 TESTFR probuna dusuldu",
+            print("[device_monitor] oracle okunamadi -> IEC104 TESTFR probuna dusuldu",
                   flush=True)
             self.detector.report("iec104_oracle_unavailable", "warning",
                                  "iec104", "oracle kurulamadi; prob kipine "
@@ -270,7 +270,9 @@ class SoakSupervisor:
         self.probes["iec104_master"] = worker
 
     def task_console_health(self):
-        for cmd in ("stats", "rstsrc", "rf status", "pwrboard show"):
+        # rstsrc bu imajda kayitli degil (reset_source_shell_init cagrilmiyor);
+        # boots degisimi stats'tan, reset nedeni elog'dan izlenir.
+        for cmd in ("stats", "rf status", "pwrboard show"):
             text = self.console.command(cmd, settle_s=4.0)
             self.writers["health"].write({"cmd": cmd, "out": text})
             if cmd == "stats":
@@ -353,14 +355,15 @@ class SoakSupervisor:
 
     def run(self):
         try:
-            self.setup()
-        except Exception as error:      # noqa: BLE001 (kurulum hatasi: durum kaybi olmasin)
-            self.abort_reason = "kurulum hatasi: %r" % (error,)
-            raise
-        try:
-            self.main_loop()
-        except KeyboardInterrupt:
-            print("[soak] Ctrl+C - duzgun kapatma", flush=True)
+            try:
+                self.setup()
+            except Exception as error:  # noqa: BLE001 (kurulum hatasi: durum kaybi olmasin)
+                self.abort_reason = "kurulum hatasi: %r" % (error,)
+                raise
+            try:
+                self.main_loop()
+            except KeyboardInterrupt:
+                print("[device_monitor] Ctrl+C - duzgun kapatma", flush=True)
         finally:
             self.shutdown()
 
@@ -426,7 +429,7 @@ class SoakSupervisor:
                 next_status = time.monotonic() + 30.0
                 self.refresh_metrics()
                 self.metrics.save()
-                print("[soak] %.2fh anomalies(c=%d w=%d) tasks=%s" %
+                print("[device_monitor] %.2fh anomalies(c=%d w=%d) tasks=%s" %
                       (self.metrics["elapsed_hours"],
                        self.metrics["anomalies_critical"],
                        self.metrics["anomalies_warning"],
@@ -471,8 +474,8 @@ class SoakSupervisor:
             (self.outdir / "summary.md").write_text(
                 build_summary(self.outdir), encoding="utf-8")
         except Exception as error:         # noqa: BLE001 (ozet en iyi effort)
-            print("[soak] summary uretilemedi: %r" % error, flush=True)
-        print("[soak] bitti: state=%s critical=%d warning=%d outdir=%s" %
+            print("[device_monitor] summary uretilemedi: %r" % error, flush=True)
+        print("[device_monitor] bitti: state=%s critical=%d warning=%d outdir=%s" %
               (self.metrics["state"], critical,
                self.metrics["anomalies_warning"], self.outdir), flush=True)
 
@@ -537,7 +540,7 @@ def resolve_iec104_mode(args, argv):
     if args.iec104_mode == "master":
         raise SystemExit("HATA: c104 yok ve venv bulunamadi; "
                          "kurulum tarifi test/system/iec104_master/README.md")
-    print("[soak] c104 yok -> IEC104 Faz 1 TESTFR probuna dusuldu",
+    print("[device_monitor] c104 yok -> IEC104 Faz 1 TESTFR probuna dusuldu",
           flush=True)
     return "probe"
 
@@ -550,7 +553,7 @@ def main(argv=None):
         return 2
     args.iec104_mode = mode
     config = load_config(args.config)
-    supervisor = SoakSupervisor(args, config)
+    supervisor = DeviceMonitor(args, config)
     supervisor.run()
     return 0 if supervisor.metrics["state"] == "passed" else 1
 

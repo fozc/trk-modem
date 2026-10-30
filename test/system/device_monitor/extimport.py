@@ -18,7 +18,7 @@ def load_module(unique_name, file_path, extra_sys_path=(), reuse=True):
     extra_sys_path, yuklenen modulun kendi import'lari icin gereklidir
     (ornek gsm_disconnect_test -> http_port_drop_test ayni dizinde).
     reuse=True ise ayni adla daha once yuklenmis modul tekrar
-    calistirilmadan dondurulur (orn. web_probe ve run_soak ayni
+    calistirilmadan dondurulur (orn. web_probe ve run_monitor ayni
     oracle'i paylasir).
     """
     for entry in extra_sys_path:

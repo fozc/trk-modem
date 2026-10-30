@@ -1,7 +1,7 @@
 # Test Altyapısı
 
-**Sürüm:** 1.94
-**Tarih:** 2026-10-29
+**Sürüm:** 1.95
+**Tarih:** 2026-10-30
 
 ## Üretim ve servis ayarları için config komutu
 
@@ -1146,7 +1146,7 @@ Her integration paketi repo kökünden `make -C` ile tek başına çalışır:
 | `rf_hub_sim` | `make -C test/integration/rf_hub_sim run` | — |
 | `rf_real_mh` | `make -C test/integration/rf_real_mh run` | üretim imajı + gerçek MH + `--console COM16` |
 | `rfwu_auth` | `make -C test/integration/rfwu_auth run` | — |
-| `soak` | `make -C test/integration/soak run` | cihazsız self-test her zaman koşar; cihaz koşusu yalnız `SOAK_DEVICE=1` ile (bkz. `test/system/soak/README.md`) |
+| `device_monitor` | `make -C test/integration/device_monitor run` | cihazsız self-test her zaman koşar; cihaz koşusu yalnız `DEVICE_MONITOR_DEVICE=1` ile (bkz. `test/system/device_monitor/README.md`) |
 | `web_auth` | `make -C test/integration/web_auth run` | — |
 | `web_device` | `make -C test/integration/web_device run` | cihazsız self-test; cihaz koşusu için açık hedef ve `--allow-config-writes` verilmelidir (bkz. firmware regresyonları bölümü) |
 | `web_device` (seçili alanlar) | `python test/integration/web_device/run_roundtrip.py` | aynı cihaz erişimi; seçili alanlarda mutasyon/geri yükleme, şema ve ret kontrolleri; RF POST yalnız `--allow-rf-apply` ile çalışır |
@@ -1169,7 +1169,7 @@ python test/system/iec104_master/test_cases_selftest.py
 python test/system/rf_real_mh/test_parser_selftest.py
 python test/system/rf_real_mh/test_smoke_selftest.py
 python test/system/rf_hil/test_sim_selftest.py
-python test/system/soak/selftest.py
+python test/system/device_monitor/selftest.py
 ```
 
 Ceedling JUnit XML çıktısı `test/build/ceedling/artifacts/test/junit_tests_report.xml`

@@ -62,7 +62,7 @@ class ConsoleWorker:
         self.trim_counter = 0
         self.collector = threading.Thread(target=self._collect,
                                           daemon=True,
-                                          name="soak-console")
+                                          name="device-monitor-console")
 
     def start(self):
         self.collector.start()

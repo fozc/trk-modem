@@ -43,7 +43,7 @@ class Scheduler:
         self.tasks = {}
         self.lock = threading.Lock()
         self.pool = ThreadPoolExecutor(max_workers=workers,
-                                       thread_name_prefix="soak")
+                                       thread_name_prefix="device-monitor")
 
     def add_periodic(self, name, interval_s, fn, jitter_s=0.0):
         """Sabit kadransli gorev; jitter her turda rastgele ek gecikme."""
