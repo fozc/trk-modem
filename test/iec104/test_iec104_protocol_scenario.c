@@ -1412,6 +1412,7 @@ void test_old_ack_outside_sent_window_closes_connection(void)
     feed_s_frame(1U);
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_INVALID_ACK, iec104_get_close_reason());
 }
 
 void test_ack_for_unsent_frame_closes_and_resets_link(void)
@@ -1424,6 +1425,7 @@ void test_ack_for_unsent_frame_closes_and_resets_link(void)
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_send_sn());
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_receive_sn());
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_get_k());
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_INVALID_ACK, iec104_get_close_reason());
 }
 
 void test_out_of_order_i_frame_closes_without_executing_command(void)
@@ -1438,6 +1440,7 @@ void test_out_of_order_i_frame_closes_without_executing_command(void)
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
     TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_SEQUENCE_ERROR, iec104_get_close_reason());
 }
 
 void test_invalid_piggyback_ack_prevents_reset_command_execution(void)
@@ -1478,6 +1481,7 @@ void test_t1_closes_at_oldest_frame_deadline(void)
     advance_ticks(1U);
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_ACK_TIMEOUT, iec104_get_close_reason());
 }
 
 void test_partial_ack_preserves_remaining_frame_original_deadline(void)
@@ -1927,6 +1931,7 @@ void test_buffer_overflow_closes_without_processing_new_chunk(void)
     libiec104_poll();
     TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
     TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_RX_OVERFLOW, iec104_get_close_reason());
 }
 
 void test_reset_discards_partial_apdu_and_allows_fresh_startdt(void)
@@ -2618,6 +2623,7 @@ void test_short_i_frame_closes_without_using_previous_asdu(void)
     TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_INVALID_FRAME, iec104_get_close_reason());
 }
 
 void test_command_vsq_cannot_claim_missing_objects_or_zero_objects(void)
@@ -3153,6 +3159,7 @@ void test_pending_reply_overload_closes_before_second_clock_side_effect(void)
     TEST_ASSERT_EQUAL_UINT32(1U, mock_rtc_sync_count());
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_REPLY_OVERLOAD, iec104_get_close_reason());
 }
 
 void test_session_reset_discards_deferred_reboot_confirmation(void)
@@ -3183,6 +3190,7 @@ void test_deferred_reply_timeout_closes_without_reboot(void)
     advance_ticks(15U);
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_REPLY_TIMEOUT, iec104_get_close_reason());
 }
 
 void test_partial_ack_of_same_age_frames_does_not_extend_t1(void)
@@ -3332,6 +3340,7 @@ void test_initialization_transport_stall_closes_at_t1(void)
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
     TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_INIT_TIMEOUT, iec104_get_close_reason());
 }
 
 void test_bad_prefix_and_invalid_length_close_before_complete_control_field(void)
@@ -3355,6 +3364,7 @@ void test_s_ack_before_start_closes_legacy_session(void)
     feed_s_frame(0U);
     TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
     TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_NOT_STARTED, iec104_get_close_reason());
 }
 
 void test_s_ack_after_stop_confirmation_closes_legacy_session(void)
@@ -3394,6 +3404,7 @@ void test_testfr_confirmation_deadline_closes_at_exact_t1(void)
     advance_ticks(1U);
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_TESTFR_TIMEOUT, iec104_get_close_reason());
 }
 
 void test_late_testfr_confirmation_cannot_reopen_expired_session(void)
@@ -3409,6 +3420,7 @@ void test_late_testfr_confirmation_cannot_reopen_expired_session(void)
     feed_u_frame(IEC104_TESTFR_CON);
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_TESTFR_TIMEOUT, iec104_get_close_reason());
 }
 
 void test_late_i_frame_ack_never_marks_legacy_durable_record_delivered(void)
@@ -3424,6 +3436,7 @@ void test_late_i_frame_ack_never_marks_legacy_durable_record_delivered(void)
     TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
     TEST_ASSERT_FALSE(iec104_is_link_active());
     TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_ACK_TIMEOUT, iec104_get_close_reason());
 }
 
 static void build_application_test(uint8_t frame[24])
@@ -3584,6 +3597,26 @@ void test_application_test_coalesced_commands_keep_each_counter_and_sequence(voi
     TEST_ASSERT_EQUAL_MEMORY(&data[15], &tx_log[0][15], 9U);
     TEST_ASSERT_EQUAL_MEMORY(&data[39], &tx_log[1][15], 9U);
     TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+}
+
+
+
+void test_close_reason_survives_following_bad_data_until_socket_reset(void)
+{
+    setup(64U, 32U);
+    start_link();
+    feed_s_frame(2U);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_INVALID_ACK, iec104_get_close_reason());
+    const uint32_t events = event_count;
+    const uint8_t invalid = 0U;
+    iec104_data_received(&invalid, 1U);
+    libiec104_poll();
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_INVALID_ACK, iec104_get_close_reason());
+    TEST_ASSERT_EQUAL_UINT(events + 1U, event_count);
+    iec104_reset();
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_NONE, iec104_get_close_reason());
+    start_link();
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_NONE, iec104_get_close_reason());
 }
 
 /*** end of file ***/

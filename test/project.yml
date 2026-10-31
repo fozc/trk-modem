@@ -229,6 +229,9 @@
       test_iec104_event_log_shell:
         - -include
         - support/shell_log_enabled.h
+      test_iec104_elog:
+        - -include
+        - support/shell_log_enabled.h
       test_xmodem_update_scenario:
         - -include
         - support/shell_log_enabled.h

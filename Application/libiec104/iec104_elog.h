@@ -1,6 +1,8 @@
 /**
  * @file  iec104_elog.h
  * @brief IEC-104 diagnostic event log (connection-level events only).
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  *
  * Mirrors the elog architecture (same envelope, same append-only ring
  * storage engine) but records ONLY IEC-104 related events into its own
@@ -36,7 +38,7 @@ typedef enum
 typedef enum
 {
     IEC104_ELOG_CONN = 1,   /* info: up=1(1) reason=1(1) peer_ip(4 BE) */
-    IEC104_ELOG_DISC = 2,   /* info: up=0(1) reason=0(1) reserved(2)   */
+    IEC104_ELOG_DISC = 2,   /* info: up=0(1) disc reason(1) reserved(2)   */
 } iec104_elog_code_t;
 
 typedef struct
@@ -60,9 +62,7 @@ void iec104_elog_init(void);
  *
  * info: up=1(1) reason=1 client connected(1) peer_ip(4, big-endian)
  *
- * Flap-suppressed: at most one record per 60 s, symmetric with
- * iec104_elog_disconnected() - a flapping SCADA link must not flood
- * the ring.
+ * Repeated connections are suppressed for 5 s to limit ring churn.
  *
  * @param peer_ip  Remote SCADA IP (network byte order as read from GSM).
  */
@@ -77,7 +77,18 @@ typedef enum
     IEC104_ELOG_DISC_CONN_TIMEOUT,         /**< First-data / idle / AT timeout */
     IEC104_ELOG_DISC_LOCAL_CLOSE,          /**< Local close (protocol/modem)   */
     IEC104_ELOG_DISC_SOCKET_CLOSED,        /**< Socket state dropped to 0      */
-    IEC104_ELOG_DISC_UNKNOWN               /**< No reason recorded             */
+    IEC104_ELOG_DISC_UNKNOWN,              /**< No reason recorded             */
+    /* Append only: historical records retain their numeric meaning. */
+    IEC104_ELOG_DISC_ACK_TIMEOUT,
+    IEC104_ELOG_DISC_TESTFR_TIMEOUT,
+    IEC104_ELOG_DISC_REPLY_TIMEOUT,
+    IEC104_ELOG_DISC_INIT_TIMEOUT,
+    IEC104_ELOG_DISC_INVALID_ACK,
+    IEC104_ELOG_DISC_SEQUENCE_ERROR,
+    IEC104_ELOG_DISC_INVALID_FRAME,
+    IEC104_ELOG_DISC_RX_OVERFLOW,
+    IEC104_ELOG_DISC_NOT_STARTED,
+    IEC104_ELOG_DISC_REPLY_OVERLOAD
 } iec104_elog_disc_reason_t;
 
 /**
@@ -85,8 +96,8 @@ typedef enum
  *
  * info: up=0(1) disc reason(1) reserved(2)
  *
- * Flap-suppressed: at most one record per 60 s, symmetric with
- * iec104_elog_connected() - a flapping SCADA link must not flood the ring.
+ * Identical disconnect reasons are suppressed for 5 s. A different
+ * reason is recorded immediately; suppressed repeats do not extend the window.
  */
 void iec104_elog_disconnected(iec104_elog_disc_reason_t reason);
 

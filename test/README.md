@@ -1,7 +1,36 @@
 # Test Altyapısı
 
-**Sürüm:** 1.95
-**Tarih:** 2026-10-30
+**Sürüm:** 1.96
+**Tarih:** 2026-10-31
+
+## IEC104 yerel kapanma nedenleri ve kayıt filtresi
+
+**Amaç:** Çalışan eski stack'in yerel kapanma nedenini kalıcı IEC104 teşhis kaydında göstermek.
+
+**Kullanım yeri:** Terminalde `iec104elog dump`; testler için `test/` içinde
+`ruby -S ceedling "test:pattern[iec104]"` çalıştırılabilir.
+
+**Kurallar:**
+
+- ACK T1, TESTFR_CON T1, bekleyen komut yanıtı ve başlangıç bildirimi timeout
+  (zaman aşımı) nedenleri ayrı kaydedilmelidir. Hatalı N(R), beklenmeyen N(S),
+  hatalı frame, RX taşması, kapalı veri aktarımında I/S frame ve yanıt kapasitesinin
+  aşılması da ayırt edilmelidir.
+- İlk yerel neden soket kapanana kadar korunmalıdır. Soket kapanışında bu neden
+  genel GSM nedeninden önce seçilmelidir; oturum reset'i sonrası temizlenmelidir.
+- Bağlantı kayıtları için 5 saniyelik tekrar filtresi uygulanmalıdır. Kopmalarda
+  yalnız aynı nedenin 5 saniye içindeki tekrarı bastırılmalıdır; farklı neden hemen
+  kaydedilmelidir. Bastırılan tekrarlar pencereyi uzatmamalıdır.
+- Filtre süresi başarılı son yazmaya göre hesaplanmalıdır; başarısız Flash yazması
+  sonraki kaydı engellememelidir. Mevcut kayıt boyutu ve tarihsel neden kodları korunmalıdır.
+
+**Örnek:** `disconnected (local: TESTFR_CON T1 timeout)`.
+
+**Doğrulama:** `test_iec104_protocol_scenario` gerçek protokol girişlerini;
+`test_iec104_ack_delivery_scenario` gerçek process/soket kapanışını;
+`test_iec104_elog` kayıt içeriğini, metin çözümünü, 0/4999/5000 ms sınırlarını,
+tick sayacı sarmasını ve yazma hata yolunu sınar. Son testte Flash log servisi mock'tur;
+host testleri fiziksel Flash kalıcılığı veya GSM zamanlaması kanıtı değildir.
 
 ## Üretim ve servis ayarları için config komutu
 
@@ -2206,6 +2235,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-31 | 1.96 | IEC104 yerel kapanma nedenleri, 5 saniyelik neden duyarlı kayıt filtresi ve regresyon testleri. |
 | 2026-10-29 | 1.94 | Tek config komutuyla kimlik/GSM/RTC atamaları; gizli parola, kayıt hata yolları ve gerçek shell giriş testleri. |
 | 2026-10-29 | 1.93 | E1 snapshot/change ve power-panic startup_low/falling_edge ayrımı; eski kayıtları unknown gösterme ve IRQ regresyonları. |
 | 2026-10-28 | 1.92 | RNG geçmiş seed hata bayrağı için HAL toparlaması; GSM kesinti, FINISH öncesi Apply ve imzalı kurulum kontrolleri. |
