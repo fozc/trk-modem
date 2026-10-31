@@ -12,7 +12,6 @@ function renderLogs(){
 function updateSysLogView(){
   const summary=sysLogSummary();
   if($('sysLogSummary'))$('sysLogSummary').textContent=summary;
-  if($('sysLogWait'))$('sysLogWait').textContent=summary;
   if($('sysLogContent'))$('sysLogContent').innerHTML=sysLogLines.map(line=>'<div class="log">'+esc(line)+'</div>').join('')||esc(sysLogEmptyText());
 }
 async function loadSysLogs(mode='range'){
@@ -23,9 +22,7 @@ async function loadSysLogs(mode='range'){
     toast(t('logsInvalidRange'),'err');return;
   }
   try{
-    showLoad();
-    const progress=document.createElement('p');progress.id='sysLogWait';progress.style.color='white';
-    const overlay=$('requestLoading');if(overlay){overlay.style.flexDirection='column';overlay.appendChild(progress)}
+    showLoad(false); // Keep received rows visible while serial HTTP pages arrive.
     const count=await api('/syslogs?offset=0&limit=0');
     if(count.success===false)throw new Error(count.error||t('tFailed'));
     if(!Number.isInteger(count.t)||count.t<0)throw new Error(t('logsInvalidPage'));

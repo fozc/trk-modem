@@ -100,6 +100,28 @@ const cases = [
         f.document.getElementById('sysLogFirst').value='10';f.document.getElementById('sysLogLast').value='2';
         await f.run("loadSysLogs('range')");assert.equal(calls,3,'invalid range must not send');
     }],
+    ['system logs display the first page while the next request is pending', async f => {
+        let page=0,release;
+        const overlays=[];
+        f.document.body.appendChild=element=>{if(element.className==='loading')overlays.push(element)};
+        f.context.fetch=async()=>({ok:true,status:200,json:async()=>{
+            page++;
+            if(page===1)return {t:3,recs:''};
+            if(page===2)return {t:3,recs:'#1 first\n#2 second'};
+            return new Promise(resolve=>{release=()=>resolve({t:3,recs:'#3 third'})});
+        }});
+        const pending=f.run("loadSysLogs('all')");
+        for(let step=0;step<30&&!release;step++)await Promise.resolve();
+        assert.ok(release,'second page must be waiting');
+        assert.equal(f.run('loading'),true);
+        assert.match(f.document.getElementById('sysLogContent').innerHTML,/#1 first/);
+        assert.equal(overlays.length,0,'received logs must not be covered');
+        release();await pending;
+        const content=f.document.getElementById('sysLogContent').innerHTML;
+        assert.equal((content.match(/#1 first/g)||[]).length,1);
+        assert.match(content,/#3 third/);
+        assert.equal(f.run('loading'),false);
+    }],
     ['system logs changing totals do not mix windows and zero total completes', async f => {
         let calls=0;
         f.context.fetch=async()=>({ok:true,status:200,json:async()=>({t:++calls===1?10:11,recs:'#1'})});
