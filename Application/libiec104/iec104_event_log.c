@@ -687,11 +687,58 @@ static void evtlog_status(void)
     SHELL_LOG("\r\nKullanim: iec104evtlog [status|dump [ilk_seq son_seq]|test <N>|clear]\r\n");
 }
 
+/** Discard the newest records while keeping the same backward cursor. */
+static void evtlog_skip(const void *payload, uint32_t length, uint32_t sequence, void *context)
+{
+    (void)payload;
+    (void)length;
+    (void)sequence;
+    (void)context;
+}
+
+/** @brief Print a bounded page, starting skip records behind the newest entry. */
+static void evtlog_read_page(uint16_t count, uint16_t skip)
+{
+    if (!s_initialized)
+    {
+        SHELL_LOG("evtlog: hazir degil (init edilmemis)\r\n");
+        return;
+    }
+    log_page_ctx_t page = {0};
+    evtlog_dump_range_t range = {0U, EVTLOG_SEQ_INVALID - 1U, 0U};
+    if ((skip != 0U) &&
+        ((log_read_last(&s_log, skip, evtlog_skip, NULL, &page) != LOG_OK) || (page.page_count < skip)))
+    {
+        SHELL_LOG("evtlog: sayfa yok veya okuma basarisiz\r\n");
+        return;
+    }
+    SHELL_LOG("offset=%u count=%u (newest first)\r\n", (unsigned)skip, (unsigned)count);
+    if (log_read_last(&s_log, count, visit_dump, &range, &page) != LOG_OK)
+    {
+        SHELL_LOG("evtlog: okuma basarisiz\r\n");
+        return;
+    }
+    SHELL_LOG("shown=%lu next_offset=%lu more=%u\r\n", (unsigned long)range.printed_count,
+              (unsigned long)((uint32_t)skip + range.printed_count), (unsigned)page.has_more);
+}
+
 static int shell_iec104evtlog(int argc, char *argv[])
 {
     if ((argc <= 1) || (0 == strcmp(argv[1], "status")))
     {
         evtlog_status();
+    }
+    else if (0 == strcmp(argv[1], "read"))
+    {
+        uint16_t count = 20U;
+        uint16_t skip = 0U;
+        if ((argc > 4) || ((argc >= 3) && !evtlog_parse_value(argv[2], UINT16_MAX, &count)) ||
+            ((argc == 4) && !evtlog_parse_value(argv[3], UINT16_MAX, &skip)) || (count == 0U))
+        {
+            SHELL_LOG("Kullanim: iec104evtlog read [adet [atla]]; adet=1..65535\r\n");
+            return 0;
+        }
+        evtlog_read_page(count, skip);
     }
     else if (0 == strcmp(argv[1], "dump"))
     {
@@ -742,6 +789,7 @@ void iec104_event_log_shell_init(void)
         .cmd  = "iec104evtlog",
         .desc = "IEC104 olay gunlugu\r\n"
                 "\tiec104evtlog                - durum ozeti (status)\r\n"
+                "\tiec104evtlog read [N [skip]] - yeni kayittan baslayarak sayfa oku\r\n"
                 "\tiec104evtlog dump [ilk son] - kayit araligi dokumu\r\n"
                 "\tiec104evtlog test <N>       - N adet test kaydi ekle\r\n"
                 "\tiec104evtlog clear          - tum kayitlari sil",

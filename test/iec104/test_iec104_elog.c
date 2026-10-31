@@ -152,4 +152,115 @@ void test_new_close_reasons_and_historical_records_decode_without_layout_change(
     TEST_ASSERT_EQUAL_STRING("disconnected (unknown)", iec104_elog_info_to_text(&last_entry));
 }
 
+static shell_cmd_t log_command;
+static char shell_output[2048];
+static size_t shell_used;
+static uint32_t registered_commands;
+static const log_page_ctx_t *read_cursor;
+
+static int capture_log_command(const shell_cmd_t *command, int call)
+{
+    (void)call;
+    registered_commands++;
+    log_command = *command;
+    return 0;
+}
+
+static void capture_shell_char(int ch, int call)
+{
+    (void)call;
+    TEST_ASSERT_TRUE(shell_used + 1U < sizeof(shell_output));
+    shell_output[shell_used++] = (char)ch;
+    shell_output[shell_used] = '\0';
+}
+
+static log_status_t read_page(log_ctx_t *ctx, uint32_t count, log_visit_fn visitor,
+                               void *user, log_page_ctx_t *page, int call)
+{
+    (void)ctx;
+    TEST_ASSERT_EQUAL_UINT32(2U, count);
+    if (call == 0)
+    {
+        read_cursor = page;
+        TEST_ASSERT_NULL(user);
+    }
+    else
+    {
+        TEST_ASSERT_EQUAL_PTR(read_cursor, page);
+        TEST_ASSERT_NOT_NULL(user);
+    }
+    const iec104_elog_entry_t entries[] =
+    {
+        {.code = IEC104_ELOG_DISC, .info = {0U, IEC104_ELOG_DISC_ACK_TIMEOUT}},
+        {.code = IEC104_ELOG_DISC, .info = {0U, IEC104_ELOG_DISC_TESTFR_TIMEOUT}}
+    };
+    visitor(&entries[0], sizeof(entries[0]), 9U, user);
+    visitor(&entries[1], sizeof(entries[1]), 8U, user);
+    page->page_count = 2U;
+    page->has_more = true;
+    return LOG_OK;
+}
+
+void test_shell_alias_reads_bounded_pages_with_one_backward_cursor(void)
+{
+    shell_used = 0U;
+    registered_commands = 0U;
+    shell_register_command_Stub(capture_log_command);
+    shell_putchr_Stub(capture_shell_char);
+    iec104_elog_shell_init();
+    TEST_ASSERT_EQUAL_UINT32(2U, registered_commands);
+    TEST_ASSERT_EQUAL_STRING("iec104log", log_command.cmd);
+    log_read_last_Stub(read_page);
+    char *args[] = {"iec104log", "read", "2", "2"};
+    TEST_ASSERT_EQUAL_INT(0, log_command.func(4, args));
+    const char *ack = strstr(shell_output, "I-frame ACK T1 timeout");
+    const char *test = strstr(shell_output, "TESTFR_CON T1 timeout");
+    TEST_ASSERT_NOT_NULL(ack);
+    TEST_ASSERT_NOT_NULL(test);
+    TEST_ASSERT_TRUE(ack < test);
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "shown=2 next_offset=4 more=1"));
+    TEST_ASSERT_EQUAL_UINT32(0U, writes);
+}
+
+static log_status_t read_all_newest(log_ctx_t *ctx, uint32_t count, log_visit_fn visitor,
+                                   void *user, log_page_ctx_t *page, int call)
+{
+    (void)ctx;
+    (void)call;
+    TEST_ASSERT_EQUAL_UINT32(8U, count);
+    const iec104_elog_entry_t entry = {.code = IEC104_ELOG_DISC, .info = {0U, IEC104_ELOG_DISC_ACK_TIMEOUT}};
+    visitor(&entry, sizeof(entry), 9U, user);
+    page->page_count = 1U;
+    page->has_more = false;
+    return LOG_OK;
+}
+
+void test_shell_dump_without_count_uses_newest_first_reader(void)
+{
+    shell_used = 0U;
+    shell_register_command_Stub(capture_log_command);
+    shell_putchr_Stub(capture_shell_char);
+    iec104_elog_shell_init();
+    log_read_last_Stub(read_all_newest);
+    char *args[] = {"iec104log", "dump"};
+    TEST_ASSERT_EQUAL_INT(0, log_command.func(2, args));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "I-frame ACK T1 timeout"));
+    TEST_ASSERT_EQUAL_UINT32(0U, writes);
+}
+
+void test_shell_read_invalid_arguments_never_reads_or_writes_flash(void)
+{
+    shell_used = 0U;
+    shell_register_command_Stub(capture_log_command);
+    shell_putchr_Stub(capture_shell_char);
+    iec104_elog_shell_init();
+    const char *invalid[] = {"0", "-1", "5tail", "65536", ""};
+    for (size_t index = 0U; index < sizeof(invalid) / sizeof(invalid[0]); index++)
+    {
+        char *args[] = {"iec104log", "read", (char *)invalid[index]};
+        (void)log_command.func(3, args);
+    }
+    TEST_ASSERT_EQUAL_UINT32(0U, writes);
+}
+
 /*** end of file ***/

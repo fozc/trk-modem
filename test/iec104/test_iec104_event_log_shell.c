@@ -106,4 +106,48 @@ void test_test_command_valid_count_adds_requested_records(void)
     TEST_ASSERT_EQUAL_UINT16(2U, iec104_event_log_get_unsent_count());
 }
 
+void test_read_pages_are_bounded_newest_first_and_do_not_consume_events(void)
+{
+    register_test_command();
+    fault_log_t record = {0};
+    for (uint16_t index = 0U; index < 5U; index++)
+    {
+        TEST_ASSERT_TRUE(iec104_event_log_add(&record, NULL));
+    }
+    const uint32_t written = program_calls;
+    char *first[] = {"iec104evtlog", "read", "2"};
+    TEST_ASSERT_EQUAL_INT(0, test_command.func(3, first));
+    const char *newest = strstr(output, "seq=    4");
+    const char *older = strstr(output, "seq=    3");
+    TEST_ASSERT_NOT_NULL(newest);
+    TEST_ASSERT_NOT_NULL(older);
+    TEST_ASSERT_TRUE(newest < older);
+    TEST_ASSERT_NULL(strstr(output, "seq=    2"));
+    TEST_ASSERT_NOT_NULL(strstr(output, "shown=2 next_offset=2 more=1"));
+    output_len = 0U;
+    output[0] = '\0';
+    char *next[] = {"iec104evtlog", "read", "2", "2"};
+    TEST_ASSERT_EQUAL_INT(0, test_command.func(4, next));
+    TEST_ASSERT_NOT_NULL(strstr(output, "seq=    2"));
+    TEST_ASSERT_NOT_NULL(strstr(output, "seq=    1"));
+    TEST_ASSERT_NULL(strstr(output, "seq=    4"));
+    TEST_ASSERT_EQUAL_UINT32(written, program_calls);
+    TEST_ASSERT_EQUAL_UINT16(5U, iec104_event_log_get_unsent_count());
+}
+
+void test_read_rejects_invalid_count_and_offset_without_changing_log(void)
+{
+    register_test_command();
+    const char *invalid[] = {"-1", "0", "1x", "65536", ""};
+    for (size_t index = 0U; index < sizeof(invalid) / sizeof(invalid[0]); index++)
+    {
+        char *args[] = {"iec104evtlog", "read", (char *)invalid[index]};
+        (void)test_command.func(3, args);
+    }
+    char *args[] = {"iec104evtlog", "read", "2", "-1"};
+    (void)test_command.func(4, args);
+    TEST_ASSERT_NOT_NULL(strstr(output, "Kullanim:"));
+    TEST_ASSERT_EQUAL_UINT32(0U, program_calls);
+}
+
 /*** end of file ***/

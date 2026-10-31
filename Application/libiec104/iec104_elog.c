@@ -460,13 +460,6 @@ static void iec104_elog_print_entry(uint32_t seq, const iec104_elog_entry_t *e)
               iec104_elog_info_to_text(e));
 }
 
-static void iec104_elog_dump_visitor(const void *payload, uint32_t payload_size,
-                                     uint32_t seq, void *user_ctx)
-{
-    (void)payload_size;
-    (void)user_ctx;
-    iec104_elog_print_entry(seq, (const iec104_elog_entry_t *)payload);
-}
 
 /* Raw hex view, no index. */
 static void iec104_elog_raw_visitor(const void *payload, uint32_t payload_size,
@@ -530,58 +523,97 @@ static void iec104_elog_shell_dump(int argc, char **argv)
 
     if (count == 0U)
     {
-        /* Whole ring, single chronological pass. */
-        log_visit_fn visitor = raw ? iec104_elog_raw_visitor
-                                   : iec104_elog_dump_visitor;
-
-        if (log_read_all(&iec104_elog_ctx, visitor, NULL) != LOG_OK)
-        {
-            SHELL_LOG("Dump failed: flash read error\r\n");
-        }
+        count = UINT32_MAX;
     }
-    else
+    /* Newest count entries (newest -> oldest) with ONE backward
+     * cursor: every page call continues where the previous stopped,
+     * so the ring is read once instead of re-scanned per chunk. */
+    log_page_ctx_t page;
+    iec104_elog_index_t index;
+
+    memset(&page, 0, sizeof(page));
+    memset(&index, 0, sizeof(index));
+
+    uint32_t visited_total = 0U;
+
+    while (visited_total < count)
     {
-        /* Newest count entries (newest -> oldest) with ONE backward
-         * cursor: every page call continues where the previous stopped,
-         * so the ring is read once instead of re-scanned per chunk. */
-        log_page_ctx_t page;
-        iec104_elog_index_t index;
+        uint32_t want = count - visited_total;
 
-        memset(&page, 0, sizeof(page));
-        memset(&index, 0, sizeof(index));
-
-        uint32_t visited_total = 0U;
-
-        while (visited_total < count)
+        if (want > 8U)
         {
-            uint32_t want = count - visited_total;
+            want = 8U;
+        }
 
-            if (want > 8U)
-            {
-                want = 8U;
-            }
+        log_visit_fn visitor = raw ? iec104_elog_raw_visitor
+                                   : iec104_elog_indexed_visitor;
+        void *visitor_ctx = raw ? NULL : &index;
 
-            log_visit_fn visitor = raw ? iec104_elog_raw_visitor
-                                       : iec104_elog_indexed_visitor;
-            void *visitor_ctx = raw ? NULL : &index;
+        if ((log_read_last(&iec104_elog_ctx, want, visitor,
+                           visitor_ctx, &page) != LOG_OK)
+            || (page.page_count == 0U))
+        {
+            break;
+        }
 
-            if ((log_read_last(&iec104_elog_ctx, want, visitor,
-                               visitor_ctx, &page) != LOG_OK)
-                || (page.page_count == 0U))
-            {
-                break;
-            }
+        visited_total += page.page_count;
 
-            visited_total += page.page_count;
-
-            if (!page.has_more)
-            {
-                break;
-            }
+        if (!page.has_more)
+        {
+            break;
         }
     }
 
     SHELL_LOG("\r\n");
+}
+
+/** @brief Read a bounded newest-first page without buffering the whole log. */
+static void iec104_elog_shell_read(int argc, char *argv[])
+{
+    uint32_t values[2] = {20U, 0U};
+    if (argc > 4)
+    {
+        SHELL_LOG("Usage: iec104log read [count [skip]]\r\n");
+        return;
+    }
+    for (size_t index = 2U; index < (size_t)argc; index++)
+    {
+        const char *text = argv[index];
+        if ((*text == '\0') || (strlen(text) > 5U) || !is_numeric(text))
+        {
+            SHELL_LOG("Usage: iec104log read [count [skip]]\r\n");
+            return;
+        }
+        const int32_t parsed = xstrtoi(text);
+        if ((parsed < 0) || (parsed > UINT16_MAX))
+        {
+            SHELL_LOG("Invalid count/skip (0..65535)\r\n");
+            return;
+        }
+        values[index - 2U] = (uint32_t)parsed;
+    }
+    if (values[0] == 0U)
+    {
+        SHELL_LOG("Count must be positive\r\n");
+        return;
+    }
+    log_page_ctx_t page = {0};
+    iec104_elog_index_t index = {.idx = values[1]};
+    if ((values[1] != 0U) &&
+        ((log_read_last(&iec104_elog_ctx, values[1], iec104_elog_discard_visitor, NULL, &page) != LOG_OK) ||
+         (page.page_count < values[1])))
+    {
+        SHELL_LOG("No page or flash read failed\r\n");
+        return;
+    }
+    SHELL_LOG("offset=%lu count=%lu (newest first)\r\n", (unsigned long)values[1], (unsigned long)values[0]);
+    if (log_read_last(&iec104_elog_ctx, values[0], iec104_elog_indexed_visitor, &index, &page) != LOG_OK)
+    {
+        SHELL_LOG("Flash read failed\r\n");
+        return;
+    }
+    SHELL_LOG("shown=%lu next_offset=%lu more=%u\r\n", (unsigned long)page.page_count,
+              (unsigned long)index.idx, (unsigned)page.has_more);
 }
 
 static int iec104_elog_shell_handler(int argc, char *argv[])
@@ -603,6 +635,10 @@ static int iec104_elog_shell_handler(int argc, char *argv[])
                   iec104_elog_get_stored_count(), iec104_elog_get_capacity());
         SHELL_LOG("========================================\r\n\r\n");
     }
+    else if (argc > 1 && strcmp(argv[1], "read") == 0)
+    {
+        iec104_elog_shell_read(argc, argv);
+    }
     else if (argc > 1 && strcmp(argv[1], "dump") == 0)
     {
         iec104_elog_shell_dump(argc, argv);
@@ -610,6 +646,7 @@ static int iec104_elog_shell_handler(int argc, char *argv[])
     else
     {
         SHELL_LOG("Usage: iec104elog <command>\r\n"
+                  "  read [N [skip]] - newest-first page\r\n"
                   "  dump [N|raw] - dump newest N entries (all if absent)\r\n"
                   "  clear        - remove all entries\r\n"
                   "  info         - ring status\r\n");
@@ -648,10 +685,16 @@ void iec104_elog_shell_init(void)
     shell_register_command(&(shell_cmd_t){
         .cmd = "iec104elog",
         .desc = "IEC104 diagnostic log\r\n"
+                "\tiec104elog read [N [skip]] - newest-first page\r\n"
                 "\tiec104elog dump [N|raw]  - dump entries\r\n"
                 "\tiec104elog clear         - remove all entries\r\n"
                 "\tiec104elog info          - ring status",
         .func = iec104_elog_shell_handler});
+    (void)shell_register_command(&(shell_cmd_t){
+        .cmd = "iec104log",
+        .desc = "IEC104 diagnostic log; read [N [skip]] (newest first)",
+        .func = iec104_elog_shell_handler
+    });
 }
 
 /*** end of file ***/
