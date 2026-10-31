@@ -32,6 +32,13 @@
  * ====================================================================== */
 
 static log_ctx_t iec104_elog_ctx;
+static bool has_connection_record;
+static bool has_disconnection_record;
+static uint32_t last_connection_tick;
+static uint32_t last_disconnection_tick;
+static iec104_elog_disc_reason_t last_disconnection_reason;
+
+#define IEC104_ELOG_FLAP_MIN_INTERVAL_MS 5000U
 
 /* Same driver limitation as elog.c: w25qxx_read_buff is void-typed, so a
  * failed SPI read cannot be told apart here. TODO(w25qxx): int-returning
@@ -80,11 +87,11 @@ static uint32_t iec104_elog_timestamp_now(void)
     return dt_conv_to_unix(&dt2);
 }
 
-static void iec104_elog_write_entry(const iec104_elog_entry_t *entry)
+static bool iec104_elog_write_entry(const iec104_elog_entry_t *entry)
 {
     if (!log_is_initialized(&iec104_elog_ctx))
     {
-        return;
+        return false;
     }
 
     log_status_t st = log_write(&iec104_elog_ctx, entry);
@@ -92,9 +99,10 @@ static void iec104_elog_write_entry(const iec104_elog_entry_t *entry)
     {
         CSLOG_ERR("[IEC104ELOG] write failed (%d)\r\n", (int)st);
     }
+    return st == LOG_OK;
 }
 
-static void iec104_elog_add(iec104_elog_code_t code, iec104_elog_level_t level,
+static bool iec104_elog_add(iec104_elog_code_t code, iec104_elog_level_t level,
                             const void *data, size_t data_len)
 {
     iec104_elog_entry_t entry = {0};
@@ -109,30 +117,24 @@ static void iec104_elog_add(iec104_elog_code_t code, iec104_elog_level_t level,
         memcpy(entry.info, data, len);
     }
 
-    iec104_elog_write_entry(&entry);
+    return iec104_elog_write_entry(&entry);
 }
 
 /* ======================================================================
  *  Semantic API
  * ====================================================================== */
 
-/* One record per side per window; a flapping SCADA link must not flood
- * the ring. Applied symmetrically to connect and disconnect records. */
-#define IEC104_ELOG_FLAP_MIN_INTERVAL_MS 60000UL
-
+/* Her yon icin basarili son kayit esas alinir. Farkli kopma nedeni
+ * beklemeden yazilir; bastirilan tekrarlar pencereyi uzatmaz. */
 void iec104_elog_connected(uint32_t peer_ip)
 {
     /* info: up=1(1) reason=1 client connected(1) peer_ip(4 BE) */
-    static uint32_t last_log_tick = 0U;
-    uint32_t now = bsp_get_tick();
-
-    /* Connect tarafi da flap supresyonlu: 60 sn'de en fazla bir kayit. */
-    if ((last_log_tick != 0U) &&
-        ((now - last_log_tick) < IEC104_ELOG_FLAP_MIN_INTERVAL_MS))
+    const uint32_t now = bsp_get_tick();
+    if (has_connection_record &&
+        ((now - last_connection_tick) < IEC104_ELOG_FLAP_MIN_INTERVAL_MS))
     {
         return;
     }
-    last_log_tick = now;
 
     uint8_t info[16] = {0};
 
@@ -142,27 +144,33 @@ void iec104_elog_connected(uint32_t peer_ip)
     info[3] = (uint8_t)(peer_ip >> 16);
     info[4] = (uint8_t)(peer_ip >> 8);
     info[5] = (uint8_t)peer_ip;
-    iec104_elog_add(IEC104_ELOG_CONN, IEC104_ELOG_LEVEL_INFO, info, sizeof(info));
+    if (iec104_elog_add(IEC104_ELOG_CONN, IEC104_ELOG_LEVEL_INFO, info, sizeof(info)))
+    {
+        has_connection_record = true;
+        last_connection_tick = now;
+    }
 }
 
 void iec104_elog_disconnected(iec104_elog_disc_reason_t reason)
 {
     /* info: up=0(1) disc reason(1) reserved(2) */
-    static uint32_t last_log_tick = 0U;
-    uint32_t now = bsp_get_tick();
-
-    if ((last_log_tick != 0U) &&
-        ((now - last_log_tick) < IEC104_ELOG_FLAP_MIN_INTERVAL_MS))
+    const uint32_t now = bsp_get_tick();
+    if (has_disconnection_record && (reason == last_disconnection_reason) &&
+        ((now - last_disconnection_tick) < IEC104_ELOG_FLAP_MIN_INTERVAL_MS))
     {
         return;
     }
-    last_log_tick = now;
 
     uint8_t info[16] = {0};
 
     info[0] = 0U;
     info[1] = (uint8_t)reason;
-    iec104_elog_add(IEC104_ELOG_DISC, IEC104_ELOG_LEVEL_WARN, info, sizeof(info));
+    if (iec104_elog_add(IEC104_ELOG_DISC, IEC104_ELOG_LEVEL_WARN, info, sizeof(info)))
+    {
+        has_disconnection_record = true;
+        last_disconnection_tick = now;
+        last_disconnection_reason = reason;
+    }
 }
 
 /* ======================================================================
@@ -382,6 +390,36 @@ const char *iec104_elog_info_to_text(const iec104_elog_entry_t *entry)
                 case IEC104_ELOG_DISC_SOCKET_CLOSED:
                     xsnprintf(text, sizeof(text), "disconnected (socket closed)");
                     break;
+                case IEC104_ELOG_DISC_ACK_TIMEOUT:
+                    xsnprintf(text, sizeof(text), "disconnected (local: I-frame ACK T1 timeout)");
+                    break;
+                case IEC104_ELOG_DISC_TESTFR_TIMEOUT:
+                    xsnprintf(text, sizeof(text), "disconnected (local: TESTFR_CON T1 timeout)");
+                    break;
+                case IEC104_ELOG_DISC_REPLY_TIMEOUT:
+                    xsnprintf(text, sizeof(text), "disconnected (local: command reply TX timeout)");
+                    break;
+                case IEC104_ELOG_DISC_INIT_TIMEOUT:
+                    xsnprintf(text, sizeof(text), "disconnected (local: initialization TX timeout)");
+                    break;
+                case IEC104_ELOG_DISC_INVALID_ACK:
+                    xsnprintf(text, sizeof(text), "disconnected (local: invalid N(R))");
+                    break;
+                case IEC104_ELOG_DISC_SEQUENCE_ERROR:
+                    xsnprintf(text, sizeof(text), "disconnected (local: unexpected N(S))");
+                    break;
+                case IEC104_ELOG_DISC_INVALID_FRAME:
+                    xsnprintf(text, sizeof(text), "disconnected (local: invalid frame)");
+                    break;
+                case IEC104_ELOG_DISC_RX_OVERFLOW:
+                    xsnprintf(text, sizeof(text), "disconnected (local: RX overflow)");
+                    break;
+                case IEC104_ELOG_DISC_NOT_STARTED:
+                    xsnprintf(text, sizeof(text), "disconnected (local: I/S frame while stopped)");
+                    break;
+                case IEC104_ELOG_DISC_REPLY_OVERLOAD:
+                    xsnprintf(text, sizeof(text), "disconnected (local: command reply overload)");
+                    break;
                 case IEC104_ELOG_DISC_UNKNOWN:
                 default:
                     xsnprintf(text, sizeof(text), "disconnected (unknown)");
@@ -587,6 +625,8 @@ static int iec104_elog_shell_handler(int argc, char *argv[])
 
 void iec104_elog_init(void)
 {
+    has_connection_record = false;
+    has_disconnection_record = false;
     log_config_t cfg;
 
     iec104_elog_config_build(&cfg);

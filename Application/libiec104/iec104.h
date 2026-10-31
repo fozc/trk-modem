@@ -48,6 +48,29 @@ typedef enum
                                       * replay emniyet sayacini baslatir */
 } iec104_event_t;
 
+/** Local protocol close cause, retained until iec104_reset()/init().
+ * Read before the socket-close callback resets the session. */
+typedef enum
+{
+    IEC104_CLOSE_NONE = 0,
+    IEC104_CLOSE_ACK_TIMEOUT,
+    IEC104_CLOSE_TESTFR_TIMEOUT,
+    IEC104_CLOSE_REPLY_TIMEOUT,
+    IEC104_CLOSE_INIT_TIMEOUT,
+    IEC104_CLOSE_INVALID_ACK,
+    IEC104_CLOSE_SEQUENCE_ERROR,
+    IEC104_CLOSE_INVALID_FRAME,
+    IEC104_CLOSE_RX_OVERFLOW,
+    IEC104_CLOSE_NOT_STARTED,
+    IEC104_CLOSE_REPLY_OVERLOAD
+} iec104_close_reason_t;
+
+/** @brief Return the first local close cause of the current TCP session.
+ * @return NONE for a peer/transport close with no local protocol failure.
+ * @note Cooperative process context only; socket owner reads before reset.
+ */
+iec104_close_reason_t iec104_get_close_reason(void);
+
 typedef struct
 {
     int (*send)(const uint8_t *data, uint16_t length);

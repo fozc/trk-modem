@@ -65,6 +65,24 @@ static void tx_reset(void)
  * eslenir (libiec104, gsm basliklarini gormez - katmanlama korunur). */
 static iec104_elog_disc_reason_t map_disc_reason(void)
 {
+    /* Protokol nedeni GSM genel kapanma nedeninden once gelir. */
+    switch (iec104_get_close_reason())
+    {
+        case IEC104_CLOSE_ACK_TIMEOUT: return IEC104_ELOG_DISC_ACK_TIMEOUT;
+        case IEC104_CLOSE_TESTFR_TIMEOUT: return IEC104_ELOG_DISC_TESTFR_TIMEOUT;
+        case IEC104_CLOSE_REPLY_TIMEOUT: return IEC104_ELOG_DISC_REPLY_TIMEOUT;
+        case IEC104_CLOSE_INIT_TIMEOUT: return IEC104_ELOG_DISC_INIT_TIMEOUT;
+        case IEC104_CLOSE_INVALID_ACK: return IEC104_ELOG_DISC_INVALID_ACK;
+        case IEC104_CLOSE_SEQUENCE_ERROR: return IEC104_ELOG_DISC_SEQUENCE_ERROR;
+        case IEC104_CLOSE_INVALID_FRAME: return IEC104_ELOG_DISC_INVALID_FRAME;
+        case IEC104_CLOSE_RX_OVERFLOW: return IEC104_ELOG_DISC_RX_OVERFLOW;
+        case IEC104_CLOSE_NOT_STARTED: return IEC104_ELOG_DISC_NOT_STARTED;
+        case IEC104_CLOSE_REPLY_OVERLOAD: return IEC104_ELOG_DISC_REPLY_OVERLOAD;
+        case IEC104_CLOSE_NONE:
+        default:
+            break;
+    }
+
 	const gsm_socket_stats_t *stats = gsm_socket_get_stats(IEC104_LISTENER_SOCKET);
 
 	if (NULL == stats)

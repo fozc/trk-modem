@@ -38,6 +38,7 @@ static uint8_t iec104_rx_buffer[IEC104_RX_BUFFER_SIZE] = {0};
 static uint16_t iec104_rx_buffer_len = 0;
 
 static iec104_io_t iec_io = {0};
+static iec104_close_reason_t close_reason;
 
 static iec104_package_t package = {0};
 static bool package_ready = false;
@@ -316,10 +317,19 @@ static inline i_format_control_t make_iframe_control(uint16_t send_seq, uint16_t
 /**
  * @brief Close a failed protocol session without consuming durable events.
  */
-static void close_protocol_session(void)
+static void close_protocol_session(iec104_close_reason_t reason)
 {
+    /* TCP kapanisi asenkron tamamlanir. Ilk nedeni sonraki RX hatalariyla
+     * ezme; soket sahibi nedeni okuduktan sonra iec104_reset() temizler. */
+    const iec104_close_reason_t first_reason = close_reason == IEC104_CLOSE_NONE ? reason : close_reason;
     iec104_reset();
+    close_reason = first_reason;
     notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
+}
+
+iec104_close_reason_t iec104_get_close_reason(void)
+{
+    return close_reason;
 }
 
 /**
@@ -335,7 +345,7 @@ static bool send_command_reply(const uint8_t *data, uint16_t length, bool reques
 {
     if (command_reply.length != 0U)
     {
-        close_protocol_session();
+        close_protocol_session(IEC104_CLOSE_REPLY_OVERLOAD);
         return false;
     }
     if (iec104_send(data, length))
@@ -361,7 +371,7 @@ static void poll_command_reply(void)
     }
     if ((protocol_tick - command_reply.queued_at) >= config.t1_max)
     {
-        close_protocol_session();
+        close_protocol_session(IEC104_CLOSE_REPLY_TIMEOUT);
         return;
     }
     if (!link_active)
@@ -1137,8 +1147,7 @@ bool on_ack_received(uint16_t nr)
                        ack_sn, nr, num_acked, k_counter);
 
             // Gercek sira hatasinda soketi guvenli moda cekmek mantiklidir
-            iec104_reset();
-            notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
+            close_protocol_session(IEC104_CLOSE_INVALID_ACK);
             return false;
         }
     }
@@ -1216,8 +1225,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     if (iframe->send_seq != receive_sn) {
         CSLOG_ERR("Sequence desync detected! Expected N(S)=%d, Got %d\r\n", receive_sn, iframe->send_seq);
 
-        iec104_reset();
-        notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
+        close_protocol_session(IEC104_CLOSE_SEQUENCE_ERROR);
         return;
     }
 
@@ -1267,7 +1275,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     }
     if (command_reply.length != 0U)
     {
-        close_protocol_session();
+        close_protocol_session(IEC104_CLOSE_REPLY_OVERLOAD);
         return;
     }
 
@@ -1417,6 +1425,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
 
 void iec104_reset(void)
 {
+    close_reason = IEC104_CLOSE_NONE;
 	/* Socket/session reset never acknowledges outstanding event data. */
 	event_ack.on_ack = NULL;
     event_ack.pending_len = 0U;
@@ -1534,7 +1543,7 @@ void iec104_data_received(const uint8_t *data, uint16_t length)
 
     if (((uint32_t)iec104_rx_buffer_len + length) > IEC104_RX_BUFFER_SIZE)
     {
-        close_protocol_session();
+        close_protocol_session(IEC104_CLOSE_RX_OVERFLOW);
         return;
     }
 
@@ -1581,7 +1590,7 @@ void iec104_process_package(void)
         // Start byte ara
         if(iec104_rx_buffer[idx] != IEC104_START_BYTE)
         {
-            close_protocol_session();
+            close_protocol_session(IEC104_CLOSE_INVALID_FRAME);
             return;
         }
 
@@ -1595,7 +1604,7 @@ void iec104_process_package(void)
         if(apdu_length < 4 || apdu_length > 253)
         {
             CSLOG("Invalid APDU length: %d\r\n", apdu_length);
-            close_protocol_session();
+            close_protocol_session(IEC104_CLOSE_INVALID_FRAME);
             return;
         }
 
@@ -1627,8 +1636,7 @@ void iec104_process_package(void)
         memcpy(&package, &iec104_rx_buffer[idx], frame_length);
         if (!is_valid_frame_header(&package))
         {
-            iec104_reset();
-            notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
+            close_protocol_session(IEC104_CLOSE_INVALID_FRAME);
             return;
         }
 
@@ -1649,7 +1657,7 @@ void iec104_process_package(void)
                     }
                     else
                     {
-                        close_protocol_session();
+                        close_protocol_session(IEC104_CLOSE_NOT_STARTED);
                         return;
                     }
                 }
@@ -1663,7 +1671,7 @@ void iec104_process_package(void)
                     }
                     else
                     {
-                        close_protocol_session();
+                        close_protocol_session(IEC104_CLOSE_NOT_STARTED);
                         return;
                     }
                 }
@@ -1709,12 +1717,15 @@ void libiec104_poll(void)
 {
     /* Once dolmus T1'i kontrol et: gec ACK kaydi teslim edildi saymamali,
      * gec TESTFR_CON ise suresi dolmus oturumu canli hale getirmemelidir. */
-    if (session_started &&
-        (((k_counter != 0U) &&
-          ((protocol_tick - sent_at[ack_sn % IEC104_ACK_TIME_SLOTS]) >= config.t1_max)) ||
-         (wait_for_testfr_con && (testfr_timer >= config.t1_max))))
+    if (session_started && (k_counter != 0U) &&
+        ((protocol_tick - sent_at[ack_sn % IEC104_ACK_TIME_SLOTS]) >= config.t1_max))
     {
-        close_protocol_session();
+        close_protocol_session(IEC104_CLOSE_ACK_TIMEOUT);
+        return;
+    }
+    if (session_started && wait_for_testfr_con && (testfr_timer >= config.t1_max))
+    {
+        close_protocol_session(IEC104_CLOSE_TESTFR_TIMEOUT);
         return;
     }
 	if(package_ready)
@@ -1754,7 +1765,7 @@ void libiec104_poll(void)
     }
     if (initialization_pending && (protocol_tick >= config.t1_max))
     {
-        close_protocol_session();
+        close_protocol_session(IEC104_CLOSE_INIT_TIMEOUT);
         return;
     }
     if (link_active && initialization_pending)

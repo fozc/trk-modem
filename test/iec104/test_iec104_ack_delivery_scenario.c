@@ -464,4 +464,42 @@ void test_window_one_persists_record_until_second_frame_ack(void)
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
 }
 
+
+
+void test_protocol_timeout_reason_reaches_disconnect_log_before_reset(void)
+{
+    iec104_elog_disconnected_StopIgnore();
+    for (size_t tick = 0U; tick < config.t3_max + 2U; tick++)
+    {
+        iec104_tick();
+        libiec104_poll();
+    }
+    for (size_t tick = 0U; tick < config.t1_max; tick++)
+    {
+        iec104_tick();
+        libiec104_poll();
+    }
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_TESTFR_TIMEOUT, iec104_get_close_reason());
+    iec104_elog_disconnected_Expect(IEC104_ELOG_DISC_TESTFR_TIMEOUT);
+    iec104_process_socket_closed_cb();
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_NONE, iec104_get_close_reason());
+    /* A later transport failure must not inherit the old protocol cause. */
+    iec104_elog_disconnected_Expect(IEC104_ELOG_DISC_UNKNOWN);
+    iec104_process_socket_closed_cb();
+}
+
+void test_protocol_reason_takes_priority_over_generic_gsm_close(void)
+{
+    iec104_elog_disconnected_StopIgnore();
+    const gsm_socket_stats_t stats = {.last_disconnect_reason = SOCK_DISC_MANUAL};
+    acknowledge(2U);
+    TEST_ASSERT_EQUAL(IEC104_CLOSE_INVALID_ACK, iec104_get_close_reason());
+    iec104_elog_disconnected_Expect(IEC104_ELOG_DISC_INVALID_ACK);
+    iec104_process_socket_closed_cb();
+    gsm_socket_get_stats_StopIgnore();
+    gsm_socket_get_stats_ExpectAndReturn(IEC104_LISTENER_SOCKET, &stats);
+    iec104_elog_disconnected_Expect(IEC104_ELOG_DISC_LOCAL_CLOSE);
+    iec104_process_socket_closed_cb();
+}
+
 /*** end of file ***/
