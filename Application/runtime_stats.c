@@ -5,7 +5,7 @@
  * Author: Fatih Ozcan
  *         fatihozcan@gmail.com
  *
- * Fifteen-minute snapshots in the existing two-sector SPI flash log.
+ * Fifteen-minute snapshots in the four-sector SPI flash log.
  */
 #include "runtime_stats.h"
 #include "spi_flash_log.h"
@@ -13,22 +13,30 @@
 #include "w25qxx.h"
 #include "spi.h"
 #include "rtc.h"
+#include "stack_monitor.h"
 #include "bsp.h"
 #include "console_logger.h"
 #include <stddef.h>
 #include <string.h>
 
-#define STATS_PAYLOAD_SIZE 60U
-#define STATS_VERSION 1U
+#define STATS_PAYLOAD_SIZE 64U
+#define STATS_VERSION 2U
 #define STATS_CLOCK_VALID 1U
+#define STATS_SOURCE_SHIFT 1U
+#define STATS_SOURCE_MASK 0x0EU
+#define STATS_FLAGS_MASK (STATS_CLOCK_VALID | STATS_SOURCE_MASK)
 
+_Static_assert(RTC_SOURCE_WEB <= 7U, "RTC source must fit three bits");
 _Static_assert(RUNTIME_COUNTER_COUNT == 13U, "stats field count");
-_Static_assert(8U + (4U * RUNTIME_COUNTER_COUNT) == STATS_PAYLOAD_SIZE,
+_Static_assert(12U + (4U * RUNTIME_COUNTER_COUNT) == STATS_PAYLOAD_SIZE,
                "stats wire size");
-_Static_assert(STATS_PAYLOAD_SIZE + LOG_ENTRY_OVERHEAD == 64U,
+_Static_assert(STATS_PAYLOAD_SIZE + LOG_ENTRY_OVERHEAD == 68U,
                "stats entry size");
-_Static_assert(RUNTIME_STATS_SIZE / LOG_SECTOR_SIZE == 2U,
-               "stats must use two sectors");
+_Static_assert(RUNTIME_STATS_SIZE / LOG_SECTOR_SIZE == 4U,
+               "stats must use four sectors");
+
+_Static_assert(RUNTIME_STATS_CAPACITY == (RUNTIME_STATS_SIZE / LOG_SECTOR_SIZE) *
+               (LOG_SECTOR_SIZE / (STATS_PAYLOAD_SIZE + LOG_ENTRY_OVERHEAD)), "stats capacity");
 
 static log_ctx_t stats_log;
 static runtime_stats_t stats;
@@ -74,10 +82,15 @@ static uint32_t get_u32(const uint8_t *data)
 static void encode(const runtime_stats_t *record, uint8_t *data)
 {
     data[0] = STATS_VERSION;
-    data[1] = 0U;
-    data[2] = record->clock_valid ? STATS_CLOCK_VALID : 0U;
-    data[3] = 0U;
+    /* Payload: version[0], flags/source[1], stack peak LE16[2..3],
+     * checkpoint epoch[4..7], thirteen LE32 counters[8..59], last RTC epoch[60..63].
+     * The log service adds sequence LE16 before it and CRC16 after it. */
+    data[2] = (uint8_t)record->stack_peak_bytes;
+    data[1] = (uint8_t)(((uint32_t)record->rtc_last_sync.source << STATS_SOURCE_SHIFT) |
+                        (record->clock_valid ? STATS_CLOCK_VALID : 0U));
+    data[3] = (uint8_t)(record->stack_peak_bytes >> 8U);
     put_u32(data + 4U, record->timestamp);
+    put_u32(data + 60U, record->rtc_last_sync.timestamp);
     for (size_t index = 0U; index < RUNTIME_COUNTER_COUNT; index++)
     {
         put_u32(data + 8U + (index * 4U), record->counters[index]);
@@ -103,13 +116,17 @@ static void read_record(const void *payload, uint32_t length,
         return;
     }
     if ((length != STATS_PAYLOAD_SIZE) || (data[0] != STATS_VERSION) ||
-        (data[1] != 0U) || ((data[2] & ~STATS_CLOCK_VALID) != 0U) ||
-        (data[3] != 0U))
+        ((data[1] & ~STATS_FLAGS_MASK) != 0U) ||
+        ((data[1] >> STATS_SOURCE_SHIFT) > (uint32_t)RTC_SOURCE_WEB))
     {
         return;
     }
+    *reader->out = (runtime_stats_t){0};
     reader->out->timestamp = get_u32(data + 4U);
-    reader->out->clock_valid = (data[2] & STATS_CLOCK_VALID) != 0U;
+    reader->out->stack_peak_bytes = (uint32_t)data[2] | ((uint32_t)data[3] << 8U);
+    reader->out->rtc_last_sync.source = (rtc_source_t)(data[1] >> STATS_SOURCE_SHIFT);
+    reader->out->rtc_last_sync.timestamp = get_u32(data + 60U);
+    reader->out->clock_valid = (data[1] & STATS_CLOCK_VALID) != 0U;
     for (size_t index = 0U; index < RUNTIME_COUNTER_COUNT; index++)
     {
         reader->out->counters[index] = get_u32(data + 8U + (index * 4U));
@@ -144,6 +161,8 @@ void runtime_stats_snapshot(runtime_stats_t *out)
         *out = stats;
         out->clock_valid = rtc_hw_is_valid();
         out->timestamp = out->clock_valid ? rtc_get_unix_epoch() : 0U;
+        out->rtc_last_sync = rtc_get_last_sync();
+        out->stack_peak_bytes = stack_monitor_get_used();
     }
 }
 
@@ -157,6 +176,11 @@ bool runtime_stats_save(void)
         return false;
     }
     runtime_stats_snapshot(&record);
+    if ((record.stack_peak_bytes > UINT16_MAX) ||
+        ((uint32_t)record.rtc_last_sync.source > (uint32_t)RTC_SOURCE_WEB))
+    {
+        return false;
+    }
     encode(&record, payload);
     const uint32_t sequence = log_get_next_seq(&stats_log);
     log_page_ctx_t page = {0};

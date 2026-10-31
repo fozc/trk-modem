@@ -300,8 +300,26 @@ static bool rtc_is_recent(const rtc_t *dt)
 	return (rtc_to_epoch(dt) >= RTC_EPOCH_MIN);
 }
 
+/* External updates and this metadata belong to cooperative process context.
+ * SysTick advances the clock but never writes the last-source transaction. */
+static rtc_sync_info_t last_sync;
+
+rtc_sync_info_t rtc_get_last_sync(void)
+{
+    return last_sync;
+}
+
 bool rtc_sync(const rtc_t *dt)
 {
+    return rtc_sync_with_source(dt, RTC_SOURCE_UNKNOWN);
+}
+
+bool rtc_sync_with_source(const rtc_t *dt, rtc_source_t source)
+{
+    if ((source <= RTC_SOURCE_NONE) || (source > RTC_SOURCE_WEB))
+    {
+        return false;
+    }
 	if ((dt == NULL) || !rtc_is_valid(dt))
 	{
 		CSLOG_WARN("RTC sync reddedildi: gecersiz tarih "
@@ -332,6 +350,7 @@ bool rtc_sync(const rtc_t *dt)
     }
 	rtc_load_sw(dt);     /* millisecond software RTC (logging)   */
 	rtc_update_epoch(dt);/* epoch counter (wall-clock seconds)   */
+    last_sync = (rtc_sync_info_t){.source = source, .timestamp = rtc_to_epoch(dt)};
     return true;
 }
 

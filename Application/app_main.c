@@ -110,7 +110,7 @@ PROCESS_THREAD(heart_beat_process, ev, data)
 		{
 			stack_monitor_stats_t s = stack_monitor_get_stats();
 			const char *color = (s.free_bytes < 256U) ? XCOLOR_RED : XCOLOR_GREEN;
-			CCSLOG(color, "[Stack] [%lu/%lu] bytes  (used/total, %lu free, %u%%)\r\n",
+			CCSLOG(color, "[Stack] [%lu/%lu] bytes  (peak used/total, %lu untouched, %u%%)\r\n",
 					s.used_bytes, s.total_bytes, s.free_bytes, s.usage_pct);
 
 			timer_reset(&stack_timer);

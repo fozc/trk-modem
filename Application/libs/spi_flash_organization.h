@@ -45,7 +45,9 @@ typedef struct
     uint8_t SPIFLASH_SECTION_IEC104_LOG                      [0x002000];  /*    8 KB  0x230000 */
     /* 8 KB, address 0x232000. */
     uint8_t SPIFLASH_SECTION_RF_EVENT_LOG[0x002000];
-    uint8_t SPIFLASH_SECTION_RUNTIME_STATS[0x002000];
+    /* Former 64-byte stats records; no compatibility reader is retained. */
+    uint8_t SPIFLASH_SECTION_RESERVED_STATS_V1[0x002000];
+    uint8_t SPIFLASH_SECTION_RUNTIME_STATS[0x004000];
 } spi_flash_layout_t;
 
 /* ------------------------------------------------------------------ */
@@ -111,7 +113,7 @@ _Static_assert(RF_EVENT_LOG_SIZE == 8192U,
 #define RUNTIME_STATS_SIZE \
     SPIFLASH_SECTION_SIZE(SPIFLASH_SECTION_RUNTIME_STATS)
 
-_Static_assert(RUNTIME_STATS_ADDR == 0x234000U,
+_Static_assert(RUNTIME_STATS_ADDR == 0x236000U,
                "Runtime statistics must not move existing regions");
 
 /* Firmware */

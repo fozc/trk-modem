@@ -448,7 +448,7 @@ static bool apply_clock(const iec104_time_t *time)
                     .day      = time->day,
                     .month    = time->month,
                     .year     = time->year };
-    return rtc_sync(&clock);
+    return rtc_sync_with_source(&clock, RTC_SOURCE_IEC104);
 }
 
 /** @brief Server reset bildirimini disaridan baglanan cihaz servisine aktarir.

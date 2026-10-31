@@ -1,6 +1,6 @@
 # Architecture — Smart Breaker Modem
 
-Sürüm: 1.12.0 · Tarih: 2026-10-27 · Durum: mevcut proje profili; açık kararlar var.
+Sürüm: 1.13.0 · Tarih: 2026-10-31 · Durum: mevcut proje profili; açık kararlar var.
 
 ## A00. Amaç ve durum
 
@@ -156,7 +156,7 @@ yöntemiyle ayrı ele alınır. Bu paketin proje kararlarına kök AGENTS.md
 | Dummy üreticiler korunur | Gerçek veri/altyapı henüz yoktur. Dummy kaldırılmaz; veri kaynağı bulgusu tamamlandı sayılmaz. Üretim raporu §9.3/§9.29. |
 | #if 0 blokları korunur | Kullanıcı açıkça kaldırılmasını istemedikçe kod temizliği kapsamında silinmez. Kök AGENTS.md. |
 | Contiki ve ST/CubeMX uyarı düzeltmeleri kapsam dışıdır | 8 Contiki, 5 ST driver, 1 Core tanısı kullanıcı kararıyla bırakılmıştır. Uyarı susturma veya vendor yamasıyla gizlenmez. [güncel warning kararı §10.3](../URETIM_HAZIRLIK_RAPORU_2026-10.md#103-korunan-kararlar-ve-taşınan-kanıt-özeti), kapsam dışındaki 14 uyarı. |
-| Çalışma sayaçları ayrı SPI Flash günlüğünde tutulur | 24.10.2026 kullanıcı onayı önceki NVRAM lifetime kararını günceller: mevcut spi_flash_log ile 0x234000–0x235FFF aralığında iki sektör, 64 bayt kayıt ve 15 dakika checkpoint kullanılır. Kullanıcı sahada cihaz olmadığını belirtti: eski NVRAM lifetime ve listener oturum alanları kaldırılır; migration yapılmaz. NVRAM şema 1 olarak kalır; boyut 1976 bayttır. Kullanıcının açık kararıyla migration yapılmaz; eski boyuttaki konfigürasyonlar length kontrolüyle mevcut default yolunu kullanır. Boş sayaç günlüğü sıfırdan başlar; ilk kayıt 15 dakika sonunda yapılır. Mevcut periyodik reset öncesinde sayaçlar kaydedilir; her reset için yeni flush mekanizması eklenmez. Kullanım ve testler: [test rehberi](../test/README.md#çalışma-sayaçları). |
+| Çalışma sayaçları ayrı SPI Flash günlüğünde tutulur | 24.10.2026 kullanıcı onayı önceki NVRAM lifetime kararını günceller: mevcut spi_flash_log kullanılır. 31.10.2026 kullanıcı kararıyla aktif alan 0x236000–0x239FFF aralığında dört sektör, sürüm 2 kayıt boyutu 68 bayt ve checkpoint aralığı 15 dakikadır. RTC kaynak/zaman ve stack tepe değeri kayda dahildir. Önceki 0x234000–0x235FFF alanı kullanılmaz; eski kayıtlar ve sayaçlar taşınmaz. Kullanıcı sahada cihaz olmadığını belirtti: eski NVRAM lifetime ve listener oturum alanları kaldırılır; migration yapılmaz. NVRAM şema 1 olarak kalır; boyut 1976 bayttır. Kullanıcının açık kararıyla migration yapılmaz; eski boyuttaki konfigürasyonlar length kontrolüyle mevcut default yolunu kullanır. Boş sayaç günlüğü sıfırdan başlar; ilk kayıt 15 dakika sonunda yapılır. Mevcut periyodik reset öncesinde sayaçlar kaydedilir; her reset için yeni flush mekanizması eklenmez. Kullanım ve testler: [test rehberi](../test/README.md#çalışma-sayaçları). |
 | Random altyapısı BSP'dedir | HTTP token doğrudan bsp_random_word kullanır; fallback bu API içindedir. HAL başlangıcı main/CubeMX'tedir. Erişilebilirlik fallback'i güvenli entropy sayılmaz. Üretim raporu §9.1. |
 | Geliştirme anahtarları şimdilik Git'te kalır | Anahtarlar otomatik silinmez/taşınmaz veya geçmiş yeniden yazılmaz. Saha öncesi yeni üretim anahtarları hazırlanıp doğrulanmalıdır. [keys/README.md](../keys/README.md), üretim raporu §9.5. |
 | BOLATeX teslim/iletişim belgeleri git dışıdır | 12.10.2026 kullanıcı kararı: dört BOLATeX belgesi (sorular, PowerBoard I2C protokolü, RF-SCP yanıt kontrolü, modem uygulama planı) tüm dallardan geçmişten silindi ve yalnız yerelde tutulur. Geçmiş yeniden yazma istisnası bu açık kararla verilmiştir; anahtar satırındaki yasağın kapsamı değişmez. |
@@ -282,3 +282,4 @@ Bu paketin oluşturulması bu kararların kabulü sayılmaz.
 | 2026-10-27 | 1.10.0 | A09.1: Kullanıcı onaylı E1 üç akü ömrü alanı ve eski mesaj/bilinmiyor gösterimi |
 | 2026-10-27 | 1.11.0 | A09.1: Kullanıcı kararıyla ek RF reset darbe ölçümü kabul kapısından çıkarıldı |
 | 2026-10-27 | 1.12.0 | A09.1: Akü değişti komutunun kabul/sonuç ELOG izi; manuel sonuç sorgusu korunur. |
+| 2026-10-31 | 1.13.0 | A09.1: stats dört sektör/68 bayt sürüm 2; RTC ve stack geçmişi, eski sayaçlar taşınmaz. |

@@ -679,7 +679,7 @@ static void expect_ntp_time(const char *text, int32_t timezone,
 {
     response_text = text;
     modem_config_get_timezone_ExpectAndReturn(timezone);
-    rtc_sync_ExpectAndReturn(expected, true);
+    rtc_sync_with_source_ExpectAndReturn(expected, RTC_SOURCE_NTP, true);
     TEST_ASSERT_EQUAL_INT32(GSM_RESPONSE_OK, gsm_ntp_cb());
 }
 

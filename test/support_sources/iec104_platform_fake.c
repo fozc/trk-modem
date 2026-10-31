@@ -192,6 +192,13 @@ bool rtc_sync(const rtc_t *dt)
     return true;
 }
 
+bool rtc_sync_with_source(const rtc_t *time, rtc_source_t source)
+{
+    (void)source;
+    return rtc_sync(time);
+}
+
+
 void mock_rtc_sync_failure(bool failed)
 {
     rtc_sync_failure = failed;

@@ -291,7 +291,7 @@ static void expect_device_clock_save(modem_config_t *device, bool clock_ok)
     modem_config_set_Ignore();
     modem_config_sync_ExpectAndReturn(0);
     static const rtc_t expected = {.day = 1U, .month = 1U, .year = 26U};
-    rtc_sync_ExpectAndReturn(&expected, clock_ok);
+    rtc_sync_with_source_ExpectAndReturn(&expected, RTC_SOURCE_WEB, clock_ok);
     gsm_get_web_client_ip_ExpectAndReturn(0U);
     elog_log_config_change_Expect(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
                                   0U, "device", clock_ok);
@@ -333,7 +333,7 @@ void test_device_post_applies_options_and_fields_from_the_same_document(void)
     modem_config_set_Expect(&expected);
     modem_config_sync_ExpectAndReturn(0);
     static const rtc_t clock_time = {.day = 1U, .month = 1U, .year = 26U};
-    rtc_sync_ExpectAndReturn(&clock_time, true);
+    rtc_sync_with_source_ExpectAndReturn(&clock_time, RTC_SOURCE_WEB, true);
     gsm_get_web_client_ip_ExpectAndReturn(0U);
     elog_log_config_change_Expect(ELOG_CONFIG_DEVICE_CHANGED, ELOG_SOURCE_WEB,
                                   0U, "device", true);

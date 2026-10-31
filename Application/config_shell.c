@@ -211,7 +211,7 @@ static int set_calendar(int argc, char *argv[], modem_config_t *config)
         const rtc_t clock = {.year = (uint8_t)(date.date.year - 2000U), .month = date.date.month,
                              .day = date.date.day, .hour = date.time.hour, .minute = date.time.minute,
                              .second = date.time.second, .millisec = 0U};
-        if (!rtc_sync(&clock))
+        if (!rtc_sync_with_source(&clock, RTC_SOURCE_SHELL))
         {
             SHELL_LOG("RTC update failed.\r\n");
             return -1;

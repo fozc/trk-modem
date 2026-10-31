@@ -789,7 +789,7 @@ static bool sync_device_time(uint32_t epoch)
                               .day = calendar.date.day,
                               .month = calendar.date.month,
                               .year = (uint8_t)(calendar.date.year - 2000U)};
-    return rtc_sync(&clock_time);
+    return rtc_sync_with_source(&clock_time, RTC_SOURCE_WEB);
 }
 
 /**

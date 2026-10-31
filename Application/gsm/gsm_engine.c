@@ -1290,7 +1290,7 @@ int32_t gsm_ntp_cb(void)
 						.month    = dt.month,
 						.year     = dt.year,
 					};
-					if (!rtc_sync(&new_time))
+					if (!rtc_sync_with_source(&new_time, RTC_SOURCE_NTP))
                     {
                         CSLOG_WARN("NTP: RTC rejected the received time\r\n");
                     }
@@ -2674,7 +2674,7 @@ int32_t gsm_CCLK_cb(void)
 											.month    = dt.month,
 											.year     = dt.year,
 										};
-										rtc_sync(&new_time);
+										rtc_sync_with_source(&new_time, RTC_SOURCE_GSM);
 									}
 								}
 							}

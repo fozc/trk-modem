@@ -489,4 +489,35 @@ void test_date_write_failure_does_not_publish_partially_changed_calendar(void)
     TEST_ASSERT_EQUAL_UINT32(0x32F2U, marker);
 }
 
+void test_sync_metadata_changes_only_after_a_successful_external_update(void)
+{
+    rtc_t value = valid_time();
+    TEST_ASSERT_TRUE(rtc_sync_with_source(&value, RTC_SOURCE_NTP));
+    rtc_sync_info_t update = rtc_get_last_sync();
+    TEST_ASSERT_EQUAL(RTC_SOURCE_NTP, update.source);
+    TEST_ASSERT_EQUAL_UINT32(epoch_value, update.timestamp);
+    value.month = 13U;
+    TEST_ASSERT_FALSE(rtc_sync_with_source(&value, RTC_SOURCE_IEC104));
+    TEST_ASSERT_EQUAL(RTC_SOURCE_NTP, rtc_get_last_sync().source);
+    TEST_ASSERT_EQUAL_UINT32(update.timestamp, rtc_get_last_sync().timestamp);
+    value = valid_time();
+    time_status = HAL_ERROR;
+    TEST_ASSERT_FALSE(rtc_sync_with_source(&value, RTC_SOURCE_WEB));
+    TEST_ASSERT_EQUAL(RTC_SOURCE_NTP, rtc_get_last_sync().source);
+    time_status = HAL_OK;
+    TEST_ASSERT_TRUE(rtc_sync_with_source(&value, RTC_SOURCE_SHELL));
+    TEST_ASSERT_EQUAL(RTC_SOURCE_SHELL, rtc_get_last_sync().source);
+}
+
+void test_unknown_time_source_preserves_clock_and_last_update(void)
+{
+    const rtc_t value = valid_time();
+    TEST_ASSERT_TRUE(rtc_sync_with_source(&value, RTC_SOURCE_GSM));
+    const uint32_t written = write_count;
+    TEST_ASSERT_FALSE(rtc_sync_with_source(&value, (rtc_source_t)99U));
+    TEST_ASSERT_FALSE(rtc_sync_with_source(&value, RTC_SOURCE_NONE));
+    TEST_ASSERT_EQUAL_UINT32(written, write_count);
+    TEST_ASSERT_EQUAL(RTC_SOURCE_GSM, rtc_get_last_sync().source);
+}
+
 /*** end of file ***/

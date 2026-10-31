@@ -246,6 +246,13 @@ bool rtc_sync(const rtc_t *time)
     return true;
 }
 
+bool rtc_sync_with_source(const rtc_t *time, rtc_source_t source)
+{
+    (void)source;
+    return rtc_sync(time);
+}
+
+
 uint8_t fault_log_get_temp_count(uint8_t feeder, uint8_t phase)
 {
     return ((feeder == 0U) && (phase == 0U) &&

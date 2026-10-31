@@ -223,7 +223,7 @@ void test_set_time_calls_unified_rtc_service_without_nvram_write(void)
 {
     const rtc_t clock = {.year = 26U, .month = 10U, .day = 29U,
                          .hour = 16U, .minute = 45U, .second = 0U, .millisec = 0U};
-    rtc_sync_ExpectAndReturn(&clock, true);
+    rtc_sync_with_source_ExpectAndReturn(&clock, RTC_SOURCE_SHELL, true);
     command("config set time 2026-10-29 16:45:00");
     TEST_ASSERT_NOT_NULL(strstr(output, "RTC updated (UTC)"));
     TEST_ASSERT_EQUAL_UINT32(0U, save_calls);
@@ -233,7 +233,7 @@ void test_rtc_failure_is_not_reported_as_success_and_bad_time_never_reaches_rtc(
 {
     const rtc_t clock = {.year = 26U, .month = 10U, .day = 29U,
                          .hour = 16U, .minute = 45U, .second = 0U, .millisec = 0U};
-    rtc_sync_ExpectAndReturn(&clock, false);
+    rtc_sync_with_source_ExpectAndReturn(&clock, RTC_SOURCE_SHELL, false);
     command("config set time 2026-10-29 16:45:00");
     TEST_ASSERT_NOT_NULL(strstr(output, "RTC update failed"));
     TEST_ASSERT_NULL(strstr(output, "RTC updated"));

@@ -43,6 +43,8 @@ static bool history(uint32_t skip, runtime_stats_t *out, int call)
     (void)memset(out, 0, sizeof(*out));
     out->timestamp = skip;
     out->counters[RUNTIME_LIFETIME] = 123U;
+    out->rtc_last_sync = (rtc_sync_info_t){.source = RTC_SOURCE_GSM, .timestamp = 90U};
+    out->stack_peak_bytes = 1800U;
     return true;
 }
 
@@ -81,6 +83,8 @@ void test_current_stats_uses_snapshot_and_shell_output(void)
     (void)memset(&current, 0, sizeof(current));
     current.timestamp = 100U;
     current.clock_valid = true;
+    current.rtc_last_sync = (rtc_sync_info_t){.source = RTC_SOURCE_IEC104, .timestamp = 90U};
+    current.stack_peak_bytes = 2048U;
     current.counters[RUNTIME_GSM_RX_BYTES] = UINT32_MAX;
     runtime_stats_snapshot_Stub(snapshot_copy);
     char *args[] = {"stats"};
@@ -88,6 +92,7 @@ void test_current_stats_uses_snapshot_and_shell_output(void)
     TEST_ASSERT_NOT_NULL(strstr(output, "UTC=100 valid=1 interval=900s"));
     TEST_ASSERT_NOT_NULL(strstr(output, "gsm_rx_bytes=4294967295"));
     TEST_ASSERT_NOT_NULL(strstr(output, "boots=0"));
+    TEST_ASSERT_NOT_NULL(strstr(output, "rtc_source=iec104 rtc_update_epoch=90 stack_peak_bytes=2048"));
 }
 
 void test_history_paginates_eight_rows_and_stops_at_capacity(void)
@@ -98,14 +103,16 @@ void test_history_paginates_eight_rows_and_stops_at_capacity(void)
     TEST_ASSERT_EQUAL_UINT32(8U, read_calls);
     TEST_ASSERT_NOT_NULL(strstr(output, "utc,clock_valid,lifetime_s"));
     TEST_ASSERT_NOT_NULL(strstr(output, "7,0,123,"));
-    args[2] = "127";
+    TEST_ASSERT_NOT_NULL(strstr(output, ",rtc_source,rtc_update_epoch,stack_peak_bytes\r\n"));
+    TEST_ASSERT_NOT_NULL(strstr(output, ",gsm,90,1800\r\n"));
+    args[2] = "239";
     TEST_ASSERT_EQUAL_INT(0, registered.func(3, args));
     TEST_ASSERT_EQUAL_UINT32(9U, read_calls);
 }
 
 void test_invalid_history_arguments_do_not_read_or_modify_storage(void)
 {
-    static char *invalid[] = {"", "-1", "+1", "128", "999999999999", "1x"};
+    static char *invalid[] = {"", "-1", "+1", "240", "999999999999", "1x"};
     char *args[] = {"stats", "history", ""};
     const size_t count = sizeof(invalid) / sizeof(invalid[0]);
     for (size_t index = 0U; index < count; index++)

@@ -1,7 +1,45 @@
 # Test Altyapısı
 
-**Sürüm:** 1.97
+**Sürüm:** 1.99
 **Tarih:** 2026-10-31
+
+## IEC104 sayfalı okuma ve güncel çalışma bilgileri
+
+**Amaç:** Günlükleri tek seferde dökmeden okumak; son başarılı RTC güncellemesini ve stack kullanım tepesini görmek.
+
+**Kullanım yeri:** Seri konsol veya web servis konsolu.
+
+**Örnek:**
+
+```text
+iec104evtlog read 20
+iec104evtlog read 20 20
+iec104log read 20
+iec104log read 20 20
+stats
+```
+
+**Kurallar:** `read [N [skip]]` en yeni kayıttan başlamalıdır; varsayılan N=20, skip=0 olmalıdır.
+N pozitif olmalıdır; iki sayı da 65535'i aşmamalıdır. Sonraki istek için çıktının
+`next_offset` değeri kullanılmalıdır. `more=0` liste sonunu belirtmelidir.
+Okuma, gönderilmemiş olayları tüketmemeli ve Flash'a yazmamalıdır.
+`iec104log`, mevcut `iec104elog` komutunun aynı işlevli adıdır.
+Yeni kayıtlar okuma sırasında gelirse offset ile sayfalama kayabilir.
+
+**Çıktı:** `stats`, `rtc_source`, `rtc_update_epoch` ve `stack_peak_bytes` alanlarını gösterir.
+RTC kaynağı yalnız başarılı güncellemede değişir; tarih epoch saniyesidir.
+Güncel çıktıda bu alanlar mevcut açılışa aittir; `stats history` içinde checkpoint sırasında alınan değerler gösterilir.
+Eski 64 baytlık biçimden aktarım yapılmaz; yeni günlük sıfırdan başlar.
+Stack değeri mevcut stack monitor'ün ölçtüğü en yüksek kullanımdır;
+monitor yeniden başlatılırsa ölçüm başlangıcı da değişir.
+
+**Web akışı:** Sistem günlükleri okunurken ilk gelen sayfa görünür; kalan sayfalar
+beklenirken tam ekran bekleme katmanı gösterilmez. Rölelerin yeniden başlatma
+sonrası durumunu koruma seçeneği Cihaz yönetimi sayfasında ayrı Röleler kartındadır.
+
+**Doğrulama:** `test_iec104_event_log_shell`, `test_iec104_elog`, `test_rtc_sync`,
+`test_runtime_stats` ve `test_runtime_stats_shell`; web için
+`make -C test/integration/web_navigation run` kullanılabilir.
 
 ## IEC104 yerel kapanma nedenleri ve kayıt filtresi
 
@@ -656,12 +694,25 @@ Host testleri gerçek SIM, SMS teslimi veya modem güç çevrimi kanıtı değil
 **Kullanım yeri:** `Application/runtime_stats.c`, mevcut `spi_flash_log` ve
 web/seri terminaldeki `stats` komutu.
 
-Kayıt aralığı 15 dakika olmalıdır. İki 4 KiB sektör
-`0x234000–0x235FFF` aralığındadır; önceki Flash alanlarının adresleri
-korunur. NVRAM şeması 1 olarak kalır; sayaç alanları konfigürasyondan çıkarılmıştır.
-Her kayıt 64 bayttır: 2 bayt sequence, 60 bayt payload ve en son yazılan 2 bayt CRC. Payload little-endian biçimindedir:
-version (2 bayt, 1), flags (2 bayt, bit 0 RTC geçerli), UTC (4 bayt) ve
-13 adet uint32_t sayaç. RTC geçersizse UTC sıfırdır.
+Kayıt aralığı 15 dakika olmalıdır. Dört 4 KiB sektör
+`0x236000–0x239FFF` aralığındadır; diğer Flash bölümlerinin adresleri korunur.
+Eski `0x234000–0x235FFF` alanı kullanılmaz; eski sayaçlar ve geçmiş taşınmaz.
+NVRAM şeması 1 olarak kalır. Her kayıt 68 bayttır: 2 bayt sequence,
+64 bayt payload ve en son yazılan 2 bayt CRC. Payload alanları:
+
+| Offset | Boyut | İçerik |
+|---|---:|---|
+| 0 | 1 | Sürüm: 2 |
+| 1 | 1 | Bit 0: RTC geçerli; bit 1–3: RTC kaynağı; diğer bitler sıfır |
+| 2 | 2 | Stack tepe kullanımı, bayt, little-endian |
+| 4 | 4 | Checkpoint UTC epoch; RTC geçersizse sıfır |
+| 8 | 52 | 13 adet little-endian uint32_t sayaç |
+| 60 | 4 | Son başarılı RTC güncellemesinin epoch zamanı |
+
+RTC kaynağı `rtc_source_t` değeridir: none=0, unknown=1, ntp=2, gsm=3,
+iec104=4, shell=5, web=6. RTC/stack bilgileri checkpoint ile birlikte saklanır.
+Stack tepe değeri mevcut açılışın watermark ölçümüdür; yeniden açılışta yeni
+ölçüm başlar. 65535 baytı aşan değer kırpılmamalı; kayıt başarısız dönmelidir.
 
 Sayaç sırası: lifetime saniyesi, GSM RX/TX baytları, web/IEC server/IEC
 client bağlantıları, IEC aktif saniyesi, GSM watchdog kurtarmaları, Modbus
@@ -694,12 +745,12 @@ okuma hatası veya bilinmeyen kayıt sürümü varsa alan silinmemelidir; kalıc
 kayıt kapalı kalırken RAM sayaçları işlemeye devam eder. Periyodik yazım hatası
 loglanır ve sonraki deneme 15 dakika sonradır. Başarılı checkpoint'ler arasında
 ani güç kaybında en çok yaklaşık 15 dakikalık veri kaybolur; devam eden Flash
-hatasında kayıp süresi uzayabilir. Halka en fazla 128 kayıt tutar; sektör
-geçişinde diğer sektörün 64 kaydı korunur (yaklaşık 16–32 saat geçmiş).
+hatasında kayıp süresi uzayabilir. Halka en fazla 240 kayıt tutar; sektör
+geçişinde diğer üç sektördeki 180 kayıt korunur (yaklaşık 45–60 saat geçmiş).
 
 `stats` güncel RAM sayaçlarını gösterir. `stats history 0` en yeni sekiz
 kalıcı kaydı CSV olarak, yeni kayıttan eskiye gösterir; `8`, `16`, … ile
-sayfalama yapılmalıdır. `127` son olası kayıttır. Bu komutlar salt okunurdur.
+sayfalama yapılmalıdır. `239` son olası kayıttır. Bu komutlar salt okunurdur.
 
 `test/` dizininden `ceedling test:runtime_stats`,
 `ceedling test:runtime_stats_shell`, GSM kenar senaryoları ve Modbus DMA
@@ -2244,6 +2295,8 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-31 | 1.99 | Stats v2: dört sektör, 68 bayt kayıt; RTC/stack metadata geçmişi; kullanıcı kararıyla eski kayıtlar taşınmaz. |
+| 2026-10-31 | 1.98 | IEC104 sayfalı okuma; güncel RTC/stack bilgileri; web günlüklerinin görünür ilerlemesi ve Röleler kartı. |
 | 2026-10-31 | 1.97 | ctypes IEC104 fixture derleyicisini 32 bit host wrapper'ından ayırma; CI ve derleyici seçimi regresyonları. |
 | 2026-10-31 | 1.96 | IEC104 yerel kapanma nedenleri, 5 saniyelik neden duyarlı kayıt filtresi ve regresyon testleri. |
 | 2026-10-29 | 1.94 | Tek config komutuyla kimlik/GSM/RTC atamaları; gizli parola, kayıt hata yolları ve gerçek shell giriş testleri. |

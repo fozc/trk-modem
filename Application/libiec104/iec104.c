@@ -882,7 +882,7 @@ static bool apply_clock_time(const cp56time2a_t *timestamp)
         .month    = decoded.month,
         .year     = decoded.year,
     };
-    return rtc_sync(&new_time);
+    return rtc_sync_with_source(&new_time, RTC_SOURCE_IEC104);
 }
 
 void iec104_c_cs_na_1_command_handler(const iec104_package_t *pkt)

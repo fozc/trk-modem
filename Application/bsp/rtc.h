@@ -39,6 +39,29 @@ typedef struct
     uint8_t year;
 }rtc_t;
 
+/** Accepted external time source. Internal hardware readback is not a new update. */
+typedef enum
+{
+    RTC_SOURCE_NONE = 0,
+    RTC_SOURCE_UNKNOWN,
+    RTC_SOURCE_NTP,
+    RTC_SOURCE_GSM,
+    RTC_SOURCE_IEC104,
+    RTC_SOURCE_SHELL,
+    RTC_SOURCE_WEB
+} rtc_source_t;
+
+typedef struct
+{
+    rtc_source_t source;
+    uint32_t timestamp; /**< Accepted calendar as epoch; zero until the first successful sync. */
+} rtc_sync_info_t;
+
+/** @brief Latest successful external update since boot; cooperative context only. */
+rtc_sync_info_t rtc_get_last_sync(void);
+/** @brief Apply a clock update and record its source only after hardware/software acceptance. */
+bool rtc_sync_with_source(const rtc_t *dt, rtc_source_t source);
+
 /* ---- Software RTC accessors (millisecond resolution, used for logging) ---- */
 void rtc_set(uint8_t second, uint8_t minute, uint8_t hour, uint8_t day, uint8_t month, uint8_t year);
 rtc_t rtc_now(void);

@@ -10,11 +10,12 @@
 #ifndef RUNTIME_STATS_H
 #define RUNTIME_STATS_H
 
+#include "rtc.h"
 #include <stdbool.h>
 #include <stdint.h>
 
 #define RUNTIME_STATS_INTERVAL_SECONDS 900U
-#define RUNTIME_STATS_CAPACITY 128U
+#define RUNTIME_STATS_CAPACITY 240U
 
 typedef enum
 {
@@ -39,6 +40,9 @@ typedef struct
     uint32_t timestamp;
     uint32_t counters[RUNTIME_COUNTER_COUNT];
     bool clock_valid;
+    /* Captured at each checkpoint; live snapshots use the current boot values. */
+    rtc_sync_info_t rtc_last_sync;
+    uint32_t stack_peak_bytes;
 } runtime_stats_t;
 
 /* Main/cooperative context only. No function in this API is ISR-safe.
