@@ -187,7 +187,7 @@ adlandırılmıştır; gerçek encoder/servis henüz yoktur. Satırlar tamamlanm
 | 104 | `C_TS_NA_1` | Eklenecek: komut/parametre handler ve tipe uygun COT/IOA doğrulaması |
 | 105 | `C_RP_NA_1` | Hazır: SBO kapalıyken genel reset QRP=1; açıkken negatif cevap |
 | 106 | `C_CD_NA_1` | Eklenecek: komut/parametre handler ve tipe uygun COT/IOA doğrulaması |
-| 107 | `C_TS_TA_1` | Eklenecek: komut/parametre handler ve tipe uygun COT/IOA doğrulaması |
+| 107 | `C_TS_TA_1` | Hazır: server TSC/zamanı ACT_CON ile aynen döndürür; application callback gerekmez |
 | 110 | `P_ME_NA_1` | Eklenecek: komut/parametre handler ve tipe uygun COT/IOA doğrulaması |
 | 111 | `P_ME_NB_1` | Eklenecek: komut/parametre handler ve tipe uygun COT/IOA doğrulaması |
 | 112 | `P_ME_NC_1` | Eklenecek: komut/parametre handler ve tipe uygun COT/IOA doğrulaması |

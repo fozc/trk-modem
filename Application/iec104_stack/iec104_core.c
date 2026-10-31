@@ -111,7 +111,6 @@ static bool write_control(iec104_core_t *core, uint8_t code)
     {
         return false;
     }
-    core->idle_since = core->now_ms;
     if (code == IEC104_CONTROL_S_ACK)
     {
         core->received_pending = 0U;
@@ -159,7 +158,7 @@ static void flush_control(iec104_core_t *core)
 /** @brief Apply a cumulative peer N(R) to the bounded sent-frame window.
  * @param[in,out] core Pending timestamps/tags and next unacknowledged sequence.
  * @param[in] sequence Peer next-expected sequence, already decoded from APCI.
- * @return True for a valid/repeated/unambiguous older ACK; false for an invalid ACK.
+ * @return True for an in-window or repeated latest ACK; false for a backward/future ACK.
  * @note Emits delivered for each covered nonzero frame tag, at most once per
  * frame. Partial ACK keeps the original timestamps of the remaining frames.
  */
@@ -168,10 +167,10 @@ static bool acknowledge(iec104_core_t *core, uint16_t sequence)
     uint16_t count = sequence_distance(core->acknowledged, sequence);
     if ((size_t)count > core->pending_count)
     {
-        /* A delayed ACK is harmless within the unambiguous half range.
-         * A forward ACK of unsent data is a protocol error.
+        /* TCP preserves order: N(R) may repeat but must not go backward.
+         * Modulo distance also rejects future ACKs and handles 32767 -> 0.
          */
-        return sequence_distance(sequence, core->acknowledged) < 16384U;
+        return false;
     }
     for (uint16_t index = 0U; index < count; index++)
     {
@@ -215,7 +214,6 @@ bool iec104_core_send(iec104_core_t *core, const uint8_t *asdu, size_t length, u
     core->pending_count++;
     core->send_sequence    = sequence_next(core->send_sequence);
     core->received_pending = 0U;
-    core->idle_since       = core->now_ms;
     return true;
 }
 
@@ -315,6 +313,7 @@ static bool process_u_frame(iec104_core_t *core, uint8_t control)
  */
 static void process_frame(iec104_core_t *core)
 {
+    /* T3 measures receive inactivity; local TX cannot prove that the peer is alive. */
     core->idle_since = core->now_ms;
     if ((core->rx[2] & 1U) == 0U)
     {
@@ -324,7 +323,9 @@ static void process_frame(iec104_core_t *core)
     bool valid = core->rx_length == 6U;
     if (valid && (core->rx[2] == IEC104_CONTROL_S_ACK))
     {
-        valid = (core->rx[3] == 0U) && ((core->rx[4] & 1U) == 0U) &&
+        /* STOPPED accepts U frames only; STOPPING still needs final I-frame ACKs. */
+        valid = ((core->state == IEC104_CORE_STARTED) || (core->state == IEC104_CORE_STOPPING)) &&
+                (core->rx[3] == 0U) && ((core->rx[4] & 1U) == 0U) &&
                 acknowledge(core, iec104_read_u16(&core->rx[4]) >> 1U);
     }
     else if (valid)

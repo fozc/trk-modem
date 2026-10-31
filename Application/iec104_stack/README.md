@@ -115,7 +115,7 @@ view'dır. GI devamında yalnız header/IOA/qualifier alanları korunur;
 ham payload pointer'ı tutulmaz. Uygulama ilk çağrının pointer'ını
 saklamamalıdır. Özel komutlarda count/SQ/IOA ve türe özgü uzunluk/alan
 kontrolü application handler'ında yapılmalıdır. Ortak CA/COT ve test-bit
-kontrolü ile yerleşik 45/100/103/105 boyut kontrolü kütüphanededir.
+kontrolü ile yerleşik 45/100/103/105/107 boyut kontrolü kütüphanededir.
 
 Saat byte'ları kütüphanede çözülür; application Type 103 isteğinde gerçek
 saat servisini çağırır. Genel reset QRP=1 ve cevap sırası kütüphanededir;
@@ -200,6 +200,35 @@ standart C header'larıyla strict C11/Werror altında derler.
 Python TCP paketi aynı C kodunu c104/lib60870 SCADA istemcisiyle çalıştırır.
 Host sonuçları fiziksel GSM/RTC/Flash kabulü değildir.
 
+## Uygulama katmanı test komutu
+
+Type 107 (`C_TS_TA_1`) için count=1, SQ=0, IOA=0 ve COT=6 kabul edilir.
+Server 2 bayt TSC sayacını ve 7 bayt CP56Time2a alanını değiştirmeden COT=7
+ile geri döndürür. Bu komut application callback'ine gitmez; RTC veya reset
+servisini çağırmaz. Zaman alanı saat ayarlamak için kullanılmadığından IV=1
+dahil aynen korunur. Yanlış CA/COT/IOA uygun 45–47 hata cevabını alır;
+bozuk nesne uzunluğu veya VSQ bağlantıyı kapatır. Test bitiyle gelen
+komutları reddeden mevcut profil kararı burada da korunur.
+
+## Referansla algoritmik karşılaştırma
+
+Karşılaştırma kaynağı [MZ Automation/lib60870 cs104_slave.c,
+revision 7a388e3e133999e1ca77ba7521d55d074b7cd2bc](https://github.com/mz-automation/lib60870/blob/7a388e3e133999e1ca77ba7521d55d074b7cd2bc/lib60870-C/src/iec60870/cs104/cs104_slave.c)
+dosyasıdır. Ürün kaynaklarına upstream kod kopyalanmamıştır.
+
+| Yol | Bu stack'in davranışı ve doğrulama sınırı |
+|---|---|
+| ACK/K | N(R) yalnız mevcut onaydan pencere sonuna kadar ilerler; aynı onay tekrarlanabilir. Geriye/ileriye taşan onay reddedilir; 32767→0 sarma test edilir. |
+| STOP | STOPPING son onayları bekler. STOPPED durumunda yalnız U-frame kabul edilir. START aynı TCP oturumunun sayaçlarını korur. |
+| T1/T2/T3 | T1 en eski ACK bekleyen frame'i izler; kısmi ACK kalan süreyi yenilemez. T2/W alım onayını tetikler. T3 son tamamlanmış alınan APDU'dan ölçülür; yerel gönderim peer'in canlı olduğunu kanıtlamaz. |
+| ASDU | 249 bayt sınırı, SQ/nesne uzunluğu, CA/COT/IOA ve komut yapısı ayrı doğrulanır. |
+| GI/komut | GI için ACT_CON/veri/ACT_TERM sırası, komutlar için tek callback çalışması test edilir. Type 107 testi sayaç/zamanı aynen döndürür. |
+
+Referansın thread, heap, çoklu bağlantı ve genel kuyruk mimarisi bu ürüne
+alınmaz. Bu uygulama tek bağlantı ve sabit bellek profilini korur. Tip
+numarasının tanımlı olması servis uygulaması anlamına gelmez; destek
+kapsamı [tip kataloğunda](examples/README.md) gösterilir.
+
 ## Örnekler ve bütün tipler için genişleme yolu
 
 [Örnekler ve 81 Type ID kataloğu](examples/README.md), her tipin mevcut
@@ -232,3 +261,4 @@ Upstream kaynak kodu kopyalanmamıştır; test bağımlılığının lisansı ke
 | 30.10.2026 | Tek GI handler + IOA iterator/okuyucu; callback typedef'leri, extension API ve test edilen örnek kataloğu |
 | 30.10.2026 | Ayrı GI/IOA callback'leri kaldırıldı; tek handle_request ve hazır cevap parçası modeli |
 | 30.10.2026 | Ayrı periyodik COT=1 yayın girişi ve opsiyonel Type 45 reset SBO/iptal akışı |
+| 31.10.2026 | Referans karşılaştırması: ACK/STOP/T3 sınırları düzeltildi; Type 107 protokol testi eklendi |

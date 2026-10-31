@@ -101,7 +101,7 @@ typedef struct
     uint8_t control_pending;
     uint32_t control_since;
     uint32_t now_ms;
-    uint32_t idle_since;
+    uint32_t idle_since; /**< Last complete received APDU (or TCP open), used by T3. */
     uint32_t receive_since;
     uint32_t test_since;
     bool test_pending;

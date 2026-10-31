@@ -363,15 +363,83 @@ void test_stack_k_one_delivery_only_after_covering_ack(void)
     TEST_ASSERT_EQUAL_UINT32(1U, delivery_count);
 }
 
-void test_stack_old_ack_is_harmless_future_ack_closes(void)
+void test_stack_repeated_ack_is_harmless_future_ack_closes(void)
 {
     core_feed(start, sizeof(start), 0U);
     TEST_ASSERT_TRUE(iec104_core_send(&core, single_asdu,
         sizeof(single_asdu), 7U));
     ack(1U, false, 1U);
-    ack(0U, false, 2U);
+    ack(1U, false, 2U);
     TEST_ASSERT_EQUAL(IEC104_CORE_STARTED, core.state);
     ack(2U, false, 3U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, core.state);
+}
+
+void test_stack_backward_ack_closes_even_when_send_window_is_empty(void)
+{
+    core.io.event = event;
+    core_feed(start, sizeof(start), 0U);
+    TEST_ASSERT_TRUE(iec104_core_send(&core, single_asdu, sizeof(single_asdu), 7U));
+    ack(1U, false, 1U);
+    ack(0U, false, 2U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, core.state);
+    TEST_ASSERT_EQUAL_UINT32(1U, delivery_count);
+    TEST_ASSERT_EQUAL_UINT32(1U, event_counts[IEC104_CORE_PROTOCOL_ERROR]);
+}
+
+void test_stack_backward_ack_after_partial_ack_never_delivers_remaining_tag(void)
+{
+    core_feed(start, sizeof(start), 0U);
+    TEST_ASSERT_TRUE(iec104_core_send(&core, single_asdu, sizeof(single_asdu), 7U));
+    TEST_ASSERT_TRUE(iec104_core_send(&core, single_asdu, sizeof(single_asdu), 8U));
+    ack(1U, false, 1U);
+    ack(0U, false, 2U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, core.state);
+    TEST_ASSERT_EQUAL_UINT32(1U, delivery_count);
+    TEST_ASSERT_EQUAL_UINT32(7U, delivery_tag);
+}
+
+void test_stack_backward_ack_across_sequence_wrap_is_rejected(void)
+{
+    core_feed(start, sizeof(start), 0U);
+    core.send_sequence = 32767U;
+    core.acknowledged = 32767U;
+    TEST_ASSERT_TRUE(iec104_core_send(&core, single_asdu, sizeof(single_asdu), 7U));
+    ack(0U, false, 1U);
+    ack(32767U, false, 2U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, core.state);
+    TEST_ASSERT_EQUAL_UINT32(1U, delivery_count);
+}
+
+void test_stack_s_frame_before_start_is_rejected(void)
+{
+    core.io.event = event;
+    ack(0U, false, 1U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, core.state);
+    TEST_ASSERT_EQUAL_UINT32(1U, event_counts[IEC104_CORE_PROTOCOL_ERROR]);
+}
+
+void test_stack_s_frame_after_completed_stop_is_rejected(void)
+{
+    core_feed(start, sizeof(start), 0U);
+    core_feed(stop, sizeof(stop), 1U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_STOPPED, core.state);
+    ack(0U, false, 2U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, core.state);
+}
+
+void test_stack_outgoing_data_does_not_postpone_receive_idle_test(void)
+{
+    core_feed(start, sizeof(start), 0U);
+    core.config.t1_ms = 30000U;
+    iec104_core_poll(&core, 10000U);
+    TEST_ASSERT_TRUE(iec104_core_send(&core, single_asdu, sizeof(single_asdu), 7U));
+    iec104_core_poll(&core, 20000U);
+    TEST_ASSERT_TRUE(core.test_pending);
+    TEST_ASSERT_EQUAL_UINT8(0x43U, frames[frame_count - 1U][2]);
+    iec104_core_poll(&core, 39999U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_STARTED, core.state);
+    iec104_core_poll(&core, 40000U);
     TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, core.state);
 }
 
@@ -847,6 +915,92 @@ void test_stack_clock_positive_reply_full_frame(void)
         0x6BU, 0xE6U, 57U, 23U, 0xF9U, 10U, 26U};
     TEST_ASSERT_EQUAL_size_t(sizeof(expected), lengths[0]);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, frames[0], sizeof(expected));
+}
+
+static void send_test_command(uint8_t cause, uint16_t address, uint32_t ioa)
+{
+    uint8_t data[] = {0x68U, 22U, 0U, 0U, 0U, 0U, 107U, 1U, cause, 0x3CU,
+        0U, 0U, 0U, 0U, 0U, 0x34U, 0x12U, 0x6BU, 0xE6U, 57U, 23U, 0xF9U, 10U, 26U};
+    iec104_write_u16(&data[2], (uint16_t)(server.core.receive_sequence << 1U));
+    iec104_write_u16(&data[4], (uint16_t)(server.core.acknowledged << 1U));
+    iec104_write_u16(&data[10], address);
+    iec104_write_ioa(&data[12], ioa);
+    (void)iec104_server_process_data(&server, data, sizeof(data), server.core.now_ms + 1U);
+}
+
+void test_stack_test_command_echoes_counter_and_time_without_application_callback(void)
+{
+    open_server();
+    server.io.handle_request = NULL;
+    send_test_command(6U, 0x1234U, 0U);
+    const uint8_t expected[] = {0x68U, 22U, 2U, 0U, 2U, 0U, 107U, 1U, 7U, 0x3CU,
+        0x34U, 0x12U, 0U, 0U, 0U, 0x34U, 0x12U, 0x6BU, 0xE6U, 57U, 23U, 0xF9U, 10U, 26U};
+    TEST_ASSERT_EQUAL_size_t(1U, frame_count);
+    TEST_ASSERT_EQUAL_size_t(sizeof(expected), lengths[0]);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, frames[0], sizeof(expected));
+    TEST_ASSERT_EQUAL_UINT32(0U, request_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, clock_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, reset_calls);
+}
+
+void test_stack_test_command_rejects_wrong_cause_address_ioa_and_test_bit(void)
+{
+    open_server();
+    send_test_command(5U, 0x1234U, 0U);
+    TEST_ASSERT_EQUAL_UINT8(0x6DU, frames[0][8]);
+    send_test_command(6U, 2U, 0U);
+    TEST_ASSERT_EQUAL_UINT8(0x6EU, frames[1][8]);
+    send_test_command(6U, 0x1234U, 1U);
+    TEST_ASSERT_EQUAL_UINT8(0x6FU, frames[2][8]);
+    send_test_command(0x86U, 0x1234U, 0U);
+    TEST_ASSERT_EQUAL_UINT8(0xC7U, frames[3][8]);
+    TEST_ASSERT_EQUAL_UINT32(0U, request_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, clock_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, reset_calls);
+}
+
+void test_stack_test_command_retries_same_reply_when_transport_is_full(void)
+{
+    open_server();
+    writable = false;
+    send_test_command(6U, 0x1234U, 0U);
+    TEST_ASSERT_TRUE(server.response_pending);
+    TEST_ASSERT_EQUAL_UINT16(1U, server.core.send_sequence);
+    iec104_server_poll(&server, 3U);
+    TEST_ASSERT_EQUAL_size_t(0U, frame_count);
+    writable = true;
+    iec104_server_poll(&server, 4U);
+    TEST_ASSERT_EQUAL_size_t(24U, lengths[0]);
+    TEST_ASSERT_EQUAL_UINT8(7U, frames[0][8]);
+    TEST_ASSERT_EQUAL_UINT16(0x1234U, iec104_read_u16(&frames[0][15]));
+    TEST_ASSERT_FALSE(server.response_pending);
+    TEST_ASSERT_EQUAL_UINT32(0U, request_calls);
+}
+
+void test_stack_truncated_test_command_closes_without_application_action(void)
+{
+    open_server();
+    const uint8_t bad[] = {0x68U, 14U, 0U, 0U, 0U, 0U, 107U, 1U, 6U, 0U, 0x34U, 0x12U,
+        0U, 0U, 0U, 0U};
+    (void)iec104_server_process_data(&server, bad, sizeof(bad), 2U);
+    TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, server.core.state);
+    TEST_ASSERT_EQUAL_size_t(0U, frame_count);
+    TEST_ASSERT_EQUAL_UINT32(0U, request_calls);
+}
+
+void test_stack_test_command_rejects_sequence_and_multiple_objects(void)
+{
+    const uint8_t vsq[] = {0U, 2U, 0x81U};
+    for (size_t index = 0U; index < sizeof(vsq); index++)
+    {
+        open_server();
+        uint8_t data[] = {0x68U, 22U, 0U, 0U, 0U, 0U, 107U, vsq[index], 6U, 0x3CU,
+            0x34U, 0x12U, 0U, 0U, 0U, 0x34U, 0x12U, 0x6BU, 0xE6U, 57U, 23U, 0xF9U, 10U, 26U};
+        (void)iec104_server_process_data(&server, data, sizeof(data), 2U);
+        TEST_ASSERT_EQUAL(IEC104_CORE_CLOSED, server.core.state);
+        TEST_ASSERT_EQUAL_size_t(0U, frame_count);
+        TEST_ASSERT_EQUAL_UINT32(0U, request_calls);
+    }
 }
 
 void test_stack_reset_positive_reply_full_frame(void)
