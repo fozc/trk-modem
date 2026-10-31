@@ -249,13 +249,13 @@ void test_stack_modem_periodic_covers_four_categories_with_k_one(void)
     iec104_modem_fixture.modem.period_ms = 1000U;
     connect_station();
     size_t count = 0U;
-    for (uint32_t time = 1001U; time < 1030U; time++)
+    for (uint32_t time = 1001U; time < 1040U; time++)
     {
         acknowledge_all(time);
         iec104_fixture_poll(time);
         while (iec104_fixture_pop(frame, sizeof(frame)) != 0U)
         {
-            if ((frame[2] & 1U) == 0U && frame[8] == 3U)
+            if ((frame[2] & 1U) == 0U && frame[8] == 1U)
             {
                 count += frame[7];
             }
@@ -347,5 +347,76 @@ void test_stack_modem_clock_uses_existing_rtc_sync_service(void)
     TEST_ASSERT_EQUAL_UINT32(1U, iec104_fixture_clock_count());
     TEST_ASSERT_EQUAL_UINT16(987U, iec104_modem_fixture.clock.millisec);
     TEST_ASSERT_EQUAL_UINT8(58U, iec104_modem_fixture.clock.second);
+}
+
+void test_stack_modem_initial_gi_call_selects_group_without_reading_fault_storage(void)
+{
+    connect_station();
+    uint8_t command[] = {0x68U, 14U, 0U, 0U, 0U, 0U,
+        100U, 1U, 6U, 0x3CU, 1U, 0U, 0U, 0U, 0U, 23U};
+    iec104_core_t *core = &iec104_modem_fixture.modem.server.core;
+    iec104_write_u16(&command[4], (uint16_t)(core->send_sequence << 1U));
+    TEST_ASSERT_EQUAL_size_t(sizeof(command), iec104_fixture_feed(command, sizeof(command), 20U));
+    TEST_ASSERT_EQUAL_UINT32(0U, iec104_modem_fixture.fault_reads);
+    iec104_fixture_poll(21U);
+    TEST_ASSERT_GREATER_THAN_UINT32(0U, iec104_modem_fixture.fault_reads);
+}
+
+void test_stack_modem_reads_existing_sbo_settings_without_changing_nvram_model(void)
+{
+    TEST_ASSERT_TRUE(iec104_fixture_configure_sbo(1U, 30U));
+    TEST_ASSERT_TRUE(iec104_modem_fixture.modem.server.config.reset_sbo);
+    TEST_ASSERT_EQUAL_UINT32(30000U, iec104_modem_fixture.modem.server.config.sbo_timeout_ms);
+    TEST_ASSERT_EQUAL_UINT8(1U, iec104_modem_fixture.config.is_sbo_active);
+    TEST_ASSERT_TRUE(iec104_fixture_configure_sbo(0U, 0U));
+    TEST_ASSERT_FALSE(iec104_modem_fixture.modem.server.config.reset_sbo);
+}
+
+void test_stack_modem_periodic_zero_disables_and_rejected_send_preserves_position(void)
+{
+    connect_station();
+    iec104_modem_fixture.modem.period_ms = 1000U;
+    iec104_modem_fixture.writable = false;
+    iec104_fixture_poll(1001U);
+    TEST_ASSERT_TRUE(iec104_modem_fixture.modem.periodic_pending);
+    TEST_ASSERT_EQUAL_size_t(0U, iec104_modem_fixture.modem.periodic_index);
+    iec104_modem_fixture.modem.period_ms = 0U;
+    iec104_fixture_poll(1002U);
+    TEST_ASSERT_FALSE(iec104_modem_fixture.modem.periodic_pending);
+    iec104_modem_fixture.writable = true;
+    iec104_fixture_poll(1003U);
+    TEST_ASSERT_EQUAL_size_t(0U, iec104_fixture_pop(frame, sizeof(frame)));
+}
+void test_stack_modem_periodic_resumes_same_ioa_after_transport_rejection(void)
+{
+    connect_station();
+    iec104_modem_t *modem = &iec104_modem_fixture.modem;
+    modem->period_ms = 1000U;
+    uint16_t sequence = modem->server.core.send_sequence;
+    iec104_modem_fixture.writable = false;
+    iec104_fixture_poll(1001U);
+    TEST_ASSERT_EQUAL_size_t(0U, modem->periodic_index);
+    TEST_ASSERT_EQUAL_UINT16(sequence, modem->server.core.send_sequence);
+    iec104_modem_fixture.writable = true;
+    iec104_fixture_poll(1002U);
+    TEST_ASSERT_EQUAL_size_t(252U, iec104_fixture_pop(frame, sizeof(frame)));
+    TEST_ASSERT_EQUAL_UINT8(36U, frame[6]);
+    TEST_ASSERT_EQUAL_UINT8(16U, frame[7]);
+    TEST_ASSERT_EQUAL_UINT8(1U, frame[8]);
+    TEST_ASSERT_EQUAL_UINT16((uint16_t)(sequence << 1U), iec104_read_u16(&frame[2]));
+    const uint8_t first_point[] = {100U, 0U, 0U, 0U, 0U, 0x20U, 0xC0U, 0U,
+        0x6BU, 0xE6U, 0x39U, 0x17U, 0xF9U, 0x0AU, 0x1AU};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(first_point, &frame[12], sizeof(first_point));
+    TEST_ASSERT_EQUAL_size_t(16U, modem->periodic_index);
+    iec104_modem_fixture.writable = false;
+    iec104_fixture_poll(1003U);
+    TEST_ASSERT_EQUAL_size_t(16U, modem->periodic_index);
+    iec104_modem_fixture.writable = true;
+    iec104_fixture_poll(1004U);
+    TEST_ASSERT_EQUAL_size_t(87U, iec104_fixture_pop(frame, sizeof(frame)));
+    TEST_ASSERT_EQUAL_UINT8(36U, frame[6]);
+    TEST_ASSERT_EQUAL_UINT8(5U, frame[7]);
+    TEST_ASSERT_EQUAL_UINT32(151U, iec104_read_ioa(&frame[12]));
+    TEST_ASSERT_EQUAL_size_t(21U, modem->periodic_index);
 }
 /*** end of file ***/

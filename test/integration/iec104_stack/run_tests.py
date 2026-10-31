@@ -27,8 +27,8 @@ import apdu  # noqa: E402 - reuse the existing independent wire decoder
 
 BUILD = ROOT / "test/build/iec104-stack"
 SOURCES = [ROOT / "Application/iec104_stack" / name for name in
-           ("iec104_asdu.c", "iec104_core.c", "iec104_server.c",
-            "iec104_modem.c")]
+           ("iec104_asdu.c", "iec104_core.c", "iec104_server.c")]
+SOURCES += [ROOT / "Application/iec104_modem/iec104_modem.c"]
 SOURCES += [ROOT / "Application/libiec104" / name for name in
             ("iec104_config.c", "iec104_util.c")]
 SOURCES += [ROOT / "test/support_sources/iec104_modem_fixture.c"]
@@ -64,6 +64,10 @@ class Device:
         byte_pointer = ctypes.POINTER(ctypes.c_uint8)
         self.lib.iec104_fixture_start.argtypes = [ctypes.c_uint8]
         self.lib.iec104_fixture_start.restype = ctypes.c_bool
+        self.lib.iec104_fixture_configure_sbo.argtypes = [ctypes.c_uint8, ctypes.c_uint16]
+        self.lib.iec104_fixture_configure_sbo.restype = ctypes.c_bool
+        self.lib.iec104_fixture_set_period_ms.argtypes = [ctypes.c_uint32]
+        self.lib.iec104_fixture_set_period_ms.restype = None
         self.lib.iec104_fixture_feed.argtypes = [byte_pointer, ctypes.c_size_t,
                                                ctypes.c_uint32]
         self.lib.iec104_fixture_feed.restype = ctypes.c_size_t
@@ -357,7 +361,7 @@ class StackIntegration(unittest.TestCase):
 
     def test_raw_unknown_type_cause_ca_ioa_and_reset(self):
         self.raw_start()
-        cases = [(45, b"\1\0\0\1", 6, 1, 44),
+        cases = [(45, b"\1\0\0\1", 6, 1, 47),
                  (100, b"\0\0\0\x14", 3, 1, 45),
                  (100, b"\0\0\0\x14", 6, 2, 46),
                  (100, b"\1\0\0\x14", 6, 1, 47),
@@ -387,7 +391,79 @@ class StackIntegration(unittest.TestCase):
         self.peer.sendall(b"".join(frames))
         self.nr = 1
         responses = [self.next_asdu(lambda f: f[6] == 45) for _ in range(2)]
-        self.assertEqual([f[8] for f in responses], [0x6C, 0x6C])
+        self.assertEqual([f[8] for f in responses], [0x6F, 0x6F])
+
+    def test_raw_sbo_reset_select_execute_and_direct_bypass_rejected(self):
+        self.assertTrue(self.device.invoke("configure_sbo", 1, 2))
+        self.raw_start()
+        body = bytes.fromhex("112700")
+        self.send_command(105, body + b"\1")
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 105)[8], 0x47)
+        self.send_command(45, body + b"\1")
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 0x47)
+        self.assertEqual(self.device.invoke("reset_count"), 0)
+        self.send_command(45, body + b"\x81")
+        select = self.next_asdu(lambda f: f[6] == 45)
+        self.assertEqual((select[8], select[15]), (7, 0x81))
+        self.assertEqual(self.device.invoke("reset_count"), 0)
+        self.send_command(45, body + b"\1")
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 7)
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 10)
+        wait_until(lambda: self.device.invoke("reset_count") == 1)
+        self.send_command(45, body + b"\1")
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 0x47)
+        self.assertEqual(self.device.invoke("reset_count"), 1)
+
+    def test_c104_reset_uses_standard_select_and_execute_mode(self):
+        import c104
+        self.assertTrue(self.device.invoke("configure_sbo", 1, 3))
+        self.connect_c104()
+        station = self.connection.get_station(1)
+        point = station.add_point(io_address=10001, type=c104.Type.C_SC_NA_1,
+                                  command_mode=c104.CommandMode.SELECT_AND_EXECUTE)
+        self.assertIsNotNone(point)
+        point.value = True
+        self.assertTrue(point.transmit(cause=c104.Cot.ACTIVATION),
+                        f"SBO replies={[f.hex() for f in self.device.sent if len(f) == 16 and f[6] == 45]}; "
+                        f"reset_count={self.device.invoke('reset_count')}; state={self.connection.state}")
+        wait_until(lambda: self.device.invoke("reset_count") == 1)
+        replies = [f for f in self.device.sent if len(f) == 16 and f[6] == 45]
+        self.assertEqual([f[15] for f in replies], [0x81, 0x01, 0x01])
+        self.assertEqual([f[8] for f in replies], [7, 7, 10])
+
+    def test_raw_sbo_cancel_and_timeout_do_not_reset(self):
+        self.assertTrue(self.device.invoke("configure_sbo", 1, 1))
+        self.raw_start()
+        body = bytes.fromhex("112700")
+        self.send_command(45, body + b"\x81")
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 7)
+        self.send_command(45, body + b"\x81", cause=8)
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 9)
+        self.send_command(45, body + b"\1")
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 0x47)
+        self.send_command(45, body + b"\x81")
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 7)
+        # Advance the same monotonic test clock, then feed an actual execute APDU.
+        self.device.offset += 1100
+        self.send_command(45, body + b"\1")
+        self.assertEqual(self.next_asdu(lambda f: f[6] == 45)[8], 0x47)
+        self.assertEqual(self.device.invoke("reset_count"), 0)
+
+    def test_raw_periodic_uses_cot_one_and_only_the_application_profile(self):
+        self.raw_start()
+        # Drain the initial status/battery publication before enabling periodic data.
+        self.next_asdu(lambda f: f[6] == 1 and f[8] == 3)
+        self.device.invoke("set_period_ms", 1000)
+        self.device.offset += 1100
+        ioas = []
+        while len(ioas) < 84:
+            frame = self.next_asdu(lambda f: f[8] == 1)
+            self.assertIn(frame[6], (30, 36))
+            ioas.extend(obj["ioa"] for obj in apdu.parse_apdu(frame)["asdu"]["objects"])
+        expected = {base + feeder * 10 + phase for base in (100, 200, 300, 400)
+                    for feeder in range(7) for phase in range(3)}
+        self.assertEqual(len(ioas), len(set(ioas)))
+        self.assertEqual(set(ioas), expected)
 
     def test_raw_future_ack_closes(self):
         self.raw_connect()

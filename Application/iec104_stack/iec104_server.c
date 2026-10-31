@@ -25,6 +25,10 @@ static bool write_frame(void *context, const uint8_t *data, size_t length)
 static void link_event(void *context, iec104_core_event_t event)
 {
     iec104_server_t *server = context;
+    if (event != IEC104_CORE_LINK_STARTED)
+    {
+        server->reset_selected = false;
+    }
     if (event == IEC104_CORE_LINK_STARTED)
     {
         server->initialization_pending = !server->initialization_sent;
@@ -33,8 +37,9 @@ static void link_event(void *context, iec104_core_event_t event)
     {
         server->query_state            = IEC104_QUERY_IDLE;
         server->response_pending       = false;
-        server->reset_pending          = false;
+        server->reset_state            = IEC104_RESET_NONE;
         server->query_frame.length     = 0U;
+        server->query_more             = false;
         server->initialization_pending = false;
     }
     else
@@ -69,81 +74,215 @@ static void echo_response(iec104_server_t *server, const iec104_asdu_t *request,
     server->response_pending = true;
 }
 
-static const iec104_handler_t *find_handler(const iec104_server_t *server, uint8_t type)
+bool iec104_response_add(iec104_response_t *response, const iec104_point_t *point)
 {
-    for (size_t index = 0U; index < server->config.handler_count; index++)
+    if ((response == NULL) || (point == NULL) || (point->type == 0U) || (point->ioa > 0xFFFFFFU) ||
+        (point->value_size == 0U) || (point->value_size > IEC104_POINT_VALUE_MAX) || (response->asdu.length < 6U) ||
+        (response->asdu.length > IEC104_CORE_ASDU_MAX))
     {
-        if (server->config.handlers[index].type == type)
+        return false;
+    }
+    bool first = response->asdu.length == 6U;
+    if (first && (response->asdu.data[1] != 0U))
+    {
+        return false;
+    }
+    if (!first && ((point->type != response->asdu.data[0]) || (point->value_size != response->asdu.value_size)))
+    {
+        return false;
+    }
+    if (first)
+    {
+        response->asdu.data[0]    = point->type;
+        response->asdu.value_size = point->value_size;
+    }
+    return iec104_builder_add(&response->asdu, point->ioa, point->value);
+}
+
+/** Command confirmation for activation or selection cancellation. */
+static uint8_t confirmation_cause(const iec104_request_t *request)
+{
+    return request->asdu.cause == IEC104_COT_DEACTIVATION ? IEC104_COT_DEACTIVATION_CON : IEC104_COT_ACTIVATION_CON;
+}
+
+static bool is_reset_control(const iec104_server_t *server, const iec104_request_t *request)
+{
+    return (request->asdu.type == IEC104_TYPE_C_SC_NA_1) && (server->config.reset_ioa != 0U) &&
+           (request->ioa == server->config.reset_ioa);
+}
+
+/** Protect only the configured reset control; other application commands remain application-owned. */
+static bool check_reset_request(iec104_server_t *server, const iec104_request_t *request)
+{
+    bool allowed = true;
+    if (request->asdu.type == IEC104_TYPE_C_RP_NA_1)
+    {
+        allowed = !server->config.reset_sbo && (request->qualifier == IEC104_RESET_PROCESS_GENERAL) &&
+                  (server->io.request_reset != NULL);
+    }
+    else if (is_reset_control(server, request))
+    {
+        bool select = request->single_command.select && (request->asdu.cause == IEC104_COT_ACTIVATION);
+        if (select)
         {
-            return &server->config.handlers[index];
+            server->reset_selected = false;
+            allowed                = server->config.reset_sbo;
         }
-    }
-    return NULL;
-}
-
-/** @brief Accept a new GI transaction or prepare a negative confirmation.
- * @param[in,out] server Query state and pending response storage.
- * @param[in] request Validated single-object GI; its OA belongs to this query.
- * @note Captures QOI/OA/cursor only. Actual data and CON/TERM are sent by poll;
- * a second GI never replaces an active query.
- */
-static void handle_gi(iec104_server_t *server, const iec104_asdu_t *request)
-{
-    uint8_t qoi = request->payload[3];
-    if ((qoi < IEC104_QOI_STATION) || (qoi > IEC104_QOI_GROUP_4) || (server->query_state != IEC104_QUERY_IDLE))
-    {
-        echo_response(server, request, IEC104_COT_ACTIVATION_CON, true);
-        return;
-    }
-    server->query_qoi          = qoi;
-    server->query_originator   = request->originator;
-    server->query_index        = 0U;
-    server->query_frame.length = 0U;
-    server->query_state        = IEC104_QUERY_CONFIRM;
-}
-
-/** @brief Execute a validated command once and stage its response/query state.
- * @param[in,out] server Product callbacks and response/query storage.
- * @param[in] request Already checked for address/cause/extent/test-bit policy.
- * @param[in] handler Matching extension, or NULL for builtin commands.
- * @note Clock writes run here once; reset is only scheduled after positive
- * response acceptance in poll. Transport retries never reexecute the command.
- */
-static void execute_command(iec104_server_t *server, const iec104_asdu_t *request, const iec104_handler_t *handler)
-{
-    /* A faulty extension must not resend a previous command's response. */
-    server->response.length = 0U;
-    if (request->type == IEC104_TYPE_C_IC_NA_1)
-    {
-        handle_gi(server, request);
-    }
-    else if (request->type == IEC104_TYPE_C_CS_NA_1)
-    {
-        bool success = iec104_cp56_time_valid(&request->payload[3]) && (server->io.set_clock != NULL) &&
-                       server->io.set_clock(server->io.context, &request->payload[3]);
-        echo_response(server, request, IEC104_COT_ACTIVATION_CON, !success);
-    }
-    else if (request->type == IEC104_TYPE_C_RP_NA_1)
-    {
-        bool success = (request->payload[3] == IEC104_RESET_PROCESS_GENERAL) && (server->io.request_reset != NULL);
-        echo_response(server, request, IEC104_COT_ACTIVATION_CON, !success);
-        server->reset_pending = success;
-    }
-    else if ((handler != NULL) && handler->handle(server->io.context, request, &server->response))
-    {
-        iec104_asdu_t response;
-        if (iec104_asdu_parse(&response, server->response.data, server->response.length))
+        else if (server->config.reset_sbo)
         {
-            server->response_pending = true;
+            allowed = server->reset_selected &&
+                      ((uint32_t)(server->core.now_ms - server->reset_selected_since) <
+                       server->config.sbo_timeout_ms) &&
+                      (server->reset_selected_originator == request->asdu.originator) &&
+                      (server->reset_selected_command == (uint8_t)(request->qualifier & 0x7FU));
+            /* An execute/cancel attempt consumes the selection, even when it mismatches. */
+            server->reset_selected = false;
         }
         else
         {
-            server->overloaded = true;
+            allowed = request->asdu.cause == IEC104_COT_ACTIVATION;
         }
+        allowed = allowed && (server->io.request_reset != NULL);
     }
     else
     {
-        echo_response(server, request, IEC104_COT_ACTIVATION_CON, true);
+        /* A non-reset request cannot select or consume the reset control. */
+    }
+    if (!allowed)
+    {
+        echo_response(server, &request->asdu, confirmation_cause(request), true);
+    }
+    return allowed;
+}
+
+/** Commit selection after application acceptance; physical reset still waits for response TX acceptance. */
+static void reset_request_accepted(iec104_server_t *server, const iec104_request_t *request)
+{
+    bool control  = is_reset_control(server, request);
+    bool activate = request->asdu.cause == IEC104_COT_ACTIVATION;
+    if (control && activate && request->single_command.select)
+    {
+        server->reset_selected            = true;
+        server->reset_selected_command    = request->qualifier & 0x7FU;
+        server->reset_selected_originator = request->asdu.originator;
+        server->reset_selected_since      = server->core.now_ms;
+    }
+    if (control && activate && !request->single_command.select)
+    {
+        server->reset_state = IEC104_RESET_SEND_TERMINATION;
+    }
+    else if (request->asdu.type == IEC104_TYPE_C_RP_NA_1)
+    {
+        server->reset_state = IEC104_RESET_SCHEDULE;
+    }
+    else
+    {
+        server->reset_state = IEC104_RESET_NONE;
+    }
+}
+
+/** Initialize one response with protocol header fields; application only adds typed values. */
+static void response_init(iec104_response_t *response, const iec104_request_t *request)
+{
+    iec104_asdu_t asdu = request->asdu;
+    asdu.cause         = asdu.type == IEC104_TYPE_C_IC_NA_1 ? request->qualifier : confirmation_cause(request);
+    asdu.sequence      = false;
+    /* builder_begin ASDU alanini zaten baslatir; ayni tamponu iki kez sifirlama. */
+    response->more = false;
+    (void)iec104_builder_begin(&response->asdu, &asdu, 0U);
+}
+
+/** Check an application-produced chunk before caching/sending it. */
+static bool response_valid(const iec104_response_t *response, const iec104_request_t *request)
+{
+    if (response->asdu.length == 6U)
+    {
+        return response->asdu.data[1] == 0U;
+    }
+    iec104_asdu_t asdu;
+    return iec104_asdu_parse(&asdu, response->asdu.data, response->asdu.length) &&
+           iec104_asdu_objects_valid(&asdu, response->asdu.value_size) && !asdu.negative && !asdu.test &&
+           (asdu.address == request->asdu.address) && (asdu.originator == request->asdu.originator) &&
+           (asdu.cause ==
+            (request->asdu.type == IEC104_TYPE_C_IC_NA_1 ? request->qualifier : confirmation_cause(request)));
+}
+
+/** @brief Invoke the single application handler once, then cache its response.
+ * GI continuation uses the same handler later; transport retries never execute it again.
+ */
+static void execute_request(iec104_server_t *server, const iec104_asdu_t *asdu)
+{
+    bool gi = asdu->type == IEC104_TYPE_C_IC_NA_1;
+    if (gi && ((asdu->payload[3] < IEC104_QOI_STATION) || (asdu->payload[3] > IEC104_QOI_GROUP_16) ||
+               (server->query_state != IEC104_QUERY_IDLE)))
+    {
+        echo_response(server, asdu, IEC104_COT_ACTIVATION_CON, true);
+        return;
+    }
+    iec104_request_t request = { .asdu      = *asdu,
+                                 .ioa       = asdu->payload_len >= 3U ? iec104_read_ioa(asdu->payload) : 0U,
+                                 .qualifier = asdu->payload_len >= 4U ? asdu->payload[3] : 0U };
+    if (((asdu->type == IEC104_TYPE_C_CS_NA_1) && !iec104_time_parse(&request.time, &asdu->payload[3])) ||
+        ((asdu->type == IEC104_TYPE_C_SC_NA_1) &&
+         !iec104_single_command_parse(&request.single_command, request.qualifier)))
+    {
+        echo_response(server, asdu, confirmation_cause(&request), true);
+        return;
+    }
+    if (!check_reset_request(server, &request))
+    {
+        return;
+    }
+    iec104_response_t response;
+    response_init(&response, &request);
+    iec104_request_result_t result = server->io.handle_request == NULL ?
+                                         IEC104_REQUEST_UNSUPPORTED :
+                                         server->io.handle_request(server->io.context, &request, &response);
+    if ((result == IEC104_REQUEST_ERROR) ||
+        ((result == IEC104_REQUEST_ACCEPTED) &&
+         (!response_valid(&response, &request) || (!gi && response.more) ||
+          (((asdu->type == IEC104_TYPE_C_CS_NA_1) || (asdu->type == IEC104_TYPE_C_RP_NA_1) ||
+            is_reset_control(server, &request)) &&
+           (response.asdu.length != 6U)))))
+    {
+        server->overloaded = true;
+    }
+    else if (result != IEC104_REQUEST_ACCEPTED)
+    {
+        bool builtin = gi || (asdu->type == IEC104_TYPE_C_CS_NA_1) || (asdu->type == IEC104_TYPE_C_RP_NA_1) ||
+                       is_reset_control(server, &request);
+        uint8_t cause = (builtin || (result == IEC104_REQUEST_REJECTED)) ? confirmation_cause(&request) :
+                                                                           IEC104_COT_UNKNOWN_TYPE;
+        if (result == IEC104_REQUEST_UNKNOWN_IOA)
+        {
+            cause = IEC104_COT_UNKNOWN_IOA;
+        }
+        echo_response(server, asdu, cause, true);
+    }
+    else if (gi)
+    {
+        server->query_qoi        = request.qualifier;
+        server->query_originator = asdu->originator;
+        server->query_more       = response.more;
+        server->query_frame      = response.asdu;
+        if (server->query_frame.length == 6U)
+        {
+            server->query_frame.length = 0U;
+        }
+        server->query_state = IEC104_QUERY_CONFIRM;
+    }
+    else
+    {
+        if (response.asdu.length == 6U)
+        {
+            echo_response(server, asdu, confirmation_cause(&request), false);
+        }
+        else
+        {
+            server->response         = response.asdu;
+            server->response_pending = true;
+        }
+        reset_request_accepted(server, &request);
     }
 }
 
@@ -155,7 +294,8 @@ static void execute_command(iec104_server_t *server, const iec104_asdu_t *reques
  * Builtin commands require count=1 and SQ=0.
  * All offsets here are relative to request->payload, NOT the APDU header.
  * @code
- * Type 100 (GI):    [0..2:IOA=0]           [3:QOI=20..24]
+ * Type 45 (SCO):    [0..2:IOA]             [3:S/E bit 7, QU bits 6..2, reserved bit 1=0, SCS bit 0]
+ * Type 100 (GI):    [0..2:IOA=0]           [3:QOI=20..36]
  * Type 103 (clock): [0..2:IOA=0]           [3..9:CP56Time2a]
  * Type 105 (reset): [0..2:IOA=0/reset IOA] [3:QRP=1 for general reset]
  *
@@ -177,22 +317,17 @@ static bool process_asdu(void *context, const iec104_asdu_t *request)
         server->overloaded = true;
         return true;
     }
-    const iec104_handler_t *handler = find_handler(server, request->type);
     bool builtin = (request->type == IEC104_TYPE_C_IC_NA_1) || (request->type == IEC104_TYPE_C_CS_NA_1) ||
-                   (request->type == IEC104_TYPE_C_RP_NA_1);
-    if (!builtin && (handler == NULL))
-    {
-        echo_response(server, request, IEC104_COT_UNKNOWN_TYPE, true);
-        return true;
-    }
-    size_t value_size = builtin ? (request->type == IEC104_TYPE_C_CS_NA_1 ? 7U : 1U) : handler->value_size;
-    if (!iec104_asdu_objects_valid(request, value_size) || (builtin && ((request->count != 1U) || request->sequence)))
+                   (request->type == IEC104_TYPE_C_RP_NA_1) || (request->type == IEC104_TYPE_C_SC_NA_1);
+    if (builtin && (!iec104_asdu_objects_valid(request, request->type == IEC104_TYPE_C_CS_NA_1 ? 7U : 1U) ||
+                    (request->count != 1U) || request->sequence))
     {
         server->overloaded = true;
         return true;
     }
-    uint32_t ioa = iec104_read_ioa(request->payload);
-    if ((request->cause != IEC104_COT_ACTIVATION) || request->negative)
+    uint32_t ioa = request->payload_len >= 3U ? iec104_read_ioa(request->payload) : 0U;
+    bool cancel  = (request->type == IEC104_TYPE_C_SC_NA_1) && (request->cause == IEC104_COT_DEACTIVATION);
+    if (((request->cause != IEC104_COT_ACTIVATION) && !cancel) || request->negative)
     {
         echo_response(server, request, IEC104_COT_UNKNOWN_CAUSE, true);
     }
@@ -200,7 +335,8 @@ static bool process_asdu(void *context, const iec104_asdu_t *request)
     {
         echo_response(server, request, IEC104_COT_UNKNOWN_ADDRESS, true);
     }
-    else if (builtin && (ioa != 0U) && ((request->type != IEC104_TYPE_C_RP_NA_1) || (ioa != server->config.reset_ioa)))
+    else if (builtin && (request->type != IEC104_TYPE_C_SC_NA_1) && (ioa != 0U) &&
+             ((request->type != IEC104_TYPE_C_RP_NA_1) || (ioa != server->config.reset_ioa)))
     {
         echo_response(server, request, IEC104_COT_UNKNOWN_IOA, true);
     }
@@ -209,11 +345,11 @@ static bool process_asdu(void *context, const iec104_asdu_t *request)
         /* A test-marked request must never change clock or reboot hardware.
          * This profile explicitly rejects it and echoes the test bit.
          */
-        echo_response(server, request, IEC104_COT_ACTIVATION_CON, true);
+        echo_response(server, request, cancel ? IEC104_COT_DEACTIVATION_CON : IEC104_COT_ACTIVATION_CON, true);
     }
     else
     {
-        execute_command(server, request, handler);
+        execute_request(server, request);
     }
     return true;
 }
@@ -221,29 +357,11 @@ static bool process_asdu(void *context, const iec104_asdu_t *request)
 bool iec104_server_init(iec104_server_t *server, const iec104_core_config_t *link_config,
                         const iec104_server_config_t *config, const iec104_server_io_t *io)
 {
-    if ((server == NULL) || (config == NULL) || (io == NULL) || (io->write == NULL) || (io->read_point == NULL) ||
-        (config->common_address == 0U) || (config->common_address == UINT16_MAX) || (config->reset_ioa > 0xFFFFFFU) ||
-        (config->point_limit == 0U) || ((config->handler_count != 0U) && (config->handlers == NULL)))
+    if ((server == NULL) || (config == NULL) || (io == NULL) || (io->write == NULL) || (config->common_address == 0U) ||
+        (config->common_address == UINT16_MAX) || (config->reset_ioa > 0xFFFFFFU) ||
+        (config->reset_sbo && ((config->sbo_timeout_ms == 0U) || (config->sbo_timeout_ms > INT32_MAX))))
     {
         return false;
-    }
-
-    for (size_t index = 0U; index < config->handler_count; index++)
-    {
-        const iec104_handler_t *handler = &config->handlers[index];
-        if ((handler->handle == NULL) || (handler->type == IEC104_TYPE_C_IC_NA_1) ||
-            (handler->type == IEC104_TYPE_C_CS_NA_1) || (handler->type == IEC104_TYPE_C_RP_NA_1) ||
-            (handler->value_size > IEC104_SERVER_VALUE_MAX))
-        {
-            return false;
-        }
-        for (size_t previous = 0U; previous < index; previous++)
-        {
-            if (config->handlers[previous].type == handler->type)
-            {
-                return false;
-            }
-        }
     }
 
     iec104_core_io_t core_io = {
@@ -257,12 +375,14 @@ bool iec104_server_init(iec104_server_t *server, const iec104_core_config_t *lin
     server->config                 = *config;
     server->io                     = *io;
     server->response_pending       = false;
-    server->reset_pending          = false;
+    server->reset_state            = IEC104_RESET_NONE;
+    server->reset_selected         = false;
     server->overloaded             = false;
     server->initialization_pending = false;
     server->initialization_sent    = false;
     server->query_state            = IEC104_QUERY_IDLE;
     server->query_frame.length     = 0U;
+    server->query_more             = false;
     return true;
 }
 
@@ -271,6 +391,7 @@ void iec104_server_open(iec104_server_t *server, uint32_t now_ms)
     if (server != NULL)
     {
         iec104_core_open(&server->core, now_ms);
+        server->reset_selected      = false;
         server->initialization_sent = false;
         server->overloaded          = false;
     }
@@ -326,61 +447,53 @@ static void query_control(iec104_server_t *server, uint8_t cause)
     (void)iec104_builder_add(&builder, 0U, &server->query_qoi);
     if (iec104_core_send(&server->core, builder.data, builder.length, 0U))
     {
-        server->query_state = cause == IEC104_COT_ACTIVATION_CON ? IEC104_QUERY_DATA : IEC104_QUERY_IDLE;
+        server->query_state = cause == IEC104_COT_ACTIVATION_CON ?
+                                  ((server->query_more || (server->query_frame.length != 0U)) ?
+                                       IEC104_QUERY_DATA :
+                                       IEC104_QUERY_TERMINATE) :
+                                  IEC104_QUERY_IDLE;
     }
 }
 
-/** @brief Build or reuse one pending same-type GI data ASDU.
- * @param[in,out] server Provider, read cursor and cached ASDU buffer.
- * @return True when cached data is ready to send; false for no data yet/end/error.
- * @note Reads at most 32 positions, preserves a prepared frame on TX rejection,
- * and aborts on provider errors instead of claiming successful termination.
- */
+/** Request at most one continuation chunk; cached bytes are never resampled on backpressure. */
 static bool prepare_query_frame(iec104_server_t *server)
 {
     if (server->query_frame.length != 0U)
     {
         return true;
     }
-    for (size_t work = 0U; work < 32U; work++)
+    if (!server->query_more)
     {
-        iec104_point_t point         = { 0 };
-        iec104_point_result_t result = server->io.read_point(server->io.context, server->query_qoi, server->query_index,
-                                                             &point);
-        if (result == IEC104_POINT_END)
+        server->query_state = IEC104_QUERY_TERMINATE;
+        return false;
+    }
+    iec104_request_t request = { .asdu         = { .type       = IEC104_TYPE_C_IC_NA_1,
+                                                   .cause      = IEC104_COT_ACTIVATION,
+                                                   .address    = server->config.common_address,
+                                                   .originator = server->query_originator,
+                                                   .count      = 1U },
+                                 .qualifier    = server->query_qoi,
+                                 .continuation = true };
+    iec104_response_t response;
+    response_init(&response, &request);
+    if ((server->io.handle_request == NULL) ||
+        (server->io.handle_request(server->io.context, &request, &response) != IEC104_REQUEST_ACCEPTED) ||
+        !response_valid(&response, &request))
+    {
+        iec104_core_abort(&server->core);
+        return false;
+    }
+    server->query_more = response.more;
+    if (response.asdu.length == 6U)
+    {
+        if (!response.more)
         {
             server->query_state = IEC104_QUERY_TERMINATE;
-            break;
         }
-        if ((result == IEC104_POINT_ERROR) || (server->query_index >= server->config.point_limit))
-        {
-            iec104_core_abort(&server->core);
-            return false;
-        }
-        if (result == IEC104_POINT_SKIP)
-        {
-            server->query_index++;
-            continue;
-        }
-        if ((result != IEC104_POINT_VALUE) || (point.value_size > IEC104_SERVER_VALUE_MAX) ||
-            (point.value_size == 0U) || (point.ioa > 0xFFFFFFU))
-        {
-            iec104_core_abort(&server->core);
-            return false;
-        }
-        if (server->query_frame.length == 0U)
-        {
-            iec104_asdu_t asdu = header(server, point.type, server->query_qoi, server->query_originator);
-            (void)iec104_builder_begin(&server->query_frame, &asdu, point.value_size);
-        }
-        if ((point.type != server->query_frame.data[0]) || (point.value_size != server->query_frame.value_size) ||
-            !iec104_builder_add(&server->query_frame, point.ioa, point.value))
-        {
-            break;
-        }
-        server->query_index++;
+        return false;
     }
-    return server->query_frame.length != 0U;
+    server->query_frame = response.asdu;
+    return true;
 }
 
 static void send_initialization(iec104_server_t *server)
@@ -403,6 +516,10 @@ void iec104_server_poll(iec104_server_t *server, uint32_t now_ms)
     {
         return;
     }
+    if (server->reset_selected && ((uint32_t)(now_ms - server->reset_selected_since) >= server->config.sbo_timeout_ms))
+    {
+        server->reset_selected = false;
+    }
     iec104_core_poll(&server->core, now_ms);
     if (server->overloaded)
     {
@@ -411,6 +528,8 @@ void iec104_server_poll(iec104_server_t *server, uint32_t now_ms)
     }
     if (server->core.state != IEC104_CORE_STARTED)
     {
+        /* STOPPING may wait for old I-frame ACKs; selection ends as soon as STOP is received. */
+        server->reset_selected = false;
         return;
     }
     if (server->initialization_pending)
@@ -422,10 +541,17 @@ void iec104_server_poll(iec104_server_t *server, uint32_t now_ms)
     {
         if (iec104_core_send(&server->core, server->response.data, server->response.length, 0U))
         {
-            server->response_pending = false;
-            if (server->reset_pending)
+            if (server->reset_state == IEC104_RESET_SEND_TERMINATION)
             {
-                server->reset_pending = false;
+                /* Reuse the accepted Execute echo; no new queue or repeated application call. */
+                server->reset_state      = IEC104_RESET_SCHEDULE;
+                server->response.data[2] = IEC104_COT_ACTIVATION_TERM;
+                return;
+            }
+            server->response_pending = false;
+            if (server->reset_state == IEC104_RESET_SCHEDULE)
+            {
+                server->reset_state = IEC104_RESET_NONE;
                 server->io.request_reset(server->io.context);
             }
         }
@@ -441,6 +567,10 @@ void iec104_server_poll(iec104_server_t *server, uint32_t now_ms)
             iec104_core_send(&server->core, server->query_frame.data, server->query_frame.length, 0U))
         {
             server->query_frame.length = 0U;
+            if (!server->query_more)
+            {
+                server->query_state = IEC104_QUERY_TERMINATE;
+            }
         }
     }
     else if (server->query_state == IEC104_QUERY_TERMINATE)
@@ -453,16 +583,17 @@ void iec104_server_poll(iec104_server_t *server, uint32_t now_ms)
     }
 }
 
-bool iec104_server_publish(iec104_server_t *server, const iec104_point_t *points, size_t count, uint32_t tag)
+static bool publish_points(iec104_server_t *server, const iec104_point_t *points, size_t count, uint32_t tag,
+                           uint8_t cause)
 {
     if ((server == NULL) || (points == NULL) || (count == 0U) || (count > 127U) ||
         (server->query_state != IEC104_QUERY_IDLE) || server->response_pending || server->initialization_pending ||
-        (points[0].value_size == 0U) || (points[0].value_size > IEC104_SERVER_VALUE_MAX))
+        (points[0].value_size == 0U) || (points[0].value_size > IEC104_POINT_VALUE_MAX))
     {
         return false;
     }
     iec104_builder_t builder;
-    iec104_asdu_t asdu = header(server, points[0].type, IEC104_COT_SPONTANEOUS, server->config.originator);
+    iec104_asdu_t asdu = header(server, points[0].type, cause, server->config.originator);
     (void)iec104_builder_begin(&builder, &asdu, points[0].value_size);
     for (size_t index = 0U; index < count; index++)
     {
@@ -472,6 +603,31 @@ bool iec104_server_publish(iec104_server_t *server, const iec104_point_t *points
             return false;
         }
     }
-    return iec104_core_send(&server->core, builder.data, builder.length, tag);
+    return iec104_server_publish_asdu(server, &builder, tag);
 }
+bool iec104_server_publish(iec104_server_t *server, const iec104_point_t *points, size_t count, uint32_t tag)
+{
+    return publish_points(server, points, count, tag, IEC104_COT_SPONTANEOUS);
+}
+
+bool iec104_server_publish_periodic(iec104_server_t *server, const iec104_point_t *points, size_t count)
+{
+    return publish_points(server, points, count, 0U, IEC104_COT_PERIODIC);
+}
+
+bool iec104_server_publish_asdu(iec104_server_t *server, const iec104_builder_t *asdu, uint32_t tag)
+{
+    iec104_asdu_t view;
+    if ((server == NULL) || (asdu == NULL) || (server->query_state != IEC104_QUERY_IDLE) || server->response_pending ||
+        server->initialization_pending || (asdu->value_size == 0U) || (asdu->value_size > IEC104_CORE_ASDU_MAX - 9U) ||
+        !iec104_asdu_parse(&view, asdu->data, asdu->length) || !iec104_asdu_objects_valid(&view, asdu->value_size) ||
+        (view.type == 0U) || view.negative || view.test ||
+        ((view.cause != IEC104_COT_PERIODIC) && (view.cause != IEC104_COT_SPONTANEOUS)) ||
+        (view.address != server->config.common_address) || (view.originator != server->config.originator))
+    {
+        return false;
+    }
+    return iec104_core_send(&server->core, asdu->data, asdu->length, tag);
+}
+
 /*** end of file ***/

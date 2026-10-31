@@ -1,10 +1,12 @@
-PROJECT_NAME           = "IEC104 modem stack"
+PROJECT_NAME           = "IEC104 library"
 OUTPUT_DIRECTORY       = ../../test/build/iec104-stack/doxygen
 INPUT                  = README.md iec104_protocol.h \
                          iec104_asdu.h iec104_core.h \
-                         iec104_server.h iec104_modem.h \
+                         iec104_server.h \
                          iec104_asdu.c iec104_core.c \
-                         iec104_server.c iec104_modem.c
+                         iec104_server.c \
+                         examples/README.md examples/iec104_example.h \
+                         examples/iec104_example.c
 USE_MDFILE_AS_MAINPAGE  = README.md
 FILE_PATTERNS          = *.c *.h *.md
 RECURSIVE              = NO

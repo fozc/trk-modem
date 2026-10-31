@@ -92,6 +92,25 @@ bool iec104_fixture_start(uint8_t window)
     return true;
 }
 
+bool iec104_fixture_configure_sbo(uint8_t active, uint16_t timeout_seconds)
+{
+    iec104_modem_fixture_t *fixture = &iec104_modem_fixture;
+    fixture->config.is_sbo_active = active;
+    fixture->config.sbo_execute_timeout = timeout_seconds;
+    iec104_modem_io_t io = fixture->modem.io;
+    if (!iec104_modem_init(&fixture->modem, &io))
+    {
+        return false;
+    }
+    iec104_modem_open(&fixture->modem, 0U);
+    return true;
+}
+
+void iec104_fixture_set_period_ms(uint32_t milliseconds)
+{
+    iec104_modem_fixture.modem.period_ms = milliseconds;
+}
+
 size_t iec104_fixture_feed(const uint8_t *data, size_t length, uint32_t time)
 {
     return iec104_modem_on_data_received(&iec104_modem_fixture.modem,
@@ -241,6 +260,7 @@ uint8_t fault_log_get_perm_count(uint8_t feeder, uint8_t phase)
 bool fault_log_read_nth(uint8_t feeder, uint8_t phase, fault_log_type_t type,
                         uint8_t index, fault_log_t *out)
 {
+    iec104_modem_fixture.fault_reads++;
     if ((feeder != 0U) || (phase != 0U) || (index != 0U) ||
         !iec104_modem_fixture.has_fault || iec104_modem_fixture.storage_failure)
     {

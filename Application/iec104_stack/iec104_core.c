@@ -90,12 +90,11 @@ void iec104_core_open(iec104_core_t *core, uint32_t now_ms)
     iec104_core_close(core);
     iec104_core_config_t config = core->config;
     iec104_core_io_t io         = core->io;
-    *core  = (iec104_core_t){.config = config,
+    *core = (iec104_core_t){ .config = config,
                              .io = io,
                              .state = IEC104_CORE_STOPPED,
-							 .now_ms = now_ms,
-							 .idle_since = now_ms
-    };
+                             .now_ms = now_ms,
+                             .idle_since = now_ms };
 }
 
 static bool write_control(iec104_core_t *core, uint8_t code)
@@ -200,8 +199,10 @@ bool iec104_core_send(iec104_core_t *core, const uint8_t *asdu, size_t length, u
      * so it counts control[4] + ASDU. Sequence bit 0 is always zero.
      * See process_frame() for the complete APDU/control-field map.
      */
-    uint8_t frame[IEC104_CORE_FRAME_MAX] = { 0x68U };
-    frame[1]                             = (uint8_t)(length + 4U);
+    /* Yalniz gonderilecek baytlar yazilir; kullanilmayan tampon kuyrugu sifirlanmaz. */
+    uint8_t frame[IEC104_CORE_FRAME_MAX];
+    frame[0] = 0x68U;
+    frame[1] = (uint8_t)(length + 4U);
     iec104_write_u16(&frame[2], (uint16_t)(core->send_sequence << 1U));
     iec104_write_u16(&frame[4], (uint16_t)(core->receive_sequence << 1U));
     memcpy(&frame[6], asdu, length);
