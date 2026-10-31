@@ -1,19 +1,8 @@
-/*
- * test_iec104_protocol_scenario.c
- *
- *      Author: Fatih Ozcan
- *              fatihozcan@gmail.com
- *
- * Host tests for the libiec104 protocol core, driven through a loopback
- * transport: every APDU the stack emits is captured in tx_log[] and can be
- * inspected byte by byte, while the SCADA side is simulated by feeding
- * frames into iec104_data_received().
- *
- * The transport can be told to reject frames, which is how the sequence
- * accounting, the k window, the STOPDT gate and the resumable fault
- * emission are exercised.
- *
- * Usage: ceedling test:test_iec104_protocol_scenario
+/**
+ * @file test_iec104_protocol_scenario.c
+ * @brief Real legacy IEC104 entry points with a bounded loopback transport.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  */
 
 #include "unity.h"
@@ -3357,6 +3346,244 @@ void test_bad_prefix_and_invalid_length_close_before_complete_control_field(void
     iec104_data_received(bad_length, sizeof(bad_length));
     libiec104_poll();
     TEST_ASSERT_EQUAL_INT(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+}
+
+
+void test_s_ack_before_start_closes_legacy_session(void)
+{
+    setup(64U, 32U);
+    feed_s_frame(0U);
+    TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+}
+
+void test_s_ack_after_stop_confirmation_closes_legacy_session(void)
+{
+    setup(64U, 32U);
+    start_link();
+    feed_u_frame(IEC104_STOPDT_ACT);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_STOPDT_CON, frame_u_func(tx_log[0]));
+    feed_s_frame(iec104_get_acksn());
+    TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+}
+
+void test_local_i_frame_does_not_delay_legacy_receive_idle_probe(void)
+{
+    setup(64U, 32U);
+    const iec104_config_t cfg = { .t0_max = 30U, .t1_max = 60U, .t2_max = 10U, .t3_max = 20U,
+        .k_max = 64U, .w_max = 32U, .common_address = TEST_COMMON_ADDRESS };
+    TEST_ASSERT_TRUE(iec104_apply_config(&cfg));
+    start_link();
+    advance_ticks(10U);
+    iec104_send_M_SP_TB_1_spontan(iec104_make_ioa_3byte(100U), 1U, 0U);
+    advance_ticks(11U);
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    advance_ticks(1U);
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_ACT, frame_u_func(tx_log[1]));
+}
+
+void test_testfr_confirmation_deadline_closes_at_exact_t1(void)
+{
+    setup(64U, 32U);
+    start_link();
+    advance_ticks(22U);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_ACT, frame_u_func(tx_log[0]));
+    advance_ticks(14U);
+    TEST_ASSERT_TRUE(iec104_is_link_active());
+    advance_ticks(1U);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+}
+
+void test_late_testfr_confirmation_cannot_reopen_expired_session(void)
+{
+    setup(64U, 32U);
+    start_link();
+    advance_ticks(22U);
+    TEST_ASSERT_EQUAL_UINT8(IEC104_TESTFR_ACT, frame_u_func(tx_log[0]));
+    for (size_t tick = 0U; tick < 15U; tick++)
+    {
+        iec104_tick();
+    }
+    feed_u_frame(IEC104_TESTFR_CON);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+}
+
+void test_late_i_frame_ack_never_marks_legacy_durable_record_delivered(void)
+{
+    const iec104_event_record_t record = tracked_fault();
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&record, 42U, capture_event_ack));
+    const uint16_t next_sn = iec104_get_send_sn();
+    for (size_t tick = 0U; tick < 15U; tick++)
+    {
+        iec104_tick();
+    }
+    feed_s_frame(next_sn);
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    TEST_ASSERT_FALSE(iec104_is_link_active());
+    TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+}
+
+static void build_application_test(uint8_t frame[24])
+{
+    const uint8_t request[] = {0x68U, 22U, 0U, 0U, 0U, 0U, 107U, 1U, 6U, 0x3CU,
+        1U, 0U, 0U, 0U, 0U, 0x34U, 0x12U, 0x6BU, 0xE6U, 0xB9U, 23U, 0xF9U, 10U, 26U};
+    memcpy(frame, request, sizeof(request));
+    const uint16_t ns = iec104_get_receive_sn();
+    const uint16_t nr = iec104_get_acksn();
+    frame[2] = (uint8_t)(ns << 1U);
+    frame[3] = (uint8_t)(ns >> 7U);
+    frame[4] = (uint8_t)(nr << 1U);
+    frame[5] = (uint8_t)(nr >> 7U);
+}
+
+void test_application_test_echoes_full_frame_without_clock_or_reset_side_effects(void)
+{
+    setup(64U, 32U);
+    start_link();
+    uint8_t frame[24];
+    build_application_test(frame);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    const uint8_t expected[] = {0x68U, 22U, 2U, 0U, 2U, 0U, 107U, 1U, 7U, 0x3CU,
+        1U, 0U, 0U, 0U, 0U, 0x34U, 0x12U, 0x6BU, 0xE6U, 0xB9U, 23U, 0xF9U, 10U, 26U};
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(sizeof(expected), tx_log_len[0]);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, tx_log[0], sizeof(expected));
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+    TEST_ASSERT_NOT_EQUAL(IEC104_EVT_REBOOT_REQUESTED, last_event);
+}
+
+void test_application_test_validates_cause_address_ioa_and_flags(void)
+{
+    const uint8_t offsets[] = {8U, 10U, 12U, 8U, 8U};
+    const uint8_t invalid[] = {5U, 2U, 1U, 0x86U, 0x46U};
+    const uint8_t expected[] = {45U, 46U, 47U, 7U, 7U};
+    for (size_t index = 0U; index < sizeof(offsets); index++)
+    {
+        setup(64U, 32U);
+        start_link();
+        uint8_t frame[24];
+        build_application_test(frame);
+        frame[offsets[index]] = invalid[index];
+        iec104_data_received(frame, sizeof(frame));
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(expected[index], frame_asdu_cot(tx_log[0]));
+        TEST_ASSERT_EQUAL_UINT8(1U, frame_asdu_pn(tx_log[0]));
+        TEST_ASSERT_EQUAL_MEMORY(&frame[15], &tx_log[0][15], 9U);
+        TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+        TEST_ASSERT_NOT_EQUAL(IEC104_EVT_REBOOT_REQUESTED, last_event);
+    }
+}
+
+void test_application_test_rejects_wrong_count_sequence_and_packet_extent(void)
+{
+    for (size_t index = 0U; index < 5U; index++)
+    {
+        setup(64U, 32U);
+        start_link();
+        uint8_t frame[25] = {0};
+        build_application_test(frame);
+        if (index < 3U)
+        {
+            const uint8_t vsq[] = {0U, 2U, 0x81U};
+            frame[7] = vsq[index];
+        }
+        else
+        {
+            frame[1] = index == 3U ? 21U : 23U;
+        }
+        iec104_data_received(frame, (uint16_t)(frame[1] + 2U));
+        libiec104_poll();
+        TEST_ASSERT_EQUAL(IEC104_EVT_REQUEST_SOCKET_CLOSE, last_event);
+        TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+        TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+    }
+}
+
+void test_application_test_retries_identical_payload_after_transport_rejection(void)
+{
+    setup(64U, 32U);
+    start_link();
+    uint8_t frame[24];
+    build_application_test(frame);
+    transport_budget = 0;
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_get_send_sn());
+    transport_budget = -1;
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(7U, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_MEMORY(&frame[9], &tx_log[0][9], sizeof(frame) - 9U);
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
+}
+
+void test_application_test_waits_for_k_one_ack_before_reply(void)
+{
+    setup(1U, 8U);
+    start_link();
+    iec104_send_M_SP_TB_1_spontan(iec104_make_ioa_3byte(100U), 1U, 0U);
+    const uint16_t pending_sn = iec104_get_send_sn();
+    tx_clear();
+    uint8_t frame[24];
+    build_application_test(frame);
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(0U, tx_count);
+    feed_s_frame(pending_sn);
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(7U, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_MEMORY(&frame[15], &tx_log[0][15], 9U);
+}
+
+
+void test_application_test_handles_every_tcp_split_without_duplicate_reply(void)
+{
+    for (uint16_t split = 0U; split <= 24U; split++)
+    {
+        setup(64U, 32U);
+        start_link();
+        uint8_t frame[24];
+        build_application_test(frame);
+        iec104_data_received(frame, split);
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(split == sizeof(frame) ? 1U : 0U, tx_count);
+        iec104_data_received(&frame[split], (uint16_t)(sizeof(frame) - split));
+        libiec104_poll();
+        TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+        TEST_ASSERT_EQUAL_UINT8(C_TS_TA_1, frame_asdu_type(tx_log[0]));
+        TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+        TEST_ASSERT_EQUAL_MEMORY(&frame[15], &tx_log[0][15], 9U);
+    }
+}
+
+void test_application_test_coalesced_commands_keep_each_counter_and_sequence(void)
+{
+    setup(64U, 32U);
+    start_link();
+    uint8_t data[48];
+    build_application_test(data);
+    build_application_test(&data[24]);
+    data[15] = 0U;
+    data[16] = 0U;
+    data[26] = 2U;
+    data[39] = 0xFFU;
+    data[40] = 0xFFU;
+    iec104_data_received(data, sizeof(data));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT16(1U, frame_ns(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT16(2U, frame_ns(tx_log[1]));
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_CON, frame_asdu_cot(tx_log[1]));
+    TEST_ASSERT_EQUAL_MEMORY(&data[15], &tx_log[0][15], 9U);
+    TEST_ASSERT_EQUAL_MEMORY(&data[39], &tx_log[1][15], 9U);
+    TEST_ASSERT_EQUAL_UINT32(0U, mock_rtc_sync_count());
 }
 
 /*** end of file ***/

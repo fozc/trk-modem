@@ -464,6 +464,14 @@ K/TX doluluğunda yanıtın korunmasını ve paket başına T1 süresini sınama
 Test/P-N işaretli saat/reset/GI, tam-frame golden yanıtlar, kısmi ACK,
 timestamp slotlarının yeniden kullanımı, STOPDT sırasında TESTFR,
 başlangıç bildirimi retry ve bozuk akışın kapanması doğrulanmalıdır.
+Eski stack için geriye giden ACK, STOPPED S-frame reddi ve yerel TX'in T3'ü
+ertelememesi de sınanmalıdır. T1 sınırında gelen ACK kalıcı kaydı teslim edildi
+saymamalı; geç TESTFR_CON süresi dolmuş oturumu kurtarmamalıdır. Timeout,
+paket işlenmeden önce ve tam T1 sınırında uygulanmalıdır.
+Type 107 (C_TS_TA_1) test komutunda TSC/CP56 aynen ACT_CON ile dönmelidir;
+RTC ve reset yan etkisi olmamalıdır. Tam frame golden vektör, CA/COT/IOA,
+VSQ/uzunluk, K=1 ve TX reddi testleri mevcut protocol_scenario içindedir.
+
 Python SCADA ve cihaz koşusu
 [master süitinin kullanımına](system/iec104_master/README.md) göre yapılmalıdır.
 

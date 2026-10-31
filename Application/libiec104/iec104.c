@@ -1,9 +1,9 @@
-/*
- * iec104.c
- *
- *  Created on: 26 Tem 2025
- *      Author: Fatih Ozcan
- *              fatihozcan@gmail.com
+/**
+ * @file iec104.c
+ * @brief Legacy IEC104 slave protocol and product data publication.
+ * Created on: Jul 26, 2025
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  */
 #define CSLOG_MODULE LOG_MOD_IEC104
 #include "iec104.h"
@@ -26,7 +26,8 @@ static const uint8_t supported_asdu_types[] = {
     M_EI_NA_1, // 70, End of Initialization
     C_IC_NA_1, // 100, Interrogation Command
 	C_CS_NA_1, // 103, clock synchronization command
-	C_RP_NA_1 // 105, reset process command
+	C_RP_NA_1, // 105, reset process command
+    C_TS_TA_1 // 107, application test: echo TSC and CP56Time2a
 };
 
 /* Bir SRECV yigini (1024 B) ile bekleyen en buyuk parcali APDU (254 B) ayni
@@ -1195,7 +1196,7 @@ static bool is_command_asdu(uint8_t type_id)
 {
     return (C_SC_NA_1 == type_id) || (C_DC_NA_1 == type_id) ||
            (C_IC_NA_1 == type_id) || (C_CS_NA_1 == type_id) ||
-           (C_RP_NA_1 == type_id);
+           (C_RP_NA_1 == type_id) || (type_id == C_TS_TA_1);
 }
 
 void iec104_process_i_frame(const i_format_control_t *iframe)
@@ -1369,7 +1370,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
     }
 
     const uint8_t type_id = package.frame.asdu_header.type_id;
-    if (((C_IC_NA_1 == type_id) || (C_CS_NA_1 == type_id)) &&
+    if (((C_IC_NA_1 == type_id) || (C_CS_NA_1 == type_id) || (type_id == C_TS_TA_1)) &&
         (0U != iec104_ioa_3byte_to_uint32(
             package.frame.c_ic_na_1_command.ioa)))
     {
@@ -1397,6 +1398,14 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
 			CSLOG("Received C_RP_NA_1 Reset Process Command\r\n");
 			iec104_c_rp_na_1_command_handler(&package);
 			break;
+
+        case C_TS_TA_1:
+            /* TSC[2] ve CP56Time2a[7] aynen korunur; bu bir RTC ayarlama istegi degildir.
+             * Hazir yanit mevcut tek slotta K/TX acilana kadar bekleyebilir. */
+            package.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+            package.frame.asdu_header.cot.cause = COT_ACTIVATION_CON;
+            (void)send_command_reply(package.data, (uint16_t)(package.frame.apci.apdu_length + 2U), false);
+            break;
 
         default:
             CSLOG("Received ASDU Type: %d (%s - %s)\r\n", package.frame.asdu_header.type_id,
@@ -1547,6 +1556,13 @@ static bool is_valid_frame_header(const iec104_package_t *packet)
     {
         return false;
     }
+    if (packet->frame.asdu_header.type_id == C_TS_TA_1)
+    {
+        /* APCI control[4] + ASDU header[6] + IOA[3] + TSC[2] + CP56[7] = 22. */
+        return (packet->frame.apci.apdu_length == 22U) &&
+               (packet->frame.asdu_header.vsq.number_of_objects == 1U) &&
+               (packet->frame.asdu_header.vsq.sq_bit == 0U);
+    }
     if (is_command_asdu(packet->frame.asdu_header.type_id))
     {
         return (1U == packet->frame.asdu_header.vsq.number_of_objects);
@@ -1691,6 +1707,16 @@ void iec104_process_package(void)
 
 void libiec104_poll(void)
 {
+    /* Once dolmus T1'i kontrol et: gec ACK kaydi teslim edildi saymamali,
+     * gec TESTFR_CON ise suresi dolmus oturumu canli hale getirmemelidir. */
+    if (session_started &&
+        (((k_counter != 0U) &&
+          ((protocol_tick - sent_at[ack_sn % IEC104_ACK_TIME_SLOTS]) >= config.t1_max)) ||
+         (wait_for_testfr_con && (testfr_timer >= config.t1_max))))
+    {
+        close_protocol_session();
+        return;
+    }
 	if(package_ready)
 	{
 		iec104_process_package();
@@ -1709,28 +1735,7 @@ void libiec104_poll(void)
 		}
 	}
 
-    if ((k_counter != 0U) &&
-        ((protocol_tick - sent_at[ack_sn % IEC104_ACK_TIME_SLOTS]) >= config.t1_max))
-    {
-        close_protocol_session();
-        return;
-    }
-
-    if (wait_for_testfr_con)
-    {
-        /* TESTFR_ACT gonderdik; standart geregi yalnizca TESTFR_CON hatti
-         * canli sayar ve onay t1 suresinde gelmelidir. */
-        if (testfr_timer > config.t1_max)
-        {
-            CSLOG_ERR("TESTFR_CON timeout! Connection is dead. Closing socket.\r\n");
-
-            iec104_reset();
-            notify_event(IEC104_EVT_REQUEST_SOCKET_CLOSE);
-            return;
-        }
-    }
-    else if (t3_timer >= (uint32_t)config.t3_max +
-        IEC104_TEST_DELAY_SECONDS)
+    if (!wait_for_testfr_con && (t3_timer >= (uint32_t)config.t3_max + IEC104_TEST_DELAY_SECONDS))
     {
         /* Hat bosta (idle) ise TESTFR gonder */
         CSLOG_WARN("T3 timer expired, sending TESTFR\r\n");
