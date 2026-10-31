@@ -1,6 +1,6 @@
 # Test Altyapısı
 
-**Sürüm:** 1.96
+**Sürüm:** 1.97
 **Tarih:** 2026-10-31
 
 ## IEC104 yerel kapanma nedenleri ve kayıt filtresi
@@ -521,6 +521,13 @@ IOA kümesi, Type 45 reset SBO Select/Execute, doğrudan Type 105 bypass
 reddi, iptal ve timeout da raw TCP üzerinden sınanır. Gerçek c104
 `SELECT_AND_EXECUTE` ile ACT_CON/ACT_TERM tamamlanması ayrıca doğrulanır. Merkezi `all/integration/critical`
 paketlerine dahildir. Eksik compiler/c104 başarısızlık sayılır.
+
+Python'a yüklenen shared library (paylaşımlı kütüphane), Python ile aynı
+ABI'de derlenmelidir. `IEC104_STACK_CC` yalnız bu paketin derleyicisini seçer;
+tanımlı değilse `CC`, o da yoksa `gcc` kullanılır. Ayrı derleyici seçimi hem
+TCP fixture'ında hem offline C derleme kontrollerinde uygulanır. Linux CI,
+64 bit Python için `IEC104_STACK_CC=/usr/bin/gcc` kullanmalıdır; genel 32 bit
+test wrapper'ı bu shared library'yi derlememelidir.
 
 Tam-frame golden vektörler Type 1/13/30/31/36 tekli ve çoklu APDU'ları
 kapsar. Tek `handle_request` callback'i kullanılır; GI listesi ve okuma konumu
@@ -1861,12 +1868,14 @@ GitHub Actions iş akışı normal JUnit raporunu coverage temizliğinden önce
 Python ortamına kurulur. Host testleri başarısız olsa da coverage adımı,
 araç kurulumu başarılıysa ve koşu iptal edilmediyse çalışır.
 
-Linux CI (sürekli entegrasyon) koşusunda bütün `gcc` çağrıları `-m32` ile
-çalışır. Bu seçim Ceedling birim testlerini, coverage derlemesini ve
-Make ile çalışan C integration paketlerini kapsar. Derleme ve link
-(bağlama) aynı 32 bit hedefi kullanır. Node.js web testi C derlemesi içermez.
+Linux CI (sürekli entegrasyon) koşusunda PATH üzerindeki `gcc` wrapper'ı
+`-m32` kullanır. Bu seçim Ceedling birim testlerini, coverage derlemesini ve
+ayrı program olarak çalışan C integration paketlerini kapsar. Derleme ve link
+(bağlama) aynı 32 bit hedefi kullanır. Python'un `ctypes` ile yüklediği IEC104
+paketi bunun dışındadır; derleyici seçimi için bkz. Bağımsız IEC104 kütüphanesi.
+Node.js web testi C derlemesi içermez.
 
-Runner ve GCC programı 64 bit olabilir; test programları 32 bit üretilir.
+Runner ve GCC programı 64 bit olabilir; bağımsız C test programları 32 bit üretilir.
 `gcc-multilib` gerekli 32 bit geliştirme kütüphanelerini sağlar. Testlerden
 önce `Verify 32-bit host ABI` adımı pointer, `long` ve atomik indeks
 boyutlarının 4 bayt olduğunu kontrol eder. Üretilen programın ELF32 türünde
@@ -2235,6 +2244,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-10-31 | 1.97 | ctypes IEC104 fixture derleyicisini 32 bit host wrapper'ından ayırma; CI ve derleyici seçimi regresyonları. |
 | 2026-10-31 | 1.96 | IEC104 yerel kapanma nedenleri, 5 saniyelik neden duyarlı kayıt filtresi ve regresyon testleri. |
 | 2026-10-29 | 1.94 | Tek config komutuyla kimlik/GSM/RTC atamaları; gizli parola, kayıt hata yolları ve gerçek shell giriş testleri. |
 | 2026-10-29 | 1.93 | E1 snapshot/change ve power-panic startup_low/falling_edge ayrımı; eski kayıtları unknown gösterme ve IRQ regresyonları. |

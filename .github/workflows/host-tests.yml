@@ -16,6 +16,10 @@ jobs:
     name: Ceedling and integration tests (Linux 32-bit)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      # ctypes loads this library into the runner's 64-bit Python process.
+      # Other C tests keep the 32-bit gcc wrapper below.
+      IEC104_STACK_CC: /usr/bin/gcc
     defaults:
       run:
         shell: bash
@@ -41,7 +45,7 @@ jobs:
           # (HW_TEST_VE_DEBUG_REHBERI prerequisite) via console.py.
           "$RUNNER_TEMP/host-test-tools/bin/python" -m pip install gcovr pyserial -r test/integration/iec104_stack/requirements.txt
           "$RUNNER_TEMP/host-test-tools/bin/python" -m gcovr --version
-          # All Ceedling and Make compiler/linker calls use this gcc wrapper.
+          # Standalone C tests use this wrapper; the ctypes fixture selects IEC104_STACK_CC.
           cat > "$RUNNER_TEMP/host-test-tools/bin/gcc" <<'SH'
           #!/usr/bin/env bash
           exec /usr/bin/gcc -m32 "$@"

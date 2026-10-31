@@ -34,6 +34,11 @@ SOURCES += [ROOT / "Application/libiec104" / name for name in
 SOURCES += [ROOT / "test/support_sources/iec104_modem_fixture.c"]
 
 
+def get_compiler():
+    """Select the compiler for Python-loaded code, independently of 32-bit host tests."""
+    return os.environ.get("IEC104_STACK_CC", os.environ.get("CC", "gcc"))
+
+
 def build_library():
     BUILD.mkdir(parents=True, exist_ok=True)
     library = BUILD / ("iec104_stack.dll" if os.name == "nt" else
@@ -44,7 +49,7 @@ def build_library():
     includes += [ROOT / "contiki-kernel"]
     includes += sorted(p for p in (ROOT / "contiki-kernel").rglob("*")
                        if p.is_dir())
-    command = [os.environ.get("CC", "gcc"), "-shared", "-std=c11",
+    command = [get_compiler(), "-shared", "-std=c11",
                "-pedantic", "-Wall", "-Wextra", "-Werror", "-Wshadow",
                "-Wconversion", "-Wdouble-promotion", "-Wformat=2", "-O2",
                "-DUNIT_TEST", "-DNO_CONSOLE_LOG", "-DNO_SHELL_LOG"]
@@ -550,8 +555,8 @@ def main():
             if interpreter.exists() and interpreter.resolve() != Path(sys.executable).resolve():
                 return subprocess.call([str(interpreter), str(Path(__file__).resolve())])
         raise SystemExit("c104 required: install test/integration/iec104_stack/requirements.txt")
-    if not shutil.which(os.environ.get("CC", "gcc")):
-        raise SystemExit("Native C compiler missing (CC or gcc)")
+    if not shutil.which(get_compiler()):
+        raise SystemExit("Native C compiler missing (IEC104_STACK_CC, CC or gcc)")
     StackIntegration.library = build_library()
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(StackIntegration)
     result = unittest.TextTestRunner(verbosity=2).run(suite)

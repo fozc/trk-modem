@@ -15,8 +15,8 @@ import run_tests as runner
 class LibraryBoundary(unittest.TestCase):
     def test_library_compiles_with_only_its_own_include_directory(self):
         """RF/NVRAM/RTC/old stack headers must not be required by the library."""
-        compiler = shutil.which(os.environ.get("CC", "gcc"))
-        self.assertIsNotNone(compiler, "Native C compiler missing (CC or gcc)")
+        compiler = shutil.which(runner.get_compiler())
+        self.assertIsNotNone(compiler, "Native C compiler missing (IEC104_STACK_CC, CC or gcc)")
         folder = runner.ROOT / "Application/iec104_stack"
         sources = sorted(folder.glob("*.c"))
         self.assertEqual({"iec104_asdu.c", "iec104_core.c", "iec104_server.c"},
@@ -27,8 +27,8 @@ class LibraryBoundary(unittest.TestCase):
         subprocess.run(command, check=True, capture_output=True, text=True)
 
     def test_full_size_extension_uses_real_builder_and_core_without_project_headers(self):
-        compiler = shutil.which(os.environ.get("CC", "gcc"))
-        self.assertIsNotNone(compiler, "Native C compiler missing (CC or gcc)")
+        compiler = shutil.which(runner.get_compiler())
+        self.assertIsNotNone(compiler, "Native C compiler missing (IEC104_STACK_CC, CC or gcc)")
         folder = runner.ROOT / "Application/iec104_stack"
         # Compile every participant with one consistent capacity, then check a full APDU.
         source = r'''
@@ -112,6 +112,29 @@ int main(void)
                        *map(str, sorted(folder.glob("*.c"))), "-o", str(executable)]
             subprocess.run(command, check=True, capture_output=True, text=True)
             subprocess.run([str(executable)], check=True, capture_output=True, text=True)
+
+
+class CompilerSelection(unittest.TestCase):
+    def check_build_compiler(self, environment, expected):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict(os.environ, environment, clear=True), \
+                    patch.object(runner, "BUILD", Path(directory)), \
+                    patch.object(runner.subprocess, "run") as compile_library:
+                runner.build_library()
+                command = compile_library.call_args.args[0]
+                self.assertEqual(expected, command[0])
+                self.assertIn("-shared", command)
+                self.assertNotIn("-m32", command)
+                self.assertIn(str(runner.SOURCES[0]), command)
+
+    def test_python_library_compiler_overrides_inherited_32_bit_wrapper(self):
+        self.check_build_compiler({"CC": "gcc32-wrapper", "IEC104_STACK_CC": "native-gcc"}, "native-gcc")
+
+    def test_existing_cc_override_still_works(self):
+        self.check_build_compiler({"CC": "custom-gcc"}, "custom-gcc")
+
+    def test_default_compiler_remains_gcc(self):
+        self.check_build_compiler({}, "gcc")
 
 
 class InterpreterDiscovery(unittest.TestCase):
