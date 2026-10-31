@@ -504,6 +504,11 @@ ARM derlemesi, Doxygen ve entegrasyon sözleşmeleri
 Ürüne özgü paket/IOA akışları [modem adaptörü rehberindedir](../Application/iec104_modem/README.md).
 `python -m unittest discover -s test/integration/iec104_stack -p test_runner.py -v`
 yalnız kütüphane include yolu ile bağımsız strict C11 derlemesini de kontrol eder.
+ACK regresyonları boş/kısmi pencere, tekrar ACK, geriye giden ACK ve 32767→0
+sarmasını sınar. STOP öncesi/sonrası S-frame reddi ve yerel TX'in T3 alım
+zamanlayıcısını ertelememesi ayrıca doğrulanır. Type 107 için tam frame,
+TSC/IV zamanının aynen dönmesi, hatalı CA/COT/IOA/VSQ, TX doluluğu ve gerçek
+c104 `connection.test()` akışı kullanılır.
 Bu paket çalışan modem stack'ini değiştirmez; host TCP doğrulaması fiziksel
 GSM/donanım kabul testi sayılmaz.
 

@@ -286,6 +286,24 @@ static void execute_request(iec104_server_t *server, const iec104_asdu_t *asdu)
     }
 }
 
+/** Yerlesik tek nesneli komutlarin bilgi elemani uzunlugu; IOA'nin uc bayti harictir. */
+static size_t command_value_size(uint8_t type)
+{
+    switch (type)
+    {
+        case IEC104_TYPE_C_SC_NA_1:
+        case IEC104_TYPE_C_IC_NA_1:
+        case IEC104_TYPE_C_RP_NA_1:
+            return 1U;
+        case IEC104_TYPE_C_CS_NA_1:
+            return 7U;
+        case IEC104_TYPE_C_TS_TA_1:
+            return 9U;
+        default:
+            return 0U;
+    }
+}
+
 /** @brief Validate and route a decoded request from the core receive callback.
  * @param[in,out] context Server instance registered as core.io.context.
  * @param[in] request Borrowed ASDU view, valid only during this callback.
@@ -298,6 +316,7 @@ static void execute_request(iec104_server_t *server, const iec104_asdu_t *asdu)
  * Type 100 (GI):    [0..2:IOA=0]           [3:QOI=20..36]
  * Type 103 (clock): [0..2:IOA=0]           [3..9:CP56Time2a]
  * Type 105 (reset): [0..2:IOA=0/reset IOA] [3:QRP=1 for general reset]
+ * Type 107 (test):  [0..2:IOA=0] [3..4:TSC counter] [5..11:CP56Time2a echoed unchanged]
  *
  * payload[0] = ASDU[6] = complete APDU/frame[12].
  * Clock time thus starts at payload[3] = ASDU[9] = APDU[15].
@@ -317,10 +336,9 @@ static bool process_asdu(void *context, const iec104_asdu_t *request)
         server->overloaded = true;
         return true;
     }
-    bool builtin = (request->type == IEC104_TYPE_C_IC_NA_1) || (request->type == IEC104_TYPE_C_CS_NA_1) ||
-                   (request->type == IEC104_TYPE_C_RP_NA_1) || (request->type == IEC104_TYPE_C_SC_NA_1);
-    if (builtin && (!iec104_asdu_objects_valid(request, request->type == IEC104_TYPE_C_CS_NA_1 ? 7U : 1U) ||
-                    (request->count != 1U) || request->sequence))
+    size_t value_size = command_value_size(request->type);
+    bool builtin      = value_size != 0U;
+    if (builtin && (!iec104_asdu_objects_valid(request, value_size) || (request->count != 1U) || request->sequence))
     {
         server->overloaded = true;
         return true;
@@ -346,6 +364,12 @@ static bool process_asdu(void *context, const iec104_asdu_t *request)
          * This profile explicitly rejects it and echoes the test bit.
          */
         echo_response(server, request, cancel ? IEC104_COT_DEACTIVATION_CON : IEC104_COT_ACTIVATION_CON, true);
+    }
+    else if (request->type == IEC104_TYPE_C_TS_TA_1)
+    {
+        /* Protokol testi cihaz verisi okumaz; TSC ve zaman etiketi aynen geri doner.
+         * Bu zaman bir saat ayarlama istegi degildir; rtc_sync/callback cagrilmaz. */
+        echo_response(server, request, IEC104_COT_ACTIVATION_CON, false);
     }
     else
     {

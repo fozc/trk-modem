@@ -289,6 +289,55 @@ class StackIntegration(unittest.TestCase):
         self.assertTrue(self.connection.clock_sync(1, wait_for_response=True))
         self.assertEqual(self.device.invoke("clock_count"), 1)
 
+    def test_c104_application_test_command_completes_without_rtc_or_reset(self):
+        self.connect_c104()
+        self.assertTrue(self.connection.test(1, with_time=True, wait_for_response=True))
+        replies = [f for f in self.device.sent if len(f) == 24 and f[6] == 107]
+        self.assertEqual(len(replies), 1)
+        self.assertEqual(replies[0][8], 7)
+        self.assertEqual(replies[0][12:15], b"\0\0\0")
+        self.assertEqual(self.device.invoke("clock_count"), 0)
+        self.assertEqual(self.device.invoke("reset_count"), 0)
+
+    def test_raw_application_test_echoes_full_payload_and_validates_header(self):
+        self.raw_start()
+        # Test timestamps are echoed, including IV; this is not clock synchronization.
+        for counter in (0, 0x8000, 0xFFFF):
+            body = b"\0\0\0" + struct.pack("<H", counter) + bytes.fromhex("6be6b917f90a1a")
+            self.send_command(107, body)
+            reply = self.next_asdu(lambda f: f[6] == 107)
+            self.assertEqual(reply[8:12], bytes.fromhex("073c0100"))
+            self.assertEqual(reply[12:], body)
+        cases = [(5, 1, b"\0\0\0", 45), (6, 2, b"\0\0\0", 46),
+                 (6, 1, b"\1\0\0", 47)]
+        for cause, ca, ioa, error in cases:
+            self.send_command(107, ioa + bytes.fromhex("34126be63917f90a1a"), cause, ca)
+            self.assertEqual(self.next_asdu(lambda f: f[6] == 107)[8], error | 0x40)
+        self.assertEqual(self.device.invoke("clock_count"), 0)
+        self.assertEqual(self.device.invoke("reset_count"), 0)
+
+    def test_raw_backward_ack_after_delivery_closes(self):
+        self.raw_start()
+        self.next_asdu(lambda f: f[6] == 1 and f[8] == 3)
+        self.peer.sendall(bytes.fromhex("68040100") + struct.pack("<H", ((self.nr - 1) & 32767) << 1))
+        wait_until(lambda: self.device.invoke("state") == 0)
+        self.assertEqual(self.peer.recv(1), b"")
+
+    def test_raw_s_frame_before_start_closes(self):
+        self.raw_connect()
+        self.peer.sendall(bytes.fromhex("680401000000"))
+        wait_until(lambda: self.device.invoke("state") == 0)
+        self.assertEqual(self.peer.recv(1), b"")
+
+    def test_raw_s_frame_after_stop_confirmation_closes(self):
+        self.raw_start()
+        self.next_asdu(lambda f: f[6] == 1 and f[8] == 3)
+        self.peer.sendall(bytes.fromhex("680413000000"))
+        self.assertEqual(self.raw_receive(), bytes.fromhex("680423000000"))
+        self.ack()
+        wait_until(lambda: self.device.invoke("state") == 0)
+        self.assertEqual(self.peer.recv(1), b"")
+
     def test_c104_receives_real_value_and_quality(self):
         import c104
         self.connect_c104()
@@ -466,8 +515,9 @@ class StackIntegration(unittest.TestCase):
         self.assertEqual(set(ioas), expected)
 
     def test_raw_future_ack_closes(self):
-        self.raw_connect()
-        self.peer.sendall(bytes.fromhex("680401000200"))
+        self.raw_start()
+        self.next_asdu(lambda f: f[6] == 1 and f[8] == 3)
+        self.peer.sendall(bytes.fromhex("68040100") + struct.pack("<H", ((self.nr + 100) & 32767) << 1))
         wait_until(lambda: self.device.invoke("state") == 0)
         self.assertEqual(self.peer.recv(1), b"")
 

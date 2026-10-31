@@ -648,6 +648,13 @@ sonraki poll aynı konumdan verileri yeniden okur; bu canlı veri akışı sabit
 snapshot garantisi vermez. GI ise hazırlanmış ASDU'yu server içinde korur.
 
 
+## SCADA uygulama katmanı testi
+
+Type 107 test komutu server'da yanıtlanır; modem `handle_request()` içinde
+ayrı handler gerektirmez. Test sayacı ve zaman etiketi aynen ACT_CON ile
+geri döner. RTC, NVRAM, RF ve reset durumları değişmez. Uygulama katmanı
+testi, bağlantı katmanındaki TESTFR U-frame servisinden ayrı bir işlemdir.
+
 ## Reset IOA ve SBO ayarları
 
 Yeni adaptör mevcut `is_sbo_active` ayarını `reset_sbo` alanına,
