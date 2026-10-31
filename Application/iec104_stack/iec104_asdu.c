@@ -48,6 +48,124 @@ void iec104_write_float(uint8_t *data, float value)
     data[3] = (uint8_t)(bits >> 24U);
 }
 
+/** Encode host time fields only here; application code never uses wire offsets. */
+static void write_time(uint8_t data[7], const iec104_time_t *time)
+{
+    iec104_write_u16(data, time->milliseconds);
+    data[2] = (uint8_t)(time->minute | (time->invalid ? IEC104_CP56_INVALID : 0U));
+    data[3] = (uint8_t)(time->hour | (time->summer_time ? IEC104_CP56_SUMMER_TIME : 0U));
+    data[4] = (uint8_t)(time->day | (time->day_of_week << 5U));
+    data[5] = time->month;
+    data[6] = time->year;
+}
+
+bool iec104_point_set_encoded(iec104_point_t *point, uint32_t ioa, uint8_t type, const uint8_t *value, size_t length)
+{
+    if ((point == NULL) || (value == NULL) || (ioa > 0xFFFFFFU) || (type == 0U) || (length == 0U) ||
+        (length > IEC104_POINT_VALUE_MAX))
+    {
+        return false;
+    }
+    /* Copy before metadata changes so the source may alias the previous point. */
+    memmove(point->value, value, length);
+    point->ioa        = ioa;
+    point->type       = type;
+    point->value_size = length;
+    return true;
+}
+
+bool iec104_single_command_parse(iec104_single_command_t *command, uint8_t sco)
+{
+    if ((command == NULL) || ((sco & 0x02U) != 0U))
+    {
+        return false;
+    }
+    *command = (iec104_single_command_t){ .state     = (sco & 0x01U) != 0U,
+                                          .select    = (sco & 0x80U) != 0U,
+                                          .qualifier = (sco >> 2U) & 0x1FU };
+    return true;
+}
+
+bool iec104_point_set_single_command(iec104_point_t *point, uint32_t ioa, bool state, bool select, uint8_t qualifier)
+{
+    if (qualifier > 31U)
+    {
+        return false;
+    }
+    uint8_t sco = (uint8_t)((state ? 1U : 0U) | (select ? 0x80U : 0U) | (qualifier << 2U));
+    return iec104_point_set_encoded(point, ioa, IEC104_TYPE_C_SC_NA_1, &sco, 1U);
+}
+
+bool iec104_point_set_single(iec104_point_t *point, uint32_t ioa, bool value, uint8_t quality,
+                             const iec104_time_t *time)
+{
+    if ((point == NULL) || (ioa > 0xFFFFFFU) || ((quality & 0x0FU) != 0U))
+    {
+        return false;
+    }
+    iec104_point_t result = { .ioa        = ioa,
+                              .type       = time == NULL ? IEC104_TYPE_M_SP_NA_1 : IEC104_TYPE_M_SP_TB_1,
+                              .value_size = time == NULL ? 1U : 8U };
+    result.value[0]       = (uint8_t)((value ? 1U : 0U) | quality);
+    if (time != NULL)
+    {
+        write_time(&result.value[1], time);
+    }
+    *point = result;
+    return true;
+}
+
+bool iec104_point_set_float(iec104_point_t *point, uint32_t ioa, float value, uint8_t quality,
+                            const iec104_time_t *time)
+{
+    if ((point == NULL) || (ioa > 0xFFFFFFU) || ((quality & 0x0EU) != 0U))
+    {
+        return false;
+    }
+    iec104_point_t result = { .ioa        = ioa,
+                              .type       = time == NULL ? IEC104_TYPE_M_ME_NC_1 : IEC104_TYPE_M_ME_TF_1,
+                              .value_size = time == NULL ? 5U : 12U };
+    iec104_write_float(result.value, value);
+    result.value[4] = quality;
+    if (time != NULL)
+    {
+        write_time(&result.value[5], time);
+    }
+    *point = result;
+    return true;
+}
+
+bool iec104_point_set_double(iec104_point_t *point, uint32_t ioa, uint8_t value, uint8_t quality,
+                             const iec104_time_t *time)
+{
+    if ((point == NULL) || (ioa > 0xFFFFFFU) || (value > 3U) || ((quality & 0x0FU) != 0U) || (time == NULL))
+    {
+        return false;
+    }
+    iec104_point_t result = { .ioa = ioa, .type = IEC104_TYPE_M_DP_TB_1, .value_size = 8U };
+    result.value[0]       = (uint8_t)(value | quality);
+    write_time(&result.value[1], time);
+    *point = result;
+    return true;
+}
+
+bool iec104_time_parse(iec104_time_t *time, const uint8_t data[7])
+{
+    if ((time == NULL) || !iec104_cp56_time_valid(data))
+    {
+        return false;
+    }
+    *time = (iec104_time_t){ .milliseconds = iec104_read_u16(data),
+                             .minute       = data[2] & 0x3FU,
+                             .hour         = data[3] & 0x1FU,
+                             .day          = data[4] & 0x1FU,
+                             .day_of_week  = data[4] >> 5U,
+                             .month        = data[5],
+                             .year         = data[6],
+                             .summer_time  = (data[3] & IEC104_CP56_SUMMER_TIME) != 0U };
+    return true;
+}
+
 /** Parse the ASDU portion, NOT the whole TCP APDU/frame.
  * The core passes frame + 6: the 68/length/control prefix is already removed.
  * All offsets below are relative to data[0], i.e. the start of the ASDU.

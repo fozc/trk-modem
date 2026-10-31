@@ -469,7 +469,8 @@ Python SCADA ve cihaz koşusu
 
 ## Bağımsız IEC104 kütüphanesi
 
-**Amaç:** `Application/iec104_stack` core, server ve modem adaptörünü
+**Amaç:** `Application/iec104_stack` kütüphanesi ve ayrı
+`Application/iec104_modem` uygulama adaptörünü
 mevcut IEC104 stack'inden bağımsız sınamak.
 
 **Kullanım yeri:** Kütüphane geliştirme, modem entegrasyonu ve regresyon.
@@ -478,14 +479,31 @@ mevcut IEC104 stack'inden bağımsız sınamak.
 `python test/integration/iec104_stack/run_tests.py` çalıştırılmalıdır.
 İkinci komut gerçek üretim C dosyalarını derler ve yerel TCP üzerinden
 lib60870 tabanlı c104 SCADA istemcisiyle GI 20–24, kalite/zaman, komutlar,
-K=1 ve kalıcı olay ACK akışını doğrular. Merkezi `all/integration/critical`
+K=1 ve kalıcı olay ACK akışını doğrular. Yeni stack için periyodik COT=1
+IOA kümesi, Type 45 reset SBO Select/Execute, doğrudan Type 105 bypass
+reddi, iptal ve timeout da raw TCP üzerinden sınanır. Gerçek c104
+`SELECT_AND_EXECUTE` ile ACT_CON/ACT_TERM tamamlanması ayrıca doğrulanır. Merkezi `all/integration/critical`
 paketlerine dahildir. Eksik compiler/c104 başarısızlık sayılır.
 
 Tam-frame golden vektörler Type 1/13/30/31/36 tekli ve çoklu APDU'ları
-kapsar. Testler core, server, modem ve mevcut IOA hesaplarını gerçekten
+kapsar. Tek `handle_request` callback'i kullanılır; GI listesi ve okuma konumu
+application'dadır. Hazır parça gönderim reddinde yeniden okunmaz.
+`test_iec104_stack_examples.c`, derlenebilir örnek callback'lerini ve
+Type 7 extension'ını gerçek server/core ile sınar. Örnekler ve bütün
+Type ID'lerin destek durumu [tip kataloğundadır](../Application/iec104_stack/examples/README.md).
+Hazır ASDU yayın testleri tam frame golden vektörünü, 255 bayt sınırını,
+hatalı header/nesne boyutu reddini, K/TX beklemesinde durumun korunmasını ve
+ACK tag bildirimini sınar. Modem testi TX reddinden sonra periyodik yayının
+aynı IOA'dan devam ettiğini ve tip değişiminde ayrı ASDU oluştuğunu doğrular.
+
+Varsayılan 12-byte nokta kapasitesi korunur; offline paket 240-byte
+kapasiteyi gerçek ASDU/core üzerinden ayrıca sınar. Testler core, server, modem ve mevcut IOA hesaplarını gerçekten
 çalıştırır; fixture yalnız transport ve cihaz servislerindedir.
 ARM derlemesi, Doxygen ve entegrasyon sözleşmeleri
 [kütüphane rehberinde](../Application/iec104_stack/README.md) bulunur.
+Ürüne özgü paket/IOA akışları [modem adaptörü rehberindedir](../Application/iec104_modem/README.md).
+`python -m unittest discover -s test/integration/iec104_stack -p test_runner.py -v`
+yalnız kütüphane include yolu ile bağımsız strict C11 derlemesini de kontrol eder.
 Bu paket çalışan modem stack'ini değiştirmez; host TCP doğrulaması fiziksel
 GSM/donanım kabul testi sayılmaz.
 

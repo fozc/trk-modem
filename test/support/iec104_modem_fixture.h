@@ -32,6 +32,7 @@ typedef struct
     uint32_t reset_count;
     uint32_t close_count;
     uint32_t clock_count;
+    uint32_t fault_reads;
     rtc_t clock;
     uint8_t frames[256][255];
     size_t lengths[256];
@@ -41,6 +42,8 @@ typedef struct
 
 extern iec104_modem_fixture_t iec104_modem_fixture;
 bool iec104_fixture_start(uint8_t window);
+bool iec104_fixture_configure_sbo(uint8_t active, uint16_t timeout_seconds);
+void iec104_fixture_set_period_ms(uint32_t milliseconds);
 size_t iec104_fixture_feed(const uint8_t *data, size_t length, uint32_t time);
 void iec104_fixture_poll(uint32_t time);
 void iec104_fixture_close(void);

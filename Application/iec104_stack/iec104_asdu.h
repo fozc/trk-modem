@@ -16,6 +16,114 @@
 
 #define IEC104_CORE_ASDU_MAX 249U
 #define IEC104_CORE_FRAME_MAX 255U
+/** Default fits current monitor elements; override consistently in every translation unit.
+ * Large/variable services may use the ASDU builder directly instead of increasing every point.
+ */
+#ifndef IEC104_POINT_VALUE_MAX
+#define IEC104_POINT_VALUE_MAX 12U
+#endif
+_Static_assert((IEC104_POINT_VALUE_MAX >= 12U) && (IEC104_POINT_VALUE_MAX <= IEC104_CORE_ASDU_MAX - 9U),
+               "Point capacity must fit builtin types and one ASDU object");
+
+/** Host fields, never a packed CP56Time2a wire layout.
+ * milliseconds includes seconds: 0..59999 within a minute.
+ * year is 0..99 for 2000..2099; day_of_week is 0 (unspecified) or 1..7.
+ * Monitoring may carry invalid=true, including an unavailable source clock.
+ */
+typedef struct
+{
+    uint16_t milliseconds;
+    uint8_t minute;
+    uint8_t hour;
+    uint8_t day;
+    uint8_t day_of_week;
+    uint8_t month;
+    uint8_t year;
+    bool invalid;
+    bool summer_time;
+} iec104_time_t;
+
+/** Host fields of Type 45 SCO; QU is 0..31, select=true is S/E=1. */
+typedef struct
+{
+    bool state;
+    bool select;
+    uint8_t qualifier;
+} iec104_single_command_t;
+
+/** @brief Decode SCO without bitfield casts; reject reserved bit 1, preserving output. */
+bool iec104_single_command_parse(iec104_single_command_t *command, uint8_t sco);
+
+/** Owned information element, not a wire C struct.
+ * Use point_set_*() for supported types; the builder serializes IOA separately.
+ * Extension types may supply their own encoded value and value_size.
+ * @code
+ * Type    value[] layout                                  value_size
+ *  1      [SIQ]                                               1
+ * 13      [float LE:4][QDS]                                    5
+ * 30      [SIQ][CP56Time2a:7]                                  8
+ * 31      [DIQ][CP56Time2a:7]                                  8
+ * 36      [float LE:4][QDS][CP56Time2a:7]                      12
+ * SQ=0: [IOA:3][value:N] for each object; never send sizeof(this).
+ * @endcode
+ */
+typedef struct
+{
+    uint32_t ioa;
+    uint8_t type;
+    uint8_t value[IEC104_POINT_VALUE_MAX];
+    size_t value_size;
+} iec104_point_t;
+
+/** @brief Store an extension element already encoded by a type-specific library encoder.
+ * @param[out] point Destination, unchanged on invalid arguments.
+ * @param[in] ioa 24-bit object address.
+ * @param[in] type Nonzero Type ID; naming a type does not implement its service semantics.
+ * @param[in] value Borrowed element bytes, copied now; may alias point->value.
+ * @param[in] length Element length excluding IOA, 1..IEC104_POINT_VALUE_MAX.
+ * @return True on copy; false for NULL arguments, overflow, empty value or type zero.
+ * @note Bounds only, not type-specific semantic validation. Prefer typed setters when available.
+ * Variable-size objects in the same ASDU must still share one element width in this builder.
+ */
+bool iec104_point_set_encoded(iec104_point_t *point, uint32_t ioa, uint8_t type, const uint8_t *value, size_t length);
+
+/** @brief Prepare Type 45 from host command fields, including the standard S/E bit.
+ * @return False on invalid output/IOA/QU, leaving the previous point unchanged.
+ */
+bool iec104_point_set_single_command(iec104_point_t *point, uint32_t ioa, bool state, bool select, uint8_t qualifier);
+
+/** @brief Create Type 1 or, with a timestamp, Type 30 from host values.
+ * @param[out] point Owned element, unchanged on invalid arguments.
+ * @param[in] ioa 24-bit information-object address.
+ * @param[in] value Single-point state, independent of quality.
+ * @param[in] quality IV/NT/SB/BL bits; low four bits must be zero.
+ * @param[in] time Source time, or NULL for an untimed element.
+ * @return True on success; false for NULL output, IOA overflow or reserved quality bits.
+ * @note Source time fields must fit CP56Time2a; unavailable time uses invalid=true.
+ */
+bool iec104_point_set_single(iec104_point_t *point, uint32_t ioa, bool value, uint8_t quality,
+                             const iec104_time_t *time);
+/** @brief Create Type 13 or, with a timestamp, Type 36 from a binary32 measurement.
+ * @param[out] point Owned element, unchanged on invalid arguments.
+ * @param[in] ioa 24-bit information-object address.
+ * @param[in] value Measurement, encoded without pointer aliasing or numeric conversion.
+ * @param[in] quality QDS IV/NT/SB/BL/OV bits; bits 1..3 must be zero.
+ * @param[in] time Source time, or NULL for an untimed element.
+ * @return True on success; false for invalid output/address/quality.
+ */
+bool iec104_point_set_float(iec104_point_t *point, uint32_t ioa, float value, uint8_t quality,
+                            const iec104_time_t *time);
+/** @brief Create timed Type 31; value is the two-bit DPI state (0..3).
+ * @return False on invalid output/address/state/quality or NULL time; output is unchanged.
+ * @note Quality uses IV/NT/SB/BL only. All four DPI states are representable.
+ */
+bool iec104_point_set_double(iec104_point_t *point, uint32_t ioa, uint8_t value, uint8_t quality,
+                             const iec104_time_t *time);
+/** @brief Decode a validated clock-setting CP56Time2a to host fields.
+ * @return False for NULL arguments or invalid clock input, leaving output unchanged.
+ * @note Rejects IV=1, reserved bits and invalid dates like iec104_cp56_time_valid().
+ */
+bool iec104_time_parse(iec104_time_t *time, const uint8_t data[7]);
 
 /** Parsed ASDU header plus a borrowed payload view, not a packed wire layout.
  * Payload excludes the six-byte ASDU header. No payload copy is made here;

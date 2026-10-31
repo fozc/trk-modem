@@ -40,6 +40,8 @@ def main():
     output = ROOT / "test/build/iec104-stack/arm"
     output.mkdir(parents=True, exist_ok=True)
     sources = sorted(folder.glob("*.c"))
+    sources += sorted((ROOT / "Application/iec104_modem").glob("*.c"))
+    flags += ["-I" + str(folder), "-I" + str(ROOT / "Application/iec104_modem")]
     for source in sources:
         subprocess.run([args.compiler, *flags, "-c", str(source), "-o",
                         str(output / (source.stem + ".o"))], check=True)

@@ -30,12 +30,14 @@ typedef struct
     uint32_t started_ms;
     uint32_t periodic_since;
     uint32_t period_ms;
+    size_t query_index; /**< Application-owned GI selection cursor. */
     size_t snapshot_index;
     size_t periodic_index;
     bool snapshot_done;
     bool periodic_pending;
     bool battery_sent;
-    uint8_t battery_value;
+    bool battery_active;
+    uint8_t battery_quality;
     uint32_t battery_ioa;
     iec104_event_record_t replay_record;
     uint16_t replay_sequence;
