@@ -33,8 +33,7 @@ def main():
         assert run_checks.transcode(api, b'{"abi":32}') == b'{"abi":32}'
         run_comparison.prepare_sources()
         run_comparison.build_host(args.cc)
-        with patch("sys.argv", [str(Path(run_http_checks.__file__)),
-                                "--cc", args.cc]):
+        with patch("sys.argv", [str(Path(run_http_checks.__file__))]):
             run_http_checks.main()
 
     assert compiler_calls > 0

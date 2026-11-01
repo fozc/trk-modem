@@ -1,12 +1,14 @@
 /*
- * mock_platform.h
+ * fault_log_flash_fake.h
  *
- * Host-test doubles for the platform services fault_log.c reaches into.
- * The 7 feeder log slots (primary + backup copies) live as RAM images
- * with per-slot write failure injection and counters.
+ *  Created on: Oct 31, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Controls for per-feeder NOR images and copy-specific failure injection.
  */
-#ifndef FAULT_LOG_TEST_MOCK_PLATFORM_H_
-#define FAULT_LOG_TEST_MOCK_PLATFORM_H_
+#ifndef TEST_FAULT_LOG_FLASH_FAKE_H
+#define TEST_FAULT_LOG_FLASH_FAKE_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -45,4 +47,6 @@ uint32_t mock_writes_backup(uint8_t feeder);
  * real driver's erase-before-program failure mode. */
 uint8_t *mock_slot_image_rw(bool backup, uint8_t feeder);
 
-#endif /* FAULT_LOG_TEST_MOCK_PLATFORM_H_ */
+#endif /* TEST_FAULT_LOG_FLASH_FAKE_H */
+
+/*** end of file ***/

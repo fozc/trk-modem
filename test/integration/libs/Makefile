@@ -1,46 +1,16 @@
-# Host integration test for the spi_flash_log contract.
-#
-#   make          - build
-#   make run      - build and run
-#   make asan     - rebuild with -fsanitize=address and run
-#                   (toolchain'inde libasan olmayan MinGW'da calismaz)
-#   make clean    - remove build artifacts
-
-include ../../make/common.mk
-
-CC      := gcc
-PYTHON  ?= python
-ARM_CC  ?=
-CFLAGS  := -std=c11 -Wall -Wextra -Werror -Wshadow -O1 -g
-ASAN_CFLAGS := $(CFLAGS) -fsanitize=address -fno-omit-frame-pointer
-BUILD   := build
-ASAN_BUILD := $(BUILD)/asan
-
-LIB_DIR := ../../../Application/libs
-# spi_flash_log.c bsp.h (bsp_kick_wdt) ceker; o da cslog/xprintf basliklarini
-# icerir - host testleri icin bu yollar da gerekli.
-INCLUDES := -I$(LIB_DIR) -I$(LIB_DIR)/../bsp -I$(LIB_DIR)/../cslog
-
-.PHONY: all run clean asan
-
-all: $(BUILD)/test_spi_flash_log
-
-$(BUILD):
-	@$(MKDIR_P) $(BUILD)
-
-$(BUILD)/test_spi_flash_log: test_spi_flash_log.c $(LIB_DIR)/spi_flash_log.c | $(BUILD)
-	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@
-
-run: all
-	$(BUILD)/test_spi_flash_log
+# Native C behavior is owned by Ceedling; compiler/thread checks remain external.
+PYTHON ?= python
+CC := gcc
+ARM_CC ?=
+.PHONY: all run platform asan clean
+all: run
+run:
+	$(MAKE) -C ../.. cases TEST_PATTERN=spi_flash_log
+	$(MAKE) platform
+asan:
+	$(MAKE) -C ../.. cases_asan TEST_PATTERN=spi_flash_log
+platform:
+	$(PYTHON) ../../scripts/test_host_test_tools.py
 	$(PYTHON) run_ring_buffer_checks.py --cc "$(CC)" $(if $(ARM_CC),--arm-cc "$(ARM_CC)")
-
-$(ASAN_BUILD):
-	@$(MKDIR_P) $(ASAN_BUILD)
-
-asan: | $(ASAN_BUILD)
-	$(CC) $(ASAN_CFLAGS) $(INCLUDES) test_spi_flash_log.c $(LIB_DIR)/spi_flash_log.c -o $(ASAN_BUILD)/test_spi_flash_log
-	$(ASAN_BUILD)/test_spi_flash_log
-
 clean:
-	$(RM_RF) $(BUILD)
+	@echo "Ceedling artifacts are managed by test/Makefile clean"

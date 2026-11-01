@@ -1,11 +1,13 @@
 /*
- * mock_platform.c
+ * nvram_flash_fake.c
  *
- * Host-test double for the w25qxx driver as used by the two-slot NVRAM
- * core. Two independent 4 KB sectors, real NOR semantics and phase-level
- * fault injection at the erase / program / verify boundaries.
+ *  Created on: Oct 31, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Two-slot NOR model with erase/program/verify fault injection.
  */
-#include "mock_platform.h"
+#include "nvram_flash_fake.h"
 
 #include <string.h>
 
@@ -14,13 +16,13 @@
 
 #define SLOT_SIZE 4096U
 
-static uint8_t  slot_img[2][SLOT_SIZE];
+static uint8_t slot_img[2][SLOT_SIZE];
 static uint32_t write_buff_cnt[2];
 static uint32_t erase_cnt[2];
 static uint32_t page_cnt[2];
 static mock_fail_stage_t fail_stage[2];
-static bool     fail_erase_once[2];
-static int      fail_page_at[2];
+static bool fail_erase_once[2];
+static int fail_page_at[2];
 
 void mock_reset(void)
 {
@@ -74,14 +76,12 @@ uint8_t *mock_slot_image_rw(uint32_t slot)
 /* Resolve an address into (image, offset); NULL when outside both slots. */
 static uint8_t *mock_resolve(uint32_t addr, uint32_t *off)
 {
-    if ((addr >= NVRAM_ADDRESS)
-        && (addr < (NVRAM_ADDRESS + SLOT_SIZE)))
+    if ((addr >= NVRAM_ADDRESS) && (addr < (NVRAM_ADDRESS + SLOT_SIZE)))
     {
         *off = addr - NVRAM_ADDRESS;
         return &slot_img[MOCK_SLOT_A][0];
     }
-    if ((addr >= NVRAM_BACKUP_ADDRESS)
-        && (addr < (NVRAM_BACKUP_ADDRESS + SLOT_SIZE)))
+    if ((addr >= NVRAM_BACKUP_ADDRESS) && (addr < (NVRAM_BACKUP_ADDRESS + SLOT_SIZE)))
     {
         *off = addr - NVRAM_BACKUP_ADDRESS;
         return &slot_img[MOCK_SLOT_B][0];
@@ -140,18 +140,16 @@ int w25qxx_page_write(uint32_t addr, const void *buff, uint32_t len)
     uint8_t *image = mock_resolve(addr, &off);
     uint32_t slot;
 
-    if ((image == NULL) || ((off + len) > SLOT_SIZE)
-        || (((off % 256U) + len) > 256U))
+    if ((image == NULL) || ((off + len) > SLOT_SIZE) || (((off % 256U) + len) > 256U))
     {
         return W25QXX_RES_INVALID_PARAM;
     }
 
     slot = mock_slot_of(addr);
 
-    if ((fail_page_at[slot] >= 0)
-        && ((int)(off / 256U) == fail_page_at[slot]))
+    if ((fail_page_at[slot] >= 0) && ((int)(off / 256U) == fail_page_at[slot]))
     {
-        fail_page_at[slot] = -1;   /* one-shot: destination stays torn */
+        fail_page_at[slot] = -1; /* one-shot: destination stays torn */
         return W25QXX_RES_WRITE_FAIL;
     }
 
@@ -218,8 +216,7 @@ void console_logger_init(void)
 {
 }
 
-void elog_log_nvram_recovery(uint8_t action, uint32_t stored_crc,
-                             uint32_t calc_crc)
+void elog_log_nvram_recovery(uint8_t action, uint32_t stored_crc, uint32_t calc_crc)
 {
     (void)action;
     (void)stored_crc;
@@ -232,3 +229,5 @@ unsigned int xcprintf(const char *color, const char *fmt, ...)
     (void)fmt;
     return 0U;
 }
+
+/*** end of file ***/

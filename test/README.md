@@ -1,7 +1,66 @@
 # Test Altyapısı
 
-**Sürüm:** 1.99
-**Tarih:** 2026-10-31
+**Sürüm:** 2.00
+**Tarih:** 2026-11-01
+
+## C senaryolarının Ceedling altında çalıştırılması
+
+**Amaç:** C davranışlarını tek Unity/Ceedling akışında çalıştırmak; bağımsız protokol,
+cihaz ve araç doğrulamalarını Python tarafında korumak.
+
+**Kullanım yeri:** `ruby test/run_all.rb unit` C testlerini; `ruby test/run_all.rb all`
+C testlerini ve dış doğrulamaları birlikte çalıştırır. `integration` seçeneği tek başına
+C testlerinin tamamını çalıştırmaz.
+
+| Önceki paket | Etkin C test kaynağı | Korunan senaryolar |
+|---|---|---|
+| NVRAM | `application/test_nvram_sync.c` | 31 senaryo; aynı çift slot ve hata modeli |
+| Fault log | `application/test_fault_log.c` | 11 eski senaryo ve mevcut ek regresyonlar |
+| SPI log | `libs/test_spi_flash_log.c` | 18 senaryo; sıra sarması dahil |
+| GSM cold boot | `gsm/test_gsm_coldboot.c` | 5 karar senaryosu |
+| GSM restart | `gsm/test_gsm_restart_loop.c` | Gerçek Contiki ile dört aşamalı yaşam döngüsü |
+| Web auth | `web_server/test_http_auth_scenario.c` | Giriş, token değişimi, timeout ve lockout |
+| Web transport | `web_server/test_http_transport_scenario.c` | Router, kuyruk, statik gönderim, ETag ve bağlantı kapanışı |
+| Web version | `web_server/test_http_version_scenario.c` | Tampon sınırları, firmware durumları, loader/package handler'ları |
+| Web board | `web_server/test_http_board_scenario.c` | GSM ölçümleri, kayıt durumu, DIP ve JSON tampon sınırı |
+| Web RF save | `web_server/test_http_rf_save_scenario.c` | Save/staging hata yolları ve operatör ACK doğrulaması |
+| RNG geçişi | `bsp/test_bsp_rng_transition_scenario.c` | Fallback geçiş logu, HAL kurtarması ve sayaç sarma |
+| HTTP JSON | `web_server/test_http_json_scenario.c` | Gerçek handler çıktıları ve geçersiz isteklerin yan etkisiz reddi |
+
+**Kurallar:** Üretim algoritmaları mock edilmemelidir. NOR modeli ve sanal saat korunmalıdır.
+Birbirini izleyen GSM restart aşamaları tek yaşam döngüsü testi olarak yürütülmelidir.
+Eski PASS/assertion sayıları Unity test sayısı olarak sunulmamalıdır.
+
+`json/run_http_checks.py` artık C derlemesi veya regex ile fonksiyon çıkarımı yapmaz.
+Ceedling'in gerçek handler testi tarafından üretilen yedi yanıtı ve iki kart durumu
+yanıtını Python `json` parser ile bağımsız doğrular. Kart yanıtlarında sekiz ayrı GSM
+alanı, GsmSig ve DIP değerleri eski bağımsız Python kontrolleriyle karşılaştırılır. C testi tek başına çalışırken dosya üretmez;
+Python doğrulayıcı `HTTP_JSON_OUTPUT` ve `HTTP_BOARD_OUTPUT` ile geçici çıktı yollarını verir.
+
+**Ayrı kalan kontroller:** Gerçek cihaz/protokol, RF simülatörü ve test altyapısı self-test'leri,
+Python JSON/Decimal karşılaştırmaları, web paketleme/tarayıcı testleri, thread/derleyici/ARM
+assembly kontrolleri korunur. GSM'in bilerek dönmeyen terminal hali dış process ve
+beklenen timeout ile sınanır. Bu ayrım donanım testini host testiyle eşdeğer saymaz.
+
+Eski `make -C test/integration/{paket} run` girişleri seçili Ceedling testlerine yönlenir.
+Merkezi yürütücü aynı C senaryolarını ikinci kez integration paketi olarak çalıştırmaz.
+Onaylanan 17 eski test/fixture dosyası kaldırılmıştır; etkin test kaynağı üstteki tablodur.
+Eski iki SPI-wrap wrapper senaryosu yeni 18 senaryolu pakette bulunur.
+
+**Örnek:**
+
+```text
+make -C test cases TEST_PATTERN=nvram_sync
+make -C test cases "TEST_PATTERN=(http_auth_scenario|http_transport_scenario)"
+python test/integration/json/run_http_checks.py
+make -C test/integration/gsm run_coldboot_hang
+make -C test/integration/libs asan
+```
+
+Son komut aynı SPI log senaryolarını ayrı `build/ceedling-asan` altında AddressSanitizer
+ile derler; `scripts/run_asan.rb` mevcut proje ayarlarından geçici bir yapılandırma üretir.
+Host toolchain içinde libasan bulunması gerekir. Önceki ASan çalıştırma
+imkânı korunmuştur; normal test koşusunun zorunlu bir parçası değildir.
 
 ## IEC104 sayfalı okuma ve güncel çalışma bilgileri
 
@@ -293,7 +352,7 @@ bu engelden ayrı sınanmalıdır. Silip yeniden ekleme, atanmış kartı taşı
 Atanmış kart taşınacaksa üreticinin R2.3 §1.2 servis sırası uygulanmalıdır; farklı fidere taşımanın
 üretici sırası henüz verilmemiştir. Bu değişiklik faz taşıma otomasyonu sağlamamaktadır.
 
-Gerçek HTTP handler engeli mevcut `test/integration/web_auth/run_tests.py` ile,
+Gerçek HTTP handler engeli mevcut `test/web_server/test_http_rf_save_scenario.c` ile,
 web kaynak üretimi `test/integration/web_navigation/test_minifier.py` ile sınanmalıdır.
 Host testleri fiziksel RF yenilemesini, açmayı veya reset darbesini ölçmemektedir.
 
@@ -362,7 +421,7 @@ ruby -S ceedling "test:pattern[(rf_events|rf_error_retry_scenario|iec104_event_l
 Web ekranı ve gerçek HTTP handler kontrolleri depo kökünden çalıştırılmalıdır:
 
 ```text
-python test/integration/web_auth/run_tests.py
+make -C test/integration/web_auth run
 python test/integration/web_navigation/test_minifier.py
 ```
 
@@ -1494,7 +1553,7 @@ profile-0 i07 turu ve gerçek MH m3/m7 kabulü ayrıca yapılmalıdır.
 | `iec104/test_iec104_event_log.c` | Yarım payload/CRC yazımı, sessiz CRC kaybı, iç/dış CRC, bilinmeyen kayıt türü, dolu halkada erase hatası, sıra numarası taşması, araya kayıt eklenmesi, başarısız/eksik NVRAM sync ve `mark_sent` gelmeden tekrar okuma. |
 | `iec104/test_iec104_durable_replay_scenario.c` | Gerçek Contiki replay süreci + gerçek `iec104_event_log` + gerçek `spi_flash_log`; yalnız taşıma ve donanım/NVRAM sınırları taklit edilir. Gönderim reddi, 150 ardışık başarısızlık ve bağlantı kesilip yeniden kurulmasında kayıtların korunması ve en yeniden eskiye sıra doğrulanır. |
 | `rf/test_rf_event_log.c` | Onaylı 60 bayt ham RF kayıtları; yarım yazımdan sonra yeniden açılış ve retry, bozuk en yeni kayıttan sonra eski kaydın okunabilmesi, sektör dönüşümü ve sınırlar. |
-| `libs/test_spi_flash_log_sequence_wrap.c` | Ortak NOR kütüphanesinin sıra numarası taşması ve açılış taraması. Ayrıntılı Flash hata yolları `integration/libs` paketindedir. |
+| `libs/test_spi_flash_log.c` | Ortak NOR kütüphanesinin sıra numarası taşması ve açılış taraması. Ayrıntılı Flash hata yolları `integration/libs` paketindedir. |
 
 `support/iec104_event_log_fixture.h`, sayfa sınırlarını ve NOR 1→0
 yazımını denetler. Belirli program çağrısında kısmi hata veya sessiz
@@ -1611,7 +1670,7 @@ yapılır.
 | [libs/test_sha256_edges.c](libs/test_sha256_edges.c) | 5 | Geçti |
 | [libs/test_shell_color_output.c](libs/test_shell_color_output.c) | 5 | Geçti |
 | [libs/test_shell_command_registration.c](libs/test_shell_command_registration.c) | 4 | Geçti |
-| [libs/test_spi_flash_log_sequence_wrap.c](libs/test_spi_flash_log_sequence_wrap.c) | 2 | Geçti |
+| [libs/test_spi_flash_log.c](libs/test_spi_flash_log.c) | 2 | Geçti |
 | [libs/test_w25qxx_address_encoding.c](libs/test_w25qxx_address_encoding.c) | 23 | Geçti |
 | [libs/test_xscanf_edges.c](libs/test_xscanf_edges.c) | 7 | Geçti |
 | [libs/test_xscanf_format_scenario.c](libs/test_xscanf_format_scenario.c) | 8 | Geçti |
@@ -1870,23 +1929,12 @@ Bu testler gerçek `Application/bsp/bsp_random.c` modülünü HAL CMock
 ile derler; kabul edilen okumaların birikimi, hata bayrakları, unsigned
 sarma, fallback token biçimi ve durum ilerlemesi doğrulanır.
 
-`integration/web_auth/run_tests.py` dosyası 19 host kontrolü içerir.
-Mevcut üretim dosyalarından giriş, oturum, AT log ve BSP random modülü fonksiyonları
-alınarak host üzerinde derlenir. Eski token reddi, giriş kilidi, oturum
-süresi, RNG hatasında doğru parola ile fallback girişi, yanlış parola
-reddi, aynı tick değerinde ardışık token değişimi, hassas logların
-gizlenmesi, RNG birikiminin unsigned sarması ve fallback geçiş logunun
-yalnız durum değişiminde yazılması doğrulanır. RNG
-başlatması main içindeki mevcut CubeMX/HAL akışında kalır. Fonksiyonların kaynak şekli değişip çıkarılamazsa test
-başarısız olur; test düzeneği yeni kaynakla birlikte değerlendirilmelidir.
-
-Donanım, log ve taşıma çağrıları test doubles (taklit bileşenler) kullanır.
-Gerçek RNG kurtarması, tam HTTP/AT süreçleri ve cihaz davranışı bu testin
-kapsamı dışındadır. Üretilen C dosyaları, çalıştırılabilir dosyalar ve loglar
-Git tarafından yok sayılan `test/build/web_auth/` dizininde tutulur.
-Test kaynağı ise repoda saklanmalıdır.
-
-Bu paket `ruby test/run_all.rb all` ve `integration` koşularına dahildir.
+Web auth, RNG geçişi, AT log, firmware durum ve RF handler kontrolleri artık
+üstteki Ceedling senaryo tablosundadır. Üretim C fonksiyonları Python regex'iyle
+çıkarılmaz; tam güncel modüller gerçek header sözleşmeleriyle derlenir.
+Donanım, log ve komşu servis sınırları test doubles (taklit bileşenler) kullanır.
+Gerçek RNG donanımı ve fiziksel modem zamanlaması bu host testlerinin kapsamı dışındadır.
+Bu testler `ruby test/run_all.rb unit` ve `all` koşularına dahildir.
 Tek başına repo kökünden şu komutla çalıştırılır:
 
 ```text
@@ -1976,7 +2024,7 @@ API'nin HAL hatasında fallback vermediğini ve mevcut web fallback API'sinin
 korunduğunu doğrular. Cihaz RNG/flash/bootloader testi ayrıca yapılmalıdır.
 
 `test/application/test_modem_config.c` ömür güncellemesinin otomatik sync
-yapmadığını doğrular. `integration/nvram/test_nvram_sync.c` gerçek NVRAM
+yapmadığını doğrular. `application/test_nvram_sync.c` gerçek NVRAM
 çekirdeğiyle kaydedilmemiş artışın kaybını, kaydedilmiş değerin korunmasını
 ve yazma hatasında önceki sağlam değerin yüklenmesini doğrular.
 
@@ -2160,7 +2208,7 @@ saklanır. Örnek HEAD/RANGE/CONSUME paketleri UART/SCP yolunda sınanır.
 **Kullanım yeri:**
 
 ```text
-ceedling "test:pattern[(test_rf_|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log_sequence_wrap)]"
+ceedling "test:pattern[(test_rf_|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log)]"
 python test/scripts/generate_rf_scp_vectors.py --check
 ```
 
@@ -2193,7 +2241,7 @@ aktarılır; kaynak zamanı ve uint32_t süre korunur.
 **Kullanım yeri:**
 
 ```text
-ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log_sequence_wrap|test_iec104)]"
+ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log|test_iec104)]"
 ```
 
 05.10.2026 koşusunda 15 dosyada 246/246 test geçti. Olay servisi 23 testi
@@ -2295,6 +2343,7 @@ MH/üç AY/RF süresi ve Powerboard geçişi bu testlerle tamamlanmış sayılma
 
 | Tarih | Sürüm | Etkilenen bölüm |
 |---|---|---|
+| 2026-11-01 | 2.00 | C senaryoları tek Ceedling akışında; bağımsız Python JSON ve cihaz/protokol kontrolleri korunur; kullanıcı onayıyla 17 eski test/fixture dosyası kaldırıldı. |
 | 2026-10-31 | 1.99 | Stats v2: dört sektör, 68 bayt kayıt; RTC/stack metadata geçmişi; kullanıcı kararıyla eski kayıtlar taşınmaz. |
 | 2026-10-31 | 1.98 | IEC104 sayfalı okuma; güncel RTC/stack bilgileri; web günlüklerinin görünür ilerlemesi ve Röleler kartı. |
 | 2026-10-31 | 1.97 | ctypes IEC104 fixture derleyicisini 32 bit host wrapper'ından ayırma; CI ve derleyici seçimi regresyonları. |
@@ -2391,7 +2440,7 @@ wire verileri gerçek ring/COBS/parser/dispatch yolundan geçirilir.
 
 ```text
 cd test
-C:\Ruby34-x64\bin\ruby.exe -S ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log_sequence_wrap|test_iec104|test_power_board|test_system_status|test_modbus_power_snapshot)]"
+C:\Ruby34-x64\bin\ruby.exe -S ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log|test_iec104|test_power_board|test_system_status|test_modbus_power_snapshot)]"
 ```
 
 20 seçili dosyada 319/319 test geçti; kanıt `build/scp-power-regression.log`.
@@ -2448,7 +2497,7 @@ fonksiyonlarını ve gerçek JSON adaptörünü çalıştırır.
 
 ```text
 cd test
-ruby -S ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log_sequence_wrap|test_iec104|test_power_board|test_system_status|test_modbus_power_snapshot|test_http_rf_group_routes|test_json_config_bounds)]"
+ruby -S ceedling "test:pattern[(test_rf_|test_fault_log|test_scp|test_cobs|test_cp56time2a|test_spi_flash_log|test_iec104|test_power_board|test_system_status|test_modbus_power_snapshot|test_http_rf_group_routes|test_json_config_bounds)]"
 ```
 
 24 seçili dosyada 378/378 geçti; kanıt `build/rf-group-web-regression.log`.
@@ -2824,7 +2873,7 @@ kapsanır. `test_navigation.js`, doğrudan giriş ile bir kez tüketilen
 başarılı giriş devrini ve eşleşmeyen token davranışını sınar. Cache
 testleri farklı giriş token'larıyla 304, değişen ETag, bozuk gzip, hatalı
 304, kota ve depolama engelini kapsar.
-`web_auth/run_transport_tests.py`, gerçek router ve handler'ları modem
+`web_server/test_http_transport_scenario.c`, gerçek router akışını modem
 sınırına kadar çalıştırır: ana adres küçük sayfayı sunmalı, oturumsuz
 paket 401 vermeli, oturumlu paket ve doğrudan HTML baytları korunmalıdır.
 304 yanıtı gövdesiz olmalı; içerik değişince tam paket gönderilmeli;

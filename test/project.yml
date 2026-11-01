@@ -226,6 +226,72 @@
         - -Wno-unused-parameter
         - -Wno-unused-variable
         - -Wno-unused-but-set-variable
+      test_gsm_coldboot:
+        - -O2
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-sign-compare
+        - -Wno-unused-function
+      test_gsm_restart_loop:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-parameter
+      test_http_transport_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-sign-compare
+        - -Wno-unused-parameter
+        - -Wno-variadic-macros
+        - -Wno-array-parameter
+      test_http_json_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-variable
+        - -Wno-unused-function
+        - -Wno-array-parameter
+        - -flto
+        - -O2
+      test_http_auth_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-variable
+        - -Wno-unused-function
+        - -Wno-array-parameter
+        - -flto
+        - -O2
+      test_http_rf_save_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-variable
+        - -Wno-unused-function
+        - -Wno-array-parameter
+        - -flto
+        - -O2
+      test_http_version_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-variable
+        - -Wno-unused-function
+        - -Wno-array-parameter
+        - -flto
+        - -O2
+      test_http_board_scenario:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-variable
+        - -Wno-unused-function
+        - -Wno-array-parameter
+        - -flto
+        - -O2
+      test_nvram_sync:
+        - -Wno-conversion
+        - -Wno-sign-conversion
+        - -Wno-unused-function
+        - -Wno-unused-variable
+        - -Wno-sign-compare
+      test_spi_flash_log:
+        - -Wno-conversion
+        - -Wno-sign-conversion
       test_iec104_event_log_shell:
         - -include
         - support/shell_log_enabled.h
@@ -293,6 +359,23 @@
       test_modbus_reset_scenario:
         - -flto
         - -O2
+      test_http_json_scenario:
+        - -flto
+        - -O2
+      test_http_auth_scenario:
+        - -flto
+        - -O2
+      test_http_rf_save_scenario:
+        - -flto
+        - -O2
+      test_http_version_scenario:
+        - -flto
+        - -O2
+      test_http_board_scenario:
+        - -flto
+        - -O2
+      test_http_transport_scenario:
+        - -Wl,--wrap=sha256_update
       test_gsm_response_scenario:
         - -flto
         - -O2

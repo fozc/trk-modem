@@ -94,10 +94,12 @@ void test_http_socket_secrets_stay_hidden_on_ok_and_timeout(void)
     log_response("OK");
     TEST_ASSERT_NOT_NULL(strstr(logs, "payload omitted"));
     TEST_ASSERT_NULL(strstr(logs, "SECRET_TOKEN"));
+    TEST_ASSERT_NULL(strstr(logs, "admin25"));
     logs[0] = '\0';
     log_response("TIMEOUT");
     TEST_ASSERT_NOT_NULL(strstr(logs, "payload omitted"));
     TEST_ASSERT_NULL(strstr(logs, "admin25"));
+    TEST_ASSERT_NULL(strstr(logs, "SECRET_TOKEN"));
 }
 void test_socket_three_prefix_does_not_allow_socket_thirty(void)
 {

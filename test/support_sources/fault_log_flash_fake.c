@@ -1,12 +1,13 @@
 /*
- * mock_platform.c
+ * fault_log_flash_fake.c
  *
- * Host-test doubles for the platform services fault_log.c reaches into.
- * Each feeder slot (primary + backup) is a 4096-byte RAM image; writes
- * can be forced to fail per copy and are counted so tests can prove
- * which copy a sync actually touched.
+ *  Created on: Oct 31, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Per-feeder primary/backup NOR images with counted writes and injected failures.
  */
-#include "mock_platform.h"
+#include "fault_log_flash_fake.h"
 
 #include <string.h>
 
@@ -16,18 +17,18 @@
 
 #define SLOT_SIZE 4096U
 
-static uint8_t  img_primary[MAX_POWER_LINE_COUNT][SLOT_SIZE];
-static uint8_t  img_backup[MAX_POWER_LINE_COUNT][SLOT_SIZE];
+static uint8_t img_primary[MAX_POWER_LINE_COUNT][SLOT_SIZE];
+static uint8_t img_backup[MAX_POWER_LINE_COUNT][SLOT_SIZE];
 static uint32_t writes_primary_cnt[MAX_POWER_LINE_COUNT];
 static uint32_t writes_backup_cnt[MAX_POWER_LINE_COUNT];
-static int      fail_primary_cnt[MAX_POWER_LINE_COUNT];
-static int      fail_backup_cnt[MAX_POWER_LINE_COUNT];
-static int      fail_primary_dest[MAX_POWER_LINE_COUNT];
-static int      fail_backup_dest[MAX_POWER_LINE_COUNT];
-static int      fail_erase_primary_cnt[MAX_POWER_LINE_COUNT];
-static int      fail_erase_backup_cnt[MAX_POWER_LINE_COUNT];
-static int      torn_budget_primary[MAX_POWER_LINE_COUNT];
-static int      torn_budget_backup[MAX_POWER_LINE_COUNT];
+static int fail_primary_cnt[MAX_POWER_LINE_COUNT];
+static int fail_backup_cnt[MAX_POWER_LINE_COUNT];
+static int fail_primary_dest[MAX_POWER_LINE_COUNT];
+static int fail_backup_dest[MAX_POWER_LINE_COUNT];
+static int fail_erase_primary_cnt[MAX_POWER_LINE_COUNT];
+static int fail_erase_backup_cnt[MAX_POWER_LINE_COUNT];
+static int torn_budget_primary[MAX_POWER_LINE_COUNT];
+static int torn_budget_backup[MAX_POWER_LINE_COUNT];
 
 void mock_reset(void)
 {
@@ -113,13 +114,12 @@ static uint8_t *mock_resolve(uint32_t addr, uint32_t *feeder, uint32_t *off)
     uint32_t base;
     uint32_t idx;
 
-    if ((addr >= FAULT_LOG_ADDRESS)
-        && (addr < (FAULT_LOG_ADDRESS + MAX_POWER_LINE_COUNT * SLOT_SIZE)))
+    if ((addr >= FAULT_LOG_ADDRESS) && (addr < (FAULT_LOG_ADDRESS + MAX_POWER_LINE_COUNT * SLOT_SIZE)))
     {
         base = FAULT_LOG_ADDRESS;
     }
-    else if ((addr >= FAULT_LOG_BACKUP_ADDRESS)
-        && (addr < (FAULT_LOG_BACKUP_ADDRESS + MAX_POWER_LINE_COUNT * SLOT_SIZE)))
+    else if ((addr >= FAULT_LOG_BACKUP_ADDRESS) &&
+             (addr < (FAULT_LOG_BACKUP_ADDRESS + MAX_POWER_LINE_COUNT * SLOT_SIZE)))
     {
         base = FAULT_LOG_BACKUP_ADDRESS;
     }
@@ -136,8 +136,7 @@ static uint8_t *mock_resolve(uint32_t addr, uint32_t *feeder, uint32_t *off)
     {
         return NULL;
     }
-    return (base == FAULT_LOG_ADDRESS) ? &img_primary[idx][0]
-                                       : &img_backup[idx][0];
+    return (base == FAULT_LOG_ADDRESS) ? &img_primary[idx][0] : &img_backup[idx][0];
 }
 
 void w25qxx_read_buff(uint32_t addr, void *buff, uint32_t len)
@@ -287,8 +286,7 @@ int w25qxx_page_write(uint32_t addr, const void *buff, uint32_t len)
     uint32_t off = 0U;
     uint8_t *image = mock_resolve(addr, &feeder, &off);
     bool is_primary = (addr < FAULT_LOG_BACKUP_ADDRESS);
-    int *torn_budget = is_primary ? &torn_budget_primary[feeder]
-                                  : &torn_budget_backup[feeder];
+    int *torn_budget = is_primary ? &torn_budget_primary[feeder] : &torn_budget_backup[feeder];
 
     if ((image == NULL) || ((off + len) > SLOT_SIZE))
     {
@@ -307,7 +305,7 @@ int w25qxx_page_write(uint32_t addr, const void *buff, uint32_t len)
             uint32_t half = len / 2U;
 
             nor_program(&image[off], buff, half);
-            *torn_budget = -1;   /* fired - disarm */
+            *torn_budget = -1; /* fired - disarm */
             return W25QXX_RES_WRITE_FAIL;
         }
         (*torn_budget)--;
@@ -362,20 +360,12 @@ int xstrtoi(const char *str)
 /* Fixed wall clock for cp56time2a_now(). */
 bsp_rtc_t bsp_get_datetime(void)
 {
-    static bsp_rtc_t fixed = {
-        .year = 26, .month = 9, .day = 9,
-        .hour = 8, .minute = 33, .second = 50, .millisec = 0
-    };
+    static bsp_rtc_t fixed = {.year = 26, .month = 9, .day = 9, .hour = 8, .minute = 33, .second = 50, .millisec = 0};
     return fixed;
-}
-
-unsigned int xcprintf(const char *color, const char *fmt, ...)
-{
-    (void)color;
-    (void)fmt;
-    return 0U;
 }
 
 void bsp_kick_wdt(void)
 {
 }
+
+/*** end of file ***/

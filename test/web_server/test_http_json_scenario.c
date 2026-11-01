@@ -1,32 +1,22 @@
 /*
- * http_fixture.c
+ * test_http_json_scenario.c
  *
- *  Created on: Oct 23, 2026
+ *  Created on: Oct 31, 2026
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
  *
- * Actual HTTP JSON handlers with storage, clock and terminal boundaries.
+ * Real HTTP JSON paths and invalid-input behavior; optional output for independent Python checks.
  */
-#include "json_config.h"
-#include "modem_config.h"
-#include "web_json.h"
-#include "iec104_config.h"
-#include "iec104_util.h"
-#include "modbus_config.h"
-#include "modbus_map_json.h"
-#include "boot.h"
-#include "version.h"
-#include "elog.h"
-#include "fault_log.h"
-#include "cp56time2a.h"
-#include "datetime.h"
-#include "web_shell.h"
+#include "unity.h"
+#include "../support/http_json_platform.inc"
+TEST_SOURCE_FILE("json.c")
+TEST_SOURCE_FILE("xprintf.c")
+TEST_SOURCE_FILE("iec104_util.c")
+TEST_SOURCE_FILE("cp56time2a.c")
+TEST_SOURCE_FILE("modbus_map_json.c")
+TEST_SOURCE_FILE("utils.c")
 
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
+static FILE *json_output;
 static char canvas[8194];
 static char response[8192];
 static int response_status;
@@ -35,12 +25,6 @@ static iec104_config_t iec;
 static modbus_configs_t modbus;
 static iec104_line_config_t lines[MAX_ARRAYS];
 static fw_info_t firmware;
-static struct
-{
-    char *tx_buffer;
-    int tx_buffer_size;
-    const char *current_query_string;
-} handler_state;
 static json_writer_t *terminal_writer;
 static size_t terminal_bytes;
 static uint32_t terminal_calls;
@@ -74,7 +58,7 @@ uint32_t modbus_config_get_last_error_time(void)
 {
     return 42U;
 }
-static uint32_t rtc_get_epoch(void)
+uint32_t rtc_get_epoch(void)
 {
     return 123456U;
 }
@@ -87,28 +71,24 @@ bsp_rtc_t bsp_get_datetime(void)
     bsp_rtc_t date = {0};
     return date;
 }
-static bool nvram_retain_output_states(void)
+bool nvram_retain_output_states(void)
 {
     return true;
 }
-static int xstrtoi(const char *text)
+void http_send_json(const char *text, int length)
 {
-    return (int)strtol(text, NULL, 10);
-}
-static void http_send_json(const char *text, int length)
-{
-    assert(length >= 0 && (size_t)length < sizeof(response));
+    TEST_ASSERT_TRUE(length >= 0 && (size_t)length < sizeof(response));
     memcpy(response, text, (size_t)length);
     response[length] = '\0';
     response_status = 200;
 }
-static void http_send_error(int status, const char *text)
+void http_send_error(int status, const char *text)
 {
     (void)text;
     response_status = status;
     response[0] = '\0';
 }
-static void http_send_bad_request(void)
+void http_send_bad_request(void)
 {
     http_send_error(400, "bad request");
 }
@@ -117,8 +97,7 @@ uint32_t elog_get_stored_count(void)
 {
     return 20U;
 }
-int elog_read_recent(uint32_t skip, uint32_t count, elog_entry_t *entries,
-                     uint32_t *read_count)
+int elog_read_recent(uint32_t skip, uint32_t count, elog_entry_t *entries, uint32_t *read_count)
 {
     *read_count = 0U;
     while (*read_count < count && skip + *read_count < 20U)
@@ -154,13 +133,12 @@ uint8_t fault_log_get_perm_count(uint8_t feeder, uint8_t phase)
 {
     return fault_log_get_temp_count(feeder, phase);
 }
-bool fault_log_read_nth(uint8_t feeder, uint8_t phase, fault_log_type_t type,
-                        uint8_t index, fault_log_t *entry)
+bool fault_log_read_nth(uint8_t feeder, uint8_t phase, fault_log_type_t type, uint8_t index, fault_log_t *entry)
 {
     (void)feeder;
     (void)phase;
     (void)type;
-    assert(index < 15U);
+    TEST_ASSERT_TRUE(index < 15U);
     memset(entry, 0, sizeof(*entry));
     entry->fault_current = 1234.0F;
     entry->fault_duration_ms = 100U;
@@ -170,22 +148,22 @@ void web_shell_capture_begin(json_writer_t *writer)
 {
     terminal_writer = writer;
     terminal_bytes = 0U;
-    assert(json_write_string_begin(writer) == JSON_OK);
+    TEST_ASSERT_TRUE(json_write_string_begin(writer) == JSON_OK);
 }
 void web_shell_on_rx(const uint8_t *data, uint16_t length)
 {
-    assert(length == 8U && memcmp(data, "rf \"x\"\\y", length) == 0);
+    TEST_ASSERT_TRUE(length == 8U && memcmp(data, "rf \"x\"\\y", length) == 0);
     ++terminal_calls;
     web_json_text(terminal_writer, "ok\r\n");
     terminal_bytes = 4U;
 }
 int web_shell_capture_end(void)
 {
-    assert(json_write_string_end(terminal_writer) == JSON_OK);
+    TEST_ASSERT_TRUE(json_write_string_end(terminal_writer) == JSON_OK);
     return (int)terminal_bytes;
 }
 
-#include "http_production.inc"
+#include "../../Application/web-server/http_handlers.c"
 
 static void reset_response(void)
 {
@@ -197,12 +175,16 @@ static void reset_response(void)
 
 static void emit_response(void)
 {
-    assert(response_status == 200);
-    assert(canvas[0] == '*' && canvas[8193] == '*');
-    puts(response);
+    TEST_ASSERT_TRUE(response_status == 200);
+    TEST_ASSERT_TRUE(canvas[0] == '*' && canvas[8193] == '*');
+    if (json_output != NULL)
+    {
+        TEST_ASSERT_TRUE(fputs(response, json_output) >= 0);
+        TEST_ASSERT_TRUE(fputc('\n', json_output) != EOF);
+    }
 }
 
-int main(void)
+void test_http_json_outputs_and_invalid_requests_use_current_handlers(void)
 {
     (void)strcpy(device.apn.apn, "a\"b\\c\n");
     (void)strcpy(device.ntp_server, "pool.ntp.org");
@@ -210,7 +192,7 @@ int main(void)
     (void)memcpy(firmware.short_commit_hash, "abc1234", 8U);
     reset_response();
     handle_get_device_config_json();
-    assert(strstr(response, "\"LifeTime\":123456789") != NULL);
+    TEST_ASSERT_TRUE(strstr(response, "\"LifeTime\":123456789") != NULL);
     emit_response();
 
     iec.scada_ip_address = 0xC0A80101U;
@@ -249,23 +231,42 @@ int main(void)
     reset_response();
     handle_post_web_shell("{\"tx\":\"rf \\\"x\\\"\\\\y\"}");
     emit_response();
-    assert(terminal_calls == 1U);
+    TEST_ASSERT_TRUE(terminal_calls == 1U);
     handle_post_web_shell("{\"tx\":\"rf a\"} trailing");
-    assert(response_status == 400 && terminal_calls == 1U);
+    TEST_ASSERT_TRUE(response_status == 400 && terminal_calls == 1U);
     handle_post_web_shell("{\"tx\":\"rf a\\u0000b\"}");
-    assert(response_status == 400 && terminal_calls == 1U);
+    TEST_ASSERT_TRUE(response_status == 400 && terminal_calls == 1U);
 
     uint32_t size = 0U, chunks = 0U, hash = 0U;
-    assert(parse_fw_metadata("{\"s\":4096,\"c\":1,\"h\":42}", &size, &chunks,
-                             &hash));
-    assert(size == 4096U && chunks == 1U && hash == 42U);
-    assert(!parse_fw_metadata("{\"s\":-1}", &size, &chunks, &hash));
-    assert(!parse_fw_metadata("{\"s\":4294967296}", &size, &chunks, &hash));
-    assert(!parse_fw_metadata("{\"s\":4096} trailing", &size, &chunks, &hash));
+    TEST_ASSERT_TRUE(parse_fw_metadata("{\"s\":4096,\"c\":1,\"h\":42}", &size, &chunks, &hash));
+    TEST_ASSERT_TRUE(size == 4096U && chunks == 1U && hash == 42U);
+    TEST_ASSERT_TRUE(!parse_fw_metadata("{\"s\":-1}", &size, &chunks, &hash));
+    TEST_ASSERT_TRUE(!parse_fw_metadata("{\"s\":4294967296}", &size, &chunks, &hash));
+    TEST_ASSERT_TRUE(!parse_fw_metadata("{\"s\":4096} trailing", &size, &chunks, &hash));
     reset_response();
     handler_state.tx_buffer_size = 8;
     handle_get_device_config_json();
-    assert(response_status == 500 && canvas[9] == '*');
-    return 0;
+    TEST_ASSERT_TRUE(response_status == 500 && canvas[9] == '*');
 }
+
+
+void setUp(void)
+{
+    const char *path = getenv("HTTP_JSON_OUTPUT");
+    if (path != NULL)
+    {
+        json_output = fopen(path, "w");
+        TEST_ASSERT_NOT_NULL(json_output);
+    }
+}
+
+void tearDown(void)
+{
+    if (json_output != NULL)
+    {
+        TEST_ASSERT_EQUAL_INT(0, fclose(json_output));
+        json_output = NULL;
+    }
+}
+
 /*** end of file ***/

@@ -12,11 +12,10 @@ MAKE = ENV.fetch("MAKE", "make")
 
 INTEGRATION_SUITES = [
   ["contiki_process", "contiki_process", [[MAKE, "run"]]],
-  ["fault_log", "fault_log", [[MAKE, "run"]]],
-  ["gsm", "gsm", [[MAKE, "run_all"]]],
-  ["libs", "libs", [[MAKE, "run"]]],
+  ["fault_log", "fault_log", [[MAKE, "evidence"]]],
+  ["gsm", "gsm", [[MAKE, "run_coldboot_hang"]]],
+  ["libs", "libs", [[MAKE, "platform"]]],
   ["json", "json", [[MAKE, "run"]]],
-  ["nvram", "nvram", [[MAKE, "run"]]],
   ["rfwu_auth", "rfwu_auth", [[MAKE, "run"]]],
   ["rf_hub_sim", "rf_hub_sim", [[MAKE, "run"]]],
   ["rf_hil", "rf_hil", [[MAKE, "run"]]],
@@ -25,7 +24,6 @@ INTEGRATION_SUITES = [
   ["iec104_stack", "iec104_stack", [[MAKE, "run"]]],
   ["modbus_device", "modbus_device", [[MAKE, "run"]]],
   ["device_monitor", "device_monitor", [[MAKE, "run"]]],
-  ["web_auth", "web_auth", [[MAKE, "run"]]],
   ["web_navigation", "web_navigation", [[MAKE, "run"]]],
   ["web_device", "web_device", [[MAKE, "run"]]]
 ].freeze
@@ -86,13 +84,13 @@ when "integration"
 when "logs"
   pattern = "test_(fault_log|iec104_event_log|iec104_.*replay_scenario|" \
             "iec104_ack_delivery_scenario|rf_event_log|" \
-            "spi_flash_log_sequence_wrap)"
+            "spi_flash_log)"
   results << run_unit("test:pattern[#{pattern}]")
   results << run_integration(%w[fault_log libs])
 when "critical"
   results << run_unit("test:all")
-  results << run_integration(%w[fault_log libs json gsm nvram rfwu_auth
-                                iec104_master iec104_stack web_auth web_navigation])
+  results << run_integration(%w[fault_log libs json gsm rfwu_auth
+                                iec104_master iec104_stack web_navigation])
 when "coverage"
   results << run_unit("clobber")
   results << run_unit("gcov:all") if results.all?

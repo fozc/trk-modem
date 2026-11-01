@@ -1,13 +1,14 @@
 /*
- * mock_platform.h
+ * nvram_flash_fake.h
  *
- * Host-test double for the w25qxx driver as used by the two-slot NVRAM
- * core: two independent 4 KB sectors with real NOR semantics (erase sets
- * 0xFF, programming can only clear bits) and phase-level fault injection
- * at the erase / program / verify boundaries.
+ *  Created on: Oct 31, 2026
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Controls for the stateful two-slot NOR failure model.
  */
-#ifndef NVRAM_TEST_MOCK_PLATFORM_H_
-#define NVRAM_TEST_MOCK_PLATFORM_H_
+#ifndef TEST_NVRAM_FLASH_FAKE_H_
+#define TEST_NVRAM_FLASH_FAKE_H_
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -16,9 +17,9 @@
 typedef enum
 {
     MOCK_FAIL_NONE = 0,
-    MOCK_FAIL_BEFORE_ERASE,   /* rejected before touching the flash */
-    MOCK_FAIL_AFTER_ERASE,    /* sector erased, then failure */
-    MOCK_FAIL_AFTER_PROGRAM   /* data programmed, verify reported failed */
+    MOCK_FAIL_BEFORE_ERASE, /* rejected before touching the flash */
+    MOCK_FAIL_AFTER_ERASE,  /* sector erased, then failure */
+    MOCK_FAIL_AFTER_PROGRAM /* data programmed, verify reported failed */
 } mock_fail_stage_t;
 
 /* Slot indices: 0 = A (NVRAM_ADDRESS), 1 = B (NVRAM_BACKUP_ADDRESS). */
@@ -46,4 +47,6 @@ uint32_t mock_page_writes(uint32_t slot);
 /* Direct image access (4096 bytes) for constructing flash states. */
 uint8_t *mock_slot_image_rw(uint32_t slot);
 
-#endif /* NVRAM_TEST_MOCK_PLATFORM_H_ */
+#endif /* TEST_NVRAM_FLASH_FAKE_H_ */
+
+/*** end of file ***/
