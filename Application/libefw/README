@@ -1,3 +1,7 @@
+GUNCEL REFERANS: ../../doc/EFW_DOSYA_FORMATI.md (EFW-DS-001).
+Asagidaki 32-byte header/MAC aciklamasi tarihsel metindir.
+Mevcut 256-byte EFW formati icin kullanilmamalidir.
+
 libefw - Embedded Firmware File Format
 ======================================
 

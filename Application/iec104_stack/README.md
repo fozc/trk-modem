@@ -14,6 +14,10 @@ include yolu eklenir. Ürün değişiklikleri uygulama adaptöründe yapılmalı
 Bu depodaki örnek [modem adaptörü ve akış rehberidir](../iec104_modem/README.md).
 Çalışan firmware'in eski stack seçimi değiştirilmemiştir.
 
+Genel amaçlı kütüphane hedefi için eksikler, bağımlılıklar ve kabul ölçütleri
+[32 maddelik tamamlama planında](TAMAMLAMA_PLANI.md)
+listelenir. Plan, mevcut desteği ve isteğe bağlı profilleri ayrı gösterir.
+
 ## Yapı
 
 | Modül | Görev |
