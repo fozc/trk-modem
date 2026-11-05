@@ -101,6 +101,7 @@ test/integration/**/build_scp/
 !/keys/rfwu_key.bin
 
 # Local reports and guides: keep on disk, out of git.
+/Application/iec104_stack/TAMAMLAMA_PLANI.md
 /ANALIZ_RAPORU_2026-09.md
 /APP_REPO_SENKRON_BULGULARI.md
 /BOLATEX_YANIT_UYGULAMA_RAPORU_2026-10-07.md
