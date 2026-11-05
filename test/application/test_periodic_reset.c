@@ -35,6 +35,7 @@ static uint32_t timer_expired_count;
 static uint32_t system_reset_count;
 static uint32_t sync_count;
 static int sync_result;
+static uint32_t tick;
 static uint32_t marker_write_count;
 
 static void write_marker(uint32_t dr, uint32_t value, int call_count)
@@ -45,6 +46,12 @@ static void write_marker(uint32_t dr, uint32_t value, int call_count)
     TEST_ASSERT_EQUAL_UINT32(RTC_BKPR_PERIODIC_RESET_DR, dr);
     TEST_ASSERT_EQUAL_HEX32(RTC_BKPR_PERIODIC_RESET_MAGIC, value);
     marker_write_count++;
+}
+
+static uint32_t get_tick_callback(int call_count)
+{
+    (void)call_count;
+    return tick;
 }
 
 static uint32_t get_period_callback(int call_count)
@@ -92,8 +99,10 @@ void setUp(void)
     system_reset_count = 0U;
     sync_count = 0U;
     sync_result = 0;
+    tick = 0U;
     marker_write_count = 0U;
     rtc_bkpr_write_StubWithCallback(write_marker);
+    bsp_get_tick_StubWithCallback(get_tick_callback);
     runtime_stats_save_StubWithCallback(sync_callback);
     modem_config_get_reset_period_StubWithCallback(get_period_callback);
     bsp_system_reset_StubWithCallback(system_reset_callback);
@@ -106,6 +115,13 @@ void setUp(void)
 void tearDown(void)
 {
     TEST_ASSERT_EQUAL_UINT32(system_reset_count, marker_write_count);
+    /* Let any delay expire through the production entry point. */
+    tick += 600000U;
+    fake_period_s = 1U;
+    fake_expired = 0;
+    periodic_reset_tick();
+    fake_period_s = 0U;
+    periodic_reset_tick();
 }
 
 void test_periodic_reset_disabled_does_not_touch_timer(void)
@@ -197,8 +213,6 @@ void test_periodic_reset_can_be_disabled_and_reenabled(void)
     TEST_ASSERT_EQUAL_UINT32(1U, timer_expired_count);
 }
 
-/*** end of file ***/
-
 void test_periodic_reset_save_failure_still_requests_reset(void)
 {
     fake_period_s = 1U;
@@ -208,3 +222,77 @@ void test_periodic_reset_save_failure_still_requests_reset(void)
     TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
     TEST_ASSERT_EQUAL_UINT32(1U, system_reset_count);
 }
+
+void test_update_defers_due_reset_until_exactly_ten_minutes(void)
+{
+    fake_period_s = 1U;
+    fake_expired = 1;
+    periodic_reset_defer_for_update();
+    periodic_reset_tick();
+    tick = 599999U;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(0U, system_reset_count);
+    TEST_ASSERT_EQUAL_UINT32(0U, sync_count);
+    tick = 600000U;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(1U, system_reset_count);
+}
+
+void test_new_update_restarts_ten_minute_delay(void)
+{
+    fake_period_s = 1U;
+    fake_expired = 1;
+    periodic_reset_defer_for_update();
+    tick = 500000U;
+    periodic_reset_defer_for_update();
+    tick = 600000U;
+    periodic_reset_tick();
+    tick = 1099999U;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(0U, system_reset_count);
+    tick = 1100000U;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(1U, system_reset_count);
+}
+
+void test_update_delay_does_not_change_later_reset_deadline(void)
+{
+    fake_period_s = 3600U;
+    periodic_reset_tick();
+    timer_set_count = 0U;
+    periodic_reset_defer_for_update();
+    tick = 600000U;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(0U, system_reset_count);
+    TEST_ASSERT_EQUAL_UINT32(0U, timer_set_count);
+    fake_expired = 1;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(1U, system_reset_count);
+}
+
+void test_update_delay_survives_tick_wrap(void)
+{
+    fake_period_s = 1U;
+    fake_expired = 1;
+    tick = UINT32_MAX - 1000U;
+    periodic_reset_defer_for_update();
+    tick += 599999U;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(0U, system_reset_count);
+    tick++;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(1U, system_reset_count);
+}
+
+void test_update_does_not_enable_disabled_periodic_reset(void)
+{
+    fake_expired = 1;
+    periodic_reset_defer_for_update();
+    periodic_reset_tick();
+    tick = 600000U;
+    periodic_reset_tick();
+    TEST_ASSERT_EQUAL_UINT32(0U, system_reset_count);
+    TEST_ASSERT_EQUAL_UINT32(0U, timer_set_count);
+}
+
+/*** end of file ***/

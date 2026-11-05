@@ -15,6 +15,7 @@
 #include "w25qxx.h"
 #include "gsm_log.h"
 #include "reboot.h"
+#include "periodic_reset.h"
 #include <string.h>
 
 static uint32_t flash_address;
@@ -39,6 +40,7 @@ static int fw_update_init(uint32_t total_size)
     section_end = flash_address + total_size;
     fw_update_buffer_index = 0U;
     accepted_offset = 0U;
+    periodic_reset_defer_for_update();
     CCSLOG(XCOLOR_CYAN, "Download target: section %c (0x%08lX)\r\n",
            (flash_address == FIRMWARE_A_ADDRESS) ? 'A' : 'B', (unsigned long)flash_address);
     return 0;
@@ -148,6 +150,7 @@ static int fw_update_rfwu_init(uint32_t total_size, uint32_t resume_offset)
     section_end = base + total_size;
     fw_update_buffer_index = 0U;
     accepted_offset = resume_offset;
+    periodic_reset_defer_for_update();
     return 0;
 }
 

@@ -82,6 +82,26 @@ DR8 erişimini, diğer tahsislerin korunmasını, tek sefer tüketimi, geçersiz
 işareti, farklı reset nedenlerini ve eski kayıtların gösterimini sınar.
 Host testleri fiziksel reset boyunca register korunmasını doğrulamaz.
 
+## Firmware indirmesi sırasında periyodik reset ertelemesi
+
+**Amaç:** Firmware indirmesinin periyodik reset nedeniyle kesilmesini 10 dakika boyunca önlemek.
+
+**Kullanım yeri:** HTTP ve RFWU başarılı indirme başlangıcı ile XMODEM modunun açılması.
+RFWU resume (kaldığı yerden devam) başlangıcı da yeni süre başlatır.
+
+**Kurallar:** Her yeni indirme başlangıcında 10 dakikalık erteleme yeniden başlatılmalıdır.
+Veri paketleri, aynı HTTP oturumunun resume isteği ve aktif XMODEM moduna tekrar start
+komutu süreyi uzatmamalıdır. Reddedilen başlangıçlar erteleme oluşturmamalıdır.
+Ayarlanmış reset vadesi korunmalı; erteleme sonunda vade geçmişse ilk heartbeat
+(periyodik kontrol) çağrısında reset uygulanmalıdır. İndirme erken bitse de erteleme
+10 dakika sürmelidir. Firmware uygulama reset'i ve watchdog davranışı korunmalıdır.
+
+**Doğrulama:** `test/` dizininde
+`ruby -S ceedling "test:pattern[(periodic_reset|firmware_update_scenario|xmodem_update_scenario)]"`
+çalıştırılabilir. Testler 599999/600000 ms sınırını, yeni başlangıçla yenilemeyi,
+tick sayacı sarmasını, kapalı periyodik reset'i, mevcut vadenin korunmasını ve gerçek
+HTTP/RFWU/XMODEM başlangıç yollarını sınar. Host testleri fiziksel zamanlama kanıtı değildir.
+
 ## IEC104 sayfalı okuma ve güncel çalışma bilgileri
 
 **Amaç:** Günlükleri tek seferde dökmeden okumak; son başarılı RTC güncellemesini ve stack kullanım tepesini görmek.

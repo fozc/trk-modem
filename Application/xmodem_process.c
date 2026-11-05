@@ -15,6 +15,7 @@
 #include "shell.h"
 #include "console_logger.h"
 #include "elog.h"
+#include "periodic_reset.h"
 #include "contiki.h"
 #include "contiki_process.h"
 #include <string.h>
@@ -275,6 +276,7 @@ static void xmodem_stop_mode(void)
 
 static void xmodem_start_mode(void)
 {
+	periodic_reset_defer_for_update();
 	CSLOG("XMODEM mode activated. Waiting for file transfer...\r\n");
 	uint32_t dl_addr = boot_get_download_address();
 	CSLOG("Target area: %s (0x%06X)\r\n", get_download_area_name(dl_addr), (unsigned)dl_addr);

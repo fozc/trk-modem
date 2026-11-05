@@ -17,10 +17,21 @@
 #include "contiki.h"
 
 #include <stdint.h>
+#include <stdbool.h>
 
+#define UPDATE_RESET_DELAY_MS (10U * 60U * 1000U)
 
 static struct timer s_timer = {0};
 static uint32_t     s_period_s = 0UL;
+static uint32_t update_start_tick;
+static bool update_reset_deferred;
+
+/* Called by update start paths in cooperative main context. */
+void periodic_reset_defer_for_update(void)
+{
+    update_start_tick = bsp_get_tick();
+    update_reset_deferred = true;
+}
 
 void periodic_reset_tick(void)
 {
@@ -49,6 +60,15 @@ void periodic_reset_tick(void)
         return;
     }
 
+    if (update_reset_deferred)
+    {
+        if ((uint32_t)(bsp_get_tick() - update_start_tick) < UPDATE_RESET_DELAY_MS)
+        {
+            return;
+        }
+        update_reset_deferred = false;
+    }
+
     if (timer_expired(&s_timer))
     {
         CCSLOG(XCOLOR_RED,
@@ -62,3 +82,5 @@ void periodic_reset_tick(void)
         bsp_system_reset();
     }
 }
+
+/*** end of file ***/

@@ -19,6 +19,7 @@
 #include "mock_shell.h"
 #include "mock_console_logger.h"
 #include "mock_elog.h"
+#include "mock_periodic_reset.h"
 #include <string.h>
 
 TEST_SOURCE_FILE("xprintf.c")
@@ -148,6 +149,7 @@ void tearDown(void)
 static void start_download(void)
 {
     char *args[] = {"xmodem", "start"};
+    periodic_reset_defer_for_update_Expect();
     TEST_ASSERT_EQUAL_INT(0, command.func(2, args));
     TEST_ASSERT_TRUE(xmodem_is_active());
     TEST_ASSERT_FALSE(console_logger_is_enabled_flag);
@@ -219,6 +221,23 @@ void test_start_timeout_restores_console_at_boundary(void)
     run_watchdog();
     TEST_ASSERT_FALSE(xmodem_is_active());
     TEST_ASSERT_TRUE(console_logger_is_enabled_flag);
+}
+
+void test_repeated_start_while_active_does_not_defer_reset_again(void)
+{
+    char *args[] = {"xmodem", "start"};
+    start_download();
+    TEST_ASSERT_EQUAL_INT(0, command.func(2, args));
+    TEST_ASSERT_TRUE(xmodem_is_active());
+}
+
+void test_unauthorized_start_does_not_defer_reset(void)
+{
+    char *args[] = {"xmodem", "start"};
+    shell_get_session_level_StopIgnore();
+    shell_get_session_level_ExpectAndReturn(SHELL_LVL_USER);
+    TEST_ASSERT_EQUAL_INT(-1, command.func(2, args));
+    TEST_ASSERT_FALSE(xmodem_is_active());
 }
 
 /*** end of file ***/

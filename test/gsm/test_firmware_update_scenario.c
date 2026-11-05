@@ -19,6 +19,7 @@
 #include "mock_boot.h"
 #include "mock_app_ipc.h"
 #include "mock_reboot.h"
+#include "mock_periodic_reset.h"
 #include "mock_elog.h"
 #include "mock_bsp.h"
 #include "mock_bsp_random.h"
@@ -36,6 +37,13 @@ static rfwu_nvram_t record;
 static uint32_t write_failures;
 static uint32_t write_count;
 static bool persist_failure;
+static uint32_t reset_defer_count;
+
+static void defer_reset(int call_count)
+{
+    (void)call_count;
+    reset_defer_count++;
+}
 
 static int write_flash(uint32_t address, const void *data, uint32_t length, int call_count)
 {
@@ -151,6 +159,8 @@ void setUp(void)
     write_failures = 0U;
     write_count = 0U;
     persist_failure = false;
+    reset_defer_count = 0U;
+    periodic_reset_defer_for_update_StubWithCallback(defer_reset);
     boot_get_download_address_IgnoreAndReturn(FIRMWARE_A_ADDRESS);
     w25qxx_write_buff_StubWithCallback(write_flash);
     nvram_get_rfwu_StubWithCallback(get_record);
@@ -314,6 +324,43 @@ void test_rfwu_partial_sector_finish_can_retry_after_a_partial_nor_failure(void)
         TEST_ASSERT_EQUAL_UINT8(0xA1U, image[index]);
     }
     TEST_ASSERT_EQUAL_UINT8(0xFFU, image[1023]);
+}
+
+void test_http_new_update_defers_reset_but_chunks_and_same_session_do_not(void)
+{
+    uint8_t data[16] = {1U};
+    handle_fw_start("{\"s\":16,\"c\":1,\"h\":1}");
+    TEST_ASSERT_EQUAL_UINT32(1U, reset_defer_count);
+    handle_fw_chunk(0U, data, sizeof(data), false, 0U);
+    handle_fw_start("{\"s\":16,\"c\":1,\"h\":1}");
+    TEST_ASSERT_EQUAL_UINT32(1U, reset_defer_count);
+    handle_fw_start("{\"s\":16,\"c\":1,\"h\":2}");
+    TEST_ASSERT_EQUAL_UINT32(2U, reset_defer_count);
+}
+
+void test_rejected_http_start_does_not_defer_reset(void)
+{
+    handle_fw_start("{\"s\":0,\"c\":1}");
+    TEST_ASSERT_EQUAL_UINT32(0U, reset_defer_count);
+    persist_failure = true;
+    handle_fw_start("{\"s\":16,\"c\":1,\"h\":1}");
+    TEST_ASSERT_NOT_NULL(strstr(json_response, "flash init"));
+    TEST_ASSERT_EQUAL_UINT32(0U, reset_defer_count);
+}
+
+void test_rfwu_start_and_resume_defer_reset_but_data_and_rejected_hello_do_not(void)
+{
+    uint8_t invalid_hello[RFWU_HELLO_SIZE] = {0};
+    send_packet(RFWU_CMD_HELLO, invalid_hello, sizeof(invalid_hello));
+    TEST_ASSERT_EQUAL_UINT8(RFWU_RESP_NACK, response[4]);
+    TEST_ASSERT_EQUAL_UINT32(0U, reset_defer_count);
+    hello(8192U);
+    TEST_ASSERT_EQUAL_UINT32(1U, reset_defer_count);
+    send_data(0U, 0xA1U, 1024U);
+    TEST_ASSERT_EQUAL_UINT32(1U, reset_defer_count);
+    rfwu_on_disconnect();
+    hello(8192U);
+    TEST_ASSERT_EQUAL_UINT32(2U, reset_defer_count);
 }
 
 /*** end of file ***/
