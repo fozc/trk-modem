@@ -143,7 +143,7 @@ bool rtc_hw_is_valid(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*  TAMP backup registers (survive system reset; cleared on power-on)  */
+/*  TAMP backup registers (allocation and retention notes in rtc.h).   */
 /*  DR0 is reserved for RTC_HW_VALID_MAGIC. Fault-context safe: plain  */
 /*  register access, no HAL locking.                                   */
 /* ------------------------------------------------------------------ */
@@ -158,6 +158,7 @@ static volatile uint32_t *rtc_bkpr_reg(uint32_t dr)
 		case 4U:  return &TAMP_NS->BKP4R;
 		case 5U:  return &TAMP_NS->BKP5R;
 		case 6U:  return &TAMP_NS->BKP6R;  /* trial-alive marker (boot_ipc.h) */
+		case RTC_BKPR_PERIODIC_RESET_DR: return &TAMP_NS->BKP8R;
 		default:  return NULL;
 	}
 }

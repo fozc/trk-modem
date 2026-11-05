@@ -21,6 +21,7 @@
 #include "elog.h"
 #include "version.h"
 #include "boot.h"
+#include "reset_source.h"
 #include <string.h>
 #include "bsp.h"
 #include "shell.h"
@@ -476,9 +477,10 @@ const char *elog_info_to_text(const elog_entry_t *entry)
             {
                 xsnprintf(causes, sizeof(causes), "UNKNOWN");
             }
-            xsnprintf(text, sizeof(text), "%s raw=0x%08lX %s",
+            xsnprintf(text, sizeof(text), "%s raw=0x%08lX %s%s",
                       causes, (unsigned long)elog_rd_be32(&info[4]),
-                      (info[8] != 0U) ? "ABNORMAL" : "normal");
+                      (info[8] != 0U) ? "ABNORMAL" : "normal",
+                      (info[9] == 1U) ? " periodic" : "");
             break;
         }
 
@@ -964,12 +966,20 @@ static void elog_pack_u32_be(uint8_t *dst, uint32_t value)
 
 void elog_log_reset_cause(uint32_t flags, uint32_t raw_csr, bool abnormal)
 {
-    /* info: flags(4) raw_csr(4) abnormal(1) */
+    /* info: flags(4) raw_csr(4) abnormal(1) periodic(1).
+     * Called once at boot after RTC/TAMP initialization. Consume even an
+     * invalid/stale marker so it cannot label a later software reset.
+     * PIN may accompany SFT; all other causes disqualify the marker. */
     uint8_t info[16] = {0};
+    uint32_t marker = rtc_bkpr_read(RTC_BKPR_PERIODIC_RESET_DR);
+    rtc_bkpr_write(RTC_BKPR_PERIODIC_RESET_DR, 0U);
+    bool periodic = (marker == RTC_BKPR_PERIODIC_RESET_MAGIC) && !abnormal &&
+                    ((flags & ~(uint32_t)RESET_SOURCE_EXTERNAL_PIN) == (uint32_t)RESET_SOURCE_SOFTWARE);
 
     elog_pack_u32_be(&info[0], flags);
     elog_pack_u32_be(&info[4], raw_csr);
     info[8] = abnormal ? 1U : 0U;
+    info[9] = periodic ? 1U : 0U;
     elog_add(ELOG_SYSTEM_RESET_CAUSE,
              abnormal ? ELOG_LEVEL_WARN : ELOG_LEVEL_INFO,
              info, sizeof(info));

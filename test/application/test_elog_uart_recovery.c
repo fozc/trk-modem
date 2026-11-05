@@ -30,6 +30,7 @@ static bool drop_write;
 static bool omit_readback;
 static log_status_t write_result;
 static log_status_t read_result;
+static uint32_t reset_marker;
 
 time32_t dt_conv_to_epoch(const datetime_t *date)
 {
@@ -99,6 +100,94 @@ void setUp(void)
 
 void tearDown(void)
 {
+}
+
+static uint32_t read_reset_marker(uint32_t dr, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_UINT32(RTC_BKPR_PERIODIC_RESET_DR, dr);
+    return reset_marker;
+}
+
+static void write_reset_marker(uint32_t dr, uint32_t value, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_UINT32(RTC_BKPR_PERIODIC_RESET_DR, dr);
+    TEST_ASSERT_EQUAL_UINT32(0U, value);
+    reset_marker = value;
+}
+
+static void set_reset_marker(uint32_t marker)
+{
+    reset_marker = marker;
+    rtc_bkpr_read_StubWithCallback(read_reset_marker);
+    rtc_bkpr_write_StubWithCallback(write_reset_marker);
+}
+
+void test_periodic_reset_marker_is_recorded_and_consumed_once(void)
+{
+    set_reset_marker(RTC_BKPR_PERIODIC_RESET_MAGIC);
+    elog_log_reset_cause(0x08U, 0x12345678U, false);
+    TEST_ASSERT_EQUAL_UINT32(1U, writes);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_SYSTEM_RESET_CAUSE, last_entry.code);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_LEVEL_INFO, last_entry.level);
+    TEST_ASSERT_EQUAL_UINT8(1U, last_entry.info[9]);
+    TEST_ASSERT_EQUAL_STRING("SFT raw=0x12345678 normal periodic", elog_info_to_text(&last_entry));
+    TEST_ASSERT_EQUAL_UINT32(0U, reset_marker);
+
+    /* The next boot has no marker; an ordinary SFT must remain ordinary. */
+    elog_log_reset_cause(0x08U, 0x12345678U, false);
+    TEST_ASSERT_EQUAL_UINT8(0U, last_entry.info[9]);
+    TEST_ASSERT_EQUAL_STRING("SFT raw=0x12345678 normal", elog_info_to_text(&last_entry));
+}
+
+void test_periodic_reset_marker_accepts_pin_with_software_reset(void)
+{
+    set_reset_marker(RTC_BKPR_PERIODIC_RESET_MAGIC);
+    elog_log_reset_cause(0x0CU, 0U, false);
+    TEST_ASSERT_EQUAL_STRING("PIN|SFT raw=0x00000000 normal periodic", elog_info_to_text(&last_entry));
+}
+
+void test_periodic_reset_marker_rejects_other_or_unknown_reset_causes(void)
+{
+    const uint32_t flags[] = {0U, 0x01U, 0x02U, 0x04U, 0x10U, 0x20U, 0x40U, 0x80U, 0x100U,
+                              0x09U, 0x0AU, 0x18U, 0x28U, 0x48U, 0x88U, 0x108U, 0x80000008U};
+    for (size_t i = 0U; i < sizeof(flags) / sizeof(flags[0]); i++)
+    {
+        set_reset_marker(RTC_BKPR_PERIODIC_RESET_MAGIC);
+        elog_log_reset_cause(flags[i], 0U, (flags[i] & 0x72U) != 0U);
+        TEST_ASSERT_EQUAL_UINT8(0U, last_entry.info[9]);
+        TEST_ASSERT_NULL(strstr(elog_info_to_text(&last_entry), "periodic"));
+        TEST_ASSERT_EQUAL_HEX32(flags[i], elog_rd_be32(last_entry.info));
+        TEST_ASSERT_EQUAL_UINT32(0U, reset_marker);
+    }
+}
+
+void test_invalid_periodic_marker_or_abnormal_reset_is_not_periodic(void)
+{
+    set_reset_marker(RTC_BKPR_PERIODIC_RESET_MAGIC ^ 1U);
+    elog_log_reset_cause(0x08U, 0U, false);
+    TEST_ASSERT_EQUAL_UINT8(0U, last_entry.info[9]);
+    TEST_ASSERT_EQUAL_UINT32(0U, reset_marker);
+    set_reset_marker(RTC_BKPR_PERIODIC_RESET_MAGIC);
+    elog_log_reset_cause(0x08U, 0U, true);
+    TEST_ASSERT_EQUAL_UINT8(0U, last_entry.info[9]);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_LEVEL_WARN, last_entry.level);
+}
+
+void test_reset_marker_is_cleared_even_when_log_storage_is_unavailable(void)
+{
+    storage_ready = false;
+    set_reset_marker(RTC_BKPR_PERIODIC_RESET_MAGIC);
+    elog_log_reset_cause(0x08U, 0U, false);
+    TEST_ASSERT_EQUAL_UINT32(0U, writes);
+    TEST_ASSERT_EQUAL_UINT32(0U, reset_marker);
+}
+
+void test_legacy_reset_record_has_no_periodic_suffix(void)
+{
+    const elog_entry_t legacy = {.code = ELOG_SYSTEM_RESET_CAUSE, .info = {0U, 0U, 0U, 8U}};
+    TEST_ASSERT_EQUAL_STRING("SFT raw=0x00000000 normal", elog_info_to_text(&legacy));
 }
 
 void test_uart_recovery_payload_outcome_changes_and_per_port_rate_limit(void)

@@ -12,6 +12,7 @@
 
 #include "modem_config.h"
 #include "runtime_stats.h"
+#include "rtc.h"
 #include "bsp.h"
 #include "contiki.h"
 
@@ -57,6 +58,7 @@ void periodic_reset_tick(void)
         {
             CSLOG_ERR("[PeriodicReset] Runtime stats save failed; resetting\r\n");
         }
+        rtc_bkpr_write(RTC_BKPR_PERIODIC_RESET_DR, RTC_BKPR_PERIODIC_RESET_MAGIC);
         bsp_system_reset();
     }
 }

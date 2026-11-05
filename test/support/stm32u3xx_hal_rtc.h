@@ -20,6 +20,7 @@ typedef struct { uint8_t WeekDay, Month, Date, Year; } RTC_DateTypeDef;
 typedef struct
 {
     volatile uint32_t BKP1R, BKP2R, BKP3R, BKP4R, BKP5R, BKP6R;
+    volatile uint32_t BKP7R, BKP8R;
 } test_tamp_t;
 extern test_tamp_t test_tamp;
 #define TAMP_NS (&test_tamp)

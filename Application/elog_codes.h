@@ -42,7 +42,7 @@ typedef enum
 	ELOG_CONFIG_RF_CHANGED     = 33,
 
 	// System codes (40..49)
-	ELOG_SYSTEM_RESET_CAUSE    = 40,  /* info: flags(4) raw_csr(4) abnormal(1) */
+	ELOG_SYSTEM_RESET_CAUSE    = 40,  /* info: flags(4) raw_csr(4) abnormal(1) periodic(1) */
 	ELOG_SYSTEM_NVRAM_RECOVERED = 41, /* info: action(1) stored_crc(4) calc_crc(4) */
 	ELOG_SYSTEM_FW_UPDATE      = 42,  /* info: source(1) result(1) size(4) */
 	ELOG_SYSTEM_HARDFAULT      = 43,  /* info: pc(4) lr(4) cfsr(4) hfsr(4) */

@@ -130,9 +130,10 @@ void elog_log_config_change(elog_code_t code,
 
 /* ---- ELOG_SYSTEM_RESET_CAUSE / _HARDFAULT ---------------------------- */
 
-/* info: flags(4, big-endian) raw_csr(4, big-endian) abnormal(1).
- * Kayit politikasi (app_main): ozel nedeni olmayan yazilim reseti
- * (SFT, PIN|SFT ... normal) kaydedilmez - planli reboot'lardir. */
+/* info: flags(4, big-endian) raw_csr(4, big-endian) abnormal(1) periodic(1).
+ * Call once at boot after RTC/TAMP initialization. Consumes the DR8 marker;
+ * only SFT (optionally with PIN) qualifies as a periodic reset.
+ * Older records have zero in the periodic byte and remain readable. */
 void elog_log_reset_cause(uint32_t flags, uint32_t raw_csr, bool abnormal);
 
 /* info: pc(4) lr(4) cfsr(4) hfsr(4), all big-endian. Called at boot with

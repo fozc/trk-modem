@@ -148,6 +148,39 @@ void tearDown(void)
     TEST_ASSERT_EQUAL_UINT32(expected_reads, read_count);
 }
 
+void test_periodic_reset_backup_register_preserves_other_allocations(void)
+{
+    test_tamp.BKP1R = 1U;
+    test_tamp.BKP2R = 2U;
+    test_tamp.BKP3R = 3U;
+    test_tamp.BKP4R = 4U;
+    test_tamp.BKP5R = 5U;
+    test_tamp.BKP6R = 6U;
+    test_tamp.BKP7R = 7U;
+    rtc_bkpr_write(RTC_BKPR_PERIODIC_RESET_DR, RTC_BKPR_PERIODIC_RESET_MAGIC);
+    TEST_ASSERT_EQUAL_HEX32(RTC_BKPR_PERIODIC_RESET_MAGIC, test_tamp.BKP8R);
+    TEST_ASSERT_EQUAL_HEX32(RTC_BKPR_PERIODIC_RESET_MAGIC, rtc_bkpr_read(RTC_BKPR_PERIODIC_RESET_DR));
+    rtc_bkpr_write(RTC_BKPR_PERIODIC_RESET_DR, 0U);
+    TEST_ASSERT_EQUAL_UINT32(0U, rtc_bkpr_read(RTC_BKPR_PERIODIC_RESET_DR));
+    TEST_ASSERT_EQUAL_UINT32(1U, test_tamp.BKP1R);
+    TEST_ASSERT_EQUAL_UINT32(2U, test_tamp.BKP2R);
+    TEST_ASSERT_EQUAL_UINT32(3U, test_tamp.BKP3R);
+    TEST_ASSERT_EQUAL_UINT32(4U, test_tamp.BKP4R);
+    TEST_ASSERT_EQUAL_UINT32(5U, test_tamp.BKP5R);
+    TEST_ASSERT_EQUAL_UINT32(6U, test_tamp.BKP6R);
+    TEST_ASSERT_EQUAL_UINT32(7U, test_tamp.BKP7R);
+}
+
+void test_unallocated_backup_register_access_preserves_periodic_marker(void)
+{
+    test_tamp.BKP8R = RTC_BKPR_PERIODIC_RESET_MAGIC;
+    rtc_bkpr_write(9U, 123U);
+    rtc_bkpr_write(UINT32_MAX, 123U);
+    TEST_ASSERT_EQUAL_UINT32(0U, rtc_bkpr_read(9U));
+    TEST_ASSERT_EQUAL_UINT32(0U, rtc_bkpr_read(UINT32_MAX));
+    TEST_ASSERT_EQUAL_HEX32(RTC_BKPR_PERIODIC_RESET_MAGIC, test_tamp.BKP8R);
+}
+
 static rtc_t valid_time(void)
 {
     const rtc_t value = {

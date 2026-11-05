@@ -16,6 +16,7 @@
 #include "clock-arch.h"
 #include "mock_bsp.h"
 #include "mock_modem_config.h"
+#include "mock_rtc.h"
 #include "periodic_reset.h"
 
 #define CLOCK_SECOND CLOCK_CONF_SECOND
@@ -34,6 +35,17 @@ static uint32_t timer_expired_count;
 static uint32_t system_reset_count;
 static uint32_t sync_count;
 static int sync_result;
+static uint32_t marker_write_count;
+
+static void write_marker(uint32_t dr, uint32_t value, int call_count)
+{
+    (void)call_count;
+    TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
+    TEST_ASSERT_EQUAL_UINT32(0U, system_reset_count);
+    TEST_ASSERT_EQUAL_UINT32(RTC_BKPR_PERIODIC_RESET_DR, dr);
+    TEST_ASSERT_EQUAL_HEX32(RTC_BKPR_PERIODIC_RESET_MAGIC, value);
+    marker_write_count++;
+}
 
 static uint32_t get_period_callback(int call_count)
 {
@@ -59,6 +71,7 @@ static void system_reset_callback(int call_count)
 {
     (void)call_count;
     TEST_ASSERT_EQUAL_UINT32(1U, sync_count);
+    TEST_ASSERT_EQUAL_UINT32(1U, marker_write_count);
     system_reset_count++;
 }
 
@@ -79,6 +92,8 @@ void setUp(void)
     system_reset_count = 0U;
     sync_count = 0U;
     sync_result = 0;
+    marker_write_count = 0U;
+    rtc_bkpr_write_StubWithCallback(write_marker);
     runtime_stats_save_StubWithCallback(sync_callback);
     modem_config_get_reset_period_StubWithCallback(get_period_callback);
     bsp_system_reset_StubWithCallback(system_reset_callback);
@@ -90,6 +105,7 @@ void setUp(void)
 
 void tearDown(void)
 {
+    TEST_ASSERT_EQUAL_UINT32(system_reset_count, marker_write_count);
 }
 
 void test_periodic_reset_disabled_does_not_touch_timer(void)

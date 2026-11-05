@@ -143,14 +143,27 @@ uint32_t rtc_get_unix_epoch(void);
 
 /* ---- TAMP backup registers ---- */
 
+/* Shared allocation with the modem bootloader; keep both projects in sync.
+ * DR0:    RTC calendar-valid marker (rtc.c).
+ * DR1:    HardFault magic; DR2..5: PC, LR, CFSR, HFSR (hardfault_handler.h).
+ * DR6:    Trial-alive marker / no-start count (app_ipc/boot_ipc.h).
+ * DR7:    Bootloader one-shot LZ test marker (bootloader lz_test_aborts.h).
+ * DR8:    Periodic reset marker; written immediately before software reset,
+ *         consumed and cleared by elog_log_reset_cause() on the next boot.
+ * DR9..31: Unallocated in the application and bootloader sources.
+ * Backup-domain reset or loss of backup power can erase these markers.
+ */
+#define RTC_BKPR_PERIODIC_RESET_DR     8U
+#define RTC_BKPR_PERIODIC_RESET_MAGIC  0x50525354U /* "PRST" */
+
 /**
- * @brief  Write a TAMP backup register (DR1..DR5; DR0 is the RTC magic).
+ * @brief  Write an allocated TAMP backup register (DR1..6 or DR8).
  * @note   Plain register access, safe to call from fault context.
  */
 void rtc_bkpr_write(uint32_t dr, uint32_t value);
 
 /**
- * @brief  Read a TAMP backup register (DR1..DR5; returns 0 for others).
+ * @brief  Read an allocated TAMP backup register (DR1..6 or DR8; 0 for others).
  */
 uint32_t rtc_bkpr_read(uint32_t dr);
 

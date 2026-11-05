@@ -62,6 +62,26 @@ ile derler; `scripts/run_asan.rb` mevcut proje ayarlarından geçici bir yapıla
 Host toolchain içinde libasan bulunması gerekir. Önceki ASan çalıştırma
 imkânı korunmuştur; normal test koşusunun zorunlu bir parçası değildir.
 
+## Periyodik reset nedeninin kaydı
+
+**Amaç:** Periyodik reset'i diğer yazılım resetlerinden açılış kaydında ayırmak.
+
+**Kullanım yeri:** `periodic_reset_tick()` reset öncesinde DR8'e işaret yazar.
+RTC backup register (yedek register) tahsisleri `Application/bsp/rtc.h` içindedir.
+Açılışta `elog_log_reset_cause()` bu işareti okuyup temizler; uygun reset için
+`RESET_CAUSE` açıklamasına `periodic` ekler.
+
+**Kurallar:** İşaret yalnız yazılım resetinde, isteğe bağlı PIN bayrağıyla birlikte,
+geçerli sayılmalıdır. Diğer reset nedenleri ve bozuk işaretler reddedilmelidir.
+İşaret kayıt ortamı kullanılamasa da temizlenmelidir. Eski kayıtlar okunabilmelidir.
+
+**Doğrulama:** `test/` dizininde
+`ruby -S ceedling "test:pattern[(periodic_reset|rtc_sync|elog_uart_recovery)]"`
+çalıştırılabilir. Testler istatistik kaydı, işaret yazımı ve reset sırasını;
+DR8 erişimini, diğer tahsislerin korunmasını, tek sefer tüketimi, geçersiz
+işareti, farklı reset nedenlerini ve eski kayıtların gösterimini sınar.
+Host testleri fiziksel reset boyunca register korunmasını doğrulamaz.
+
 ## IEC104 sayfalı okuma ve güncel çalışma bilgileri
 
 **Amaç:** Günlükleri tek seferde dökmeden okumak; son başarılı RTC güncellemesini ve stack kullanım tepesini görmek.
