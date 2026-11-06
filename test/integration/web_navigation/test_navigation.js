@@ -97,12 +97,12 @@ async function checkPage(html, label) {
         run(`LNG = '${language}';`);
         const replacementGuide = run('renderRf({})');
         for (const text of language === 'tr'
-            ? ['aynı ziyarette', 'state=1', 'fault count=0', 'Boot_Counter', 'Kaydet bu AY resetlerini yapmaz']
+            ? ['aynı saha ziyareti sırasında', 'state=1', 'fault count=0', 'Boot_Counter', 'Kaydet bu AY’leri yeniden başlatmaz']
             : ['same visit', 'state=1', 'fault count=0', 'Boot_Counter', 'Save does not perform']) {
             assert.ok(replacementGuide.includes(text), text);
         }
         assert.ok(replacementGuide.includes(language === 'tr'
-            ? 'bölgeyi değiştirmeyin' : 'do not change the zone'));
+            ? 'bölgesini değiştirmeyin' : 'Do not change the zone'));
         const registerMap = {
             AddressBase:40000,FeederBase:40000,FeederStride:1000,
             FeederCount:4,FeederQualityOffset:0,
@@ -183,8 +183,8 @@ async function checkPage(html, label) {
         assert.ok(rfMonitor.includes('300'));
         assert.ok(rfMonitor.includes('1.250'));
         assert.ok(rfMonitor.includes('99.250 A'),'keep physical trip current');
-        const energyLabel = language === 'tr' ? 'Enerji Var/Yok' : 'Energy Present';
-        const loadLabel = language === 'tr' ? 'Yük Akımı Var/Yok' : 'Load Current Present';
+        const energyLabel = run("t('catEnerji')");
+        const loadLabel = run("t('catLoad')");
         assert.ok(rfMonitor.includes(`<td>${energyLabel}</td><td>${run("t('absent')")}</td>`));
         assert.ok(rfMonitor.includes(`<td>${loadLabel}</td><td>${run("t('present')")}</td>`));
         for (const phase of [
@@ -249,7 +249,8 @@ async function checkPage(html, label) {
             const reset=run(`buildRfMonitorTable({Phases:[],Maintenance:{StoreResetReason:${reason}}})`);
             assert.ok(reset.includes(language==='tr'?tr:en));
         }
-        assert.ok(service.includes('Bolatex'));
+        assert.ok(service.includes(language==='tr'?'ağ anahtarının':'network key provisioning'));
+        assert.doesNotMatch(service, /bolatex/i);
         assert.ok(!service.includes('143/4'));
         assert.ok(!service.includes('19600 ms'));
         assert.ok(!service.includes(language==='tr'?'doğrulanamayan 2':'2 events'));
@@ -268,7 +269,7 @@ async function checkPage(html, label) {
         const changed = run(`buildRfGroupStatus({State:'applied',Line:1,
             GroupId:7,MatchesDesired:false,HasReport:false})`);
         assert.ok(changed.includes(language === 'tr'
-            ? 'istenen ayar değişti' : 'desired settings have changed'));
+            ? 'İstenen ayarlar daha sonra değişti' : 'desired settings have changed'));
           const missingPower = run(`renderBoard({BatterySOC:null,
               BatterySOH:null,BatteryTemp:null,ChargePertance:null,
               ChargeState:null,HeaterState:null,HeaterPower:null})`);
@@ -287,7 +288,7 @@ async function checkPage(html, label) {
           assert.ok(powerRows.includes(language === 'tr'
               ? 'PV (güneş)' : 'PV (solar)'));
           for (const name of language === 'tr'
-              ? ['Akü kritik düşük', 'Ölçüm bayat',
+              ? ['Akü seviyesi kritik düzeyde düşük', 'Ölçüm güncel değil',
                  'Şarj denetleyicisi okunamıyor', 'Kart komutlara kapalı']
               : ['Battery critically low', 'Measurement stale',
                  'Charger unreadable', 'Board not accepting commands']) {
@@ -360,7 +361,7 @@ async function checkPage(html, label) {
           assert.ok(powerRows.includes(language === 'tr'
               ? 'Şarj denetleyicisi güncel değil' : 'Charger data stale'));
           assert.ok(powerRows.includes(language === 'tr'
-              ? 'MH–kart bağlantısı: devre dışı' : 'MH link: disabled'));
+              ? 'MH ile kart bağlantısı: devre dışı' : 'MH link: disabled'));
           assert.ok(powerRows.includes(language === 'tr'
               ? 'Ayar kaynağı: servis' : 'Setting source: service'));
           assert.ok(powerRows.includes(language === 'tr'
@@ -369,7 +370,7 @@ async function checkPage(html, label) {
           assert.ok(powerRows.includes(language === 'tr'
               ? 'Kart ölçümü güncel değil' : 'Board measurement stale'));
           assert.ok(powerRows.includes(language === 'tr'
-              ? 'Ayar doğrulama: reddedildi' : 'Setting verification: rejected'));
+              ? 'Ayar doğrulaması: reddedildi' : 'Setting verification: rejected'));
           for (let csq = 0; csq <= 31; csq++) {
             const board = run(`renderBoard({GsmSig: ${csq}})`);
             assert.ok(board.includes(run("t('fSignal')")));
@@ -871,7 +872,7 @@ async function checkPage(html, label) {
     assert.ok(rfRequests.includes('/status/rf-group'));
     rfWarning = 'backup_failed';
     await run("savePageData('rf',{inUse:[true]})");
-    assert.ok(notices.at(-1).textContent.includes('yedek kayıt başarısız'));
+    assert.ok(notices.at(-1).textContent.includes('yedek kopyaya yazılamadı'));
     rfWarning = undefined;
     const timedWait = run("buildRfGroupStatus({State:'idle',BatchState:'running',InventoryPending:true,WaitReason:'storage',WaitTotalMs:125000,WaitReasonMs:7000})");
     assert.ok(timedWait.includes('125 s'));
@@ -879,10 +880,10 @@ async function checkPage(html, label) {
     assert.ok(!timedWait.includes('rfWait_storage'));
     assert.equal(run("buildRfGroupStatus({State:'idle',BatchState:'running',InventoryPending:true,WaitReason:'storage',WaitTotalMs:125000,WaitReasonMs:7000})"),timedWait);
     const inventoryProgress = run("buildRfGroupStatus({State:'idle',BatchState:'running',InventoryPending:true})");
-    assert.ok(inventoryProgress.includes('Eski kayıtlar boşaltılıyor'));
+    assert.ok(inventoryProgress.includes('Eski kayıtlar boşaltılıp envanter güncelleniyor'));
     assert.equal(run("rfCanAbort({BatchState:'running',InventoryPending:true})"), false);
     const storageStopped = run("buildRfGroupStatus({State:'idle',BatchState:'stopped',StopReason:'storage'})");
-    assert.ok(storageStopped.includes('RF uygulaması başlamadı'));
+    assert.ok(storageStopped.includes('RF uygulaması başlatılmadı'));
     const rfHtml = run('renderRf(pageCache.rf)');
     assert.match(rfHtml, /id="rf-HatID-0"[^>]*min="0"[^>]*max="4"/);
     assert.ok(!rfHtml.includes('rf-apply-group'));
@@ -923,8 +924,8 @@ async function checkPage(html, label) {
     const stopped = run("buildRfGroupStatus({State:'idle',BatchState:'stopped',Targets:1,BatchLine:1,GroupStarted:false,StopReason:'start_rejected'})");
     assert.ok(stopped.includes('Faz cihazı atamalarını'));
     const partial = run("buildRfGroupStatus({State:'failed',HasReport:true,MHState:4,Reason:6})");
-    assert.ok(partial.includes('Kısmi uygulama'));
-    assert.ok(partial.includes('otomatik tekrar yapılmaz'));
+    assert.ok(partial.includes('Ayarlar kısmen uygulandı'));
+    assert.ok(partial.includes('Otomatik tekrar yapılmaz'));
     const badAdc = run('renderBoard({ADCValid:0,ADCSampleAgeMs:4294967295,"3V3":65535,"3V8":65535,"5V":65535,TDIE:-128})');
     assert.ok(!badAdc.includes('65535'), 'failed ADC rails must not appear as voltages');
     assert.ok(!badAdc.includes('4294967295'), 'unknown ADC age must not appear as real age');

@@ -56,6 +56,7 @@ function tf(k,n){return t(k).replace('{n}',n)}
     for (const page of ['index', 'fw_update']) {
         const source = fs.readFileSync(path.join(root,
             'web-page/' + page + '.html'), 'utf8');
+        assert.doesNotMatch(source, /bolatex/i, 'web text must not refer to the supplier');
         if (page === 'index') {
             const texts = JSON.parse(dictionary(source));
             assert.deepEqual(Object.keys(texts.en), Object.keys(texts.tr),

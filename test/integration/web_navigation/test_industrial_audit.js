@@ -59,6 +59,39 @@ function fixture(html) {
 }
 
 const cases = [
+    ['RF advanced protection fields have translated labels, help and named options', async f => {
+        const fields = ['IsSafety', 'ThresholdMs', 'TMemDeadSec', 'InrushTimerMs', 'InrushMultiplier',
+            'SyncTripDelayMs', 'TripPulseDurationMs', 'TripMode', 'Inrush100HzRatio', 'ClpEnabled',
+            'ClpMultiplier', 'ClpDurationMs', 'VtripTarget'];
+        for (const language of ['tr', 'en']) {
+            f.run(`LNG='${language}'`);
+            const html = f.run('renderRf({TripMode:[1],ClpEnabled:[0],IsSafety:[0.2]})');
+            const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+            assert.equal(new Set(ids).size, ids.length);
+            for (const key of fields) {
+                const label = f.run(`t('rf${key}')`);
+                const help = f.run(`t('rf${key}Help')`);
+                assert.notEqual(label, 'rf' + key);
+                assert.notEqual(help, 'rf' + key + 'Help');
+                assert.ok(label.trim().length > 0 && help.trim().length > 0);
+                for (let row = 0; row < 7; row++) {
+                    const id = `rf-${key}-${row}`;
+                    assert.ok(html.includes(`<label for="${id}">${label}`), id + ' label');
+                    assert.ok(html.includes(`aria-describedby="${id}-help"`), id + ' accessible help');
+                    assert.ok(html.includes(`id="${id}-help">${help}</p>`), id + ' visible help');
+                }
+            }
+            assert.match(html, /id="rf-IsSafety-0"[^>]*value="0.2"[^>]*min="0.1"[^>]*max="0.3"[^>]*step="any"/);
+            for (const [key, selected] of [['TripMode', 1], ['ClpEnabled', 0]]) {
+                const select = html.match(new RegExp(`<select[^>]*id="rf-${key}-0"[^>]*>([\\s\\S]*?)</select>`))[1];
+                assert.match(select, new RegExp(`value="${selected}" selected`));
+                assert.match(select, /value="0"[^>]*>0 - [^<]+</);
+                assert.match(select, /value="1"[^>]*>1 - [^<]+</);
+                f.document.getElementById(`rf-${key}-0`).value = String(selected);
+                assert.equal(f.run(`extractPage('rf').${key}[0]`), selected);
+            }
+        }
+    }],
     ['system logs count, explicit range and actual short pages', async f => {
         const lines=Array.from({length:237},(_,i)=>'#'+(i+1)+' event');
         const calls=[];
@@ -167,7 +200,7 @@ const cases = [
     ['IEC104 zero interval help matches disabled periodic sending', async f => {
         for (const [language, expected] of [
             ['en', '0 disables periodic sending'],
-            ['tr', '0 degeri periyodik gonderimi kapatir']]) {
+            ['tr', '0 yaparsaniz periyodik gonderim kapanir']]) {
             f.run(`LNG='${language}'`);
             const help = f.run("t('iecSboHelp')")
                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '')

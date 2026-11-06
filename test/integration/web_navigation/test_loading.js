@@ -103,8 +103,8 @@ async function until(predicate) {
 
 async function check(html, label) {
     const payload = resource('index');
-    assert.ok(payload.length <= 48 * 1024,
-        `index gzip is ${payload.length} bytes; loader and cache limit is 48 KiB`);
+    assert.ok(payload.length <= 64 * 1024,
+        `index gzip is ${payload.length} bytes; loader and cache limit is 64 KiB`);
     const expected = zlib.gunzipSync(payload).toString('utf8');
     assert.ok(!/Downloading|Ana sayfa|Home|Uygulama indiriliyor/.test(html));
     const idle = start(html, {autoSubmit: false});
@@ -182,6 +182,7 @@ async function check(html, label) {
     const failedCases = [
         {status: 401}, {status: 503}, {networkError: true}, {unsupported: true},
         {headers: {}}, {headers: {'Content-Length': '1.5'}},
+        {headers: {'Content-Length': String(64 * 1024 + 1)}},
         {headers: {'Content-Length': '999999'}},
         {headers: {'Content-Length': String(payload.length),
                    'Content-Encoding': 'gzip'}}
@@ -248,7 +249,7 @@ async function check(html, label) {
         assert.equal(failed.timers.size, 0);
     }
     console.log('PASS:', label,
-        '- real byte progress, native gzip, exact HTML, login gate, session handoff, duplicate submit, cache revalidation across logins, storage limits, 22 failure paths');
+        '- real byte progress, native gzip, exact HTML, login gate, session handoff, duplicate submit, cache revalidation across logins, storage limits, 23 failure paths');
 }
 
 (async () => {

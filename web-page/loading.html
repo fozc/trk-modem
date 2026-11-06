@@ -31,6 +31,7 @@
 (function(){
   const element=id=>document.getElementById(id);
   const cacheKey='tsb23.pageCache';
+  const maxPageBytes=64*1024;
   const validTag=tag=>/^"[a-f0-9]{64}"$/.test(tag);
   element('login').onsubmit=async event=>{
     event.preventDefault();
@@ -50,7 +51,7 @@
       const login=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password}),signal:controller.signal});
       const session=await login.json();
       if(!login.ok||session.success!==true){
-        failureMessage=session.error==='Invalid credentials'?'Kullanıcı adı veya şifre yanlış.':session.error==='Too many attempts, try again later'?'Çok fazla deneme yapıldı. Bir süre sonra tekrar deneyin.':'Giriş yapılamadı. Tekrar deneyin.';
+        failureMessage=session.error==='Invalid credentials'?'Kullanıcı adı veya şifre yanlış.':session.error==='Too many attempts, try again later'?'Çok fazla giriş denemesi yapıldı. Bir süre bekleyip yeniden deneyin.':'Giriş yapılamadı. Tekrar deneyin.';
         throw new Error('login');
       }
       if(!/^[a-f0-9]{32}$/i.test(session.token)||(session.role!=='admin'&&session.role!=='user'))throw new Error('Giriş yanıtı geçersiz.');
@@ -65,9 +66,9 @@
       let cached;
       try{
         const saved=JSON.parse(localStorage.getItem(cacheKey));
-        if(saved&&validTag(saved.etag)&&typeof saved.data==='string'&&saved.data.length<=65536){
+        if(saved&&validTag(saved.etag)&&typeof saved.data==='string'&&saved.data.length<=4*Math.ceil(maxPageBytes/3)){
           const data=atob(saved.data);
-          if(data.length>0&&data.length<=48*1024)cached={etag:saved.etag,data};
+          if(data.length>0&&data.length<=maxPageBytes)cached={etag:saved.etag,data};
         }
       }catch(error){}
       const headers=cached?{'If-None-Match':cached.etag}:{};
@@ -82,11 +83,11 @@
       }else{
       if(!response.ok||!response.body)throw new Error('Sayfa yüklenemedi. Tekrar deneyin.');
       const length=response.headers.get('Content-Length'),total=Number(length);
-      if(!/^[1-9][0-9]*$/.test(length)||!Number.isSafeInteger(total)||total>48*1024||response.headers.get('Content-Encoding'))throw new Error('Sayfa verisi geçersiz.');
+      if(!/^[1-9][0-9]*$/.test(length)||!Number.isSafeInteger(total)||total>maxPageBytes||response.headers.get('Content-Encoding'))throw new Error('Sayfa verisi geçersiz.');
       const reader=response.body.getReader();
       let received=0;
       element('progress').max=total;
-      element('amount').textContent=`0.0 / ${(total/1000).toFixed(1)} KB — %0`;
+      element('amount').textContent=`0.0 / ${(total/1000).toFixed(1)} KB - %0`;
       for(;;){
         const {done,value}=await reader.read();
         if(done)break;
@@ -94,7 +95,7 @@
         if(received>total)throw new Error('Sayfa verisi geçersiz.');
         chunks.push(value);
         element('progress').value=received;
-        element('amount').textContent=`${(received/1000).toFixed(1)} / ${(total/1000).toFixed(1)} KB — %${Math.floor(received*100/total)}`;
+        element('amount').textContent=`${(received/1000).toFixed(1)} / ${(total/1000).toFixed(1)} KB - %${Math.floor(received*100/total)}`;
         resetTimeout();
       }
       clearTimeout(timer);

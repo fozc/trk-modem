@@ -119,9 +119,10 @@ const unknown=render({Feeder:1,Uncertain:true,Missing120:1,RetryUsed:false});
 if(!unknown.includes('Outcome uncertain; automatic retry stopped.'))throw Error(unknown);
 if(unknown.includes('One extra refresh pending.'))throw Error(unknown);
 const exhausted=render({Feeder:1,Missing120:1,RetryUsed:true});
-if(!exhausted.includes('contact Bolatex'))throw Error(exhausted);
+if(!exhausted.includes('Extra refresh used; maintenance required.'))throw Error(exhausted);
 const degraded=c.buildRfMonitorTable({Phases:[],Maintenance:{EventStoreDegraded:true}});
-if(!degraded.includes('event retrieval is unavailable. Contact Bolatex.'))throw Error(degraded);
+if(!degraded.includes('event retrieval is unavailable. Maintenance is required.'))throw Error(degraded);
+if(/bolatex/i.test(exhausted+degraded))throw Error('Unexpected supplier reference');
 """
         subprocess.run(["node", "-e", checker], input=json.dumps(function),
                        encoding="utf-8", capture_output=True, check=True)

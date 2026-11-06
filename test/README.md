@@ -2899,6 +2899,10 @@ ETag'i sıkıştırma türü ve gerçek içerikten SHA-256 ile üretilir. Paket
 `cache: no-store` kullanarak otomatik tarayıcı cache'ini devreye almaz.
 304 yanıtında saklanan ETag ile yanıt ETag'i eşleşmelidir.
 
+Yükleyici, en çok 64 KiB sıkıştırılmış sayfa kabul eder. Base64 önbellek
+sınırı aynı boyuttan hesaplanmalıdır. Bu sınır tarayıcıya aittir; STM32
+HTTP kuyruğunu büyütmez. Sabit sayfa mevcut Flash streaming yolundan gönderilir.
+
 304 sonrasında “Önbellekten açılıyor” gösterilir; ağdan alınmamış veri
 indirilmiş gibi sayılmaz. Gzip yine açılıp doğrulanmalıdır; bozuk cached
 gzip silinir ve hata bildirilir. Saklama alanı kapalı/doluysa veya kayıt
@@ -2908,11 +2912,14 @@ sayfa otomatik açılmaz; uygulama kaydı çevrimdışı giriş sağlamaz.
 **Doğrulama:** `web_navigation/test_loading.js`, kaynak ve gömülü
 script'in üretim girişini gerçek gzip/stream API'leriyle çalıştırır.
 Giriş öncesi sıfır istek, admin/user rolü, çift gönderimi önleme,
-şifreyi temizleme, token devri, gerçek bayt ilerlemesi ve 22 hata yolu
+şifreyi temizleme, token devri, gerçek bayt ilerlemesi ve 23 hata yolu
 kapsanır. `test_navigation.js`, doğrudan giriş ile bir kez tüketilen
 başarılı giriş devrini ve eşleşmeyen token davranışını sınar. Cache
 testleri farklı giriş token'larıyla 304, değişen ETag, bozuk gzip, hatalı
 304, kota ve depolama engelini kapsar.
+`test_industrial_audit.js`, RF gelişmiş koruma alanlarının TR/EN başlıklarını,
+görünür açıklamalarını ve açıklama bağlantılarını kaynak ve gömülü sayfada sınar.
+Açma modu ve CLP seçeneklerinin adları gösterilmeli; kaydedilen değerler 0/1 kalmalıdır.
 `web_server/test_http_transport_scenario.c`, gerçek router akışını modem
 sınırına kadar çalıştırır: ana adres küçük sayfayı sunmalı, oturumsuz
 paket 401 vermeli, oturumlu paket ve doğrudan HTML baytları korunmalıdır.

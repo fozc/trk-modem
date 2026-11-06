@@ -98,6 +98,6 @@ async function importConfigFile(page,input){
   try{
     if(file.size>65536)throw Error('File too large');
     const text=await file.text();stageConfigProfile(page,text);
-    toast(LNG==='tr'?'Dosya forma alındı. Cihaza uygulamak için Kaydet kullanın.':'Imported into the form. Use Save to apply to the device.','info');
+    toast(LNG==='tr'?'Dosyadaki ayarlar forma aktarıldı. Cihaza uygulamak için Kaydet’e basın.':'Imported into the form. Use Save to apply to the device.','info');
   }catch(error){toast(userError(error),'err')}
 }
