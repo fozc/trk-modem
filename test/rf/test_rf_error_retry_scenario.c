@@ -4597,4 +4597,18 @@ void test_r24_inventory_zone_boundaries_and_rejected_entries_preserve_valid_memb
     }
 }
 
+void test_r24_config_abort_busy_returns_immediately_without_another_abort(void)
+{
+    const uint8_t group_id = 1U;
+    TEST_ASSERT_TRUE(scp_send_command(SCP_TYPE_SET, RF_SCP_CMD_CFG_ABORT,
+        &group_id, 1U, 500U, 3U, command_done));
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_BUSY);
+    TEST_ASSERT_EQUAL_UINT32(1U, done_calls);
+    TEST_ASSERT_EQUAL_INT(SCP_CMD_ERR, done_result);
+    TEST_ASSERT_TRUE(scp_is_free());
+    fake_tick = 10000U;
+    scp_process(fake_tick);
+    TEST_ASSERT_EQUAL_UINT32(1U, transmit_calls);
+}
+
 /*** end of file ***/

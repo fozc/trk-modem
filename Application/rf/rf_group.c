@@ -411,7 +411,18 @@ static void command_done(scp_cmd_result_t result, const scp_packet_t *packet)
     }
     if (SCP_CMD_OK != result)
     {
-        group.status.state = RF_GROUP_UNCERTAIN;
+        if ((group.pending_command == RF_SCP_CMD_CFG_ABORT) && group.commit_sent &&
+            (result == SCP_CMD_ERR) && (packet != NULL) && (packet->data_len > 0U) &&
+            (packet->data[0] == RF_SCP_ERR_BUSY))
+        {
+            /* MH iptali reddetti; ayni grubun gercek sonucu beklenir. */
+            group.status.state = RF_GROUP_WAITING;
+            group.poll_ms = HAL_GetTick();
+        }
+        else
+        {
+            group.status.state = RF_GROUP_UNCERTAIN;
+        }
         return;
     }
     if (RF_GROUP_WRITING == state)
@@ -490,6 +501,10 @@ static bool send_request(uint8_t command)
 
 bool rf_group_can_abort(void)
 {
+    if (group.status.has_report && (group.status.report.state == 2U))
+    {
+        return false;
+    }
     if (!group.write_sent && !group.commit_sent &&
         ((RF_GROUP_CHECKING == group.status.state) ||
          (RF_GROUP_UNCERTAIN == group.status.state)))

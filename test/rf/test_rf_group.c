@@ -2091,4 +2091,73 @@ void test_cold_start_timeout_stays_unknown_until_explicit_status_and_does_not_re
     TEST_ASSERT_FALSE(rf_group_matches_config());
 }
 
+void test_r24_abort_busy_keeps_group_active_and_polls_until_applied(void)
+{
+    write_three_and_commit();
+    ack();
+    TEST_ASSERT_TRUE(rf_group_abort());
+    scp_packet_t busy = {.type = SCP_TYPE_ERROR, .data_len = 1U, .data = {RF_SCP_ERR_BUSY}};
+    reply(SCP_CMD_ERR, &busy);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_WAITING, status().state);
+    TEST_ASSERT_TRUE(rf_group_is_active());
+    const size_t before = request_count;
+    tick += 4999U;
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, request_count);
+    tick++;
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_HEX8(RF_SCP_CMD_CFG_STATUS_GET, requests[request_count - 1U].cmd);
+    rf_scp_message_t report = captured_report(3U);
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    ack();
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_APPLIED, status().state);
+}
+
+void test_r24_delivered_report_disables_abort_without_sending_a_command(void)
+{
+    write_three_and_commit();
+    ack();
+    rf_scp_message_t report = captured_report(3U);
+    report.body.config.state = 2U;
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    const size_t before = request_count;
+    TEST_ASSERT_FALSE(rf_group_can_abort());
+    TEST_ASSERT_FALSE(rf_group_abort());
+    TEST_ASSERT_EQUAL_size_t(before, request_count);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_WAITING, status().state);
+}
+
+void test_r24_terminal_result_before_abort_busy_is_preserved(void)
+{
+    write_three_and_commit();
+    ack();
+    TEST_ASSERT_TRUE(rf_group_abort());
+    rf_scp_message_t report = captured_report(3U);
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    scp_packet_t busy = {.type = SCP_TYPE_ERROR, .data_len = 1U, .data = {RF_SCP_ERR_BUSY}};
+    reply(SCP_CMD_ERR, &busy);
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_APPLIED, status().state);
+    const size_t before = request_count;
+    tick += 10000U;
+    rf_group_process(tick);
+    TEST_ASSERT_EQUAL_size_t(before, request_count);
+}
+
+void test_r24_abort_busy_then_partial_commit_is_failure_not_cancellation(void)
+{
+    write_three_and_commit();
+    ack();
+    TEST_ASSERT_TRUE(rf_group_abort());
+    scp_packet_t busy = {.type = SCP_TYPE_ERROR, .data_len = 1U, .data = {RF_SCP_ERR_BUSY}};
+    reply(SCP_CMD_ERR, &busy);
+    rf_scp_message_t report = captured_report(3U);
+    report.body.config.state = 4U;
+    report.body.config.reason = 6U;
+    report.body.config.member_bitmap = 4U;
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_FAILED, status().state);
+    TEST_ASSERT_EQUAL_UINT8(4U, status().report.member_bitmap);
+    TEST_ASSERT_EQUAL_UINT8(6U, status().report.reason);
+}
+
 /*** end of file ***/

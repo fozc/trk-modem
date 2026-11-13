@@ -404,6 +404,11 @@ void scp_process(uint32_t now_ms)
 
 static bool can_retry_error(const scp_packet_t *packet)
 {
+    if (packet->cmd == RF_SCP_CMD_CFG_ABORT)
+    {
+        /* R2.4 DELIVERED iptal edilmez; sonuc mevcut gruptan izlenir. */
+        return false;
+    }
     if ((cmd_ctx.last_req.cmd == RF_SCP_CMD_PWR_COMMAND) &&
         (cmd_ctx.last_req.data_len == 2U) && (cmd_ctx.last_req.data[0] == 0x05U))
     {
