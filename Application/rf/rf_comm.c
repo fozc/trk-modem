@@ -989,7 +989,8 @@ static void on_status_done(scp_cmd_result_t result,
                  * Only the delivered firmware identity proves SCP major.
                  */
                 if ((strcmp(status.fw_version, "022555bf") == 0) ||
-                    (strcmp(status.fw_version, "ac3e9c03") == 0))
+                    (strcmp(status.fw_version, "ac3e9c03") == 0) ||
+                    (strcmp(status.fw_version, "c733b3b4") == 0))
                 {
                     hub_major = RF_SCP_MAJOR_EXPECTED;
                     time_sync_boot = true;

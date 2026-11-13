@@ -4611,4 +4611,21 @@ void test_r24_config_abort_busy_returns_immediately_without_another_abort(void)
     TEST_ASSERT_EQUAL_UINT32(1U, transmit_calls);
 }
 
+void test_r24_status_without_boot_recovers_time_and_inventory_after_rtu_restart(void)
+{
+    hub_major = 0U;
+    hub_boot_received = false;
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_GET_STATUS, transmitted.cmd);
+    scp_packet_t response = make_response(SCP_TYPE_ACK, 25U);
+    (void)memcpy(&response.data[4], "c733b3b4", 9U);
+    inject_packet(&response);
+    TEST_ASSERT_EQUAL_UINT8(1U, rf_comm_get_hub_major());
+    rf_comm_periodic_jobs();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_TIME_SYNC, transmitted.cmd);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    complete_inventory();
+    TEST_ASSERT_TRUE(rf_inventory_is_loaded());
+}
+
 /*** end of file ***/
