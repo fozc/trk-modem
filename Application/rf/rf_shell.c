@@ -764,19 +764,22 @@ void rf_shell_init(void)
 {
     shell_register_command(&(shell_cmd_t){
         .cmd = "rf",
-        .desc = "RF hub islemleri\r\n"
+        .desc = "RF hub islemleri; rf help veya help rf\r\n"
                 "\trf disc                 - kesif kuyruguna test EUI ekle\r\n"
                 "\trf status               - hub ve hat ozet durumu\r\n"
                 "\trf reset                - MH reset pulse (100 ms, idle only)\r\n"
                 "\trf inv                  - envanter push baslat\r\n"
-                "\trf move [status]        - service relocation; admin start requires confirm-unused\r\n"
+                "\trf move [status]        - servis tasima durumunu goster\r\n"
+                "\trf move <line 1..7> <from 1..3> <to 1..3> confirm-unused\r\n"
+                "\t  Admin; ayni fider, hedef bos ve daha once kullanilmamis olmali\r\n"
+                "\trf move finish          - kanitlari denetleyip servis kapanisini yeniden dene (admin)\r\n"
                 "\trf time                 - saat esitleme iste\r\n"
                 "\trf epoch <1..4>         - epoch yenile (MH degisimi)\r\n"
                 "\trf live <fider> [faz]   - tam LIVE paketi (3 faz/tek faz)\r\n"
-                "\trf cfg-status <group_id> - MH config group status\r\n"
-                "\trf cfg-apply <line> <group_id> - apply stored config\r\n"
-                "\trf cfg-state            - local verified group result\r\n"
-                "\trf cfg-abort            - cancel active COMMIT group\r\n"
+                "\trf cfg-status <0..255>  - MH yapilandirma grubunu sorgula\r\n"
+                "\trf cfg-apply <line 1..7> <group_id 1..255> - kayitli ayarlari uygula\r\n"
+                "\trf cfg-state            - dogrulanmis yerel grup sonucu\r\n"
+                "\trf cfg-abort            - iptal iste; DELIVERED sonucu izlenir\r\n"
                 "\trf log [off|on|verbose] - RF log seviyesini goster/ayarla",
         .level = SHELL_LVL_USER,
         .func = rf_shell_command
