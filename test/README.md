@@ -3077,3 +3077,18 @@ sonuçlandırılamayan hassas alan kontrolüdür. AY EUI silme, reset
 kalıcılığı ve discovery düğmesinden geri atama da sınandı. Üç gerçek AY
 ile APPLIED kabulü açık kalır. Ayrıntılar ve kanıt sınırları
 [cihaz kabul raporunda](reports/2026-10-21-web-device-acceptance.md).
+
+### R2.4 servis taşımasında 145/1 kurtarması
+
+`test_rf_error_retry_scenario` servis girişinden 145/1 dalını doğrular.
+201 geldiyse 150 saniye, gelmediyse EPOCH ACK'inden 240 saniye dolmadan
+bakım reseti istenmez. Süre dolunca hedef konum için aynı MH açılışında
+görülmüş 145/1 varsa `rf move status` çıktısı `operator-reset-required` olur.
+Operatör önceki kartın enerjisiz olduğunu ve atamaları kontrol edip `rf reset`
+vermelidir. Bu dal kendiliğinden reset üretmez. Reset sonrasında doğru kimlikle
+120 ve yeni LIVE gelmeden servis işareti temizlenmez. RTU restart'ında kaybolan
+RAM kanıtı otomatik yeniden kurulmaz; kalıcı yarım işlem işareti korunur.
+
+Host testleri 150/240 saniye sınırlarını, tick taşmasını, yanlış bölge/kaynak/fazı,
+önceki 145/1 kaydını ve 120/LIVE olmadan tamamlanmama koşulunu sınar. Bunlar gerçek
+RF tekrar reddi veya fiziksel reset darbe süresi ölçümü değildir.

@@ -4628,4 +4628,97 @@ void test_r24_status_without_boot_recovers_time_and_inventory_after_rtu_restart(
     TEST_ASSERT_TRUE(rf_inventory_is_loaded());
 }
 
+void test_r24_move_replay_rejection_waits_150_seconds_then_operator_reset(void)
+{
+    start_service_move();
+    const rf_scp_event_t report = {.event = 201U, .zone = 1U, .feeder = 1U};
+    const rf_scp_event_t rejected = {.event = 145U, .zone = 1U, .feeder = 1U,
+        .phase = 3U, .fault_count = 1U};
+    rf_inventory_epoch_event(&report, false, fake_tick);
+    rf_inventory_epoch_event(&rejected, false, fake_tick);
+    const uint32_t before = transmit_calls;
+    fake_tick += 149999U;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_EVENTS, move_status.state);
+    fake_tick++;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_RESET, move_status.state);
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    TEST_ASSERT_TRUE(rf_inventory_service_pending());
+    bsp_rf_reset_Expect(true);
+    TEST_ASSERT_TRUE(rf_comm_reset_hub());
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_ASSIGNMENT, move_status.state);
+    fake_tick += 100U;
+    bsp_rf_reset_Expect(false);
+    rf_comm_periodic_jobs();
+    notify_boot(1U);
+    rf_comm_periodic_jobs();
+    deliver_response(SCP_TYPE_ACK, 0U);
+    complete_inventory();
+    rf_inventory_continue();
+    TEST_ASSERT_TRUE(rf_inventory_service_pending());
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_ASSIGNMENT, move_status.state);
+    rf_scp_event_t assignment = {.event = 120U, .zone = 1U, .feeder = 1U, .phase = 3U};
+    rf_inventory_epoch_event(&assignment, false, fake_tick);
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_ASSIGNMENT, move_status.state);
+    rf_inventory_epoch_event(&assignment, true, fake_tick);
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_LIVE, move_status.state);
+    rf_inventory_continue();
+    TEST_ASSERT_TRUE(rf_inventory_service_pending());
+    scp_packet_t live = captured_notification(RF_SCP_CMD_LIVE_DATA);
+    live.data[0] = 7U;
+    inject_packet(&live);
+    rf_inventory_continue();
+    TEST_ASSERT_FALSE(rf_inventory_service_pending());
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_COMPLETE, move_status.state);
+}
+
+void test_r24_move_without_201_uses_240_second_timeout_across_tick_wrap(void)
+{
+    fake_tick = UINT32_MAX - 1000U;
+    start_service_move();
+    const rf_scp_event_t rejected = {.event = 145U, .zone = 1U, .feeder = 1U,
+        .phase = 3U, .fault_count = 1U};
+    rf_inventory_epoch_event(&rejected, false, fake_tick);
+    fake_tick += 239999U;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_EVENTS, move_status.state);
+    fake_tick++;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_RESET, move_status.state);
+}
+
+void test_r24_move_ignores_foreign_replay_rejections_and_preserves_service_marker(void)
+{
+    start_service_move();
+    rf_scp_event_t rejected = {.event = 145U, .zone = 2U, .feeder = 1U,
+        .phase = 3U, .fault_count = 1U};
+    rf_inventory_epoch_event(&rejected, false, fake_tick);
+    rejected.zone = 1U;
+    rejected.src_eui_hash = 1U;
+    rf_inventory_epoch_event(&rejected, false, fake_tick);
+    rejected.src_eui_hash = 0U;
+    rejected.phase = 2U;
+    rf_inventory_epoch_event(&rejected, false, fake_tick);
+    fake_tick += 240000U;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_EVENTS, move_status.state);
+    TEST_ASSERT_TRUE(rf_inventory_service_pending());
+}
+
+void test_r24_replay_rejection_before_current_epoch_is_retained_for_the_hub_session(void)
+{
+    load_one_phase();
+    const rf_scp_event_t rejected = {.event = 145U, .zone = 1U, .feeder = 1U,
+        .phase = 3U, .fault_count = 1U};
+    rf_inventory_epoch_event(&rejected, false, fake_tick);
+    start_service_move();
+    fake_tick += 240000U;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_INT(RF_MOVE_WAIT_RESET, move_status.state);
+    char *args[] = {"rf", "move", "status"};
+    TEST_ASSERT_EQUAL_INT(0, rf_shell_command(3, args));
+    TEST_ASSERT_NOT_NULL(strstr(shell_output, "operator-reset-required"));
+}
+
 /*** end of file ***/

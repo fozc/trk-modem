@@ -91,7 +91,9 @@ typedef enum
     RF_MOVE_COMPLETE,
     RF_MOVE_INTERRUPTED,
     RF_MOVE_STORAGE_ERROR,
-    RF_MOVE_SAVE_FAILED
+    RF_MOVE_SAVE_FAILED,
+    RF_MOVE_WAIT_RESET,
+    RF_MOVE_WAIT_ASSIGNMENT
 } rf_move_state_t;
 
 typedef struct

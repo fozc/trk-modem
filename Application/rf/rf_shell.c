@@ -507,7 +507,8 @@ static int rf_shell_move(int argc, char **argv)
     {
 #ifndef DISABLE_SHELL_LOG
         static const char *const names[] = {"idle", "draining", "assigning", "epoch", "waiting-201-120",
-            "reset", "waiting-new-live", "complete", "interrupted", "storage-error", "final-save-failed"};
+            "reset", "waiting-new-live", "complete", "interrupted", "storage-error", "final-save-failed",
+            "operator-reset-required", "waiting-assignment-after-reset"};
         rf_move_status_t status;
         rf_inventory_move_status(&status);
         const size_t state = (size_t)status.state;
@@ -523,6 +524,10 @@ static int rf_shell_move(int argc, char **argv)
         if (status.state == RF_MOVE_SAVE_FAILED)
         {
             SHELL_LOG("Final save failed; admin may retry rf move finish while this RTU session retains proof.\r\n");
+        }
+        if (status.state == RF_MOVE_WAIT_RESET)
+        {
+            SHELL_LOG("145/1: Onceki kart enerjili kalmamalidir. Atamalari denetleyip rf reset verin.\r\n");
         }
 #endif
         return 0;

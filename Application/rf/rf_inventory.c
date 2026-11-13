@@ -105,6 +105,8 @@ static uint32_t uploaded_bindings;
  * evidence and the one-extra-EPOCH campaign remain in the existing monitor. */
 static rf_move_status_t move_status;
 static uint32_t move_epoch_ms;
+/* MH acilisi boyunca konum basina gorulen 145/1 bilgisi korunur. */
+static uint8_t replay_rejected_phases[4];
 static void continue_move(void);
 static bool persist_move_target(void);
 static void on_move_update_done(scp_cmd_result_t result, const scp_packet_t *response);
@@ -112,6 +114,15 @@ static void on_move_update_done(scp_cmd_result_t result, const scp_packet_t *res
 static void begin_upload(void);
 static bool send_update(void);
 static bool complete_inventory_save(void);
+
+static bool move_event_wait_elapsed(void)
+{
+    const size_t index = (size_t)pending_update.feeder - 1U;
+    const epoch_monitor_t *monitor = &epoch_monitors[index];
+    const uint32_t start = monitor->status.has_report ? monitor->report_ms : epoch_started_ms[index];
+    const uint32_t timeout = monitor->status.has_report ? 150000U : 240000U;
+    return (uint32_t)(HAL_GetTick() - start) >= timeout;
+}
 
 static void interrupt_epoch(size_t index)
 {
@@ -981,7 +992,11 @@ void rf_inventory_reset(void)
     {
         move_status.state = RF_MOVE_IDLE;
     }
-    else if (move_status.state != RF_MOVE_WAIT_LIVE)
+    else if (move_status.state == RF_MOVE_WAIT_RESET)
+    {
+        move_status.state = RF_MOVE_WAIT_ASSIGNMENT;
+    }
+    else if ((move_status.state != RF_MOVE_WAIT_LIVE) && (move_status.state != RF_MOVE_WAIT_ASSIGNMENT))
     {
         move_status.state = rf_inventory_service_pending() ? RF_MOVE_INTERRUPTED : RF_MOVE_IDLE;
     }
@@ -996,6 +1011,7 @@ void rf_inventory_reset(void)
     (void)memset(epoch_retry_pending, 0, sizeof(epoch_retry_pending));
     (void)memset(epoch_auth_pending, 0, sizeof(epoch_auth_pending));
     (void)memset(epoch_monitors, 0, sizeof(epoch_monitors));
+    (void)memset(replay_rejected_phases, 0, sizeof(replay_rejected_phases));
     epoch_for_replacement = false;
     (void)memset(bindings, 0, sizeof(bindings));
     inventory_status = RF_INVENTORY_IDLE;
@@ -1279,6 +1295,17 @@ void rf_inventory_epoch_event(const rf_scp_event_t *event, bool source_matches, 
     {
         return;
     }
+    if ((event->event == 145U) && (event->src_eui_hash == 0U) && (event->fault_count == 1U) &&
+        (event->phase >= 1U) && (event->phase <= 3U) && inventory_zone_set && (event->zone == inventory_zone))
+    {
+        replay_rejected_phases[event->feeder - 1U] |= (uint8_t)(1U << (event->phase - 1U));
+    }
+    if ((move_status.state == RF_MOVE_WAIT_ASSIGNMENT) && (event->event == 120U) && source_matches &&
+        (event->zone == pending_update.zone) && (event->feeder == pending_update.feeder) &&
+        (event->phase == pending_update.phase))
+    {
+        move_status.state = RF_MOVE_WAIT_LIVE;
+    }
     epoch_monitor_t *monitor = &epoch_monitors[event->feeder - 1U];
     if (!monitor->status.active)
     {
@@ -1378,6 +1405,12 @@ void rf_inventory_epoch_ring_empty(void)
         monitor->head_phases = 0U;
         if ((monitor->status.missing_phases != 0U) && !monitor->status.retry_used)
         {
+            if ((move_status.state == RF_MOVE_WAIT_EVENTS) && (pending_update.feeder == index + 1U) &&
+                (!move_event_wait_elapsed() ||
+                 ((replay_rejected_phases[index] & (1U << move_status.to_phase)) != 0U)))
+            {
+                continue;
+            }
             if (!epoch_retry_pending[index])
             {
                 CSLOG_WARN("[RF-INV] feeder=%u missing 120 mask=0x%02X; one extra epoch queued\r\n",
@@ -1712,6 +1745,13 @@ static void continue_move(void)
             {
                 move_epoch_ms = epoch_started_ms[pending_update.feeder - 1U];
                 move_status.state = RF_MOVE_RESET;
+            }
+            else if (move_event_wait_elapsed() &&
+                ((replay_rejected_phases[pending_update.feeder - 1U] & (1U << move_status.to_phase)) != 0U))
+            {
+                move_epoch_ms = epoch_started_ms[pending_update.feeder - 1U];
+                move_status.state = RF_MOVE_WAIT_RESET;
+                CSLOG_WARN("[RF-INV] 145/1: eski karti enerjisiz birakin; atamalari denetleyip rf reset verin\r\n");
             }
             else
             {
