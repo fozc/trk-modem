@@ -1,3 +1,11 @@
+/*
+ * xscanf.h
+ *
+ *      Author: Fatih Ozcan
+ *              fatihozcan@gmail.com
+ *
+ * Uzunlugu sinirli formatli alan okuma arayuzu.
+ */
 /*-----------------------------------------------------------------------*/
 /* xscanf - Lightweight Safe Scanner for Embedded Systems                */
 /*-----------------------------------------------------------------------*/
@@ -17,8 +25,8 @@
 /  uint32_t hex;
 /  xscanf("0xABCD", 7, "0x%x", &hex);                // hex = 0xABCD
 /
-/  char buf[16];
-/  xscanf("Hello World", 12, "%16S", buf);           // buf = "Hello"
+/  char buf[17];
+/  xscanf("Hello World", 12, "%16S", buf);           // En az char[17] gerekir.
 /
 /  uint8_t ip[4];
 /  xscanf("192.168.1.100", 14, "%u8.%u8.%u8.%u8",    // IP parse
@@ -47,8 +55,8 @@
 /  %s32     10          -2147483648..   Full int32
 /  %x       8           0xFFFFFFFF      8 hex digits max
 /
-/  Return: Number of successfully parsed arguments, -1 on error
-/  Overflow: Value is capped at type max/min, error flag set
+/  Donus: Basarili alan sayisi; okuma hatalari hata kodundan denetlenmelidir.
+/  Sayisal tasma: Cikti korunur; OVERFLOW/UNDERFLOW bildirilir.
 /
 */
 
@@ -58,7 +66,7 @@
 /*  xscanf("42", 3, "%d", &i);                  i = 42
     xscanf("-100", 5, "%d", &i);                i = -100
     xscanf("255", 4, "%u8", &u8);               u8 = 255
-    xscanf("256", 4, "%u8", &u8);               u8 = 255 (overflow capped)
+    xscanf("256", 4, "%u8", &u8);               Hata; u8 korunur.
     xscanf("-128", 5, "%s8", &s8);              s8 = -128
     xscanf("65535", 6, "%u16", &u16);           u16 = 65535
     xscanf("-32768", 7, "%s16", &s16);          s16 = -32768
@@ -69,8 +77,8 @@
     xscanf("Hello", 6, "%16S", buf);            buf = "Hello"
     xscanf("Hi World", 9, "%16S", buf);         buf = "Hi" (no delimiter->stops at space)
     xscanf("Hi,World", 9, "%16S,", buf);        buf = "Hi" (delimiter is ',')
-    xscanf("Hi World", 9, "%10r", buf);          buf = "Hi World" (raw, width REQUIRED)
-    xscanf("Hello World!", 13, "%5r", buf);     buf = "Hello" (raw, 5 chars)
+    xscanf("Hi World", 9, "%10r", buf);          // En az char[11] gerekir.
+    xscanf("Hello World!", 13, "%5r", buf);     // En az char[6] gerekir.
     xscanf("Test", 5, "%r", buf);               ERROR - width required for %r
     xscanf("12345", 6, "%3d", &i);              i = 123 (width limit)
     xscanf("999", 4, "%2u8", &u8);              u8 = 99 (width limit)
@@ -95,15 +103,29 @@ extern "C" {
 /*-----------------------------------------------------------------------*/
 /* Version                                                               */
 /*-----------------------------------------------------------------------*/
-#define XSCANF_VERSION      "1.0.0"
-#define XSCANF_VERSION_NUM  0x010000
+#define XSCANF_VERSION      "1.1.0"
+#define XSCANF_VERSION_NUM  0x010100
 
 /*-----------------------------------------------------------------------*/
 /* Configuration                                                         */
 /*-----------------------------------------------------------------------*/
 #ifndef XSCANF_MAX_WIDTH
-#define XSCANF_MAX_WIDTH    16      /* Default max field width for %S */
+#define XSCANF_MAX_WIDTH    16      /* %S icin varsayilan karakter siniri. */
 #endif
+
+#ifndef XSCANF_ABSOLUTE_MAX_WIDTH
+#define XSCANF_ABSOLUTE_MAX_WIDTH 1024U /* Format genisliginin ust siniri. */
+#endif
+
+/* String tampon sozlesmesi:
+ * %nS ve %nr icin n, en fazla okunacak karakter sayisidir.
+ * Cagiran, NUL dahil en az n + 1 baytlik cikti tamponu saglamalidir.
+ * Varargs arayuzu gercek tampon kapasitesini belirleyemez.
+ * Kirpilan %S, NUL ile sonlandirilmis kismi ciktinin yaninda
+ * BUFFER_OVERFLOW bildirir ve basarili alan sayisina eklenmez.
+ * Girdi format tamamlanmadan biterse NO_MATCH bildirilir;
+ * onceki atamalar ve basarili alan sayisi korunur.
+ */
 
 /*-----------------------------------------------------------------------*/
 /* Error Codes                                                           */
@@ -139,7 +161,7 @@ typedef struct {
  * @param input_len Maximum length of input buffer (for safety)
  * @param format    Format string
  * @param ...       Output variables (pointers)
- * @return int      Number of successfully parsed arguments, -1 on error
+ * @return int      Basarili alan sayisi; NULL input/format icin -1.
  * 
  * Format Specifiers:
  *   %d      - signed int
@@ -152,15 +174,15 @@ typedef struct {
  *   %s32    - int32_t
  *   %x, %X  - hexadecimal (uint32_t)
  *   %c      - single character
- *   %[n]S   - string with max length n (default 16, stops at whitespace/delimiter)
- *   %[n]r   - raw string, width n is REQUIRED (reads all chars incl. whitespace)
+ *   %[n]S   - En fazla n karakter; cikti tamponu en az n + 1 bayt olmalidir.
+ *   %[n]r   - Raw string, genislik zorunludur; tampon en az n + 1 bayt olmalidir.
  *   %*      - skip (read but don't store)
  *   %%      - literal '%'
  * 
  * Width modifier:
  *   %5d     - read max 5 digits
  *   %8x     - read max 8 hex digits
- *   %16S    - read max 16 chars into string
+ *   %16S    - En fazla 16 karakter; cikti en az char[17] olmalidir.
  * 
  * Example:
  *   uint8_t rssi, ber;
@@ -176,7 +198,7 @@ int xscanf(const char *input, size_t input_len, const char *format, ...);
  * @param input_len Maximum length of input buffer
  * @param format    Format string
  * @param ...       Output variables
- * @return int      Number of successfully parsed arguments
+ * @return int      Basarili alan sayisi; hata icin result->error denetlenmelidir.
  */
 int xscanf_ex(xscanf_result_t *result, const char *input, size_t input_len, 
               const char *format, ...);
@@ -250,3 +272,5 @@ int xscanf_run_all_tests(void (*print_func)(const char *fmt, ...));
 #endif
 
 #endif /* XSCANF_H */
+
+/*** end of file ***/

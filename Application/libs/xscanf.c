@@ -1,7 +1,10 @@
-/*-----------------------------------------------------------------------*/
-/* xscanf - Lightweight Safe Scanner for Embedded Systems                *
+/*
+ * xscanf.c
+ *
  *      Author: Fatih Ozcan
  *              fatihozcan@gmail.com
+ *
+ * Uzunlugu sinirli girdiden formatli alan okuma.
  */
 /*-----------------------------------------------------------------------*/
 /* Copyright (c) 2024                                                     */
@@ -324,15 +327,29 @@ static const char* parse_char(const char *s, const char *end,
 /*-----------------------------------------------------------------------*/
 /* Internal: Parse width from format string                              */
 /*-----------------------------------------------------------------------*/
-static const char* parse_width(const char *fmt, int *width)
+static const char* parse_width(const char *fmt, int *width, xscanf_err_t *err)
 {
+    uint32_t value = 0U;
+
     *width = 0;
-    
+    *err = XSCANF_OK;
+
     while (xscanf_isdigit(*fmt)) {
-        *width = (*width * 10) + (*fmt - '0');
+        const uint32_t digit = (uint32_t)(*fmt - '0');
+        if ((value > ((uint32_t)XSCANF_ABSOLUTE_MAX_WIDTH / 10U)) ||
+            ((value == ((uint32_t)XSCANF_ABSOLUTE_MAX_WIDTH / 10U)) &&
+             (digit > ((uint32_t)XSCANF_ABSOLUTE_MAX_WIDTH % 10U)))) {
+            *err = XSCANF_ERR_INVALID_FORMAT;
+            while (xscanf_isdigit(*fmt)) {
+                fmt++;
+            }
+            return fmt;
+        }
+        value = (value * 10U) + digit;
         fmt++;
     }
-    
+
+    *width = (int)value;
     return fmt;
 }
 
@@ -377,9 +394,9 @@ int xscanf(const char *input, size_t input_len, const char *format, ...)
 static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_len,
                         const char *format, va_list args)
 {
-    const char *s = input;
-    const char *end = input + input_len;
-    const char *fmt = format;
+    const char *s = NULL;
+    const char *end = NULL;
+    const char *fmt = NULL;
     int count = 0;
     xscanf_err_t err = XSCANF_OK;
     
@@ -396,6 +413,10 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
         }
         return -1;
     }
+
+    s = input;
+    end = input + input_len;
+    fmt = format;
 
     /* Empty input check */
     if (input_len == 0 || *input == '\0') {
@@ -437,11 +458,16 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
             
             /* Width */
             int width = 0;
-            fmt = parse_width(fmt, &width);
+            fmt = parse_width(fmt, &width, &err);
+            if (err != XSCANF_OK) break;
             
             /* Type specifier */
+            if (*fmt == '\0') {
+                err = XSCANF_ERR_INVALID_FORMAT;
+                break;
+            }
             char type = *fmt++;
-            int subtype = 0;  /* Changed to int for numeric comparison */
+            int subtype = 0;
             
             /* Check for extended types (u8, s8, u16, s16, u32, s32) */
             if ((type == 'u' || type == 's') && xscanf_isdigit(*fmt)) {
@@ -461,7 +487,8 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                     s = parse_signed(s, end, &val, INT_MIN, INT_MAX, eff_width, &err);
                     if (err == XSCANF_OK && !skip) {
                         int *out = va_arg(args, int*);
-                        if (out) *out = (int)val;
+                        if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                        *out = (int)val;
                         count++;
                     } else if (skip && err == XSCANF_OK) {
                         /* Consume va_arg even when skipping */
@@ -477,7 +504,8 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                         s = parse_unsigned(s, end, &val, U8_MAX_VAL, eff_width, &err);
                         if (err == XSCANF_OK && !skip) {
                             uint8_t *out = va_arg(args, uint8_t*);
-                            if (out) *out = (uint8_t)val;
+                            if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                            *out = (uint8_t)val;
                             count++;
                         }
                     } else if (subtype == 16) {
@@ -487,7 +515,8 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                         s = parse_unsigned(s, end, &val, U16_MAX_VAL, eff_width, &err);
                         if (err == XSCANF_OK && !skip) {
                             uint16_t *out = va_arg(args, uint16_t*);
-                            if (out) *out = (uint16_t)val;
+                            if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                            *out = (uint16_t)val;
                             count++;
                         }
                     } else if (subtype == 32) {
@@ -497,19 +526,23 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                         s = parse_unsigned(s, end, &val, U32_MAX_VAL, eff_width, &err);
                         if (err == XSCANF_OK && !skip) {
                             uint32_t *out = va_arg(args, uint32_t*);
-                            if (out) *out = val;
+                            if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                            *out = val;
                             count++;
                         }
-                    } else {
+                    } else if (subtype == 0) {
                         /* unsigned int - max 10 digits, user width capped */
                         int eff_width = EFF_WIDTH(width, U32_MAX_DIGITS);
                         uint32_t val;
                         s = parse_unsigned(s, end, &val, UINT_MAX, eff_width, &err);
                         if (err == XSCANF_OK && !skip) {
                             unsigned int *out = va_arg(args, unsigned int*);
-                            if (out) *out = (unsigned int)val;
+                            if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                            *out = (unsigned int)val;
                             count++;
                         }
+                    } else {
+                        err = XSCANF_ERR_INVALID_FORMAT;
                     }
                     break;
                 }
@@ -522,7 +555,8 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                         s = parse_signed(s, end, &val, S8_MIN_VAL, S8_MAX_VAL, eff_width, &err);
                         if (err == XSCANF_OK && !skip) {
                             int8_t *out = va_arg(args, int8_t*);
-                            if (out) *out = (int8_t)val;
+                            if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                            *out = (int8_t)val;
                             count++;
                         }
                     } else if (subtype == 16) {
@@ -532,7 +566,8 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                         s = parse_signed(s, end, &val, S16_MIN_VAL, S16_MAX_VAL, eff_width, &err);
                         if (err == XSCANF_OK && !skip) {
                             int16_t *out = va_arg(args, int16_t*);
-                            if (out) *out = (int16_t)val;
+                            if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                            *out = (int16_t)val;
                             count++;
                         }
                     } else if (subtype == 32) {
@@ -542,7 +577,8 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                         s = parse_signed(s, end, &val, S32_MIN_VAL, S32_MAX_VAL, eff_width, &err);
                         if (err == XSCANF_OK && !skip) {
                             int32_t *out = va_arg(args, int32_t*);
-                            if (out) *out = val;
+                            if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                            *out = val;
                             count++;
                         }
                     } else {
@@ -562,7 +598,8 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                     s = parse_hex(s, end, &val, eff_width, &err);
                     if (err == XSCANF_OK && !skip) {
                         uint32_t *out = va_arg(args, uint32_t*);
-                        if (out) *out = val;
+                        if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                        *out = val;
                         count++;
                     }
                     break;
@@ -574,67 +611,82 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
                     s = parse_char(s, end, &val, &err);
                     if (err == XSCANF_OK && !skip) {
                         char *out = va_arg(args, char*);
-                        if (out) *out = val;
+                        if (out == NULL) { err = XSCANF_ERR_NULL_PTR; break; }
+                        *out = val;
                         count++;
                     }
                     break;
                 }
                 
                 case 'S': {
-                    /* String with length */
+                    /* width en fazla okunacak karakter sayisidir.
+                     * Cagiran en az width + 1 baytlik tampon saglamalidir. */
                     if (width == 0) {
-                        width = XSCANF_MAX_WIDTH;  /* Default max */
+                        width = XSCANF_MAX_WIDTH;
                     }
-                    
-                    /* Check for delimiter (next char in format) */
+
                     char delimiter = '\0';
                     if (*fmt != '\0' && !xscanf_isspace(*fmt) && *fmt != '%') {
                         delimiter = *fmt;
                     }
-                    
+
                     if (!skip) {
                         char *out = va_arg(args, char*);
-                        if (out) {
-                            s = parse_string(s, end, out, (size_t)(width + 1), delimiter, &err);
-                            if (err == XSCANF_OK || err == XSCANF_ERR_BUFFER_OVERFLOW) {
-                                /* Kesme: sigan kisim yazildi ve sayildi; err
-                                 * BUFFER_OVERFLOW olarak yayilir (Y10.3) -
-                                 * xscanf_get_last_error() ile ayirt edilir. */
-                                count++;
-                            }
+                        if (out == NULL) {
+                            err = XSCANF_ERR_NULL_PTR;
+                            break;
                         }
-                    } else {
-                        /* Skip string */
-                        char dummy[XSCANF_MAX_WIDTH + 1];
-                        s = parse_string(s, end, dummy, sizeof(dummy), delimiter, &err);
-                    }
-                    break;
-                }
-                
-                case 'r':
-                case 'R': {
-                    /* Raw string - read all characters including whitespace */
-                    /* Width is REQUIRED for %r - if not specified, do nothing */
-                    if (width == 0) {
-                        /* No width specified - skip this specifier, don't consume va_arg */
-                        err = XSCANF_ERR_INVALID_FORMAT;
-                        break;
-                    }
-                    
-                    if (!skip) {
-                        char *out = va_arg(args, char*);
-                        if (out) {
-                            s = parse_raw_string(s, end, out, (size_t)(width + 1), (size_t)width, &err);
+                        s = parse_string(s, end, out, (size_t)width + 1U, delimiter, &err);
+                        if (err == XSCANF_OK) {
                             count++;
                         }
                     } else {
-                        /* Skip raw string */
-                        char dummy[XSCANF_MAX_WIDTH + 1];
-                        s = parse_raw_string(s, end, dummy, sizeof(dummy), (size_t)width, &err);
+                        s = skip_whitespace(s, end);
+                        size_t consumed = 0U;
+                        const size_t max_chars = (size_t)width;
+                        while (s < end && *s != '\0' && consumed < max_chars) {
+                            if ((delimiter != '\0' && *s == delimiter) ||
+                                (delimiter == '\0' && xscanf_isspace(*s))) {
+                                break;
+                            }
+                            s++;
+                            consumed++;
+                        }
                     }
                     break;
                 }
-                
+
+                case 'r':
+                case 'R': {
+                    /* width en fazla okunacak karakter sayisidir.
+                     * Cagiran en az width + 1 baytlik tampon saglamalidir. */
+                    if (width == 0) {
+                        err = XSCANF_ERR_INVALID_FORMAT;
+                        break;
+                    }
+
+                    if (!skip) {
+                        char *out = va_arg(args, char*);
+                        if (out == NULL) {
+                            err = XSCANF_ERR_NULL_PTR;
+                            break;
+                        }
+                        s = parse_raw_string(s, end, out, (size_t)width + 1U,
+                                             (size_t)width, &err);
+                        if (err == XSCANF_OK) {
+                            count++;
+                        }
+                    } else {
+                        size_t consumed = 0U;
+                        const size_t max_chars = (size_t)width;
+                        while (s < end && *s != '\0' && consumed < max_chars) {
+                            s++;
+                            consumed++;
+                        }
+                    }
+                    break;
+                }
+
                 default:
                     err = XSCANF_ERR_INVALID_FORMAT;
                     break;
@@ -651,6 +703,15 @@ static int xscanf_impl(xscanf_result_t *result, const char *input, size_t input_
         }
     }
     
+    if (err == XSCANF_OK) {
+        while (xscanf_isspace(*fmt)) {
+            fmt++;
+        }
+        if (*fmt != '\0') {
+            err = XSCANF_ERR_NO_MATCH;
+        }
+    }
+
     /* Store result */
     local_result.count = count;
     local_result.error = err;
@@ -898,7 +959,8 @@ int xscanf_run_all_tests(void (*print_func)(const char *fmt, ...))
     {
         char buf[8] = {0};
         int ret = xscanf("VeryLongString", 15, "%7S", buf);
-        XSCANF_TEST("String truncation", ret == 1 && strlen(buf) == 7);
+        XSCANF_TEST("String width limit", ret == 0 && strcmp(buf, "VeryLon") == 0 &&
+                    xscanf_get_last_error() == XSCANF_ERR_BUFFER_OVERFLOW);
     }
     
     {

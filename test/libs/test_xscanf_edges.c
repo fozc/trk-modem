@@ -106,12 +106,10 @@ void test_char_conversion_reads_exact_char_and_stops_when_exhausted(void)
     TEST_ASSERT_EQUAL_CHAR(' ', first);
     TEST_ASSERT_EQUAL_INT(XSCANF_OK, xscanf_get_last_error());
 
-    /* Second %c has no byte left: parsing stops cleanly, the first
-     * assignment is kept and no error is raised (input exhaustion is
-     * not a mismatch). */
+    /* Ikinci %c icin veri yoktur; ilk atama korunur ve NO_MATCH bildirilir. */
     TEST_ASSERT_EQUAL_INT(1, xscanf(" ", 1U, "%c%c", &first, &second));
     TEST_ASSERT_EQUAL_CHAR(' ', first);
-    TEST_ASSERT_EQUAL_INT(XSCANF_OK, xscanf_get_last_error());
+    TEST_ASSERT_EQUAL_INT(XSCANF_ERR_NO_MATCH, xscanf_get_last_error());
     TEST_ASSERT_EQUAL_CHAR('\0', second);
 }
 
@@ -179,6 +177,67 @@ void test_scanner_float_format_is_explicitly_unsupported(void)
     TEST_ASSERT_EQUAL(0U, result.input_pos);
     const float expected = 73.0F;
     TEST_ASSERT_EQUAL_MEMORY(&expected, &value, sizeof(value));
+}
+
+void test_string_width_reserves_an_extra_byte_for_terminator(void)
+{
+    char buffer[17];
+    xscanf_result_t result;
+    const char input[] = "1234567890123456";
+
+    TEST_ASSERT_EQUAL_INT(1, xscanf_ex(&result, input, 16U, "%16S", buffer));
+    TEST_ASSERT_EQUAL_STRING(input, buffer);
+    TEST_ASSERT_EQUAL_CHAR('\0', buffer[16]);
+    TEST_ASSERT_EQUAL_INT(XSCANF_OK, result.error);
+    TEST_ASSERT_EQUAL(16U, result.input_pos);
+}
+
+void test_null_numeric_and_string_outputs_are_rejected(void)
+{
+    TEST_ASSERT_EQUAL_INT(0, xscanf("7", 1U, "%u32", (uint32_t *)NULL));
+    TEST_ASSERT_EQUAL_INT(XSCANF_ERR_NULL_PTR, xscanf_get_last_error());
+    TEST_ASSERT_EQUAL_INT(0, xscanf("abc", 3U, "%3S", (char *)NULL));
+    TEST_ASSERT_EQUAL_INT(XSCANF_ERR_NULL_PTR, xscanf_get_last_error());
+}
+
+void test_invalid_formats_preserve_destination(void)
+{
+    const char *formats[] = {"%u64", "%99999999999999999999u32", "%"};
+    for (size_t index = 0U; index < sizeof(formats) / sizeof(formats[0]); index++)
+    {
+        uint32_t value = 73U;
+        TEST_ASSERT_EQUAL_INT(0, xscanf("7", 1U, formats[index], &value));
+        TEST_ASSERT_EQUAL_INT(XSCANF_ERR_INVALID_FORMAT, xscanf_get_last_error());
+        TEST_ASSERT_EQUAL_UINT32(73U, value);
+    }
+}
+
+void test_long_skip_fields_leave_following_conversion_aligned(void)
+{
+    char input[103];
+    const char *formats[] = {"%*100S,%u32", "%*100r,%u32"};
+    memset(input, 'a', 100U);
+    memcpy(&input[100], ",7", 3U);
+    for (size_t index = 0U; index < sizeof(formats) / sizeof(formats[0]); index++)
+    {
+        uint32_t value = 73U;
+        xscanf_result_t result;
+        TEST_ASSERT_EQUAL_INT(1, xscanf_ex(&result, input, 102U, formats[index], &value));
+        TEST_ASSERT_EQUAL_UINT32(7U, value);
+        TEST_ASSERT_EQUAL_INT(XSCANF_OK, result.error);
+        TEST_ASSERT_EQUAL(102U, result.input_pos);
+    }
+}
+
+void test_missing_final_literal_reports_error_after_completed_assignment(void)
+{
+    uint32_t value = 73U;
+    xscanf_result_t result;
+    TEST_ASSERT_EQUAL_INT(1, xscanf_ex(&result, "12", 2U, "%u32,", &value));
+    TEST_ASSERT_EQUAL_UINT32(12U, value);
+    TEST_ASSERT_EQUAL_INT(1, result.count);
+    TEST_ASSERT_EQUAL_INT(XSCANF_ERR_NO_MATCH, result.error);
+    TEST_ASSERT_EQUAL(2U, result.input_pos);
 }
 
 /*** end of file ***/

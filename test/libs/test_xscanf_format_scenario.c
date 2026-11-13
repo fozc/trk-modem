@@ -5,9 +5,8 @@
  *   - bare "%s" (no size suffix) is rejected loudly with
  *     XSCANF_ERR_INVALID_FORMAT instead of silently doing nothing and
  *     shifting the va_arg order for later conversions
- *   - a truncated "%S" still assigns the fitting part and is counted,
- *     but reports XSCANF_ERR_BUFFER_OVERFLOW through
- *     xscanf_get_last_error() instead of pretending success
+ *   - Kirpilan "%S" sigan kismi yazar, basarili alan sayisina eklenmez
+ *     ve xscanf_get_last_error() ile XSCANF_ERR_BUFFER_OVERFLOW bildirir.
  *   - the production patterns (%u32 AT parsing, %S fits, %s32) are
  *     unaffected
  *
@@ -74,9 +73,9 @@ void test_S_truncation_reported(void)
     char buf[4] = {0};
     int ret = xscanf("hello", 5, "%3S", buf);
 
-    check((ret == 1) && (strcmp(buf, "hel") == 0) &&
+    check((ret == 0) && (strcmp(buf, "hel") == 0) &&
           (xscanf_get_last_error() == XSCANF_ERR_BUFFER_OVERFLOW),
-          "%S truncation: assigned and counted, but reported");
+          "%S truncation: partial output, not counted, error reported");
 }
 
 void test_u32_at_parse_regression(void)
