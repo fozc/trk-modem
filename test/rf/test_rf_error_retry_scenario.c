@@ -4721,4 +4721,66 @@ void test_r24_replay_rejection_before_current_epoch_is_retained_for_the_hub_sess
     TEST_ASSERT_NOT_NULL(strstr(shell_output, "operator-reset-required"));
 }
 
+void test_r24_card_replacement_refreshes_only_after_configuration_applied(void)
+{
+    load_one_phase();
+    const rf_inventory_entry_t replacement = {.zone = 1U, .feeder = 1U,
+        .phase = 1U, .eui64 = {0x22U}};
+    TEST_ASSERT_TRUE(start_update(&replacement, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    const uint32_t before = transmit_calls;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    rf_inventory_config_finished(1U, 6U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    rf_inventory_config_finished(1U, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_EPOCH_REFRESH, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(1U, transmitted.data[0]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    fake_tick += 90000U;
+    rf_inventory_config_finished(1U, 0U);
+    const uint32_t after = transmit_calls;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(after, transmit_calls);
+}
+
+void test_r24_deleted_then_replaced_card_keeps_failed_refresh_visible_without_retry_loop(void)
+{
+    load_one_phase();
+    rf_inventory_entry_t entry = {.zone = 1U, .feeder = 0U, .phase = 1U, .eui64 = {0x11U}};
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    entry.feeder = 1U;
+    entry.eui64[0] = 0x22U;
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_config_finished(1U, 0U);
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_EPOCH_REFRESH, transmitted.cmd);
+    deliver_response(SCP_TYPE_ERROR, RF_SCP_ERR_INVALID_PARAM);
+    const uint32_t before = transmit_calls;
+    rf_inventory_continue();
+    fake_tick += 240000U;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+    rf_epoch_status_t observation;
+    TEST_ASSERT_TRUE(rf_inventory_get_epoch_status(1U, &observation));
+    TEST_ASSERT_TRUE(observation.replacement_pending);
+}
+
+void test_r24_initial_or_unchanged_identity_does_not_queue_card_replacement_refresh(void)
+{
+    load_one_phase();
+    rf_inventory_entry_t entry;
+    TEST_ASSERT_TRUE(rf_inventory_get_binding(5U, &entry));
+    TEST_ASSERT_TRUE(start_update(&entry, command_done));
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_config_finished(1U, 0U);
+    const uint32_t before = transmit_calls;
+    rf_inventory_continue();
+    TEST_ASSERT_EQUAL_UINT32(before, transmit_calls);
+}
+
 /*** end of file ***/

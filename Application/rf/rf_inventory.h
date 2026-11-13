@@ -139,6 +139,7 @@ typedef struct
     bool has_report;
     bool retry_used;
     bool uncertain;
+    bool replacement_pending;
     uint8_t expected_phases;
     uint8_t report_phases;
     uint8_t received_phases;

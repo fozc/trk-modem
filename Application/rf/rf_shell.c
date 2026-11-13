@@ -174,14 +174,15 @@ static int rf_shell_status(int argc, char **argv)
     for (uint8_t feeder = 1U; feeder <= 4U; feeder++)
     {
         rf_epoch_status_t epoch;
-        if (rf_inventory_get_epoch_status(feeder, &epoch) && (epoch.expected_phases != 0U))
+        if (rf_inventory_get_epoch_status(feeder, &epoch) &&
+            ((epoch.expected_phases != 0U) || epoch.replacement_pending))
         {
             SHELL_LOG("EPOCH fider=%u active=%u 201=%u mask=0x%02X 120=0x%02X "
-                      "checked=0x%02X missing=0x%02X extra=%u uncertain=%u (diagnostic only)\r\n",
+                      "checked=0x%02X missing=0x%02X extra=%u uncertain=%u replacement=%u (diagnostic only)\r\n",
                       (unsigned)feeder, (unsigned)epoch.active, (unsigned)epoch.has_report,
                       (unsigned)epoch.report_phases, (unsigned)epoch.received_phases,
                       (unsigned)epoch.checked_phases, (unsigned)epoch.missing_phases,
-                      (unsigned)epoch.retry_used, (unsigned)epoch.uncertain);
+                      (unsigned)epoch.retry_used, (unsigned)epoch.uncertain, (unsigned)epoch.replacement_pending);
         }
     }
 

@@ -107,6 +107,14 @@ static rf_move_status_t move_status;
 static uint32_t move_epoch_ms;
 /* MH acilisi boyunca konum basina gorulen 145/1 bilgisi korunur. */
 static uint8_t replay_rejected_phases[4];
+typedef enum
+{
+    REPLACEMENT_NONE,
+    REPLACEMENT_WAIT_CONFIG,
+    REPLACEMENT_READY,
+    REPLACEMENT_REFRESHING
+} replacement_state_t;
+static replacement_state_t replacement_state[4];
 static void continue_move(void);
 static bool persist_move_target(void);
 static void on_move_update_done(scp_cmd_result_t result, const scp_packet_t *response);
@@ -937,6 +945,14 @@ static void continue_epoch_retry(void)
 {
     for (uint8_t feeder = 1U; 4U >= feeder; feeder++)
     {
+        if (replacement_state[feeder - 1U] == REPLACEMENT_READY)
+        {
+            if (rf_inventory_refresh_epoch(feeder, NULL))
+            {
+                replacement_state[feeder - 1U] = REPLACEMENT_REFRESHING;
+            }
+            return;
+        }
         if (epoch_auth_pending[feeder - 1U])
         {
             (void)rf_inventory_hub_replaced(feeder, NULL);
@@ -1012,6 +1028,7 @@ void rf_inventory_reset(void)
     (void)memset(epoch_auth_pending, 0, sizeof(epoch_auth_pending));
     (void)memset(epoch_monitors, 0, sizeof(epoch_monitors));
     (void)memset(replay_rejected_phases, 0, sizeof(replay_rejected_phases));
+    (void)memset(replacement_state, 0, sizeof(replacement_state));
     epoch_for_replacement = false;
     (void)memset(bindings, 0, sizeof(bindings));
     inventory_status = RF_INVENTORY_IDLE;
@@ -1087,6 +1104,10 @@ void rf_inventory_record_ack(const scp_packet_t *request)
             ((current->zone != body[0]) ||
              (0 != memcmp(current->eui64, &body[3], 8U))))
         {
+            if ((body[1] <= 4U) && !rf_inventory_service_pending())
+            {
+                replacement_state[body[1] - 1U] = REPLACEMENT_WAIT_CONFIG;
+            }
             rf_faults_reset_phase(body[1], body[2]);
         }
     }
@@ -1097,6 +1118,10 @@ void rf_inventory_record_ack(const scp_packet_t *request)
         {
             if (0 == memcmp(bindings[line][phase].eui64, &body[3], 8U))
             {
+                if ((body[1] == 0U) && (line < 4U) && !rf_inventory_service_pending())
+                {
+                    replacement_state[line] = REPLACEMENT_WAIT_CONFIG;
+                }
                 if ((body[1] != line + 1U) || (body[2] != phase + 1U))
                 {
                     interrupt_epoch(line);
@@ -1264,6 +1289,8 @@ bool rf_inventory_epoch_ready(uint8_t feeder)
         epoch_waiting[index] = false;
     }
     return !rf_inventory_service_pending() && !epoch_waiting[index] &&
+           (replacement_state[index] != REPLACEMENT_READY) &&
+           (replacement_state[index] != REPLACEMENT_REFRESHING) &&
            !epoch_auth_pending[index] && !epoch_retry_pending[index];
 }
 
@@ -1274,6 +1301,7 @@ bool rf_inventory_get_epoch_status(uint8_t feeder, rf_epoch_status_t *out)
         return false;
     }
     *out = epoch_monitors[feeder - 1U].status;
+    out->replacement_pending = replacement_state[feeder - 1U] != REPLACEMENT_NONE;
     return true;
 }
 
@@ -1426,6 +1454,15 @@ static void on_epoch_refresh_done(scp_cmd_result_t result, const scp_packet_t *p
     scp_cmd_done_fn_t done = epoch_done;
 
     epoch_done = NULL;
+    if (replacement_state[epoch_feeder - 1U] == REPLACEMENT_REFRESHING)
+    {
+        replacement_state[epoch_feeder - 1U] = (result == SCP_CMD_OK) ?
+                                             REPLACEMENT_NONE : REPLACEMENT_WAIT_CONFIG;
+        if (result != SCP_CMD_OK)
+        {
+            CSLOG_WARN("[RF-INV] Kart degisimi EPOCH tamamlanmadi; operator bakimi gerekli\r\n");
+        }
+    }
     if (SCP_CMD_OK == result)
     {
         const size_t index = (size_t)epoch_feeder - 1U;
@@ -1531,6 +1568,12 @@ void rf_inventory_note_auth_failure(uint8_t feeder)
 
 void rf_inventory_config_finished(uint8_t feeder, uint8_t reason)
 {
+    if ((feeder >= 1U) && (feeder <= 4U) && (reason == 0U) &&
+        (replacement_state[feeder - 1U] == REPLACEMENT_WAIT_CONFIG))
+    {
+        /* Yeni kart ancak APPLIED sonrasinda komsulara tanitilir. */
+        replacement_state[feeder - 1U] = REPLACEMENT_READY;
+    }
     if ((1U > feeder) || (4U < feeder))
     {
         return;

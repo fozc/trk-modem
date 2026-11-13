@@ -311,8 +311,8 @@ bool rf_group_handle_status(const rf_scp_message_t *message)
         (4U == message->body.config.state))
     {
         rf_inventory_config_finished(group.status.feeder,
-            (3U == message->body.config.state) ? 0U :
-                                                message->body.config.reason);
+            (RF_GROUP_APPLIED == group.status.state) ? 0U :
+            ((3U == message->body.config.state) ? 9U : message->body.config.reason));
     }
     return true;
 }
