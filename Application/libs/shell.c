@@ -314,9 +314,10 @@ int shell_command_executer(int argc, char *argv[])
     {
         if (strcmp((const char *)argv[0], p->cmd) == 0)
         {
-        	if(argc >= 2 && (!memcmp(argv[1], "help", 4) ||
-        			!memcmp(argv[1], "-h", 3) ||
-					!memcmp(argv[1], "?", 1)))
+            if ((argc >= 2) && ((strcmp(argv[1], "help") == 0) ||
+                                (strcmp(argv[1], "-h") == 0) ||
+                                (strcmp(argv[1], "--help") == 0) ||
+                                (strcmp(argv[1], "?") == 0)))
         	{
         		SHELL_LOG("%s\t:%s\r\n", p->cmd, p->desc);
         		return 0;
@@ -622,14 +623,29 @@ static int shell_reset(int argc, char *argv[])
 
 static int shell_help(int argc, char *argv[])
 {
-	(void)argc;
-	(void)argv;
+    if (argc > 2)
+    {
+        SHELL_LOG("Usage: help [command]\r\n");
+        return -1;
+    }
 
     const shell_cmd_t *p = &cmd_list[0];
     for (int i = 0; i < cmd_list_counter; i++)
     {
-    	SHELL_LOG("%s\t:%s\r\n", p->cmd, p->desc);
+        if ((argc == 1) || (strcmp(argv[1], p->cmd) == 0))
+        {
+            SHELL_LOG("%s\t:%s\r\n", p->cmd, p->desc);
+            if (argc == 2)
+            {
+                return 0;
+            }
+        }
         p++;
+    }
+    if (argc == 2)
+    {
+        SHELL_LOG("Unknown command: %s\r\n", argv[1]);
+        return -2;
     }
     return 0;
 }
@@ -831,8 +847,8 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 #ifdef SHELL_CMD_HELP_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "help",
 										   .desc = "List all registered commands\r\n"
-												   "\thelp             - print every command with its usage\r\n"
-												   "\t<cmd> help       - usage of one command (also -h, ?)",
+                                                   "\thelp [command]   - tum komutlar veya secilen komutun kullanimi\r\n"
+                                                   "\t<cmd> help       - komut yardimi (ayrica -h, --help, ?)",
 										   .level = SHELL_LVL_USER,
 										   .func = shell_help
 	});

@@ -157,4 +157,42 @@ void test_removing_last_command_allows_same_name_to_be_registered_again(void)
     TEST_ASSERT_EQUAL_UINT8(32U, cmd_list_counter);
 }
 
+void test_help_aliases_never_execute_the_command_handler(void)
+{
+    const shell_cmd_t command = make_command(0U);
+    const char *aliases[] = {"help", "-h", "--help", "?"};
+    TEST_ASSERT_EQUAL_INT(0, shell_register_command(&command));
+
+    for (size_t index = 0U; index < sizeof(aliases) / sizeof(aliases[0]); index++)
+    {
+        char *arguments[] = {command.cmd, (char *)aliases[index]};
+        TEST_ASSERT_EQUAL_INT(0, shell_command_executer(2, arguments));
+    }
+    TEST_ASSERT_EQUAL_UINT32(0U, handler_calls);
+}
+
+void test_help_prefixes_are_regular_arguments(void)
+{
+    const shell_cmd_t command = make_command(0U);
+    char *arguments[] = {command.cmd, "helpful"};
+    TEST_ASSERT_EQUAL_INT(0, shell_register_command(&command));
+    TEST_ASSERT_EQUAL_INT(17, shell_command_executer(2, arguments));
+    arguments[1] = "?value";
+    TEST_ASSERT_EQUAL_INT(17, shell_command_executer(2, arguments));
+    TEST_ASSERT_EQUAL_UINT32(2U, handler_calls);
+}
+
+void test_named_help_rejects_unknown_command_without_running_handlers(void)
+{
+    const shell_cmd_t command = make_command(0U);
+    const shell_cmd_t help = {.cmd = "help", .desc = "Help", .func = shell_help};
+    TEST_ASSERT_EQUAL_INT(0, shell_register_command(&command));
+    TEST_ASSERT_EQUAL_INT(1, shell_register_command(&help));
+    char *arguments[] = {"help", command.cmd};
+    TEST_ASSERT_EQUAL_INT(0, shell_command_executer(2, arguments));
+    arguments[1] = "missing";
+    TEST_ASSERT_EQUAL_INT(-2, shell_command_executer(2, arguments));
+    TEST_ASSERT_EQUAL_UINT32(0U, handler_calls);
+}
+
 /*** end of file ***/
