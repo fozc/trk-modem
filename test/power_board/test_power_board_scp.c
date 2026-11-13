@@ -18,6 +18,7 @@
 #include "mock_rtc.h"
 #include "mock_console_logger.h"
 #include "../fixtures/rf_scp_vectors.h"
+#include "../fixtures/rf_scp_r24_vectors.h"
 #include <string.h>
 
 TEST_SOURCE_FILE("rf_scp_codec.c")
@@ -689,6 +690,33 @@ void test_invalid_summary_does_not_establish_a_known_alarm_mask(void)
     message.type = SCP_TYPE_SET;
     TEST_ASSERT_TRUE(power_board_handle_summary(&message, 1U));
     TEST_ASSERT_EQUAL_UINT8(ELOG_POWER_SUMMARY_SNAPSHOT, log_info[1]);
+}
+
+void test_r24_delivered_alarm_masks_and_restart_notifications_reach_snapshot_and_log(void)
+{
+    size_t reports = 0U;
+    static const uint32_t expected_masks[] = {0x2000U, 0U, 0x2000U, 0U, 0U, 0x20U, 0U, 0x10U};
+    for (size_t index = 0U; index < sizeof(rf_scp_r24_vectors) / sizeof(rf_scp_r24_vectors[0]); index++)
+    {
+        const rf_scp_r24_vector_t *vector = &rf_scp_r24_vectors[index];
+        const uint8_t *frame = vector->logical;
+        if (frame[3] != RF_SCP_CMD_PWR_ALARM)
+        {
+            continue;
+        }
+        scp_packet_t packet = {.dst = frame[0], .src = frame[1], .type = frame[2],
+            .cmd = frame[3], .seq = frame[4], .data_len = frame[5]};
+        (void)memcpy(packet.data, &frame[7], packet.data_len);
+        rf_scp_message_t message;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &message));
+        TEST_ASSERT_TRUE(power_board_handle_alarm(&message, vector->elapsed_ms));
+        TEST_ASSERT_LESS_THAN_size_t(sizeof(expected_masks) / sizeof(expected_masks[0]), reports);
+        TEST_ASSERT_EQUAL_HEX32(expected_masks[reports], read_snapshot(vector->elapsed_ms).active_alarms);
+        TEST_ASSERT_EQUAL_UINT8(message.body.alarm.value1, log_info[7]);
+        reports++;
+    }
+    TEST_ASSERT_EQUAL_size_t(8U, reports);
+    TEST_ASSERT_EQUAL_HEX32(0x10U, read_snapshot(0U).active_alarms);
 }
 
 /*** end of file ***/

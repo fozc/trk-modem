@@ -12,6 +12,7 @@
 #include "rf_scp_codec.h"
 #include "scp_endian.h"
 #include "../fixtures/rf_scp_vectors.h"
+#include "../fixtures/rf_scp_r24_vectors.h"
 #include <math.h>
 #include <string.h>
 
@@ -1661,6 +1662,47 @@ void test_document_event_offsets_preserve_complete_record_and_independent_crc(vo
     TEST_ASSERT_EQUAL_UINT8(1U, event.clock_quality);
     TEST_ASSERT_EQUAL_HEX16(0x1787U, event.src_eui_hash);
     TEST_ASSERT_EQUAL_HEX16(0xB275U, event.crc);
+}
+
+void test_r24_delivered_event_batch_preserves_mh_and_ay_identity_and_subcodes(void)
+{
+    size_t batches = 0U;
+    static const uint8_t event_ids[] = {202U, 145U, 146U};
+    for (size_t index = 0U; index < sizeof(rf_scp_r24_vectors) / sizeof(rf_scp_r24_vectors[0]); index++)
+    {
+        const uint8_t *frame = rf_scp_r24_vectors[index].logical;
+        if ((frame[2] != SCP_TYPE_ACK) || (frame[3] != RF_SCP_CMD_LOG_READ_RANGE))
+        {
+            continue;
+        }
+        scp_packet_t packet = {.dst = frame[0], .src = frame[1], .type = frame[2],
+            .cmd = frame[3], .seq = frame[4], .data_len = frame[5]};
+        (void)memcpy(packet.data, &frame[7], packet.data_len);
+        rf_scp_message_t message;
+        TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &message));
+        TEST_ASSERT_EQUAL_UINT8(3U, message.body.log_batch.count);
+        for (size_t record = 0U; record < 3U; record++)
+        {
+            rf_scp_event_t event;
+            TEST_ASSERT_EQUAL_INT(RF_CMD_OK,
+                rf_scp_decode_event(&message.body.log_batch.records[record * 60U], 60U, &event));
+            TEST_ASSERT_EQUAL_UINT8(event_ids[record], event.event);
+            TEST_ASSERT_EQUAL_UINT8((record == 0U) ? 2U : 1U, event.fault_count);
+            if (record < 2U)
+            {
+                TEST_ASSERT_EQUAL_UINT16(0U, event.src_eui_hash);
+                TEST_ASSERT_EQUAL_UINT16(0U, event.boot_counter);
+                TEST_ASSERT_EQUAL_UINT32(0U, event.uptime_sec);
+            }
+            else
+            {
+                TEST_ASSERT_EQUAL_HEX16(0x1787U, event.src_eui_hash);
+                TEST_ASSERT_EQUAL_UINT16(24U, event.boot_counter);
+            }
+        }
+        batches++;
+    }
+    TEST_ASSERT_EQUAL_size_t(1U, batches);
 }
 
 /*** end of file ***/

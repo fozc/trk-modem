@@ -1173,4 +1173,56 @@ void test_rejected_battery_ack_and_unrelated_result_do_not_log_acceptance_or_cha
     TEST_ASSERT_EQUAL_UINT8(2U, battery_log_info[3]);
 }
 
+static void receive_r24_command_result(const uint8_t bytes[5])
+{
+    scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
+        .type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_PWR_RESULT, .data_len = 5U};
+    (void)memcpy(packet.data, bytes, 5U);
+    rf_scp_message_t message;
+    TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &message));
+    TEST_ASSERT_TRUE(power_board_handle_command_result(&message));
+}
+
+void test_r24_measured_service_cancel_sequence_keeps_unknown_outcome(void)
+{
+    /* SCP R2.4 bolum 5.6: islenmeyen komut ve izlemede restart ayni sonuclanir. */
+    static const uint8_t reports[][5] = {{1U, 7U, 255U, 1U, 0x10U},
+        {1U, 7U, 255U, 0U, 0x60U}, {1U, 7U, 255U, 0U, 0x40U}};
+    receive_r24_command_result(reports[0]);
+    receive_r24_command_result(reports[1]);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_MONITORING, control_status().command_state);
+    receive_r24_command_result(reports[2]);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_UNCERTAIN, control_status().command_state);
+    TEST_ASSERT_EQUAL_UINT8(7U, control_status().result_seq);
+    TEST_ASSERT_EQUAL_UINT8(255U, control_status().result);
+    TEST_ASSERT_EQUAL_size_t(0U, request_count);
+}
+
+void test_r24_measured_service_cancel_does_not_undo_command_applied_before_cancel(void)
+{
+    static const uint8_t reports[][5] = {{1U, 7U, 255U, 1U, 0x10U},
+        {1U, 7U, 255U, 0U, 0x60U}, {1U, 7U, 0U, 1U, 0x40U}};
+    for (size_t index = 0U; index < 3U; index++)
+    {
+        receive_r24_command_result(reports[index]);
+    }
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED, control_status().command_state);
+    TEST_ASSERT_EQUAL_UINT8(0U, control_status().result);
+    TEST_ASSERT_EQUAL_UINT8(7U, control_status().result_seq);
+}
+
+void test_r24_restart_retransmission_accepts_new_sequence_for_the_same_command(void)
+{
+    TEST_ASSERT_TRUE(power_board_battery_replaced());
+    command_ack(5U, 7U);
+    static const uint8_t reports[][5] = {{5U, 7U, 255U, 1U, 0x10U},
+        {5U, 8U, 0U, 2U, 0U}};
+    receive_r24_command_result(reports[0]);
+    receive_r24_command_result(reports[1]);
+    TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED, control_status().command_state);
+    TEST_ASSERT_EQUAL_UINT8(8U, control_status().result_seq);
+    TEST_ASSERT_EQUAL_UINT8(2U, control_status().transmissions);
+    TEST_ASSERT_EQUAL_size_t(1U, request_count);
+}
+
 /*** end of file ***/

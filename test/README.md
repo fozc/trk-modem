@@ -3092,3 +3092,14 @@ RAM kanıtı otomatik yeniden kurulmaz; kalıcı yarım işlem işareti korunur.
 Host testleri 150/240 saniye sınırlarını, tick taşmasını, yanlış bölge/kaynak/fazı,
 önceki 145/1 kaydını ve 120/LIVE olmadan tamamlanmama koşulunu sınar. Bunlar gerçek
 RF tekrar reddi veya fiziksel reset darbe süresi ölçümü değildir.
+
+### R2.4 teslim örnekleri
+
+`python test/scripts/generate_rf_scp_vectors.py --r24 --check` altı CSV'den
+üretilen 34 frame'i kontrol eder. Özgün kaynak EML'nin
+`BOLATeX_Teslim_R2.4_Ornek_Akis_Seti.zip` ekidir; açılmış CSV'ler aynı adla
+`doc/` altında tutulur. R2.4 seti hazırlanmış örnektir, cihaz kaydı değildir.
+`test_scp_r24_capture` gerçek parser/encoder ile her frame'i, UART bölünmelerini,
+bozuk CRC'yi ve yarım frame sonrası kurtarmayı sınar. RF codec testi 202/145/146
+kayıtlarının kimliğini ve alt kodlarını; güç kartı testleri E3 alarm maskelerini,
+restart bildirimlerini ve SCP §5.6'daki E7 iptal/restart sonuçlarını doğrular.
