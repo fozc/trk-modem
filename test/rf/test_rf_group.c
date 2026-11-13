@@ -2160,4 +2160,16 @@ void test_r24_abort_busy_then_partial_commit_is_failure_not_cancellation(void)
     TEST_ASSERT_EQUAL_UINT8(6U, status().report.reason);
 }
 
+void test_r24_crc_mismatch_does_not_authorize_post_applied_maintenance(void)
+{
+    write_three_and_commit();
+    ack();
+    rf_scp_message_t report = captured_report(3U);
+    report.body.config.config_crc ^= 1U;
+    rf_inventory_config_finished_StopIgnore();
+    rf_inventory_config_finished_Expect(status().feeder, 9U);
+    TEST_ASSERT_TRUE(rf_group_handle_status(&report));
+    TEST_ASSERT_EQUAL_INT(RF_GROUP_MISMATCH, status().state);
+}
+
 /*** end of file ***/

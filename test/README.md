@@ -3103,3 +3103,35 @@ RF tekrar reddi veya fiziksel reset darbe süresi ölçümü değildir.
 bozuk CRC'yi ve yarım frame sonrası kurtarmayı sınar. RF codec testi 202/145/146
 kayıtlarının kimliğini ve alt kodlarını; güç kartı testleri E3 alarm maskelerini,
 restart bildirimlerini ve SCP §5.6'daki E7 iptal/restart sonuçlarını doğrular.
+
+### R2.4 uyum kontrolleri
+
+| Üretim davranışı | Regresyon paketi |
+|---|---|
+| Envanterde bölge 1-7, geçersiz girdinin atlanması, bölgeden bağımsız silme | `test_rf_error_retry_scenario` |
+| DELIVERED iptali, BUSY sonrası sonuç yoklaması, APPLIED/FAILED yarışları ve CRC uyuşmazlığı | `test_rf_group`, `test_rf_error_retry_scenario` |
+| R2.4 MH çalışırken RTU restart'ı | `test_rf_error_retry_scenario`; cihazda `m6_bootless` |
+| 145/1 servis kurtarması ve kalıcı servis işareti | Yukarıdaki servis taşıma bölümü |
+| Kart değişiminden sonra yalnız doğrulanmış APPLIED ile EPOCH, başarısız EPOCH ve aynı kimlik | `test_rf_error_retry_scenario`, `test_rf_group` |
+| 146 bakım uyarısı, yanlış kimlik, ham saklama hatası, 143/8'in eski uyarıyı koruması | `test_rf_events`; webde `test_navigation.js` |
+| E8 SET'in yok sayılması, GET'in son geçerli ham veriyi koruması | `test_rf_error_retry_scenario`, `test_power_board_control` |
+| Teslim frame'leri, alarm maskeleri ve E7 dizileri | Yukarıdaki teslim örnekleri bölümü |
+
+Saat sistemi korunur: SCP TIME_SYNC, geçerli RTC takvimini olduğu gibi gönderir.
+NTP timezone davranışı bu uyum çalışmasında değiştirilmez. Cihazda `config show`
+takvimiyle, `rf time` komutunun verbose TX frame'indeki CP56 takvimi karşılaştırılır;
+CRC ve eşleşen ACK ayrıca kontrol edilir. Örneklerdeki UTC Unix nonce hedefiyle
+TIME_SYNC'in yerel takvim alanları karıştırılmamalıdır.
+
+Gerçek MH koşusunda `--console COM18 --fw c733b3b4 --require-device` kullanılır;
+port ve kart kimliği her koşuda yeniden doğrulanmalıdır. `m4_ring_consume` için
+60 saniyelik RTU olay yoklamasını kapsayacak gözlem süresi seçilmelidir
+(örnek: `--duration 80`). Gözlem başladıktan sonra AY konsolunda bir `test evt`
+verilir. Bu komut olay 137 üretir; `test trip` kullanılmaz. `m5_epoch_201 --epoch`
+ve `m6_bootless --reset-dut` cihaz durumunu değiştiren açık test seçenekleridir.
+
+İki AY bulunan masada üç üyeli APPLIED fiziksel olarak doğrulanamaz. Eksik üye
+kabulü yerel yapılandırma reddiyle sınanır; geçerli üç üyeli APPLIED, kısmi sonuç,
+CRC ve iptal yarışları host testlerinde doğrulanır. Gerçek üç üyeli kabul üçüncü
+AY gerektirir. Güç kartı sayaçlarını sıfırlayan `battery-replaced` komutu sırf test
+için gönderilmez; E5/E7/E8 GET okumaları mevcut ayar ve sayaçları korur.
