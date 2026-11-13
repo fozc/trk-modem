@@ -692,7 +692,11 @@ void iec104_elog_shell_init(void)
         .func = iec104_elog_shell_handler});
     (void)shell_register_command(&(shell_cmd_t){
         .cmd = "iec104log",
-        .desc = "IEC104 diagnostic log; read [N [skip]] (newest first)",
+        .desc = "IEC104 tani gunlugu; iec104elog ile ayni komut\r\n"
+                "\tiec104log read [N [skip]] - yeni kayittan baslayarak sayfa oku\r\n"
+                "\tiec104log dump [N|raw]   - kayitlari veya ham hex dokumu goster\r\n"
+                "\tiec104log clear          - tum kayitlari sil\r\n"
+                "\tiec104log info           - halka durumunu goster",
         .func = iec104_elog_shell_handler
     });
 }
