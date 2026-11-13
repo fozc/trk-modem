@@ -136,6 +136,7 @@ class IdentityTests(unittest.TestCase):
 #include "rf_hil_transport.h"
 #include "rf_inventory.h"
 #include "rf_events.h"
+#include "rf.h"
 #define SHELL_LOG(...) printf(__VA_ARGS__)
 static fw_info_t installed = {.size=100U, .fw_crc=0x12345678U,
                              .short_commit_hash="abcdef0"};
@@ -146,6 +147,7 @@ uint8_t rf_comm_get_hub_major(void) { return 1U; }
  * in rf_shell.c: every new call it makes needs a stub here. */
 rf_inventory_status_t rf_inventory_get_status(void) { return RF_INVENTORY_READY; }
 bool rf_events_storage_degraded(void) { return false; }
+void rf_get_service_status(rf_service_status_t *out) { *out = (rf_service_status_t){0}; }
 bool rf_inventory_get_epoch_status(uint8_t feeder, rf_epoch_status_t *out)
 { (void)feeder; *out = (rf_epoch_status_t){0}; return false; }
 void rf_inventory_get_wait(rf_inventory_wait_t *out)
@@ -165,6 +167,10 @@ static uint8_t rf_discovery_get_count(void) { return 0U; }
                             "-I" + str(root / "Application/rf"),
                             "-I" + str(root / "Application/app_ipc"),
                             "-I" + str(root / "Application/libs"),
+                            "-I" + str(root / "Application/libiec104"),
+                            "-I" + str(root / "Application/gsm"),
+                            "-I" + str(root / "Application/bsp"),
+                            "-I" + str(root / "Application/cslog"),
                             "-I" + str(root / "Application/libefw"),
                             "-I" + str(root / "Application/libscp"),
                             str(path), "-o", str(executable)],
