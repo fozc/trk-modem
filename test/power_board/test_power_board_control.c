@@ -553,7 +553,7 @@ void test_captured_command_reports_show_pending_then_parameter_rejection(void)
     TEST_ASSERT_TRUE(0U < result_count);
 }
 
-void test_raw_read_and_unsolicited_blocks_preserve_exact_96_bytes(void)
+void test_r24_raw_get_preserves_exact_bytes_and_unsolicited_set_is_ignored(void)
 {
     scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
         .type = SCP_TYPE_ACK, .cmd = RF_SCP_CMD_PWR_TELEMETRY,
@@ -571,9 +571,9 @@ void test_raw_read_and_unsolicited_blocks_preserve_exact_96_bytes(void)
     packet.data[95] = 0xA5U;
     rf_scp_message_t message;
     TEST_ASSERT_EQUAL_INT(RF_CMD_OK, rf_scp_decode_message(&packet, &message));
-    TEST_ASSERT_TRUE(power_board_handle_raw(&message));
-    out = control_status();
-    TEST_ASSERT_EQUAL_MEMORY(packet.data, out.raw, 96U);
+    TEST_ASSERT_FALSE(power_board_handle_raw(&message));
+    const power_board_control_status_t unchanged = control_status();
+    TEST_ASSERT_EQUAL_MEMORY(out.raw, unchanged.raw, 96U);
     TEST_ASSERT_TRUE(power_board_read_raw());
     reply(SCP_CMD_ERR, NULL);
     TEST_ASSERT_TRUE(control_status().has_raw);
@@ -665,7 +665,7 @@ void test_result_get_recovers_notify_and_restart_invalidates_raw_block(void)
     TEST_ASSERT_EQUAL_INT(POWER_COMMAND_APPLIED,
                           control_status().command_state);
     rf_scp_message_t raw = {.cmd = RF_SCP_CMD_PWR_TELEMETRY,
-                            .type = SCP_TYPE_SET};
+                            .type = SCP_TYPE_ACK};
     TEST_ASSERT_TRUE(power_board_handle_raw(&raw));
     power_board_control_hub_restarted();
     TEST_ASSERT_FALSE(control_status().has_raw);
@@ -932,7 +932,7 @@ void test_transport_refusal_preserves_idle_and_delayed_set_retries_once(void)
 void test_invalid_unsolicited_blocks_preserve_last_valid_reports(void)
 {
     rf_scp_message_t raw = {.cmd = RF_SCP_CMD_PWR_TELEMETRY,
-                            .type = SCP_TYPE_SET};
+                            .type = SCP_TYPE_ACK};
     (void)memset(raw.body.telemetry.bytes, 0xA5,
                  sizeof(raw.body.telemetry.bytes));
     TEST_ASSERT_TRUE(power_board_handle_raw(&raw));

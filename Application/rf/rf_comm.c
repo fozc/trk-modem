@@ -892,7 +892,7 @@ static void handle_proactive(const scp_packet_t *pkt)
             break;
 
         case RF_SCP_CMD_PWR_TELEMETRY:
-            (void)power_board_handle_raw(&message);
+            /* Laboratuvar imajinin istenmeden gonderdigi E8 yok sayilir. */
             break;
 
         default:    /* Validated notification without a consumer. */

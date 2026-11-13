@@ -401,7 +401,7 @@ bool power_board_handle_command_result(const rf_scp_message_t *message)
 bool power_board_handle_raw(const rf_scp_message_t *message)
 {
     if ((NULL == message) || (RF_SCP_CMD_PWR_TELEMETRY != message->cmd) ||
-        ((SCP_TYPE_SET != message->type) && (SCP_TYPE_ACK != message->type)))
+        (SCP_TYPE_ACK != message->type))
     {
         return false;
     }

@@ -2860,7 +2860,7 @@ void test_power_command_captures_reach_control_service_without_ack(void)
     TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
 }
 
-void test_raw_notification_is_dispatched_only_for_exact_96_byte_block(void)
+void test_r24_unsolicited_raw_notification_is_ignored_even_with_valid_length(void)
 {
     scp_packet_t packet = {.src = RF_SCP_ADDR_HUB, .dst = RF_SCP_ADDR_RTU,
         .type = SCP_TYPE_SET, .cmd = RF_SCP_CMD_PWR_TELEMETRY,
@@ -2874,10 +2874,10 @@ void test_raw_notification_is_dispatched_only_for_exact_96_byte_block(void)
         packet.data[index] = (uint8_t)index;
     }
     inject_packet(&packet);
-    TEST_ASSERT_EQUAL_UINT32(1U, control_notify_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, control_notify_calls);
     packet.data_len = 95U;
     inject_packet(&packet);
-    TEST_ASSERT_EQUAL_UINT32(1U, control_notify_calls);
+    TEST_ASSERT_EQUAL_UINT32(0U, control_notify_calls);
     TEST_ASSERT_EQUAL_UINT32(0U, transmit_calls);
 }
 
