@@ -410,6 +410,8 @@ void setUp(void)
     memset(extra_feeders, 0, sizeof(extra_feeders));
     feeder.in_use = true;
     feeder.config.fider_id = 1U;
+    feeder.config.zone_id = 1U;
+    second_feeder.config.zone_id = 1U;
     feeder.r_eui64[0] = 0x11U;
     time_sync_pending = false;
     time_sync_boot = false;
@@ -873,16 +875,16 @@ void test_normal_trip_announces_only_accepted_binding(void)
 {
     load_one_phase();
     scp_packet_t packet = captured_notification(RF_SCP_CMD_TRIP_NOTIFY);
-    packet.data[2] = 0U;
+    packet.data[2] = 1U;
     packet.data[3] = 5U;
     put_u32(&packet.data[6], 0U);
     console_level = LOG_LVL_NORMAL;
     inject_packet(&packet);
     TEST_ASSERT_NOT_NULL(strstr(console_output,
-        "[RF] TRIP: zone=0 feeder=1 phase=1 fault_count="));
+        "[RF] TRIP: zone=1 feeder=1 phase=1 fault_count="));
     TEST_ASSERT_NOT_NULL(strstr(console_output, "current=0.000 A"));
     const size_t previous_length = console_length;
-    packet.data[2] = 1U;
+    packet.data[2] = 2U;
     inject_packet(&packet);
     TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
     packet.data[2] = 0U;
@@ -891,7 +893,7 @@ void test_normal_trip_announces_only_accepted_binding(void)
     TEST_ASSERT_EQUAL_size_t(previous_length, console_length);
     rf_phase_data_t data;
     TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
-    TEST_ASSERT_EQUAL_UINT8(0U, data.trip.zone);
+    TEST_ASSERT_EQUAL_UINT8(1U, data.trip.zone);
 }
 
 void test_normal_anomaly_announces_active_idle_and_global_reset(void)
@@ -930,7 +932,7 @@ void test_notification_logging_off_preserves_processing(void)
     inject_packet(&packet);
     TEST_ASSERT_EQUAL_UINT8(1U, rf_discovery_get_count());
     packet = captured_notification(RF_SCP_CMD_TRIP_NOTIFY);
-    packet.data[2] = 0U;
+    packet.data[2] = 1U;
     packet.data[3] = 5U;
     inject_packet(&packet);
     rf_phase_data_t data;
@@ -1560,6 +1562,7 @@ void test_update_assignment_deletion_and_failed_ack_preserve_discovery(void)
     TEST_ASSERT_TRUE(rf_discovery_get(0U, &discovered));
     TEST_ASSERT_EQUAL_MEMORY(entry.eui64, discovered.eui64, 8U);
     TEST_ASSERT_FALSE(discovered.has_rssi);
+    entry.feeder = 1U;
     entry.zone = 2U;
     TEST_ASSERT_FALSE(start_update(&entry, command_done));
 }
@@ -1696,7 +1699,7 @@ void test_full_discovery_queue_refreshes_known_rssi(void)
 void test_mixed_zone_and_invalid_assignment_produce_partial_inventory(void)
 {
     second_feeder.in_use = true;
-    second_feeder.config.zone_id = 1U;
+    second_feeder.config.zone_id = 2U;
     second_feeder.config.fider_id = 2U;
     second_feeder.r_eui64[0] = 0x22U;
     rf_inventory_start();
@@ -1938,7 +1941,7 @@ void test_trip_instant_current_is_separate_from_live_current(void)
     put_u32(&live.data[11], 0x41280000U); /* Independent IEEE-754: 10.5 A. */
     inject_packet(&live);
     scp_packet_t trip = captured_notification(RF_SCP_CMD_TRIP_NOTIFY);
-    trip.data[2] = 0U;
+    trip.data[2] = 1U;
     trip.data[3] = 5U;
     put_u32(&trip.data[6], 0U);
     fake_tick = 30000U;
@@ -1951,10 +1954,10 @@ void test_trip_instant_current_is_separate_from_live_current(void)
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 10.5f, data.live.current_amps);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, data.trip.current_amps);
     TEST_ASSERT_EQUAL_UINT32(30000U, data.last_trip_ms);
-    trip.data[2] = 1U;
+    trip.data[2] = 2U;
     inject_packet(&trip);
     TEST_ASSERT_TRUE(rf_get_source_data(5U, fake_tick, &data));
-    TEST_ASSERT_EQUAL_UINT8(0U, data.trip.zone);
+    TEST_ASSERT_EQUAL_UINT8(1U, data.trip.zone);
 }
 
 void test_trip_failed_clears_only_with_advancing_uptime_in_same_boot(void)
@@ -2339,6 +2342,7 @@ void test_full_r1_monitor_response_fits_the_existing_http_buffer(void)
         }
         config->in_use = true;
         config->config.fider_id = (uint8_t)(line + 1U);
+        config->config.zone_id = 1U;
         config->r_eui64[0] = (uint8_t)(line * 3U + 1U);
         config->s_eui64[0] = (uint8_t)(line * 3U + 2U);
         config->t_eui64[0] = (uint8_t)(line * 3U + 3U);
@@ -2365,6 +2369,7 @@ void test_full_r1_monitor_response_fits_the_existing_http_buffer(void)
             rf_scp_trip_t trip = {0};
             trip.source = live.source;
             trip.event = 1U;
+            trip.zone = 1U;
             trip.current_amps = live.current_amps;
             trip.fault_count = 255U;
             TEST_ASSERT_TRUE(rf_handle_trip(&trip, UINT32_MAX));
@@ -3658,7 +3663,7 @@ void test_live_shell_feeder_shows_complete_payload_for_each_available_phase(void
 void test_live_shell_event_only_alarm_does_not_invent_live_payload(void)
 {
     load_one_phase();
-    TEST_ASSERT_TRUE(rf_open_trip_failure_alarm(0U, 1U, 1U));
+    TEST_ASSERT_TRUE(rf_open_trip_failure_alarm(1U, 1U, 1U));
     char *args[] = {"rf", "live", "1", "1"};
     TEST_ASSERT_EQUAL_INT(0, rf_shell_command(4, args));
     TEST_ASSERT_NOT_NULL(strstr(shell_output, "Acma alarmi        : 1"));
@@ -3816,26 +3821,17 @@ void test_initial_inventory_empty_slots_do_not_invalidate_new_fault_evidence(voi
     TEST_ASSERT_EQUAL_UINT32(1U, count.pending);
 }
 
-void test_new_device_in_legacy_zone_zero_is_rejected_but_deletion_is_allowed(void)
+void test_r24_deletion_ignores_zone_and_preserves_other_bindings(void)
 {
-    feeder.config.zone_id = 0U;
     load_one_phase();
-    rf_feeder_t candidate = feeder;
-    candidate.r_eui64[0] = 0x77U;
-    staged_feeder = &candidate;
-    const rf_inventory_journal_t before = journal;
-    TEST_ASSERT_FALSE(rf_inventory_prepare_save());
-    TEST_ASSERT_EQUAL_MEMORY(&before, &journal, sizeof(journal));
-    candidate.in_use = false;
-    TEST_ASSERT_FALSE(rf_inventory_prepare_save());
-    TEST_ASSERT_EQUAL_MEMORY(&before, &journal, sizeof(journal));
-    candidate = feeder;
-    TEST_ASSERT_TRUE(rf_inventory_prepare_save());
-    (void)memset(candidate.r_eui64, 0, 8U);
-    TEST_ASSERT_TRUE(rf_inventory_prepare_save());
-    TEST_ASSERT_EQUAL_UINT8(1U, journal.pending);
-    TEST_ASSERT_EQUAL_UINT8(1U, journal.count);
-    TEST_ASSERT_EQUAL_UINT8(0U, journal.entries[0].zone);
+    rf_inventory_entry_t deletion = {.zone = 0U, .feeder = 0U,
+        .phase = 1U, .eui64 = {0x11U}};
+    TEST_ASSERT_TRUE(start_update(&deletion, command_done));
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_UPDATE, transmitted.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0U, transmitted.data[1]);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    rf_inventory_entry_t binding;
+    TEST_ASSERT_FALSE(rf_inventory_get_binding(5U, &binding));
 }
 
 void test_r23_status_zero_accepts_current_nonzero_group_without_changing_requested_id(void)
@@ -4561,6 +4557,44 @@ void test_service_move_rejects_unconfirmed_used_or_unknown_slot_and_requires_adm
     terminal_level = SHELL_LVL_SUPER_USER;
     TEST_ASSERT_EQUAL_INT(0, rf_shell_command(6, args));
     TEST_ASSERT_EQUAL_INT(RF_MOVE_DRAINING, move_status.state);
+}
+
+void test_r24_initial_inventory_rejects_zero_zone_without_transmitting_assignment(void)
+{
+    feeder.config.zone_id = 0U;
+    TEST_ASSERT_TRUE(rf_inventory_start());
+    TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_END, transmitted.cmd);
+    deliver_response(SCP_TYPE_ACK, 0U);
+    TEST_ASSERT_FALSE(rf_inventory_is_loaded());
+    TEST_ASSERT_EQUAL_INT(RF_INVENTORY_ERROR, rf_inventory_get_status());
+    rf_inventory_entry_t binding;
+    TEST_ASSERT_FALSE(rf_inventory_get_binding(5U, &binding));
+}
+
+void test_r24_inventory_zone_boundaries_and_rejected_entries_preserve_valid_member(void)
+{
+    static const uint8_t zones[] = {0U, 1U, 7U, 8U, UINT8_MAX};
+    for (size_t index = 0U; index < sizeof(zones); index++)
+    {
+        rf_inventory_reset();
+        feeder.config.zone_id = zones[index];
+        const uint32_t before = transmit_calls;
+        TEST_ASSERT_TRUE(rf_inventory_start());
+        if ((zones[index] == 1U) || (zones[index] == 7U))
+        {
+            TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_SET, transmitted.cmd);
+            TEST_ASSERT_EQUAL_UINT8(zones[index], transmitted.data[0]);
+        }
+        else
+        {
+            TEST_ASSERT_EQUAL_UINT8(RF_SCP_CMD_INVENTORY_END, transmitted.cmd);
+        }
+        complete_inventory();
+        TEST_ASSERT_EQUAL_UINT32(before + (((zones[index] == 1U) || (zones[index] == 7U)) ? 2U : 1U),
+                                 transmit_calls);
+        TEST_ASSERT_EQUAL_INT(((zones[index] == 1U) || (zones[index] == 7U)) ?
+                             RF_INVENTORY_READY : RF_INVENTORY_ERROR, rf_inventory_get_status());
+    }
 }
 
 /*** end of file ***/

@@ -309,7 +309,7 @@ static void on_end_done(scp_cmd_result_t result, const scp_packet_t *rsp)
 
 static bool is_entry_valid(const uint8_t *body)
 {
-    return (7U >= body[0]) && (0U < body[1]) && (7U >= body[1]) &&
+    return (0U < body[0]) && (7U >= body[0]) && (0U < body[1]) && (7U >= body[1]) &&
            (0U < body[2]) && (3U >= body[2]) &&
            (!inventory_zone_set || (inventory_zone == body[0]));
 }
@@ -1177,7 +1177,7 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
     {
         return false;
     }
-    if ((7U < entry->zone) || (4U < entry->feeder) ||
+    if (((0U != entry->feeder) && (7U < entry->zone)) || (4U < entry->feeder) ||
         (1U > entry->phase) || (3U < entry->phase) ||
         rf_eui64_is_zero(entry->eui64))
     {
@@ -1185,9 +1185,9 @@ bool rf_inventory_update(const rf_inventory_entry_t *entry,
     }
     if ((0U != entry->feeder) && (0U == entry->zone))
     {
-        return false; /* Region zero remains usable only for legacy deletion. */
+        return false; /* R2.4 atamalarinda bolge 1-7 olmalidir. */
     }
-    if (inventory_zone_set && (inventory_zone != entry->zone))
+    if ((0U != entry->feeder) && inventory_zone_set && (inventory_zone != entry->zone))
     {
         return false;
     }
