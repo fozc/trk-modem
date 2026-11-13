@@ -256,6 +256,7 @@ class DeviceMonitor:
                 self.host, self.writers["iec104"], self.detector)
             return
         periodic_send = int(cfg.get("PeriodicSend", 0) or 0)
+        self.iec104_lines_in_use = any(line["in_use"] for line in snap["lines"])
         worker = Iec104MasterWorker(
             self.host, snap, periodic_send, self.writers["iec104"],
             self.detector, self.outdir / "iec104-apdu.jsonl",
@@ -409,12 +410,20 @@ class DeviceMonitor:
                 min_gap_s=self.args.ay_min_gap,
                 mapping=json.loads(self.args.ay_mapping)
                 if self.args.ay_mapping else {})
+            # IEC104 hatti kapaliyken ona bagli yuzeyler beklenmez.
+            link_gates = {}
+            if not getattr(self, "iec104_lines_in_use", True):
+                link_gates.update({"faults_web": "no_in_use_lines",
+                                   "iec104": "no_in_use_lines",
+                                   "modbus": "no_in_use_lines"})
+            if "iec104_master" not in self.probes:
+                link_gates.setdefault("iec104", "no_master")
             self.chain = ChainVerifier(
                 self.probes["ay"], self.probes["web"], self.console,
                 self.writers["chains"], self.detector,
                 self.outdir / "iec104.jsonl",
                 modbus_probe=self.probes.get("modbus"),
-                feeder_count=4)
+                feeder_count=4, link_gates=link_gates)
         self.scheduler = self.build_scheduler()
         self.metrics["pid"] = os.getpid()
 

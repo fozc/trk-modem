@@ -512,6 +512,115 @@ def test_chain_helpers():
               not jsonl_records_since(Path(tmp) / "yok.jsonl", now))
 
 
+class _FakeAy:
+    """Zincir testi icin AY taklidi: tek basarili tetikleme."""
+
+    def stimulate_random(self):
+        return {"ok": True, "port": "COM15", "cmd": "test evt",
+                "feeder": None}
+
+
+class _FakeFltlogConsole:
+    """fltlog dump ilk cagrida sabit, 3. cagridan sonra yeni kayit."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def command(self, cmd, settle_s=3.0):
+        self.calls += 1
+        return "eski kayit" + ("\nyeni kayit 137" if self.calls >= 3 else "")
+
+
+def test_chain_link_gates():
+    from anomaly import AnomalyDetector
+    from chains.event_chain import ChainVerifier
+    from recorder import JsonlWriter
+
+    class _NoWeb:
+        def __init__(self):
+            self.calls = 0
+
+        def _request(self, path):
+            self.calls += 1
+            raise AssertionError("kapali halka icin istek ATMAMALI")
+
+    def build(gates):
+        detector_writer = JsonlWriter(Path(tmpdir) / "a.jsonl")
+        detector = AnomalyDetector(detector_writer)
+        findings = []
+        detector.on_finding = findings.append
+        writer = JsonlWriter(Path(tmpdir) / "c.jsonl")
+        verifier = ChainVerifier(
+            _FakeAy(), _NoWeb(), _FakeFltlogConsole(), writer,
+            detector, Path(tmpdir) / "yok.jsonl", modbus_probe=None,
+            deadline_s=1.0, poll_s=0.05, link_gates=gates)
+        return verifier, findings, detector_writer, writer
+
+    # Kapali halkalar: fltlog geldiyse zincir TAMAM, chain_break yok
+    with tempfile.TemporaryDirectory() as tmpdir:
+        verifier, findings, detector_writer, writer = build(
+            {"faults_web": "no_in_use_lines",
+             "iec104": "no_in_use_lines",
+             "modbus": "no_in_use_lines"})
+        verifier.run()
+        record = json.loads(Path(writer.path).read_text(encoding="utf-8")
+                            .strip().splitlines()[-1])
+        writer.close()
+        detector_writer.close()
+        check("chain_gated_ok",
+              record["links"]["fltlog"]["ok"] and
+              record["links"]["faults_web"] == {"skip": "no_in_use_lines"} and
+              record["links"]["iec104"]["skip"] == "no_in_use_lines" and
+              verifier.web.calls == 0 and
+              not findings,
+              "links=%s findings=%s" % (record["links"], findings))
+    # Kapisiz ama fltlog HIC gelmezse: cekirdek halkalar icin chain_break
+    class _SilentConsole(_FakeFltlogConsole):
+        def command(self, cmd, settle_s=3.0):
+            return "eski kayit"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        detector_writer = JsonlWriter(Path(tmpdir) / "a.jsonl")
+        detector = AnomalyDetector(detector_writer)
+        findings = []
+        detector.on_finding = findings.append
+        writer = JsonlWriter(Path(tmpdir) / "c.jsonl")
+        verifier = ChainVerifier(
+            _FakeAy(), _NoWeb(), _SilentConsole(), writer, detector,
+            Path(tmpdir) / "yok.jsonl", modbus_probe=None,
+            deadline_s=0.3, poll_s=0.05, link_gates=None)
+        verifier.run()
+        writer.close()
+        detector_writer.close()
+        labels = {f["class"] for f in findings}
+        check("chain_break_fires",
+              "chain_break" in labels, "labels=%s" % labels)
+
+
+def test_chain_modbus_baseline():
+    from chains.event_chain import ChainVerifier
+    from probes.modbus_map_check import FEEDER_PERM_COUNTS, parse_map_constants
+
+    class _Modbus:
+        def __init__(self):
+            self.calls = []
+
+        def read_range(self, address, count):
+            self.calls.append((address, count))
+            return [0] * count, True
+
+    probe = _Modbus()
+    verifier = ChainVerifier(
+        None, None, _FakeFltlogConsole(), None, None, "unused.jsonl",
+        modbus_probe=probe, link_gates={"faults_web": "no_web"})
+    baseline = verifier._baselines([2])
+    mapping = parse_map_constants()
+    check("chain_modbus_baseline",
+          baseline["modbus"][2] == ([0, 0, 0], [0, 0, 0]) and
+          probe.calls == [(mapping["line_base"] + mapping["line_stride"],
+                           FEEDER_PERM_COUNTS + 3)])
+
+
 def test_rf_transitions():
     from probes.rf_probe import diff_rf_state, extract_rf_state
     # Gerclesen bicim (rf_monitor_json.c:243-287)
@@ -865,6 +974,8 @@ def main():
         test_frame_validator,
         test_ay_guard_and_budget,
         test_chain_helpers,
+        test_chain_link_gates,
+        test_chain_modbus_baseline,
         test_rf_transitions,
         test_summarize,
         test_worker_reconnect_and_gi,

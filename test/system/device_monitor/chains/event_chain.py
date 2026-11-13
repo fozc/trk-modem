@@ -72,7 +72,7 @@ class ChainVerifier:
 
     def __init__(self, ay_stim, web_probe, console, writer, detector,
                  iec104_jsonl_path, modbus_probe=None, feeder_count=4,
-                 deadline_s=120.0, poll_s=10.0):
+                 deadline_s=120.0, poll_s=10.0, link_gates=None):
         self.ay_stim = ay_stim
         self.web = web_probe
         self.console = console
@@ -84,6 +84,8 @@ class ChainVerifier:
         self.deadline_s = deadline_s
         self.poll_s = poll_s
         self.map = parse_map_constants() if modbus_probe is not None else None
+        # IEC104 hatti kapaliyken ona bagli yuzeyler beklenmez.
+        self.link_gates = dict(link_gates or {})
 
     def run(self):
         """Bir zincir turu: tetikle -> halkalari bekle -> raporla."""
@@ -97,33 +99,40 @@ class ChainVerifier:
         feeders = [trigger["feeder"]] if trigger.get("feeder") else \
             list(range(1, self.feeder_count + 1))
         baselines = self._baselines(feeders)
-        links = {name: {"ok": False, "ms": None}
-                 for name in ("faults_web", "fltlog", "iec104", "modbus")}
+        links = {name: ({"skip": reason} if reason else {"ok": False,
+                                                          "ms": None})
+                 for name, reason in
+                 ((name, self.link_gates.get(name))
+                  for name in ("faults_web", "fltlog", "iec104", "modbus"))}
         detected_feeder = trigger.get("feeder")
         deadline = started_mono + self.deadline_s
         while time.monotonic() < deadline:
             elapsed = time.monotonic() - started_mono
-            if not links["faults_web"]["ok"]:
+            if self._active(links, "faults_web") and \
+                    not links["faults_web"]["ok"]:
                 changed = self._faults_changed(feeders, baselines["faults"])
                 if changed is not None:
                     links["faults_web"] = {"ok": True,
                                            "ms": round(elapsed * 1000, 1)}
                     detected_feeder = detected_feeder or changed
                     feeders = [changed]
-            if not links["fltlog"]["ok"] and \
+            if self._active(links, "fltlog") and \
+                    not links["fltlog"]["ok"] and \
                     self._fltlog_changed(baselines["fltlog"]):
                 links["fltlog"]["ok"] = True
                 links["fltlog"]["ms"] = round(elapsed * 1000, 1)
-            if not links["iec104"]["ok"] and \
+            if self._active(links, "iec104") and \
+                    not links["iec104"]["ok"] and \
                     jsonl_records_since(self.iec104_path, started_wall,
                                         action="fault_event"):
                 links["iec104"]["ok"] = True
                 links["iec104"]["ms"] = round(elapsed * 1000, 1)
-            if not links["modbus"]["ok"] and \
+            if self._active(links, "modbus") and \
+                    not links["modbus"]["ok"] and \
                     self._modbus_counts_grew(baselines["modbus"], feeders):
                 links["modbus"]["ok"] = True
                 links["modbus"]["ms"] = round(elapsed * 1000, 1)
-            if all(link["ok"] or name == "modbus"
+            if all(link.get("ok") or link.get("skip") or name == "modbus"
                    for name, link in links.items()):
                 break
             time.sleep(self.poll_s)
@@ -132,21 +141,28 @@ class ChainVerifier:
                   "deadline_s": self.deadline_s, "links": links,
                   "ms": round((time.monotonic() - started_mono) * 1000, 1)}
         self.writer.write(record)
-        broken = [name for name in self.CORE_LINKS if not links[name]["ok"]]
+        broken = [name for name in self.CORE_LINKS
+                  if self._active(links, name) and not links[name]["ok"]]
         if broken:
             self.detector.report(
                 "chain_break", "critical", "chain",
                 "AY olayi (%s) yuzeylere ulasmadi: %s (fider=%s)" %
                 (trigger["cmd"], broken, detected_feeder))
 
+    @staticmethod
+    def _active(links, name):
+        """Halka bu koşuda izleniyor mu (kapı yok ve geçerli bağlantı var)?"""
+        return "skip" not in links[name]
+
     # -- taban ve degisim denetimleri ----------------------------------
 
     def _baselines(self, feeders):
         faults = {}
-        for feeder in feeders:
-            faults[feeder] = faults_signature(self._faults_payload(feeder))
+        if self.link_gates.get("faults_web") is None:
+            for feeder in feeders:
+                faults[feeder] = faults_signature(self._faults_payload(feeder))
         modbus = {}
-        if self.modbus is not None:
+        if self.modbus is not None and self.link_gates.get("modbus") is None:
             for feeder in feeders:
                 modbus[feeder] = self._feeder_counts(feeder)
         return {"faults": faults,
