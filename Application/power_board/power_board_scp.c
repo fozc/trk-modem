@@ -52,11 +52,20 @@ void power_board_scp_init(void)
     (void)shell_register_command(&(shell_cmd_t)
     {
         .cmd = "pwrboard",
-        .desc = "SCP power summary, quality and alarms\r\n"
-                "\tpwrboard [show] - current SCP snapshot\r\n"
-                "\tpwrboard alarms - alarm mask and last-gasp session\r\n"
-                "\tpwrboard control/cfg-read/cfg-set/battery-replaced/"
-                "cancel/result-get/raw-get/raw",
+        .desc = "SCP guc karti verileri ve komutlari\r\n"
+                "\tpwrboard [show]          - mevcut ozet ve veri kalitesi\r\n"
+                "\tpwrboard alarms          - alarm maskesi ve last-gasp oturumu\r\n"
+                "\tpwrboard control         - ayar ve komut isleminin durumu\r\n"
+                "\tpwrboard pkt             - son E1 paketinin cozumu\r\n"
+                "\tpwrboard cfg-read        - E5 ayarlarini oku\r\n"
+                "\tpwrboard cfg-set capacity <7..54> - aku kapasitesini Ah olarak yaz\r\n"
+                "\tpwrboard cfg-set rate <0|20..200|255> - sarj orani (permil)\r\n"
+                "\tpwrboard cfg-set period <1..10> - yayin periyodunu saniye olarak yaz\r\n"
+                "\tpwrboard battery-replaced - aku degisimini bildir; sayaclari sifirlar\r\n"
+                "\tpwrboard cancel          - komut iptali iste; sonucu denetle\r\n"
+                "\tpwrboard result-get      - E7 komut sonucunu oku\r\n"
+                "\tpwrboard raw-get         - E8 ham telemetriyi oku\r\n"
+                "\tpwrboard raw             - son E8 verisini hex olarak goster",
         .level = SHELL_LVL_USER, .func = power_board_scp_shell
     });
 }
