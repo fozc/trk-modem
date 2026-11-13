@@ -106,6 +106,7 @@ typedef struct
 {
     uint32_t source_mismatches;
     uint32_t epoch_duration_ms;
+    uint16_t replay_storage_phases;
     uint8_t store_reset_reason;
     uint8_t counter_status;
     uint8_t epoch_feeder;

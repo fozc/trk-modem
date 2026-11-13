@@ -210,6 +210,7 @@ static void emit_service_status(json_writer_t *writer)
                     (uint32_t)((unsigned)status.source_mismatches));
     emit_u32(writer, "StoreResetReason", status.store_reset_reason);
     emit_u32(writer, "CounterStatus", status.counter_status);
+    emit_u32(writer, "ReplayStoragePhases", status.replay_storage_phases);
     emit_bool(writer, "EventStoreDegraded", rf_events_storage_degraded());
     emit_u32(writer, "EpochFeeder", status.epoch_feeder);
     emit_u32(writer, "EpochPhases", status.epoch_phases);

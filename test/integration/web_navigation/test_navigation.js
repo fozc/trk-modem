@@ -252,6 +252,9 @@ async function checkPage(html, label) {
         assert.ok(service.includes(language==='tr'?'ağ anahtarının':'network key provisioning'));
         assert.doesNotMatch(service, /bolatex/i);
         assert.ok(!service.includes('143/4'));
+        const replayStorage=run(`buildRfMonitorTable({Phases:[],Maintenance:{ReplayStoragePhases:1}})`);
+        assert.ok(replayStorage.includes(language==='tr'?'tekrar koruması belleği':'replay protection storage'));
+        assert.ok(replayStorage.includes('F1/L1'));
         assert.ok(!service.includes('19600 ms'));
         assert.ok(!service.includes(language==='tr'?'doğrulanamayan 2':'2 events'));
         for(const unavailable of ['Online:false','Online:true,UptimeStalled:true']){

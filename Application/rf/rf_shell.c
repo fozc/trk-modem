@@ -165,6 +165,13 @@ static int rf_shell_status(int argc, char **argv)
     {
         SHELL_LOG("MH event storage degraded: inventory allowed, event retrieval unavailable; contact Bolatex.\r\n");
     }
+    rf_service_status_t service;
+    rf_get_service_status(&service);
+    if (service.replay_storage_phases != 0U)
+    {
+        SHELL_LOG("AY tekrar korumasi bellek bakimi: faz maskesi=0x%03X; BOLATeX ile gorusun\r\n",
+                  (unsigned)service.replay_storage_phases);
+    }
     rf_inventory_wait_t wait;
     rf_inventory_get_wait(&wait);
     SHELL_LOG("Inventory wait: %s total_ms=%u reason_ms=%u\r\n",

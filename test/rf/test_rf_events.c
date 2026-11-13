@@ -3605,4 +3605,68 @@ void test_operator_ack_keeps_identity_after_other_phase_fills_history(void)
     TEST_ASSERT_EQUAL_UINT16(first.crc, written_ack.event_crc);
 }
 
+void test_r24_146_maintenance_is_visible_only_after_raw_storage_and_does_not_open_fault(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 146U;
+    packet.data[11] = 1U;
+    update_crc(&packet);
+    raw_success = false;
+    respond(&packet);
+    rf_events_process(tick);
+    rf_service_status_t status;
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT16(0U, status.replay_storage_phases);
+    raw_success = true;
+    tick += 60000U;
+    rf_events_process(tick);
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT16(1U, status.replay_storage_phases);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+    binding_entry_storage.eui64[0]++;
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT16(0U, status.replay_storage_phases);
+}
+
+void test_r24_mh_145_location_is_not_an_ay_identity_mismatch(void)
+{
+    const rf_scp_event_t diagnostic = {.event = 145U, .zone = 1U, .feeder = 1U,
+        .phase = 1U, .fault_count = 1U};
+    rf_record_service_event(&diagnostic, false);
+    rf_service_status_t status;
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT32(0U, status.source_mismatches);
+}
+
+void test_r24_146_from_unverified_identity_is_retained_without_attributing_maintenance(void)
+{
+    start_read(36U, 37U);
+    scp_packet_t packet = capture(RF_SCP_CMD_LOG_READ_RANGE, SCP_TYPE_ACK);
+    packet.data[7] = 146U;
+    packet.data[11] = 4U;
+    packet.data[56] ^= 1U;
+    update_crc(&packet);
+    respond(&packet);
+    rf_events_process(tick);
+    rf_service_status_t status;
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT16(0U, status.replay_storage_phases);
+    TEST_ASSERT_EQUAL_size_t(1U, raw_writes);
+    TEST_ASSERT_EQUAL_size_t(0U, fault_writes);
+}
+
+void test_r24_143_subcode_eight_does_not_clear_existing_counter_maintenance(void)
+{
+    rf_scp_event_t event = {.event = 143U, .fault_count = 4U};
+    rf_record_service_event(&event, false);
+    event.fault_count = 8U;
+    event.temporary_faults = 2U;
+    event.duration_ms = 1800000000U;
+    rf_record_service_event(&event, false);
+    rf_service_status_t status;
+    rf_get_service_status(&status);
+    TEST_ASSERT_EQUAL_UINT8(4U, status.counter_status);
+}
+
 /*** end of file ***/

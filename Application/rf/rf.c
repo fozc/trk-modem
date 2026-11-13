@@ -41,6 +41,7 @@ typedef struct
     bool has_alarm_key;
     uint8_t alarm_key;
     uint8_t counter_status;
+    bool replay_storage_failed;
 } rf_phase_cache_t;
 
 /* Owned by cooperative process/shell callers; UART ISR only fills rx_ring. */
@@ -117,25 +118,27 @@ void rf_init(void)
 
 void rf_get_service_status(rf_service_status_t *out)
 {
-    if (NULL != out)
+    if (out == NULL)
     {
-        *out = service_status;
-        if ((out->counter_status >= 4U) && (out->counter_status <= 6U))
+        return;
+    }
+    *out = service_status;
+    for (size_t index = 0U; index < RF_PHASE_SLOTS; index++)
+    {
+        const uint8_t source = (uint8_t)((((index / 3U) + 1U) << 2U) | ((index % 3U) + 1U));
+        const rf_phase_cache_t *cache = get_bound_cache(source);
+        if (cache == NULL)
         {
-            return;
+            continue;
         }
-        for (size_t index = 0U; index < RF_PHASE_SLOTS; index++)
+        if (cache->replay_storage_failed)
         {
-            const uint8_t source = (uint8_t)((((index / 3U) + 1U) << 2U) | ((index % 3U) + 1U));
-            if ((phase_cache[index].counter_status >= 4U) && (phase_cache[index].counter_status <= 6U))
-            {
-                const rf_phase_cache_t *cache = get_bound_cache(source);
-                if ((cache != NULL) && (cache->counter_status >= 4U) && (cache->counter_status <= 6U))
-                {
-                    out->counter_status = cache->counter_status;
-                    return;
-                }
-            }
+            out->replay_storage_phases |= (uint16_t)(1U << index);
+        }
+        if (((out->counter_status < 4U) || (out->counter_status > 6U)) &&
+            (cache->counter_status >= 4U) && (cache->counter_status <= 6U))
+        {
+            out->counter_status = cache->counter_status;
         }
     }
 }
@@ -180,7 +183,8 @@ void rf_record_service_event(const rf_scp_event_t *event, bool source_matches)
     {
         return;
     }
-    if (!source_matches && (0U != event->feeder) && (0U != event->phase) &&
+    if (!source_matches && !((event->event == 145U) && (event->src_eui_hash == 0U)) &&
+        (0U != event->feeder) && (0U != event->phase) &&
         (UINT32_MAX > service_status.source_mismatches))
     {
         service_status.source_mismatches++;
@@ -188,6 +192,16 @@ void rf_record_service_event(const rf_scp_event_t *event, bool source_matches)
     if ((138U == event->event) && (0U == event->src_eui_hash))
     {
         service_status.store_reset_reason = event->fault_count;
+    }
+    else if ((event->event == 146U) && source_matches && (event->src_eui_hash != 0U) &&
+             (event->fault_count >= 1U) && (event->fault_count <= 4U))
+    {
+        const uint8_t source = (uint8_t)((event->feeder << 2U) | event->phase);
+        rf_phase_cache_t *cache = get_bound_cache(source);
+        if (cache != NULL)
+        {
+            cache->replay_storage_failed = true;
+        }
     }
     else if (143U == event->event)
     {

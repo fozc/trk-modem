@@ -2096,6 +2096,8 @@ function buildRfMonitorTable(d){
   const maintenance=phases.some(p=>p?.UptimeStalled===true||p?.Live?.FsmError===true);
   let html=maintenance?'<p class="hint">'+esc(t('rfMaintenance'))+'</p>':'';
   const service=d.Maintenance||{};
+  const replayStorage=Array.from({length:12},(_,i)=>i).filter(i=>(Number(service.ReplayStoragePhases)&(1<<i))!==0).map(i=>'F'+(Math.floor(i/3)+1)+'/L'+(i%3+1));
+  if(replayStorage.length)html+='<p class="hint">'+esc((LNG==='tr'?'AY tekrar koruması belleği için bakım gerekli: ':'AY replay protection storage requires maintenance: ')+replayStorage.join(', ')+(LNG==='tr'?'. BOLATeX ile görüşün.':'. Contact BOLATeX.'))+'</p>';
   if(service.EventStoreDegraded===true)html+='<p class="hint">'+esc(LNG==='tr'?'MH olay belleği arızalı. Envanter yüklenebilir ancak olay kayıtları alınamaz. Bakım gerekli.':'MH event storage is degraded: inventory can load, event retrieval is unavailable. Maintenance is required.')+'</p>';
   for(const epoch of service.Epoch||[]){
     const phasesFor=mask=>[0,1,2].filter(i=>(Number(mask)&(1<<i))!==0).map(i=>'L'+(i+1)).join(', ')||'—';

@@ -577,7 +577,11 @@ static const char *event_name(uint8_t event)
         {140U, "Production lock rejected service command; not an attempt counter"},
         {141U, "Delayed RF opening discarded"}, {142U, "R2 temporary fault completed"},
         {143U, "RF security counter recovery/lock"}, {144U, "MH authentication rejected; EPOCH required"},
-        {201U, "EPOCH campaign completed; not configuration APPLIED"}
+        {145U, "MH olay aktarimi tanisi; koruma arizasi degildir"},
+        {146U, "AY tekrar korumasi bellek hatasi; bakim icin BOLATeX ile gorusun"},
+        {200U, "MH servis islemi"},
+        {201U, "EPOCH campaign completed; not configuration APPLIED"},
+        {202U, "MH ag anahtari komutu reddedildi"}
     };
     for (size_t index = 0U; index < ARRAY_SIZE(names); index++)
     {
@@ -674,7 +678,8 @@ static void store_record(uint32_t now_ms)
         const rf_fault_class_t type = matches ? rf_faults_classify(&event) :
                                                 RF_FAULT_NONE;
         has_fault_record = build_fault(&event, type, &fault_record);
-        if (!matches && (0U != event.feeder) && (0U != event.phase))
+        if (!matches && !((event.event == 145U) && (event.src_eui_hash == 0U)) &&
+            (0U != event.feeder) && (0U != event.phase))
         {
             CSLOG_WARN("[RF] event source unverified: feeder=%u phase=%u "
                        "hash=0x%04X; retained raw only\r\n",
