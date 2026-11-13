@@ -108,7 +108,9 @@ void runtime_stats_shell_init(void)
     const shell_cmd_t command =
     {
         .cmd = "stats",
-        .desc = "Operating counters; stats history <skip>\r\n",
+        .desc = "Calisma sayaclari; yalniz okuma\r\n"
+                "\tstats                     - guncel sayac ve saat kaynagi ozeti\r\n"
+                "\tstats history <skip 0..239> - en fazla 8 gecmis kaydi CSV olarak oku",
         .level = 0U,
         .func = stats_shell
     };
