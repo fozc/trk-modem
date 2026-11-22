@@ -16,6 +16,7 @@ __pycache__
 
 # Build sirasinda uretilir (tools/pre-build.py)
 Application/version_gen.h
+Application/auth_defaults_gen.h
 
 .zcode/
 

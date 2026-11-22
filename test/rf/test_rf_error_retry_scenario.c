@@ -89,7 +89,7 @@ uint32_t HAL_GetTick(void)
 
 #include "../../Application/rf/rf_comm.c"
 #include "../../Application/rf/rf_inventory.c"
-#include "../../Application/rf/rf_shell.c"
+#include "../../Application/shell/rf_shell.c"
 #include "../../contiki-kernel/sys/timer.c"
 
 void shell_putchr(int character)

@@ -68,6 +68,9 @@ typedef enum
 /* Detailed result of this save, including a verified A with failed B.
  * The legacy nvram_sync still returns -1 unless both copies are ready. */
 nvram_save_result_t nvram_save(bool crc_no_check);
+const auth_record_t *nvram_get_auth_record(auth_account_t account);
+bool nvram_save_auth_record(auth_account_t account, const auth_record_t *record);
+uint32_t nvram_auth_revision(auth_account_t account);
 
 /* Save/onarim sirasinda true: RAM goruntusu donuktur, setter'lar reddedilir.
  * Bu genel bir eszamanlilik kilidi DEGILDIR - tek islemcili, isbirlikci

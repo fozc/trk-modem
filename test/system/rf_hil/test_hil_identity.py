@@ -125,7 +125,7 @@ class IdentityTests(unittest.TestCase):
 
     def test_production_status_handler_reports_compiled_profile_and_boot_metadata(self):
         root = run_hil.REPO_ROOT
-        source = (root / "Application/rf/rf_shell.c").read_text(encoding="utf-8")
+        source = (root / "Application/shell/rf_shell.c").read_text(encoding="utf-8")
         match = re.search(r"static int rf_shell_status\([^;]+?\)\n\{.*?\n\}",
                           source, re.S)
         self.assertIsNotNone(match)

@@ -7,7 +7,7 @@
 
 #include "html_resources.h"
 
-#define LOADING_HTML_DATA_SIZE 2679U
+#define LOADING_HTML_DATA_SIZE 2717U
 
 /**
  * @brief Get loading page HTML resource

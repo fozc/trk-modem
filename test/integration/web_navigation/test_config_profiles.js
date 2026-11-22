@@ -25,6 +25,7 @@ for(const [label,html] of [['source',source],['embedded',embedded]]){
     fetch:()=>{posts++;throw Error('Import must not send requests')}});
   vm.runInContext(code,context);
   const run=s=>vm.runInContext(s,context);
+  run("function isAdminRole(){return s_role==='admin'||s_role==='factory-admin'}");
   for(const fixture of fixtures){
     context.fixture=fixture;
     const data=run('parseConfigProfile(JSON.stringify(fixture.profile),fixture.domain)');
@@ -41,6 +42,11 @@ for(const [label,html] of [['source',source],['embedded',embedded]]){
   }
   const text=JSON.stringify({format:'troika-config',version:1,domain:'device',config:{PreserveOutputStates:false}});
   context.text=text;
+  const legacy=JSON.parse(text);
+  legacy.config.DevreyeAlinmaZamani=1767225600;
+  context.legacyText=JSON.stringify(legacy);
+  assert.deepEqual(JSON.parse(JSON.stringify(run('parseConfigProfile(legacyText,"device")'))),
+    {PreserveOutputStates:false});checks++;
   run('stageConfigProfile("device",text)');
   assert.equal(rendered.PreserveOutputStates,false);
   assert.equal(context.pageCache.device.PreserveOutputStates,true,'device snapshot retained');

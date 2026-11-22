@@ -739,14 +739,6 @@ static bool parse_device_config_internal(config_reader_t *str,
             }
             dev->periodic_modem_reset_period = v32;
         }
-        else if (match_key(str, JSON_SPAN_LITERAL("DevreyeAlinmaZamani")))
-        {
-            if (!parse_uint32(str, &v32))
-            {
-                return false;
-            }
-            dev->commissioning_time = v32;
-        }
         else if (match_key(str, JSON_SPAN_LITERAL("PreserveOutputStates")))
         {
             if (!parse_bool(str, &options->retain_outputs))

@@ -11,6 +11,8 @@
 #define CSLOG_MODULE LOG_MOD_HTTP
 #include "http_handlers.h"
 #include "modem_config.h"
+#include "device_auth.h"
+#include "shell.h"
 #include "http_response.h"
 #include "http_session_token.h"
 #include "bsp_random.h"
@@ -63,6 +65,7 @@
  */
 
 #define USER_ROLE_ADMIN "admin"
+#define USER_ROLE_FACTORY "factory-admin"
 #define USER_ROLE_USER "user"
 
 /** Session idle timeout: if no authenticated request is received within this
@@ -87,7 +90,8 @@ static struct
     const char *current_query_string; /* Current request query string */
     bool is_authenticated;            /* Per-request auth flag, set by
                                          set_auth_from_token() */
-    char username[16];                /* Logged-in role: "admin" or "user" */
+    char username[16];                /* Oturumun hesap adi. */
+    uint32_t credential_revision;
     char session_token[HTTP_SESSION_TOKEN_SIZE]; /* Empty = no session */
     uint32_t
         last_activity_tick;   /* bsp_get_tick() of last authenticated request */
@@ -156,7 +160,21 @@ bool http_handlers_is_authenticated(void)
 bool http_handlers_is_admin(void)
 {
     return handler_state.is_authenticated &&
-           strcmp(handler_state.username, USER_ROLE_ADMIN) == 0;
+           ((strcmp(handler_state.username, USER_ROLE_ADMIN) == 0) ||
+            (strcmp(handler_state.username, USER_ROLE_FACTORY) == 0));
+}
+
+static auth_account_t account_for_name(const char *name)
+{
+    if (strcmp(name, USER_ROLE_ADMIN) == 0)
+    {
+        return AUTH_ACCOUNT_ADMIN;
+    }
+    if (strcmp(name, USER_ROLE_FACTORY) == 0)
+    {
+        return AUTH_ACCOUNT_FACTORY;
+    }
+    return AUTH_ACCOUNT_COUNT;
 }
 
 /* ============================================================================
@@ -192,9 +210,10 @@ void http_handlers_set_auth_from_token(const char *query_string)
         return;
     }
 
-    /* Check idle TTL */
-    if ((bsp_get_tick() - handler_state.last_activity_tick) >
-        HTTP_SESSION_TIMEOUT_MS)
+    const auth_account_t account = account_for_name(handler_state.username);
+    if (((bsp_get_tick() - handler_state.last_activity_tick) > HTTP_SESSION_TIMEOUT_MS) ||
+        ((account != AUTH_ACCOUNT_COUNT) &&
+         (handler_state.credential_revision != device_auth_revision(account))))
     {
         handler_state.is_authenticated = false;
         handler_state.session_token[0] = '\0';
@@ -306,37 +325,33 @@ static void http_json_reply(const char *body)
     http_send_json(body, (int)strlen(body));
 }
 
-static bool parse_login_credentials(const char *body, char *username,
-                                    size_t username_size, char *password,
-                                    size_t password_size)
+typedef struct
 {
-    if (body == NULL)
-    {
-        return false;
-    }
-    json_reader_t reader;
+    char username[32U];
+    char password[DEVICE_AUTH_PASSWORD_CAPACITY];
+    char replacement[DEVICE_AUTH_PASSWORD_CAPACITY];
+} http_credentials_t;
+
+static bool read_credentials(json_reader_t *reader, http_credentials_t *credentials, bool change)
+{
     json_token_t token;
-    char scratch[64];
-    json_span_t input = {body, strlen(body)};
     bool has_username = false;
     bool has_password = false;
-    if (json_reader_init(&reader, scratch, sizeof(scratch)) != JSON_OK ||
-        json_reader_feed(&reader, input, true) != JSON_OK ||
-        json_read(&reader, &token) != JSON_OK ||
-        token.type != JSON_OBJECT_BEGIN)
+    bool has_replacement = false;
+    if ((json_read(reader, &token) != JSON_OK) || (token.type != JSON_OBJECT_BEGIN))
     {
         return false;
     }
     for (;;)
     {
-        if (json_read(&reader, &token) != JSON_OK)
+        if (json_read(reader, &token) != JSON_OK)
         {
             return false;
         }
         if (token.type == JSON_OBJECT_END)
         {
-            return has_username && has_password &&
-                   json_read(&reader, &token) == JSON_DONE;
+            return has_username && has_password && (!change || has_replacement) &&
+                   json_read(reader, &token) == JSON_DONE;
         }
         if (token.type != JSON_KEY)
         {
@@ -344,14 +359,15 @@ static bool parse_login_credentials(const char *body, char *username,
         }
         bool is_username = json_token_equals(&token, "username");
         bool is_password = json_token_equals(&token, "password");
-        if (json_read(&reader, &token) != JSON_OK || token.type != JSON_STRING)
+        bool is_replacement = change && json_token_equals(&token, "newPassword");
+        if (json_read(reader, &token) != JSON_OK || token.type != JSON_STRING)
         {
             return false;
         }
         if (is_username)
         {
             if (has_username ||
-                json_token_copy_string(&token, username, username_size) !=
+                json_token_copy_string(&token, credentials->username, sizeof(credentials->username)) !=
                     JSON_ERROR_NONE)
             {
                 return false;
@@ -361,18 +377,45 @@ static bool parse_login_credentials(const char *body, char *username,
         else if (is_password)
         {
             if (has_password ||
-                json_token_copy_string(&token, password, password_size) !=
+                json_token_copy_string(&token, credentials->password, sizeof(credentials->password)) !=
                     JSON_ERROR_NONE)
             {
                 return false;
             }
             has_password = true;
         }
+        else if (is_replacement)
+        {
+            if (has_replacement ||
+                json_token_copy_string(&token, credentials->replacement, sizeof(credentials->replacement)) !=
+                    JSON_ERROR_NONE)
+            {
+                return false;
+            }
+            has_replacement = true;
+        }
         else
         {
             /* Unknown string fields do not supply credentials. */
         }
     }
+}
+
+static bool parse_credentials(const char *body, http_credentials_t *credentials, bool change)
+{
+    if (body == NULL)
+    {
+        return false;
+    }
+
+    json_reader_t reader;
+    char scratch[DEVICE_AUTH_PASSWORD_CAPACITY];
+    json_span_t input = {body, strlen(body)};
+    const bool valid = (json_reader_init(&reader, scratch, sizeof(scratch)) == JSON_OK) &&
+                       (json_reader_feed(&reader, input, true) == JSON_OK) &&
+                       read_credentials(&reader, credentials, change);
+    device_auth_clear(scratch, sizeof(scratch));
+    return valid;
 }
 
 static bool http_json_init(json_writer_t *writer)
@@ -427,6 +470,7 @@ static void create_login_session(const char *username)
     strncpy(handler_state.username, username,
             sizeof(handler_state.username) - 1U);
     handler_state.username[sizeof(handler_state.username) - 1U] = '\0';
+    handler_state.credential_revision = device_auth_revision(account_for_name(username));
     memcpy(handler_state.session_token, new_token, sizeof(new_token));
     handler_state.last_activity_tick = bsp_get_tick();
     handler_state.is_authenticated = true;
@@ -441,7 +485,7 @@ static void create_login_session(const char *username)
 }
 
 /**
- * @brief Handle POST /auth/login - Simple IP-based authentication
+ * @brief Handle POST /auth/login - Authenticate and create the session
  */
 void handle_post_login(const char *json_body)
 {
@@ -467,63 +511,33 @@ void handle_post_login(const char *json_body)
         return;
     }
 
-    /* Parse username and password from JSON */
-    char username[32] = {0};
-    char password[64] = {0};
-
-    const bool parsed = parse_login_credentials(
-        json_body, username, sizeof(username), password, sizeof(password));
-
-    CSLOG("[HTTP] Login attempt - Username: %s\r\n", username);
-
-    /* Get device IP address */
-    uint32_t ip = gsm_get_ip_addr();
-    uint8_t ip_a = (uint8_t)((ip >> 24) & 0xFFU); /* First octet */
-    uint8_t ip_d = (uint8_t)(ip & 0xFFU);         /* Last octet */
-
-    CSLOG("[HTTP] Device IP octets - First: %d, Last: %d\r\n", ip_a, ip_d);
-
-    /* Calculate expected passwords based on IP.
-     * 12 bytes covers the longest value ("admin256" + NUL);
-     * see doc/Web_Giris_Sifresi_Plani.md. */
-    char expected_admin_pass[12] = {0};
-    char expected_user_pass[12] = {0};
-    unsigned int admin_len = xsnprintf(
-        expected_admin_pass, sizeof(expected_admin_pass), "admin%d", ip_d + 1);
-    unsigned int user_len = xsnprintf(
-        expected_user_pass, sizeof(expected_user_pass), "user%d", ip_a + 1);
-    if ((admin_len >= sizeof(expected_admin_pass)) ||
-        (user_len >= sizeof(expected_user_pass)))
-    {
-        CSLOG_ERR("[HTTP] Login password truncated - increase buffer!\r\n");
-    }
-
-    /* Validate credentials */
+    http_credentials_t credentials = {0};
+    const bool parsed = parse_credentials(json_body, &credentials, false);
+    const auth_account_t account = account_for_name(credentials.username);
     bool valid = false;
-    if (parsed && strcmp(username, USER_ROLE_ADMIN) == 0 &&
-        strcmp(password, expected_admin_pass) == 0)
+    if (parsed && (account != AUTH_ACCOUNT_COUNT))
     {
-        valid = true;
+        valid = device_auth_verify(account, credentials.password);
     }
-    else if (parsed && strcmp(username, USER_ROLE_USER) == 0 &&
-             strcmp(password, expected_user_pass) == 0)
+    else if (parsed && (strcmp(credentials.username, USER_ROLE_USER) == 0))
     {
-        valid = true;
+        uint32_t ip = gsm_get_ip_addr();
+        uint8_t ip_a = (uint8_t)((ip >> 24) & 0xFFU);
+        char expected[12U];
+        unsigned int length = xsnprintf(expected, sizeof(expected), "user%u", (unsigned int)(ip_a + 1U));
+        valid = (length < sizeof(expected)) && (strcmp(credentials.password, expected) == 0);
+        device_auth_clear(expected, sizeof(expected));
     }
-    else
-    {
-        CSLOG_ERR("[HTTP] Login failed - Invalid credentials\r\n");
-        elog_log_web_login_fail(gsm_get_web_client_ip());
-        login_lock_register_failure();
-    }
+    device_auth_clear(credentials.password, sizeof(credentials.password));
 
-    /* Send response */
     if (valid)
     {
-        create_login_session(username);
+        create_login_session(credentials.username);
     }
     else
     {
+        elog_log_web_login_fail(gsm_get_web_client_ip());
+        login_lock_register_failure();
         const char *error_response =
             "{\"success\":false,\"error\":\"Invalid credentials\"}";
         /* W-02: auth failure must carry HTTP 401, not 200. */
@@ -549,6 +563,59 @@ void handle_post_logout(void)
     /* Send success response */
     const char *success_response = "{\"success\":true}";
     http_send_json(success_response, (int)strlen(success_response));
+}
+
+void handle_post_password(const char *body)
+{
+    if (!http_handlers_is_admin())
+    {
+        http_send_error(403, "Admin role required");
+        return;
+    }
+    if (login_lock_is_active())
+    {
+        http_send_error(429, "Too many attempts");
+        return;
+    }
+
+    http_credentials_t credentials = {0};
+    const auth_account_t actor = account_for_name(handler_state.username);
+    const bool parsed = parse_credentials(body, &credentials, true);
+    const auth_account_t target = account_for_name(credentials.username);
+    const bool allowed = parsed && device_auth_can_change(actor, target);
+    const bool verified = allowed && device_auth_verify(actor, credentials.password);
+    device_auth_clear(credentials.password, sizeof(credentials.password));
+    const bool saved = verified && device_auth_set_password(target, credentials.replacement);
+    device_auth_clear(credentials.replacement, sizeof(credentials.replacement));
+
+    if (!parsed || (target == AUTH_ACCOUNT_COUNT))
+    {
+        http_send_bad_request();
+    }
+    else if (!verified)
+    {
+        if (allowed)
+        {
+            login_lock_register_failure();
+        }
+        http_send_error(403, "Password change denied");
+    }
+    else if (!saved)
+    {
+        http_send_error(503, "Password not saved");
+    }
+    else
+    {
+        login_lock_reset();
+        if (actor == target)
+        {
+            handle_post_logout();
+        }
+        else
+        {
+            http_json_reply("{\"success\":true}");
+        }
+    }
 }
 
 void handle_post_echo(const char *body, int body_length)
@@ -634,7 +701,9 @@ void handle_post_web_shell(const char *json_body)
     if (length != 0U)
     {
         /* The command buffer bounds this conversion to uint16_t. */
-        web_shell_on_rx((const uint8_t *)command, (uint16_t)length);
+        const uint8_t level = (account_for_name(handler_state.username) == AUTH_ACCOUNT_FACTORY) ?
+                               SHELL_LVL_FACTORY : SHELL_LVL_SUPER_USER;
+        web_shell_on_rx((const uint8_t *)command, (uint16_t)length, level);
     }
     int captured = web_shell_capture_end();
     (void)json_write_object_end(&writer);

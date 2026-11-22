@@ -19,7 +19,6 @@
         "WebBostaKalmaZamanAsimi": 300,
         "IEC104IlkVeriZamanAsimi": 60,
         "IEC104BostaKalmaZamanAsimi": 300,
-        "DevreyeAlinmaZamani": 0,
         "PreserveOutputStates": true
       }
     }

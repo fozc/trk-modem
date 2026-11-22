@@ -120,6 +120,11 @@ void handle_post_login(const char *body)
     (void)body;
     http_send_json("{}", 2);
 }
+void handle_post_password(const char *body)
+{
+    (void)body;
+    http_send_json("{}", 2);
+}
 void handle_get_index(void)
 {
     http_send_html_resource(selected_page);

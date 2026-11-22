@@ -355,6 +355,11 @@ static void route_and_handle_request(http_request_t *request)
             return;
         }
 
+        if (strcmp(request->path, "/auth/password") == 0) {
+            handle_post_password(request->body);
+            return;
+        }
+
         /* POST /serial - Web shell */
         if (strcmp(request->path, "/serial") == 0) {
             handle_post_web_shell(request->body);

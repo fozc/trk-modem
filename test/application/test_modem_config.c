@@ -246,6 +246,7 @@ void test_modem_config_set_copies_writable_fields_and_clamps_period(void)
     input.iec104_first_data_timeout_sec = 55U;
     input.iec104_idle_timeout_sec = 10U;
     input.commissioning_time = 1800000000U;
+    stored_config.commissioning_time = 1700000000U;
     input.sim_card_pin = 9876U;
     strcpy(input.apn.apn, "internet");
     strcpy(input.apn.user_name, "alice");
@@ -263,7 +264,7 @@ void test_modem_config_set_copies_writable_fields_and_clamps_period(void)
     TEST_ASSERT_EQUAL_UINT16(5U, stored_config.web_idle_timeout_sec);
     TEST_ASSERT_EQUAL_UINT16(55U, stored_config.iec104_first_data_timeout_sec);
     TEST_ASSERT_EQUAL_UINT16(10U, stored_config.iec104_idle_timeout_sec);
-    TEST_ASSERT_EQUAL_UINT32(1800000000U, stored_config.commissioning_time);
+    TEST_ASSERT_EQUAL_UINT32(1700000000U, stored_config.commissioning_time);
     TEST_ASSERT_EQUAL_UINT16(9876U, stored_config.sim_card_pin);
     TEST_ASSERT_EQUAL_STRING("internet", stored_config.apn.apn);
     TEST_ASSERT_EQUAL_STRING("alice", stored_config.apn.user_name);

@@ -172,7 +172,7 @@ host testleri fiziksel Flash kalıcılığı veya GSM zamanlaması kanıtı değ
 ## Üretim ve servis ayarları için config komutu
 
 **Amaç:** Seri numarası, üretim/devreye alma tarihleri, GSM ve saat ayarlarını
-`Application/config_shell.c` modülündeki tek `config` komutuyla yönetmek.
+`Application/shell/config_shell.c` modülündeki tek `config` komutuyla yönetmek.
 
 **Kullanım yeri:** Yerel seri konsol veya mevcut web terminali. Okuma için
 `config show`, yazma için admin yetkisi kullanılmalıdır. APN password (parola)

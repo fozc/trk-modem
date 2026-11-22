@@ -217,14 +217,16 @@ async function check(html, label) {
     assert.equal(stalledLogin.fetches, 0);
     assert.equal(stalledLogin.element('submit').disabled, false);
     assert.equal(stalledLogin.timers.size, 0);
-    const userLogin = start(html, {loginBody: {success: true,
-        token: '0123456789abcdef0123456789abcdef', role: 'user'}});
-    await until(() => userLogin.element('progress').max === payload.length);
-    userLogin.enqueue(payload);
-    userLogin.end();
-    await until(() => userLogin.closed);
-    assert.equal(userLogin.window.pageSession.role, 'user');
-    assert.equal(userLogin.storage.get('sessionRole'), 'user');
+    for (const role of ['user', 'factory-admin']) {
+        const login = start(html, {loginBody: {success: true,
+            token: '0123456789abcdef0123456789abcdef', role}});
+        await until(() => login.element('progress').max === payload.length);
+        login.enqueue(payload);
+        login.end();
+        await until(() => login.closed);
+        assert.equal(login.window.pageSession.role, role);
+        assert.equal(login.storage.get('sessionRole'), role);
+    }
     const duplicate = start(html);
     duplicate.submit();
     await until(() => duplicate.element('progress').max === payload.length);

@@ -222,6 +222,19 @@ typedef struct
     uint8_t  reserved;
 }iec104_evtlog_state_t;
 
+typedef enum
+{
+    AUTH_ACCOUNT_ADMIN,
+    AUTH_ACCOUNT_FACTORY,
+    AUTH_ACCOUNT_COUNT
+} auth_account_t;
+
+typedef struct
+{
+    uint8_t salt[16U];
+    uint8_t digest[32U];
+} auth_record_t;
+
 typedef struct
 {
     uint32_t magic;            /**< NVRAM_MAGIC - CRC'den ONCE kontrol edilir */
@@ -247,15 +260,14 @@ typedef struct
 
     uint8_t relay_states;
     uint8_t retain_output_states;
+    uint16_t auth_iterations;
+    _Alignas(4) auth_record_t auth_records[AUTH_ACCOUNT_COUNT];
 
     uint32_t crc;
 }nvram_t;
 
-/* Schema 1: lifetime and session counters live in runtime_stats only.
- * No field devices exist (user decision 2026-10-24); schema stays 1.
- * Old configurations use the existing defaults path without migration:
- * header length rejects the old layout before loading its payload.
- * Layout values verified with GCC 14.3 / Cortex-M33. */
+/* Parola kayitlari sonda tutulur. Sahada cihaz olmadigi icin sema surumu
+ * degismez. Eski uzunluklar acilista varsayilan degerlere yonlendirilir. */
 _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
@@ -267,11 +279,14 @@ _Static_assert(offsetof(rf_inventory_journal_t, reserved) == 146U,
 _Static_assert(offsetof(nvram_t, rf_inventory_journal) == 1820U,
                "Schema v1 journal offset");
 _Static_assert(offsetof(nvram_t, relay_states) == 1968U,
-               "nvram_t: relay states at tail");
+               "nvram_t: relay states offset");
 _Static_assert(offsetof(nvram_t, retain_output_states) == 1969U,
                "nvram_t: output retention offset");
-_Static_assert(sizeof(nvram_t) == 1976U, "nvram_t schema v1 layout");
-_Static_assert(offsetof(nvram_t, crc) == 1972U, "nvram_t: crc at tail");
+_Static_assert(offsetof(nvram_t, auth_iterations) == 1970U, "nvram_t: auth iterations offset");
+_Static_assert(sizeof(auth_record_t) == 48U, "auth_record_t layout");
+_Static_assert(offsetof(nvram_t, auth_records) == 1972U, "nvram_t: auth records");
+_Static_assert(sizeof(nvram_t) == 2072U, "nvram_t schema v1 layout");
+_Static_assert(offsetof(nvram_t, crc) == 2068U, "nvram_t: crc at tail");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */

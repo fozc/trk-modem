@@ -163,15 +163,13 @@ const cases = [
         await f.run("loadSysLogs('all')");assert.equal(calls,1);assert.equal(f.run('loading'),false);
     }],
 
-    ['device profile fields have unique IDs and preserve commissioning epoch', async f => {
+    ['device profile fields keep commissioning time read-only', async f => {
         const html=f.run('renderDevice({DevreyeAlinmaZamani:1767225600})');
         const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]);
         assert.equal(new Set(ids).size,ids.length);
-        assert.match(html,/id="dev-DevreyeAlinmaZamani-display"/);
-        assert.match(html,/id="dev-DevreyeAlinmaZamani"[^>]*value="1767225600"/);
-        const input=f.document.getElementById('dev-DevreyeAlinmaZamani');
-        input.value='1767225600';input.type='number';
-        assert.equal(f.run('extractDevice().DevreyeAlinmaZamani'),1767225600);
+        assert.match(html,/id="dev-DevreyeAlinmaZamani-display"[^>]*disabled/);
+        assert.doesNotMatch(html,/id="dev-DevreyeAlinmaZamani"/);
+        assert.equal(f.run('extractDevice().DevreyeAlinmaZamani'),undefined);
         const period=f.document.getElementById('dev-PeriyodikModemResetPeriyodu');
         period.type='number';period.value=String(3700/3600);
         assert.equal(f.run('extractDevice().PeriyodikModemResetPeriyodu'),3700,

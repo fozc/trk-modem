@@ -11,15 +11,17 @@
 #undef NO_SHELL_LOG
 #undef DISABLE_SHELL_LOG
 #include "mock_bsp.h"
+#include "mock_device_auth.h"
 #include "mock_modem_config.h"
 #include "mock_nvram.h"
 #include "mock_rtc.h"
 #include "xprintf.h"
 #include "xscanf.h"
 TEST_SOURCE_FILE("datetime.c")
-#include "../../Application/libs/shell.c"
+#include "../../Application/shell/shell.c"
+#include "../../Application/shell/auth_shell.c"
 #define config_shell_init config_shell_register_real
-#include "../../Application/config_shell.c"
+#include "../../Application/shell/config_shell.c"
 #undef config_shell_init
 
 static modem_config_t current_config;
@@ -72,12 +74,17 @@ static nvram_save_result_t save(bool force, int call)
     return save_result;
 }
 
-static void command(const char *line)
+static void receive(const char *line)
 {
     for (; *line != '\0'; line++)
     {
         shell_on_rx_received((unsigned char)*line);
     }
+}
+
+static void command(const char *line)
+{
+    receive(line);
     shell_on_rx_received('\r');
     shell_process();
 }
@@ -106,10 +113,76 @@ void setUp(void)
     shell_init("test", "testpass", capture);
     config_shell_register_real();
     command("su testpass");
+    session_level = SHELL_LVL_FACTORY;
 }
 
 void tearDown(void)
 {
+}
+
+void test_terminal_accepts_del_backspace_and_lf_enter(void)
+{
+    const size_t start = output_used;
+    receive("whoamx\x7F" "i\n");
+    shell_process();
+    TEST_ASSERT_EQUAL_STRING("factory-admin\r\n", &output[start]);
+}
+
+static void assert_factory_help(const char *text, bool visible)
+{
+    TEST_ASSERT_NOT_NULL(strstr(text, "config set apn|apn-user"));
+    TEST_ASSERT_EQUAL(visible, strstr(text, "config set serial ") != NULL);
+    TEST_ASSERT_EQUAL(visible, strstr(text, "config set production-date ") != NULL);
+    TEST_ASSERT_EQUAL(visible, strstr(text, "config set commissioning-time ") != NULL);
+}
+
+void test_config_help_shows_factory_writes_only_for_factory_admin(void)
+{
+    const char *const help_commands[] = {
+        "help", "help config", "config help", "config --help"
+    };
+    for (size_t index = 0U; index < sizeof(help_commands) / sizeof(help_commands[0]); index++)
+    {
+        size_t start = output_used;
+        session_level = SHELL_LVL_USER;
+        command(help_commands[index]);
+        assert_factory_help(&output[start], false);
+
+        start = output_used;
+        session_level = SHELL_LVL_SUPER_USER;
+        command(help_commands[index]);
+        assert_factory_help(&output[start], false);
+
+        start = output_used;
+        session_level = SHELL_LVL_FACTORY;
+        command(help_commands[index]);
+        assert_factory_help(&output[start], true);
+        output_used = 0U;
+        output[0] = '\0';
+    }
+
+    shell_execute_remote("help config", SHELL_LVL_SUPER_USER);
+    assert_factory_help(output, false);
+
+    const size_t start = output_used;
+    shell_execute_remote("config help", SHELL_LVL_FACTORY);
+    assert_factory_help(&output[start], true);
+    TEST_ASSERT_EQUAL_UINT32(0U, save_calls);
+}
+
+void test_delayed_crlf_tail_does_not_submit_empty_secret(void)
+{
+    strcpy(current_config.apn.user_pass, "old");
+    command("config set apn-password");
+    receive("\n");
+    shell_process();
+    TEST_ASSERT_NOT_NULL(secret_handler);
+    TEST_ASSERT_EQUAL_UINT32(0U, save_calls);
+
+    receive("new\n");
+    shell_process();
+    TEST_ASSERT_EQUAL_UINT32(1U, save_calls);
+    TEST_ASSERT_EQUAL_STRING("new", stored_config.apn.user_pass);
 }
 
 void test_numeric_settings_are_persisted_and_unrelated_fields_preserved(void)
@@ -193,6 +266,29 @@ void test_non_admin_cannot_write_settings_or_start_secret_input(void)
     TEST_ASSERT_EQUAL_UINT32(0U, save_calls);
     TEST_ASSERT_NULL(secret_handler);
     TEST_ASSERT_NOT_NULL(strstr(output, "Permission denied"));
+}
+
+void test_usb_factory_can_reset_admin_password_without_echo(void)
+{
+    auth_shell_init();
+    device_auth_revision_IgnoreAndReturn(0U);
+    device_auth_verify_ExpectAndReturn(AUTH_ACCOUNT_FACTORY, "factory-secret", true);
+    command("su factory-admin");
+    TEST_ASSERT_EQUAL_UINT8(SHELL_LVL_USER, shell_get_session_level());
+    command("factory-secret");
+    TEST_ASSERT_EQUAL_UINT8(SHELL_LVL_FACTORY, shell_get_session_level());
+
+    device_auth_can_change_ExpectAndReturn(AUTH_ACCOUNT_FACTORY, AUTH_ACCOUNT_ADMIN, true);
+    device_auth_verify_ExpectAndReturn(AUTH_ACCOUNT_FACTORY, "factory-secret", true);
+    device_auth_set_password_ExpectAndReturn(AUTH_ACCOUNT_ADMIN, "new-secret", true);
+    device_auth_clear_Expect(new_password, sizeof(new_password));
+    command("passwd admin");
+    command("factory-secret");
+    command("new-secret");
+    command("new-secret");
+    TEST_ASSERT_NOT_NULL(strstr(output, "Password changed"));
+    TEST_ASSERT_NULL(strstr(output, "factory-secret"));
+    TEST_ASSERT_NULL(strstr(output, "new-secret"));
 }
 
 void test_dates_use_real_calendar_validation_and_epoch_conversion(void)
@@ -281,13 +377,16 @@ void test_invalid_password_preserves_value_and_prompt_rejects_inline_secret(void
 void test_redirected_shell_cannot_start_or_consume_local_secret_prompt(void)
 {
     command("config set apn-password");
+    shell_on_rx_received('l');
     shell_set_putchar(web_capture);
-    command("config set serial 123");
+    shell_execute_remote("config set serial 123", SHELL_LVL_SUPER_USER);
+    TEST_ASSERT_EQUAL_UINT32(0U, save_calls);
+    shell_execute_remote("config set serial 123", SHELL_LVL_FACTORY);
     TEST_ASSERT_EQUAL_UINT32(123U, stored_config.serial_number);
-    command("config set apn-password");
+    shell_execute_remote("config set apn-password", SHELL_LVL_FACTORY);
     TEST_ASSERT_EQUAL_UINT32(1U, save_calls);
     shell_set_putchar(capture);
-    command("local-secret");
+    command("ocal-secret");
     TEST_ASSERT_EQUAL_STRING("local-secret", stored_config.apn.user_pass);
 }
 

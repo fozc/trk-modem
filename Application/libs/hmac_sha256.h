@@ -11,6 +11,7 @@
 #define HMAC_SHA256_H
 
 #include "sha256.h"
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -33,6 +34,12 @@ void hmac_sha256_final(hmac_sha256_ctx *ctx, uint8_t mac[32U]);
 void hmac_sha256(uint8_t mac[32U],
                  const uint8_t *key, size_t key_len,
                  const uint8_t *data, size_t data_len);
+
+#define PBKDF2_SHA256_SALT_SIZE 16U
+
+bool pbkdf2_hmac_sha256(uint8_t output[32U], const uint8_t *password,
+                       size_t password_len, const uint8_t salt[PBKDF2_SHA256_SALT_SIZE],
+                       uint32_t iterations);
 
 #ifdef __cplusplus
 }

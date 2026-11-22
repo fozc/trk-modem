@@ -107,7 +107,7 @@ static int save_config(const modem_config_t *candidate, bool gsm_changed)
 
 static void password_received(const char *value, size_t length)
 {
-    if (shell_get_session_level() != SHELL_LVL_SUPER_USER)
+    if (shell_get_session_level() < SHELL_LVL_SUPER_USER)
     {
         SHELL_LOG("Permission denied.\r\n");
         return;
@@ -242,12 +242,18 @@ static int config_command(int argc, char *argv[])
         SHELL_LOG("Usage: config show | config set <field> <value> (config help)\r\n");
         return -1;
     }
-    if (shell_get_session_level() != SHELL_LVL_SUPER_USER)
+    if (shell_get_session_level() < SHELL_LVL_SUPER_USER)
     {
         SHELL_LOG("Permission denied.\r\n");
         return -1;
     }
     const char *key = argv[2];
+    if (((strcmp(key, "serial") == 0) || (strcmp(key, "production-date") == 0) ||
+         (strcmp(key, "commissioning-time") == 0)) && (shell_get_session_level() < SHELL_LVL_FACTORY))
+    {
+        SHELL_LOG("Factory admin role required\r\n");
+        return -1;
+    }
     if (strcmp(key, "apn-password") == 0)
     {
         if ((argc != 3) || !shell_read_secret(password_received))
@@ -295,6 +301,16 @@ static int config_command(int argc, char *argv[])
     return save_config(&candidate, gsm_changed);
 }
 
+static void config_factory_help(void)
+{
+    if (shell_get_session_level() >= SHELL_LVL_FACTORY)
+    {
+        SHELL_LOG("\tconfig set serial <0..99999999>\r\n"
+                  "\tconfig set production-date <YYYY-MM-DD>\r\n"
+                  "\tconfig set commissioning-time <YYYY-MM-DD> <HH:MM:SS>\r\n");
+    }
+}
+
 void config_shell_init(void)
 {
     const shell_cmd_t command =
@@ -302,9 +318,6 @@ void config_shell_init(void)
         .cmd = "config",
         .desc = "Production/service settings (UTC)\r\n"
                 "\tconfig show\r\n"
-                "\tconfig set serial <0..99999999>\r\n"
-                "\tconfig set production-date <YYYY-MM-DD>\r\n"
-                "\tconfig set commissioning-time <YYYY-MM-DD> <HH:MM:SS>\r\n"
                 "\tconfig set time <YYYY-MM-DD> <HH:MM:SS>\r\n"
                 "\tconfig set apn|apn-user [value] (max 15; omitted clears)\r\n"
                 "\tconfig set apn-password (local hidden input; empty clears)\r\n"
@@ -312,9 +325,10 @@ void config_shell_init(void)
                 "\tconfig set ntp-server [value] (omitted disables NTP)\r\n"
                 "\tconfig set ntp-port <1..65535>\r\n"
                 "\tconfig set timezone <-12..14>\r\n"
-                "\tWrites require admin; each setting is saved immediately.",
+                "\tService writes require admin. Each setting is saved immediately.",
         .level = SHELL_LVL_USER,
-        .func = config_command
+        .func = config_command,
+        .extra_help = config_factory_help
     };
     (void)shell_register_command(&command);
 }

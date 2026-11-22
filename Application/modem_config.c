@@ -35,7 +35,6 @@ void modem_config_set(const modem_config_t* config)
     modem_config->iec104_first_data_timeout_sec =
         config->iec104_first_data_timeout_sec;
     modem_config->iec104_idle_timeout_sec = config->iec104_idle_timeout_sec;
-    modem_config_set_commissioning_time(config->commissioning_time);
 	modem_config_set_web_port(config->web_interface_port);
 	modem_config_set_sim_pin(config->sim_card_pin);
 	modem_config_set_sim_apn(config->apn.apn);

@@ -33,6 +33,7 @@ enum
 
 #define SHELL_ENTER_CODE '\r'
 #define SHELL_BACKSPACE_CODE '\x08'
+#define SHELL_DELETE_CODE '\x7F'
 #define SHELL_TAB_CODE '\t'
 #define SHELL_DEFAULT_PROMPT "> \r\n"
 #define SHELL_DEFAULT_PASSWORD "admin"
@@ -58,6 +59,11 @@ static char prompt_buff[16] = {0};
 static char admin_pass[16] = {0};
 
 static uint8_t session_level = SHELL_LVL_USER;
+static uint8_t remote_level = UINT8_MAX;
+static uint8_t login_level;
+static uint32_t login_revision;
+static shell_auth_verify_fn_t auth_verify;
+static shell_auth_revision_fn_t auth_revision;
 static shell_cmd_t cmd_list[SHELL_MAX_CMD_LIST_COUNT] = {0};
 static uint8_t cmd_list_counter = 0;
 
@@ -65,6 +71,7 @@ static uint8_t rx_buff[SHELL_TEXT_MAXLEN + 1]; /* +1: room for the NUL terminato
 
 static uint32_t rx_idx = 0;
 static uint32_t rx_state = 1;
+static bool rx_previous_cr;
 
 static uint8_t special_chr = 0;
 static uint8_t rx_ready = 0;
@@ -95,9 +102,24 @@ uint8_t shell_process_pool = 0; /* RX -> main-loop hand-off flag (poll-based bui
 
 uint8_t shell_get_session_level(void)
 {
-	return session_level;
+    if (remote_level != UINT8_MAX)
+    {
+        return remote_level;
+    }
+    if ((session_level != SHELL_LVL_USER) && (auth_revision != NULL) &&
+        (login_revision != auth_revision(session_level)))
+    {
+        session_level = SHELL_LVL_USER;
+    }
+    return session_level;
 }
 
+void shell_set_authenticator(shell_auth_verify_fn_t verify, shell_auth_revision_fn_t revision)
+{
+    auth_verify = verify;
+    auth_revision = revision;
+    session_level = SHELL_LVL_USER;
+}
 
 void shell_set_putchar(shell_putchar_fn_t fn)
 {
@@ -302,6 +324,15 @@ static char *get_text(const char *str, const int n, char *buf, int siz, int *len
     return (char *)0;
 }
 
+static void shell_print_command_help(const shell_cmd_t *command)
+{
+    SHELL_LOG("%s\t:%s\r\n", command->cmd, command->desc);
+    if (command->extra_help != NULL)
+    {
+        command->extra_help();
+    }
+}
+
 int shell_command_executer(int argc, char *argv[])
 {
     if (argc == 0)
@@ -319,11 +350,11 @@ int shell_command_executer(int argc, char *argv[])
                                 (strcmp(argv[1], "--help") == 0) ||
                                 (strcmp(argv[1], "?") == 0)))
         	{
-        		SHELL_LOG("%s\t:%s\r\n", p->cmd, p->desc);
+                shell_print_command_help(p);
         		return 0;
         	}
 
-			if(p->level > session_level){
+			if(p->level > shell_get_session_level()){
 				SHELL_CLOG(XCOLOR_RED, "Permission denied\r\n");
 				return -3;
 			}
@@ -380,6 +411,19 @@ void shell_on_command_received(const char *str)
     }
 }
 
+void shell_execute_remote(const char *command, uint8_t level)
+{
+    if ((command == NULL) || (strlen(command) >= SHELL_TEXT_MAXLEN) ||
+        (level > SHELL_LVL_FACTORY) || (remote_level != UINT8_MAX))
+    {
+        shell_puts("Invalid remote command\r\n");
+        return;
+    }
+    remote_level = level;
+    shell_on_command_received(command);
+    remote_level = UINT8_MAX;
+}
+
 static void shell_reset_rx(void)
 {
 	rx_idx = 0;
@@ -392,10 +436,20 @@ void shell_on_rx_received(int chr)
 {
 	static uint32_t esc_seq = 0;
 
-    /* A CRLF terminal may send LF after the preceding CR was processed. */
-    if ((chr == '\n') && (rx_idx == 0U))
+    /* CRLF iki parcada gelse de tek Enter olarak islenir. */
+    const bool is_crlf_tail = rx_previous_cr && (chr == '\n');
+    rx_previous_cr = (chr == SHELL_ENTER_CODE);
+    if (is_crlf_tail)
     {
         return;
+    }
+    if (chr == '\n')
+    {
+        chr = SHELL_ENTER_CODE;
+    }
+    else if (chr == SHELL_DELETE_CODE)
+    {
+        chr = SHELL_BACKSPACE_CODE;
     }
 
 	if(rx_state)
@@ -570,9 +624,46 @@ void shell_process(void)
 	}
 }
 
+static void shell_login_secret(const char *password, size_t length)
+{
+    if ((length == strlen(password)) && auth_verify(login_level, password))
+    {
+        session_level = login_level;
+        login_revision = (auth_revision != NULL) ? auth_revision(login_level) : 0U;
+        SHELL_LOG("Authentication successful\r\n");
+    }
+    else
+    {
+        SHELL_LOG("Authentication failed\r\n");
+    }
+    shell_puts(prompt_buff);
+}
+
 static int shell_su(int argc, char *argv[])
 {
-	(void)argc;
+    if (remote_level != UINT8_MAX)
+    {
+        SHELL_LOG("Use the web login\r\n");
+        return -1;
+    }
+
+    if (auth_verify != NULL)
+    {
+        if ((argc != 2) ||
+            ((strcmp(argv[1], "admin") != 0) && (strcmp(argv[1], "factory-admin") != 0)))
+        {
+            SHELL_LOG("Usage: su <admin|factory-admin>\r\n");
+            return -1;
+        }
+        if (!shell_read_secret(shell_login_secret))
+        {
+            return -1;
+        }
+        session_level = SHELL_LVL_USER;
+        login_level = (strcmp(argv[1], "admin") == 0) ? SHELL_LVL_SUPER_USER : SHELL_LVL_FACTORY;
+        SHELL_LOG("Password: ");
+        return 0;
+    }
 
 	if(argc < 2)
 	{
@@ -580,7 +671,7 @@ static int shell_su(int argc, char *argv[])
 		return -1;
 	}
 
-	if(strncmp(argv[1], admin_pass, (sizeof(admin_pass) - 1)) == 0)
+	if((admin_pass[0] != '\0') && (strcmp(argv[1], admin_pass) == 0))
 	{
 		//TODO: start session timeout timer
 		session_level = SHELL_LVL_SUPER_USER;
@@ -598,7 +689,19 @@ static int shell_whoami(int argc, char *argv[])
 	(void)argc;
 	(void)argv;
 
-	SHELL_LOG( "%s\r\n", session_level == SHELL_LVL_SUPER_USER ? "root" : "user");
+    uint8_t level = shell_get_session_level();
+    if (level == SHELL_LVL_FACTORY)
+    {
+        SHELL_LOG("factory-admin\r\n");
+    }
+    else if (level == SHELL_LVL_SUPER_USER)
+    {
+        SHELL_LOG("root\r\n");
+    }
+    else
+    {
+        SHELL_LOG("user\r\n");
+    }
     return 0;
 }
 
@@ -607,6 +710,11 @@ static int shell_exit(int argc, char **argv)
 	(void)argc;
 	(void)argv;
 
+    if (remote_level != UINT8_MAX)
+    {
+        SHELL_LOG("Use the web logout\r\n");
+        return -1;
+    }
 	session_level = SHELL_LVL_USER;
     return 0;
 }
@@ -634,7 +742,7 @@ static int shell_help(int argc, char *argv[])
     {
         if ((argc == 1) || (strcmp(argv[1], p->cmd) == 0))
         {
-            SHELL_LOG("%s\t:%s\r\n", p->cmd, p->desc);
+            shell_print_command_help(p);
             if (argc == 2)
             {
                 return 0;
@@ -823,6 +931,9 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 	shell_putchar_fn = putchar_fn;
     console_putchar_fn = putchar_fn;
     secret_handler = NULL;
+    rx_previous_cr = false;
+    shell_set_authenticator(NULL, NULL);
+    admin_pass[0] = '\0';
 
 	if(!prompt){
 		strncpy(prompt_buff, SHELL_DEFAULT_PROMPT, sizeof(prompt_buff) - 1);
@@ -830,11 +941,15 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 		strncpy(prompt_buff, prompt, sizeof(prompt_buff) - 1);
 	}
 
-	if(!password){
-		strncpy(admin_pass, SHELL_DEFAULT_PASSWORD, sizeof(admin_pass) - 1);
-	}else{
+	if(password != NULL){
 		strncpy(admin_pass, password, sizeof(admin_pass) - 1);
 	}
+#ifndef SHELL_USER_CONTIKI_PROCESS
+    else
+    {
+        strncpy(admin_pass, SHELL_DEFAULT_PASSWORD, sizeof(admin_pass) - 1);
+    }
+#endif
 
 #ifdef SHELL_CMD_RESET_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "reset",
@@ -856,7 +971,7 @@ void shell_init(const char *prompt, const char *password, shell_putchar_fn_t put
 #ifdef SHELL_CMD_SU_ENABLED
 	shell_register_command(&(shell_cmd_t){.cmd = "su",
 										   .desc = "Become super user\r\n"
-												   "\tsu <password>    - elevate the session to root",
+												   "\tsu <admin|factory-admin> - prompt for the account password",
 										   .level = SHELL_LVL_USER,
 										   .func = shell_su
 	});

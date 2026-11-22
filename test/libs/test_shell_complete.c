@@ -11,10 +11,10 @@ static char output[128];
 static size_t output_length;
 
 static const shell_cmd_t command_table[] = {
-    { "help",   "help",   0U, NULL },
-    { "status", "status", 0U, NULL },
-    { "set",    "set",    1U, NULL },
-    { "rf",     "rf",     0U, NULL },
+    { .cmd = "help", .desc = "help", .level = 0U },
+    { .cmd = "status", .desc = "status", .level = 0U },
+    { .cmd = "set", .desc = "set", .level = 1U },
+    { .cmd = "rf", .desc = "rf", .level = 0U },
 };
 static uint8_t command_count = 4U;
 

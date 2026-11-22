@@ -12,7 +12,7 @@
 #include "xprintf.h"
 #include <string.h>
 #define runtime_stats_shell_init runtime_stats_shell_register_real
-#include "../../Application/runtime_stats_shell.c"
+#include "../../Application/shell/runtime_stats_shell.c"
 #undef runtime_stats_shell_init
 
 static shell_cmd_t registered;

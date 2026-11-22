@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TSB23 Cihaz Yapılandırması</title>
+<title>VESSRON RM610 Radio Modem — Cihaz Yapılandırması</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>⚡</text></svg>">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -24,7 +24,7 @@ html,body{height:100%;overflow:hidden}body{font-family:-apple-system,BlinkMacSys
 .loading{position:fixed;inset:0;background:rgba(15,23,42,.34);z-index:9998;display:flex;align-items:center;justify-content:center}.spinner{width:34px;height:34px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .75s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 .modal{position:fixed;inset:0;background:rgba(15,23,42,.52);z-index:9999;display:flex;align-items:center;justify-content:center}.modal-card{background:#fff;width:min(390px,calc(100vw - 30px));border-radius:10px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.22)}.modal-card h3{font-size:16px;margin-bottom:14px;color:#173b5f}.modal-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:12px}
 @media(max-width:850px){.sidebar{width:190px;flex-basis:190px}.header{padding:0 15px}.content{padding:14px}.g2,.g3{grid-template-columns:1fr}.header .hint{display:none}}
-@media(max-width:620px){.sidebar{width:58px;flex-basis:58px}.brand{font-size:0;text-align:center;padding:19px 5px}.brand:after{content:'⚡';font-size:18px}.mi{font-size:0;text-align:center;padding:12px 5px;border-left:0;border-bottom:2px solid transparent}.mi.a{border-bottom-color:#75b9e8}.logout .btn{font-size:0}.logout .btn:after{content:'↪';font-size:16px}.header h1{font-size:16px}}
+@media(max-width:620px){.sidebar{width:58px;flex-basis:58px}.brand{font-size:0;text-align:center;padding:19px 5px}.brand:after{content:'VESSRON\A RM610';font-size:10px;white-space:pre}.mi{font-size:0;text-align:center;padding:12px 5px;border-left:0;border-bottom:2px solid transparent}.mi.a{border-bottom-color:#75b9e8}.logout .btn{font-size:0}.logout .btn:after{content:'↪';font-size:16px}.header h1{font-size:16px}}
 .register-scroll{margin-top:10px;overflow-x:auto;border:1px solid var(--line);border-radius:6px}.register-table{width:100%;border-collapse:collapse;font-size:12px;min-width:650px}.register-table th,.register-table td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left}.register-table thead th{background:#f3f6f9;color:var(--muted);font-size:11px;font-weight:600}.register-table tbody th{font-weight:500}.register-table td{font-variant-numeric:tabular-nums;white-space:nowrap}.register-table tbody tr:last-child>*{border-bottom:0}.register-access{color:var(--muted);font-size:11px}
 #rf-group-status>p{margin:5px 0}#rf-status-read{margin:8px 0;color:var(--muted)}.rf-result{margin:12px 0;padding:12px;border:1px solid #e5c88b;border-left:3px solid #bf8100;border-radius:5px;background:#fffaf0;font-size:13px;line-height:1.6}.rf-result p+p{margin-top:6px}
 .status-tag{display:inline-block;padding:4px 9px;border-radius:5px;font-size:11px;font-weight:650;background:#edf1f5;color:#536477}.status-tag.good{background:#e8f5ed;color:#226440}.status-tag.warn{background:#fff3dc;color:#805510}.status-tag.bad{background:#fdeeed;color:#a8322a}.device-overview{padding:16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.device-overview strong{font-size:20px;color:#173b5f}.device-note{padding:10px 15px;color:var(--muted);font-size:11px;line-height:1.6}.device-details{padding:0 15px 14px}.device-details summary{cursor:pointer;color:var(--blue);font-size:12px}.device-details .kv-list{padding-top:8px}.board-section{margin:0 15px 14px;padding-top:12px;border-top:1px solid var(--line)}.board-section h4{font-size:12px;color:#1c527d;margin-bottom:8px}.board-section ul{padding-left:18px;font-size:12px;line-height:1.8}.board-alarms{margin:0 15px 14px;padding:10px 12px;border-radius:5px;background:#f5f7fa;font-size:12px;line-height:1.7}.board-alarms.active{background:#fff3dc;border-left:3px solid #bf8100}.board-alarms ul{padding-left:16px}.dio-states{display:flex;flex-wrap:wrap;gap:8px}.dio-state{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border:1px solid var(--line);border-radius:5px;font-size:12px}.dio-state i{width:8px;height:8px;border-radius:50%;background:#a3acb6}.dio-state.on i{background:#198754}
@@ -35,16 +35,16 @@ html,body{height:100%;overflow:hidden}body{font-family:-apple-system,BlinkMacSys
 <div id="initialLoading" class="loading"><div class="spinner"></div></div>
 <div id="loginModal" class="modal" style="display:none">
   <div class="modal-card">
-    <h3 id="lblLoginTitle">Cihaz Girişi</h3>
+    <h3 id="lblLoginTitle">VESSRON RM610 — Cihaza giriş</h3>
     <div class="field"><label id="lblUsername">Kullanıcı Adı</label><input id="loginUser" type="text" maxlength="16" autocomplete="username"></div>
-    <div class="field" style="margin-top:10px"><label id="lblPassword">Şifre</label><input id="loginPass" type="password" maxlength="16" autocomplete="current-password"></div>
+    <div class="field" style="margin-top:10px"><label id="lblPassword">Şifre</label><input id="loginPass" type="password" maxlength="63" autocomplete="current-password"></div>
     <div id="loginErr" class="err"></div>
     <div class="modal-actions"><button class="btn btn-read" onclick="doLogin()" id="lblLoginBtn">Giriş</button></div>
   </div>
 </div>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand" id="lblBrand">Cihaz Yapılandırma</div>
+    <div class="brand" id="lblBrand">VESSRON RM610 Radio Modem</div>
     <nav class="menu" id="menu"></nav>
     <div class="logout"><button class="btn btn-danger" style="width:100%" onclick="doLogout()" id="lblLogout">Çıkış</button></div>
   </aside>
@@ -174,9 +174,9 @@ const I18N={
     exception2:"Illegal data address",
     exception3:"Illegal data value",
 
-    docTitle:"TSB23 Device Configuration",
-    brand:"TSB23 Configuration",
-    loginTitle:"Device Login",
+    docTitle:"VESSRON RM610 Radio Modem — Device Configuration",
+    brand:"VESSRON RM610 Radio Modem",
+    loginTitle:"VESSRON RM610 — Device Login",
     username:"Username",
     password:"Password",
     loginBtn:"Login",
@@ -793,9 +793,9 @@ const I18N={
     exception2:"Geçersiz veri adresi",
     exception3:"Geçersiz veri değeri",
 
-    docTitle:"TSB23 cihaz yapılandırması",
-    brand:"TSB23 yapılandırma",
-    loginTitle:"Cihaza giriş",
+    docTitle:"VESSRON RM610 Radio Modem — Cihaz Yapılandırması",
+    brand:"VESSRON RM610 Radio Modem",
+    loginTitle:"VESSRON RM610 — Cihaza giriş",
     username:"Kullanıcı adı",
     password:"Şifre",
     loginBtn:"Giriş yap",
@@ -1401,14 +1401,48 @@ const showLoginModal=()=>{const m=$('loginModal');m.style.display='flex';$('logi
 const hideLoginModal=()=>{$('loginModal').style.display='none'};
 const startSessionTimeout=()=>{if(sessionTimeout)clearTimeout(sessionTimeout);sessionTimeout=setTimeout(()=>{toast(t('tSessExp'),'info');doLogout()},CFG_SESSION_TIMEOUT_MS)};
 const resetSessionTimeout=()=>{if(s_sessionToken)startSessionTimeout()};
-const doLogin=async()=>{const username=$('loginUser').value.substring(0,16),password=$('loginPass').value.substring(0,16);$('loginErr').textContent='';if(!username||!password){$('loginErr').textContent=t('tEnterCred');return}$('loginPass').value='';try{showLoad();const r=await api('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password}),skipAuthCheck:true});hideLoad();if(r.success===true){clearSession();s_sessionToken=r.token||null;s_role=r.role||null;if(s_sessionToken)sessionStorage.setItem('sessionToken',s_sessionToken);sessionStorage.setItem('sessionRole',s_role);buildMenu();hideLoginModal();toast(t('tLoginOk'),'ok');startSessionTimeout()}else{$('loginErr').textContent=authError(r.error)||t('tInvalidCred');$('loginPass').focus()}}catch(e){hideLoad();$('loginErr').textContent=t('tLoginFail');$('loginPass').focus()}};
+const doLogin=async()=>{const username=$('loginUser').value.substring(0,16),password=$('loginPass').value;$('loginErr').textContent='';if(!username||!password){$('loginErr').textContent=t('tEnterCred');return}$('loginPass').value='';try{showLoad();const r=await api('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password}),skipAuthCheck:true});hideLoad();if(r.success===true){clearSession();s_sessionToken=r.token||null;s_role=r.role||null;if(s_sessionToken)sessionStorage.setItem('sessionToken',s_sessionToken);sessionStorage.setItem('sessionRole',s_role);buildMenu();hideLoginModal();toast(t('tLoginOk'),'ok');startSessionTimeout()}else{$('loginErr').textContent=authError(r.error)||t('tInvalidCred');$('loginPass').focus()}}catch(e){hideLoad();$('loginErr').textContent=t('tLoginFail');$('loginPass').focus()}};
 const doLogout=async()=>{const pending=api('/auth/logout',{method:'POST',skipAuthCheck:true});clearSession();showLoginModal();try{await pending}catch(e){}toast(t('tLogoutOk'),'info')};
+
+function openPasswordForm(){
+  if(!isAdminRole())return;
+  const tr=LNG==='tr',form=document.createElement('div');
+  form.className='modal';form.style.display='flex';
+  form.innerHTML=`<form class="modal-card"><h3>${tr?'Parola değiştir':'Change password'}</h3>
+    <div class="field"><label for="passwordTarget">${tr?'Hesap':'Account'}</label><select id="passwordTarget"><option>admin</option>${s_role==='factory-admin'?'<option selected>factory-admin</option>':''}</select></div>
+    <div class="field"><label for="passwordCurrent">${tr?'Mevcut parolanız':'Your current password'}</label><input id="passwordCurrent" type="password" maxlength="63" autocomplete="current-password" required></div>
+    <div class="field"><label for="passwordNew">${tr?'Yeni parola':'New password'}</label><input id="passwordNew" type="password" maxlength="63" autocomplete="new-password" required></div>
+    <div class="field"><label for="passwordRepeat">${tr?'Yeni parolayı tekrar girin':'Repeat new password'}</label><input id="passwordRepeat" type="password" maxlength="63" autocomplete="new-password" required></div>
+    <div class="err" aria-live="polite"></div><div class="modal-actions">
+    <button class="btn btn-muted" type="button">${tr?'Vazgeç':'Cancel'}</button>
+    <button class="btn btn-read" type="submit">${tr?'Kaydet':'Save'}</button></div></form>`;
+  const fields=form.querySelectorAll('input'),error=form.querySelector('.err'),submit=form.querySelector('[type=submit]');
+  form.querySelector('[type=button]').onclick=()=>form.remove();
+  form.querySelector('form').onsubmit=async event=>{
+    event.preventDefault();
+    const [current,replacement,repeat]=Array.from(fields,input=>input.value);
+    if(replacement!==repeat){error.textContent=tr?'Yeni parolalar eşleşmiyor.':'New passwords do not match.';return}
+    const username=form.querySelector('select').value;
+    fields.forEach(input=>input.value='');submit.disabled=true;error.textContent='';
+    try{
+      await api('/auth/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password:current,newPassword:replacement})});
+      form.remove();
+      if(username===s_role){clearSession();showLoginModal()}
+      toast(tr?'Parola değiştirildi.':'Password changed.','ok');
+    }catch(e){
+      error.textContent=(tr?'Parola değiştirilemedi. ':'Password could not be changed. ')+e.message;
+      submit.disabled=false;
+    }
+  };
+  document.body.appendChild(form);fields[0].focus();
+}
 
 // ---------------- DIRTY STATE ----------------
 const setDirty=(page,el,dirty)=>{if(!dirtyPages[page])dirtyPages[page]=new Set();if(dirty)dirtyPages[page].add(el);else dirtyPages[page].delete(el);el.classList.toggle('dirty',dirty);const dot=el.closest('.field')?.querySelector('.dirty-dot');if(dot)dot.style.display=dirty?'inline-block':'none';updatePageState(page)};
 const clearDirty=page=>{(dirtyPages[page]||new Set()).forEach(el=>el.classList.remove('dirty'));dirtyPages[page]=new Set();document.querySelectorAll('#body .dirty-dot').forEach(e=>e.style.display='none');updatePageState(page)};
+const isAdminRole=()=>s_role==='admin'||s_role==='factory-admin';
 function applyRoleAccess(){
-  if(s_role==='admin')return;
+  if(isAdminRole())return;
   $('body').querySelectorAll('[data-dirty],[data-admin]').forEach(el=>el.disabled=true);
 }
 const hasDirty=page=>(dirtyPages[page]?.size||0)>0;
@@ -1431,7 +1465,7 @@ const feederTabs=(sel,act=0)=>'<div class="tabbar">'+Array.from({length:FEEDER_T
 const paneOpen=(pfx,i)=>'<div id="'+pfx+'-pane-'+i+'" class="pane '+(i===0?'active':'')+'"'+(i>=FEEDER_TABS?' style="display:none"':'')+'>';
 const sectionHead=(title,page,desc='')=>`<div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}</div></div>`;
 const readStamp=page=>'<p class="hint">'+esc(pageReadAt[page]?t('lastRead')+': '+fmtEpoch(pageReadAt[page]/1000):t('notRead'))+'</p>'+(pageReadAt[page]?'<p class="hint">'+esc(t('snapshotNote'))+'</p>':'');
-const pageHead=(title,page,desc='',rw=true)=>`<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}${readStamp(page)}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button>${profileActions(page)}${rw&&s_role==='admin'?`<button class="btn btn-save btn-small" id="save-${page}" onclick="savePage('${page}')">${esc(t('btnSave'))}</button>`:''}</div></div></div>`;
+const pageHead=(title,page,desc='',rw=true)=>`<div class="card" style="margin-bottom:14px"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}${readStamp(page)}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button>${profileActions(page)}${rw&&isAdminRole()?`<button class="btn btn-save btn-small" id="save-${page}" onclick="savePage('${page}')">${esc(t('btnSave'))}</button>`:''}</div></div></div>`;
 const emptyCard=(title,page,desc='')=>`<div class="card"><div class="card-head"><div><h3>${esc(title)}</h3>${desc?`<div class="sub">${esc(desc)}</div>`:''}${readStamp(page)}</div><div class="card-actions"><span id="state-${page}" class="read-state">${esc(t('stNotRead'))}</span><button class="btn btn-read btn-small" onclick="readPage('${page}')">${esc(t('btnRead'))}</button></div></div><div class="card-body"><div class="empty">${t('pressRead')}</div></div></div>`;
 const getInt=id=>{const v=$(id)?.value;return v===''?0:Number(v)||0};
 const getFloat=id=>{const v=$(id)?.value;return v===''?0:parseFloat(v)||0};
@@ -1606,10 +1640,10 @@ let rfStatusMessage='';
 function invalidateRfGroupStatus(message=''){rfStatusRequest++;rfStatusBusy=false;delete pageCache.rfGroup;rfStatusMessage=message;const panel=$('rf-group-status');if(panel)panel.innerHTML=buildRfGroupStatus(null);updateRfSaveButton()}
 let rfStatusRequest=0;
 let rfStatusBusy=false;
-function rfCanAbort(group){return s_role==='admin'&&group?.CanAbort===true&&!group.InventoryPending}
+function rfCanAbort(group){return isAdminRole()&&group?.CanAbort===true&&!group.InventoryPending}
 function updateRfSaveButton(){
   const save=$('save-rf'),abort=$('rf-abort'),refresh=$('rf-status-refresh');
-  if(save)save.disabled=loading||s_role!=='admin'||!!pageCache.rfGroup?.SaveBlocked;
+  if(save)save.disabled=loading||!isAdminRole()||!!pageCache.rfGroup?.SaveBlocked;
   if(abort){abort.hidden=!rfCanAbort(pageCache.rfGroup);abort.disabled=loading||rfStatusBusy||abort.hidden;}
   if(refresh)refresh.disabled=loading||rfStatusBusy;
 }
@@ -1681,7 +1715,7 @@ function renderRf(d){const x=d||{},rows=x.root||x;const un=(rows.Unassigned||[])
   else{s+=buildDiscoveryTable(un)}
   return s+'</div></div>';
 }
-function rfAssignEui(eui,phase){if(s_role!=='admin')return;const fsel=$('rf-assign-f-'+eui);const i=fsel?parseInt(fsel.value,10):0;const key={R:'R_DEVICEID',S:'S_DEVICEID',T:'T_DEVICEID'}[phase];const el=$('rf-'+key+'-'+i);if(!el){toast(t('tTargetNotFound'),'err');return}el.value=eui.toUpperCase();el.dispatchEvent(new Event('input'));selectRfTab(i);toast(tf('tEuiAssigned',{n:i+1,ph:{R:'L1',S:'L2',T:'L3'}[phase]}),'ok')}
+function rfAssignEui(eui,phase){if(!isAdminRole())return;const fsel=$('rf-assign-f-'+eui);const i=fsel?parseInt(fsel.value,10):0;const key={R:'R_DEVICEID',S:'S_DEVICEID',T:'T_DEVICEID'}[phase];const el=$('rf-'+key+'-'+i);if(!el){toast(t('tTargetNotFound'),'err');return}el.value=eui.toUpperCase();el.dispatchEvent(new Event('input'));selectRfTab(i);toast(tf('tEuiAssigned',{n:i+1,ph:{R:'L1',S:'L2',T:'L3'}[phase]}),'ok')}
 async function readRfDiscovery(){if(loading)return;try{showLoad();const r=await api('/discovery/rf');hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const un=(r.data?.Unassigned||[]).filter(u=>u&&u.EUI64);const el=$('rf-discovery-panel');if(el){el.innerHTML=un.length?buildDiscoveryTable(un):'<div class="empty">'+esc(t('discNone'))+'</div>';applyRoleAccess();toast(tf('tDiscovery',{n:un.length}),'ok')}}catch(e){hideLoad();toast(t('tRefreshErr')+userError(e),'err')}}
 function buildDiscoveryTable(un){const dev=[['R_DEVICEID','L1'],['S_DEVICEID','L2'],['T_DEVICEID','L3']];return '<div class="table-wrap"><table class="phase-table"><thead><tr><th>EUI-64</th><th>'+esc(t('thAssign'))+'</th></tr></thead><tbody>'+un.map(u=>'<tr><td>'+esc(u.EUI64)+'</td><td><select id="rf-assign-f-'+esc(u.EUI64)+'">'+Array.from({length:FEEDER_TABS},(_,k)=>'<option value="'+k+'">'+esc(feederLbl(k))+'</option>').join('')+'</select> '+dev.map(dv=>'<button data-admin="1" class="btn btn-read btn-small" onclick="rfAssignEui(\''+esc(u.EUI64)+'\',\''+dv[0][0]+'\')">'+dv[1]+'</button>').join(' ')+'</td></tr>').join('')+'</tbody></table></div>'}
 function rfUpdateProv(i){const el=$('rf-HatID-'+i),b=$('rf-prov-'+i);if(el&&b)b.style.display=(parseInt(el.value,10)||0)===0?'block':'none'}
@@ -1745,10 +1779,10 @@ function renderBoard(d){const x={...d};for(const key of ['BatteryEquivalentCycle
 
 
 function renderDevice(d){const x=d||{};let s=pageHead(t('devTitle'),'device',t('devSub'));s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devInfo'))+'</h3><div class="sub">'+esc(t('devInfoSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=textField('dev-SeriNumarasi',t('fSerial'),x.SeriNumarasi,'64',true)+textField('dev-UretimTarihi',t('fMfg'),fmtEpoch(x.UretimTarihi),'64',true)+textField('dev-LifeTime',t('fLife'),fmtLifetime(x.LifeTime),'64',true)+textField('dev-RunTime',t('fRun'),fmtLifetime(x.RunTime),'64',true)+textField('dev-ModemYazilimVeriyonu',t('fMfw'),x.ModemYazilimVeriyonu,'64',true)+textField('dev-RFYazilimVeriyonu',t('fRfw'),x.RFYazilimVeriyonu,'64',true)+textField('dev-KurulumTarihi',t('fFwDate'),fmtEpoch(x.KurulumTarihi),'64',true)+textField('dev-CihazKoordinati',t('fCell'),x.CihazKoordinati&&typeof x.CihazKoordinati==='object'?`MCC:${x.CihazKoordinati.MCC} MNC:${x.CihazKoordinati.MNC} LAC:${x.CihazKoordinati.LAC} CI:${x.CihazKoordinati.CI}`:x.CihazKoordinati||'-','128',true)+textField('dev-DevreyeAlinmaZamani-display',t('fComm'),fmtEpoch(x.DevreyeAlinmaZamani),'64',true)+textField('dev-Time',t('fRtc'),fmtEpoch(x.Time),'64',true);s+='</div></div></div>';
-  s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devCfg'))+'</h3><div class="sub">'+esc(t('devCfgSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';s+=numField('dev-DevreyeAlinmaZamani',LNG==='tr'?'Devreye alma zamanı (UTC epoch)':'Commissioning time (UTC epoch)',x.DevreyeAlinmaZamani,0,4294967295);
+  s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devCfg'))+'</h3><div class="sub">'+esc(t('devCfgSub'))+'</div></div></div><div class="card-body"><div class="grid g3">';
   s+=numField('dev-WebArayuzuPortu',t('fWebPort'),x.WebArayuzuPortu,1,65535)+numField('dev-SimKartPin',t('fPin'),x.SimKartPin,0,9999)+textField('dev-SimKartAPN',t('fApn'),x.SimKartAPN,15)+textField('dev-SimKartAPNUsername',t('fApnUser'),x.SimKartAPNUsername,15)+textField('dev-SimKartAPNSifresi',t('fApnPass'),x.SimKartAPNSifresi,15,false,true)+textField('dev-NtpServer',t('fNtp'),x.NtpServer,63)+numField('dev-NtpServerPortu',t('fNtpPort'),x.NtpServerPortu,1,65535)+numField('dev-TimeZone',t('fTz'),x.TimeZone,-12,14)+numField('dev-PeriyodikModemResetPeriyodu',t('fModemRst'),x.PeriyodikModemResetPeriyodu/3600,0,720,false,'','any')+numField('dev-WebIlkVeriZamanAsimi',t('fWebFd'),x.WebIlkVeriZamanAsimi,0,65535)+numField('dev-WebBostaKalmaZamanAsimi',t('fWebIdle'),x.WebBostaKalmaZamanAsimi,0,65535)+numField('dev-IEC104IlkVeriZamanAsimi',t('fIecFd'),x.IEC104IlkVeriZamanAsimi,0,65535)+numField('dev-IEC104BostaKalmaZamanAsimi',t('fIecIdle'),x.IEC104BostaKalmaZamanAsimi,0,65535);s+='</div><p class="hint">'+esc(t('networkHelp'))+'</p><p class="hint">'+esc(t('zoneHelp'))+'</p><p class="hint">'+esc(t('zeroOff'))+'</p><p class="hint">'+esc(t('resetHelp'))+'</p><p class="hint">'+esc(t('pinHelp'))+'</p></div></div>';
   s+='<div class="card"><div class="card-head"><h3>'+esc(t('relays'))+'</h3></div><div class="card-body"><div class="grid g2">'+checkField('dev-PreserveOutputStates',t('retainOutputs'),x.PreserveOutputStates)+'<p class="hint">'+esc(t('retainOutputsHelp'))+'</p></div></div></div>';
-  s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devActions'))+'</h3><div class="sub">'+esc(t('devActionsSub'))+'</div></div></div><div class="card-body"><button class="btn btn-danger" onclick="rebootDevice()">'+esc(t('btnReboot'))+'</button></div></div>';return s}
+  s+='<div class="card"><div class="card-head"><div><h3>'+esc(t('devActions'))+'</h3><div class="sub">'+esc(t('devActionsSub'))+'</div></div></div><div class="card-body"><button class="btn btn-danger" onclick="rebootDevice()">'+esc(t('btnReboot'))+'</button> <button class="btn btn-muted" onclick="openPasswordForm()">'+esc(LNG==='tr'?'Parola değiştir':'Change password')+'</button></div></div>';return s}
 
 function renderFaults(){let s='<div class="card"><div class="card-head"><div><h3>'+esc(t('mFaults'))+'</h3><div class="sub">'+esc(t('faultsSub'))+'</div>'+readStamp('faults:'+faultFeeder)+'</div><div class="card-actions"><button class="btn btn-read btn-small" onclick="loadFaults()">'+esc(t('btnRead'))+'</button></div></div><div class="card-body">'+feederTabs('selectFaultFeeder',faultFeeder)+'<div id="faultContent">'+(rfFaultCache[faultFeeder]?buildFaults(rfFaultCache[faultFeeder]):'<div class="empty">'+esc(t('faultsPress'))+'</div>')+'</div></div></div>';return s}
 function buildFaults(r){const phases=[['L1T','L1P','L1'],['L2T','L2P','L2'],['L3T','L3P','L3']];let h='<p class="hint">'+esc(t('faultHelp'))+'</p><div class="grid g3">';const tc=r.tc||[0,0,0],pc=r.pc||[0,0,0];phases.forEach((p,i)=>{h+='<div class="card" style="box-shadow:none;border:1px solid var(--line)"><div class="card-body"><h3 style="font-size:13px;margin-bottom:8px">'+p[2]+'</h3><div class="sub" style="font-weight:700;color:#a86e00;margin-bottom:4px">'+esc(tf('tempTpl',{n:tc[i]}))+'</div>';const tempRecords=r[p[0]]?r[p[0]].split('\n').filter(x=>x.trim()):[];h+=tempRecords.length?tempRecords.map(x=>'<div class="log" style="border-left-color:#d98c00">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='<div class="sub" style="font-weight:700;color:#a33;margin:10px 0 4px">'+esc(tf('permTpl',{n:pc[i]}))+'</div>';const pRec=r[p[1]]?r[p[1]].split('\n').filter(x=>x.trim()):[];h+=pRec.length?pRec.map(x=>'<div class="log" style="border-left-color:#b33">'+esc(x)+'</div>').join(''):'<div class="empty" style="padding:8px">'+esc(t('noRecords'))+'</div>';h+='</div></div>'});return h+'</div>'}
@@ -1806,7 +1840,7 @@ async function loadSysLogs(mode='range'){
 function renderTerminal(){return '<p class="hint">'+esc(t('consoleHelp'))+'</p><div class="terminal"><div class="terminal-out" id="trmOut"></div><div class="terminal-in"><input id="trmCmd" maxlength="64" autocomplete="off" placeholder="'+esc(t('termPh'))+'"><button class="btn btn-read" onclick="trmSend()">'+esc(t('btnSend'))+'</button><button class="btn btn-muted" onclick="trmClr()">'+esc(t('btnClear'))+'</button></div></div>'}
 
 // CONFIG PROFILE BEGIN
-const CONFIG_PROFILE_SCHEMA={"device":{"WebArayuzuPortu":{"kind":"int","lo":1,"hi":65535,"options":[]},"SimKartPin":{"kind":"int","lo":0,"hi":9999,"options":[]},"SimKartAPN":{"kind":"str","lo":0,"hi":15,"options":[]},"SimKartAPNUsername":{"kind":"str","lo":0,"hi":15,"options":[]},"SimKartAPNSifresi":{"kind":"str","lo":0,"hi":15,"options":[]},"NtpServer":{"kind":"str","lo":0,"hi":63,"options":[]},"NtpServerPortu":{"kind":"int","lo":1,"hi":65535,"options":[]},"PreserveOutputStates":{"kind":"bool","lo":null,"hi":null,"options":[]},"TimeZone":{"kind":"int","lo":-12,"hi":14,"options":[]},"PeriyodikModemResetPeriyodu":{"kind":"int","lo":0,"hi":2592000,"options":[]},"WebIlkVeriZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"WebBostaKalmaZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"IEC104IlkVeriZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"IEC104BostaKalmaZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"DevreyeAlinmaZamani":{"kind":"int","lo":0,"hi":4294967295,"options":[]}},"iec104":{"ScadaIPAdresi":{"kind":"ip","lo":null,"hi":null,"options":[]},"Port":{"kind":"int","lo":1,"hi":65535,"options":[]},"PeriodicSend":{"kind":"int","lo":0,"hi":86400,"options":[]},"T0":{"kind":"int","lo":1,"hi":255,"options":[]},"T1":{"kind":"int","lo":1,"hi":255,"options":[]},"T2":{"kind":"int","lo":1,"hi":255,"options":[]},"T3":{"kind":"int","lo":20,"hi":65525,"options":[]},"K":{"kind":"int","lo":1,"hi":255,"options":[]},"W":{"kind":"int","lo":1,"hi":255,"options":[]},"OriginatorAddr":{"kind":"int","lo":0,"hi":255,"options":[]},"CommonAddr":{"kind":"int","lo":1,"hi":65535,"options":[]},"SBO":{"kind":"bool","lo":null,"hi":null,"options":[]},"SBOTimeout":{"kind":"int","lo":0,"hi":65535,"options":[]},"AkuUyarisi":{"kind":"int","lo":1,"hi":16777215,"options":[]},"ModemReset":{"kind":"int","lo":1,"hi":16777215,"options":[]},"Hatlar":{"kind":"lines","keys":["inUse","TemporaryFaultBase","PermanentFaultBase","IOA_R_AnlikAkim","IOA_S_AnlikAkim","IOA_T_AnlikAkim","IOA_R_EnerjiVarYok","IOA_S_EnerjiVarYok","IOA_T_EnerjiVarYok","IOA_R_YukAkimiVarYok","IOA_S_YukAkimiVarYok","IOA_T_YukAkimiVarYok","IOA_R_RfhabVarYok","IOA_S_RfhabVarYok","IOA_T_RfhabVarYok","IOA_R_TripFailed","IOA_S_TripFailed","IOA_T_TripFailed"]}},"modbus":{"CihazID":{"kind":"int","lo":1,"hi":247,"options":[]},"BaudRate":{"kind":"combo","lo":null,"hi":null,"options":[4800,9600,14400,19200,28800,38400,57600,115200]},"StopBits":{"kind":"combo","lo":null,"hi":null,"options":[1,2]}},"rf":{"inUse":{"kind":"bool","lo":null,"hi":null,"array":true,"options":[]},"HatID":{"kind":"int","lo":0,"hi":4,"array":true,"options":[]},"ZoneID":{"kind":"int","lo":1,"hi":7,"array":true,"options":[]},"R_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"S_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"T_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"CalismaModu":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"HatFrekansi":{"kind":"combo","lo":50,"hi":60,"array":true,"options":[50,60]},"SistemNominalAkimi":{"kind":"float","lo":2,"hi":200,"array":true,"options":[]},"SetEdilebilirActirmaEsikAkimi":{"kind":"float","lo":5,"hi":240,"array":true,"options":[]},"ArtimliAkimEsigi":{"kind":"float","lo":1,"hi":2200,"array":true,"options":[]},"HatKopukHatBosta":{"kind":"float","lo":0.3,"hi":5,"array":true,"options":[]},"SetEdilebilirAcmaArizaSayisi":{"kind":"int","lo":1,"hi":4,"array":true,"options":[]},"OluHatAkimiDogrulamaSuresi":{"kind":"int","lo":80,"hi":200,"array":true,"options":[]},"YenilenmeSifirlamaSuresi":{"kind":"int","lo":10,"hi":300,"array":true,"options":[]},"IsSafety":{"kind":"float","lo":0.1,"hi":0.3,"array":true,"options":[]},"ThresholdMs":{"kind":"int","lo":20,"hi":140,"array":true,"options":[]},"TMemDeadSec":{"kind":"int","lo":30,"hi":600,"array":true,"options":[]},"InrushTimerMs":{"kind":"int","lo":20,"hi":80,"array":true,"options":[]},"InrushMultiplier":{"kind":"float","lo":1,"hi":15,"array":true,"options":[]},"SyncTripDelayMs":{"kind":"int","lo":0,"hi":100,"array":true,"options":[]},"TripPulseDurationMs":{"kind":"int","lo":20,"hi":120,"array":true,"options":[]},"TripMode":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"Inrush100HzRatio":{"kind":"int","lo":10,"hi":40,"array":true,"options":[]},"ClpEnabled":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"ClpMultiplier":{"kind":"float","lo":1,"hi":3,"array":true,"options":[]},"ClpDurationMs":{"kind":"int","lo":100,"hi":12000,"array":true,"options":[]},"VtripTarget":{"kind":"float","lo":24,"hi":45,"array":true,"options":[]}}};
+const CONFIG_PROFILE_SCHEMA={"device":{"WebArayuzuPortu":{"kind":"int","lo":1,"hi":65535,"options":[]},"SimKartPin":{"kind":"int","lo":0,"hi":9999,"options":[]},"SimKartAPN":{"kind":"str","lo":0,"hi":15,"options":[]},"SimKartAPNUsername":{"kind":"str","lo":0,"hi":15,"options":[]},"SimKartAPNSifresi":{"kind":"str","lo":0,"hi":15,"options":[]},"NtpServer":{"kind":"str","lo":0,"hi":63,"options":[]},"NtpServerPortu":{"kind":"int","lo":1,"hi":65535,"options":[]},"PreserveOutputStates":{"kind":"bool","lo":null,"hi":null,"options":[]},"TimeZone":{"kind":"int","lo":-12,"hi":14,"options":[]},"PeriyodikModemResetPeriyodu":{"kind":"int","lo":0,"hi":2592000,"options":[]},"WebIlkVeriZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"WebBostaKalmaZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"IEC104IlkVeriZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]},"IEC104BostaKalmaZamanAsimi":{"kind":"int","lo":0,"hi":65535,"options":[]}},"iec104":{"ScadaIPAdresi":{"kind":"ip","lo":null,"hi":null,"options":[]},"Port":{"kind":"int","lo":1,"hi":65535,"options":[]},"PeriodicSend":{"kind":"int","lo":0,"hi":86400,"options":[]},"T0":{"kind":"int","lo":1,"hi":255,"options":[]},"T1":{"kind":"int","lo":1,"hi":255,"options":[]},"T2":{"kind":"int","lo":1,"hi":255,"options":[]},"T3":{"kind":"int","lo":20,"hi":65525,"options":[]},"K":{"kind":"int","lo":1,"hi":255,"options":[]},"W":{"kind":"int","lo":1,"hi":255,"options":[]},"OriginatorAddr":{"kind":"int","lo":0,"hi":255,"options":[]},"CommonAddr":{"kind":"int","lo":1,"hi":65535,"options":[]},"SBO":{"kind":"bool","lo":null,"hi":null,"options":[]},"SBOTimeout":{"kind":"int","lo":0,"hi":65535,"options":[]},"AkuUyarisi":{"kind":"int","lo":1,"hi":16777215,"options":[]},"ModemReset":{"kind":"int","lo":1,"hi":16777215,"options":[]},"Hatlar":{"kind":"lines","keys":["inUse","TemporaryFaultBase","PermanentFaultBase","IOA_R_AnlikAkim","IOA_S_AnlikAkim","IOA_T_AnlikAkim","IOA_R_EnerjiVarYok","IOA_S_EnerjiVarYok","IOA_T_EnerjiVarYok","IOA_R_YukAkimiVarYok","IOA_S_YukAkimiVarYok","IOA_T_YukAkimiVarYok","IOA_R_RfhabVarYok","IOA_S_RfhabVarYok","IOA_T_RfhabVarYok","IOA_R_TripFailed","IOA_S_TripFailed","IOA_T_TripFailed"]}},"modbus":{"CihazID":{"kind":"int","lo":1,"hi":247,"options":[]},"BaudRate":{"kind":"combo","lo":null,"hi":null,"options":[4800,9600,14400,19200,28800,38400,57600,115200]},"StopBits":{"kind":"combo","lo":null,"hi":null,"options":[1,2]}},"rf":{"inUse":{"kind":"bool","lo":null,"hi":null,"array":true,"options":[]},"HatID":{"kind":"int","lo":0,"hi":4,"array":true,"options":[]},"ZoneID":{"kind":"int","lo":1,"hi":7,"array":true,"options":[]},"R_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"S_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"T_DEVICEID":{"kind":"eui","lo":0,"hi":16,"array":true,"options":[]},"CalismaModu":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"HatFrekansi":{"kind":"combo","lo":50,"hi":60,"array":true,"options":[50,60]},"SistemNominalAkimi":{"kind":"float","lo":2,"hi":200,"array":true,"options":[]},"SetEdilebilirActirmaEsikAkimi":{"kind":"float","lo":5,"hi":240,"array":true,"options":[]},"ArtimliAkimEsigi":{"kind":"float","lo":1,"hi":2200,"array":true,"options":[]},"HatKopukHatBosta":{"kind":"float","lo":0.3,"hi":5,"array":true,"options":[]},"SetEdilebilirAcmaArizaSayisi":{"kind":"int","lo":1,"hi":4,"array":true,"options":[]},"OluHatAkimiDogrulamaSuresi":{"kind":"int","lo":80,"hi":200,"array":true,"options":[]},"YenilenmeSifirlamaSuresi":{"kind":"int","lo":10,"hi":300,"array":true,"options":[]},"IsSafety":{"kind":"float","lo":0.1,"hi":0.3,"array":true,"options":[]},"ThresholdMs":{"kind":"int","lo":20,"hi":140,"array":true,"options":[]},"TMemDeadSec":{"kind":"int","lo":30,"hi":600,"array":true,"options":[]},"InrushTimerMs":{"kind":"int","lo":20,"hi":80,"array":true,"options":[]},"InrushMultiplier":{"kind":"float","lo":1,"hi":15,"array":true,"options":[]},"SyncTripDelayMs":{"kind":"int","lo":0,"hi":100,"array":true,"options":[]},"TripPulseDurationMs":{"kind":"int","lo":20,"hi":120,"array":true,"options":[]},"TripMode":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"Inrush100HzRatio":{"kind":"int","lo":10,"hi":40,"array":true,"options":[]},"ClpEnabled":{"kind":"combo","lo":0,"hi":1,"array":true,"options":[0,1]},"ClpMultiplier":{"kind":"float","lo":1,"hi":3,"array":true,"options":[]},"ClpDurationMs":{"kind":"int","lo":100,"hi":12000,"array":true,"options":[]},"VtripTarget":{"kind":"float","lo":24,"hi":45,"array":true,"options":[]}}};
 /* Portable configuration file validation. Synced into the embedded page. */
 function validateProfileConfig(domain,data){
   const schema=CONFIG_PROFILE_SCHEMA[domain];
@@ -1871,25 +1905,26 @@ function parseConfigProfile(text,domain){
   if(new TextEncoder().encode(text).length>65536)throw Error('File too large');
   const obj=JSON.parse(text);
   if(!obj||Array.isArray(obj)||Object.keys(obj).sort().join(',')!=='config,domain,format,version'||obj.format!=='troika-config'||obj.version!==1||obj.domain!==domain)throw Error('File version or domain mismatch');
+  if(domain==='device'&&obj.config&&typeof obj.config==='object'&&!Array.isArray(obj.config))delete obj.config.DevreyeAlinmaZamani;
   return validateProfileConfig(domain,obj.config);
 }
 
 function profileActions(page){
   if(!CONFIG_PROFILE_SCHEMA[page]||!pageCache[page])return '';
-  return `<button class="btn btn-muted btn-small" onclick="exportConfigFile('${page}')">${LNG==='tr'?'Dışa aktar':'Export'}</button>`+(s_role==='admin'?`<button class="btn btn-muted btn-small" data-admin="1" onclick="document.getElementById('profile-${page}').click()">${LNG==='tr'?'İçe aktar':'Import'}</button><input type="file" accept=".json,application/json" id="profile-${page}" hidden onchange="importConfigFile('${page}',this)">`:'');
+  return `<button class="btn btn-muted btn-small" onclick="exportConfigFile('${page}')">${LNG==='tr'?'Dışa aktar':'Export'}</button>`+(isAdminRole()?`<button class="btn btn-muted btn-small" data-admin="1" onclick="document.getElementById('profile-${page}').click()">${LNG==='tr'?'İçe aktar':'Import'}</button><input type="file" accept=".json,application/json" id="profile-${page}" hidden onchange="importConfigFile('${page}',this)">`:'');
 }
 function exportConfigFile(page){
   if(loading||!pageCache[page])return;
   try{
     const profile=makeConfigProfile(page,extractPage(page));
     const url=URL.createObjectURL(new Blob([JSON.stringify(profile,null,2)],{type:'application/json'}));
-    const link=document.createElement('a');link.href=url;link.download='troika-'+page+'.json';
+    const link=document.createElement('a');link.href=url;link.download='vessron-rm610-'+page+'.json';
     document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
     toast(LNG==='tr'?'Ayarlar dışa aktarıldı. Dosya parolaları da içerir.':'Settings exported. The file includes passwords.','ok');
   }catch(error){toast(userError(error),'err')}
 }
 function stageConfigProfile(page,text){
-  if(s_role!=='admin'||!pageCache[page]||curId!==page)throw Error('Read configuration first');
+  if(!isAdminRole()||!pageCache[page]||curId!==page)throw Error('Read configuration first');
   const imported=parseConfigProfile(text,page),current=extractPage(page);
   const candidate={...current,...imported};
   if(page==='iec104')candidate.Hatlar={...current.Hatlar,...imported.Hatlar};
@@ -1917,7 +1952,7 @@ async function importConfigFile(page,input){
 const readPage=async(page,confirmed=false)=>{if(loading)return;if(hasDirty(page)&&!confirmed){confirmAction(t('readDiscard'),()=>readPage(page,true),'discardRead');return;}try{showLoad();let r;if(page==='iec104')r=await api('/config/iec104');else if(page==='modbus')r=await api('/config/modbus');else if(page==='rf')r=await api('/config/rf');else if(page==='board')r=await api('/status/board');else if(page==='device')r=await api('/config/device');else return;hideLoad();if(r.success===false)throw new Error(r.error||t('tReadFailed'));const d=r.data||r;if(page==='rf')invalidateRfGroupStatus();pageCache[page]=d;pageReadAt[page]=Date.now();delete pageSaved[page];renderPage(page,d);toast(t('tReadOk'),'ok')}catch(e){hideLoad();toast(t('tReadErr')+userError(e),'err')}};
 const normalRfEui=value=>{const text=String(value||'').trim().toUpperCase();return /^0{16}$/.test(text)?'':text};
 function clearRfEui(index,key){
-  if(loading||s_role!=='admin'||!['R_DEVICEID','S_DEVICEID','T_DEVICEID'].includes(key))return;
+  if(loading||!isAdminRole()||!['R_DEVICEID','S_DEVICEID','T_DEVICEID'].includes(key))return;
   const el=$('rf-'+key+'-'+index);if(!el)return;
   el.value='';setDirty('rf',el,el.dataset.original!=='');
 }
@@ -1936,7 +1971,7 @@ function rfChangeSummary(before,after){
 }
 const savePage=async(page)=>{
   if(loading)return;
-  if(s_role!=='admin'){toast(t('readOnlyRole'),'err');return}
+  if(!isAdminRole()){toast(t('readOnlyRole'),'err');return}
   if(!pageCache[page]){toast(t('tReadFirst'),'err');return}
   if(!validatePage(page))return;
   const d=extractPage(page);
@@ -1954,7 +1989,7 @@ const savePage=async(page)=>{
 };
 async function savePageData(page,d){
   if(loading)return;
-  if(s_role!=='admin'){toast(t('readOnlyRole'),'err');return}
+  if(!isAdminRole()){toast(t('readOnlyRole'),'err');return}
   try{
     showLoad();
     const r=await api('/config/'+page,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
@@ -2059,13 +2094,13 @@ function extractPage(page){if(page==='iec104'){const d={ScadaIPAdresi:getText('i
   if(page==='device')return extractDevice();return {};
 }
 const getIntEl=e=>e.value===''?0:Number(e.value)||0;
-function extractDevice(){return {DevreyeAlinmaZamani:getInt('dev-DevreyeAlinmaZamani'),PreserveOutputStates:$('dev-PreserveOutputStates').checked,WebArayuzuPortu:getInt('dev-WebArayuzuPortu'),SimKartPin:getInt('dev-SimKartPin'),SimKartAPN:getText('dev-SimKartAPN'),SimKartAPNUsername:getText('dev-SimKartAPNUsername'),SimKartAPNSifresi:getText('dev-SimKartAPNSifresi'),NtpServer:getText('dev-NtpServer'),NtpServerPortu:getInt('dev-NtpServerPortu'),TimeZone:getInt('dev-TimeZone'),PeriyodikModemResetPeriyodu:Math.round(getFloat('dev-PeriyodikModemResetPeriyodu')*3600),WebIlkVeriZamanAsimi:getInt('dev-WebIlkVeriZamanAsimi'),WebBostaKalmaZamanAsimi:getInt('dev-WebBostaKalmaZamanAsimi'),IEC104IlkVeriZamanAsimi:getInt('dev-IEC104IlkVeriZamanAsimi'),IEC104BostaKalmaZamanAsimi:getInt('dev-IEC104BostaKalmaZamanAsimi')}}
+function extractDevice(){return {PreserveOutputStates:$('dev-PreserveOutputStates').checked,WebArayuzuPortu:getInt('dev-WebArayuzuPortu'),SimKartPin:getInt('dev-SimKartPin'),SimKartAPN:getText('dev-SimKartAPN'),SimKartAPNUsername:getText('dev-SimKartAPNUsername'),SimKartAPNSifresi:getText('dev-SimKartAPNSifresi'),NtpServer:getText('dev-NtpServer'),NtpServerPortu:getInt('dev-NtpServerPortu'),TimeZone:getInt('dev-TimeZone'),PeriyodikModemResetPeriyodu:Math.round(getFloat('dev-PeriyodikModemResetPeriyodu')*3600),WebIlkVeriZamanAsimi:getInt('dev-WebIlkVeriZamanAsimi'),WebBostaKalmaZamanAsimi:getInt('dev-WebBostaKalmaZamanAsimi'),IEC104IlkVeriZamanAsimi:getInt('dev-IEC104IlkVeriZamanAsimi'),IEC104BostaKalmaZamanAsimi:getInt('dev-IEC104BostaKalmaZamanAsimi')}}
 
 // ---------------- NAVIGATION / RENDER ----------------
 function renderPage(id,d){let html='';if(id==='iec104')html=pageCache.iec104?renderIec104(pageCache.iec104):emptyCard(t('iecTitle'),'iec104',t('iecSub'));else if(id==='modbus')html=pageCache.modbus?renderModbus(pageCache.modbus):emptyCard(t('modTitle'),'modbus',t('modSub'));else if(id==='rf')html=pageCache.rf?renderRf(pageCache.rf):emptyCard(t('rfTitle'),'rf',t('rfSub'));else if(id==='rfmon')html=renderRfMon(pageCache.rfmon);else if(id==='board')html=pageCache.board?renderBoard(pageCache.board):renderBoard(null);else if(id==='iec-faults')html=renderFaults();else if(id==='syslogs')html=renderLogs();else if(id==='device')html=pageCache.device?renderDevice(pageCache.device):emptyCard(t('devTitle'),'device',t('devSub'));else if(id==='terminal')html=renderTerminal();$('body').innerHTML=html;curId=id;$('title').textContent=t(menuPages.find(p=>p[0]===id)?.[1]||id);document.querySelectorAll('.mi').forEach(e=>e.classList.toggle('a',e.dataset.id===id));dirtyPages[id]=new Set();if(id==='terminal'){$('trmCmd')?.addEventListener('keydown',e=>{if(e.key==='Enter')trmSend()});$('trmCmd')?.focus()}if(id==='rf'&&pageCache.rf){selectRfTab(0);rfBindLive();updateRfSaveButton()}markOriginals($('body'));bindDirty(id,$('body'));applyRoleAccess();if(id==='iec104')$('iec-SBO')?.addEventListener('change',updateSboRange);if(id==='iec104')$('body').querySelectorAll('[data-key="TemporaryFaultBase"],[data-key="PermanentFaultBase"]').forEach(el=>el.addEventListener('input',updateIecRanges));updatePageState(id)}
 function switchPageNow(id){renderPage(id,pageCache[id])}
 function switchPage(id){if(loading||id===curId)return;if(curId&&hasDirty(curId)){confirmAction(t('tLeaveDirty'),()=>switchPageNow(id),'leavePage');return}switchPageNow(id)}
-function buildMenu(){$('activeIdentity').textContent=[window.location?.host,s_role==='admin'?'admin':s_role==='user'?t('readOnlyRole'):''].filter(Boolean).join(' · ');const m=$('menu');m.innerHTML='';menuPages.forEach(p=>{if(['iec104','device','syslogs','terminal','fwupdate'].includes(p[0])&&s_role!=='admin')return;const e=document.createElement('div');e.className='mi';e.dataset.id=p[0];e.textContent=t(p[1]);e.onclick=()=>{if(p[0]==='fwupdate'){window.open('/fw_update.html?t='+encodeURIComponent(s_sessionToken||''),'_blank');return}switchPage(p[0])};m.appendChild(e)})}
+function buildMenu(){$('activeIdentity').textContent=[window.location?.host,isAdminRole()?s_role:s_role==='user'?t('readOnlyRole'):''].filter(Boolean).join(' · ');const m=$('menu');m.innerHTML='';menuPages.forEach(p=>{if(['iec104','device','syslogs','terminal','fwupdate'].includes(p[0])&&!isAdminRole())return;const e=document.createElement('div');e.className='mi';e.dataset.id=p[0];e.textContent=t(p[1]);e.onclick=()=>{if(p[0]==='fwupdate'){window.open('/fw_update.html?t='+encodeURIComponent(s_sessionToken||''),'_blank');return}switchPage(p[0])};m.appendChild(e)})}
 function selectRfTab(i){document.querySelectorAll('#body .tab').forEach((e,n)=>e.classList.toggle('active',n===i));for(let n=0;n<FEEDER_COUNT;n++)$('rf-pane-'+n)?.classList.toggle('active',n===i)}
 function selectIecTab(i){document.querySelectorAll('#body .tab').forEach((e,n)=>e.classList.toggle('active',n===i));for(let n=0;n<FEEDER_COUNT;n++)$('iec-pane-'+n)?.classList.toggle('active',n===i)}
 function selectModTab(i){document.querySelectorAll('#body .tab').forEach((e,n)=>e.classList.toggle('active',n===i));for(let n=0;n<FEEDER_COUNT;n++)$('mod-pane-'+n)?.classList.toggle('active',n===i)}
@@ -2137,7 +2172,7 @@ function buildRfMonitorTable(d){
     }
     html+='</tr>';
   }
-  if(typeof s_role!=='undefined'&&s_role==='admin'){
+  if(typeof s_role!=='undefined'&&isAdminRole()){
     html+='<tr><td>'+esc(LNG==='tr'?'Alarm onayı':'Alarm acknowledgement')+'</td>';
     for(let index=0;index<3;index++){
       const phase=phases[index];
@@ -2149,7 +2184,7 @@ function buildRfMonitorTable(d){
   return html+'</tbody></table></div>';
 }
 function ackRfAlarm(line,phase){
-  if(loading||s_role!=='admin')return;
+  if(loading||!isAdminRole())return;
   const data=pageCache.rfmon?.[line]?.Phases?.[phase];
   if(!data?.TripFailureLatched||!data.AlarmRevision)return;
   const request={Line:line+1,Phase:phase+1,Eui64:data.Eui64,Revision:data.AlarmRevision,ConfirmOffline:false};

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TSB23</title>
+<title>VESSRON RM610 Radio Modem</title>
 <link rel="icon" href="data:,">
 <style>
 *{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f6f8;color:#40566b;font:14px system-ui,Arial,sans-serif}main{width:min(300px,calc(100vw - 40px));text-align:center}h1{font-size:18px;margin:0 0 24px}label{display:block;text-align:left;margin:16px 0 6px}input,button{width:100%;padding:11px;border:1px solid #b9c9d7;border-radius:4px;font:inherit}button{margin-top:20px;background:#1769aa;color:white;border:0;cursor:pointer}button:disabled{opacity:.6;cursor:wait}progress{display:block;width:100%;height:8px;appearance:none;border:0;border-radius:4px;background:#dce6ef;overflow:hidden}progress::-webkit-progress-bar{background:#dce6ef}progress::-webkit-progress-value{background:#1769aa}progress::-moz-progress-bar{background:#1769aa}#amount{font-variant-numeric:tabular-nums}#message{line-height:1.5;color:#b42318}a{display:inline-block;margin:12px 8px;color:#1769aa}
@@ -11,12 +11,12 @@
 </head>
 <body>
 <main id="loader">
-<h1 id="status">TSB23</h1>
+<h1 id="status">VESSRON RM610 Radio Modem</h1>
 <form id="login">
 <label for="username">Kullanıcı adı</label>
 <input id="username" name="username" maxlength="16" autocomplete="username" autocapitalize="none" required autofocus>
 <label for="password">Şifre</label>
-<input id="password" name="password" type="password" maxlength="16" autocomplete="current-password" required>
+<input id="password" name="password" type="password" maxlength="63" autocomplete="current-password" required>
 <button id="submit">Giriş yap</button>
 </form>
 <div id="transfer" hidden>
@@ -54,7 +54,7 @@
         failureMessage=session.error==='Invalid credentials'?'Kullanıcı adı veya şifre yanlış.':session.error==='Too many attempts, try again later'?'Çok fazla giriş denemesi yapıldı. Bir süre bekleyip yeniden deneyin.':'Giriş yapılamadı. Tekrar deneyin.';
         throw new Error('login');
       }
-      if(!/^[a-f0-9]{32}$/i.test(session.token)||(session.role!=='admin'&&session.role!=='user'))throw new Error('Giriş yanıtı geçersiz.');
+      if(!/^[a-f0-9]{32}$/i.test(session.token)||!['admin','factory-admin','user'].includes(session.role))throw new Error('Giriş yanıtı geçersiz.');
       sessionStorage.setItem('sessionToken',session.token);
       sessionStorage.setItem('sessionRole',session.role);
       transferring=true;

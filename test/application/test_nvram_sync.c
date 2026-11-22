@@ -19,6 +19,7 @@
 #include "crc32.h"
 #include "iec104_util.h"
 #include "nvram_flash_fake.h"
+#include "auth_defaults_fixture.h"
 
 TEST_SOURCE_FILE("nvram.c")
 TEST_SOURCE_FILE("nvram_flash_fake.c")
@@ -731,9 +732,10 @@ void test_relay_states_and_retention(void)
 void test_previous_layout_uses_defaults(void)
 {
     boot_virgin();
-    uint8_t old_image[1988];
+    img(MOCK_SLOT_A)->modem_config.serial_number = 26000123U;
+    uint8_t old_image[1976U];
     memset(old_image, 0, sizeof(old_image));
-    memcpy(old_image, mock_slot_image_rw(MOCK_SLOT_A), sizeof(nvram_t));
+    memcpy(old_image, mock_slot_image_rw(MOCK_SLOT_A), offsetof(nvram_t, auth_records));
     const uint32_t old_schema = 1U;
     memcpy(&old_image[4], &old_schema, sizeof(old_schema));
     const uint32_t old_length = sizeof(old_image);
@@ -743,10 +745,64 @@ void test_previous_layout_uses_defaults(void)
     memcpy(mock_slot_image_rw(MOCK_SLOT_A), old_image, sizeof(old_image));
     memcpy(mock_slot_image_rw(MOCK_SLOT_B), old_image, sizeof(old_image));
     reboot();
-    check(1U == NVRAM_SCHEMA_VERSION, "runtime stats: schema stays 1 by user decision");
+    check(1U == NVRAM_SCHEMA_VERSION, "defaults: schema version stays 1");
+    check(nvram_get_modem_config_rw()->serial_number == DEVICE_DEFAULT_SERIAL_NUMBER,
+          "defaults: unsupported length resets old configuration");
     check(sizeof(nvram_t) == img(MOCK_SLOT_A)->length, "relay: old length reprovisions current layout");
     check(nvram_retain_output_states() && (0U == nvram_get_relay_states()),
           "relay: old CRC bytes cannot become output commands");
+}
+
+void test_password_save_handles_partial_flash_commit_and_factory_reset(void)
+{
+    boot_virgin();
+    const auth_record_t defaults = *nvram_get_auth_record(AUTH_ACCOUNT_ADMIN);
+    const uint32_t revision = nvram_auth_revision(AUTH_ACCOUNT_ADMIN);
+    auth_record_t changed = defaults;
+    changed.digest[0] ^= 1U;
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_BEFORE_ERASE);
+    TEST_ASSERT_FALSE(nvram_save_auth_record(AUTH_ACCOUNT_ADMIN, &changed));
+    TEST_ASSERT_EQUAL_UINT32(revision, nvram_auth_revision(AUTH_ACCOUNT_ADMIN));
+    TEST_ASSERT_EQUAL_MEMORY(&defaults, nvram_get_auth_record(AUTH_ACCOUNT_ADMIN), sizeof(defaults));
+
+    mock_fail_write(MOCK_SLOT_B, MOCK_FAIL_AFTER_ERASE);
+    TEST_ASSERT_TRUE(nvram_save_auth_record(AUTH_ACCOUNT_ADMIN, &changed));
+    TEST_ASSERT_EQUAL_UINT32(revision + 1U, nvram_auth_revision(AUTH_ACCOUNT_ADMIN));
+    reboot();
+    TEST_ASSERT_EQUAL_MEMORY(&changed, nvram_get_auth_record(AUTH_ACCOUNT_ADMIN), sizeof(changed));
+    nvram_set_defaults();
+    TEST_ASSERT_EQUAL_UINT32(revision + 2U, nvram_auth_revision(AUTH_ACCOUNT_ADMIN));
+    TEST_ASSERT_EQUAL_INT(0, nvram_sync(true));
+    reboot();
+    TEST_ASSERT_EQUAL_MEMORY(&defaults, nvram_get_auth_record(AUTH_ACCOUNT_ADMIN), sizeof(defaults));
+}
+
+void test_previous_password_iterations_reset_settings_once(void)
+{
+    boot_virgin();
+    const auth_record_t default_admin = *nvram_get_auth_record(AUTH_ACCOUNT_ADMIN);
+    const auth_record_t default_factory = *nvram_get_auth_record(AUTH_ACCOUNT_FACTORY);
+    for (uint32_t slot = MOCK_SLOT_A; slot <= MOCK_SLOT_B; slot++)
+    {
+        nvram_t *image = img(slot);
+        image->auth_iterations = 0U;
+        image->modem_config.serial_number = 26000123U;
+        image->auth_records[AUTH_ACCOUNT_ADMIN].digest[0U] ^= 1U;
+        image->auth_records[AUTH_ACCOUNT_FACTORY].digest[0U] ^= 1U;
+        craft_sequence(slot, 7U);
+    }
+
+    reboot();
+    TEST_ASSERT_EQUAL_UINT16(AUTH_DEFAULT_ITERATIONS, img(MOCK_SLOT_A)->auth_iterations);
+    TEST_ASSERT_EQUAL_UINT32(DEVICE_DEFAULT_SERIAL_NUMBER, nvram_get_modem_config_rw()->serial_number);
+    TEST_ASSERT_EQUAL_MEMORY(&default_admin, nvram_get_auth_record(AUTH_ACCOUNT_ADMIN), sizeof(default_admin));
+    TEST_ASSERT_EQUAL_MEMORY(&default_factory, nvram_get_auth_record(AUTH_ACCOUNT_FACTORY), sizeof(default_factory));
+    TEST_ASSERT_TRUE(images_equal());
+
+    nvram_get_modem_config_rw()->serial_number = 26000124U;
+    TEST_ASSERT_EQUAL_INT(0, nvram_sync(false));
+    reboot();
+    TEST_ASSERT_EQUAL_UINT32(26000124U, nvram_get_modem_config_rw()->serial_number);
 }
 
 void test_rfwu_save_reports_failure_and_preserves_durable_state(void)

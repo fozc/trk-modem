@@ -24,6 +24,7 @@
 
 #define SHELL_LVL_USER       0
 #define SHELL_LVL_SUPER_USER 1
+#define SHELL_LVL_FACTORY    2
 
 /* Build-mode switch: defined builds integrate with Contiki (process_poll /
  * shell_task); undefined builds are poll-based (bootloader main loop).
@@ -51,6 +52,7 @@ typedef struct
     char *desc;
     uint8_t level;
     shell_cmd_handler_t func;
+    void (*extra_help)(void);
 }shell_cmd_t;
 
 #ifdef NO_SHELL_LOG
@@ -91,6 +93,10 @@ int shell_unregister_command(const shell_cmd_t *cmd);
 void shell_on_rx_received(int chr);
 void shell_process(void);
 uint8_t shell_get_session_level(void);
+typedef bool (*shell_auth_verify_fn_t)(uint8_t level, const char *password);
+typedef uint32_t (*shell_auth_revision_fn_t)(uint8_t level);
+void shell_set_authenticator(shell_auth_verify_fn_t verify, shell_auth_revision_fn_t revision);
+void shell_execute_remote(const char *command, uint8_t level);
 
 /* Main context only. The next local console line bypasses commands/history.
  * No characters are echoed by the shell. Redirected/web writers are rejected.

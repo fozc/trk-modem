@@ -540,7 +540,7 @@ static int rf_shell_move(int argc, char **argv)
 #endif
         return 0;
     }
-    if (shell_get_session_level() != SHELL_LVL_SUPER_USER)
+    if (shell_get_session_level() < SHELL_LVL_SUPER_USER)
     {
         SHELL_LOG("Admin role required for service relocation\r\n");
         return -1;

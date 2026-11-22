@@ -126,7 +126,7 @@ enum
     DEVICE_IEC_FIRST_TIMEOUT, DEVICE_IEC_IDLE_TIMEOUT, DEVICE_PIN,
     DEVICE_APN, DEVICE_APN_PASSWORD, DEVICE_APN_USERNAME, DEVICE_NTP_SERVER,
     DEVICE_NTP_PORT, DEVICE_TIME, DEVICE_TIMEZONE, DEVICE_RESET_PERIOD,
-    DEVICE_COMMISSIONING_TIME, DEVICE_RETAIN_OUTPUTS, DEVICE_FIELD_COUNT
+    DEVICE_RETAIN_OUTPUTS, DEVICE_FIELD_COUNT
 };
 
 static const char *const modbus_keys[] =
@@ -140,7 +140,7 @@ static const char *const device_keys[] =
     "IEC104IlkVeriZamanAsimi", "IEC104BostaKalmaZamanAsimi", "SimKartPin",
     "SimKartAPN", "SimKartAPNSifresi", "SimKartAPNUsername", "NtpServer",
     "NtpServerPortu", "Time", "TimeZone", "PeriyodikModemResetPeriyodu",
-    "DevreyeAlinmaZamani", "PreserveOutputStates"
+    "PreserveOutputStates"
 };
 
 _Static_assert(sizeof(modbus_keys) / sizeof(modbus_keys[0]) ==
@@ -311,9 +311,6 @@ static bool set_device_u32(modem_config_t *config, size_t field,
         case DEVICE_RESET_PERIOD:
             config->periodic_modem_reset_period = value;
             break;
-        case DEVICE_COMMISSIONING_TIME:
-            config->commissioning_time = value;
-            break;
         default: return false;
     }
     return true;
@@ -327,8 +324,7 @@ static bool set_device_field(modem_config_t *config, size_t field,
     {
         return set_device_u16(config, field, token);
     }
-    if (field == DEVICE_TIME || field == DEVICE_RESET_PERIOD ||
-        field == DEVICE_COMMISSIONING_TIME)
+    if (field == DEVICE_TIME || field == DEVICE_RESET_PERIOD)
     {
         if (!set_device_u32(config, field, token))
         {

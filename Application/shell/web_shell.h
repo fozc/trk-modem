@@ -62,7 +62,7 @@ int web_shell_capture_end(void);
      * @param data  Pointer to received data
      * @param len   Length of received data
      */
-    void web_shell_on_rx(const uint8_t *data, uint16_t len);
+    void web_shell_on_rx(const uint8_t *data, uint16_t len, uint8_t level);
 
     /**
      * @brief Single-character writer suitable for use as a shell_putchar_fn_t

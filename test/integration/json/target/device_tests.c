@@ -157,8 +157,12 @@ void __wrap_shell_init(const char *prompt, const char *password,
                         shell_putchar_fn_t putchar_fn)
 {
     __real_shell_init(prompt, password, putchar_fn);
-    const shell_cmd_t command = {"jsonhw", "Temporary JSON hardware tests",
-                                  SHELL_LVL_SUPER_USER, json_hw_command};
+    const shell_cmd_t command = {
+        .cmd = "jsonhw",
+        .desc = "Temporary JSON hardware tests",
+        .level = SHELL_LVL_SUPER_USER,
+        .func = json_hw_command
+    };
     if (shell_register_command(&command) < 0)
     {
         SHELL_LOG("JSONHW command registration failed\r\n");

@@ -172,7 +172,7 @@ def fixtures():
               "SimKartAPN": "internet", "SimKartAPNSifresi": "secret",
               "SimKartAPNUsername": "user", "NtpServer": "pool.ntp.org",
               "NtpServerPortu": 123, "Time": 1792700000, "TimeZone": 3,
-              "PeriyodikModemResetPeriyodu": 86400, "DevreyeAlinmaZamani": 1700000000, "PreserveOutputStates": True}
+              "PeriyodikModemResetPeriyodu": 86400, "PreserveOutputStates": True}
     encode = lambda value: json.dumps(value, separators=(",", ":")).encode()
     nested = dict(modbus, Extra={"a": [True, None, {"ignored": list(range(16))}]})
     return [("uint32 read", 0, b"4294967295"),

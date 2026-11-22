@@ -67,6 +67,7 @@
 									<listOptionValue builtIn="false" value="../Application/libiec104"/>
 									<listOptionValue builtIn="false" value="../Application/bsp"/>
 									<listOptionValue builtIn="false" value="../Application/libs"/>
+									<listOptionValue builtIn="false" value="../Application/shell"/>
 									<listOptionValue builtIn="false" value="../Application/json"/>
 									<listOptionValue builtIn="false" value="../Application/libmodbusrtu"/>
 									<listOptionValue builtIn="false" value="../Application/gsm"/>
@@ -175,6 +176,7 @@
 									<listOptionValue builtIn="false" value="../Application/libiec104"/>
 									<listOptionValue builtIn="false" value="../Application/bsp"/>
 									<listOptionValue builtIn="false" value="../Application/libs"/>
+									<listOptionValue builtIn="false" value="../Application/shell"/>
 									<listOptionValue builtIn="false" value="../Application/json"/>
 									<listOptionValue builtIn="false" value="../Application/libmodbusrtu"/>
 									<listOptionValue builtIn="false" value="../Application/gsm"/>

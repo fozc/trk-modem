@@ -164,6 +164,7 @@ void handle_get_fw_update(void);
  * @param json_body Request body (JSON)
  */
 void handle_post_login(const char *json_body);
+void handle_post_password(const char *json_body);
 
 /**
  * @brief Handle POST /auth/logout

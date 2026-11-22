@@ -694,6 +694,18 @@ void test_output_retention_requires_boolean_and_preserves_partial_config(void)
     TEST_ASSERT_EQUAL_INT(0, parse_device_config("{}", NULL, &options));
 }
 
+void test_legacy_commissioning_field_cannot_change_device_configuration(void)
+{
+    const modem_config_t current = {.commissioning_time = 1700000000U};
+    modem_config_t config = {0};
+    device_config_options_t options = {0};
+    modem_config_get_ExpectAndReturn(&current);
+    TEST_ASSERT_EQUAL_INT(1, parse_device_config(
+        "{\"DevreyeAlinmaZamani\":1800000000,\"TimeZone\":3}", &config, &options));
+    TEST_ASSERT_EQUAL_UINT32(1700000000U, config.commissioning_time);
+    TEST_ASSERT_EQUAL_INT32(3, config.time_zone);
+}
+
 void test_device_options_report_only_explicit_time_and_preserve_on_error(void)
 {
     modem_config_t config = {0};

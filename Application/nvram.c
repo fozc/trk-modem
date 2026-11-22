@@ -18,7 +18,16 @@
 #include "rf_config.h"
 #include "elog.h"
 
+#if defined(UNIT_TEST)
+#include "auth_defaults_fixture.h"
+#else
+#include "auth_defaults_gen.h"
+#endif
+
+_Static_assert(AUTH_DEFAULT_ITERATIONS <= UINT16_MAX, "auth_iterations field size");
+
 static nvram_t nvram = {0};
+static uint32_t auth_revisions[AUTH_ACCOUNT_COUNT];
 
 /* =====================================================================
  * Iki slotlu (A ana / B yedek) depolama cekirdegi - doc/nvram.md:
@@ -118,6 +127,19 @@ void nvram_test_fill(void)
     nvram.iec104_config.sbo_execute_timeout = IEC104_DEFAULT_SBO_EXECUTE_TIMEOUT;
 }
 
+static void nvram_set_auth_defaults(void)
+{
+    nvram.auth_iterations = AUTH_DEFAULT_ITERATIONS;
+    nvram.auth_records[AUTH_ACCOUNT_ADMIN] = (auth_record_t){
+        .salt = AUTH_DEFAULT_ADMIN_SALT, .digest = AUTH_DEFAULT_ADMIN_DIGEST
+    };
+    nvram.auth_records[AUTH_ACCOUNT_FACTORY] = (auth_record_t){
+        .salt = AUTH_DEFAULT_FACTORY_SALT, .digest = AUTH_DEFAULT_FACTORY_DIGEST
+    };
+    auth_revisions[AUTH_ACCOUNT_ADMIN]++;
+    auth_revisions[AUTH_ACCOUNT_FACTORY]++;
+}
+
 void nvram_set_defaults(void)
 {
     if (!nvram_change_allowed())
@@ -140,6 +162,7 @@ void nvram_set_defaults(void)
     nvram.length = (uint32_t)sizeof(nvram_t);
     nvram.retain_output_states = 1U;
     nvram.sequence = keep_sequence;
+    nvram_set_auth_defaults();
 
     // Modem Config Defaults
 	nvram.modem_config.serial_number = DEVICE_DEFAULT_SERIAL_NUMBER;
@@ -586,10 +609,13 @@ int nvram_init(void)
             CSLOG("NVRAM loaded successfully.\r\n");
         }
 
-        /* Acilis onarimi: iki kopya da ayni dogrulanmis goruntuyu tasin.
-         * Basarisizsa ayarlar okunabilir kalir; sonraki nvram_sync,
-         * onarimi Faz 1'de tamamlamadan A'yi silmez. */
-        if (nvram_prepare_slots(&a, &b) != 0)
+        if (nvram.auth_iterations != AUTH_DEFAULT_ITERATIONS)
+        {
+            CSLOG_WARN("NVRAM: parola tur sayisi degisti, varsayilan ayarlar yuklendi.\r\n");
+            nvram_set_defaults();
+            res = nvram_sync(true);
+        }
+        else if (nvram_prepare_slots(&a, &b) != 0)
         {
             CSLOG_ERR("NVRAM: slot repair at boot FAILED - settings usable, "
                       "repair retried on next sync.\r\n");
@@ -772,6 +798,39 @@ nvram_save_result_t nvram_save(bool crc_no_check)
 int nvram_sync(bool crc_no_check)
 {
     return (NVRAM_SAVE_COMPLETE == nvram_save(crc_no_check)) ? 0 : -1;
+}
+
+const auth_record_t *nvram_get_auth_record(auth_account_t account)
+{
+    return ((uint32_t)account < (uint32_t)AUTH_ACCOUNT_COUNT) ? &nvram.auth_records[account] : NULL;
+}
+
+bool nvram_save_auth_record(auth_account_t account, const auth_record_t *record)
+{
+    if (((uint32_t)account >= (uint32_t)AUTH_ACCOUNT_COUNT) ||
+        (record == NULL) || nvram_busy)
+    {
+        return false;
+    }
+
+    auth_record_t old = nvram.auth_records[account];
+    const uint32_t old_sequence = nvram.sequence;
+    const uint32_t old_crc = nvram.crc;
+    nvram.auth_records[account] = *record;
+    if (nvram_save(false) == NVRAM_SAVE_FAILED)
+    {
+        nvram.auth_records[account] = old;
+        nvram.sequence = old_sequence;
+        nvram.crc = old_crc;
+        return false;
+    }
+    auth_revisions[account]++;
+    return true;
+}
+
+uint32_t nvram_auth_revision(auth_account_t account)
+{
+    return ((uint32_t)account < (uint32_t)AUTH_ACCOUNT_COUNT) ? auth_revisions[account] : 0U;
 }
 
 bool nvram_is_busy(void)

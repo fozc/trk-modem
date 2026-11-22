@@ -62,25 +62,26 @@ function parseConfigProfile(text,domain){
   if(new TextEncoder().encode(text).length>65536)throw Error('File too large');
   const obj=JSON.parse(text);
   if(!obj||Array.isArray(obj)||Object.keys(obj).sort().join(',')!=='config,domain,format,version'||obj.format!=='troika-config'||obj.version!==1||obj.domain!==domain)throw Error('File version or domain mismatch');
+  if(domain==='device'&&obj.config&&typeof obj.config==='object'&&!Array.isArray(obj.config))delete obj.config.DevreyeAlinmaZamani;
   return validateProfileConfig(domain,obj.config);
 }
 
 function profileActions(page){
   if(!CONFIG_PROFILE_SCHEMA[page]||!pageCache[page])return '';
-  return `<button class="btn btn-muted btn-small" onclick="exportConfigFile('${page}')">${LNG==='tr'?'Dışa aktar':'Export'}</button>`+(s_role==='admin'?`<button class="btn btn-muted btn-small" data-admin="1" onclick="document.getElementById('profile-${page}').click()">${LNG==='tr'?'İçe aktar':'Import'}</button><input type="file" accept=".json,application/json" id="profile-${page}" hidden onchange="importConfigFile('${page}',this)">`:'');
+  return `<button class="btn btn-muted btn-small" onclick="exportConfigFile('${page}')">${LNG==='tr'?'Dışa aktar':'Export'}</button>`+(isAdminRole()?`<button class="btn btn-muted btn-small" data-admin="1" onclick="document.getElementById('profile-${page}').click()">${LNG==='tr'?'İçe aktar':'Import'}</button><input type="file" accept=".json,application/json" id="profile-${page}" hidden onchange="importConfigFile('${page}',this)">`:'');
 }
 function exportConfigFile(page){
   if(loading||!pageCache[page])return;
   try{
     const profile=makeConfigProfile(page,extractPage(page));
     const url=URL.createObjectURL(new Blob([JSON.stringify(profile,null,2)],{type:'application/json'}));
-    const link=document.createElement('a');link.href=url;link.download='troika-'+page+'.json';
+    const link=document.createElement('a');link.href=url;link.download='vessron-rm610-'+page+'.json';
     document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
     toast(LNG==='tr'?'Ayarlar dışa aktarıldı. Dosya parolaları da içerir.':'Settings exported. The file includes passwords.','ok');
   }catch(error){toast(userError(error),'err')}
 }
 function stageConfigProfile(page,text){
-  if(s_role!=='admin'||!pageCache[page]||curId!==page)throw Error('Read configuration first');
+  if(!isAdminRole()||!pageCache[page]||curId!==page)throw Error('Read configuration first');
   const imported=parseConfigProfile(text,page),current=extractPage(page);
   const candidate={...current,...imported};
   if(page==='iec104')candidate.Hatlar={...current.Hatlar,...imported.Hatlar};

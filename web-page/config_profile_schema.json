@@ -97,13 +97,6 @@
       "hi": 65535,
       "options": [],
       "label": "IEC104 Bosta Kalma Timeout (sn)"
-    },
-    "DevreyeAlinmaZamani": {
-      "kind": "int",
-      "lo": 0,
-      "hi": 4294967295,
-      "options": [],
-      "label": "Devreye Alinma Zamani (UTC epoch)"
     }
   },
   "iec104": {

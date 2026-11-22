@@ -150,8 +150,9 @@ void web_shell_capture_begin(json_writer_t *writer)
     terminal_bytes = 0U;
     TEST_ASSERT_TRUE(json_write_string_begin(writer) == JSON_OK);
 }
-void web_shell_on_rx(const uint8_t *data, uint16_t length)
+void web_shell_on_rx(const uint8_t *data, uint16_t length, uint8_t level)
 {
+    (void)level;
     TEST_ASSERT_TRUE(length == 8U && memcmp(data, "rf \"x\"\\y", length) == 0);
     ++terminal_calls;
     web_json_text(terminal_writer, "ok\r\n");

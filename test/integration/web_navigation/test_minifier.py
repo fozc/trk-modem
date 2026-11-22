@@ -132,6 +132,8 @@ if(/bolatex/i.test(exhausted+degraded))throw Error('Unexpected supplier referenc
         functions = "\n".join(re.search(r"function " + name + r"\([^\n]*?\)\{.*?^\}",
                                        html, re.S | re.M).group(0)
                               for name in ("buildRfMonitorTable", "ackRfAlarm"))
+        role_check = re.search(r"^const isAdminRole=[^\n]+", html, re.M).group(0)
+        functions = role_check + "\n" + functions
         checker = """const fs=require('node:fs'),vm=require('node:vm');
 const code=JSON.parse(fs.readFileSync(0,'utf8'));
 const dialogs=[],sent=[];
@@ -145,6 +147,8 @@ const c={LNG:'en',s_role:'admin',loading:false,t:x=>x,esc:x=>String(x),fmt:x=>St
  sent.push({path,body:JSON.parse(options.body)});return {success:true};}};
 vm.createContext(c);vm.runInContext(code,c);
 if(!c.buildRfMonitorTable(c.pageCache.rfmon[0]).includes('ackRfAlarm(0,0)'))throw Error('missing admin action');
+c.s_role='factory-admin';
+if(!c.buildRfMonitorTable(c.pageCache.rfmon[0]).includes('ackRfAlarm(0,0)'))throw Error('missing factory-admin action');
 c.s_role='user';
 if(c.buildRfMonitorTable(c.pageCache.rfmon[0]).includes('ackRfAlarm('))throw Error('user action visible');
 c.ackRfAlarm(0,0);if(dialogs.length)throw Error('user confirmation opened');

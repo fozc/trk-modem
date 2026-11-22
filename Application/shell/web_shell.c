@@ -81,9 +81,9 @@ static void capture_putc(uint8_t ch)
 
 static web_shell_rx_cb_t rx_cb;
 
-static void default_rx_handler(const uint8_t *data, uint16_t len)
+static void default_rx_handler(const uint8_t *data, uint16_t len, uint8_t level)
 {
-    if (memcmp(data, "rf", 2) == 0)
+    if ((len >= 2U) && (memcmp(data, "rf", 2) == 0))
     {
         /* rf passthrough: echo the command text back */
         for (uint16_t i = 0U; i < len; i++)
@@ -99,12 +99,7 @@ static void default_rx_handler(const uint8_t *data, uint16_t len)
         shell_set_putchar(web_shell_putchar); /* SHELL_LOG -> capture */
         xdev_out(web_shell_putchar);          /* CSLOG/xprintf -> capture */
 
-        while (*data)
-        {
-            shell_on_rx_received(*data++);
-        }
-        shell_on_rx_received('\r');
-        shell_process(); /* Execute command after full line is received */
+        shell_execute_remote((const char *)data, level);
 
         shell_set_putchar(prev_putc); /* restore */
         xdev_out(prev_xout);          /* restore */
@@ -117,7 +112,7 @@ static void default_rx_handler(const uint8_t *data, uint16_t len)
 
 void web_shell_init(web_shell_rx_cb_t rx_callback)
 {
-    rx_cb = rx_callback ? rx_callback : default_rx_handler;
+    rx_cb = rx_callback;
     capture_writer = NULL;
     capture_start = 0U;
     capture_limit = 0U;
@@ -161,10 +156,17 @@ void web_shell_putchar(int ch)
     capture_putc((uint8_t)ch);
 }
 
-void web_shell_on_rx(const uint8_t *data, uint16_t len)
+void web_shell_on_rx(const uint8_t *data, uint16_t len, uint8_t level)
 {
     if (data && len > 0)
     {
-        rx_cb(data, len);
+        if (rx_cb != NULL)
+        {
+            rx_cb(data, len);
+        }
+        else
+        {
+            default_rx_handler(data, len, level);
+        }
     }
 }

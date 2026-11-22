@@ -160,13 +160,12 @@ için kullanışlıdır.
 
 ### A.5 Firmware güncelleme (BSL yolu, önerilen)
 
-```bash
-# 1) Alici moduna gec (konsol):
-printf 'su admin\nxmodem start\n' | python tools/hwtest/serial_io.py \
-    capture COM18 230400 6 /tmp/xm0.log
-# "XMODEM mode activated" + hedef bolum yazisini ve 'C' davetini dogrula.
+Konsolda `su admin` yazın. `Password:` istemi görünürse geçerli yönetici
+parolasını girin. `whoami` çıktısında `root` göründükten sonra `xmodem start`
+yazın. XMODEM’in etkinleştiğini, hedef bölümü ve `C` davetini kontrol edin.
+Seri portu göndericiye bırakıp imzalı paketi aktarın.
 
-# 2) Imzali paketi gonder:
+```bash
 python tools/hwtest/xmodem_send.py COM18 230400 \
     Release/<paket>.efw /tmp/xm1.log
 ```

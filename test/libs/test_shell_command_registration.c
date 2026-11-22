@@ -11,7 +11,7 @@
 #include "mock_bsp.h"
 
 /* Include production code to reset its private table between tests. */
-#include "../../Application/libs/shell.c"
+#include "../../Application/shell/shell.c"
 
 #include <stddef.h>
 #include <stdint.h>
