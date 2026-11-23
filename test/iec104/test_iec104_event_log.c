@@ -54,6 +54,21 @@ void test_operator_ack_is_durable_and_replayable_without_a_second_sync(void)
     TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
 }
 
+void test_din_record_requires_valid_channel_and_durable_reservation(void)
+{
+    iec104_din_record_t din = {.channel = IEC104_DIN_COUNT, .active = 1U};
+    const uint32_t writes = program_calls;
+    TEST_ASSERT_FALSE(iec104_event_log_add_din(&din, NULL));
+    din.channel = 0U;
+    sync_fails = true;
+    TEST_ASSERT_FALSE(iec104_event_log_add_din(&din, NULL));
+    TEST_ASSERT_EQUAL_UINT32(writes, program_calls);
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+    sync_fails = false;
+    reboot_fixture();
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+}
+
 void test_operator_ack_invalid_identity_or_sync_failure_never_writes_a_record(void)
 {
     iec104_alarm_ack_record_t ack = {.source = IEC104_ALARM_ACK_SOURCE_WEB,

@@ -23,6 +23,7 @@ extern "C" {
 
 /* Every mock back to its power-on state. */
 void mock_platform_reset(void);
+void mock_platform_set_tick(uint32_t tick);
 
 uint32_t mock_rtc_sync_count(void);
 rtc_t mock_rtc_last_sync(void);

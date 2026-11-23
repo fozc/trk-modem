@@ -228,6 +228,10 @@ typedef enum
 /* RF feeder/phase are one-based; this records an alarm edge, not operator acknowledgement. */
 void elog_log_rf_trip_failure(uint8_t feeder, uint8_t phase, bool active);
 
+/* Kanal numaralari 1 tabanlidir. Role kaydi uygulanan PWM komutunu gosterir. */
+void elog_log_din_change(uint8_t channel, bool active);
+void elog_log_relay_change(uint8_t channel, bool energized);
+
 
 /* ---- ELOG_WEB_LOGIN_FAIL --------------------------------------------- */
 

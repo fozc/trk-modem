@@ -83,6 +83,8 @@ typedef struct
     int (*get_trip_failed)(uint32_t power_line_index, uint8_t phase,
                            siq_t *value, cp56time2a_t *timestamp);
     int (*get_battery_warning)(siq_t *value);
+    bool (*set_relay)(uint8_t channel, bool on);
+    uint8_t (*get_din_states)(void);
 
 }iec104_io_t;
 
@@ -93,6 +95,7 @@ void iec104_set_common_address(uint16_t address);
 
 void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config);
 void iec104_data_received(const uint8_t *data, uint16_t length);
+bool iec104_apply_local_io(const iec104_local_io_config_t *settings);
 void libiec104_poll(void);
 bool iec104_send_s_frame(uint16_t receive_seq);
 
@@ -140,6 +143,7 @@ bool iec104_emit_event_record_tracked(const iec104_event_record_t *record,
                                      iec104_event_ack_fn_t on_ack);
 bool iec104_event_ack_pending(void);
 bool iec104_send_rf_communication_states(cause_of_transmission_t cause);
+bool iec104_send_din_states(cause_of_transmission_t cause);
 
 
 void iec104_interrogation_send_m_sp_tb_1_objects(const ioa_3byte_t *ioas, const siq_t *states);

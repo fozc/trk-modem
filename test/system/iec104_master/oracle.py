@@ -90,6 +90,8 @@ IOA_KEY_SETS = {
              "IOA_T_TripFailed"],
 }
 
+DIN_IOAS = tuple(range(10004, 10008))
+
 
 def _line_list(data, key):
     values = data.get(key, [])
@@ -134,6 +136,8 @@ def read_oracle(web):
         "ca": int(cfg.get("CommonAddr", 1)),
         "oa": int(cfg.get("OriginatorAddr", 1)),
         "battery_ioa": int(cfg.get("AkuUyarisi", 0)),
+        "din_ioas": [int(cfg.get(f"DIN{channel}IOA", default))
+                     for channel, default in enumerate(DIN_IOAS, start=1)],
         "t0": int(cfg.get("T0", 90)), "t1": int(cfg.get("T1", 45)),
         "t2": int(cfg.get("T2", 30)), "t3": int(cfg.get("T3", 60)),
         "k": int(cfg.get("K", 64)), "w": int(cfg.get("W", 24)),
@@ -169,7 +173,8 @@ def expected_ioa_sets(oracle):
         fault_space.add(line["perm_fault_base"])
     if oracle.get("battery_ioa", 0):
         states.add(oracle["battery_ioa"])
-    return currents | states, currents, states, fault_space
+    station_din = set(oracle.get("din_ioas", DIN_IOAS)) if oracle.get("local_io") else set()
+    return currents | states | station_din, currents, states, fault_space
 
 
 def store_feeders(rf_store):

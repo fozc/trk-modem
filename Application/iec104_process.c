@@ -20,10 +20,27 @@
 #include "breaker.h"
 #include "rf.h"
 #include "iec104_application.h"
+#include "iec104_replay.h"
 #include "iec104_elog.h"
 #include "power_board_scp.h"
+#include "digital_input.h"
+#include "relay.h"
+
+_Static_assert(DIN_CH_COUNT == IEC104_DIN_COUNT, "IEC104 DIN channel count");
+_Static_assert(RELAY_CH_COUNT == IEC104_RELAY_COUNT, "IEC104 relay channel count");
+
+static void din_changed(din_channel_t channel, bool active)
+{
+    iec104_report_din_change((uint8_t)channel, active, cp56time2a_now());
+}
+
+static bool set_relay(uint8_t channel, bool on)
+{
+    return relay_set((relay_channel_t)channel, on);
+}
 
 static iec104_config_t iec104_config = {0};
+static iec104_local_io_config_t local_io_config = IEC104_LOCAL_IO_DEFAULTS;
 /* Owned by the cooperative main context; no ISR access. */
 static bool config_apply_pending = false;
 
@@ -120,6 +137,7 @@ void iec104_process_apply_pending_config(void)
 {
     if (config_apply_pending && iec104_apply_config(&iec104_config))
     {
+        (void)iec104_apply_local_io(&local_io_config);
         config_apply_pending = false;
     }
 }
@@ -134,6 +152,7 @@ void iec104_process_config_changed(void)
         return;
     }
     iec104_config = *new_config;
+    local_io_config = *nvram_get_ioa_io();
     config_apply_pending = true;
     /* No connected master: prepare the listener with the new settings. */
     const uint8_t socket_state = gsm_get_socket_state(IEC104_LISTENER_SOCKET);
@@ -448,9 +467,12 @@ PROCESS_THREAD(iec104_process, ev, data)
 	    .get_yuk_akimi_varyok = read_yuk_akimi_varyok,
 	    .get_rf_haberlesme_varyok = read_rf_haberlesme_varyok,
         .get_trip_failed = read_trip_failed,
-        .get_battery_warning = read_battery_warning
+        .get_battery_warning = read_battery_warning,
+        .set_relay = set_relay,
+        .get_din_states = digital_input_get_all
 	  },
 	  &iec104_config);
+    (void)iec104_apply_local_io(&local_io_config);
 
 	etimer_set(&timer, 100);
 	timer_set(&iec104_tick_timer, 1000);
@@ -479,6 +501,8 @@ PROCESS_THREAD(iec104_process, ev, data)
 void iec104_process_init(void)
 {
 	iec104_config = *nvram_get_iec104_config();
+    local_io_config = *nvram_get_ioa_io();
+    digital_input_set_change_handler(din_changed);
 	generate_dummy_test_data();
 	iec104_application_init();
 

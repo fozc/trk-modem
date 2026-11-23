@@ -15,6 +15,7 @@ TEST_SOURCE_FILE("json.c")
 #include "mock_modbus_config.h"
 #include "mock_modbus_process.h"
 #include "mock_modem_config.h"
+#include "mock_nvram.h"
 #include "mock_rf_config.h"
 #include <string.h>
 #include <stdio.h>
@@ -62,6 +63,8 @@ void setUp(void)
     iec.common_address = 1U;
     iec.ioa_aku_uyarisi = 10000U;
     iec.ioa_modem_reset = 10001U;
+    iec.local_io = (iec104_local_io_config_t)IEC104_LOCAL_IO_DEFAULTS;
+    nvram_set_ioa_io_Ignore();
     iec104_get_line_config_IgnoreAndReturn(NULL);
 }
 
@@ -486,6 +489,33 @@ void test_iec_reserves_operator_ack_addresses_in_points_and_fault_ranges(void)
     TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
     iec.line.temporary_fault_base[0] = 299820U;
     TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{}", &iec));
+}
+
+void test_iec_reserves_relay_and_din_addresses_in_points_and_fault_ranges(void)
+{
+    iec.ioa_modem_reset = IEC104_RELAY_IOA_FIRST;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    TEST_ASSERT_NOT_NULL(strstr(json_config_get_iec_address_error(), "Relay1IOA"));
+    iec.ioa_modem_reset = 10001U;
+    enable_valid_lines();
+    iec.line.ioa_r_trip_failed[0] = IEC104_DIN_IOA_LAST;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+    iec.line.ioa_r_trip_failed[0] = IEC104_DIN_IOA_LAST + 1U;
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{}", &iec));
+    iec.line.temporary_fault_base[0] = IEC104_RELAY_IOA_FIRST - 1U;
+    TEST_ASSERT_EQUAL_INT(-1, set_iec_config(&iec));
+}
+
+void test_iec_accepts_custom_local_addresses_and_rejects_duplicates_and_invalid_values(void)
+{
+    TEST_ASSERT_EQUAL_INT(1, parse_iec_config("{\"Relay2IOA\":98002,\"DIN4IOA\":98104}", &iec));
+    TEST_ASSERT_EQUAL_UINT32(98002U, iec.local_io.relay[1]);
+    TEST_ASSERT_EQUAL_UINT32(98104U, iec.local_io.din[3]);
+    TEST_ASSERT_EQUAL_UINT32(10002U, iec.local_io.relay[0]);
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{\"DIN4IOA\":98002}", &iec));
+    TEST_ASSERT_NOT_NULL(strstr(json_config_get_iec_address_error(), "Relay2IOA"));
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{\"DIN4IOA\":0}", &iec));
+    TEST_ASSERT_EQUAL_INT(0, parse_iec_config("{\"DIN4IOA\":16777216}", &iec));
 }
 
 void test_iec_rejects_zero_and_ioa_overflow_before_writing(void)

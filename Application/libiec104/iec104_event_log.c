@@ -259,18 +259,14 @@ uint16_t iec104_event_log_get_unsent_count(void)
     return count;
 }
 
-bool iec104_event_log_add_alarm_ack(const iec104_alarm_ack_record_t *entry, uint16_t *seq_out)
+static bool add_durable_record(iec104_event_record_t *record, uint16_t *seq_out)
 {
-    if (!s_initialized || (entry == NULL) || (entry->feeder >= MAX_POWER_LINE_COUNT) || (entry->phase >= PHASE_MAX) ||
-        (entry->source != IEC104_ALARM_ACK_SOURCE_WEB) || (entry->user != IEC104_ALARM_ACK_USER_ADMIN))
+    if (!s_initialized)
     {
         return false;
     }
-    iec104_event_record_t record = {.kind = IEC104_EVENT_TRIP_FAILURE_ACK};
-    record.payload.alarm_ack = *entry;
-    /* Reserve durable replay coverage before committing the operator event.
-     * A power loss before the payload leaves an unreadable slot, never an ACK.
-     * There is no cooperative yield between this reservation and log_write. */
+    /* Kayit yazilmadan once replay araligi kalici hale getirilir.
+     * Guc kesintisinde eksik kayit tarama sirasinda atlanir. */
     const iec104_evtlog_state_t previous = *s_state;
     unsent_extend((uint16_t)log_get_next_seq(&s_log));
     if (iec104_event_log_sync() != 0)
@@ -278,12 +274,33 @@ bool iec104_event_log_add_alarm_ack(const iec104_alarm_ack_record_t *entry, uint
         *s_state = previous;
         return false;
     }
-    if (!add_record(&record, seq_out))
+    if (!add_record(record, seq_out))
     {
         *s_state = previous;
         return false;
     }
     return true;
+}
+
+bool iec104_event_log_add_alarm_ack(const iec104_alarm_ack_record_t *entry, uint16_t *seq_out)
+{
+    if ((entry == NULL) || (entry->feeder >= MAX_POWER_LINE_COUNT) || (entry->phase >= PHASE_MAX) ||
+        (entry->source != IEC104_ALARM_ACK_SOURCE_WEB) || (entry->user != IEC104_ALARM_ACK_USER_ADMIN))
+    {
+        return false;
+    }
+    iec104_event_record_t record = {.kind = IEC104_EVENT_TRIP_FAILURE_ACK, .payload.alarm_ack = *entry};
+    return add_durable_record(&record, seq_out);
+}
+
+bool iec104_event_log_add_din(const iec104_din_record_t *entry, uint16_t *seq_out)
+{
+    if ((entry == NULL) || (entry->channel >= IEC104_DIN_COUNT) || (entry->active > 1U))
+    {
+        return false;
+    }
+    iec104_event_record_t record = {.kind = IEC104_EVENT_DIN_CHANGE, .payload.din = *entry};
+    return add_durable_record(&record, seq_out);
 }
 
 /* log_read_last() ziyaretcisi: bir kaydi disari tasir. */
@@ -305,7 +322,7 @@ static void visit_one(const void *payload, uint32_t payload_size, uint32_t seq, 
 
     (void)memcpy(v->out, payload, sizeof(iec104_event_record_t));
     v->seq = (uint16_t)seq;
-    v->valid = (IEC104_EVENT_TRIP_FAILURE_ACK >= v->out->kind) &&
+    v->valid = (IEC104_EVENT_DIN_CHANGE >= v->out->kind) &&
                (v->out->crc == record_calc_crc(v->out));
 }
 
@@ -478,6 +495,16 @@ static void visit_dump(const void *payload, uint32_t payload_size, uint32_t seq,
 
     iec104_event_record_t event;
     (void)memcpy(&event, payload, sizeof(event));
+    if (IEC104_EVENT_DIN_CHANGE == event.kind)
+    {
+        SHELL_LOG("  seq=%u DIN%u active=%u %02u-%02u-%04u %02u:%02u:%02u IV=%u\r\n",
+                  (unsigned)seq, (unsigned)(event.payload.din.channel + 1U),
+                  (unsigned)event.payload.din.active, (unsigned)event.payload.din.time.day,
+                  (unsigned)event.payload.din.time.month, (unsigned)(event.payload.din.time.year + 2000U),
+                  (unsigned)event.payload.din.time.hour, (unsigned)event.payload.din.time.minute,
+                  (unsigned)cp56time2a_get_second(&event.payload.din.time), (unsigned)event.payload.din.time.iv_bit);
+        return;
+    }
     if (IEC104_EVENT_TRIP_FAILURE_ACK == event.kind)
     {
         const iec104_alarm_ack_record_t *ack = &event.payload.alarm_ack;

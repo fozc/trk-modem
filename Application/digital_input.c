@@ -1,6 +1,8 @@
 /**
  * @file  digital_input.c
  * @brief Debounced digital input reader — implementation.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  *
  * A Contiki process samples the 4 DIN GPIO pins and 2 DIP switches
  * every 30 ms and feeds each sample into an integrator-based debouncer.
@@ -9,6 +11,7 @@
  */
 
 #include "digital_input.h"
+#include "elog.h"
 #include "gpio.h"
 #include "gpio_defs.h"
 #include "debouncer.h"
@@ -78,6 +81,7 @@ static const din_pin_map_t s_btn_map =
  * ====================================================================== */
 
 static debouncer_t s_din_db[DIN_CH_COUNT];
+static void (*change_handler)(din_channel_t channel, bool active);
 static debouncer_t s_dip_db[DIP_SW_COUNT];
 static debouncer_t s_btn_db;
 
@@ -165,6 +169,11 @@ static void sample_inputs(void)
         if (debouncer(&s_din_db[i], raw) != 0)
         {
             uint8_t active = (s_din_db[i].stable_state == 0U) ? 1U : 0U;
+            if (change_handler != NULL)
+            {
+                change_handler((din_channel_t)i, active != 0U);
+            }
+            elog_log_din_change((uint8_t)(i + 1U), active != 0U);
             CSLOG("[DIN] CH%u -> %u\r\n",
                   (unsigned)(i + 1U), (unsigned)active);
         }
@@ -242,6 +251,11 @@ PROCESS_THREAD(digital_input_process, ev, data)
 /* ======================================================================
  *  Public API — DIN
  * ====================================================================== */
+
+void digital_input_set_change_handler(void (*handler)(din_channel_t channel, bool active))
+{
+    change_handler = handler;
+}
 
 void digital_input_init(void)
 {

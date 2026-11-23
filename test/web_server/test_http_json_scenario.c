@@ -22,6 +22,12 @@ static char response[8192];
 static int response_status;
 static modem_config_t device;
 static iec104_config_t iec;
+static const iec104_local_io_config_t ioa_io = {
+    .relay = {12002U, 12003U}, .din = {12004U, 12005U, 12006U, 12007U}
+};
+const char *const iec104_local_io_keys[IEC104_RELAY_COUNT + IEC104_DIN_COUNT] = {
+    "Relay1IOA", "Relay2IOA", "DIN1IOA", "DIN2IOA", "DIN3IOA", "DIN4IOA"
+};
 static modbus_configs_t modbus;
 static iec104_line_config_t lines[MAX_ARRAYS];
 static fw_info_t firmware;
@@ -41,6 +47,11 @@ const modem_config_t *get_device_config(void)
 const iec104_config_t *iec104_config_get(void)
 {
     return &iec;
+}
+const iec104_local_io_config_t *nvram_get_ioa_io(void);
+const iec104_local_io_config_t *nvram_get_ioa_io(void)
+{
+    return &ioa_io;
 }
 const modbus_configs_t *modbus_config_get(void)
 {
@@ -207,6 +218,8 @@ void test_http_json_outputs_and_invalid_requests_use_current_handlers(void)
     }
     reset_response();
     handle_get_iec_config_json();
+    TEST_ASSERT_NOT_NULL(strstr(response, "\"Relay1IOA\":12002"));
+    TEST_ASSERT_NOT_NULL(strstr(response, "\"DIN4IOA\":12007"));
     emit_response();
 
     modbus.device_addr = 7U;

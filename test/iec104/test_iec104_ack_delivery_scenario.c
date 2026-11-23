@@ -167,6 +167,8 @@ static void add_records(bool alarm)
 
 void setUp(void)
 {
+    static iec104_local_io_config_t local_io = IEC104_LOCAL_IO_DEFAULTS;
+    nvram_get_ioa_io_IgnoreAndReturn(&local_io);
     power_board_get_snapshot_IgnoreAndReturn(false);
     config_apply_pending = false;
     reset_fixture();
@@ -226,6 +228,68 @@ void test_operator_ack_replays_after_restart_and_waits_for_real_apci_ack(void)
     TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
     acknowledge(iec104_get_send_sn());
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+    reboot_fixture();
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+}
+
+static uint8_t din_states_after_reconnect(void)
+{
+    return 0U;
+}
+
+static void check_last_din_event(bool active, const cp56time2a_t *time)
+{
+    iec104_tx_process();
+    TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, gsm_payload[6]);
+    TEST_ASSERT_EQUAL_UINT8(COT_SPONTANEOUS, gsm_payload[8]);
+    const m_sp_tb_1_t *point = (const m_sp_tb_1_t *)&gsm_payload[DATA_START_IDX];
+    TEST_ASSERT_EQUAL_UINT32(IEC104_DIN_IOA_FIRST + 2U, iec104_ioa_3byte_to_uint32(point->ioa));
+    TEST_ASSERT_EQUAL_UINT8(active ? 1U : 0U, point->siq.spi);
+    TEST_ASSERT_EQUAL_MEMORY(time, &point->timestamp, sizeof(*time));
+}
+
+void test_offline_din_events_survive_restart_and_replay_with_current_state_after_ack(void)
+{
+    close_link();
+    iec104_init(&(iec104_io_t){.send = iec104_send, .get_din_states = din_states_after_reconnect}, &config);
+    const cp56time2a_t on_at = cp56time2a_make(1000U, 0U, 10U, 23U, 1U, 11U, 26U);
+    const cp56time2a_t off_at = cp56time2a_make(2000U, 0U, 10U, 23U, 1U, 11U, 26U);
+    iec104_report_din_change(2U, true, on_at);
+    iec104_report_din_change(2U, false, off_at);
+    TEST_ASSERT_EQUAL_UINT16(0U, tx.pending);
+    reboot_fixture();
+    TEST_ASSERT_EQUAL_UINT16(2U, iec104_event_log_get_unsent_count());
+
+    PT_SEM_INIT(&iec104_tx_sem, 1U);
+    start_link();
+    iec104_replay_link_established();
+    advance(15U * CLOCK_SECOND);
+    check_last_din_event(false, &off_at);
+    TEST_ASSERT_EQUAL_UINT32(1U, gsm_submissions);
+    close_link();
+    reboot_fixture();
+    TEST_ASSERT_EQUAL_UINT16(2U, iec104_event_log_get_unsent_count());
+
+    PT_SEM_INIT(&iec104_tx_sem, 1U);
+    start_link();
+    iec104_replay_link_established();
+    advance(15U * CLOCK_SECOND);
+    check_last_din_event(false, &off_at);
+    TEST_ASSERT_EQUAL_UINT32(1U, gsm_submissions);
+    acknowledge(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(1U, iec104_event_log_get_unsent_count());
+    advance(100U);
+    check_last_din_event(true, &on_at);
+    TEST_ASSERT_EQUAL_UINT32(2U, gsm_submissions);
+    acknowledge(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
+    advance(100U);
+    iec104_tx_process();
+    TEST_ASSERT_EQUAL_UINT32(3U, gsm_submissions);
+    TEST_ASSERT_EQUAL_UINT8(M_SP_NA_1, gsm_payload[6]);
+    TEST_ASSERT_EQUAL_UINT8(COT_SPONTANEOUS, gsm_payload[8]);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)IEC104_DIN_COUNT, gsm_payload[7]);
+    TEST_ASSERT_EQUAL_UINT8(0U, gsm_payload[DATA_START_IDX + 2U * sizeof(m_sp_na_1_t) + 3U]);
     reboot_fixture();
     TEST_ASSERT_EQUAL_UINT16(0U, iec104_event_log_get_unsent_count());
 }

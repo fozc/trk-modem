@@ -19,6 +19,7 @@
 #include "iec104_util.h"
 #include "iec104_config.h"
 #include "iec104_process.h"
+#include "nvram.h"
 #include "modbus_config.h"
 #include "modbus_process.h"
 #include "rf_config.h"
@@ -938,6 +939,11 @@ static bool parse_iec_line_config(config_reader_t *str, jiec_line_config_t *hat)
 }
 
 static char iec_address_error[192];
+const char *const iec104_local_io_keys[IEC104_RELAY_COUNT + IEC104_DIN_COUNT] = {
+    "Relay1IOA", "Relay2IOA", "DIN1IOA", "DIN2IOA", "DIN3IOA", "DIN4IOA"
+};
+#define IEC_LOCAL_FIELD_ID (2U + MAX_ARRAYS * 17U)
+
 static const char *const iec_address_keys[] = {
     "IOA_R_AnlikAkim",      "IOA_S_AnlikAkim",      "IOA_T_AnlikAkim",
     "IOA_R_EnerjiVarYok",   "IOA_S_EnerjiVarYok",   "IOA_T_EnerjiVarYok",
@@ -960,6 +966,10 @@ static void format_iec_address_field(char *text, uint16_t field_id)
     {
         (void)xsnprintf(text, 64U, "%s",
                         (0U == field_id) ? "AkuUyarisi" : "ModemReset");
+    }
+    else if (field_id >= IEC_LOCAL_FIELD_ID)
+    {
+        (void)xsnprintf(text, 64U, "%s", iec104_local_io_keys[field_id - IEC_LOCAL_FIELD_ID]);
     }
     else
     {
@@ -1046,14 +1056,22 @@ static bool validate_iec_addresses(const jiec_config_t *config)
                                 config->line.ioa_r_trip_failed,
                                 config->line.ioa_s_trip_failed,
                                 config->line.ioa_t_trip_failed};
-    iec_ioa_range_t
-        ranges[2U + (MAX_ARRAYS * ((sizeof(points) / sizeof(points[0])) + 2U))];
+    iec_ioa_range_t ranges[IEC_LOCAL_FIELD_ID + IEC104_RELAY_COUNT + IEC104_DIN_COUNT];
     size_t count = 0U;
 
     if (!add_iec_ioa_range(ranges, &count, config->ioa_aku_uyarisi, 1U, 0U) ||
         !add_iec_ioa_range(ranges, &count, config->ioa_modem_reset, 1U, 1U))
     {
         return false;
+    }
+    for (size_t i = 0U; i < IEC104_RELAY_COUNT + IEC104_DIN_COUNT; i++)
+    {
+        const uint32_t ioa = i < IEC104_RELAY_COUNT ? config->local_io.relay[i] :
+                             config->local_io.din[i - IEC104_RELAY_COUNT];
+        if (!add_iec_ioa_range(ranges, &count, ioa, 1U, (uint16_t)(IEC_LOCAL_FIELD_ID + i)))
+        {
+            return false;
+        }
     }
     for (size_t line = 0U; line < MAX_ARRAYS; line++)
     {
@@ -1106,6 +1124,21 @@ static bool validate_iec_addresses(const jiec_config_t *config)
         }
     }
     return true;
+}
+
+static bool parse_iec_local_io_key(config_reader_t *str, iec104_local_io_config_t *local_io)
+{
+    for (size_t i = 0U; i < IEC104_RELAY_COUNT + IEC104_DIN_COUNT; i++)
+    {
+        const char *key = iec104_local_io_keys[i];
+        if (match_key(str, (json_span_t){key, strlen(key)}))
+        {
+            uint32_t *ioa = i < IEC104_RELAY_COUNT ? &local_io->relay[i] :
+                            &local_io->din[i - IEC104_RELAY_COUNT];
+            return parse_uint32(str, ioa);
+        }
+    }
+    return skip_value(str);
 }
 
 /* IEC Config parse et */
@@ -1245,7 +1278,7 @@ static bool parse_iec_config_internal(config_reader_t *str, jiec_config_t *iec)
         }
         else
         {
-            if (!skip_value(str))
+            if (!parse_iec_local_io_key(str, &iec->local_io))
             {
                 return false;
             }
@@ -2689,6 +2722,7 @@ int set_iec_config(const jiec_config_t *config)
 
     // Write global config using config manager
     iec104_config_set(&config_to_write);
+    nvram_set_ioa_io(&config->local_io);
 
     // Write line config fields
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++)

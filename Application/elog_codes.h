@@ -64,7 +64,9 @@ typedef enum
 
 	// Audit codes (70..79)
 	ELOG_WEB_LOGIN_FAIL        = 70,  /* info: ip(4) burst_count(2) */
-	//
+
+    ELOG_DIN_CHANGE            = 80,  /* Kanal(1), durum(1). */
+    ELOG_RELAY_CHANGE          = 81,  /* Kanal(1), PWM komutu(1). */
 } elog_code_t;
 
 static inline const char* elog_code_to_string(elog_code_t code)
@@ -113,6 +115,8 @@ static inline const char* elog_code_to_string(elog_code_t code)
         case ELOG_RF_ALARM_ACK: return "RF_ALARM_ACK";
         case ELOG_RF_MAINTENANCE: return "RF_MAINTENANCE";
         case ELOG_RF_CFG_COMMIT: return "RF_CFG_COMMIT";
+        case ELOG_DIN_CHANGE: return "DIN_CHANGE";
+        case ELOG_RELAY_CHANGE: return "RELAY_CHANGE";
 
 		default: return "UNKNOWN_CODE";
 	}

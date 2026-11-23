@@ -92,6 +92,15 @@ typedef struct
 	uint32_t crc;
 }__attribute__((packed)) iec104_config_t;
 
+#define IEC104_RELAY_COUNT 2U
+#define IEC104_DIN_COUNT   4U
+
+typedef struct
+{
+    uint32_t relay[IEC104_RELAY_COUNT];
+    uint32_t din[IEC104_DIN_COUNT];
+} iec104_local_io_config_t;
+
 
 typedef struct
 {
@@ -263,11 +272,12 @@ typedef struct
     uint16_t auth_iterations;
     _Alignas(4) auth_record_t auth_records[AUTH_ACCOUNT_COUNT];
 
+    iec104_local_io_config_t iec104_local_io;
     uint32_t crc;
 }nvram_t;
 
-/* Parola kayitlari sonda tutulur. Sahada cihaz olmadigi icin sema surumu
- * degismez. Eski uzunluklar acilista varsayilan degerlere yonlendirilir. */
+/* Sema 1 icinde IOA alani CRC'den once eklenir. Onceki uzunluk acilista taninir. */
+#define NVRAM_V1_PRE_LOCAL_IO_LENGTH 2072U
 _Static_assert(offsetof(nvram_t, magic) == 0U, "nvram_t: magic@0");
 _Static_assert(offsetof(nvram_t, schema_version) == 4U, "nvram_t: schema_version@4");
 _Static_assert(offsetof(nvram_t, length) == 8U, "nvram_t: length@8");
@@ -285,8 +295,10 @@ _Static_assert(offsetof(nvram_t, retain_output_states) == 1969U,
 _Static_assert(offsetof(nvram_t, auth_iterations) == 1970U, "nvram_t: auth iterations offset");
 _Static_assert(sizeof(auth_record_t) == 48U, "auth_record_t layout");
 _Static_assert(offsetof(nvram_t, auth_records) == 1972U, "nvram_t: auth records");
-_Static_assert(sizeof(nvram_t) == 2072U, "nvram_t schema v1 layout");
-_Static_assert(offsetof(nvram_t, crc) == 2068U, "nvram_t: crc at tail");
+_Static_assert(offsetof(nvram_t, iec104_local_io) == NVRAM_V1_PRE_LOCAL_IO_LENGTH - sizeof(uint32_t),
+               "nvram_t: local IO replaces the previous CRC position");
+_Static_assert(sizeof(nvram_t) == 2096U, "nvram_t schema v1 layout with local IO");
+_Static_assert(offsetof(nvram_t, crc) == 2092U, "nvram_t: crc at tail");
 _Static_assert(sizeof(nvram_t) <= 0x2000U, "nvram_t NVRAM bolumunu (8 KB, spi_flash_organization.h) asiyor");
 
 #endif /* TYPES_H_ */

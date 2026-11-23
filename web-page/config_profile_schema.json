@@ -205,6 +205,48 @@
       "options": [],
       "label": "IOA Modem Reset"
     },
+    "Relay1IOA": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 16777215,
+      "options": [],
+      "label": "Relay1 IOA"
+    },
+    "Relay2IOA": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 16777215,
+      "options": [],
+      "label": "Relay2 IOA"
+    },
+    "DIN1IOA": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 16777215,
+      "options": [],
+      "label": "DIN1 IOA"
+    },
+    "DIN2IOA": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 16777215,
+      "options": [],
+      "label": "DIN2 IOA"
+    },
+    "DIN3IOA": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 16777215,
+      "options": [],
+      "label": "DIN3 IOA"
+    },
+    "DIN4IOA": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 16777215,
+      "options": [],
+      "label": "DIN4 IOA"
+    },
     "Hatlar": {
       "kind": "lines",
       "keys": [

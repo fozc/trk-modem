@@ -18,6 +18,7 @@
 #include "rf_config.h"
 #include "crc32.h"
 #include "iec104_util.h"
+#include "iec104_config.h"
 #include "nvram_flash_fake.h"
 #include "auth_defaults_fixture.h"
 
@@ -751,6 +752,42 @@ void test_previous_layout_uses_defaults(void)
     check(sizeof(nvram_t) == img(MOCK_SLOT_A)->length, "relay: old length reprovisions current layout");
     check(nvram_retain_output_states() && (0U == nvram_get_relay_states()),
           "relay: old CRC bytes cannot become output commands");
+}
+
+void test_previous_schema_one_length_keeps_configuration_and_adds_local_io(void)
+{
+    boot_virgin();
+    const uint32_t old_length = NVRAM_V1_PRE_LOCAL_IO_LENGTH;
+    const size_t old_crc_offset = old_length - sizeof(uint32_t);
+    for (uint32_t slot = MOCK_SLOT_A; slot <= MOCK_SLOT_B; slot++)
+    {
+        nvram_t *image = img(slot);
+        image->length = old_length;
+        image->modem_config.serial_number = 26000123U;
+        image->iec104_config.scada_port = 2415U;
+        image->relay_states = 2U;
+        const uint32_t crc = crc32_finalize(crc32_update(crc32_init(), image, old_crc_offset));
+        memcpy(&mock_slot_image_rw(slot)[old_crc_offset], &crc, sizeof(crc));
+    }
+    mock_fail_write(MOCK_SLOT_A, MOCK_FAIL_AFTER_ERASE);
+    TEST_ASSERT_NOT_EQUAL(0, nvram_init());
+    TEST_ASSERT_EQUAL_UINT32(old_length, img(MOCK_SLOT_B)->length);
+    reboot();
+    TEST_ASSERT_EQUAL_UINT32(26000123U, nvram_get_modem_config_rw()->serial_number);
+    TEST_ASSERT_EQUAL_UINT16(2415U, nvram_get_iec104_config()->scada_port);
+    TEST_ASSERT_EQUAL_UINT8(2U, nvram_get_relay_states());
+    TEST_ASSERT_EQUAL_UINT32(1U, img(MOCK_SLOT_A)->schema_version);
+    TEST_ASSERT_EQUAL_UINT32(sizeof(nvram_t), img(MOCK_SLOT_A)->length);
+    TEST_ASSERT_TRUE(images_equal());
+    const iec104_local_io_config_t defaults = IEC104_LOCAL_IO_DEFAULTS;
+    TEST_ASSERT_EQUAL_MEMORY(&defaults, nvram_get_ioa_io(), sizeof(defaults));
+
+    iec104_local_io_config_t local_io = defaults;
+    local_io.din[3] = 800004U;
+    nvram_set_ioa_io(&local_io);
+    TEST_ASSERT_EQUAL_INT(0, nvram_sync(false));
+    reboot();
+    TEST_ASSERT_EQUAL_UINT32(800004U, nvram_get_ioa_io()->din[3]);
 }
 
 void test_password_save_handles_partial_flash_commit_and_factory_reset(void)

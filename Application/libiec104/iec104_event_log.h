@@ -19,7 +19,8 @@ typedef enum
 {
     IEC104_EVENT_FAULT = 0,
     IEC104_EVENT_TRIP_FAILURE = 1,
-    IEC104_EVENT_TRIP_FAILURE_ACK = 2
+    IEC104_EVENT_TRIP_FAILURE_ACK = 2,
+    IEC104_EVENT_DIN_CHANGE = 3
 } iec104_event_kind_t;
 
 typedef struct
@@ -29,6 +30,13 @@ typedef struct
     uint8_t phase;
     uint8_t active;
 } __attribute__((packed)) iec104_alarm_record_t;
+
+typedef struct
+{
+    cp56time2a_t time;
+    uint8_t channel;
+    uint8_t active;
+} __attribute__((packed)) iec104_din_record_t;
 
 #define IEC104_ALARM_ACK_SOURCE_WEB 1U
 #define IEC104_ALARM_ACK_USER_ADMIN 1U
@@ -56,6 +64,7 @@ typedef struct
         fault_log_t fault;
         iec104_alarm_record_t alarm;
         iec104_alarm_ack_record_t alarm_ack;
+        iec104_din_record_t din;
     } payload;
     uint32_t crc;
 } __attribute__((packed)) iec104_event_record_t;
@@ -91,6 +100,7 @@ bool iec104_event_log_add(const fault_log_t *entry, uint16_t *seq_out);
 bool iec104_event_log_add_alarm(const iec104_alarm_record_t *entry,
                                uint16_t *seq_out);
 bool iec104_event_log_add_alarm_ack(const iec104_alarm_ack_record_t *entry, uint16_t *seq_out);
+bool iec104_event_log_add_din(const iec104_din_record_t *entry, uint16_t *seq_out);
 
 /**
  * Gonderilmemis kayit sayisi.

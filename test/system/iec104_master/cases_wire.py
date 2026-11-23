@@ -36,7 +36,8 @@ def wait_listener(ctx):
 def j01_negative_commands(ctx):
     """Unsupported controls and invalid reset requests must not execute."""
     wire = _open(ctx)
-    checks = [(45, bytes(4), 6, None, 44),
+    single_rejection = 47 if ctx.oracle.get("local_io") else 44
+    checks = [(45, bytes(4), 6, None, single_rejection),
               (46, bytes(4), 6, None, 44),
               (48, bytes(6), 6, None, 44),
               (49, bytes(6), 6, None, 44),

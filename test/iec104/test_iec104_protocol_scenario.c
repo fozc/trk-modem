@@ -2959,6 +2959,206 @@ static void setup_battery(void)
     start_link();
 }
 
+static uint8_t relay_mask;
+static uint8_t relay_calls;
+static bool relay_accepts;
+
+static bool fake_set_relay(uint8_t channel, bool on)
+{
+    relay_calls++;
+    if (!relay_accepts)
+    {
+        return false;
+    }
+    const uint8_t mask = (uint8_t)(1U << channel);
+    relay_mask = on ? (uint8_t)(relay_mask | mask) : (uint8_t)(relay_mask & (uint8_t)~mask);
+    return true;
+}
+
+static uint8_t fake_get_din(void)
+{
+    return 0x09U;
+}
+
+static void setup_local_io(uint8_t window, uint32_t battery_ioa)
+{
+    setup(window, 32U);
+    relay_mask = 0U;
+    relay_calls = 0U;
+    relay_accepts = true;
+    iec104_io_t io = test_io;
+    io.set_relay = fake_set_relay;
+    io.get_din_states = fake_get_din;
+    const iec104_config_t cfg = {.common_address = TEST_COMMON_ADDRESS,
+        .k_max = window, .w_max = 32U, .t1_max = 15U, .t2_max = 10U,
+        .t3_max = 60U, .sbo_execute_timeout = 2U,
+        .ioa_aku_uyarisi = iec104_make_ioa_3byte(battery_ioa)};
+    iec104_init(&io, &cfg);
+    start_link();
+}
+
+static void send_relay_request(uint32_t ioa, uint8_t oa, uint8_t sco, uint8_t cot, bool negative)
+{
+    uint8_t frame[16];
+    build_interrogation(frame, iec104_get_receive_sn(), iec104_get_send_sn(),
+                        TEST_COMMON_ADDRESS, sco);
+    frame[6] = C_SC_NA_1;
+    frame[9] = oa;
+    frame[12] = (uint8_t)ioa;
+    frame[13] = (uint8_t)(ioa >> 8U);
+    frame[14] = (uint8_t)(ioa >> 16U);
+    tx_clear();
+    iec104_data_received(frame, sizeof(frame));
+    libiec104_poll();
+    const int reply = find_asdu(C_SC_NA_1, cot);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, reply);
+    TEST_ASSERT_EQUAL_UINT8(negative ? 1U : 0U, frame_asdu_pn(tx_log[reply]));
+    TEST_ASSERT_EQUAL_UINT8(oa, frame_asdu_oa(tx_log[reply]));
+    TEST_ASSERT_EQUAL_MEMORY(&frame[12], &tx_log[reply][12], 4U);
+}
+
+void test_relay_sbo_requires_matching_unexpired_selection_and_consumes_it(void)
+{
+    setup_local_io(64U, 0U);
+    const uint32_t relay = IEC104_RELAY_IOA_FIRST + 1U;
+    send_relay_request(relay, 5U, 0x01U, COT_ACTIVATION_CON, true);
+    send_relay_request(relay, 5U, 0x81U, COT_ACTIVATION_CON, false);
+    send_relay_request(relay, 6U, 0x01U, COT_ACTIVATION_CON, true);
+    send_relay_request(relay, 5U, 0x00U, COT_ACTIVATION_CON, true);
+    send_relay_request(IEC104_RELAY_IOA_FIRST, 5U, 0x01U, COT_ACTIVATION_CON, true);
+    TEST_ASSERT_EQUAL_UINT8(0U, relay_calls);
+    mock_platform_set_tick(1999U);
+    send_relay_request(relay, 5U, 0x01U, COT_ACTIVATION_CON, false);
+    send_relay_request(relay, 5U, 0x01U, COT_ACTIVATION_CON, true);
+    TEST_ASSERT_EQUAL_UINT8(1U, relay_calls);
+    TEST_ASSERT_EQUAL_HEX8(0x02U, relay_mask);
+
+    send_relay_request(relay, 5U, 0x80U, COT_ACTIVATION_CON, false);
+    mock_platform_set_tick(3999U);
+    send_relay_request(relay, 5U, 0x00U, COT_ACTIVATION_CON, true);
+    TEST_ASSERT_EQUAL_UINT8(1U, relay_calls);
+    send_relay_request(relay, 5U, 0x80U, COT_ACTIVATION_CON, false);
+    relay_accepts = false;
+    send_relay_request(relay, 5U, 0x00U, COT_ACTIVATION_CON, true);
+    send_relay_request(relay, 5U, 0x00U, COT_ACTIVATION_CON, true);
+    TEST_ASSERT_EQUAL_UINT8(2U, relay_calls);
+    TEST_ASSERT_EQUAL_HEX8(0x02U, relay_mask);
+}
+
+void test_relay_sbo_selection_does_not_survive_session_reset(void)
+{
+    setup_local_io(64U, 0U);
+    send_relay_request(IEC104_RELAY_IOA_FIRST, 0U, 0x81U, COT_ACTIVATION_CON, false);
+    iec104_reset();
+    start_link();
+    send_relay_request(IEC104_RELAY_IOA_FIRST, 0U, 0x01U, COT_ACTIVATION_CON, true);
+    TEST_ASSERT_EQUAL_UINT8(0U, relay_calls);
+}
+
+void test_din_station_query_sends_four_points_before_termination(void)
+{
+    setup_local_io(1U, 0U);
+    uint8_t request[16];
+    build_interrogation(request, 0U, iec104_get_send_sn(), TEST_COMMON_ADDRESS, 20U);
+    request[9] = 0x3CU;
+    iec104_data_received(request, sizeof(request));
+    libiec104_poll();
+    feed_s_frame(iec104_get_send_sn());
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(3U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(M_SP_NA_1, frame_asdu_type(tx_log[1]));
+    TEST_ASSERT_EQUAL_UINT8(20U, frame_asdu_cot(tx_log[1]));
+    TEST_ASSERT_EQUAL_UINT8(0x3CU, frame_asdu_oa(tx_log[1]));
+    TEST_ASSERT_EQUAL_UINT8(4U, tx_log[1][7]);
+    for (uint8_t channel = 0U; channel < IEC104_DIN_COUNT; channel++)
+    {
+        const size_t offset = 12U + (channel * 4U);
+        const ioa_3byte_t expected_ioa = iec104_make_ioa_3byte(IEC104_DIN_IOA_FIRST + channel);
+        TEST_ASSERT_EQUAL_MEMORY(&expected_ioa, &tx_log[1][offset], 3U);
+        TEST_ASSERT_EQUAL_UINT8((0x09U >> channel) & 1U, tx_log[1][offset + 3U]);
+    }
+    TEST_ASSERT_EQUAL_UINT8(COT_ACTIVATION_TERM, frame_asdu_cot(tx_log[2]));
+}
+
+void test_tracked_din_waits_for_send_window_and_ack(void)
+{
+    setup_local_io(1U, 0U);
+    event_ack_count = 0U;
+    const iec104_event_record_t first = {.kind = IEC104_EVENT_DIN_CHANGE,
+        .payload.din = {.channel = 2U, .active = 1U,
+            .time = cp56time2a_make(21000U, 1U, 2U, 10U, 1U, 10U, 26U)}};
+    const iec104_event_record_t second = {.kind = IEC104_EVENT_DIN_CHANGE,
+        .payload.din = {.channel = 2U, .active = 0U, .time = {.iv_bit = 1U}}};
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&first, 10U, capture_event_ack));
+    TEST_ASSERT_FALSE(iec104_emit_event_record_tracked(&second, 11U, capture_event_ack));
+    TEST_ASSERT_EQUAL_UINT32(0U, event_ack_count);
+    TEST_ASSERT_EQUAL_UINT16(1U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(M_SP_TB_1, frame_asdu_type(tx_log[0]));
+    TEST_ASSERT_EQUAL_UINT8(COT_SPONTANEOUS, frame_asdu_cot(tx_log[0]));
+    TEST_ASSERT_EQUAL_HEX8((uint8_t)(IEC104_DIN_IOA_FIRST + 2U), tx_log[0][12]);
+    TEST_ASSERT_EQUAL_UINT8(1U, tx_log[0][15]);
+    TEST_ASSERT_EQUAL_MEMORY(&first.payload.din.time, &tx_log[0][16], sizeof(cp56time2a_t));
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT16(10U, acknowledged_record);
+    TEST_ASSERT_TRUE(iec104_emit_event_record_tracked(&second, 11U, capture_event_ack));
+    TEST_ASSERT_EQUAL_UINT16(2U, tx_count);
+    TEST_ASSERT_EQUAL_UINT8(0U, tx_log[1][15]);
+    TEST_ASSERT_EQUAL_MEMORY(&second.payload.din.time, &tx_log[1][16], sizeof(cp56time2a_t));
+    TEST_ASSERT_EQUAL_UINT32(1U, event_ack_count);
+    feed_s_frame(iec104_get_send_sn());
+    TEST_ASSERT_EQUAL_UINT32(2U, event_ack_count);
+    TEST_ASSERT_EQUAL_UINT16(11U, acknowledged_record);
+}
+
+void test_reserved_ioa_collision_disables_new_points_and_preserves_existing_address(void)
+{
+    setup_local_io(64U, IEC104_DIN_IOA_FIRST);
+    send_relay_request(IEC104_RELAY_IOA_FIRST, 0U, 0x81U, UkIOA, true);
+    const iec104_event_record_t record = {.kind = IEC104_EVENT_DIN_CHANGE,
+        .payload.din = {.channel = 0U, .active = 1U}};
+    TEST_ASSERT_FALSE(iec104_emit_event_record(&record));
+    uint8_t request[16];
+    build_interrogation(request, iec104_get_receive_sn(), iec104_get_send_sn(), TEST_COMMON_ADDRESS, 20U);
+    iec104_data_received(request, sizeof(request));
+    libiec104_poll();
+    TEST_ASSERT_EQUAL_INT(-1, find_asdu(M_SP_NA_1, 20U));
+    TEST_ASSERT_EQUAL_INT(-1, find_asdu(M_SP_TB_1, COT_SPONTANEOUS));
+    TEST_ASSERT_EQUAL_UINT8(0U, relay_calls);
+}
+
+void test_configurable_local_io_addresses_apply_only_outside_active_session(void)
+{
+    setup_local_io(64U, 0U);
+    iec104_local_io_config_t settings = IEC104_LOCAL_IO_DEFAULTS;
+    settings.relay[1] = 500021U;
+    settings.din[2] = 510123U;
+    TEST_ASSERT_FALSE(iec104_apply_local_io(&settings));
+    iec104_reset();
+    TEST_ASSERT_TRUE(iec104_apply_local_io(&settings));
+    start_link();
+    send_relay_request(IEC104_RELAY_IOA_FIRST + 1U, 0U, 0x81U, UkIOA, true);
+    send_relay_request(settings.relay[1], 0U, 0x81U, COT_ACTIVATION_CON, false);
+    send_relay_request(settings.relay[1], 0U, 0x01U, COT_ACTIVATION_CON, false);
+    TEST_ASSERT_EQUAL_UINT8(2U, relay_mask);
+
+    tx_clear();
+    uint8_t request[16];
+    build_interrogation(request, iec104_get_receive_sn(), iec104_get_send_sn(), TEST_COMMON_ADDRESS, 20U);
+    iec104_data_received(request, sizeof(request));
+    libiec104_poll();
+    const int snapshot = find_asdu(M_SP_NA_1, COT_INTERROGATED_STATION);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, snapshot);
+    const ioa_3byte_t din = iec104_make_ioa_3byte(settings.din[2]);
+    TEST_ASSERT_EQUAL_MEMORY(&din, &tx_log[snapshot][20], sizeof(din));
+
+    const iec104_event_record_t record = {.kind = IEC104_EVENT_DIN_CHANGE,
+        .payload.din = {.channel = 2U, .active = 1U}};
+    TEST_ASSERT_TRUE(iec104_emit_event_record(&record));
+    const int notification = find_asdu(M_SP_TB_1, COT_SPONTANEOUS);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(0, notification);
+    TEST_ASSERT_EQUAL_MEMORY(&din, &tx_log[notification][12], sizeof(din));
+}
+
 void test_battery_warning_retries_changes_and_invalid_quality(void)
 {
     setup_battery();

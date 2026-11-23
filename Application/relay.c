@@ -13,6 +13,7 @@
  */
 
 #include "relay.h"
+#include "elog.h"
 #include "relay_pwm.h"
 #include "nvram.h"
 #include "contiki.h"
@@ -53,8 +54,7 @@ typedef enum
 /* ======================================================================
  *  Module state
  *
- *  Both production callers (shell and Modbus) and the relay process run
- *  cooperatively. No ISR or DMA accesses this state.
+ *  Shell, Modbus, IEC104 ve role sureci ayni Contiki baglaminda calisir.
  * ====================================================================== */
 
 static relay_cmd_t          s_cmd[RELAY_CH_COUNT];
@@ -81,7 +81,9 @@ static void relay_apply_cmd(uint8_t ch)
 
     s_cmd[ch] = RELAY_CMD_NONE;
 
-    if (cmd == RELAY_CMD_ON)
+    const bool was_energized = s_state[ch] != RELAY_STATE_OFF;
+    const bool energized = cmd == RELAY_CMD_ON;
+    if (energized)
     {
         relay_pwm_set_duty((relay_pwm_channel_t)ch, RELAY_PEAK_DUTY_PERMILLE);
         s_state[ch]         = RELAY_STATE_PEAK;
@@ -93,6 +95,10 @@ static void relay_apply_cmd(uint8_t ch)
         relay_pwm_set_duty((relay_pwm_channel_t)ch, 0U);
         s_state[ch] = RELAY_STATE_OFF;
         CSLOG("[RELAY] CH%u OFF\r\n", (unsigned)(ch + 1U));
+    }
+    if (energized != was_energized)
+    {
+        elog_log_relay_change((uint8_t)(ch + 1U), energized);
     }
 }
 

@@ -196,8 +196,9 @@ def i02_gi_station(ctx):
     if not ok:
         return "FAIL", ["QOI=20 %s gelmedi" % detail["stage"]]
     ca = ctx.oracle["ca"]
-    failure = _check_gi_frames(detail, 20, ca, ctx.expected["group1"],
-                               ctx.expected["group2"],
+    currents = ctx.expected["group1"]
+    failure = _check_gi_frames(detail, 20, ca, currents,
+                               station_set - currents,
                                ctx.oracle.get("battery_ioa", 0))
     if failure:
         return "FAIL", ["GI cevabi yapisi gecersiz: %s" % failure]
@@ -214,9 +215,10 @@ def i02_gi_station(ctx):
     if detail["concurrent"]:
         lines.append("pencerede es zamanli spontane=%d (set disi "
                      "tutuldu)" % len(detail["concurrent"]))
+    if not currents:
+        return "PASS", lines + ["akim noktasi yapilandirilmamis"]
     # Quality per plan item 5: expectation follows the bench RF state.
     quals = _qualities(detail["data"])
-    currents = ctx.expected["group1"]
     measured_currents = [ioa for ioa in quals if ioa in currents]
     if not measured_currents:
         return "FAIL", ["akim noktalari olcum (M_ME_NC_1) olarak "

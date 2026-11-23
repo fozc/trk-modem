@@ -98,6 +98,23 @@ void setUp(void)
     rtc_hw_is_valid_IgnoreAndReturn(true);
 }
 
+void test_din_and_relay_transitions_write_readable_records(void)
+{
+    elog_log_din_change(4U, true);
+    TEST_ASSERT_EQUAL_UINT32(1U, writes);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_DIN_CHANGE, stored_entry.code);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_LEVEL_INFO, stored_entry.level);
+    TEST_ASSERT_EQUAL_STRING("DIN_CHANGE", elog_code_to_string((elog_code_t)stored_entry.code));
+    TEST_ASSERT_EQUAL_STRING("DIN4=1", elog_info_to_text(&stored_entry));
+
+    elog_log_relay_change(2U, false);
+    TEST_ASSERT_EQUAL_UINT32(2U, writes);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_RELAY_CHANGE, stored_entry.code);
+    TEST_ASSERT_EQUAL_UINT8(ELOG_LEVEL_INFO, stored_entry.level);
+    TEST_ASSERT_EQUAL_STRING("RELAY_CHANGE", elog_code_to_string((elog_code_t)stored_entry.code));
+    TEST_ASSERT_EQUAL_STRING("relay 2 PWM command OFF", elog_info_to_text(&stored_entry));
+}
+
 void tearDown(void)
 {
 }

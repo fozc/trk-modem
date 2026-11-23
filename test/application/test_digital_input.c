@@ -19,6 +19,7 @@
 #include "gpio_defs.h"
 #include "mock_bsp.h"
 #include "mock_debouncer.h"
+#include "mock_elog.h"
 #include "mock_gpio.h"
 #include "mock_nvram.h"
 
@@ -38,6 +39,16 @@ static bool sync_force;
 static int sync_result;
 static uint32_t reset_count;
 static clock_time_t fake_now;
+static uint8_t din_change_count;
+static din_channel_t changed_channel;
+static bool changed_value;
+
+static void capture_din_change(din_channel_t channel, bool active)
+{
+    din_change_count++;
+    changed_channel = channel;
+    changed_value = active;
+}
 
 void digital_input_test_dispatch_user_reset(uint32_t held_ticks);
 void digital_input_test_sample(void);
@@ -127,6 +138,7 @@ void setUp(void)
     fake_now = 0U;
     gpio_read_pin_StubWithCallback(read_pin_callback);
     debouncer_StubWithCallback(debounce_callback);
+    elog_log_din_change_Ignore();
     nvram_set_defaults_StubWithCallback(set_defaults_callback);
     nvram_sync_StubWithCallback(sync_callback);
     bsp_system_reset_StubWithCallback(reset_callback);
@@ -134,6 +146,7 @@ void setUp(void)
 
 void tearDown(void)
 {
+    digital_input_set_change_handler(NULL);
 }
 
 void test_digital_input_init_seeds_active_low_states_and_starts_process(void)
@@ -199,6 +212,31 @@ void test_digital_input_sample_updates_din_and_dip_states(void)
 
     TEST_ASSERT_EQUAL_HEX8(0U, digital_input_get_all());
     TEST_ASSERT_EQUAL_HEX8(0U, dip_switch_get_all());
+}
+
+void test_din_change_handler_reports_each_logical_transition_once(void)
+{
+    din_change_count = 0U;
+    elog_log_din_change_StopIgnore();
+    digital_input_set_change_handler(capture_din_change);
+    digital_input_init();
+    digital_input_test_sample();
+    TEST_ASSERT_EQUAL_UINT8(0U, din_change_count);
+
+    pin_levels[DIN4_BSP_GPIO][DIN4_BSP_PIN] = 0U;
+    elog_log_din_change_Expect(4U, true);
+    digital_input_test_sample();
+    digital_input_test_sample();
+    TEST_ASSERT_EQUAL_UINT8(1U, din_change_count);
+    TEST_ASSERT_EQUAL_INT(DIN_CH_4, changed_channel);
+    TEST_ASSERT_TRUE(changed_value);
+
+    pin_levels[DIN4_BSP_GPIO][DIN4_BSP_PIN] = 1U;
+    elog_log_din_change_Expect(4U, false);
+    digital_input_test_sample();
+    TEST_ASSERT_EQUAL_UINT8(2U, din_change_count);
+    TEST_ASSERT_EQUAL_INT(DIN_CH_4, changed_channel);
+    TEST_ASSERT_FALSE(changed_value);
 }
 
 void test_user_reset_sample_measures_press_and_release_duration(void)

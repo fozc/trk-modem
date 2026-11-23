@@ -42,6 +42,7 @@ PROCESS(iec104_replay_process, "iec104_replay_process");
 PROCESS(iec104_replay_fallback_timer, "iec104_replay_fallback_timer");
 
 static void iec104_replay_start_if_pending(void);
+static void wake_replay(void);
 
 PROCESS_THREAD(iec104_replay_process, ev, data)
 {
@@ -49,6 +50,7 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 	static iec104_event_record_t record;
 	static uint16_t seq;
 	static uint32_t fail_count;
+    static bool din_replayed;
 
 	(void)ev;
 	(void)data;
@@ -74,18 +76,14 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 
 	etimer_set(&timer, REPLAY_RECORD_PERIOD_TICKS);
 	fail_count = 0U;
+    din_replayed = false;
 
 	/* Daima "en yeni gonderilmemis" okunur: mark_sent araligin ust ucunu
 	 * cektikce ayni sorgu bir sonraki (daha eski) kaydi verir ->
 	 * en yeni->eski sirasi kendiliginden kurulur (sertname 2.2.4.2). */
-	while (iec104_event_log_get_unsent_count() > 0U)
+	while (iec104_is_link_active())
 	{
 		bool sent_ok = false;
-
-		if (!iec104_is_link_active())
-		{
-			break;
-		}
 
         if (iec104_event_ack_pending())
         {
@@ -95,13 +93,28 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
             continue;
         }
 
-		if (iec104_event_log_read_newest_unsent(&record, &seq))
+		if (iec104_event_log_get_unsent_count() > 0U)
 		{
-			if (iec104_replay_send_record(&record, seq))
+			if (iec104_event_log_read_newest_unsent(&record, &seq) &&
+                iec104_replay_send_record(&record, seq))
 			{
 				sent_ok = true;
+                din_replayed = din_replayed || (record.kind == IEC104_EVENT_DIN_CHANGE);
 			}
 		}
+        else if (din_replayed)
+        {
+            /* Eski kayitlardan sonra SCADA'ya guncel DIN durumu verilir. */
+            sent_ok = iec104_send_din_states(COT_SPONTANEOUS);
+            din_replayed = !sent_ok;
+        }
+        else
+        {
+            if (iec104_send_rf_communication_states(COT_SPONTANEOUS))
+            {
+                break;
+            }
+        }
 
 		if (sent_ok)
 		{
@@ -122,19 +135,6 @@ PROCESS_THREAD(iec104_replay_process, ev, data)
 		etimer_reset(&timer);
 	}
 
-	/* Historical records use newest-first order. Restore current RF/alarm
-     * states afterwards, so an older alarm does not remain the last value.
-     * Reuse the existing paced retry bound and process timer. */
-    fail_count = 0U;
-    while (iec104_is_link_active() &&
-           (0U == iec104_event_log_get_unsent_count()) &&
-           (REPLAY_MAX_CONSEC_FAIL > fail_count) &&
-           !iec104_send_rf_communication_states(COT_SPONTANEOUS))
-    {
-        fail_count++;
-        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
-        etimer_reset(&timer);
-    }
 	(void)iec104_event_log_sync();
 	CSLOG("replay: bitti (kalan unsent=%u)\r\n",
 	      iec104_event_log_get_unsent_count());
@@ -205,6 +205,12 @@ static void record_acknowledged(uint16_t seq)
     (void)iec104_event_log_sync();
 }
 
+static void wake_replay(void)
+{
+    iec104_replay_link_established();
+    process_poll(&iec104_replay_fallback_timer);
+}
+
 bool iec104_replay_send_record(const iec104_event_record_t *record,
                                uint16_t seq)
 {
@@ -215,13 +221,25 @@ bool iec104_replay_send_record(const iec104_event_record_t *record,
     {
         /* Defer startup to the scheduler: no recursive replay submission
          * from a transport failure or a synchronous discard callback. */
-        if (!process_is_running(&iec104_replay_fallback_timer))
-        {
-            process_start(&iec104_replay_fallback_timer, NULL);
-        }
-        process_poll(&iec104_replay_fallback_timer);
+        wake_replay();
     }
     return accepted;
+}
+
+void iec104_report_din_change(uint8_t channel, bool active, cp56time2a_t time)
+{
+    const iec104_event_record_t record = {.kind = IEC104_EVENT_DIN_CHANGE,
+        .payload.din = {.channel = channel, .active = active, .time = time}};
+    uint16_t seq;
+    if (!iec104_event_log_add_din(&record.payload.din, &seq))
+    {
+        CSLOG_ERR("DIN%u: IEC104 olay kaydi yazilamadi\r\n", (unsigned)(channel + 1U));
+        return;
+    }
+    if (iec104_is_link_active())
+    {
+        (void)iec104_replay_send_record(&record, seq);
+    }
 }
 
 void iec104_report_fault_event(float fault_current, uint32_t fault_duration_ms,

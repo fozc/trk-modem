@@ -15,6 +15,10 @@
 
 #define IEC104_ALARM_ACK_IOA_FIRST 300000U
 #define IEC104_ALARM_ACK_IOA_LAST  300023U
+#define IEC104_RELAY_IOA_FIRST    10002U
+#define IEC104_DIN_IOA_FIRST      10004U
+#define IEC104_DIN_IOA_LAST       (IEC104_DIN_IOA_FIRST + IEC104_DIN_COUNT - 1U)
+#define IEC104_LOCAL_IO_DEFAULTS { .relay = {10002U, 10003U}, .din = {10004U, 10005U, 10006U, 10007U} }
 
 static inline bool iec104_alarm_ack_range_overlaps(uint32_t first, uint32_t length)
 {

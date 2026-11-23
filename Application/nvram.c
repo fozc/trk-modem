@@ -6,6 +6,7 @@
  *              fatihozcan@gmail.com
  */
 #include "nvram.h"
+#include "iec104_config.h"
 #include "iec104.h"
 #include <stdio.h>
 #include <string.h>
@@ -66,6 +67,7 @@ static const uint32_t nvram_slot_addr[NVRAM_SLOT_COUNT] =
 typedef struct
 {
     bool     valid;      /* header + sema + CRC dogrulandi */
+    uint32_t length;
     uint32_t sequence;
     crc32_t  crc;        /* goruntunun saklanan CRC alani */
 } nvram_slot_state_t;
@@ -209,6 +211,7 @@ void nvram_set_defaults(void)
     nvram.iec104_config.is_sbo_active = IEC104_DEFAULT_SBO_STATE;
     nvram.iec104_config.ioa_aku_uyarisi = iec104_make_ioa_3byte(10000);
     nvram.iec104_config.ioa_modem_reset = iec104_make_ioa_3byte(10001);
+    nvram.iec104_local_io = (iec104_local_io_config_t)IEC104_LOCAL_IO_DEFAULTS;
 
     /* Initialize all power lines with default values */
     for (uint32_t i = 0U; i < MAX_POWER_LINE_COUNT; i++) {
@@ -421,7 +424,7 @@ static void nvram_read_hdr(uint32_t addr, nvram_hdr_t *hdr)
 static bool nvram_hdr_sane(const nvram_hdr_t *hdr)
 {
     return (NVRAM_MAGIC == hdr->magic) &&
-           (sizeof(nvram_t) == hdr->length) &&
+           ((sizeof(nvram_t) == hdr->length) || (NVRAM_V1_PRE_LOCAL_IO_LENGTH == hdr->length)) &&
            (NVRAM_SCHEMA_VERSION == hdr->schema_version);
 }
 
@@ -469,6 +472,7 @@ static bool nvram_validate_slot(uint32_t slot, nvram_slot_state_t *st)
     }
 
     st->valid = true;
+    st->length = hdr.length;
     st->sequence = hdr.sequence;
     st->crc = stored_crc;
     return true;
@@ -482,6 +486,7 @@ static bool nvram_slots_equal(const nvram_slot_state_t *a,
                               const nvram_slot_state_t *b)
 {
     return a->valid && b->valid
+           && (a->length == b->length)
            && (a->sequence == b->sequence)
            && (a->crc == b->crc);
 }
@@ -502,7 +507,7 @@ static int nvram_write_slot(uint32_t slot)
  * ardindan akiskan dogrula (fiziksel readback). Global RAM'e DOKUNMAZ -
  * kaydedilmemis ayarlar korunur. Kopya, kaynak goruntuyu AYNI sequence ile
  * tasiyacak bicimde birebir kopyalar. */
-static int nvram_copy_slot(uint32_t dst, uint32_t src)
+static int nvram_copy_slot(uint32_t dst, uint32_t src, uint32_t length)
 {
     const uint32_t dst_addr = nvram_slot_addr[dst];
     const uint32_t src_addr = nvram_slot_addr[src];
@@ -515,10 +520,10 @@ static int nvram_copy_slot(uint32_t dst, uint32_t src)
         return -1;
     }
 
-    for (off = 0U; off < (uint32_t)sizeof(nvram_t);
+    for (off = 0U; off < length;
          off += (uint32_t)sizeof(nvram_page_buf))
     {
-        chunk = (uint32_t)sizeof(nvram_t) - off;
+        chunk = length - off;
         if (chunk > (uint32_t)sizeof(nvram_page_buf))
         {
             chunk = (uint32_t)sizeof(nvram_page_buf);
@@ -547,7 +552,7 @@ static int nvram_prepare_slots(nvram_slot_state_t *a, nvram_slot_state_t *b)
      * boylece kayit A'yi silerken B eldeki guncel goruntuyu tasir. */
     if (b->valid && (!a->valid || nvram_seq_newer(b->sequence, a->sequence)))
     {
-        if (nvram_copy_slot(NVRAM_SLOT_A, NVRAM_SLOT_B) != 0)
+        if (nvram_copy_slot(NVRAM_SLOT_A, NVRAM_SLOT_B, b->length) != 0)
         {
             return -1;
         }
@@ -557,7 +562,7 @@ static int nvram_prepare_slots(nvram_slot_state_t *a, nvram_slot_state_t *b)
     /* A gecerli ve B onun aynisi degilse: B'yi A'dan tazele. */
     if (a->valid && !nvram_slots_equal(a, b))
     {
-        if (nvram_copy_slot(NVRAM_SLOT_B, NVRAM_SLOT_A) != 0)
+        if (nvram_copy_slot(NVRAM_SLOT_B, NVRAM_SLOT_A, a->length) != 0)
         {
             return -1;
         }
@@ -594,8 +599,16 @@ int nvram_init(void)
             load_slot = NVRAM_SLOT_B;
         }
 
-        w25qxx_read_buff(nvram_slot_addr[load_slot], &nvram, sizeof(nvram));
-        nvram_persisted_crc = nvram.crc;
+        const nvram_slot_state_t *loaded = load_slot == NVRAM_SLOT_A ? &a : &b;
+        const bool add_local_io = loaded->length == NVRAM_V1_PRE_LOCAL_IO_LENGTH;
+        w25qxx_read_buff(nvram_slot_addr[load_slot], &nvram, loaded->length);
+        nvram_persisted_crc = loaded->crc;
+        if (add_local_io)
+        {
+            nvram.iec104_local_io = (iec104_local_io_config_t)IEC104_LOCAL_IO_DEFAULTS;
+            nvram.length = (uint32_t)sizeof(nvram);
+            nvram.crc = nvram_calculate_crc();
+        }
 
         if (load_slot == NVRAM_SLOT_B)
         {
@@ -613,6 +626,10 @@ int nvram_init(void)
         {
             CSLOG_WARN("NVRAM: parola tur sayisi degisti, varsayilan ayarlar yuklendi.\r\n");
             nvram_set_defaults();
+            res = nvram_sync(true);
+        }
+        else if (add_local_io)
+        {
             res = nvram_sync(true);
         }
         else if (nvram_prepare_slots(&a, &b) != 0)
@@ -1117,6 +1134,19 @@ breaker_t *nvram_get_breaker_rw(void)
 const iec104_config_t *nvram_get_iec104_config(void)
 {
 	return &nvram.iec104_config;
+}
+
+const iec104_local_io_config_t *nvram_get_ioa_io(void)
+{
+    return &nvram.iec104_local_io;
+}
+
+void nvram_set_ioa_io(const iec104_local_io_config_t *settings)
+{
+    if ((settings != NULL) && nvram_change_allowed())
+    {
+        nvram.iec104_local_io = *settings;
+    }
 }
 
 iec104_config_t *nvram_get_iec104_config_rw(void)

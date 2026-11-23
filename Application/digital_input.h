@@ -1,6 +1,8 @@
 /**
  * @file  digital_input.h
  * @brief Debounced digital input reader.
+ * Author: Fatih Ozcan
+ *         fatihozcan@gmail.com
  *
  * Samples the 4 board DIN pins and 2 DIP switches through a Contiki
  * process (30 ms period) and debounces each with an integrator filter.
@@ -16,6 +18,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /**
  * @brief Digital input channel identifiers (external field inputs).
@@ -28,6 +31,9 @@ typedef enum
     DIN_CH_4,      /**< DIN4 — PD8  */
     DIN_CH_COUNT   /**< Total number of DIN channels. */
 } din_channel_t;
+
+/** Filtrelenmis DIN degisikliklerini Contiki baglaminda bildirir. */
+void digital_input_set_change_handler(void (*handler)(din_channel_t channel, bool active));
 
 /**
  * @brief DIP switch channel identifiers.

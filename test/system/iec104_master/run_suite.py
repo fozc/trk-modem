@@ -103,6 +103,8 @@ def main():
     parser.add_argument("--password", default=None,
                         help="yoksa IP-turevli admin sifresi")
     parser.add_argument("--case", action="append", default=None)
+    parser.add_argument("--legacy-io-map", action="store_true",
+                        help="expect firmware without IEC104 relay and DIN points")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--outdir", default=None)
     args = parser.parse_args()
@@ -205,6 +207,7 @@ def main():
                 [line["index"] + 1 for line in snap["lines"]
                  if line["in_use"]]))
         snap["feeders"] = feeders
+        snap["local_io"] = not args.legacy_io_map
 
         expected_sets = oracle_mod.expected_ioa_sets(snap)
         # Closing snapshot after a replay drain = RF comm states plus

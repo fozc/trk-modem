@@ -17,6 +17,7 @@
 
 #include "clock-arch.h"
 #include "mock_relay_pwm.h"
+#include "mock_elog.h"
 #include "mock_shell.h"
 #include "mock_utils.h"
 #include "mock_nvram.h"
@@ -135,6 +136,7 @@ static int parse_channel_callback(const char *text, int call_count)
 
 void setUp(void)
 {
+    elog_log_relay_change_Ignore();
     fake_now = 0U;
     process_start_count = 0U;
     process_poll_count = 0U;
@@ -349,6 +351,21 @@ void test_relay_save_failure_leaves_command_and_pwm_unchanged(void)
     TEST_ASSERT_EQUAL_UINT8(1U, saved_states);
     relay_test_apply_commands();
     TEST_ASSERT_EQUAL_UINT16(RELAY_PEAK_DUTY_PERMILLE, duty[RELAY_CH_1]);
+}
+
+void test_relay_logs_only_applied_on_off_transitions(void)
+{
+    elog_log_relay_change_StopIgnore();
+    TEST_ASSERT_TRUE(relay_set(RELAY_CH_2, true));
+    elog_log_relay_change_Expect(2U, true);
+    relay_test_apply_commands();
+    TEST_ASSERT_TRUE(relay_set(RELAY_CH_2, true));
+    relay_test_apply_commands();
+    fake_now += TEST_PEAK_TICKS;
+    relay_test_service_timer();
+    TEST_ASSERT_TRUE(relay_set(RELAY_CH_2, false));
+    elog_log_relay_change_Expect(2U, false);
+    relay_test_apply_commands();
 }
 
 /*** end of file ***/

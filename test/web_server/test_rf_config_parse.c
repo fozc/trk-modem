@@ -28,6 +28,12 @@ TEST_SOURCE_FILE("rf_nvram_fake.c")
 TEST_SOURCE_FILE("iec104_util.c")
 TEST_SOURCE_FILE("xprintf.c")
 
+void nvram_set_ioa_io(const iec104_local_io_config_t *settings)
+{
+    (void)settings;
+    TEST_FAIL_MESSAGE("RF config must not write digital IO addresses");
+}
+
 void setUp(void)
 {
     rf_nvram_fake_reset();

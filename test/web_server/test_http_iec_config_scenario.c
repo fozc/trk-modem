@@ -38,6 +38,15 @@ TEST_SOURCE_FILE("rf_scp.c")
 
 static iec104_config_t current_config;
 static iec104_config_t saved_config;
+static const iec104_local_io_config_t default_local_io = IEC104_LOCAL_IO_DEFAULTS;
+static iec104_local_io_config_t current_local_io;
+static iec104_local_io_config_t saved_local_io;
+
+static void capture_local_io(const iec104_local_io_config_t *settings, int call_count)
+{
+    (void)call_count;
+    saved_local_io = *settings;
+}
 
 static void capture_config(const iec104_config_t *config, int call_count)
 {
@@ -62,6 +71,9 @@ void setUp(void)
     current_config.ioa_aku_uyarisi = iec104_make_ioa_3byte(10000U);
     current_config.ioa_modem_reset = iec104_make_ioa_3byte(10001U);
     iec104_config_get_IgnoreAndReturn(&current_config);
+    current_local_io = default_local_io;
+    nvram_get_ioa_io_IgnoreAndReturn(&current_local_io);
+    nvram_set_ioa_io_Stub(capture_local_io);
     iec104_get_line_config_IgnoreAndReturn(NULL);
 }
 
@@ -95,6 +107,15 @@ void test_partial_post_preserves_t3_above_byte_range(void)
         TEST_ASSERT_EQUAL_UINT16(2405U, saved_config.scada_port);
         TEST_ASSERT_EQUAL_UINT16(values[index], current_config.t3_max);
     }
+}
+
+void test_partial_post_writes_address_and_preserves_other_local_points(void)
+{
+    expect_save();
+    handle_post_iec_config_json("{\"DIN3IOA\":140003}");
+    TEST_ASSERT_EQUAL_UINT32(140003U, saved_local_io.din[2]);
+    TEST_ASSERT_EQUAL_UINT32(default_local_io.din[3], saved_local_io.din[3]);
+    TEST_ASSERT_EQUAL_UINT32(default_local_io.relay[0], saved_local_io.relay[0]);
 }
 
 void test_periodic_interval_accepts_disabled_and_enabled_boundaries(void)
@@ -156,11 +177,15 @@ static void check_get_response(const char *json, int length, int call_count)
     (void)call_count;
     TEST_ASSERT_EQUAL_INT((int)strlen(json), length);
     TEST_ASSERT_NOT_NULL(strstr(json, "\"T3\":300,"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"Relay2IOA\":48002,"));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"DIN4IOA\":49004,"));
 }
 
 void test_get_reports_full_t3_without_narrowing(void)
 {
     static char response[8192];
+    current_local_io.relay[1] = 48002U;
+    current_local_io.din[3] = 49004U;
     http_handlers_init(response, (int)sizeof(response));
     http_send_json_StubWithCallback(check_get_response);
     handle_get_iec_config_json();

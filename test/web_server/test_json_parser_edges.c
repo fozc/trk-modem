@@ -19,6 +19,7 @@ TEST_SOURCE_FILE("json.c")
 #include "mock_modbus_config.h"
 #include "mock_modbus_process.h"
 #include "mock_modem_config.h"
+#include "mock_nvram.h"
 #include "mock_rf_config.h"
 #include <string.h>
 #include <stdio.h>
@@ -51,6 +52,7 @@ void setUp(void)
     iec.common_address = 1U;
     iec.ioa_aku_uyarisi = 10000U;
     iec.ioa_modem_reset = 10001U;
+    iec.local_io = (iec104_local_io_config_t)IEC104_LOCAL_IO_DEFAULTS;
     modbus.device_addr = 1U;
     modbus.baud_rate = 9600U;
     modem_config_get_IgnoreAndReturn(NULL);

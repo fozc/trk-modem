@@ -7,7 +7,7 @@
 
 #include "html_resources.h"
 
-#define INDEX_HTML_DATA_SIZE 51083U
+#define INDEX_HTML_DATA_SIZE 51253U
 
 /**
  * @brief Get index page HTML resource

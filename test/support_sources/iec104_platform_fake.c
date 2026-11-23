@@ -26,6 +26,17 @@
 
 static breaker_t mock_breaker;
 static iec104_config_t mock_iec104_config;
+static uint32_t mock_tick;
+
+uint32_t bsp_get_tick(void)
+{
+    return mock_tick;
+}
+
+void mock_platform_set_tick(uint32_t tick)
+{
+    mock_tick = tick;
+}
 
 breaker_t *nvram_get_breaker_rw(void)
 {
@@ -256,6 +267,7 @@ unsigned int xcprintf(const char *color, const char *fmt, ...)
 
 void mock_platform_reset(void)
 {
+    mock_tick = 0U;
     rtc_sync_count = 0U;
     rtc_sync_failure = false;
     (void)memset(&rtc_last_sync, 0, sizeof(rtc_last_sync));

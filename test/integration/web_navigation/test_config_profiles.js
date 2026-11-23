@@ -34,8 +34,14 @@ for(const [label,html] of [['source',source],['embedded',embedded]]){
     assert.deepEqual(JSON.parse(JSON.stringify(again)),fixture.profile);
     checks+=2;
   }
+  const localIo={Relay1IOA:48001,Relay2IOA:57002,DIN1IOA:49001,DIN2IOA:49002,DIN3IOA:9,DIN4IOA:16777215};
+  context.localIo=localIo;
+  assert.deepEqual(JSON.parse(JSON.stringify(run(
+    'parseConfigProfile(JSON.stringify(makeConfigProfile("iec104",localIo)),"iec104")'))),localIo);
+  checks++;
   for(const [domain,config] of [['device',{PreserveOutputStates:'true'}],['device',{Time:1}],
       ['device',{SimKartPin:12}],['modbus',{StopBits:3}],['iec104',{T1:5,T2:6}],
+      ['iec104',{Relay1IOA:0}],['iec104',{DIN4IOA:16777216}],
       ['rf',{R_DEVICEID:['bad']}],['rf',{inUse:Array(7).fill(1)}]]){
     context.bad={format:'troika-config',version:1,domain,config};
     assert.throws(()=>run('parseConfigProfile(JSON.stringify(bad),bad.domain)'));checks++;

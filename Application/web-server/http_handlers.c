@@ -1216,6 +1216,13 @@ void handle_get_iec_config_json(void)
         &writer, "ModemReset",
         (uint32_t)(iec104_ioa_3byte_to_uint32(config->ioa_modem_reset)));
 
+    const iec104_local_io_config_t *local_io = nvram_get_ioa_io();
+    for (size_t i = 0U; i < IEC104_RELAY_COUNT + IEC104_DIN_COUNT; i++)
+    {
+        const uint32_t ioa = i < IEC104_RELAY_COUNT ? local_io->relay[i] :
+                             local_io->din[i - IEC104_RELAY_COUNT];
+        web_json_uint32(&writer, iec104_local_io_keys[i], ioa);
+    }
     write_iec_lines(&writer);
     (void)json_write_object_end(&writer);
 
@@ -1282,6 +1289,7 @@ void handle_post_iec_config_json(const char *json_body)
         iec104_ioa_3byte_to_uint32(nvram_config->ioa_aku_uyarisi);
     config.ioa_modem_reset =
         iec104_ioa_3byte_to_uint32(nvram_config->ioa_modem_reset);
+    config.local_io = *nvram_get_ioa_io();
 
     // Convert line configs
     for (uint32_t i = 0U; i < MAX_ARRAYS; i++)

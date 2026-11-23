@@ -70,9 +70,12 @@ typedef struct
     uint32_t sbo_timeout;
     uint32_t ioa_aku_uyarisi;
     uint32_t ioa_modem_reset;
+    iec104_local_io_config_t local_io;
 
     jiec_line_config_t line;
 } jiec_config_t;
+
+extern const char *const iec104_local_io_keys[IEC104_RELAY_COUNT + IEC104_DIN_COUNT];
 
 /* Modbus Config Structure - register addresses are compile-time fixed
  * (modbus_map.h); only the serial-line settings travel over the web. */

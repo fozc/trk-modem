@@ -21,7 +21,7 @@ static const uint8_t supported_asdu_types[] = {
     M_DP_TB_1, // 31, Double Point Information
     M_SP_TB_1, // 30, Single Point Information
     M_ME_TF_1, // 36, Measured Value, Normalized Value
-    // C_SC_NA_1, // 45, Single Command (disabled)
+    C_SC_NA_1,
     // C_DC_NA_1, // 46, Double Command (no handler)
     M_EI_NA_1, // 70, End of Initialization
     C_IC_NA_1, // 100, Interrogation Command
@@ -101,6 +101,18 @@ static uint8_t rf_snapshot_next;
 static uint8_t battery_previous;
 static bool battery_sent;
 
+/* Secim ve DIN olaylari IEC104 oturumuna aittir. */
+typedef struct
+{
+    bool selected;
+    bool on;
+    uint8_t originator;
+    uint32_t selected_at;
+} relay_selection_t;
+
+_Static_assert(IEC104_RELAY_COUNT == 2U, "IEC104 relay lookup expects two channels");
+static relay_selection_t relay_selection[IEC104_RELAY_COUNT];
+
 /* One bounded command reply; a second blocked request closes the session. */
 static struct
 {
@@ -112,6 +124,7 @@ static struct
  
 static cp56time2a_t last_clock_sync_time = {0};
 static iec104_config_t config = {0};
+static iec104_local_io_config_t local_io = IEC104_LOCAL_IO_DEFAULTS;
 
 static bool wait_for_testfr_con = false; /* TESTFR_CON paketi bekleniyor mu? */
 static bool session_started;
@@ -146,6 +159,8 @@ static void poll_command_reply(void);
 static bool send_command_reply(const uint8_t *data, uint16_t length, bool request_reboot);
 static void poll_event_record(void);
 static bool send_battery_warning(cause_of_transmission_t cause);
+static bool configured_ioa_overlaps(bool (*overlaps)(uint32_t first, uint32_t length), bool active_lines_only);
+static bool relay_or_din_ioa_in_range(uint32_t first, uint32_t length);
 
 static void iec104_send_periodic_update(void);
 bool iec104_send_phase_currents(cause_of_transmission_t cause);
@@ -441,6 +456,7 @@ static inline asdu_header_t make_asdu_header(uint8_t type_id, cot_t cot, uint16_
 
 void iec104_init(const iec104_io_t *io_cfg, const iec104_config_t *iec104_config)
 {
+    local_io = (iec104_local_io_config_t)IEC104_LOCAL_IO_DEFAULTS;
 	if(io_cfg){
 		iec_io = *io_cfg;
 	}else{
@@ -1023,6 +1039,11 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
              * Sequence numbers, pending ACKs and RX bytes survive. */
             link_active = true;
             stopdt_pending = false;
+            if (((iec_io.set_relay != NULL) || (iec_io.get_din_states != NULL)) &&
+                configured_ioa_overlaps(relay_or_din_ioa_in_range, true))
+            {
+                CSLOG_ERR("IEC104: reserved relay/DIN IOA range overlaps configured points\r\n");
+            }
             if (!session_started)
             {
                 session_started = true;
@@ -1039,6 +1060,7 @@ void iec104_process_u_frame(const u_format_control_t *uframe)
         CSLOG("  StopDT Act received, stopping data transfer\r\n");
         /* Stop new user data; finish pending ACKs before STOPDT_CON. */
         link_active = false;
+        (void)memset(relay_selection, 0, sizeof(relay_selection));
         stopdt_pending = true;
         poll_stopdt();
         break;
@@ -1208,6 +1230,65 @@ static bool is_command_asdu(uint8_t type_id)
            (C_RP_NA_1 == type_id) || (type_id == C_TS_TA_1);
 }
 
+static void handle_relay_command(iec104_package_t *request)
+{
+    const uint16_t length = (uint16_t)request->frame.apci.apdu_length + 2U;
+    if (length != (DATA_START_IDX + sizeof(c_sc_na_1_t)))
+    {
+        iec104_send_negative_ack(request, UkTypeId);
+        return;
+    }
+
+    const c_sc_na_1_t *object = &request->frame.c_sc_na_1;
+    const uint32_t ioa = iec104_ioa_3byte_to_uint32(object->ioa);
+    const bool relay_one = ioa == local_io.relay[0];
+    if ((!relay_one && (ioa != local_io.relay[1])) ||
+        configured_ioa_overlaps(relay_or_din_ioa_in_range, true))
+    {
+        iec104_send_negative_ack(request, UkIOA);
+        return;
+    }
+
+    /* Kisa ve uzun darbe komutlari bu cikista desteklenmez. */
+    const sco_t sco = object->sco;
+    if ((sco.reserved != 0U) || ((sco.qu != QOC_NO_PULSE_DEF) && (sco.qu != QOC_PERSISTENT_OUTPUT)))
+    {
+        iec104_send_negative_ack(request, COT_ACTIVATION_CON);
+        return;
+    }
+
+    const uint8_t channel = (uint8_t)(relay_one ? 0U : 1U);
+    relay_selection_t *selection = &relay_selection[channel];
+    const uint8_t originator = request->frame.asdu_header.originator_address;
+    const bool on = sco.scs != 0U;
+    const uint32_t now = millis();
+    bool accepted = true;
+    if (sco.se_bit == SE_SELECT)
+    {
+        *selection = (relay_selection_t){.selected = true, .on = on,
+                                         .originator = originator, .selected_at = now};
+    }
+    else
+    {
+        const uint32_t timeout = config.sbo_execute_timeout != 0U ? config.sbo_execute_timeout : SBO_SELECT_TIMEOUT;
+        if ((now - selection->selected_at) >= timeout * 1000U)
+        {
+            selection->selected = false;
+        }
+        accepted = selection->selected && (selection->on == on) && (selection->originator == originator);
+        if (accepted)
+        {
+            selection->selected = false;
+            accepted = iec_io.set_relay(channel, on);
+        }
+    }
+
+    request->frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+    request->frame.asdu_header.cot.cause = COT_ACTIVATION_CON;
+    request->frame.asdu_header.cot.pn_bit = !accepted;
+    (void)send_command_reply(request->data, length, false);
+}
+
 void iec104_process_i_frame(const i_format_control_t *iframe)
 {
     if (iframe == NULL) {
@@ -1289,7 +1370,7 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
         }
     }
 
-    if(!is_supported)
+    if (!is_supported || ((package.frame.asdu_header.type_id == C_SC_NA_1) && (iec_io.set_relay == NULL)))
     {
         CSLOG_WARN("Unsupported ASDU type: %d\r\n", package.frame.asdu_header.type_id);
 
@@ -1392,12 +1473,9 @@ void iec104_process_i_frame(const i_format_control_t *iframe)
             CSLOG("Received C_IC_NA_1 Interrogation Command\r\n");
             iec104_interrogation_handler(&package);
         break;
-#ifdef C_SC_NA_1_ENABLED
         case C_SC_NA_1:
-            CSLOG("Received C_SC_NA_1 Command\r\n");
-            iec104_c_sc_na_1_45_command_handler(&package);
+            handle_relay_command(&package);
             break;
-#endif
         case C_CS_NA_1: // Clock Synchronization Command
             CSLOG("Received C_CS_NA_1 Clock Synchronization Command\r\n");
             iec104_c_cs_na_1_command_handler(&package);
@@ -1432,6 +1510,7 @@ void iec104_reset(void)
     session_started = false;
     initialization_pending = false;
     command_reply.length = 0U;
+    (void)memset(relay_selection, 0, sizeof(relay_selection));
 	link_active = false;
     stopdt_pending = false;
 
@@ -1498,6 +1577,16 @@ bool iec104_apply_config(const iec104_config_t *new_config)
     config = *new_config;
     periodical_send_interval = 0U;
     periodic_next = PERIODIC_IDLE;
+    return true;
+}
+
+bool iec104_apply_local_io(const iec104_local_io_config_t *settings)
+{
+    if (link_active || (settings == NULL))
+    {
+        return false;
+    }
+    local_io = *settings;
     return true;
 }
 
@@ -2119,18 +2208,43 @@ static bool emit_alarm_record(const iec104_alarm_record_t *record)
     return iec104_send((const uint8_t *)&packet, length);
 }
 
-bool iec104_alarm_ack_range_available(void)
+static bool ioa_in_range(uint32_t ioa, uint32_t first, uint32_t length)
 {
-    if (iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(config.ioa_aku_uyarisi), 1U) ||
-        iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(config.ioa_modem_reset), 1U))
+    return (ioa >= first) && ((ioa - first) < length);
+}
+
+static bool relay_or_din_ioa_in_range(uint32_t first, uint32_t length)
+{
+    if (first == 0U)
     {
         return false;
+    }
+    if (ioa_in_range(local_io.relay[0], first, length) || ioa_in_range(local_io.relay[1], first, length))
+    {
+        return true;
+    }
+    for (size_t i = 0U; i < IEC104_DIN_COUNT; i++)
+    {
+        if (ioa_in_range(local_io.din[i], first, length))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool configured_ioa_overlaps(bool (*overlaps)(uint32_t first, uint32_t length), bool active_lines_only)
+{
+    if (overlaps(iec104_ioa_3byte_to_uint32(config.ioa_aku_uyarisi), 1U) ||
+        overlaps(iec104_ioa_3byte_to_uint32(config.ioa_modem_reset), 1U))
+    {
+        return true;
     }
     const uint32_t span = TEMPORARY_FAULT_COUNT * TEMPORARY_FAULT_FIELDS_PER_RECORD * PHASE_MAX;
     for (uint32_t line_index = 0U; line_index < MAX_POWER_LINE_COUNT; line_index++)
     {
         const power_line_t *line = breaker_get_power_line_by_idx(line_index);
-        if (line == NULL)
+        if ((line == NULL) || (active_lines_only && (line->iec104.in_use == 0U)))
         {
             continue;
         }
@@ -2140,21 +2254,26 @@ bool iec104_alarm_ack_range_available(void)
         {
             for (size_t phase = 0U; phase < PHASE_MAX; phase++)
             {
-                if (iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(points[field][phase]), 1U))
+                if (overlaps(iec104_ioa_3byte_to_uint32(points[field][phase]), 1U))
                 {
-                    return false;
+                    return true;
                 }
             }
         }
-        if (iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(line->iec104.temporary_fault) +
-                                           line_index * span, span) ||
-            iec104_alarm_ack_range_overlaps(iec104_ioa_3byte_to_uint32(line->iec104.permanent_fault) +
-                                           line_index * span, span))
+        const uint32_t temporary = iec104_ioa_3byte_to_uint32(line->iec104.temporary_fault);
+        const uint32_t permanent = iec104_ioa_3byte_to_uint32(line->iec104.permanent_fault);
+        if (overlaps(temporary + line_index * span, span) ||
+            overlaps(permanent + line_index * span, span))
         {
-            return false;
+            return true;
         }
     }
-    return true;
+    return false;
+}
+
+bool iec104_alarm_ack_range_available(void)
+{
+    return !configured_ioa_overlaps(iec104_alarm_ack_range_overlaps, false);
 }
 
 static bool emit_alarm_ack_record(const iec104_alarm_ack_record_t *record)
@@ -2181,6 +2300,27 @@ static bool emit_alarm_ack_record(const iec104_alarm_ack_record_t *record)
     return iec104_send((const uint8_t *)&packet, length);
 }
 
+static bool emit_din_record(const iec104_din_record_t *record)
+{
+    if (!link_active || initialization_pending || (command_reply.length != 0U) ||
+        (interrogation.stage != INTERROGATION_IDLE) || (record->channel >= IEC104_DIN_COUNT) ||
+        configured_ioa_overlaps(relay_or_din_ioa_in_range, true))
+    {
+        return false;
+    }
+    iec104_package_t packet = {0};
+    const size_t length = DATA_START_IDX + sizeof(m_sp_tb_1_t);
+    packet.frame.apci.start_char = IEC104_START_BYTE;
+    packet.frame.apci.apdu_length = (uint8_t)(length - 2U);
+    packet.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+    packet.frame.asdu_header = make_asdu_header(M_SP_TB_1, (cot_t){.cause = COT_SPONTANEOUS},
+                                               config.originator_address, config.common_address, 1U, 0U);
+    const m_sp_tb_1_t point = {.ioa = iec104_make_ioa_3byte(local_io.din[record->channel]),
+                               .siq = {.spi = (record->active != 0U)}, .timestamp = record->time};
+    (void)memcpy(&packet.data[DATA_START_IDX], &point, sizeof(point));
+    return iec104_send(packet.data, length);
+}
+
 bool iec104_emit_event_record(const iec104_event_record_t *record)
 {
     if (NULL == record)
@@ -2195,6 +2335,8 @@ bool iec104_emit_event_record(const iec104_event_record_t *record)
             return emit_alarm_record(&record->payload.alarm);
         case IEC104_EVENT_TRIP_FAILURE_ACK:
             return emit_alarm_ack_record(&record->payload.alarm_ack);
+        case IEC104_EVENT_DIN_CHANGE:
+            return emit_din_record(&record->payload.din);
         default:
             return true;
     }
@@ -3232,6 +3374,34 @@ static void poll_event_record(void)
     }
 }
 
+bool iec104_send_din_states(cause_of_transmission_t cause)
+{
+    if ((cause == COT_SPONTANEOUS) && (initialization_pending || (command_reply.length != 0U) ||
+        (interrogation.stage != INTERROGATION_IDLE)))
+    {
+        return false;
+    }
+    if ((iec_io.get_din_states == NULL) || configured_ioa_overlaps(relay_or_din_ioa_in_range, true))
+    {
+        return true;
+    }
+    iec104_package_t packet = {0};
+    const size_t length = DATA_START_IDX + IEC104_DIN_COUNT * sizeof(m_sp_na_1_t);
+    const uint8_t states = iec_io.get_din_states();
+    packet.frame.apci.start_char = IEC104_START_BYTE;
+    packet.frame.apci.apdu_length = (uint8_t)(length - 2U);
+    packet.frame.apci.i_frame = make_iframe_control(send_sn, receive_sn);
+    packet.frame.asdu_header = make_asdu_header(M_SP_NA_1, (cot_t){.cause = (uint8_t)cause & 0x3FU},
+                                               config.originator_address, config.common_address, IEC104_DIN_COUNT, 0U);
+    for (uint8_t channel = 0U; channel < IEC104_DIN_COUNT; channel++)
+    {
+        const m_sp_na_1_t point = {.ioa = iec104_make_ioa_3byte(local_io.din[channel]),
+                                   .siq = {.spi = (states & (1U << channel)) != 0U}};
+        (void)memcpy(&packet.data[DATA_START_IDX + channel * sizeof(point)], &point, sizeof(point));
+    }
+    return iec104_send(packet.data, length);
+}
+
 static bool send_battery_warning(cause_of_transmission_t cause)
 {
     if (NULL == iec_io.get_battery_warning)
@@ -3304,7 +3474,16 @@ static void poll_interrogation(void)
         interrogation.next++;
     }
     if ((INTERROGATION_DATA == interrogation.stage) &&
-        (QOI_GROUP_1 != qoi) && !send_battery_warning(cause))
+        (QOI_GROUP_1 != qoi) && (interrogation.next == limit))
+    {
+        if (!send_battery_warning(cause))
+        {
+            return;
+        }
+        interrogation.next++;
+    }
+    if ((INTERROGATION_DATA == interrogation.stage) &&
+        (QOI_STATION == qoi) && !iec104_send_din_states(cause))
     {
         return;
     }

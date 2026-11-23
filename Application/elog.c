@@ -569,6 +569,15 @@ const char *elog_info_to_text(const elog_entry_t *entry)
                       (unsigned)info[0], (unsigned)info[1], (info[2] != 0U) ? "active" : "cleared");
             break;
 
+        case ELOG_DIN_CHANGE:
+            xsnprintf(text, sizeof(text), "DIN%u=%u", (unsigned)info[0], (unsigned)info[1]);
+            break;
+
+        case ELOG_RELAY_CHANGE:
+            xsnprintf(text, sizeof(text), "relay %u PWM command %s",
+                      (unsigned)info[0], (info[1] != 0U) ? "ON" : "OFF");
+            break;
+
         case ELOG_RF_ALARM_ACK:
             xsnprintf(text, sizeof(text), "RF F%u Ph%u ack web/admin event=%u boot=%u up=%lu %s",
                       (unsigned)info[0], (unsigned)info[1], (unsigned)info[4],
@@ -1119,6 +1128,18 @@ void elog_log_rf_trip_failure(uint8_t feeder, uint8_t phase, bool active)
     }
     const uint8_t info[3] = {feeder, phase, active ? 1U : 0U};
     elog_add(ELOG_RF_TRIP_FAILURE, active ? ELOG_LEVEL_ERROR : ELOG_LEVEL_INFO, info, sizeof(info));
+}
+
+void elog_log_din_change(uint8_t channel, bool active)
+{
+    const uint8_t info[] = {channel, active ? 1U : 0U};
+    elog_add(ELOG_DIN_CHANGE, ELOG_LEVEL_INFO, info, sizeof(info));
+}
+
+void elog_log_relay_change(uint8_t channel, bool energized)
+{
+    const uint8_t info[] = {channel, energized ? 1U : 0U};
+    elog_add(ELOG_RELAY_CHANGE, ELOG_LEVEL_INFO, info, sizeof(info));
 }
 
 void elog_log_web_login_fail(uint32_t client_ip)

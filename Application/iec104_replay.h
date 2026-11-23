@@ -18,6 +18,7 @@
  * Rejected/blocked submissions remain durable and request paced replay. */
 bool iec104_replay_send_record(const iec104_event_record_t *record,
                                uint16_t seq);
+void iec104_report_din_change(uint8_t channel, bool active, cp56time2a_t time);
 
 /* STARTDT bildirimi: 15 s'lik emniyet sayacini baslatir. Sure dolunca
  * IKM hic sorgulama yapmamis olsa bile replay kendiliginden kalkar

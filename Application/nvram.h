@@ -147,6 +147,8 @@ breaker_t *nvram_get_breaker_rw(void);
 
 //IEC104 Configuration
 const iec104_config_t *nvram_get_iec104_config(void);
+const iec104_local_io_config_t *nvram_get_ioa_io(void);
+void nvram_set_ioa_io(const iec104_local_io_config_t *settings);
 iec104_config_t *nvram_get_iec104_config_rw(void);
 
 /* IEC104 olay gunlugu replay durumu (gonderilmemis seq araligi). Degisiklik
