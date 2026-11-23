@@ -684,30 +684,32 @@ bool nvram_set_output_retention(bool enabled)
 
 bool nvram_save_relay_states(uint8_t states)
 {
-    if (nvram_busy || (3U < states))
-    {
+    if (nvram_busy || (3U < states)){
         return false;
     }
-    if (nvram.relay_states == states)
-    {
+
+    if (nvram.relay_states == states){
         return true;
     }
+
     const uint8_t previous = nvram.relay_states;
     nvram.relay_states = states;
-    if (!nvram_retain_output_states())
-    {
+
+    if (!nvram_retain_output_states()){
         return true;
     }
+
     const nvram_save_result_t result = nvram_save(false);
     if (NVRAM_SAVE_FAILED == result)
     {
         nvram.relay_states = previous;
         return false;
     }
-    if (NVRAM_SAVE_PRIMARY_ONLY == result)
-    {
+
+    if (NVRAM_SAVE_PRIMARY_ONLY == result){
         CSLOG_WARN("Relay state saved; NVRAM backup repair pending\r\n");
     }
+
     return true;
 }
 
