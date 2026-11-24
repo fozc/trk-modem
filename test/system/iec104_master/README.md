@@ -59,6 +59,10 @@ bağlanmamalıdır.
 
 ## Vaka kataloğu
 
+Röle ve dijital girişleri ayrı çalıştırmak için
+[IEC104 röle ve DIN testine](../README.md#2-iec104-röle-ve-dijital-girişler)
+bakılmalıdır.
+
 | Vaka | Doğrulanan | Koşul |
 |---|---|---|
 | i01_startdt_mei | STARTDT_ACT→CON→M_EI_NA_1(70) COT=4 CA IOA=0 | cihaz |

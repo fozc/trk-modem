@@ -13,8 +13,8 @@ Environment:
   MODBUS_RTU_BAUD     default 115200
   MODBUS_RTU_SLAVE    default 23
 """
+import argparse
 import os
-import serial
 import time
 
 PORT = os.environ.get("MODBUS_RTU_PORT")
@@ -156,10 +156,15 @@ def expect_silence(ser, window_s, after_write=b""):
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.parse_args()
     if not PORT:
         print("SKIP: MODBUS_RTU_PORT ayarli degil (gercek RS-485 hedefi "
               "bekleniyor)")
         return 0
+
+    import serial
 
     ser = serial.Serial(PORT, BAUD, bytesize=8, parity="N",
                         stopbits=STOPBITS, timeout=0.005)

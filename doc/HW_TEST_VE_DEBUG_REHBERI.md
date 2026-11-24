@@ -13,6 +13,10 @@ oturumunda doğrulanmış yöntemleri ve tuzakları biriktirir.
 (acceptance) testi, arıza doğrulaması ya da konsol üzerinden tanılama
 yapılacağı her durumda kullanılır.
 
+Hazır Python testleri için [donanım testleri rehberine](../test/system/README.md)
+bakılmalıdır. Rehberde röle/DIN, IEC104, Modbus, RF HIL ve diğer cihaz testlerinin
+çalıştırma komutları ile sonuç dosyaları yer alır.
+
 ---
 
 ## Ön koşullar

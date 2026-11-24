@@ -3,6 +3,9 @@
 **Sürüm:** 2.00
 **Tarih:** 2026-11-01
 
+Gerçek cihaz ve HIL testlerinin komutları, bağlantı koşulları ve
+çıktıları [donanım testleri rehberinde](system/README.md) yer alır.
+
 ## C senaryolarının Ceedling altında çalıştırılması
 
 **Amaç:** C davranışlarını tek Unity/Ceedling akışında çalıştırmak; bağımsız protokol,

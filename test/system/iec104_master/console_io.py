@@ -16,8 +16,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "tools" / "hwtest"))
 
-from serial_io import ConsoleSession  # noqa: E402
-
 
 def run_cmd(console, line, settle_s=3.0):
     """Send a shell command and return ONLY the lines it produced."""
@@ -89,4 +87,6 @@ def latest_console_time(console, window_lines=80):
 
 def open_console(port, logfile=None):
     """Open a ConsoleSession; caller must close()."""
+    from serial_io import ConsoleSession
+
     return ConsoleSession(port, baud=230400, timeout=0.1, logfile=logfile)
